@@ -10,6 +10,8 @@ import {
   UserCheck, Eye, Pencil, ShieldAlert,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import SpillmanModuleGroup from '../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../components/spillman/SpillmanModuleGroup';
 import { ScreeningWorkspace } from './ScreeningPage';
 import IconButton from '../components/IconButton';
 import RmpgLogo from '../components/RmpgLogo';
@@ -934,30 +936,42 @@ export default function WarrantsPage() {
     if (activeTab === 'warrants') fetchWarrants();
   }, [activeTab, fetchWarrants]);
 
-  // Phase 1: hydrate filter chips from URL on mount
+  // Phase 1: hydrate filter chips from URL on mount.
+  // Uses searchParams (via useSearchParams) so react-router owns the URL and
+  // ?warrant_id= / ?personId= deep-links are not clobbered on first render.
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    setFilterPriority(p.get('priority_min') === '70');
-    setFilterSinceWeek(p.get('since_days') === '7');
-    setFilterMatches(p.get('matches_person') === '1');
-    setFilterStateChip(p.get('state') || '');
-    setFilterFederal(p.get('state_prefix') === 'fed_');
-    setFilterArchivedChip(p.get('include_archived') === '1');
+    setFilterPriority(searchParams.get('priority_min') === '70');
+    setFilterSinceWeek(searchParams.get('since_days') === '7');
+    setFilterMatches(searchParams.get('matches_person') === '1');
+    setFilterStateChip(searchParams.get('state') || '');
+    setFilterFederal(searchParams.get('state_prefix') === 'fed_');
+    setFilterArchivedChip(searchParams.get('include_archived') === '1');
+    // Also hydrate the ?status= deep-link into the dropdown filter so that
+    // /warrants?status=active lands with the Active filter pre-selected.
+    const statusParam = searchParams.get('status');
+    if (statusParam && WARRANT_STATUSES.some(s => s.value === statusParam)) {
+      setFilterStatus(statusParam);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Phase 1: persist filter chips to URL when they change
+  // Phase 1: persist filter chips to URL when they change.
+  // Uses setSearchParams so react-router remains the single URL authority —
+  // window.history.replaceState was previously used here but it silently
+  // dropped params managed by react-router (e.g. ?warrant_id=).
   useEffect(() => {
-    const p = new URLSearchParams();
-    if (filterPriority) p.set('priority_min', '70');
-    if (filterSinceWeek) p.set('since_days', '7');
-    if (filterMatches) p.set('matches_person', '1');
-    if (filterStateChip) p.set('state', filterStateChip);
-    if (filterFederal) p.set('state_prefix', 'fed_');
-    if (filterArchivedChip) p.set('include_archived', '1');
-    const qs = p.toString();
-    window.history.replaceState({}, '', qs ? `?${qs}` : window.location.pathname);
-  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      // Remove chip params that are no longer active; set those that are.
+      if (filterPriority) next.set('priority_min', '70'); else next.delete('priority_min');
+      if (filterSinceWeek) next.set('since_days', '7'); else next.delete('since_days');
+      if (filterMatches) next.set('matches_person', '1'); else next.delete('matches_person');
+      if (filterStateChip) next.set('state', filterStateChip); else next.delete('state');
+      if (filterFederal) next.set('state_prefix', 'fed_'); else next.delete('state_prefix');
+      if (filterArchivedChip) next.set('include_archived', '1'); else next.delete('include_archived');
+      return next;
+    }, { replace: true });
+  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip, setSearchParams]);
 
   // Live sync — skip while form modal is open to prevent UI freezes during person search
   const silentRefreshWarrants = useCallback(() => {
@@ -1553,6 +1567,7 @@ export default function WarrantsPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'n' && e.key !== 'N') return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!isAdminOrManager) return; // role-gate mirrors toolbar button
       const t = e.target as HTMLElement | null;
       if (t) {
         const tag = t.tagName;
@@ -1567,7 +1582,7 @@ export default function WarrantsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formOpen, serveModalOpen, personProfileOpen, utahDetailWarrant, deletingWarrant, activeTab]);
+  }, [formOpen, serveModalOpen, personProfileOpen, utahDetailWarrant, deletingWarrant, activeTab, isAdminOrManager]);
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
@@ -1613,29 +1628,38 @@ export default function WarrantsPage() {
         <PrintButton />
       </PanelTitleBar>
 
-      {/* ---- TAB BAR ---- */}
-      <div className={`tab-bar tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`}>
-        {TABS.map((tab) => {
-          if (tab.roleGated && !isGodMode && !isAdminOrManager) return null;
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button type="button"
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`tab-bar-item ${isActive ? 'active' : ''}`}
-            >
-              <Icon className="w-3 h-3" />
-              <span className="whitespace-nowrap">{tab.label}</span>
-              {tab.id === 'dashboard' && dashStats && dashStats.activeWarrants > 0 && (
-                <span className="ml-1 px-1 rounded-sm bg-red-600 text-rmpg-100 text-[8px] font-bold leading-tight">
-                  {dashStats.activeWarrants}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* ---- TAB BAR (Spillman grouped module strip) ---- */}
+      <SpillmanModuleGroup
+        groups={[
+          {
+            label: 'Core',
+            tone: 'steel',
+            tabs: [
+              { id: 'dashboard', label: 'Dashboard', count: dashStats && dashStats.activeWarrants > 0 ? dashStats.activeWarrants : undefined },
+              { id: 'warrants',  label: 'Warrants' },
+            ],
+          },
+          {
+            label: 'Intelligence',
+            tone: 'gold',
+            tabs: [
+              { id: 'search-all', label: 'Search All' },
+              { id: 'screening',  label: 'Screening' },
+              { id: 'watch',      label: 'Watch List' },
+            ],
+          },
+          ...(isGodMode || isAdminOrManager ? [{
+            label: 'Admin',
+            tone: 'red' as const,
+            tabs: [
+              { id: 'sources',  label: 'Sources' },
+              { id: 'scrapers', label: 'Scrapers' },
+            ],
+          }] : []),
+        ] as ModuleGroupSpec[]}
+        activeTab={activeTab}
+        onTabChange={(id) => setActiveTab(id as TabId)}
+      />
 
       {/* ---- STATS BAR ---- */}
       <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-rmpg-700 text-[10px] font-mono flex-wrap">

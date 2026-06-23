@@ -12,6 +12,9 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { routeForEntity } from '../utils/notificationRouting';
+import { useAuth } from '../context/AuthContext';
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 interface Notification {
   id: number;
@@ -55,6 +58,12 @@ export default function NotificationsPage() {
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  const { user } = useAuth();
+
+  // Role gate: bulk destructive sweeps (Clear Read, Cleanup 30d+) are
+  // admin/manager/supervisor only — officers and dispatchers can still
+  // delete individual notifications via the per-row button or context menu.
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
 
   // ── URL deep-link contract ──
   // Accepts (all optional, all stripped after consumption so a refresh
@@ -259,6 +268,30 @@ export default function NotificationsPage() {
     } catch { addToast('Failed', 'error'); }
   };
 
+  // ── `N` shortcut: mark all notifications as read ──
+  // Operators receive notifications, not create them, so the most useful
+  // primary-action shortcut is bulk mark-as-read (mirrors dispatch N = new call
+  // in spirit: "act on the inbox with one key"). Suppressed when a dialog is
+  // open, focus is in a form field, or the inbox is already fully read.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      if (t instanceof HTMLElement) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+      }
+      if (confirmClearRead || confirmCleanupOld || showPrefs) return;
+      if (!stats || stats.totalUnread === 0) return;
+      e.preventDefault();
+      void markAllRead();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmClearRead, confirmCleanupOld, showPrefs, stats]);
+
   const deleteNotification = async (id: number) => {
     try {
       await apiFetch(`/notifications/${id}`, { method: 'DELETE' });
@@ -382,15 +415,19 @@ export default function NotificationsPage() {
   return (
     <div className="flex flex-col h-full animate-fade-in">
       <PanelTitleBar title="NOTIFICATIONS" icon={Bell}>
-        <button type="button" onClick={markAllRead} className="toolbar-btn" title="Mark all as read">
+        <button type="button" onClick={markAllRead} className="toolbar-btn" title="Mark all as read (N)">
           <CheckCheck className="w-3.5 h-3.5" /> Mark All Read
         </button>
-        <button type="button" onClick={() => setConfirmClearRead(true)} className="toolbar-btn" title="Delete all read">
-          <Trash2 className="w-3.5 h-3.5" /> Clear Read
-        </button>
-        <button type="button" onClick={() => setConfirmCleanupOld(true)} className="toolbar-btn" title="Cleanup old notifications">
-          <RefreshCw className="w-3.5 h-3.5" /> Cleanup 30d+
-        </button>
+        {canManage && (
+          <button type="button" onClick={() => setConfirmClearRead(true)} className="toolbar-btn" title="Delete all read (admin/manager/supervisor only)">
+            <Trash2 className="w-3.5 h-3.5" /> Clear Read
+          </button>
+        )}
+        {canManage && (
+          <button type="button" onClick={() => setConfirmCleanupOld(true)} className="toolbar-btn" title="Cleanup old notifications (admin/manager/supervisor only)">
+            <RefreshCw className="w-3.5 h-3.5" /> Cleanup 30d+
+          </button>
+        )}
         <button type="button" onClick={() => setShowPrefs(!showPrefs)} className={`toolbar-btn ${showPrefs ? 'toolbar-btn-primary' : ''}`}>
           <Settings className="w-3.5 h-3.5" /> Preferences
         </button>

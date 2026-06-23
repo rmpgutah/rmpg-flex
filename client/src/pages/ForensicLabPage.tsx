@@ -19,6 +19,7 @@ import FormModal from '../components/FormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import IncidentPickerInline from '../components/IncidentPickerInline';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -272,6 +273,9 @@ export default function ForensicLabPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  // admin/manager/supervisor can create and edit; admin/manager can delete
+  const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
@@ -937,7 +941,7 @@ export default function ForensicLabPage() {
         // Quick-jump to New Case tab from the list view. Only when no modal
         // is open + no case is selected, so it doesn't fight the typing in
         // a richtext field somewhere in the detail panels.
-        if (!selectedCase && !completeTarget && !showAnalysisModal && !showExhibitModal
+        if (canManage && !selectedCase && !completeTarget && !showAnalysisModal && !showExhibitModal
           && !showEditModal && !showCustodyModal && confirmUnlinkId == null) {
           setActiveTab('New Case');
           setWizardStep(0);
@@ -1094,9 +1098,11 @@ export default function ForensicLabPage() {
                     <option key={k} value={k}>{v.label}</option>
                   ))}
                 </select>
-                <button type="button" onClick={openEditModal} className="toolbar-btn text-[10px]">
-                  <Edit3 size={10} /> Edit Details
-                </button>
+                {canManage && (
+                  <button type="button" onClick={openEditModal} className="toolbar-btn text-[10px]">
+                    <Edit3 size={10} /> Edit Details
+                  </button>
+                )}
                 <button type="button" onClick={() => navigate(`/connections?type=case&id=${selectedCase.id}`)} className="toolbar-btn text-[10px]">
                   <Network size={10} /> View Connections
                 </button>
@@ -1267,12 +1273,14 @@ export default function ForensicLabPage() {
                         <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Chain of Custody</div>
                         <span className="text-[9px] text-rmpg-600 font-mono">({custodyLog.length} entries)</span>
                       </div>
-                      <button type="button"
-                        onClick={() => setShowCustodyModal(true)}
-                        className="toolbar-btn toolbar-btn-primary text-[10px]"
-                      >
-                        <Plus size={10} /> Log Transfer
-                      </button>
+                      {canManage && (
+                        <button type="button"
+                          onClick={() => setShowCustodyModal(true)}
+                          className="toolbar-btn toolbar-btn-primary text-[10px]"
+                        >
+                          <Plus size={10} /> Log Transfer
+                        </button>
+                      )}
                     </div>
                     {custodyLog.length === 0 ? (
                       <div className="text-center py-4">
@@ -1408,9 +1416,11 @@ export default function ForensicLabPage() {
             <>
               <div className="flex items-center justify-between">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Evidence Items</div>
-                <button type="button" onClick={() => setShowExhibitModal(true)} className="toolbar-btn toolbar-btn-primary text-[10px]">
-                  <Plus size={10} /> Add Exhibit
-                </button>
+                {canManage && (
+                  <button type="button" onClick={() => setShowExhibitModal(true)} className="toolbar-btn toolbar-btn-primary text-[10px]">
+                    <Plus size={10} /> Add Exhibit
+                  </button>
+                )}
               </div>
               {(!selectedCase.exhibits || selectedCase.exhibits.length === 0) ? (
                 <div className="panel-beveled bg-surface-sunken p-6 text-center">
@@ -1479,9 +1489,11 @@ export default function ForensicLabPage() {
             <>
               <div className="flex items-center justify-between">
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Examination Records</div>
-                <button type="button" onClick={() => setShowAnalysisModal(true)} className="toolbar-btn toolbar-btn-primary text-[10px]">
-                  <Plus size={10} /> New Analysis
-                </button>
+                {canManage && (
+                  <button type="button" onClick={() => setShowAnalysisModal(true)} className="toolbar-btn toolbar-btn-primary text-[10px]">
+                    <Plus size={10} /> New Analysis
+                  </button>
+                )}
               </div>
               {(!selectedCase.analyses || selectedCase.analyses.length === 0) ? (
                 <div className="panel-beveled bg-surface-sunken p-6 text-center">
@@ -1682,11 +1694,13 @@ export default function ForensicLabPage() {
                       <input id="ff-forensiclabpage-17" type="radio" checked={!qcForm.pass} onChange={() => setQcForm(f => ({ ...f, pass: false }))} className="accent-red-400" /> Fail
                     </label>
                   </div>
-                  <button type="button" onClick={handleQcSubmit} disabled={qcSubmitting}
-                    className="btn-primary w-full flex items-center justify-center gap-2 text-xs">
-                    {qcSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Shield size={12} />}
-                    Record QC Check
-                  </button>
+                  {canManage && (
+                    <button type="button" onClick={handleQcSubmit} disabled={qcSubmitting}
+                      className="btn-primary w-full flex items-center justify-center gap-2 text-xs">
+                      {qcSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Shield size={12} />}
+                      Record QC Check
+                    </button>
+                  )}
                 </div>
               </div>
               {/* QC History */}
@@ -2269,7 +2283,7 @@ export default function ForensicLabPage() {
 
       {/* Tab Bar */}
       <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken">
-        {TABS.map(tab => {
+        {TABS.filter(tab => tab !== 'New Case' || canManage).map(tab => {
           const Icon = tab === 'New Case' ? Plus : tab === 'My Cases' ? FileText : Search;
           return (
             <button type="button"

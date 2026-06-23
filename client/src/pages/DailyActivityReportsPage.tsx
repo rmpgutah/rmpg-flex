@@ -47,14 +47,21 @@ export default function DailyActivityReportsPage() {
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
+  // searchParams must be declared before filter state so the lazy
+  // initialisers for ?officer_id= and ?date= can reference it.
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [dars, setDars] = useState<DailyActivityReport[]>([]);
   const [selected, setSelected] = useState<DailyActivityReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
 
-  // Filters
+  // Filters — ?officer_id= and ?date= deep-links pre-seed these on mount
+  // so a supervisor can link directly to one officer's reports for a date.
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterOfficerId, setFilterOfficerId] = useState<string>(() => searchParams.get('officer_id') ?? '');
+  const [filterDate, setFilterDate] = useState<string>(() => searchParams.get('date') ?? '');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -71,11 +78,13 @@ export default function DailyActivityReportsPage() {
   const [autoPopLoading, setAutoPopLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Edit mode for narrative
+  // Edit mode for narrative + all text fields the PDF renders
   const [editing, setEditing] = useState(false);
   const [editNarrative, setEditNarrative] = useState('');
   const [editHighlights, setEditHighlights] = useState('');
   const [editIssues, setEditIssues] = useState('');
+  const [editEquipment, setEditEquipment] = useState('');
+  const [editRecommendations, setEditRecommendations] = useState('');
 
   // Supervisor "Return" review-notes ConfirmDialog state \u2014 replaces the
   // native window.prompt() that lived here (no a11y, no theming, no
@@ -96,16 +105,34 @@ export default function DailyActivityReportsPage() {
         page: String(page), limit: '50',
         ...(searchQuery ? { search: searchQuery } : {}),
         ...(filterStatus ? { status: filterStatus } : {}),
+        ...(filterOfficerId ? { officer_id: filterOfficerId } : {}),
+        ...(filterDate ? { shift_date: filterDate } : {}),
       });
       const res = await apiFetch<{ data: DailyActivityReport[]; pagination: any }>(`/dar?${params}`);
       setDars(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
     } catch (err: any) { setFetchError(err?.message || 'Failed to load data'); } finally { setLoading(false); }
-  }, [page, searchQuery, filterStatus]);
+  }, [page, searchQuery, filterStatus, filterOfficerId, filterDate]);
 
   useEffect(() => { fetchDars(); }, [fetchDars]);
   useLiveSync('admin', () => fetchDars({ silent: true }));
+
+  // Strip ?officer_id= and ?date= from the URL after seeding — same
+  // single-fire pattern as ?dar_id=. Prevents stale filters surviving a
+  // hard refresh or a copy-paste of the URL to another session.
+  useEffect(() => {
+    const hadOfficer = searchParams.has('officer_id');
+    const hadDate = searchParams.has('date');
+    if (hadOfficer || hadDate) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('officer_id');
+      next.delete('date');
+      setSearchParams(next, { replace: true });
+    }
+  // Run once on mount only.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── /daily-activity-reports?dar_id=<id> URL deep-link auto-select ──
   // Honors the Dashboard-emit / page-consume contract shipped across the
@@ -114,7 +141,6 @@ export default function DailyActivityReportsPage() {
   // refresh doesn't re-select. Direct-fetch fallback for ids not in the
   // current filter view (e.g. an approved DAR linked from a supervisor's
   // audit ticket while the filter is set to 'draft').
-  const [searchParams, setSearchParams] = useSearchParams();
   const pendingDarIdRef = useRef<string | null>(searchParams.get('dar_id'));
   useEffect(() => {
     const target = pendingDarIdRef.current;
@@ -281,6 +307,8 @@ export default function DailyActivityReportsPage() {
           activities_narrative: editNarrative,
           notable_events: editHighlights,
           safety_concerns: editIssues,
+          equipment_issues: editEquipment,
+          recommendations: editRecommendations,
         }),
       });
       addToast('Narrative saved', 'success');
@@ -514,6 +542,8 @@ export default function DailyActivityReportsPage() {
                           setEditNarrative(selected.activities_narrative || '');
                           setEditHighlights(selected.notable_events || '');
                           setEditIssues(selected.safety_concerns || '');
+                          setEditEquipment(selected.equipment_issues || '');
+                          setEditRecommendations(selected.recommendations || '');
                           setEditing(true);
                         }
                       }}
@@ -538,6 +568,14 @@ export default function DailyActivityReportsPage() {
                       <label htmlFor="dar-issues" className="text-[9px] text-rmpg-500">Issues Encountered</label>
                       <RichTextArea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
+                    <div>
+                      <label htmlFor="dar-equipment" className="text-[9px] text-rmpg-500">Equipment Issues</label>
+                      <RichTextArea id="dar-equipment" value={editEquipment} onChange={e => setEditEquipment(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                    </div>
+                    <div>
+                      <label htmlFor="dar-recommendations" className="text-[9px] text-rmpg-500">Recommendations</label>
+                      <RichTextArea id="dar-recommendations" value={editRecommendations} onChange={e => setEditRecommendations(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                    </div>
                   </div>
                 ) : (
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">
@@ -550,6 +588,16 @@ export default function DailyActivityReportsPage() {
                     {selected.safety_concerns && (
                       <div className="mt-2">
                         <span className="text-[9px] text-rmpg-500">Issues: </span>{selected.safety_concerns}
+                      </div>
+                    )}
+                    {selected.equipment_issues && (
+                      <div className="mt-2">
+                        <span className="text-[9px] text-rmpg-500">Equipment: </span>{selected.equipment_issues}
+                      </div>
+                    )}
+                    {selected.recommendations && (
+                      <div className="mt-2">
+                        <span className="text-[9px] text-rmpg-500">Recommendations: </span>{selected.recommendations}
                       </div>
                     )}
                   </div>

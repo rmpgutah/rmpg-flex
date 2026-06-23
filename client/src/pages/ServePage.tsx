@@ -119,6 +119,8 @@ interface StatsSummary {
 export default function ServePage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
+  const canDelete = ['admin', 'manager'].includes(user?.role ?? '');
   const { addToast } = useToast();
   // ── Right-click context menu ──────────────────────────────────────────
   const { openMenu } = useContextMenu();
@@ -194,19 +196,10 @@ export default function ServePage() {
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  // ── Feature 10: Affidavit Generation ──
-  const [affidavitData, setAffidavitData] = useState<any>(null);
   // ── Feature 12: Deadline Tracking ──
   const [deadlines, setDeadlines] = useState<any>(null);
   // ── Feature 14: Success Rate Stats ──
   const [successRates, setSuccessRates] = useState<any>(null);
-
-  const handleGenerateAffidavit = async (jobId: number) => {
-    try {
-      const data = await apiFetch<any>(`/process-server/${jobId}/affidavit`);
-      setAffidavitData(data);
-    } catch { /* ignore */ }
-  };
 
   // ── Notice of Attempt to Serve (unsuccessful-attempt notice) ──
   // Builds the professional notice from the job's real serve_attempts and opens
@@ -663,13 +656,6 @@ export default function ServePage() {
     } catch { setCostEstimate(null); }
   };
 
-  // ── Feature 3: Serve Completion Notification ──
-  const handleNotifyCompletion = async (jobId: number) => {
-    try {
-      await apiFetch(`/process-server/${jobId}/notify-completion`, { method: 'POST' });
-    } catch { /* ignore */ }
-  };
-
   const filteredJobs = useMemo(() => {
     let result = statusFilter === 'all' ? jobs : jobs.filter(j => j.status === statusFilter);
 
@@ -811,10 +797,10 @@ export default function ServePage() {
           .filter(Boolean).join(', ');
         if (popupRef.current) {
           popupRef.current.setLngLat(lngLat).setHTML(`
-            <div style="color:#fff;background:#141414;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
+            <div style="color:var(--text-primary);background:var(--surface-raised);padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
               <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
-              <div style="font-size:11px;color:#9ab0c4;">${fullAddr || 'No address'}</div>
-              <div style="font-size:10px;color:#8a9aaa;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
+              <div style="font-size:11px;color:var(--text-secondary);">${fullAddr || 'No address'}</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
             </div>
           `).addTo(mapRef.current!);
         }
@@ -842,7 +828,7 @@ export default function ServePage() {
           type: 'line',
           source: sourceId,
           paint: {
-            'line-color': '#888888',
+            'line-color': 'rgb(var(--rmpg-500-rgb))',
             'line-opacity': 0.8,
             'line-width': 3,
           },
@@ -883,17 +869,17 @@ export default function ServePage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (deleteJob)       { setDeleteJob(null); return; }
-        if (attemptJob)      { setAttemptJob(null); return; }
-        if (editAttempt)     { setEditAttempt(null); return; }
-        if (skipTraceJob)    { setSkipTraceJob(null); return; }
-        if (routePlannerOpen){ setRoutePlannerOpen(false); return; }
-        if (createJobOpen)   { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); return; }
+        if (deleteJob)       { e.stopPropagation(); setDeleteJob(null); return; }
+        if (attemptJob)      { e.stopPropagation(); setAttemptJob(null); return; }
+        if (editAttempt)     { e.stopPropagation(); setEditAttempt(null); return; }
+        if (skipTraceJob)    { e.stopPropagation(); setSkipTraceJob(null); return; }
+        if (routePlannerOpen){ e.stopPropagation(); setRoutePlannerOpen(false); return; }
+        if (createJobOpen)   { e.stopPropagation(); setCreateJobOpen(false); setEditJob(null); clearFormDraft(); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
-      if (e.key === 'n' || e.key === 'N') {
+      if ((e.key === 'n' || e.key === 'N') && canManage) {
         // Suppress N when any modal is already open \u2014 the in-modal Tab/Enter
         // contract owns the focused element.
         if (deleteJob || attemptJob || editAttempt || skipTraceJob || routePlannerOpen || createJobOpen) return;
@@ -944,10 +930,9 @@ export default function ServePage() {
     const addr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
-    const canDelete = ['admin', 'manager'].includes(user?.role ?? '');
     return [
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
-      m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> }),
+      ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
       ...(job.attempt_count > 0 ? [m.action('Notice of Attempt to Serve', () => handleNoticeOfAttempt(job.id), { icon: <FileWarning size={12} /> })] : []),
       m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
@@ -977,7 +962,7 @@ export default function ServePage() {
       {/* ─── Header Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken flex-wrap" role="toolbar" aria-label="Process Server controls">
         <div className="flex items-center gap-1.5">
-          <Briefcase size={16} className="text-[#d4a017]" />
+          <Briefcase size={16} className="text-brand-gold-500" />
           {!isMobile && <span className="text-sm font-semibold text-rmpg-100 tracking-wider">PROCESS SERVER</span>}
           {!isMobile && <span className="block h-px w-full bg-[#d4a017]/30 mt-0.5" />}
         </div>
@@ -1005,7 +990,7 @@ export default function ServePage() {
             const mins = savedRoute.total_time_minutes;
             if (stopCount === 0) return null;
             return (
-              <span className="font-mono tabular-nums text-[10px] ml-1.5 px-1.5 py-0.5 rounded-[2px]" style={{ color: '#d4a017', background: '#d4a01710', border: '1px solid #d4a01720' }}>
+              <span className="font-mono tabular-nums text-[10px] ml-1.5 px-1.5 py-0.5 rounded-[2px] text-brand-gold-500" style={{ background: "rgb(var(--brand-gold-rgb)/0.06)", border: "1px solid rgb(var(--brand-gold-rgb)/0.15)" }}>
                 {stopCount} stops
                 {dist ? ` / ${Number(dist).toFixed(0)} mi` : ''}
                 {mins ? ` / ~${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m` : ''}
@@ -1035,6 +1020,7 @@ export default function ServePage() {
             {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             {!isMobile && 'Sync from SM'}
           </button>
+          {canManage && (
           <button type="button"
             onClick={openCreate}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(34,197,94,0.15)] focus:outline-none focus:ring-1 focus:ring-green-500/50"
@@ -1044,6 +1030,7 @@ export default function ServePage() {
             <Plus size={12} />
             {!isMobile && 'Add Job'}
           </button>
+          )}
           <ExportButton exportUrl="/api/process-server/export/csv" exportFilename="serve-jobs.csv" />
         </div>
       </div>
@@ -1060,7 +1047,7 @@ export default function ServePage() {
               onClick={() => setActiveTab(tab)}
               className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-all duration-150 border-b-2 ${
                 activeTab === tab
-                  ? 'text-[#d4a017] border-[#d4a017] bg-[#d4a017]/5'
+                  ? 'text-brand-gold-500 border-brand-gold-500 bg-brand-gold-500/5'
                   : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-600 hover:bg-white/[0.02]'
               }`}
             >
@@ -1084,9 +1071,9 @@ export default function ServePage() {
                   role="button"
                   aria-pressed={statusFilter === f.value}
                   onClick={() => setStatusFilter(f.value)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-[#888888]/50 ${
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-rmpg-500/50 ${
                     statusFilter === f.value
-                      ? 'text-rmpg-100 bg-[#888888] border-[#888888] shadow-[0_0_6px_rgba(212,160,23,0.3)]'
+                      ? 'text-rmpg-100 bg-rmpg-500 border-rmpg-500 shadow-[0_0_6px_rgba(212,160,23,0.3)]'
                       : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
                   }`}
                 >
@@ -1133,7 +1120,7 @@ export default function ServePage() {
             <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 scrollbar-dark">
               {loading && jobs.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-xs text-rmpg-400">
-                  <Loader2 size={16} className="animate-spin mr-2 text-[#888888]" />
+                  <Loader2 size={16} className="animate-spin mr-2 text-rmpg-500" />
                   <span className="text-rmpg-400">Loading jobs...</span>
                 </div>
               ) : filteredJobs.length === 0 ? (
@@ -1233,7 +1220,7 @@ export default function ServePage() {
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-rmpg-400 text-xs ml-auto">
-                      <span className="font-mono tabular-nums" style={{ color: '#d4a017' }}>
+                      <span className="font-mono tabular-nums text-brand-gold-500">
                         {completedCount}/{totalStops} done ({progressPct}%)
                       </span>
                     </div>
@@ -1374,7 +1361,7 @@ export default function ServePage() {
             {mapReady && jobs.some(j => j.status === 'pending' || j.status === 'in_progress') && (
               <button type="button"
                 onClick={handleNavigateToNext}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rmpg-100 bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] shadow-lg shadow-[#888888]/20 border border-[#888888] transition-all duration-150 hover:shadow-[0_0_16px_rgba(212,160,23,0.3)] focus:outline-none focus:ring-2 focus:ring-[#888888]/50"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rmpg-100 bg-rmpg-500 hover:bg-rmpg-500/80 rounded-[2px] shadow-lg shadow-rmpg-500/20 border border-rmpg-500 transition-all duration-150 hover:shadow-[0_0_16px_rgba(212,160,23,0.3)] focus:outline-none focus:ring-2 focus:ring-rmpg-500/50"
               >
                 <Navigation size={16} />
                 Navigate to Next
@@ -1421,7 +1408,7 @@ export default function ServePage() {
             {/* Mileage / efficiency */}
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
-                <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
+                <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
                 <div className="text-lg font-bold text-rmpg-100 font-mono tabular-nums">
                   {routeData?.totalDistance
                     ? `${routeData.totalDistance.toFixed(1)} mi`
@@ -1437,7 +1424,7 @@ export default function ServePage() {
                 )}
               </div>
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
-                <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
+                <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
                 <div className="text-lg font-bold text-rmpg-100 font-mono tabular-nums">
                   {routeData && stats?.planned_mileage && stats.planned_mileage > 0
                     ? `${Math.round((stats.planned_mileage / (routeData.totalDistance || 1)) * 100)}%`
@@ -1454,7 +1441,7 @@ export default function ServePage() {
 
             {/* Feature 5: Cost Calculator */}
             <div className="p-3 bg-surface-raised border border-rmpg-700 rounded-[2px]">
-              <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-2">Job Cost Calculator</div>
+              <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-2">Job Cost Calculator</div>
               <div className="flex items-center gap-2">
                 <select id="ff-servepage-1"
                   value={costJobId || ''}
@@ -1501,7 +1488,7 @@ export default function ServePage() {
             {deadlines && (
               <div className="p-3 bg-surface-raised border border-rmpg-700 rounded-[2px] space-y-2">
                 <div className="flex justify-between items-center">
-                  <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Deadline Tracker ({deadlines.total} active)</div>
+                  <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider">Deadline Tracker ({deadlines.total} active)</div>
                   <button type="button" onClick={() => setDeadlines(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs transition-colors" aria-label="Close deadline tracker">Close</button>
                 </div>
                 {deadlines.overdue?.length > 0 && (
@@ -1535,7 +1522,7 @@ export default function ServePage() {
             {successRates && (
               <div className="p-3 bg-surface-raised border border-rmpg-700 rounded-[2px] space-y-2">
                 <div className="flex justify-between items-center">
-                  <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Success Rates ({successRates.period_days}d)</div>
+                  <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider">Success Rates ({successRates.period_days}d)</div>
                   <button type="button" onClick={() => setSuccessRates(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs transition-colors" aria-label="Close success rates">Close</button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
@@ -1673,8 +1660,9 @@ export default function ServePage() {
               />
             </div>
             <div className="w-28">
-              <label htmlFor="ff-servepage-14" className="block text-[11px] text-rmpg-400 mb-1">Apt / Unit</label>
+              <label htmlFor="ff-servepage-addr2" className="block text-[11px] text-rmpg-400 mb-1">Apt / Unit</label>
               <input
+                id="ff-servepage-addr2"
                 type="text"
                 value={formData.recipient_address_2}
                 onChange={e => handleFormChange('recipient_address_2', e.target.value)}
@@ -1938,7 +1926,7 @@ function StatCard({
 }) {
   return (
     <div className={`px-4 py-3 rounded-[2px] border ${bg} ${border} transition-all duration-150 hover:shadow-md hover:scale-[1.01]`}>
-      <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-1">{label}</div>
+      <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">{label}</div>
       <div className={`text-2xl font-bold font-mono tabular-nums ${color}`} style={{ textShadow: '0 0 4px currentColor' }}>{value}</div>
     </div>
   );

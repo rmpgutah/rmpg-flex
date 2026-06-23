@@ -77,6 +77,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
@@ -131,6 +132,16 @@ export default function TasksPage() {
   const navigate = useNavigate();
   const { addToast } = useToast();
   const m = useMenuActions();
+  const { user } = useAuth();
+
+  // Backend role gates:
+  //   DELETE — admin | manager only
+  //   PUT    — admin | manager | supervisor | officer
+  //   POST   — admin | manager | supervisor | officer
+  // Mirror these client-side so a dispatcher/viewer doesn't see actions
+  // that will 403 on the server.
+  const canDelete = user?.role === 'admin' || user?.role === 'manager';
+  const canAssign = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
 
   // ── State ──────────────────────────────────────────────────────
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -507,17 +518,19 @@ export default function TasksPage() {
         >
           <Pencil size={12} />
         </IconButton>
-        <IconButton
-          aria-label={`Delete task ${row.id}`}
-          onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }}
-          className="text-red-500 hover:text-red-300"
-        >
-          <Trash2 size={12} />
-        </IconButton>
+        {canDelete && (
+          <IconButton
+            aria-label={`Delete task ${row.id}`}
+            onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }}
+            className="text-red-500 hover:text-red-300"
+          >
+            <Trash2 size={12} />
+          </IconButton>
+        )}
       </div>
     )},
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [highlightId, openEdit]);
+  ], [highlightId, openEdit, canDelete]);
 
   // ── Render ─────────────────────────────────────────────────────
   return (
@@ -679,8 +692,10 @@ export default function TasksPage() {
             m.copy('Copy task title', row.task_title),
             m.copy('Copy deep-link', selfLink),
             m.copyId(row.id),
-            m.separator(),
-            m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+            ...(canDelete ? [
+              m.separator(),
+              m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+            ] : []),
           ];
         }}
       />
@@ -692,6 +707,7 @@ export default function TasksPage() {
         isSubmitting={formSubmitting}
         editingRecord={editingRecord}
         submitError={formError}
+        canEscalatePriority={canAssign}
       />
 
       <ConfirmDialog

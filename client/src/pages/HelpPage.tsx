@@ -1,27 +1,60 @@
 // ============================================================
 // RMPG Flex — Help & Documentation Page
 // System reference, keyboard shortcuts, module guides, FAQ
+//
+// URL deep-linking (so /help?topic=shortcuts loads straight
+// into the shortcuts tab and pastes well into chat/email):
+//   ?topic=overview|shortcuts|modules|dispatch|faq|system
+//   ?faq=<idx>            expand FAQ #idx (and force topic=faq)
+//   ?search=<term>        global content search across all
+//                         shortcuts/modules/FAQ — renders a
+//                         consolidated result list at the top.
+//
+// Keyboard:
+//   /         focus the search box (unless typing in a field)
+//   Esc       smart-cascade — clears search first, then
+//             collapses any expanded FAQ, then drops back to
+//             the Overview tab
+//
+// PDFs (printable take-away artifacts for the console):
+//   • Quick Reference Card (shortcuts + priorities + statuses)
+//   • Dispatch Console Guide (long-form training PDF, reused
+//     from dispatchGuidePdfGenerator)
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   HelpCircle, Keyboard, BookOpen, Monitor, Radio, Map, Database, FileText, Users,
   MessageSquare, BarChart3, Search, AlertTriangle, Shield, Settings, ChevronRight,
   Zap, Send, Car, Gavel, Briefcase, Mail, Globe, FlaskConical, UserCog,
-  GraduationCap,
+  GraduationCap, Download, Printer, X,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { APP_VERSION } from '../utils/version';
+import {
+  SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS,
+} from '../utils/helpReferenceData';
 
 // ── Health data type ────────────────────────────────────────
 interface HealthData {
   version?: string;
   status?: string;
+  db?: {
+    connected?: boolean;
+    version?: string;
+    users?: number;
+  };
+  timestamp?: string;
 }
 
 // ── Section IDs ─────────────────────────────────────────────
 type SectionId = 'overview' | 'shortcuts' | 'modules' | 'dispatch' | 'faq' | 'system';
+
+const SECTION_IDS: SectionId[] = ['overview', 'shortcuts', 'modules', 'dispatch', 'faq', 'system'];
+const isSectionId = (v: string | null): v is SectionId =>
+  v != null && (SECTION_IDS as string[]).includes(v);
 
 interface NavItem {
   id: SectionId;
@@ -36,85 +69,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'dispatch', label: 'Dispatch Reference', icon: Radio },
   { id: 'faq', label: 'FAQ', icon: HelpCircle },
   { id: 'system', label: 'System Info', icon: Settings },
-];
-
-// ── Shortcut data ───────────────────────────────────────────
-const SHORTCUT_GROUPS = [
-  {
-    title: 'Global',
-    shortcuts: [
-      { keys: ['Ctrl', 'K'], description: 'Open global search' },
-      { keys: ['?'], description: 'Show keyboard shortcuts modal' },
-      { keys: ['Esc'], description: 'Close modal / panel' },
-      { keys: ['F11'], description: 'Toggle fullscreen' },
-      { keys: ['Ctrl', 'P'], description: 'Print current view' },
-      { keys: ['Ctrl', 'E'], description: 'Export current view' },
-    ],
-  },
-  {
-    title: 'Page Navigation (F-Keys)',
-    shortcuts: [
-      { keys: ['F1'], description: 'Dashboard' },
-      { keys: ['F2'], description: 'Dispatch' },
-      { keys: ['F3'], description: 'Tactical Map' },
-      { keys: ['F4'], description: 'MDT' },
-      { keys: ['F5'], description: 'NCIC' },
-      { keys: ['F6'], description: 'Records' },
-      { keys: ['F7'], description: 'Enforcement' },
-      { keys: ['F8'], description: 'Personnel' },
-      { keys: ['F9'], description: 'Communications' },
-      { keys: ['F10'], description: 'Reports' },
-      { keys: ['F11'], description: 'Audit Log' },
-      { keys: ['F12'], description: 'Admin' },
-    ],
-  },
-  {
-    title: 'Quick Navigation (Alt+Number)',
-    shortcuts: [
-      { keys: ['Alt', '1'], description: 'Dashboard' },
-      { keys: ['Alt', '2'], description: 'Dispatch' },
-      { keys: ['Alt', '3'], description: 'Map' },
-      { keys: ['Alt', '4'], description: 'Records' },
-      { keys: ['Alt', '5'], description: 'Personnel' },
-      { keys: ['Alt', '6'], description: 'Communications' },
-      { keys: ['Alt', '7'], description: 'Reports' },
-      { keys: ['Alt', '8'], description: 'MDT' },
-    ],
-  },
-  {
-    title: 'Dispatch Console',
-    shortcuts: [
-      { keys: ['N'], description: 'New call for service' },
-      { keys: ['R'], description: 'Refresh call queue' },
-      { keys: ['J'], description: 'Next call in queue' },
-      { keys: ['K'], description: 'Previous call in queue' },
-      { keys: ['D'], description: 'Dispatch selected call' },
-      { keys: ['E'], description: 'Set unit enroute' },
-      { keys: ['O'], description: 'Set unit on scene' },
-      { keys: ['C'], description: 'Clear selected call' },
-      { keys: ['1'], description: 'Filter: All calls' },
-      { keys: ['2'], description: 'Filter: Pending' },
-      { keys: ['3'], description: 'Filter: Active' },
-      { keys: ['4'], description: 'Filter: Cleared' },
-    ],
-  },
-  {
-    title: 'CAD Command Line',
-    shortcuts: [
-      { keys: ['/'], description: 'Focus command line' },
-      { keys: ['F8'], description: 'Focus command line (alt)' },
-      { keys: ['Enter'], description: 'Execute command' },
-      { keys: ['↑', '↓'], description: 'Command history' },
-    ],
-  },
-  {
-    title: 'Incidents',
-    shortcuts: [
-      { keys: ['N'], description: 'New incident report' },
-      { keys: ['E'], description: 'Edit selected incident' },
-      { keys: ['Esc'], description: 'Close detail panel' },
-    ],
-  },
 ];
 
 // ── Module Guide data ───────────────────────────────────────
@@ -305,7 +259,7 @@ const FAQ_ITEMS: FaqItem[] = [
   },
   {
     question: 'How do I change my password or enable 2FA?',
-    answer: 'Go to Admin (F12) and use the user settings panel. Two-factor authentication can be enabled with TOTP (authenticator app) or WebAuthn (YubiKey/security key).',
+    answer: 'Go to Admin (F12) and use the user settings panel. The Cloudflare-era stack ships JWT authentication today; multi-factor (TOTP / WebAuthn) was a VPS-era feature and has not yet been ported.',
   },
   {
     question: 'What do the priority levels mean?',
@@ -337,17 +291,213 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Search helpers (extracted so they can be unit-tested independently) ──
+export interface SearchHit {
+  kind: 'shortcut' | 'module' | 'faq';
+  title: string;
+  detail: string;
+  groupOrPath: string;
+  /** Section to navigate to when clicked. */
+  section: SectionId;
+  /** Optional FAQ index to expand. */
+  faqIdx?: number;
+}
+
+const norm = (s: string) => s.toLowerCase();
+
+export function searchHelpContent(query: string): SearchHit[] {
+  const q = norm(query.trim());
+  if (q.length < 2) return [];
+  const hits: SearchHit[] = [];
+
+  for (const g of SHORTCUT_GROUPS) {
+    for (const s of g.shortcuts) {
+      const keys = s.keys.join('+');
+      if (norm(keys).includes(q) || norm(s.description).includes(q) || norm(g.title).includes(q)) {
+        hits.push({
+          kind: 'shortcut',
+          title: keys,
+          detail: s.description,
+          groupOrPath: g.title,
+          section: 'shortcuts',
+        });
+      }
+    }
+  }
+
+  for (const m of MODULES) {
+    const haystack = `${m.name} ${m.description} ${m.path} ${m.features.join(' ')}`;
+    if (norm(haystack).includes(q)) {
+      hits.push({
+        kind: 'module',
+        title: m.name,
+        detail: m.description,
+        groupOrPath: m.path,
+        section: 'modules',
+      });
+    }
+  }
+
+  FAQ_ITEMS.forEach((f, i) => {
+    if (norm(f.question).includes(q) || norm(f.answer).includes(q)) {
+      hits.push({
+        kind: 'faq',
+        title: f.question,
+        detail: f.answer,
+        groupOrPath: 'FAQ',
+        section: 'faq',
+        faqIdx: i,
+      });
+    }
+  });
+
+  return hits;
+}
+
 // ── Main Page ───────────────────────────────────────────────
 export default function HelpPage() {
-  const [activeSection, setActiveSection] = useState<SectionId>('overview');
+  const [params, setParams] = useSearchParams();
+
+  // Hydrate active section + expanded FAQ + search from the URL so a link
+  // like /help?topic=shortcuts or /help?faq=3 jumps straight to the right
+  // place. We treat the URL as the source of truth — every state change
+  // writes back via setParams.
+  const topicParam = params.get('topic');
+  const faqParam = params.get('faq');
+  const searchParam = params.get('search') ?? '';
+
+  const initialSection: SectionId = isSectionId(topicParam)
+    ? topicParam
+    : faqParam != null
+      ? 'faq'
+      : 'overview';
+  const initialFaq = faqParam != null && /^\d+$/.test(faqParam)
+    ? Math.min(Number(faqParam), FAQ_ITEMS.length - 1)
+    : null;
+
+  const [activeSection, setActiveSection] = useState<SectionId>(initialSection);
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(initialFaq);
+  const [search, setSearch] = useState(searchParam);
   const [healthData, setHealthData] = useState<HealthData | null>(null);
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch server health info for System section
   useEffect(() => {
     apiFetch<HealthData>('/api/health')
       .then(setHealthData)
       .catch(() => setHealthData(null));
+  }, []);
+
+  // Re-sync from URL when the back/forward buttons change ?topic / ?faq /
+  // ?search out from under us. Without this, browser back from a deep link
+  // would leave the visible tab pointed at the wrong section.
+  useEffect(() => {
+    const t = params.get('topic');
+    const f = params.get('faq');
+    const s = params.get('search') ?? '';
+    setActiveSection(isSectionId(t) ? t : f != null ? 'faq' : 'overview');
+    setExpandedFaq(f != null && /^\d+$/.test(f)
+      ? Math.min(Number(f), FAQ_ITEMS.length - 1)
+      : null);
+    setSearch(s);
+  }, [params]);
+
+  // Push state changes back into the URL. We only write keys that have a
+  // value so the URL stays clean (`/help` rather than `/help?topic=overview`).
+  const updateUrl = useCallback((next: { topic?: SectionId | null; faq?: number | null; search?: string | null }) => {
+    const merged: Record<string, string> = {};
+    const topic = next.topic !== undefined ? next.topic : (isSectionId(params.get('topic')) ? params.get('topic') as SectionId : null);
+    const faq = next.faq !== undefined ? next.faq : (params.get('faq') != null && /^\d+$/.test(params.get('faq')!) ? Number(params.get('faq')) : null);
+    const s = next.search !== undefined ? next.search : params.get('search');
+    if (topic && topic !== 'overview') merged.topic = topic;
+    if (faq != null) merged.faq = String(faq);
+    if (s && s.length > 0) merged.search = s;
+    setParams(merged, { replace: true });
+  }, [params, setParams]);
+
+  const handleSectionChange = useCallback((id: SectionId) => {
+    setActiveSection(id);
+    updateUrl({ topic: id, faq: id === 'faq' ? expandedFaq : null });
+  }, [expandedFaq, updateUrl]);
+
+  const handleToggleFaq = useCallback((idx: number) => {
+    const next = expandedFaq === idx ? null : idx;
+    setExpandedFaq(next);
+    updateUrl({ topic: 'faq', faq: next });
+  }, [expandedFaq, updateUrl]);
+
+  // Debounced URL write for the search box — typing in the field
+  // shouldn't blow up router history.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      updateUrl({ search: search.trim() ? search.trim() : null });
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  // Keyboard: "/" focuses the search; Esc smart-cascades.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typingInField = t && (
+        t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
+      );
+      if (e.key === '/' && !typingInField) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+      if (e.key === 'Escape') {
+        // Smart cascade: smallest-open-first
+        if (search) {
+          setSearch('');
+          updateUrl({ search: null });
+          return;
+        }
+        if (expandedFaq != null) {
+          setExpandedFaq(null);
+          updateUrl({ faq: null });
+          return;
+        }
+        if (activeSection !== 'overview') {
+          setActiveSection('overview');
+          updateUrl({ topic: null, faq: null });
+          return;
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [search, expandedFaq, activeSection, updateUrl]);
+
+  // Search results — derived from `search`; the search section overrides
+  // the active tab content when populated.
+  const hits = useMemo(() => searchHelpContent(search), [search]);
+
+  // PDF generation handlers (dynamic-imported so jsPDF doesn't bloat the
+  // help-page route bundle when nobody clicks Print).
+  const onPrintQuickRef = useCallback(async () => {
+    try {
+      const mod = await import('../utils/helpQuickReferencePdf');
+      await mod.generateHelpQuickReferencePdfWithDefaults();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[Help] Quick Reference PDF failed:', err);
+      alert('PDF generation failed. See console for details.');
+    }
+  }, []);
+
+  const onDownloadDispatchGuide = useCallback(async () => {
+    try {
+      const mod = await import('../utils/dispatchGuidePdfGenerator');
+      await mod.generateDispatchGuidePdf();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[Help] Dispatch Guide PDF failed:', err);
+      alert('Dispatch guide PDF generation failed. See console for details.');
+    }
   }, []);
 
   return (
@@ -372,12 +522,12 @@ export default function HelpPage() {
 
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const active = activeSection === item.id;
+          const active = activeSection === item.id && !search;
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => setActiveSection(item.id)}
+              onClick={() => handleSectionChange(item.id)}
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${!active ? 'hover:bg-surface-base' : ''}`}
               style={{
                 background: active ? 'rgba(136,136,136,0.12)' : 'transparent',
@@ -390,20 +540,124 @@ export default function HelpPage() {
             </button>
           );
         })}
+
+        {/* Print/export actions */}
+        <div className="mt-3 pt-3 px-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+          <div className="text-[9px] text-rmpg-500 uppercase tracking-wider mb-2">Print</div>
+          <button
+            type="button"
+            onClick={onPrintQuickRef}
+            className="w-full flex items-center gap-2 px-2 py-1.5 mb-1 text-[10px] text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 transition-colors"
+            title="Two-page tear-off card with shortcuts, priorities, statuses, and CAD commands"
+          >
+            <Printer style={{ width: 12, height: 12, flexShrink: 0 }} />
+            <span>Quick Reference Card</span>
+          </button>
+          <button
+            type="button"
+            onClick={onDownloadDispatchGuide}
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-[10px] text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 transition-colors"
+            title="Long-form dispatcher training PDF (loads live 10-codes)"
+          >
+            <Download style={{ width: 12, height: 12, flexShrink: 0 }} />
+            <span>Dispatch Guide</span>
+          </button>
+        </div>
       </nav>
 
       {/* ── Content Area ──────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-y-auto p-6" style={{ background:"var(--surface-sunken)" }}>
         <div className="max-w-4xl mx-auto space-y-6">
 
-          {/* OVERVIEW */}
-          {activeSection === 'overview' && (
+          {/* ── Search bar ──────────────────────────────── */}
+          <div
+            className="flex items-center gap-2 px-3 py-2"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderTop: '2px solid #d4a017' }}
+          >
+            <Search className="w-4 h-4 text-rmpg-300 shrink-0" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search shortcuts, modules, and FAQ — press / to focus"
+              aria-label="Help content search"
+              className="flex-1 bg-transparent text-[12px] text-rmpg-100 placeholder-rmpg-600 outline-none"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                className="text-rmpg-500 hover:text-rmpg-100 shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+            <span className="text-[9px] text-rmpg-600 font-mono shrink-0">/ to focus</span>
+          </div>
+
+          {/* ── Search results override the section content ── */}
+          {search && (
+            <>
+              <PanelTitleBar
+                title={`SEARCH RESULTS — ${hits.length} match${hits.length === 1 ? '' : 'es'} for "${search.trim()}"`}
+                icon={Search}
+              />
+              {hits.length === 0 ? (
+                <div
+                  className="p-6 text-center text-[11px] text-rmpg-400"
+                  style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
+                >
+                  <Search className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  <p>No help content matches your search.</p>
+                  <p className="text-[10px] text-rmpg-500 mt-1">Try a shortcut key (e.g. "Ctrl+K"), a module name, or a question keyword.</p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {hits.map((h, i) => (
+                    <button
+                      key={`${h.kind}-${i}-${h.title}`}
+                      type="button"
+                      onClick={() => {
+                        setSearch('');
+                        setActiveSection(h.section);
+                        if (h.faqIdx != null) setExpandedFaq(h.faqIdx);
+                        updateUrl({ topic: h.section, faq: h.faqIdx ?? null, search: null });
+                      }}
+                      className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-raised"
+                      style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
+                    >
+                      <span
+                        className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rmpg-200"
+                        style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)' }}
+                      >
+                        {h.kind}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-rmpg-100">{h.title}</span>
+                          <span className="text-[9px] text-rmpg-500">{h.groupOrPath}</span>
+                        </div>
+                        <p className="text-[10px] text-rmpg-400 truncate">{h.detail}</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-rmpg-500 shrink-0 mt-0.5" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* When searching, suppress the static section content so the
+              results don't double-render below them. */}
+          {!search && activeSection === 'overview' && (
             <>
               <PanelTitleBar title="RMPG FLEX — SYSTEM OVERVIEW" icon={BookOpen} />
               <div className="p-4 space-y-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
                 <p className="text-sm text-rmpg-200 leading-relaxed">
-                  RMPG Flex is a full-featured Computer-Aided Dispatch (CAD) and Records Management System (RMS) 
-                  built for Rocky Mountain Protective Group. It provides real-time dispatch, incident management, 
+                  RMPG Flex is a full-featured Computer-Aided Dispatch (CAD) and Records Management System (RMS)
+                  built for Rocky Mountain Protective Group. It provides real-time dispatch, incident management,
                   records tracking, and comprehensive reporting across all operational areas.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
@@ -462,12 +716,12 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* KEYBOARD SHORTCUTS */}
-          {activeSection === 'shortcuts' && (
+          {!search && activeSection === 'shortcuts' && (
             <>
               <PanelTitleBar title="KEYBOARD SHORTCUTS" icon={Keyboard} />
               <div className="text-[10px] text-rmpg-500 mb-2">
-                Press <Kbd>?</Kbd> anywhere in the app to open the quick shortcuts overlay.
+                Press <Kbd>?</Kbd> anywhere in the app to open the quick shortcuts overlay,
+                or <Kbd>/</Kbd> on this page to search.
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {SHORTCUT_GROUPS.map((group) => (
@@ -500,8 +754,7 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* MODULE GUIDE */}
-          {activeSection === 'modules' && (
+          {!search && activeSection === 'modules' && (
             <>
               <PanelTitleBar title="MODULE GUIDE" icon={Monitor} />
               <div className="text-[10px] text-rmpg-500 mb-2">
@@ -554,8 +807,7 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* DISPATCH REFERENCE */}
-          {activeSection === 'dispatch' && (
+          {!search && activeSection === 'dispatch' && (
             <>
               <PanelTitleBar title="DISPATCH QUICK REFERENCE" icon={Radio} />
 
@@ -563,13 +815,7 @@ export default function HelpPage() {
               <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
                 <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">Priority Levels</h3>
                 <div className="space-y-1.5">
-                  {[
-                    { level: 'P1', label: 'EMERGENCY', color: '#ef4444', desc: 'Immediate threat to life — lights & sirens' },
-                    { level: 'P2', label: 'URGENT', color: '#f97316', desc: 'In-progress crime, injury, or time-sensitive' },
-                    { level: 'P3', label: 'ROUTINE', color: '#d4a017', desc: 'Standard response — no immediate danger' },
-                    { level: 'P4', label: 'LOW', color: '#888888', desc: 'Report only, information, or follow-up' },
-                    { level: 'P5', label: 'SCHEDULED', color: 'var(--rmpg-500)', desc: 'Pre-planned activity or appointment' },
-                  ].map((p) => (
+                  {PRIORITIES.map((p) => (
                     <div key={p.level} className="flex items-center gap-3">
                       <span className="text-[10px] font-mono font-bold w-6" style={{ color: p.color }}>{p.level}</span>
                       <span className="text-[10px] font-bold w-24" style={{ color: p.color }}>{p.label}</span>
@@ -583,15 +829,7 @@ export default function HelpPage() {
               <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
                 <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">Unit Status Codes</h3>
                 <div className="space-y-1.5">
-                  {[
-                    { code: 'AVL', label: 'Available', color: '#22c55e', desc: 'Ready to receive calls' },
-                    { code: 'DSP', label: 'Dispatched', color: '#888888', desc: 'Assigned to a call, en route' },
-                    { code: 'ENR', label: 'Enroute', color: '#f97316', desc: 'Traveling to call location' },
-                    { code: 'ONS', label: 'On Scene', color: '#ef4444', desc: 'Arrived at call location' },
-                    { code: 'BSY', label: 'Busy', color: '#eab308', desc: 'Occupied, not available for calls' },
-                    { code: 'OOD', label: 'Out of District', color: '#888888', desc: 'Operating outside assigned area' },
-                    { code: 'OOS', label: 'Out of Service', color: 'var(--rmpg-500)', desc: 'Not available (break, end of shift)' },
-                  ].map((s) => (
+                  {UNIT_STATUSES.map((s) => (
                     <div key={s.code} className="flex items-center gap-3">
                       <span className="text-[10px] font-mono font-bold w-8" style={{ color: s.color }}>{s.code}</span>
                       <span className="text-[10px] font-bold w-28" style={{ color: s.color }}>{s.label}</span>
@@ -608,16 +846,7 @@ export default function HelpPage() {
                   Press <Kbd>/</Kbd> or <Kbd>F8</Kbd> to focus the command line. Type <strong className="text-rmpg-200">HELP</strong> for a full list of commands.
                 </p>
                 <div className="space-y-1">
-                  {[
-                    { cmd: '10-4', desc: 'Look up any 10-code' },
-                    { cmd: 'STATUS <unit> <status>', desc: 'Change unit status' },
-                    { cmd: 'PREMISE <address>', desc: 'Check premise alerts' },
-                    { cmd: 'LOCATE <unit>', desc: 'Get unit GPS location' },
-                    { cmd: 'MSG <unit> <text>', desc: 'Send message to unit' },
-                    { cmd: 'BOLO <text>', desc: 'Broadcast BOLO alert' },
-                    { cmd: 'RUN <name/plate>', desc: 'Quick records search' },
-                    { cmd: 'HELP', desc: 'List all available commands' },
-                  ].map((c) => (
+                  {CAD_COMMANDS.map((c) => (
                     <div key={c.cmd} className="flex items-center gap-3">
                       <code className="text-[10px] font-mono text-rmpg-200 w-48 flex-shrink-0">{c.cmd}</code>
                       <span className="text-[10px] text-rmpg-400">{c.desc}</span>
@@ -628,8 +857,7 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* FAQ */}
-          {activeSection === 'faq' && (
+          {!search && activeSection === 'faq' && (
             <>
               <PanelTitleBar title="FREQUENTLY ASKED QUESTIONS" icon={HelpCircle} />
               <div className="space-y-1">
@@ -640,7 +868,7 @@ export default function HelpPage() {
                   >
                     <button
                       type="button"
-                      onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
+                      onClick={() => handleToggleFaq(idx)}
                       className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-surface-raised transition-colors"
                     >
                       <span className="text-[11px] font-medium text-rmpg-200">{faq.question}</span>
@@ -660,25 +888,34 @@ export default function HelpPage() {
             </>
           )}
 
-          {/* SYSTEM INFO */}
-          {activeSection === 'system' && (
+          {!search && activeSection === 'system' && (
             <>
               <PanelTitleBar title="SYSTEM INFORMATION" icon={Settings} />
               <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
                 <div className="grid grid-cols-2 gap-x-8 gap-y-2">
                   {[
                     { label: 'Application', value: 'RMPG Flex' },
-                    { label: 'Version', value: APP_VERSION },
+                    { label: 'Client Version', value: APP_VERSION },
                     { label: 'Platform', value: 'Web / Electron / Capacitor' },
                     { label: 'Frontend', value: 'React + TypeScript + Vite' },
-                    { label: 'Backend', value: 'Express + SQLite' },
-                    { label: 'Real-time', value: 'WebSocket' },
+                    // Backend is Cloudflare-era now — the old VPS Express + SQLite
+                    // stack was decommissioned 2026-06-15.
+                    { label: 'Backend', value: 'Cloudflare Workers + Hono' },
+                    { label: 'Database', value: 'Cloudflare D1 (rmpg-flex)' },
+                    { label: 'Storage', value: 'Cloudflare R2 + KV' },
+                    { label: 'Real-time', value: 'Durable Objects + WebSocket' },
                     { label: 'Maps', value: 'Mapbox GL JS' },
-                    { label: 'Auth', value: 'JWT + WebAuthn + TOTP 2FA' },
+                    { label: 'Auth', value: 'JWT (TOTP/WebAuthn not yet ported)' },
                     ...(healthData ? [
                       { label: 'Server Version', value: healthData.version || 'N/A' },
                       { label: 'Server Status', value: healthData.status || 'N/A' },
-                    ] : []),
+                      ...(healthData.db ? [
+                        { label: 'DB Schema', value: healthData.db.version || 'unknown' },
+                        { label: 'DB Users', value: healthData.db.users != null ? String(healthData.db.users) : 'N/A' },
+                      ] : []),
+                    ] : [
+                      { label: 'Server Status', value: 'unreachable' },
+                    ]),
                   ].map((row) => (
                     <div key={row.label} className="flex items-center justify-between">
                       <span className="text-[10px] text-rmpg-500 uppercase">{row.label}</span>

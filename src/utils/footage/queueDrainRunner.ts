@@ -17,6 +17,7 @@
 
 import { getDb, query, queryFirst, execute } from '../db';
 import { evaluateStaleRequest, pickDuplicatesToPrune } from './queueDrain';
+import { getOfflineCameraDeviceIds } from '../clearpathSync';
 import type { Bindings } from '../../types';
 
 export interface DrainOptions {
@@ -45,6 +46,7 @@ interface RequestRow {
   chunk_count: number;
   chunks_done: number;
   evidence_locked: number | null;
+  cpg_device_id: string | null;
 }
 
 interface ChunkRow {
@@ -68,7 +70,7 @@ export async function runQueueDrain(env: Bindings, opts: DrainOptions = {}): Pro
   // evidence migration), so COALESCE the missing-column case to 0.
   const reqs = await query<RequestRow>(db,
     `SELECT id, status, updated_at, chunk_count, chunks_done,
-            COALESCE(evidence_locked, 0) AS evidence_locked
+            COALESCE(evidence_locked, 0) AS evidence_locked, cpg_device_id
        FROM footage_requests
       WHERE status IN ('fulfilling','partial')
         AND COALESCE(evidence_locked, 0) = 0
@@ -76,12 +78,29 @@ export async function runQueueDrain(env: Bindings, opts: DrainOptions = {}): Pro
       LIMIT ?`, limit,
   ).catch(() => [] as RequestRow[]);
 
+  // Don't drain requests whose camera is currently offline — those chunks
+  // are intentionally idle while the vehicle is parked (the cron poller
+  // skips them). Without this filter the 6-hour stale-bail would kill every
+  // overnight on-demand request as soon as the vehicle parked for the night,
+  // even though ClearPath will deliver the clips the next time the dashcam
+  // wakes up. Verified 2026-06-23 via the ClearPath portal: PSO Sierra 19
+  // shown as "Camera Offline" with every Manually-Retrieved clip stuck in
+  // "Waiting for Camera…" status.
+  const offlineDevices = await getOfflineCameraDeviceIds(
+    db, reqs.map((r) => r.cpg_device_id || '').filter(Boolean),
+  ).catch(() => new Set<string>());
+
   let requestsFailed = 0;
   let requestsPartialed = 0;
   let chunksToMissing = 0;
   let duplicatesPruned = 0;
 
+  let skippedOffline = 0;
   for (const r of reqs) {
+    if (r.cpg_device_id && offlineDevices.has(r.cpg_device_id)) {
+      skippedOffline++;
+      continue;
+    }
     // Plan C — dup-prune runs FIRST (was second, after `continue`). Prior
     // ordering meant a request that was BOTH stale AND had duplicate
     // downloads (e.g. req 93 in live data) got its chunks marked failed
@@ -146,6 +165,10 @@ export async function runQueueDrain(env: Bindings, opts: DrainOptions = {}): Pro
       if (verdict.next === 'failed') requestsFailed++; else requestsPartialed++;
       console.log(`[flexcam-drain] req=${r.id} ${verdict.next} (${verdict.reason})`);
     }
+  }
+
+  if (skippedOffline) {
+    console.log(`[flexcam-drain] skipped ${skippedOffline} request(s) — camera offline`);
   }
 
   return {

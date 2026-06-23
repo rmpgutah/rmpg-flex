@@ -246,6 +246,12 @@ export default function CommunicationsPage() {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
+  // Role-based capability flags.
+  // BOLO create/update/delete is restricted to admin/manager/supervisor/dispatcher
+  // on the server (WRITE_ROLES in dispatch/extensions.ts). Mirror here so the
+  // button and keyboard shortcut don't appear to officers who'd get a 403.
+  const canCreateBolo = ['admin', 'manager', 'supervisor', 'dispatcher'].includes(user?.role || '');
+
   // --- Panel state ---
   const [activePanel, setActivePanel] = usePersistedTab('rmpg_comms_tab', 'messages' as Panel, ['messages', 'bolos', 'activity'] as const);
 
@@ -257,7 +263,10 @@ export default function CommunicationsPage() {
   const pendingBoloIdRef = useRef<string | null>(null);
 
   // --- Search ---
+  // searchQuery filters the messages/thread list.
+  // boloSearch filters the BOLO card list independently.
   const [searchQuery, setSearchQuery] = useState('');
+  const [boloSearch, setBoloSearch] = useState('');
 
   // --- Messages state ---
   const [messages, setMessages] = useState<Message[]>([]);
@@ -747,6 +756,18 @@ export default function CommunicationsPage() {
     );
   }, [threads, searchQuery]);
 
+  const filteredBolos = useMemo(() => {
+    if (!boloSearch.trim()) return bolos;
+    const q = boloSearch.toLowerCase();
+    return bolos.filter((b) =>
+      b.title.toLowerCase().includes(q) ||
+      b.bolo_number.toLowerCase().includes(q) ||
+      (b.description || '').toLowerCase().includes(q) ||
+      (b.subject_description || '').toLowerCase().includes(q) ||
+      (b.vehicle_description || '').toLowerCase().includes(q)
+    );
+  }, [bolos, boloSearch]);
+
   const panels: { id: Panel; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'messages', label: 'Inbox', icon: Inbox, badge: unreadCount || undefined },
     { id: 'bolos', label: 'BOLOs', icon: AlertTriangle, badge: activeBoloCount || undefined },
@@ -917,12 +938,13 @@ export default function CommunicationsPage() {
       if (showNewBOLO) { setShowNewBOLO(false); return; }
       if (selectedThreadId) { setSelectedThreadId(null); return; }
       if (searchQuery) { setSearchQuery(''); return; }
+      if (boloSearch) { setBoloSearch(''); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [
     emergencyBroadcastOpen, deleteMessageId, cancelTarget,
-    showCompose, showNewBOLO, selectedThreadId, searchQuery,
+    showCompose, showNewBOLO, selectedThreadId, searchQuery, boloSearch,
   ]);
 
   // \u2500\u2500 Keyboard: N \u2192 new message (messages tab) or new BOLO (bolos tab) \u2500\u2500
@@ -945,7 +967,7 @@ export default function CommunicationsPage() {
       if (activePanel === 'messages') {
         e.preventDefault();
         setShowCompose(true);
-      } else if (activePanel === 'bolos') {
+      } else if (activePanel === 'bolos' && canCreateBolo) {
         e.preventDefault();
         setShowNewBOLO(true);
       }
@@ -953,7 +975,7 @@ export default function CommunicationsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePanel, showCompose, showNewBOLO, cancelTarget, deleteMessageId, emergencyBroadcastOpen, selectedThreadId]);
+  }, [activePanel, showCompose, showNewBOLO, cancelTarget, deleteMessageId, emergencyBroadcastOpen, selectedThreadId, canCreateBolo]);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
@@ -1008,9 +1030,32 @@ export default function CommunicationsPage() {
           </>
         )}
         {activePanel === 'bolos' && (
-          <button type="button" onClick={() => setShowNewBOLO(!showNewBOLO)} className="toolbar-btn toolbar-btn-danger">
-            <Plus className="w-3.5 h-3.5" /> New BOLO
-          </button>
+          <>
+            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: 'var(--surface-deep)' }}>
+              <Search className="w-3 h-3 text-rmpg-500" />
+              <input
+                id="ff-communicationspage-bolo-search"
+                type="text"
+                placeholder="Search BOLOs..."
+                aria-label="Search BOLOs"
+                autoComplete="off"
+                value={boloSearch}
+                onChange={(e) => setBoloSearch(e.target.value)}
+                className="bg-transparent border-none outline-none text-xs text-rmpg-100 placeholder-rmpg-500"
+                style={{ minWidth: '120px', maxWidth: '180px' }}
+              />
+              {boloSearch && (
+                <button type="button" onClick={() => setBoloSearch('')} className="text-rmpg-500 hover:text-rmpg-100">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            {canCreateBolo && (
+              <button type="button" onClick={() => setShowNewBOLO(!showNewBOLO)} className="toolbar-btn toolbar-btn-danger">
+                <Plus className="w-3.5 h-3.5" /> New BOLO
+              </button>
+            )}
+          </>
         )}
         <ExportButton exportUrl="/api/comms/export/csv" exportFilename="communications.csv" />
         <PrintButton />
@@ -1488,47 +1533,72 @@ export default function CommunicationsPage() {
                 {boloStats.avgLifespanHours != null && (
                   <div className="text-[9px] text-rmpg-500 mt-1">Avg lifespan: {boloStats.avgLifespanHours}h</div>
                 )}
-                <div className="flex gap-1 mt-2">
-                  <button
-                    type="button"
-                    className="toolbar-btn text-[10px]"
-                    onClick={async () => {
-                      try {
-                        const r = await apiFetch<any>('/comms/bolos/expire-check', { method: 'POST' });
-                        addToast(`Expired ${r?.expired || 0} BOLOs`, 'success');
-                        fetchBolos();
-                        apiFetch<any>('/comms/bolos/stats').then(d => d && setBoloStats(d)).catch(() => {});
-                      } catch { addToast('Expire check failed', 'error'); }
-                    }}
-                  >
-                    <Clock className="w-3 h-3" /> Check Expirations
-                  </button>
-                  <button
-                    type="button"
-                    className="toolbar-btn text-[10px]"
-                    onClick={async () => {
-                      try {
-                        const r = await apiFetch<any>('/comms/bolos/auto-archive', { method: 'POST', body: JSON.stringify({ days_expired: 7 }) });
-                        addToast(`Archived ${r?.archived || 0} expired BOLOs`, 'success');
-                        fetchBolos();
-                      } catch { addToast('Auto-archive failed', 'error'); }
-                    }}
-                  >
-                    <Archive className="w-3 h-3" /> Auto-Archive Expired
-                  </button>
-                </div>
+                {canCreateBolo && (
+                  <div className="flex gap-1 mt-2">
+                    <button
+                      type="button"
+                      className="toolbar-btn text-[10px]"
+                      onClick={async () => {
+                        try {
+                          const r = await apiFetch<any>('/comms/bolos/expire-check', { method: 'POST' });
+                          addToast(`Expired ${r?.expired || 0} BOLOs`, 'success');
+                          fetchBolos();
+                          apiFetch<any>('/comms/bolos/stats').then(d => d && setBoloStats(d)).catch(() => {});
+                        } catch { addToast('Expire check failed', 'error'); }
+                      }}
+                    >
+                      <Clock className="w-3 h-3" /> Check Expirations
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-btn text-[10px]"
+                      onClick={async () => {
+                        try {
+                          const r = await apiFetch<any>('/comms/bolos/auto-archive', { method: 'POST', body: JSON.stringify({ days_expired: 7 }) });
+                          addToast(`Archived ${r?.archived || 0} expired BOLOs`, 'success');
+                          fetchBolos();
+                        } catch { addToast('Auto-archive failed', 'error'); }
+                      }}
+                    >
+                      <Archive className="w-3 h-3" /> Auto-Archive Expired
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
             {bolosLoading ? (
               <Spinner label="Loading BOLOs..." />
             ) : bolos.length === 0 && !showNewBOLO ? (
+              // No BOLOs at all — show a CTA if the user can create one.
               <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">
                 <AlertTriangle className="w-8 h-8 mb-2" />
-                <p className="text-sm">No BOLOs</p>
+                <p className="text-sm">No active BOLOs</p>
+                {canCreateBolo && (
+                  <>
+                    <p className="text-[10px] text-rmpg-500 mt-1">
+                      Issue a BOLO — press <kbd className="px-1 py-0.5 bg-rmpg-700 text-rmpg-200 font-mono text-[9px]">N</kbd> or click New BOLO.
+                    </p>
+                    <button type="button" onClick={() => setShowNewBOLO(true)} className="toolbar-btn toolbar-btn-danger mt-3">
+                      <Plus className="w-3.5 h-3.5" /> New BOLO
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : filteredBolos.length === 0 && boloSearch ? (
+              // BOLOs exist but the search returned nothing.
+              <div className="flex flex-col items-center justify-center py-20 text-rmpg-400">
+                <Search className="w-8 h-8 mb-2" />
+                <p className="text-sm">No BOLOs match "{boloSearch}"</p>
+                <p className="text-[10px] text-rmpg-500 mt-1">
+                  {bolos.length} BOLO{bolos.length === 1 ? '' : 's'} total
+                </p>
+                <button type="button" onClick={() => setBoloSearch('')} className="toolbar-btn mt-3">
+                  <X className="w-3.5 h-3.5" /> Clear search
+                </button>
               </div>
             ) : (
-              bolos.map((bolo) => (
+              filteredBolos.map((bolo) => (
                 <div
                   key={bolo.id}
                   ref={(el) => { boloRowRefs.current[bolo.id] = el; }}
@@ -1587,7 +1657,7 @@ export default function CommunicationsPage() {
                       <div><label className="text-[10px] text-rmpg-400 uppercase">Description:</label><p className="text-rmpg-200">{bolo.subject_description}</p></div>
                     )}
                   </div>
-                  {bolo.status === 'active' && (
+                  {bolo.status === 'active' && canCreateBolo && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-rmpg-600">
                       <button type="button" className="toolbar-btn" onClick={() => handleResolveBOLO(bolo.id)} disabled={resolvingId === bolo.id}>
                         {resolvingId === bolo.id && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />} Mark Resolved
@@ -1598,7 +1668,7 @@ export default function CommunicationsPage() {
                       <button type="button" className="toolbar-btn text-red-400" onClick={() => setCancelTarget(bolo)}>Cancel BOLO</button>
                     </div>
                   )}
-                  {bolo.status !== 'active' && (
+                  {bolo.status !== 'active' && canCreateBolo && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-rmpg-600">
                       <button type="button" className="toolbar-btn text-green-400" onClick={() => handleUnarchiveBOLO(bolo.id)}>
                         <RotateCcw className="w-3 h-3" /> Unarchive
@@ -1685,7 +1755,7 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label htmlFor="ff-communicationspage-9" className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject:</label>
-          <input id="ff-communicationspage-9" type="text" className="input-dark min-h-[36px]" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
+          <input id="ff-communicationspage-9" type="text" className="input-dark min-h-[36px]" placeholder="Message subject (optional — derived from content if blank)" value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} />
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Message:</label>

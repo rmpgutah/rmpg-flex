@@ -87,9 +87,13 @@ export function parseParcelList(html: string): ParcelSummary[] {
 function pullByLabel(html: string, label: RegExp): string | null {
   // Wrap caller's regex in a non-capturing group so caller-side capture groups
   // (e.g. /(land\s*)?sq\s*ft/) don't shift the value-cell capture index.
+  // `s` (dotAll) flag lets `.*?` match across newlines inside the value cell.
+  // Value cells on valuationInfoExpanded.cfm often contain anchor tags like
+  //   <a href="javascript:newwin(...)">14.65</a>
+  // so `[^<]+` would miss them; `(.*?)` + stripTags() handles both cases.
   const re = new RegExp(
-    `<t[dh][^>]*>[^<]*(?:${label.source})[^<]*<\\/t[dh]>\\s*<t[dh][^>]*>([^<]+)<\\/t[dh]>`,
-    'i',
+    `<t[dh][^>]*>[^<]*(?:${label.source})[^<]*<\\/t[dh]>\\s*<t[dh][^>]*>(.*?)<\\/t[dh]>`,
+    'is',
   );
   const m = html.match(re);
   if (!m) return null;
@@ -110,7 +114,7 @@ export function parseParcelDetail(html: string): Parcel {
   const owner_of_record = pullByLabel(html, /owner/i);
   // Build raw_data_json from every labelled key/value we can detect
   const raw_data_json: Record<string, string> = {};
-  const kvRe = /<t[dh][^>]*>([^<]{2,80})<\/t[dh]>\s*<t[dh][^>]*>([^<]{1,200})<\/t[dh]>/gi;
+  const kvRe = /<t[dh][^>]*>([^<]{2,80})<\/t[dh]>\s*<t[dh][^>]*>(.*?)<\/t[dh]>/gis;
   let m: RegExpExecArray | null;
   while ((m = kvRe.exec(html)) !== null) {
     const k = stripTags(m[1]).replace(/[:\s]+$/, '');

@@ -21,6 +21,8 @@ import AlprCaptureGallery from '../components/AlprCaptureGallery';
 import CaptureReviewEditor, { type EditableCapture } from '../components/CaptureReviewEditor';
 import TrustBadge from '../components/TrustBadge';
 import { openPlateCapturePdf, type PlateCaptureForPdf } from '../utils/plateCapturePdf';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface Vehicle { id: number; plate_number: string; make: string; model: string; color: string; year: number }
@@ -74,6 +76,8 @@ function reviewStatusLabel(status: string): string {
   return REVIEW_STATUS_LABELS[status] ?? status;
 }
 
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 /** Tailwind classes for a condition badge (clean→salvage). */
 function conditionBadgeClass(condition?: string | null): string {
   switch ((condition || '').toLowerCase()) {
@@ -102,7 +106,7 @@ function HitBanners({ hits }: { hits: ScreenHit[] }) {
         </div>
       ))}
       {hits.filter((h) => h.severity === 'warning').map((h, i) => (
-        <div key={`w${i}-${h.detail}`} className="border border-[#d4a017] text-[#d4a017] text-[11px] px-3 py-1">
+        <div key={`w${i}-${h.detail}`} className="border border-brand-gold-500 text-brand-gold-500 text-[11px] px-3 py-1">
           {h.detail}
         </div>
       ))}
@@ -111,12 +115,16 @@ function HitBanners({ hits }: { hits: ScreenHit[] }) {
 }
 
 export default function PlateLogPage() {
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
   const [plate, setPlate] = useState('');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [result, setResult] = useState<SightResult | null>(null);
   const [recent, setRecent] = useState<Sighting[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [scan, setScan] = useState<AlprResult | null>(null);
@@ -132,6 +140,8 @@ export default function PlateLogPage() {
   const [showMap, setShowMap] = useState(false);
   const [view, setView] = useState<'scan' | 'gallery'>('scan');
   const [pdfBusy, setPdfBusy] = useState(false);
+  // ConfirmDialog state for bulk destructive actions
+  const [confirmBulk, setConfirmBulk] = useState<'confirm' | 'reject' | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const plateInputRef = useRef<HTMLInputElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -152,9 +162,11 @@ export default function PlateLogPage() {
     [filteredRecent]);
 
   const loadRecent = () => {
+    setRecentLoading(true);
     apiFetch<Sighting[]>('/intel/sightings?limit=15')
       .then((r) => setRecent(Array.isArray(r) ? r : []))
-      .catch(() => setRecent([]));
+      .catch(() => setRecent([]))
+      .finally(() => setRecentLoading(false));
   };
   const loadReview = () => {
     apiFetch<ReviewItem[]>('/alpr/captures?review=1&limit=25')
@@ -198,6 +210,7 @@ export default function PlateLogPage() {
   const bulkAction = async (action: 'confirm' | 'reject') => {
     const ids = [...selected];
     if (!ids.length || bulkBusy) return;
+    setConfirmBulk(null);
     setBulkBusy(true);
     try {
       const res = await apiFetch<{ results?: Array<{ ok: boolean; status?: string }>; hits?: Array<{ severity: string; detail: string; plate: string }> }>(
@@ -445,7 +458,7 @@ export default function PlateLogPage() {
         {([['scan', 'SCAN / LOG'], ['gallery', 'CAPTURES']] as const).map(([k, label]) => (
           <button key={k} type="button" onClick={() => setView(k)}
             className={`flex-1 text-[10px] font-semibold tracking-wider py-1.5 border ${
-              view === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-rmpg-400'}`}>
+              view === k ? 'border-brand-gold-500 text-brand-gold-500 bg-brand-gold-700/10' : 'border-border-default text-rmpg-400'}`}>
             {label}
           </button>
         ))}
@@ -458,7 +471,7 @@ export default function PlateLogPage() {
       <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onScanFile} />
       <button
         onClick={() => fileRef.current?.click()} disabled={scanBusy}
-        className="w-full py-3 text-sm font-semibold border border-[#d4a017] bg-[#1a1400] text-[#d4a017] flex items-center justify-center gap-2 hover:bg-[#241d00] disabled:opacity-40">
+        className="w-full py-3 text-sm font-semibold border border-brand-gold-500 bg-brand-gold-700/10 text-brand-gold-500 flex items-center justify-center gap-2 hover:bg-brand-gold-700/20 disabled:opacity-40">
         <ScanLine className="w-5 h-5" />
         {scanBusy ? 'READING PLATE…' : 'SCAN PLATE (CAMERA)'}
       </button>
@@ -468,13 +481,13 @@ export default function PlateLogPage() {
 
       {scan && (
         <div className="border border-border-default bg-surface-sunken">
-          <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default flex items-center gap-2">
+          <div className="px-2 py-[3px] text-[9px] font-semibold text-brand-gold-500 border-b border-border-default flex items-center gap-2">
             <span>ALPR CAPTURE</span>
             {scan.capture.confidence != null && (
               <TrustBadge trust={{ trustScore: scan.capture.confidence, readCount: 1, basis: 'single read' }} />
             )}
             <button type="button" onClick={onPrintCapture} disabled={pdfBusy}
-              className="ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400] disabled:opacity-40 flex items-center gap-1"
+              className="ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 border border-brand-gold-500 text-brand-gold-500 hover:bg-brand-gold-700/10 disabled:opacity-40 flex items-center gap-1"
               title="Generate court-record PDF for this capture">
               <FileText className="w-3 h-3" />{pdfBusy ? '…' : 'COURT PDF'}
             </button>
@@ -490,7 +503,7 @@ export default function PlateLogPage() {
               )}
               <div className="min-w-0 flex-1">
                 <div className="text-2xl tracking-[0.2em] text-rmpg-100 font-semibold">{scan.capture.plate || '—'}</div>
-                <div className="text-[11px] text-[#888888] mt-1">
+                <div className="text-[11px] text-rmpg-400 mt-1">
                   {scan.capture.state ? `${scan.capture.state} · ` : ''}{summarize(scan.capture)}
                 </div>
                 {(scan.capture.condition || scan.damage_summary || (scan.damage_areas && scan.damage_areas.length > 0)) && (
@@ -504,7 +517,7 @@ export default function PlateLogPage() {
                       {scan.damage_summary && <span className="text-[11px] text-rmpg-300">{scan.damage_summary}</span>}
                     </div>
                     {scan.damage_areas && scan.damage_areas.length > 0 && (
-                      <ul className="text-[10px] text-[#888888] pl-4 list-disc">
+                      <ul className="text-[10px] text-rmpg-400 pl-4 list-disc">
                         {scan.damage_areas.map((d, di) => (
                           <li key={di}>{[d.severity, d.panel, d.type].filter(Boolean).join(' ')}</li>
                         ))}
@@ -518,10 +531,10 @@ export default function PlateLogPage() {
                   </div>
                 )}
                 {scan.capture.reviewStatus && scan.accepted !== false && (
-                  <div className="text-[10px] text-[#888888] mt-1">Review: {reviewStatusLabel(scan.capture.reviewStatus)}</div>
+                  <div className="text-[10px] text-rmpg-400 mt-1">Review: {reviewStatusLabel(scan.capture.reviewStatus)}</div>
                 )}
                 {!scan.hits.length && (
-                  <div className="text-[11px] text-[#888888] mt-1">No hits — sighting logged.</div>
+                  <div className="text-[11px] text-rmpg-400 mt-1">No hits — sighting logged.</div>
                 )}
               </div>
             </div>
@@ -532,7 +545,7 @@ export default function PlateLogPage() {
       {/* ── Manual entry result ── */}
       {result && <HitBanners hits={result.hits} />}
       {result && !result.hits.length && (
-        <div className="border border-border-default text-[11px] text-[#888888] px-3 py-1">
+        <div className="border border-border-default text-[11px] text-rmpg-400 px-3 py-1">
           {result.plate}: no hits{result.vehicle ? ` — ${[result.vehicle.color, result.vehicle.year, result.vehicle.make, result.vehicle.model].filter(Boolean).join(' ')} on file` : ' (plate not on file — sighting logged)'}
         </div>
       )}
@@ -546,25 +559,25 @@ export default function PlateLogPage() {
         onKeyDown={(e) => e.key === 'Enter' && submit()}
         placeholder="PLATE"
         aria-label="Plate number (press N anywhere on the page to focus this field)"
-        className="w-full bg-surface-overlay border border-border-default px-3 py-3 text-2xl tracking-[0.3em] text-center text-rmpg-100 font-semibold focus:border-[#d4a017] outline-none uppercase"
+        className="w-full bg-surface-overlay border border-border-default px-3 py-3 text-2xl tracking-[0.3em] text-center text-rmpg-100 font-semibold focus:border-brand-gold-500 outline-none uppercase"
       />
       <div className="flex items-center gap-2">
-        <MapPin className="w-4 h-4 text-[#888888] shrink-0" />
+        <MapPin className="w-4 h-4 text-rmpg-400 shrink-0" />
         <input
           value={location} onChange={(e) => setLocation(e.target.value)}
           placeholder={coords ? `GPS captured (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}) — add detail` : 'Location'}
-          className="flex-1 bg-surface-overlay border border-border-default px-2 py-1 text-[11px] text-rmpg-200 focus:border-[#d4a017] outline-none"
+          className="flex-1 bg-surface-overlay border border-border-default px-2 py-1 text-[11px] text-rmpg-200 focus:border-brand-gold-500 outline-none"
         />
       </div>
       <input
         value={notes} onChange={(e) => setNotes(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
         placeholder="Notes (optional)"
-        className="w-full bg-surface-overlay border border-border-default px-2 py-1 text-[11px] text-rmpg-200 focus:border-[#d4a017] outline-none"
+        className="w-full bg-surface-overlay border border-border-default px-2 py-1 text-[11px] text-rmpg-200 focus:border-brand-gold-500 outline-none"
       />
       <button
         onClick={submit} disabled={busy || plate.trim().length < 2}
-        className="w-full py-2 text-sm font-semibold border border-[#d4a017] text-[#d4a017] hover:bg-surface-raised disabled:opacity-40">
+        className="w-full py-2 text-sm font-semibold border border-brand-gold-500 text-brand-gold-500 hover:bg-surface-raised disabled:opacity-40">
         {busy ? 'CHECKING…' : 'LOG + CHECK'}
       </button>
 
@@ -585,28 +598,32 @@ export default function PlateLogPage() {
                 checked={selected.size > 0 && selected.size === reviewQueue.length}
                 ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < reviewQueue.length; }}
                 onChange={(e) => setSelected(e.target.checked ? new Set(reviewQueue.map((q) => q.id)) : new Set())}
-                className="accent-[#d4a017]" />
+                className="accent-brand-gold-500" />
               <span>NEEDS REVIEW · low-confidence (&lt;85%)</span>
             </label>
             <span>{reviewQueue.length}</span>
           </div>
           {selected.size > 0 && (
-            <div className="px-2 py-1.5 border-b border-yellow-900 bg-[#1a1400] flex items-center gap-2">
-              <span className="text-[10px] text-[#d4a017] font-semibold flex-1">{selected.size} selected</span>
-              <button type="button" disabled={bulkBusy} onClick={() => bulkAction('confirm')}
-                className="text-[10px] font-bold uppercase px-2 py-1 border border-green-700 text-green-400 hover:bg-green-950 disabled:opacity-40">
-                {bulkBusy ? '…' : `Confirm ${selected.size}`}
-              </button>
-              <button type="button" disabled={bulkBusy} onClick={() => bulkAction('reject')}
-                className="text-[10px] font-bold uppercase px-2 py-1 border border-red-800 text-red-400 hover:bg-red-950 disabled:opacity-40">
-                {bulkBusy ? '…' : `Reject ${selected.size}`}
-              </button>
+            <div className="px-2 py-1.5 border-b border-yellow-900 bg-brand-gold-700/10 flex items-center gap-2">
+              <span className="text-[10px] text-brand-gold-500 font-semibold flex-1">{selected.size} selected</span>
+              {canManage && (
+                <>
+                  <button type="button" disabled={bulkBusy} onClick={() => setConfirmBulk('confirm')}
+                    className="text-[10px] font-bold uppercase px-2 py-1 border border-green-700 text-green-400 hover:bg-green-950 disabled:opacity-40">
+                    {bulkBusy ? '…' : `Confirm ${selected.size}`}
+                  </button>
+                  <button type="button" disabled={bulkBusy} onClick={() => setConfirmBulk('reject')}
+                    className="text-[10px] font-bold uppercase px-2 py-1 border border-red-800 text-red-400 hover:bg-red-950 disabled:opacity-40">
+                    {bulkBusy ? '…' : `Reject ${selected.size}`}
+                  </button>
+                </>
+              )}
             </div>
           )}
           {reviewQueue.map((q) => (
-            <div key={q.id} className={`px-2 py-1.5 border-b border-border-default last:border-b-0 flex items-center gap-2 ${selected.has(q.id) ? 'bg-[#15110055]' : ''}`}>
+            <div key={q.id} className={`px-2 py-1.5 border-b border-border-default last:border-b-0 flex items-center gap-2 ${selected.has(q.id) ? 'bg-brand-gold-700/5' : ''}`}>
               <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleSel(q.id)}
-                className="accent-[#d4a017] shrink-0" aria-label={`Select ${q.plate || 'capture'}`} />
+                className="accent-brand-gold-500 shrink-0" aria-label={`Select ${q.plate || 'capture'}`} />
               {q.image_url && (
                 <img src={authedImageUrl(q.image_url)} alt="" className="w-10 h-10 object-cover border border-border-default shrink-0" />
               )}
@@ -619,7 +636,7 @@ export default function PlateLogPage() {
                     </span>
                   )}
                 </div>
-                <div className="text-[10px] text-[#888888] flex items-center gap-1.5 flex-wrap">
+                <div className="text-[10px] text-rmpg-400 flex items-center gap-1.5 flex-wrap">
                   {q.state && <span>{q.state}</span>}
                   {q.condition && (
                     <span className={`text-[9px] uppercase font-bold px-1 border ${conditionBadgeClass(q.condition)}`}>{q.condition}</span>
@@ -629,17 +646,21 @@ export default function PlateLogPage() {
                 </div>
               </div>
               <button type="button" disabled={reviewBusy === q.id} onClick={() => setEditing(q as EditableCapture)}
-                className="text-[10px] font-bold uppercase px-2 py-1 border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400] disabled:opacity-40">
+                className="text-[10px] font-bold uppercase px-2 py-1 border border-brand-gold-500 text-brand-gold-500 hover:bg-brand-gold-700/10 disabled:opacity-40">
                 Edit
               </button>
-              <button type="button" disabled={reviewBusy === q.id} onClick={() => reviewAction(q.id, 'accept')}
-                className="text-[10px] font-bold uppercase px-2 py-1 border border-green-700 text-green-400 hover:bg-green-950 disabled:opacity-40">
-                Confirm
-              </button>
-              <button type="button" disabled={reviewBusy === q.id} onClick={() => reviewAction(q.id, 'reject')}
-                className="text-[10px] font-bold uppercase px-2 py-1 border border-red-800 text-red-400 hover:bg-red-950 disabled:opacity-40">
-                Reject
-              </button>
+              {canManage && (
+                <>
+                  <button type="button" disabled={reviewBusy === q.id} onClick={() => reviewAction(q.id, 'accept')}
+                    className="text-[10px] font-bold uppercase px-2 py-1 border border-green-700 text-green-400 hover:bg-green-950 disabled:opacity-40">
+                    Confirm
+                  </button>
+                  <button type="button" disabled={reviewBusy === q.id} onClick={() => reviewAction(q.id, 'reject')}
+                    className="text-[10px] font-bold uppercase px-2 py-1 border border-red-800 text-red-400 hover:bg-red-950 disabled:opacity-40">
+                    Reject
+                  </button>
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -651,17 +672,17 @@ export default function PlateLogPage() {
       {/* ── Recent sightings: source filter + map toggle + tappable rows ── */}
       <div className="bg-surface-base border border-border-default">
         <div className="px-2 py-[3px] border-b border-border-default flex items-center justify-between gap-2">
-          <span className="text-[9px] font-semibold text-[#d4a017]">RECENT SIGHTINGS</span>
+          <span className="text-[9px] font-semibold text-brand-gold-500">RECENT SIGHTINGS</span>
           <div className="flex items-center gap-1">
             {(['all', ...ALL_SOURCES.map((s) => s.key)] as const).map((k) => (
               <button key={k} type="button" onClick={() => setSourceFilter(k)}
                 className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border tracking-wide ${
-                  sourceFilter === k ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-rmpg-500'}`}>
+                  sourceFilter === k ? 'border-brand-gold-500 text-brand-gold-500 bg-brand-gold-700/10' : 'border-border-default text-rmpg-500'}`}>
                 {k === 'all' ? 'ALL' : sightingSource(k === 'dashcam' ? 'ClearPath dashcam' : k === 'camera' ? 'ALPR' : '').label}
               </button>
             ))}
             <button type="button" onClick={() => setShowMap((v) => !v)} title="Toggle map"
-              className={`ml-1 p-0.5 border ${showMap ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-500'}`}>
+              className={`ml-1 p-0.5 border ${showMap ? 'border-brand-gold-500 text-brand-gold-500' : 'border-border-default text-rmpg-500'}`}>
               <MapIcon className="w-3 h-3" />
             </button>
           </div>
@@ -669,15 +690,23 @@ export default function PlateLogPage() {
 
         {showMap && <div className="p-1.5 border-b border-border-default"><SightingsMap sightings={mapSightings} height={220} onPick={setDossierPlate} /></div>}
 
-        {filteredRecent.length === 0 && <div className="p-2 text-[11px] text-[#888888]">None{sourceFilter !== 'all' ? ' for this source' : ' yet'}.</div>}
+        {recentLoading && (
+          <div className="p-2 text-[11px] text-rmpg-400">Loading sightings…</div>
+        )}
+        {!recentLoading && filteredRecent.length === 0 && recent.length === 0 && (
+          <div className="p-2 text-[11px] text-rmpg-400">No sightings recorded yet.</div>
+        )}
+        {!recentLoading && filteredRecent.length === 0 && recent.length > 0 && (
+          <div className="p-2 text-[11px] text-rmpg-400">No sightings for this source filter.</div>
+        )}
         {filteredRecent.map((s) => {
           const src = sightingSource(s.notes);
           return (
             <button key={s.id} type="button" onClick={() => setDossierPlate(s.plate)}
               className="w-full px-2 py-[3px] text-[11px] text-rmpg-200 flex items-center gap-2 border-b border-border-default last:border-b-0 hover:bg-surface-raised text-left">
               <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border shrink-0 ${src.badgeClass}`}>{src.label}</span>
-              <span className="text-[#d4a017] w-20 shrink-0 font-medium tracking-wide">{s.plate}</span>
-              <span className="text-[#888888] min-w-0 flex-1 truncate">{s.location_text || s.notes || ''}</span>
+              <span className="text-brand-gold-500 w-20 shrink-0 font-medium tracking-wide">{s.plate}</span>
+              <span className="text-rmpg-400 min-w-0 flex-1 truncate">{s.location_text || s.notes || ''}</span>
               <span className="text-rmpg-500 shrink-0">{String(s.created_at).slice(5, 16)}</span>
             </button>
           );
@@ -693,6 +722,22 @@ export default function PlateLogPage() {
           onSaved={(m) => { setReviewMsg(m); loadReview(); loadRecent(); }}
         />
       )}
+
+      {/* Bulk confirm/reject confirmation dialog */}
+      <ConfirmDialog
+        isOpen={confirmBulk !== null}
+        onClose={() => setConfirmBulk(null)}
+        onConfirm={() => confirmBulk && bulkAction(confirmBulk)}
+        title={confirmBulk === 'confirm' ? 'Confirm captures' : 'Reject captures'}
+        message={
+          confirmBulk === 'confirm'
+            ? `Confirm ${selected.size} capture${selected.size === 1 ? '' : 's'}? Each will be re-screened for hits.`
+            : `Reject ${selected.size} capture${selected.size === 1 ? '' : 's'}? This marks them as unverified and removes them from the review queue.`
+        }
+        confirmLabel={confirmBulk === 'confirm' ? 'Confirm All' : 'Reject All'}
+        confirmVariant={confirmBulk === 'reject' ? 'danger' : 'default'}
+        isLoading={bulkBusy}
+      />
     </div>
   );
 }

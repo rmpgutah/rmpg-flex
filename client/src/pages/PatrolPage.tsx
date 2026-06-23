@@ -36,6 +36,8 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
+import SpillmanModuleGroup from '../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../components/spillman/SpillmanModuleGroup';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
@@ -771,15 +773,6 @@ const PatrolPage: React.FC = () => {
     } catch (err: any) { addToast(err?.message || 'Failed to load time tracking', 'error'); }
   };
 
-  // ── Feature 4: Coverage Heatmap data ──
-  const [coverageData, setCoverageData] = useState<any>(null);
-  const handleLoadCoverage = async () => {
-    try {
-      const data = await apiFetch<any>('/patrol/coverage-heatmap?days=7');
-      setCoverageData(data);
-    } catch (err: any) { addToast(err?.message || 'Failed to load coverage data', 'error'); }
-  };
-
   const patrolTabs = [
     { id: 'checkpoints' as const, label: 'Checkpoints', icon: QrCode },
     { id: 'scans' as const, label: 'Scan Log', icon: Clock },
@@ -791,6 +784,46 @@ const PatrolPage: React.FC = () => {
     { id: 'contracts' as const, label: 'Contracts', icon: FileText },
     { id: 'billing' as const, label: 'Billing Review', icon: ClipboardCheck },
   ];
+
+  // ── Esc smart-cascade: dismiss innermost open layer first ──
+  // Priority: QR modal > Checkpoint modal, then stop. ConfirmDialog handles
+  // its own Esc internally, so we don't need to mirror deleteConfirmId here.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (showQrModal) { setShowQrModal(false); return; }
+      if (showCheckpointModal) {
+        clearFormDraft();
+        setShowCheckpointModal(false);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showQrModal, showCheckpointModal, clearFormDraft]);
+
+  // ── N shortcut: open new Checkpoint form ──
+  // Only active on the Checkpoints tab; suppressed while typing in a field
+  // or when any modal is already open.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (t.isContentEditable) return;
+      }
+      if (activeTab !== 'checkpoints') return;
+      if (showCheckpointModal || showQrModal || deleteConfirmId !== null) return;
+      e.preventDefault();
+      handleCreateCheckpoint();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, showCheckpointModal, showQrModal, deleteConfirmId]);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
@@ -845,13 +878,42 @@ const PatrolPage: React.FC = () => {
           (esp. the Mileage Audit chain, which can run to hundreds of rows)
           scrolls underneath. Without this the user loses the way out of
           MILEAGE AUDIT as soon as they scroll down the chain. */}
-      <TabBar
-        spillman
-        className="sticky top-0 z-30 bg-surface-base"
-        tabs={patrolTabs}
-        activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map' | 'summary' | 'mileage' | 'pricing' | 'contracts' | 'billing')}
-      />
+      {/* Tab Navigation (grouped Spillman module strip) */}
+      <div className="sticky top-0 z-30">
+        <SpillmanModuleGroup
+          groups={[
+            {
+              label: 'Field Ops',
+              tone: 'steel',
+              tabs: [
+                { id: 'checkpoints', label: 'Checkpoints' },
+                { id: 'scans',       label: 'Scan Log' },
+                { id: 'compliance',  label: 'Compliance' },
+                { id: 'map',         label: 'Map' },
+              ],
+            },
+            {
+              label: 'Reporting',
+              tone: 'gold',
+              tabs: [
+                { id: 'summary',  label: 'Shift Summary' },
+                { id: 'mileage',  label: 'Mileage Audit' },
+              ],
+            },
+            {
+              label: 'Finance',
+              tone: 'neutral',
+              tabs: [
+                { id: 'pricing',   label: 'Pricing' },
+                { id: 'contracts', label: 'Contracts' },
+                { id: 'billing',   label: 'Billing Review' },
+              ],
+            },
+          ] as ModuleGroupSpec[]}
+          activeTab={activeTab}
+          onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map' | 'summary' | 'mileage' | 'pricing' | 'contracts' | 'billing')}
+        />
+      </div>
 
       {/* Error Banner */}
       {error && (
@@ -1203,8 +1265,10 @@ const PatrolPage: React.FC = () => {
               </div>
               )}
               {checkpoints.length === 0 && (
-                <div className="text-center py-12 text-rmpg-300">
-                  No checkpoints found. Create one to get started.
+                <div className="text-center py-12 text-rmpg-400">
+                  <QrCode className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <div className="text-sm text-rmpg-300 mb-1">No checkpoints yet</div>
+                  <div className="text-[11px] text-rmpg-500">Press <kbd className="font-mono bg-rmpg-700 px-1 rounded-sm">N</kbd> or use <span className="text-brand-400">+ Add Checkpoint</span> to create your first checkpoint.</div>
                 </div>
               )}
             </div>
@@ -1346,8 +1410,19 @@ const PatrolPage: React.FC = () => {
                 </div>
                 )}
                 {scans.length === 0 && (
-                  <div className="text-center py-12 text-rmpg-300">
-                    No scans found matching the filters.
+                  <div className="text-center py-12 text-rmpg-400">
+                    <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    {scanFilters.checkpointId || scanFilters.officerId || scanFilters.startDate || scanFilters.endDate ? (
+                      <>
+                        <div className="text-sm text-rmpg-300 mb-1">No scans match the current filters</div>
+                        <div className="text-[11px] text-rmpg-500">Try widening the date range or clearing the filters.</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-sm text-rmpg-300 mb-1">No scan records yet</div>
+                        <div className="text-[11px] text-rmpg-500">Scans are logged when officers scan QR codes at checkpoints.</div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1519,8 +1594,10 @@ const PatrolPage: React.FC = () => {
                 );
               })}
               {compliance.length === 0 && (
-                <div className="col-span-3 text-center py-12 text-rmpg-300">
-                  No active checkpoints found.
+                <div className="col-span-3 text-center py-12 text-rmpg-400">
+                  <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <div className="text-sm text-rmpg-300 mb-1">No active checkpoints</div>
+                  <div className="text-[11px] text-rmpg-500">Compliance data appears here once checkpoints are marked active. Create or activate checkpoints on the Checkpoints tab.</div>
                 </div>
               )}
             </div>

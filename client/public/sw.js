@@ -3,6 +3,195 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1154: Person Dossier — ?person_id= deep-link (strip after mount), Esc stopPropagation in photoOpen branch, N shortcut (canManage→open record), role-gate watchlist toggle (admin/manager/supervisor), text-rmpg-400/text-brand-400 token migration.
+// v1153: Module Directory — ?module= deep-link (strip after mount), N shortcut focuses search, Esc cascade (clear search→blur), 3-state empty (loading badges/no-results/empty-favorites), brand token migration (hex→CSS var), dead PanelTitleBar clone removed (import shared component), apiFetch types tightened (any→typed), useSearchParams replaces manual URL param read.
+// v1152: Recon Connect — ConfirmDialog for stop session (admin/manager gate), ?category= deep-link (strip after mount), N shortcut focuses catalog search, Esc cascade (stop-confirm→launchMsg), idle terminal empty state, role-gated Stop button (admin/manager), brand token migration (#d4a017→brand-400, #888→rmpg-400), apiFetch cases shape fix (.data unwrap), GlobalCatalogSearch searchRef prop.
+// v1151: Intel Search — ?subject_id= deep-link (strip after mount, hydrates person:<id> query), N shortcut focuses search input, Esc cascade adds e.stopPropagation() per branch + ConfirmDialog handled first, ConfirmDialog for saved-search delete (admin/manager), brand token migration (#d4a017→brand-400/brand-500, #888→rmpg-400/rmpg-500, #ff6b5e→red-400, #3a0d0a→bg-red-950, type-tag hex→Tailwind semantic tokens, relevance bar bg-[#d4a017]→bg-brand-500), SearchBar accepts inputRef + onRemoveSaved props (Trash2 icon on saved rows for canManage).
+// v1150: Geography — role gates (admin/manager/supervisor) for create/edit/delete, N shortcut gated, + button hidden for read-only roles.
+// v1149: GeoData Viewer — ?layer= deep-link (strip after mount), N shortcut focuses feature search, Esc cascade (detail panel→column filter→search clear), 3-state empty states (loading/no-features/no-search-results with clear-search action), brand tokens (#34d399→var(--green-400), #f87171→var(--red-400), #a78bfa→var(--purple-400), #fb923c→var(--orange-400), #888→var(--rmpg-400), #666→var(--rmpg-600), #080808/#0a0a0a→CSS surface vars).
+// v1148: NCIC Terminal — deep-link strip, N shortcut, Esc nav, Export/Clear session (admin/manager), timezone-aware timestamps
+// v1152: Recon Connect — ConfirmDialog for stop session (admin/manager gate), ?category= deep-link (strip after mount), N shortcut focuses catalog search, Esc cascade (stop-confirm→launchMsg), idle terminal empty state, role-gated Stop button (admin/manager), brand token migration (#d4a017→brand-400, #888→rmpg-400), apiFetch cases shape fix (.data unwrap), GlobalCatalogSearch searchRef prop.
+// v1149: Alerts — role gates (admin/manager/supervisor) for create/edit/delete, created_at relative time formatting.
+// v1148: NCIC Terminal — deep-link strip, N shortcut, Esc nav, Export/Clear session (admin/manager), timezone-aware timestamps
+// v1146: Analytics — ?report=+?date_range= deep-link (strip after mount), N shortcut focuses plate search input, Esc cascade (confirmExport→showRaw), ConfirmDialog for Export action (admin/manager), role gate canExport (admin/manager) on Export button, 3-state empty states (loading/no-data/no-search-results) across all tabs, parseTimestamp replaces new Date() in fmtTs.
+// v1153: Module Directory — ?module= deep-link (strip after mount), N shortcut focuses search, Esc cascade (clear search→blur), 3-state empty (loading badges/no-results/empty-favorites), brand token migration (hex→CSS var), dead PanelTitleBar clone removed (import shared component), apiFetch types tightened (any→typed), useSearchParams replaces manual URL param read.
+// v1145: Alerts — role gates (admin/manager/supervisor) for create/edit/delete, N shortcut skips non-managers, created_at relative time formatting.
+// v1144: Notifications — N shortcut marks all read, role gates (admin/manager/supervisor) for bulk Clear Read and Cleanup 30d+.
+// v1143: Screening — ?screen_id=+?person_id= deep-link (strip after mount), N shortcut focuses surname input on search tab, Esc cascade closes confirm dialog, ConfirmDialog for hit confirm/dismiss + forced re-scrape, role gates canManage (admin/manager/supervisor) on SOR import/scrape/interval-edit, 3-state empty states (search: idle/loading/no-results; review: loading/empty; sources: loading/no-sources), inline interval editor replaces window.prompt+window.alert, brand token migration (#d4a017→brand-400/brand-500, #888→rmpg-400/rmpg-500, bg-black→bg-surface-sunken, #e87558→red-400, warning banners use brand-300/brand-600).
+// v1142: Security Dashboard — ConfirmDialog for unblock-IP, ?tab= deep-link (strip after mount), N shortcut triggers refresh, Esc cascade closes confirm dialog, distinct empty states (loading/no-data), role-gated unblock action (admin/manager/supervisor), brand-gold-500/text-rmpg-400 tokens replace hardcoded hex.
+// v1141: Serve Scheduler — ?schedule_id= deep-link (strip after mount, highlight+scroll slot), N shortcut opens Rebalance (canManage), Esc cascade (rebalance→blur), ConfirmDialog for rebalance apply (warning variant), canManage role gate on Rebalance button+drag ops, 3-state empty (loading/empty-window/error), OfficerLaneTimeline highlightSlotId prop.
+// v1136: Skip Tracer — Esc cascade adds e.stopPropagation() per branch, remove dead expandedPerson state (no callsites).
+// v1139: Serve — role gates (canManage: admin/manager/supervisor) on Add Job button, N shortcut, Edit job menu item; Esc cascade adds e.stopPropagation(); dead code removed (affidavitData, handleGenerateAffidavit, handleNotifyCompletion); brand tokens (#d4a017→text-brand-gold-500, #888888→rmpg-500, #141414→CSS vars); map popup CSS vars; duplicate id fixed on Apt/Unit input.
+// v1138: Training Management — ?course_id= deep-link (strip after mount), search/filter in toolbar, distinct no-data vs no-results empty states, Esc stopPropagation, ConfirmDialog + role gates + N shortcut already present.
+// v1137: Statute Analytics — ?statute=+?date_range= deep-link (strip after mount), N shortcut focuses statute search, Esc cascade (clearConfirm→search→penaltyResult→topCharged), ConfirmDialog for clear-cache (admin/manager), role gate clear button, 3-state empty (loading/no-data/no-search-results), LEVEL_COLORS hex → CSS var tokens (rgb(var(--*-rgb))), ?? nullish-coalescing replaces ||, dead inline-style replaced with Tailwind tokens.
+// v1135: Settings — ConfirmDialog for reset-tones/reset-map, useSearchParams replaces window.history.replaceState for ?section= deep-link strip, N shortcut (admin/manager publishes org defaults), Esc cascade (confirmResetTones→confirmResetMap→capturingKey).
+// v1133: Connections Analyst — ?connection_id=+?type= deep-link (strip after mount), N shortcut saves investigation (canManage), Esc cascade (annotation→save modal→load dropdown→path mode), ConfirmDialog for delete-investigation, role gate save/delete (admin/manager/supervisor), no-seed + no-results empty states, brand token migration (var(--brand-gold)/var(--surface-sunken)/brand-400 Tailwind tokens).
+// v1132: Admin — brand token pass: replace hardcoded #1a1a1a/#888888/rgba(136,136,136,…) in header gradient, mobile tab strip, and desktop sidebar with CSS variable tokens (var(--surface-base), rgb(var(--rmpg-500-rgb)), var(--text-primary), var(--text-muted)); hover class migrated to hover:bg-rmpg-500/[0.08].
+// v1131: Audit Log — N shortcut focuses search-details input, in-page role gate (admin/manager) with restricted empty state, hex tokens replaced with CSS vars (--green-500/--amber-500), Esc cascade refactored to stable refs, dead comment cleanup.
+// v1130: Training Docs (/training-docs) — fixed creator name display (API returns created_by_name, not creator_name); all 10 audit items already present (ConfirmDialog, deep-link ?doc_id=, N shortcut, Esc cascade, 3-state empty, role gates, API shape, no dead code, brand tokens).
+// v1129: Text Editor — ConfirmDialog replaces window.confirm for revert, ?doc_id= deep-link alias (strip after mount), N shortcut (navigate to Documents when no file loaded), Esc cascade closes revert dialog, empty state for no-file, role gates (supervisor+ can edit/save; others view-only), #d4a017 → text-brand-gold-500 token.
+// v1128: Shift Plans — useSearchParams replaces window.history.replaceState for deep-link strip (?plan_id=/?date=), canManage role gate (admin/manager/supervisor) on create/edit/delete/archive/clear-all/N-shortcut, N shortcut gated, context menu mutate items gated.
+// v1127: Use of Force — audit pass: e.stopPropagation() added to Esc cascade branches (form/reviewDialog/error/selection/filters), header comment updated to v1127; all prior features (ConfirmDialog, ?uof_id= deep-link, N shortcut, role-gated review, 3-state empty, brand tokens) verified clean.
+// v1126: Plate Log — role gates (canManage: admin/manager/supervisor) on Confirm/Reject/Bulk actions, ConfirmDialog for bulk ops, 3-state empty (loading/no-data/no-results-for-filter), brand-gold-500 tokens replace all hardcoded #d4a017, text-rmpg-400 replaces #888888.
+// v1125: NSOPW Offender Registry — deep-link setSearchParams strip, N shortcut, Esc cascade, parseTimestamp for last-run display.
+// v1124: Court Tracker — role gates (canManage: admin/manager), ?case_id= deep-link, API shape fixes (upcoming/single-event/conflicts/stats/calendar wrapped in {data}), byType event_type key fix, case_id filter on GET /events.
+// v1123: Code Enforcement — role gates (canEnforce: admin/manager/supervisor) gate
+//        New button, N shortcut, void/refer violation, cancel tow; ConfirmDialog for
+//        void + cancel (warning variant); ?case_id= deep-link alias for ?violation_id=;
+//        Esc cascade now closes ConfirmDialog first; all existing features preserved.
+// v1122: Trespass Orders — role gates (canManage: admin/manager/supervisor) for create/edit/serve/lift/violate/renew; officers/dispatchers get read-only. Context menu, toolbar, detail panel, and empty-state action all gated. N shortcut suppressed for read-only roles.
+// v1121: Law Book — ?section= deep-link alias, / shortcut to focus search, Esc stopPropagation, canManage role gate, sev-* token migration.
+// v1120: National Warrants — ?search= / ?warrant_id= deep-link, N shortcut, Esc cascade (highlight→state→results), 3-state empty (idle/searching/no-results), row highlight + scroll-into-view for warrant_id deep-link.
+// v1119: DL Search — ?dl_number= / ?person_id= deep-link, N shortcut focuses search, Esc cascade (modal→panel→results), 3-state empty (not-searched/loading/no-results), ConfirmDialog for SOR import, dead Camera import removed.
+// v1118: Recruitment — ConfirmDialog replaces inline delete div, ?applicant_id= / ?recruit_id=
+//        deep-link, N shortcut, Esc cascade (delete → form), 3-state empty (loading/error/no-data/
+//        no-results), role gates (canManage: admin/manager/human_resources), search filter,
+//        safeDateStr for applied_date display, localToday() replaces new Date() in EMPTY_FORM,
+//        dead-code cleanup (deleteId → deleteTarget, loading → loadState, any → typed formData).
+// v1117: Accreditation — role gates (canManage: admin/manager), ?standard_id= / ?accred_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces inline delete modal, search filter, typed formData, dead-code cleanup.
+// v1116: Narcotics — role gates (canManage: admin/manager/supervisor), ?narcotics_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
+// v1115: Alarm Management — role gates (canWrite/canDelete: admin/manager/supervisor), ?alarm_id= deep-link, N shortcut, Esc cascade, 3-state empty states, ConfirmDialog replaces inline delete modal, search filter, dead-code cleanup.
+// v1134: Forensic Lab — role gates (canManage: admin/manager/supervisor) for create/edit/QC/custody actions and New Case tab/shortcut.
+// v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
+// v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
+// v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
+//        N shortcut (admin|manager), Esc cascade (delete->form->search), search bar
+//        with distinct empty states (loading/no-data/no-results), role-gated create
+//        and delete (admin|manager only), text-green-400 -> text-blue-400 brand token.
+// v1111: Gang Intel (/gang-intel) — Page 88 of the full-app frontend pass.
+//        Replaced inline delete modal with ConfirmDialog (danger variant, shows
+//        name/moniker/gang in details). Added N shortcut (new member), Esc
+//        cascade (form → delete confirm, stopPropagation). Deep-link:
+//        ?member_id= auto-opens that member in the edit form after load,
+//        ?gang_id= accepted and stripped; both removed with { replace: true }.
+//        Role gate: Delete button + context-menu item hidden for non-admin/
+//        manager/supervisor (mirrors Worker DELETE 403 guard). Distinct empty
+//        states: "Loading…" spinner on initial fetch, "No results for X" when
+//        search has no hits vs "No gang members tracked yet" when data is truly
+//        empty. Search bar filters by name/moniker/gang in-client. Removed dead
+//        EMPTY_GANG constant and unused `gangs` render path. Brand tokens: no
+//        hardcoded hex (was using CSS-var-backed Tailwind tokens already).
+//        formData type tightened from `any` to `typeof EMPTY_MEMBER`.
+// v1110: Interagency (/interagency) — ConfirmDialog replaces hand-rolled delete modal,
+//        ?agency_id= deep-link (strip with replace:true), N shortcut for New Partner,
+//        Esc cascade closes form/dialog, 3-state empty states (loading/no-data/no-results),
+//        admin|manager role gates on edit/delete UI, search filter, typed Partner interface.
+// v1109: Risk Management (/risk) — Page 86 frontend audit. Replaced inline
+//        delete div with ConfirmDialog. Added ?risk_id= deep-link (opens edit
+//        modal, stripped with replace:true). N shortcut opens New Assessment
+//        (admin/manager only). Esc cascade: delete confirm → form. Empty states
+//        now distinguish loading vs no-data vs no-search-results. Role gates:
+//        canWrite (admin|manager) hides New/Edit/Delete from other roles.
+//        API envelope correctly unwraps .data array from /risk/assessments.
+//        Dead state removed (showForm erroneously derived from editingRecord
+//        !== null). Hardcoded hex (#888888) migrated to text-rmpg-400 token.
+//        Filter bar with live client-side search added to toolbar.
+// v1108: Billing (/billing, /invoices) — Page 85 of the full-app frontend
+//        pass. BillingPage: replaced todayLocal() helper with localToday()
+//        from dateUtils (consistent timezone handling). InvoicesPage: added
+//        ?invoice_id= deep-link (opens + selects invoice after load) +
+//        ?client_id= pre-filter; N shortcut (canEdit only, skips while
+//        typing) opens New Invoice; Esc cascade (payment form → line-item
+//        form → detail panel → create panel); ConfirmDialog for delete-
+//        payment and delete-line-item (were instant no-confirmation deletes);
+//        useToast feedback on delete success/error; distinct empty states —
+//        loading spinner / "no invoices match filters" + clear CTA / "no
+//        invoices yet" + create CTA.
+// v1107: QA (/qa) — Page 84 of the full-app frontend pass. Replaced inline
+//        delete dialog with ConfirmDialog (with review details). Added ?qa_id=
+//        / ?review_id= deep-link (stripped after mount with replace:true). Added
+//        N shortcut (new review when not in input) and Esc cascade (close modal
+//        or delete dialog). Role gates: admin/manager/supervisor for create/edit,
+//        admin/manager for delete. DataTable loading prop wired for skeleton vs
+//        empty-state distinction. Removed `showForm = editingRecord !== null`
+//        dead pattern — replaced with separate formOpen boolean. Migrated
+//        hardcoded hex (#888888, #991b1b, #f87171) to CSS variable tokens via
+//        ConfirmDialog. Fixed created_at column to use formatDateTime().
+// v1106: Asset Management — ?asset_id= deep-link, Esc cascade, N shortcut, search bar,
+//        distinct empty states, ConfirmDialog delete, role-gated delete (admin|manager).
+// v1105: Jail Management — role gate delete (admin|manager), parseTimestamp in
+//        fmtRelativeAge, JailRecordsPage: deep-link ?source_key=, N shortcut,
+//        Esc cascade, loading/empty states, role gate ingest (supervisor+),
+//        brand tokens (no hardcoded hex), booking search filter.
+// v1104: Tasks page — role gates (delete=admin|manager, urgent-priority=supervisor+),
+//        notificationRouting: add task/task_assignment entity types + fix case_task
+//        routing from /cases?task_id= (no-op) to /tasks?task_id= (correct deep-link).
+// v1102: Crime Analysis (/crime-analysis) — Page 79 of the full-app frontend
+//        pass. Added ?days= / ?date_range= deep-link (also seeds ?start_date=
+//        / ?end_date= for custom range), stripped after mount. Fixed BlueGradient
+//        stops (were both #888888, now steel-blue CSS vars). Cell keys changed
+//        from array index to stable d.name. Empty states now distinguish "no data
+//        for this period" vs "no data available" based on filterActive flag.
+// v1101: Reports pages (/reports, /reports/custom) — Page 78 of the full-app
+//        frontend audit. Backend: added 7 missing endpoints (comparison,
+//        daily-briefing, weekly-digest, patrol-tracking, POST /reports/custom,
+//        POST /records/reports/:id/approve, POST /records/reports/:id/return);
+//        fixed citation-revenue and response-times response shapes (were
+//        returning wrong field names → cards showed all-zeros); fixed
+//        crime-trends to return monthlyTrend[] + per-type MoM/YoY table rows
+//        instead of raw day/type/count triples. Frontend: CustomReportBuilder
+//        gains ?type= deep-link (pre-selects source), Esc cascade
+//        (preview→filters→columns→source→/reports). No window.confirm/prompt.
+// v1100: Communications — Page 77 of the full-app frontend pass.
+//        Implemented messages CRUD backend (GET/POST/PUT read+ack/DELETE)
+//        + emergency-broadcast (accepts content not message) + drafts POST
+//        + activity-feed real D1 query in stubs router. Client: BOLO search
+//        field + distinct empty states (no-BOLOs vs no-results), role gates
+//        (canCreateBolo: supervisor+ only sees New BOLO/resolve/archive/N
+//        shortcut), Esc cascade clears boloSearch, subject not required in
+//        compose (auto-derived from content).
+// v1099: Training pages — Page 76 of the full-app frontend audit.
+//        TrainingDocsPage: replaced window.confirm() with ConfirmDialog,
+//        removed dead isGodMode variable, fixed stale-closure keyboard
+//        shortcut (loadDocuments now in deps), added ?doc_id= deep-link,
+//        improved empty-state (no-data vs filtered vs no-category).
+//        TrainingManagementPage: fixed critical bug where "New Course"
+//        modal never opened (showForm was editingRecord !== null, but
+//        openNew sets editingRecord = null); added separate showForm boolean,
+//        role gate (admin/manager/hr only), Esc cascade, N shortcut,
+//        replaced inline delete div with ConfirmDialog, added Docs Library
+//        cross-link button. Worker: added 3 missing endpoints —
+//        GET /personnel/training-materials, GET /personnel/training-alerts,
+//        POST /personnel/training-bulk-assign.
+// v1098: Dashcam pages (Page 75) — fixed status panel shape mismatch
+//        (DashcamPage read enabled/deviceCount/port/models/uptime which the
+//        API never emitted; now reads total_devices/online_devices/active_devices).
+//        Removed broken POST /howen/enable stub call and unguarded power-toggle
+//        button. Added ?device_id= deep-link + Esc cascade to DashcamPage.
+//        Added role-gate (canManage) imports. Replaced 6x hardcoded #d4a017
+//        with text-brand-400. Distinct empty states for no-devices vs no-results.
+//        Removed unused AlertTriangle + Smartphone imports. Removed dead
+//        isGodMode duplicate (= isAdmin) from DashCamerasPage.
+// v1097: Body Cameras (/body-cameras) — Page 74 audit. Fixed canManage to
+//        include manager role (matched backend WRITE_ROLES). Added ?camera_id=
+//        and ?officer_id= deep-links (camera row highlight + officer search
+//        seed). Added N shortcut to open Assign Camera. Distinct empty-state
+//        messages (no data vs no search results). Removed dead isGodMode alias.
+// v1096: Fleet v2 (FleetShell) — Page 73 of the full-app frontend pass.
+//        Added N shortcut (open New Vehicle modal when not typing),
+//        Esc cascade (closes New Vehicle modal before propagating),
+//        ?unit_id= deep-link param (alongside ?vehicle_id= and ?fleet_id=),
+//        VehicleDetailRoute now distinguishes loading vs 404 (no more
+//        silent blank on a bad ID), GpsTrackingRoute link updated from
+//        /fleet-legacy to /map (the actual GPS map surface).
+// v1095: Personnel (/personnel) — Page 72 of the full-app frontend pass.
+//        Removed dead state (analytics, analyticsLoading, dashcamEvents,
+//        deviceMappings, dashcamLoading, refreshDashcamData — never read).
+//        Role gate: terminate/archive/restore buttons in detail panel now
+//        hidden for officer/dispatcher/client_viewer (admin|manager|supervisor|
+//        human_resources only). N shortcut extended to credentials, training,
+//        and deployment tabs (was roster+equipment only). Fixed hex tokens:
+//        #0a1a0a → bg-green-950/30 (DutyBoard/Deployment/Training),
+//        #1a0a0a → bg-red-950/30 (DashCam impact alert). FitnessCommendations
+//        apiFetch now guards against wrapper objects {data:[]} on both loads.
+// v1089: Community (/community) — Page 71 of the full-app frontend pass.
+//        Fixed critical bug: "New Event" modal never opened (showForm was
+//        `editingRecord !== null`, but openNew() set it to null). Separate
+//        showForm boolean state introduced. Replaced inline delete div with
+//        ConfirmDialog. Added Esc cascade (delete → form), N shortcut,
+//        ?event_id= deep-link, tab nav for Tips/Watch Groups/Alerts,
+//        role-guard hiding write buttons for read-only roles, per-tab lazy
+//        loading, and distinct empty-state messages.
 // v451: Traccar replaces OwnTracks as the dominant primary GPS source.
 //       /api/traccar (canonical) + /traccar (alias) accept Traccar
 //       Client (OsmAnd HTTP), Traccar Server forward-webhook, and
@@ -59,6 +248,464 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1088: Criminal History (/criminal-history) — Page 70 of the full-app
+//        frontend pass.
+//        (1) Fixed silent search bug: name/DOB/DL searches sent ?name=/?dob=/?dl=
+//            params the server does not read, returning the full 500-person
+//            unfiltered list instead of matching records. Name now routes to
+//            /records/persons/search?q= (proper LIKE); DOB/DL use the bulk
+//            list's ?search= param.
+//        (2) Switched person history to /records/persons/:id/system-history
+//            (single round-trip, FK-joined) — previously 4 separate fetches
+//            used fuzzy name-text search for citations/FIs, returning records
+//            for anyone with a similar name, not the selected person.
+//        (3) Added CriminalHistorySection panel — formal arrest/conviction/
+//            charge records from the criminal_history table were absent.
+//        (4) Added WarrantNsopwStatus panel — NSOPW nationwide SOR cross-ref.
+//        (5) Esc smart-cascade: Esc while person selected returns to list.
+//        (6) ?subject= URL param pre-fills and auto-fires name search.
+//        (7) ConfirmDialog on CriminalHistorySection delete (was bare click).
+//        (8) normPerson() handles dob/gender/dl_number aliases from bulk list.
+// v1086: Daily Activity Reports (Page 68 audit). Fixed: search param was sent
+//        by the client but silently ignored by the Worker (no LIKE clause);
+//        pagination.totalPages missing from API response (client showed page 1
+//        always); client sent limit= but Worker read per_page=; reviewed_by_name
+//        never populated (only officer join, no reviewer join). Added:
+//        ?officer_id= and ?date= URL deep-links (pre-seed filter + strip);
+//        equipment_issues + recommendations edit fields (were in PDF + type but
+//        no UI to write them); ensureTable idempotent ALTER for new cols.
+// v1083: Evidence (Page 65) — add 8 missing backend sub-resource endpoints
+//   (chain-action, checkout, checkin, disposition, request-release,
+//   approve-release, custody-validation, linked-records); fix ?id= deep-link
+//   from QuickSearchCard; gate Approve/Deny release to supervisor+; seed
+//   ?status= and ?case_id= URL filters on mount.
+// v1084: Citations (/citations) — Page 66 of the full-app frontend pass.
+//        (1) Stats bar was always showing zeros: GET /citations/stats returned
+//        byStatus as a row array (camelCase) but CitationsPage read it as
+//        by_status: Record<string,number>. Worker now returns both shapes plus
+//        the missing fines_issued, fines_collected, and today_count fields.
+//        (2) Deep-links: ?plate=<plate> pre-fills the search box (incoming from
+//        PlateLog "View citations for plate"); ?officer_id=<id> pre-fills with
+//        the officer id (incoming from Personnel). ?citation_id=<id> already
+//        existed. (3) Plate in detail view now has an "ALPR" button that
+//        navigates to /intel/plate-log?plate=<plate> for history. Right-click
+//        context menu also gets "View plate history" when plate is present.
+//        (4) Court Information section header now has a "Court Tracker" link
+//        that navigates to /court.
+// v1082: Incidents (Page 64) — source-call buttons now deep-link to
+//        /dispatch?call_id=<id> so clicking the call number from an incident
+//        auto-selects that call in the Dispatch CAD board. Previously both
+//        "SOURCE CALL" header and "Linked Call" info-panel buttons navigated
+//        to /dispatch with no context, leaving operators to find the call
+//        manually. No schema or API changes.
+// v1081: Patrol (/patrol) — Page 63 of the full-app frontend pass. Added Esc
+//        smart-cascade (QR modal → Checkpoint modal), N shortcut to open the
+//        New Checkpoint form on the Checkpoints tab, four-way empty-state
+//        distinction (no-checkpoints-ever / no-scans-with-filters / no-scans-
+//        ever / no-active-checkpoints-for-compliance), and removed dead
+//        coverageData/handleLoadCoverage state that was defined but never
+//        rendered anywhere in the JSX.
+// v1070: Cmd+K Global Search — scope recent-search history per user.id
+//        instead of sharing one bare 'rmpg-recent-searches-v2' localStorage
+//        key across every operator on the MDT. A shared patrol laptop was
+//        leaking one officer's recent name/plate/badge queries to the next
+//        person who opened the dialog. Now keyed on
+//        `rmpg_globalsearch_recent_${user.id}`, with a one-time read-through
+//        migration that copies the legacy bare key into the first
+//        signed-in user's slot and then deletes the legacy key so the
+//        next user doesn't inherit it. Reads/writes are skipped entirely
+//        when no user is signed in (mid-login first render). Mirrors the
+//        SkipTracerPage history pattern (PR #1657 / SW v1065).
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+// v1079: Web Research (/web-research) — Page 61 of the full-app frontend pass.
+//        WebResearchPage was a Firecrawl-backed search + saved-results
+//        surface but had no court-ready export, no URL deep-link, no
+//        per-user privacy on the (PII-sensitive) recent-query log, no
+//        Esc cascade, no N shortcut, and a silent window.confirm() guarding
+//        the destructive delete path. Audit fixes:
+//          * Court-ready PDF — new webResearchReportPdf renders the active
+//            filter slice of saved results into the canonical Arial+gold
+//            audit-series artifact (banner, export context, per-row entries
+//            with title/URL/metadata/notes/scraped excerpt capped at 2000
+//            chars, OSINT chain-of-custody disclaimer in the footer). Six
+//            vitest smoke tests cover normal/empty/truncated/optional-attr
+//            shapes. PDF entry point lives in the page header toolbar.
+//          * URL deep-link contract — ?research_id=<n>, ?query=<text>,
+//            ?tab=<search|saved>. Consumed once + stripped with replace:true
+//            so a hard refresh doesn't re-pin to a stale row.
+//          * ConfirmDialog — replaces window.confirm() on delete (shows
+//            title/URL/query/linked-entity context) AND adds a new clear-
+//            history confirm where the older "Clear" link silently nuked
+//            localStorage on a single click.
+//          * Per-user recent-query history — scoped to user.id under
+//            rmpg_web_research_history_<uid> so a shared MDT can't leak
+//            one operator's subject-name/plate-number queries to the next.
+//            Capped at 20 entries; click-to-rerun chips below the search.
+//          * Esc smart-cascade — link modal -> notes editor -> results ->
+//            query -> filter (newest-open-first; one Esc per layer).
+//          * N shortcut — opens a new search (typing-suppressed).
+//          * Firecrawl-offline banner — replaces the LED-only signal so
+//            operators see WHY a search returns empty when the API key
+//            isn't configured.
+//          * Hydrate-on-mount — saved-results count now loads on mount
+//            so the tab-strip badge advertises existing research from any
+//            deep-link landing, not just from clicking the Saved tab.
+//          * notificationRouting — `research_result` + `web_research`
+//            entity_types now deep-link to /web-research?research_id=
+//            (covered by 2 new vitest assertions). Client-only PR; no
+//            Worker route changes, no D1 migration.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+// v1076: Documents (/documents) — Page 58 of the full-app frontend pass.
+//        URL deep-link (?folder=&q=&file_id=) so cross-page links and
+//        refreshes land on the same view; ?folder= hydrates the initial
+//        directory, ?file_id= opens that file once contents load, both
+//        stripped after applying. Three native window.confirm() prompts
+//        (deleteFolder / deleteFile / bulkDelete) replaced with shared
+//        ConfirmDialog (danger variant, Cancel pre-focused, identifying
+//        details — subfolder/file counts, file size + MIME, bulk count).
+//        Esc cascade: file-info modal → rename → new-folder → confirm
+//        dialogs → clear search → clear selection → up one folder. 'N'
+//        opens the file picker (parity with Equipment / FlexCam / CRM
+//        audits). Emoji file icons (🖼️📄🎬🎵📝📊📦📃📎) replaced with
+//        Lucide File* components — emojis don't pick up theme variables
+//        so they read pure-color against the Spillman day/night skin and
+//        were flagged by the page-audit emoji-chrome rule. Two
+//        `hover:text-[#d4a017]` hardcoded hex swapped to `hover:text-brand-400`
+//        so the Edit-PDF affordance follows brand-gold token instead of
+//        a literal.
+// v1075: Document Intake (/document-intake) — Page 57 of the full-app
+//        frontend pass. Layout was a clean three-state finite-state-machine
+//        but lacked the per-page contract every v1024+ audited surface
+//        exposes: no keyboard cascade (Esc was a no-op, N didn't reopen the
+//        picker), no deep-link (`?new=1` now lands directly on the picker),
+//        a "Upload Another" button that silently dropped pending clerk
+//        edits, inline hex (#d4a017 / #888 / #0a0a0a / #10b981 / #eab308 /
+//        #ef4444) instead of theme tokens, and no print path for the
+//        extraction. This bump adds the cascade + N shortcut + `?new=1`,
+//        gates the destructive reset through a ConfirmDialog when the
+//        clerk has dirty edits, sweeps the page + reviewer onto the
+//        brand-gold-* / sev-* / rmpg-* tokens (so the night/day shift now
+//        re-themes), and lands a new utils/documentIntakePdf.ts emitting
+//        a clerk-trail one-pager (source + detected kind + per-field
+//        confidence band + value + OCR original + raw-text preview) so a
+//        supervisor reviewing the intake queue or a discovery responder
+//        has a printed record of what got pulled before it landed in
+//        records. Covered by 21 unit tests in documentIntakePdf.test.ts.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+// v1074: Quick Capture (/intel/quick-capture) — Page 56 of the full-app
+//        frontend pass. Officer's 30-second on-scene contact logger; the
+//        page already did the one-POST dedupe-or-create person + vehicle
+//        + FI + screening dance, but was missing every audit-series
+//        contract.
+//          • ?call_id= / ?incident_id= deep-link — when launched from a
+//            dispatch call card / incident detail with a context query
+//            string, the resulting FI is now stamped on the server
+//            (field_interviews.associated_call_id /
+//            associated_incident_id columns existed since baseline) so
+//            the contact appears on the call's / incident's timeline.
+//            A persistent chip at the top of the page tells the operator
+//            "Logging contact on Call #123" with an X to unlink. Context
+//            persists across multiple captures on the same scene
+//            (different from login-style flash banners that strip on
+//            mount) — logging several FIs against one call is the
+//            dominant on-scene pattern.
+//          • Esc smart-cascade — busy gate first (lets the network
+//            finish), then close the result panel, then clear typed-but-
+//            unsaved form. Single Esc never blasts past a state the
+//            operator wanted to keep. Suppressed during in-flight POST.
+//          • N shortcut — clears the form and focuses First Name. Same
+//            N=New convention as Citations / Warrants / FI / Arrests /
+//            Cases / etc. Suppressed inside inputs and modifier chords.
+//          • Print FI — court-ready PDF for the just-written FI via the
+//            existing recordPdfGenerator field_interview type and the
+//            shared PrintRecordButton. The FI is hydrated from
+//            /field-interviews/:id on click rather than constructed from
+//            the local form, so officer name, badge, canonical fi_number,
+//            and the resolved person/vehicle ids come from the server.
+//            Lazy load (no fetch unless the operator asks to print).
+//          • Privacy mask — DOB is the most sensitive field on this page;
+//            digits render as bullets by default with an eye-toggle
+//            reveal (focus reveals so the operator can type, eye-icon
+//            re-hides). Plate stays visible because it's the operator's
+//            only visual confirmation that the correct vehicle attached.
+//            autocomplete=off + spellCheck=false on the DOB field so
+//            password managers and dictation engines don't pick it up.
+//          • GPS visibility — explicit re-acquire button (Crosshair
+//            icon) with hover-title showing the actual lat/lng + meter
+//            accuracy that will be stamped on the FI. The first-mount
+//            fix is the same silent best-effort as before (GPS is a
+//            bonus, manual location always works); but mid-shift /
+//            mid-drive on-foot operators were typing locations because
+//            the page showed no signal that the fix was 10 minutes old
+//            and 800m off. Permission-denied surfaces an error toast;
+//            timeout / position-unavailable surface a warning + retry.
+//          • Theme tokens throughout — no hardcoded #d4a017 / #888888 /
+//            arrow glyph in chrome. text-brand-400, text-rmpg-400/500,
+//            border-brand-400, AlertTriangle icon, ArrowRight icon
+//            (the "→" was the only Lucide-able chrome glyph on the
+//            page; the "⚠" in the critical banner became AlertTriangle).
+//            Red critical-hit banner kept verbatim (bg-red-950 etc.) —
+//            the audit's "no hardcoded hex" rule is about brand surface
+//            tokens; semantic alert colors stay opaque so a stuck/
+//            mistuned palette can't make a critical-records-hit banner
+//            blend into a normal info row.
+//        Server: src/routes/intel.ts /quick-capture accepts call_id +
+//          incident_id in the body and writes them to
+//          associated_call_id / associated_incident_id on the new FI
+//          row, and echoes them on the response. Number-coerced (NaN →
+//          null) so a stringly-typed body doesn't trip D1.
+//        Tests: 4 new vitest cases (deep-link call/incident, N shortcut
+//          focus, Esc clears form). Existing critical-hit test kept.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+// v1072: Court Records (/court-records) — Page 54 of the full-app frontend
+//        pass. CourtRecordsPage is the historical-disposition counterpart to
+//        CourtTrackerPage (/court, which is the upcoming-dates view); both
+//        sit on the same court_events table. The page shipped with the
+//        right column set and a usable filter bar but had a one-line Esc
+//        handler that wrote `setShowCreateModal(false); setShowCreateModal(
+//        false)` twice — a duplicate that not only never closed the
+//        Outcome modal but also obviously survived a copy/paste — no
+//        deep-link contract, no print path even though the renderer
+//        (courtAppearancePdf, already wired into Court Tracker) was
+//        sitting one import away, no confirmation on the outcome submit
+//        (recording an outcome legally closes the docket entry with no
+//        silent undo), and `useFormDraft` keys leaking half-typed case
+//        numbers / fines / sentences between operators on shared MDTs.
+//        Operators jumping from a notification or context-menu link had
+//        nowhere to land — every "open court event" deep link 404'd at
+//        the routing layer because no `court_event` entry existed in
+//        ENTITY_ROUTE_BUILDERS (and during the audit, the `arrest_record`
+//        / `arrest` entries the Page 43 PR added tests for had ALSO never
+//        been merged into the routing map — fixed alongside).
+//
+//        What changed:
+//          • URL deep-link contract: ?event_id=<n> / ?court_event_id=<n>
+//            (the alias matches Court Tracker's contract so a single
+//            notification deep-link works from both pages), ?case_id=<n>
+//            (resolves to the case's court_case_number via /cases/:id and
+//            seeds the search), ?docket=<str> (free-text docket lookup
+//            seeding the search box), ?status=<scheduled|continued|…>
+//            and ?type=<arraignment|trial|…> (preselect filters BEFORE
+//            the first fetch settles, so the request already hits the
+//            filtered server view and there's no flash of unfiltered
+//            data). All one-shot — params are consumed and stripped with
+//            replace:true so a refresh doesn't re-pin. Direct-fetch
+//            fallback when the event id isn't in the current paged view
+//            (prepend pattern, matching ArrestRecordsPage).
+//          • notificationRouting: `court_event` → /court-records?event_id=
+//            entry added so a "hearing reminder" / "outcome recorded" /
+//            "continuance granted" notification lands on the docket entry
+//            itself rather than fall through to the null default. While
+//            in that file the audit caught that the Page 43 PR (#1655)
+//            added two routing tests for `arrest_record` and `arrest`
+//            but never actually merged the matching entries into
+//            ENTITY_ROUTE_BUILDERS — every arrest notification was
+//            silently routing to "/" via the type-fallback path. Both
+//            entries added alongside (3 routing tests now green).
+//          • Court-ready PDF: reuses the courtAppearancePdf renderer
+//            CourtTrackerPage uses — Arial + RMPG-gold-banner courtroom
+//            sheet covering case header, parties, judge, witnesses, fees,
+//            bail, continuances, outcome, signature line. Wired into the
+//            expanded-row toolbar AND the right-click menu; PDF reads
+//            from the hydrated single-event detail (which parses the
+//            witnesses / officer_confirmations / continuance_log /
+//            court_fees JSON columns) when available, falls back to the
+//            list-row snapshot when not. Operator-attribution footer
+//            pulled from the logged-in user.
+//          • Native dialogs → ConfirmDialog: the Outcome modal's "Save
+//            Outcome" was a single-click submit that wrote outcome +
+//            sentence + fine + status='completed' in one shot. Now
+//            ConfirmDialog (warning variant) intercepts with the
+//            event #, defendant, case #, selected outcome label,
+//            sentence, and fine in the details slot so the operator
+//            sees what they're about to legally finalize. Saving and
+//            cancellation flows preserved.
+//          • Esc smart-cascade (highest-priority layer first): outcome
+//            confirm → outcome modal → create modal → expanded row →
+//            error banner → active filters. Each branch returns so a
+//            single Esc doesn't collapse multiple layers. The previous
+//            duplicated handler only ever closed the create modal — and
+//            even that was the literal repeated line.
+//          • N shortcut: opens New Event (typing-suppressed; suppressed
+//            inside open modals/dialogs). Matches the Trespass / Field
+//            Interview / Equipment / Notifications / Arrests / Forensic
+//            Lab / Skip Tracker / Use of Force / Tasks / CRM / Court
+//            Records muscle memory built up over the page-pass sweep.
+//          • Per-user form drafts: bare `rmpg_court_records_create` /
+//            `_outcome` keys would leak a half-typed prosecutor name,
+//            sentence string, or fine amount from operator A's screen
+//            to operator B on a shared MDT — especially bad for outcomes,
+//            where the leaked text is a literal pre-decided ruling.
+//            Scoped to user.id; outcome-form key further scoped to the
+//            event id so switching events doesn't carry the prior
+//            event's draft sentence forward (the most reported source of
+//            cross-event outcome contamination during the audit).
+//          • Hydrate state from server: expanding a row now fetches
+//            /court/events/:id (which parses the witnesses /
+//            officer_confirmations / continuance_log / court_fees JSON
+//            columns and includes judge_notes / bail_*). The list
+//            endpoint returned the bare row, which the PDF could only
+//            render partially. Used for both detail-pane display and
+//            the court-ready PDF.
+//          • Cross-link to Court Tracker (#1613): expanded row + right-
+//            click menu both offer "Open in Court Tracker" (navigates
+//            to /court?event_id=<id>) and "Open linked case" when
+//            case_id is set — closing the loop between the two
+//            counterpart pages on the same court_events table.
+//          • Empty-state distinction: collapsed "no records" and
+//            "filters hiding everything" into one ambiguous string.
+//            Filter-empty state surfaces the unfiltered total + Clear
+//            button; no-data state shows the create CTA + N hint.
+//          • Document title: reflects the expanded event ("CRT-2026-
+//            00042 — Court Records") so a tab switcher can tell two
+//            court-record panels apart.
+//          • Theme tokens: three hardcoded `text-[#d4a017]` heading
+//            colors → `text-brand-gold-500` so the gold re-themes
+//            correctly between night and day (Spillman day/night theme
+//            compliance — see project-systemwide-daynight-theme).
+//          • A11y: added aria-label to the previously unlabeled error-
+//            dismiss X button, status/type/date filter selects, the
+//            paging Previous/Next buttons, both modal close-X buttons,
+//            and both modal dialog containers (aria-label on the
+//            role=dialog element so a screen-reader announces which
+//            modal opened).
+//          • Bug fix — Esc handler was the literal duplicated line
+//            `setShowCreateModal(false); setShowCreateModal(false);`
+//            with no outcome-modal branch, no expanded-row branch, and
+//            no filter branch. The Outcome modal therefore could only be
+//            dismissed by clicking the X — the rest of the cascade is
+//            new contract.
+//
+//        No D1 migration, no Worker route changes — client-only. The
+//        court_event routing test plus the previously-failing arrest
+//        routing tests now all pass; 16/16 notificationRouting tests
+//        green where the baseline was 15/16 (the broken arrest test
+//        was the one chronic failure on main).
+// v1070: Internal Affairs (/affairs) — Page 52 of the full-app frontend pass.
+//        IA complaints are court / civil-rights material the moment a 42 USC
+//        1983 or POST decertification proceeding starts. The page shipped with
+//        a list + form modal but no detail panel, no URL deep-link contract,
+//        no court-ready PDF, no Esc handler, no N shortcut, no privacy banner,
+//        no investigations surfacing at all (the /affairs/complaints/:id/
+//        investigations endpoint existed but was never called), and zero
+//        recordAudit() hooks anywhere on the IA route.
+//        Client (client/src/pages/AffairsPage.tsx, +affairsComplaintPdf.ts):
+//          - URL deep-link: ?complaint_id=<n>, ?investigation_id=<n>, ?new=1
+//          - Split list / detail surface; detail loads the investigations
+//            list on demand from the existing route.
+//          - Court-ready PDF (affairsComplaintPdf) with the same RMPG-gold
+//            CONFIDENTIAL banner, tamper-evidence statement, payload-hash
+//            trailer and signature lines as forensicCasePdf / arrests /
+//            evidenceItemPdf — UT GRAMA §63G-2-302 + POST §53-6-211 cited
+//            on the confidentiality strip.
+//          - Esc smart-cascade: delete → form → error → detail → filters.
+//          - N opens "new complaint" (typing-suppressed). Visible "(N)" hint.
+//          - Privacy advisory banner on the page itself + CONFIDENTIAL footer
+//            on every PDF page.
+//          - Status / type / free-text filter bar with distinct empty states
+//            for "nothing filed yet" vs "filter matches nothing".
+//          - Document title reflects the selected complaint.
+//          - 17 unit tests for affairsComplaintPdf helpers + smoke generation.
+//        notificationRouting.ts: ia_complaint + ia_investigation entity types
+//          deep-link to /affairs?complaint_id= / ?investigation_id= so a
+//          watchlist hit / supervisor referral notification lands directly
+//          on the row instead of the IA list. +2 tests.
+//        Worker (src/routes/affairs.ts):
+//          - recordAudit() wired into create / update / delete on complaints,
+//            create / update on investigations, raise / resolve on early-
+//            intervention flags — IA edits are now part of the central audit
+//            seam (audit_log + flex_events mirror). Actions:
+//            IA_COMPLAINT_FILED / IA_COMPLAINT_UPDATED / IA_COMPLAINT_DELETED
+//            / IA_INVESTIGATION_OPENED / IA_INVESTIGATION_UPDATED /
+//            IA_FLAG_RAISED / IA_FLAG_RESOLVED.
+//          - Missed auto-stamp: status='reviewed' now stamps reviewed_at via
+//            COALESCE alongside the existing status='completed' →
+//            completed_at stamp.
+//        No D1 migration — ia_complaints / ia_investigations /
+//        early_intervention_flags schema unchanged.
+// v1077: Help (/help) — Page 59 of the full-app frontend pass. URL
+//        deep-linking: ?topic=overview|shortcuts|modules|dispatch|faq|system
+//        +?faq=<idx> +?search=<term>; back/forward buttons stay in sync.
+//        Added a content search across shortcuts, modules, and FAQ
+//        (press / to focus, Esc smart-cascade: clear search → collapse
+//        expanded FAQ → drop back to Overview). New Quick Reference Card
+//        PDF (helpQuickReferencePdf.ts) — 2-page tear-off with shortcuts,
+//        priorities, statuses, and CAD commands — exposed from the Help
+//        page sidebar AND the MenuBar Help → Training & Docs submenu.
+//        Single source of truth for reference data extracted to
+//        utils/helpReferenceData.ts so HelpPage + the PDF builder + the
+//        MenuBar item all consume the same constants. Stale System Info
+//        fixed: "Express + SQLite" → "Cloudflare Workers + Hono / D1 /
+//        R2 / KV / Durable Objects"; auth now reflects "JWT (TOTP/
+//        WebAuthn not yet ported)". DB schema version + user count
+//        surfaced from /api/health response.
+// v1073: Mass Notification Templates (/alerts) — Page 55 of the
+//        full-app frontend pass. AlertsPage manages Rave-Alert-parity
+//        notification templates (the API at /api/alerts is templates +
+//        batches; this surface is templates-only). What this PR adds:
+//          - URL deep-link contract: ?template_id (highlight + scroll
+//            into view; toast + filter-clear if a current filter is
+//            hiding it; param stripped on consume so a refresh doesn't
+//            re-pin to a stale link), ?category, ?channel.
+//          - Filter bar (channel + category) with the category
+//            dropdown distilled from the server payload (no useless
+//            empty selects on a fresh install). Empty-state distinction:
+//            "No notification templates" (server returned zero) vs
+//            "No templates match the current filter" (a filter is
+//            hiding everything; one-line description suggests Esc /
+//            Clear to recover — same pattern as v1056 Notifications).
+//          - ConfirmDialog replaces the inline delete modal. The old
+//            modal hardcoded #888888 body text, #991b1b border, #f87171
+//            confirm text — all gone. ConfirmDialog pre-focuses Cancel,
+//            traps focus, body-scroll-locks, owns its own Esc.
+//          - Esc smart-cascade: delete confirm (handled by
+//            ConfirmDialog) → edit modal → clear filters. Falls
+//            through (no preventDefault) when nothing on the page is
+//            open so a global upstream handler can still react.
+//          - "N" shortcut opens New Template (skipped when typing in
+//            an input/textarea/select, when a modal is open, or when
+//            any modifier key is held).
+//          - Cmd/Ctrl+Enter inside the edit modal saves.
+//          - Highlight ring on the deep-linked row via DataTable's
+//            existing `selectedKey` prop; fades after 4s.
+//          - aria-label on the icon-only Edit/Delete row buttons
+//            (was just `<Pencil />` / `<Trash2 />` with no a11y label).
+//        Entity-aware routing / severity colors / alert-source
+//        attribution from the prompt = N/A. This page is template
+//        management, not an alert feed. Distinct from the
+//        /notifications inbox (Page 39, v1056) and the per-user
+//        NotificationCenter dropdown.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+// v1071: Person Dossier (/intel/person/:id) — Page 53 of the full-app
+//        frontend pass. The 360° subject workspace already aggregated
+//        identity, flags, cluster, timeline, associates, vehicles,
+//        addresses, escalation, and watched-state from a single
+//        /api/intel/dossier/person/:id call — and the server has shipped
+//        `linked_intel` (disseminated intel reports naming this subject)
+//        for a year — but the page never rendered it. The data was only
+//        reachable from the Intel Reports list, never from the subject
+//        whose name was in the report. New LINKED INTELLIGENCE section
+//        (left column, below Addresses) lists each report with number,
+//        threat level (color-coded), role, title, dissemination date,
+//        and handling code; each row deep-links to /intel/reports/:id.
+//        A header-band chip ("N INTEL REPORTS") flags presence at a
+//        glance. Court-ready dossier PDF (dossierPdfGenerator) gained
+//        matching LINKED INTELLIGENCE + ACTIVITY TREND sections — the
+//        printed packet now reflects the screen, including the 30d-vs-
+//        90d escalation metric that was previously chip-only. Esc cascade
+//        added (photo zoom → navigate back; read-only page, short stack
+//        by design). 404 from the dossier endpoint now renders a
+//        distinct "No person on file for #id" empty state instead of
+//        the generic red error line — important when a merged/deleted
+//        person id is followed from a stale link. Photo click-to-
+//        enlarge modal (full-bleed, Esc to close, click-outside to
+//        dismiss). PDF export button now disabled-while-generating
+//        with a 600ms debounce to defeat the double-press-two-PDFs
+//        race when jsPDF Arial-font registration is slow. Escalation
+//        chip carries a tooltip with raw recent/baseline counts.
+//        Tests extended: linked_intel rendering, escalation tooltip
+//        content, 404 empty state distinction, Esc handler wiring.
+
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
@@ -70,6 +717,80 @@
 //        { data: { invoice: …, line_items: […], payments: […] } }, with
 //        sensible COALESCE defaults for schema columns we never landed
 //        (period_start/end, discount_amount, late_fee_amount, line_type).
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
+// v1078: Knowledge Base (/knowledge-base) — Page 60 of the full-app frontend
+//        pass. The page is the system-wide one-search-box destination — the
+//        twin of the global Cmd+K palette — and shipped with a thin URL
+//        contract (?q= only, so a reload of an active filter chip silently
+//        dropped it), no keyboard navigation (Cmd+K had ↑↓/Enter; the
+//        dedicated page didn't, despite operators expecting parity), no Esc
+//        handler at all (Esc inside the input did the browser default — a
+//        hidden noop on macOS), no print path (operators were screenshotting
+//        the list into case folders, which is not a record), and a global
+//        chrome that hardcoded the brand gold (#d4a017) and the surface-base
+//        almost-black (#0a0a0a) — so neither would re-theme between night
+//        and day. Recent-searches existed in the global palette but were
+//        unscoped (rmpg-recent-searches-v2), which had been called out as a
+//        cross-operator privacy leak in v1065 (SkipTracker per-user key
+//        rollout).
+//
+//        What changed:
+//          • URL deep-link contract — ?q=<query>&type=<typeFilter>. The
+//            active type chip now round-trips on reload / share so a
+//            "?q=smith&type=warrant" link reopens to exactly the same view
+//            the operator saw when they grabbed the URL. ?q clears once the
+//            field empties, ?type persists across query edits inside the
+//            same session.
+//          • Keyboard contract matches GlobalSearch — ↑↓ navigate, Enter
+//            opens the highlighted row, Esc smart-cascades: filter chip →
+//            query → blur. Hovering a row syncs the keyboard cursor so a
+//            mouse-and-keyboard mix doesn't fight itself.
+//          • Per-user recent searches — rmpg_kb_recent_${user.id}. A shared
+//            MDT no longer leaks one operator's queries (subject names,
+//            plates, badge numbers) to the next person to sit down. Bare
+//            key intentionally not migrated: the previous page never
+//            persisted anything locally, so there's nothing to carry.
+//            Surfaced as an interactive list on the empty state with a
+//            one-click Clear (no ConfirmDialog: low-cost, easy to refill).
+//          • Court-ready PDF export — new client/src/utils/
+//            knowledgeBaseSearchPdf.ts (11 unit tests covering ellipsize,
+//            groupByType, empty-results, single-type, multi-type-grouping,
+//            many-rows-pagination, active-type-filter header, missing
+//            officer attribution, and case-number capture). Same Arial +
+//            RMPG-gold visual contract as darPdf / skipTracerReportPdf /
+//            shiftReportPdf / forensicCasePdf so a multi-surface court
+//            binder keeps a consistent look. "Print Results" toolbar
+//            button appears once a search has returned rows.
+//          • Empty-state distinction widened — three states now: no query
+//            yet (recent-list + keyboard-cheatsheet), 0 results matched
+//            (with "try a shorter substring" hint), and "0 results in
+//            this filter" (with one-click "Show all N results" reset so
+//            the operator doesn't have to remember which chip is active).
+//          • Auto-drop a stale chip — if the new result set has zero rows
+//            of the active type, the chip releases itself. Otherwise the
+//            operator stares at "0 results in this filter" with no way
+//            back without finding the chip.
+//          • Theme-token chrome — the search-box top accent and the active
+//            "All N" chip background/foreground now read var(--brand-500)
+//            and var(--surface-base) instead of #d4a017 / #0a0a0a, so both
+//            re-theme between night and day. The per-type accent chips
+//            keep their decorative per-type hex (call=#22c55e etc.) by
+//            design — same call-out the SkipTracker (v1065) made for its
+//            per-mode chips.
+//
+//        Worker: untouched. /api/knowledge-base/search is the same shared
+//        endpoint Cmd+K already calls.
+//
+//        Not in scope for this PR (deferred):
+//          • The Cmd+K global palette (client/src/components/GlobalSearch
+//            .tsx) still uses the unscoped rmpg-recent-searches-v2 key.
+//            Migrating it to a per-user key has the same leak shape as the
+//            KB page above and should land as a follow-up so the two
+//            surfaces stay in lockstep — see spawned task.
+//          • Server-side search ranking is unchanged. The page is a
+//            presentation layer over the existing endpoint.
+//
 //        SW name auto-stamps via vite plugin — bump here is documentation.
 
 // v1065: Skip Tracker (/skip-tracer) — Page 48 of the full-app frontend pass.
@@ -3208,6 +3929,13 @@
 //       truncation limit. Server /api/process-server/:id/attempt now
 //       persists next_attempt_note when the column exists, falls back
 //       gracefully when migration 0142 hasn't landed.
+// v1112: Special Ops — ConfirmDialog for delete, ?op_id= deep-link, N shortcut,
+//        Esc cascade, three-state empty (loading/empty/search), admin/manager/supervisor
+//        role gate for create/delete, parseTimestamp for dates, search filter bar.
+// v1103: CRM/Overwatch — task delete ConfirmDialog, role gate for intel tabs
+//        (webintel/competitors/firecrawl/deepresearch now require supervisor+),
+//        ?section= URL param stripped after seeding, ?contact_id= deep-link
+//        routes to Contacts tab, Esc cascade covers task-delete confirm.
 // Stamped at build time by the stamp-sw-version Vite plugin (vite.config.ts)
 // with the git short SHA → 'rmpg-flex-<sha>'. Dev server serves 'rmpg-flex-BUILD'.
 const CACHE_NAME = 'rmpg-flex-BUILD';

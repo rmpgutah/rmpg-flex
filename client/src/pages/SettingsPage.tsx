@@ -11,9 +11,14 @@
 // SectionCard into view on mount and strips the param so a refresh
 // doesn't re-trigger the scroll. Section IDs:
 //   voice | alerts | tones | ptt | display | map | overlays | gps | markers
+//
+// Keyboard shortcuts (v1135):
+//   N          — admin/manager: trigger "Save as org default"
+//   Escape     — cascade: close ConfirmDialog → cancel key capture
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Mic, Map as MapIcon, Volume2, Gauge, SlidersHorizontal,
   Play, RotateCcw, Radio, Crosshair, MapPin, RadioTower,
@@ -24,6 +29,7 @@ import {
   SOUND_LIBRARY, TONE_SLOTS, type SoundId,
 } from '../utils/dispatchTones';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useVoicePersona } from '../hooks/useVoicePersona';
 import { VOICE_CATALOG } from '../utils/voiceCatalog';
 import {
@@ -218,9 +224,15 @@ export default function SettingsPage() {
   const { persona, setPersona } = useVoicePersona();
   const { user } = useAuth();
   const { prefs: userPrefs } = useUserPreferences();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const [orgSaveOk, setOrgSaveOk] = useState<null | boolean>(null);
   const [orgSaveMsg, setOrgSaveMsg] = useState('');
+
+  // ConfirmDialog state for destructive resets
+  const [confirmResetTones, setConfirmResetTones] = useState(false);
+  const [confirmResetMap, setConfirmResetMap] = useState(false);
+
   async function publishOrgDefaults() {
     setOrgSaveOk(null);
     setOrgSaveMsg('Saving…');
@@ -370,14 +382,13 @@ export default function SettingsPage() {
   useEffect(() => { document.title = 'Settings — RMPG Flex'; return () => { document.title = 'RMPG Flex'; }; }, []);
 
   // URL deep-link contract: /settings?section=<id> scrolls the matching
-  // SectionCard into view on mount, then strips the param so a refresh
-  // doesn't re-trigger the scroll. Mirrors the v1047/v1048 contract used
-  // by Intel Portal + Serve. Section IDs whitelist-validated.
+  // SectionCard into view on mount, then strips the param via setSearchParams
+  // so a refresh doesn't re-trigger the scroll. Mirrors the v1047/v1048
+  // contract used by Intel Portal + Serve. Section IDs whitelist-validated.
   const scrolledRef = useRef(false);
   useEffect(() => {
     if (scrolledRef.current) return;
-    const sp = new URLSearchParams(window.location.search);
-    const section = sp.get('section');
+    const section = searchParams.get('section');
     if (!isSectionId(section)) return;
     scrolledRef.current = true;
     // Run after paint so the SectionCard has been laid out.
@@ -385,12 +396,40 @@ export default function SettingsPage() {
       const el = document.querySelector<HTMLElement>(`[data-settings-section="${section}"]`);
       el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    // Strip the param.
-    const next = new URLSearchParams(window.location.search);
-    next.delete('section');
-    const qs = next.toString();
-    window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
-  }, []);
+    // Strip the param with router-aware setSearchParams (no window.history.replaceState).
+    setSearchParams((prev) => {
+      prev.delete('section');
+      return prev;
+    }, { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keyboard shortcuts:
+  //   N          — admin/manager only: publish org defaults (same role check as the button).
+  //   Escape     — smart cascade: close ConfirmDialogs first, then cancel key capture.
+  const isTypingTarget = (el: EventTarget | null): boolean => {
+    if (!(el instanceof HTMLElement)) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  };
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (confirmResetTones) { e.stopPropagation(); setConfirmResetTones(false); return; }
+        if (confirmResetMap) { e.stopPropagation(); setConfirmResetMap(false); return; }
+        if (capturingKey) { e.stopPropagation(); setCapturingKey(false); return; }
+        return;
+      }
+      if ((e.key === 'n' || e.key === 'N')
+          && isAdmin
+          && !e.ctrlKey && !e.metaKey && !e.altKey
+          && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        publishOrgDefaults();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isAdmin, confirmResetTones, confirmResetMap, capturingKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const femaleVoices = VOICE_CATALOG.filter((v) => v.gender === 'female');
   const maleVoices = VOICE_CATALOG.filter((v) => v.gender === 'male');
@@ -412,7 +451,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={publishOrgDefaults}
-              title="Publish your current voice / tone / map / PTT settings as the default for all users (they can still override)."
+              title="Publish your current voice / tone / map / PTT settings as the default for all users (they can still override). Shortcut: N"
               className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border transition-colors"
               style={{
                 borderColor: 'var(--brand-gold)',
@@ -425,6 +464,26 @@ export default function SettingsPage() {
           </div>
         )}
       </PanelTitleBar>
+
+      {/* ── ConfirmDialogs for destructive resets ── */}
+      <ConfirmDialog
+        isOpen={confirmResetTones}
+        onClose={() => setConfirmResetTones(false)}
+        onConfirm={() => { resetToneMap(); setToneMap(readSlots()); setConfirmResetTones(false); }}
+        title="Reset Tone Assignments"
+        message="Reset all dispatch tone slots to Motorola factory defaults? Your current assignments will be lost."
+        confirmLabel="Reset"
+        confirmVariant="warning"
+      />
+      <ConfirmDialog
+        isOpen={confirmResetMap}
+        onClose={() => setConfirmResetMap(false)}
+        onConfirm={() => { resetMap(); setConfirmResetMap(false); }}
+        title="Reset Map Settings"
+        message="Reset all map preferences (style, layers, overlays, GPS, markers) to defaults?"
+        confirmLabel="Reset"
+        confirmVariant="warning"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {/* ── LEFT COLUMN: VOICE + AUDIO ── */}
@@ -585,7 +644,7 @@ export default function SettingsPage() {
             <div className="px-3 py-2">
               <button
                 type="button"
-                onClick={() => { resetToneMap(); setToneMap(readSlots()); }}
+                onClick={() => setConfirmResetTones(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 transition-colors"
                 style={{ borderRadius: 2 }}
               >
@@ -713,7 +772,7 @@ export default function SettingsPage() {
             <div className="px-3 py-2">
               <button
                 type="button"
-                onClick={resetMap}
+                onClick={() => setConfirmResetMap(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 transition-colors"
                 style={{ borderRadius: 2 }}
               >

@@ -2374,4 +2374,145 @@ personnel.get('/:id/fleet-summary', async (c) => {
   }
 });
 
+// ── Training Materials Library ───────────────────────────────
+// GET /api/personnel/training-materials — company-uploaded reference
+// docs tagged as training materials. Reads from company_documents where
+// category = 'training_manual'. Returns { data: [] } on any error so
+// TrainingMaterialsPanel degrades gracefully.
+personnel.get('/training-materials', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, title, description, category, content_type, external_url,
+             file_id, file_name, mime_type, file_size, is_required_reading,
+             published, created_at
+        FROM company_documents
+       WHERE published = 1
+         AND category IN ('training_manual', 'reference', 'sop', 'procedure')
+       ORDER BY is_required_reading DESC, created_at DESC
+       LIMIT 100
+    `);
+    return c.json({ data: rows });
+  } catch (err) {
+    console.error('GET /personnel/training-materials error:', err);
+    return c.json({ data: [] }, 200);
+  }
+});
+
+// ── Training Alerts ──────────────────────────────────────────
+// GET /api/personnel/training-alerts — summary of mandatory training gaps.
+// Used by MandatoryTrainingAlerts panel. Computes expired / expiring_soon /
+// never_completed buckets across all active officers × mandatory requirements.
+// Returns { total_alerts, expired, expiring_soon, never_completed, alerts[] }.
+personnel.get('/training-alerts', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{
+      officer_name: string;
+      course_name: string;
+      alert_type: string;
+      days_overdue: number;
+    }>(db, `
+      SELECT
+        u.full_name AS officer_name,
+        req.course_name,
+        CASE
+          WHEN rec.id IS NULL THEN 'never_completed'
+          WHEN rec.expiry_date IS NOT NULL AND date(rec.expiry_date) < date('now') THEN 'expired'
+          WHEN rec.expiry_date IS NOT NULL
+               AND date(rec.expiry_date) BETWEEN date('now') AND date('now', '+30 days') THEN 'expiring_soon'
+          ELSE NULL
+        END AS alert_type,
+        CASE
+          WHEN rec.expiry_date IS NOT NULL
+          THEN CAST(julianday('now') - julianday(rec.expiry_date) AS INTEGER)
+          ELSE 0
+        END AS days_overdue
+      FROM users u
+      CROSS JOIN training_requirements req
+      LEFT JOIN training_records rec
+        ON rec.officer_id = u.id
+       AND rec.course_name = req.course_name
+       AND rec.status = 'completed'
+      WHERE u.status = 'active'
+        AND COALESCE(req.is_mandatory, 0) = 1
+        AND COALESCE(req.is_active, 1) = 1
+        AND json_array_length(COALESCE(req.required_for_roles, '[]')) > 0
+        AND (
+          json_array_length(COALESCE(req.required_for_roles, '[]')) = 0
+          OR instr(COALESCE(req.required_for_roles, ''), u.role) > 0
+        )
+      HAVING alert_type IS NOT NULL
+      ORDER BY
+        CASE alert_type WHEN 'expired' THEN 0 WHEN 'expiring_soon' THEN 1 ELSE 2 END,
+        days_overdue DESC,
+        u.full_name
+    `);
+
+    const expired = rows.filter(r => r.alert_type === 'expired').length;
+    const expiring_soon = rows.filter(r => r.alert_type === 'expiring_soon').length;
+    const never_completed = rows.filter(r => r.alert_type === 'never_completed').length;
+
+    return c.json({
+      total_alerts: rows.length,
+      expired,
+      expiring_soon,
+      never_completed,
+      alerts: rows,
+    });
+  } catch (err) {
+    console.error('GET /personnel/training-alerts error:', err);
+    return c.json({ total_alerts: 0, expired: 0, expiring_soon: 0, never_completed: 0, alerts: [] }, 200);
+  }
+});
+
+// ── Bulk Training Assignment ─────────────────────────────────
+// POST /api/personnel/training-bulk-assign — create one training record per
+// officer in officer_ids[]. Idempotent on (officer_id, course_name, status):
+// skips if a matching completed record already exists for the officer.
+// Body: { officer_ids, course_name, category, provider?, hours?, status? }
+personnel.post('/training-bulk-assign', async (c) => {
+  const user = c.get('user');
+  if (!user || !['admin', 'manager', 'supervisor'].includes(user.role)) {
+    return c.json({ error: 'Insufficient role', code: 'FORBIDDEN' }, 403);
+  }
+  try {
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    if (!Array.isArray(b.officer_ids) || b.officer_ids.length === 0)
+      return c.json({ error: 'officer_ids array required' }, 400);
+    if (typeof b.course_name !== 'string' || !b.course_name.trim())
+      return c.json({ error: 'course_name required' }, 400);
+
+    const courseName = String(b.course_name).trim();
+    const category = String(b.category || 'other');
+    const provider = b.provider ? String(b.provider) : null;
+    const hours = Number(b.hours) || 0;
+    const status = String(b.status || 'scheduled');
+
+    let created = 0;
+    let skipped = 0;
+    for (const rawId of b.officer_ids) {
+      const officerId = Number(rawId);
+      if (!Number.isFinite(officerId)) continue;
+      // Skip if a completed record already exists
+      const existing = await queryFirst<{ id: number }>(db,
+        `SELECT id FROM training_records WHERE officer_id = ? AND course_name = ? AND status = 'completed'`,
+        officerId, courseName,
+      );
+      if (existing) { skipped++; continue; }
+      await execute(db,
+        `INSERT INTO training_records (officer_id, course_name, category, provider, hours, status)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        officerId, courseName, category, provider, hours, status,
+      );
+      created++;
+    }
+    return c.json({ success: true, created, skipped });
+  } catch (err) {
+    console.error('POST /personnel/training-bulk-assign error:', err);
+    return c.json({ error: 'Failed to bulk assign training' }, 500);
+  }
+});
+
 export default personnel;
