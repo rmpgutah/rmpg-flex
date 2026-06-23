@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1180: Case Management — ConfirmDialog for delete-case, N shortcut opens new-case modal, Esc cascade stopPropagation per branch + caseToDelete guard, canDelete/canArchive (admin|manager) + canAssign (admin|manager|supervisor) role gates, 3-state empty (loading/no-data/no-results), dead StatusBadge import removed, rgba(0,0,0,0.55) inline → bg-black/60 backdrop-blur-sm token.
 // v1179: Body Cameras — Esc cascade e.stopPropagation() per branch, parseTimestamp replaces new Date(string) in video-delete label/details.
 // v1177: Assets — canCreate/canEdit role gates (admin|manager|supervisor) on New Asset button, edit pencil, row-click, context-menu, and N shortcut; toast for missing ?asset_id= deep-link target.
 // v1176: Alarm Management — dead React import removed, DataTable loading prop wired, emptyDescription added for error/no-data/no-results states.
