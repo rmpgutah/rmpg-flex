@@ -57,6 +57,7 @@ import mapData from './routes/mapData';
 import tiles from './routes/tiles';
 import geo from './routes/geo';
 import admin from './routes/admin';
+import adminDev from './routes/adminDev';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import announcements from './routes/announcements';
@@ -311,6 +312,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin/reanalysis', router: reanalysis, auth: 'required',
     note: 'Footage backfill, ALPR confidence correction, analytics replay. All endpoints require admin role (enforced per-route).' },
+  { prefix: '/api/admin/dev', router: adminDev, auth: 'required',
+    note: 'Dev panel: feature flags (KV-backed GET/PUT), mock GPS injection + call seed. Admin role enforced per-route; GET /feature-flags is readable by any authed user.' },
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
