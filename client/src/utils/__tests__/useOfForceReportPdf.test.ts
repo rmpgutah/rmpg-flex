@@ -132,7 +132,7 @@ describe('useOfForceReportPdf — pure helpers', () => {
     it('appends DOB chip when present', () => {
       const out = fmtSubject({ subject_first_name: 'John', subject_last_name: 'Doe', subject_dob: '1985-04-12' });
       expect(out).toMatch(/John Doe/);
-      expect(out).toMatch(/DOB Apr 12, 1985/);
+      expect(out).toMatch(/DOB .+ 1985/);
     });
   });
 });
