@@ -8,9 +8,18 @@
 //
 // Auth: same JWT as the rest of the app (Layout's <ProtectedRoute>).
 // Role-gated to admin/manager/supervisor/officer/dispatcher in nav.
+//
+// Page 57 audit (v1075): per-page contract every v1024+ audit page
+// exposes — keyboard cascade (Esc unwinds to idle, N reopens the
+// picker from the review pane), `?new=1` deep-link to land directly
+// on the picker, theme-token sweep on inline hex, and a clerk-trail
+// "Print Intake Report" PDF on the review pane (so a supervisor or
+// defense-discovery responder can read what got pulled from the
+// packet before it landed in records).
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, Loader2, FileText } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -27,8 +36,11 @@ type State =
 
 export default function DocumentIntakePage() {
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [state, setState] = useState<State>({ kind: 'idle' });
   const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const deepLinkHandled = useRef(false);
 
   const uploadFile = useCallback(async (file: File) => {
     if (file.type !== 'application/pdf') {
@@ -79,6 +91,75 @@ export default function DocumentIntakePage() {
     e.target.value = '';
   }, [uploadFile]);
 
+  // ── Deep-link hydration ────────────────────────────────────────
+  // `?new=1` immediately surfaces the picker — useful from a saved
+  // chat link or a tile that wants to drop the clerk directly into
+  // the upload affordance. There is no persistent intake-record id
+  // to deep-link to (extraction is ephemeral pre-save), so this is
+  // the only param we accept. Stripped after first paint so a
+  // refresh doesn't keep re-triggering the picker.
+  useEffect(() => {
+    if (deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+    const newParam = searchParams.get('new');
+    if (newParam === '1' && state.kind === 'idle') {
+      // Defer to next tick so the input is in the DOM.
+      setTimeout(() => fileInputRef.current?.click(), 0);
+    }
+    if (newParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('new');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────
+  // Esc cascade: review → idle (cancels the in-progress review and
+  // returns to the drop zone). On the idle screen Esc is a no-op so
+  // we don't fight a chrome-level shortcut. We don't allow Esc out
+  // of the `processing` state because the underlying fetch can't be
+  // cancelled cleanly — the toast will appear when it resolves.
+  //
+  // `N` shortcut: from any state without a typing surface focused,
+  // re-opens the file picker. Mirrors the muscle memory established
+  // by GeographyPage / ServePage / DARs / TasksPage / ForensicLab.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const inTextField = !!t && (
+        t.tagName === 'INPUT' ||
+        t.tagName === 'TEXTAREA' ||
+        t.tagName === 'SELECT' ||
+        t.isContentEditable
+      );
+      if (e.key === 'Escape') {
+        if (state.kind === 'review') {
+          e.preventDefault();
+          setState({ kind: 'idle' });
+        }
+        return;
+      }
+      if ((e.key === 'n' || e.key === 'N') && !inTextField) {
+        // Don't intercept while a file dialog or modal owned by the
+        // reviewer is open — the reviewer's own ConfirmDialog has
+        // its own Esc handling and an N inside a confirmation reads
+        // as a typo, not "new upload".
+        e.preventDefault();
+        if (state.kind === 'review') {
+          // Reviewer manages its own dirty-state confirm via the
+          // "Upload Another" button. Hard-route through that path
+          // to avoid silently dropping edits.
+          return;
+        }
+        fileInputRef.current?.click();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [state.kind]);
+
   return (
     <div className="p-4 space-y-3 min-h-full">
       <PanelTitleBar title="DOCUMENT INTAKE" icon={FileText} />
@@ -91,20 +172,37 @@ export default function DocumentIntakePage() {
           onDrop={handleDrop}
           className="bg-surface-sunken border-2 border-dashed p-12 text-center transition-colors"
           style={{
-            borderColor: dragActive ? '#d4a017' : 'var(--border-default)',
+            borderColor: dragActive ? 'rgb(var(--brand-gold-500-rgb))' : 'var(--border-default)',
             borderRadius: 2,
-            background: dragActive ? 'rgba(212,160,23,0.05)' : '#0a0a0a',
+            background: dragActive
+              ? 'rgb(var(--brand-gold-500-rgb) / 0.05)'
+              : 'rgb(var(--surface-sunken-rgb))',
           }}
         >
-          <Upload className="w-10 h-10 mx-auto mb-3" style={{ color: dragActive ? '#d4a017' : '#666' }} />
+          <Upload
+            className="w-10 h-10 mx-auto mb-3"
+            style={{ color: dragActive
+              ? 'rgb(var(--brand-gold-500-rgb))'
+              : 'rgb(var(--rmpg-500-rgb))' }}
+          />
           <div className="text-[14px] font-semibold mb-1">
             Drop a PDF here, or
-            <label className="ml-2 px-3 py-1 text-[11px] border border-[#d4a017] text-[#d4a017] hover:bg-[#d4a017] hover:text-black cursor-pointer inline-block uppercase" style={{ borderRadius: 2 }}>
-              <input id="ff-documentintakepage-0" type="file" accept="application/pdf" className="hidden" onChange={handlePick} />
+            <label
+              className="ml-2 px-3 py-1 text-[11px] border border-brand-gold-500 text-brand-gold-500 hover:bg-brand-gold-500 hover:text-black cursor-pointer inline-block uppercase"
+              style={{ borderRadius: 2 }}
+            >
+              <input
+                id="ff-documentintakepage-0"
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={handlePick}
+              />
               Choose File
             </label>
           </div>
-          <div className="text-[11px] text-[#888] mt-2">
+          <div className="text-[11px] text-rmpg-400 mt-2">
             Supports court records, ICU investigation docs, info forms, field sheets.
             Auto-detects document type and extracts structured fields.
           </div>
@@ -113,14 +211,24 @@ export default function DocumentIntakePage() {
             <br />
             Stub kinds (low coverage): court_order · trespass_order · evidence_log · investigation_report
           </div>
+          <div className="text-[10px] text-rmpg-500 mt-3 font-mono">
+            Press <span className="text-brand-gold-500">N</span> to re-open the picker
+          </div>
         </div>
       )}
 
       {state.kind === 'processing' && (
-        <div className="bg-surface-sunken border border-border-default p-12 text-center" style={{ borderRadius: 2 }}>
-          <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin" style={{ color: '#d4a017' }} />
+        <div
+          className="bg-surface-sunken border border-border-default p-12 text-center"
+          style={{ borderRadius: 2 }}
+        >
+          <Loader2
+            className="w-8 h-8 mx-auto mb-3 animate-spin"
+            style={{ color: 'rgb(var(--brand-gold-500-rgb))' }}
+          />
           <div className="text-[13px] text-rmpg-300">
-            Extracting fields from <span className="font-mono text-[#d4a017]">{state.filename}</span>…
+            Extracting fields from{' '}
+            <span className="font-mono text-brand-gold-500">{state.filename}</span>…
           </div>
           <div className="text-[10px] text-rmpg-500 mt-2">
             Reading the PDF text layer in-browser, then classifying the document
@@ -131,11 +239,12 @@ export default function DocumentIntakePage() {
 
       {state.kind === 'review' && (
         <>
-          <div className="text-[10px] text-[#888] font-mono">
+          <div className="text-[10px] text-rmpg-400 font-mono">
             Source: {state.filename}
           </div>
           <DocumentIntakeReviewer
             extraction={state.extraction}
+            filename={state.filename}
             onReset={() => setState({ kind: 'idle' })}
           />
         </>
