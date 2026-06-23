@@ -3,6 +3,11 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1097: Body Cameras (/body-cameras) — Page 74 audit. Fixed canManage to
+//        include manager role (matched backend WRITE_ROLES). Added ?camera_id=
+//        and ?officer_id= deep-links (camera row highlight + officer search
+//        seed). Added N shortcut to open Assign Camera. Distinct empty-state
+//        messages (no data vs no search results). Removed dead isGodMode alias.
 // v1096: Fleet v2 (FleetShell) — Page 73 of the full-app frontend pass.
 //        Added N shortcut (open New Vehicle modal when not typing),
 //        Esc cascade (closes New Vehicle modal before propagating),
