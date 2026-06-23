@@ -602,8 +602,6 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
                   key={folder}
                   status={folder}
                   label={cfg.label}
-                  color={cfg.dotClass}
-                  accentColor={cfg.borderClass}
                   defaultOpen={cfg.defaultOpen}
                   count={folderJobs.length}
                 >

@@ -258,7 +258,6 @@ export default function CommunityPage() {
     if (!rawId || deepLinkRef.current) return;
     const id = parseInt(rawId, 10);
     if (isNaN(id)) { setSearchParams((p) => { p.delete('event_id'); return p; }, { replace: true }); return; }
-    // Wait until events are loaded then auto-open (consume exactly once)
     if (eventsLoading) return;
     deepLinkRef.current = true;
     const found = events.find((e) => e.id === id);
