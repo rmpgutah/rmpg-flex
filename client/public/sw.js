@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1161: Daily Activity Reports — role gates broadened (canApprove: admin/manager/supervisor for approve/return, canManage: admin unrestricted), deep-link ?dar_id=/?date=/?officer_id= already present, N shortcut, Esc cascade, ConfirmDialog for return-for-revision, 3-state empty (loading/no-data/no-results), isAdmin/isGodMode renamed to canApprove/canManage for clarity.
 // v1160: Criminal History — N shortcut focuses search, ConfirmDialog before PDF export, Print gated admin/manager/supervisor, Esc cascade extended (printConfirm → person deselect).
 // v1159: Crime Analysis — N shortcut focuses date-range filter, Esc cascade blurs active control, ?date_range=/?district= deep-link strip, Export gated to admin/manager (canExport), brand token migration (#888888→rmpg-400, #1e1e1e→border-subtle, chart hex→CSS vars), filterActive TS2367 fix.
 // v1158: Communications — useSearchParams replaces window.history.replaceState for deep-link strip (?tab=, ?thread_id=, ?message_id=, ?bolo_id=, ?newBolo=), N shortcut (compose message/bolos tab), Esc cascade (emergencyBroadcast→deleteMsg→cancelBOLO→compose→newBOLO→thread→search), role gates (canCreateBolo: admin/manager/supervisor/dispatcher), ConfirmDialog for delete-message + cancel-BOLO, 3-state empty states (loading/no-data/no-search-results), brand token migration (#9ca4ad→rmpg-300-rgb, #fff→text-primary CSS var).
