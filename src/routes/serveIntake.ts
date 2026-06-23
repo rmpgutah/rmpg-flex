@@ -50,6 +50,8 @@ import {
   type ExtractionResult,
   type ExtractedField,
 } from '../utils/serveIntakeExtract';
+import { judgeMerged } from '../utils/serveIntakeJudge';
+import { parseDefendants } from '../utils/serveIntakeDefendants';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 import { emitAlert } from '../utils/alertHub';
 import {
@@ -574,6 +576,16 @@ si.post('/upload', async (c) => {
   // success card) sees clean values.
   const normalizedFields = normalizeFields(mergedFields);
 
+  // ── Phase 1 Quality Gate: judge the merged result ──────────────
+  const rawDocsForJudge = collected.map(c2 => ({ name: c2.file.name, text: c2.text || '' }));
+  const docTypesForJudge = collected.map(c2 => c2.ex.documentType);
+  const judgeResult = await judgeMerged(
+    c.env,
+    normalizedFields,
+    rawDocsForJudge,
+    docTypesForJudge,
+  );
+
   // ── Operator pre-submission overrides ──────────────────────────────
   // Client sends `field_overrides` JSON (key → string) for values the
   // operator edited in the review panel before clicking Create. Applied
@@ -588,14 +600,46 @@ si.post('/upload', async (c) => {
           normalizedFields[k] = { value: v.trim(), confidence: 1.0 };
         }
       }
+      for (const k of Object.keys(overrides)) {
+        if (judgeResult.verdicts[k]) delete judgeResult.verdicts[k];
+      }
+      judgeResult.flagged_field_count = Object.values(judgeResult.verdicts).filter(v => !v.ok).length;
+      if (judgeResult.flagged_field_count === 0) judgeResult.overall_status = 'clean';
     } catch { /* ignore malformed overrides blob */ }
   }
+
+  const judgeInsert = await db.prepare(`
+    INSERT INTO serve_intake_judge_runs
+      (model, ms, raw_response, flagged_field_count, overall_status, fallback_chain, upload_user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    judgeResult.model,
+    judgeResult.ms,
+    judgeResult.raw_response,
+    judgeResult.flagged_field_count,
+    judgeResult.overall_status,
+    JSON.stringify(judgeResult.fallback_chain),
+    user.id,
+  ).run();
+  const judgeRunId = judgeInsert.meta?.last_row_id ?? null;
 
   // Operator-selected client_id (integer FK) sent as a separate FormData field
   // so it doesn't get coerced through the string-only field_overrides path.
   const clientIdRaw = form.get('client_id');
   const clientId = typeof clientIdRaw === 'string' && /^\d+$/.test(clientIdRaw.trim())
     ? Number(clientIdRaw.trim()) : null;
+
+  let defendantsSelected: string[] | null = null;
+  const defendantsRaw = form.get('defendants_selected');
+  if (typeof defendantsRaw === 'string') {
+    try {
+      const arr = JSON.parse(defendantsRaw);
+      if (Array.isArray(arr) && arr.every(s => typeof s === 'string')) {
+        defendantsSelected = arr.map(s => s.trim()).filter(Boolean);
+        if (defendantsSelected.length === 0) defendantsSelected = null;
+      }
+    } catch { /* malformed — fall back to single-recipient path */ }
+  }
 
   // Expose under the same name the rest of the handler already reads.
   const combined = { error: combinedError } as { error: string | null };
@@ -669,6 +713,9 @@ si.post('/upload', async (c) => {
       documentSummary: docSummary,
       docCount: documents.length,
       clientId,
+      defendantsSelected,
+      judgeRunId,
+      qualityStatus: judgeResult.overall_status === 'error' ? 'needs_review' : judgeResult.overall_status,
       // Per-document OCR provenance → "OCR & EXTRACTION CONTEXT" note on the
       // call + compact line on serve_queue.notes + parsed_data._intake audit.
       docs: documents.map((d) => ({
@@ -776,6 +823,10 @@ si.post('/upload', async (c) => {
     missing_critical: commit.missing_critical ?? [],
     attempt_plan: commit.attempt_plan ?? [],
     duplicate_of: commit.duplicate_of ?? null,
+    judge_verdicts: judgeResult.verdicts,
+    quality_status: judgeResult.overall_status === 'error' ? 'needs_review' : judgeResult.overall_status,
+    judge_run_id: judgeRunId,
+    defendants_detected: parseDefendants(normalizedFields.defendant?.value),
     merged: {
       documentType: bestDocType,
       confidence: bestConfidence,
