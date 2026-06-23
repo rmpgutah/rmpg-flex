@@ -204,12 +204,13 @@ export function generateEquipmentCustodyPdf(input: EquipmentPdfInput): jsPDF {
     // the on-screen render strips <p> tags but a PDF doesn't have
     // a DOM to inherit that behavior.
     const plain = item.notes
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&#39;|&apos;/gi, "'")
       .replace(/<\/?(p|div|br)[^>]*>/gi, '\n')
       .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
       .trim();
     const lines = doc.splitTextToSize(plain, W - 2 * M);
     doc.text(lines, M, y);

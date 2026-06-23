@@ -334,12 +334,13 @@ export function generateJailBookingSheetPdf(input: JailBookingSheetInput): jsPDF
     newPageIfNeeded(40);
     sectionHeader('NOTES');
     const plain = inmate.notes
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&#39;|&apos;/gi, "'")
       .replace(/<\/?(p|div|br)[^>]*>/gi, '\n')
       .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
       .trim();
     const lines = doc.splitTextToSize(plain, W - 2 * M);
     doc.setTextColor(TEXT_DARK);
