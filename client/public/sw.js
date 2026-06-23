@@ -3,6 +3,9 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1152: Recon Connect — ConfirmDialog for stop session (admin/manager gate), ?category= deep-link (strip after mount), N shortcut focuses catalog search, Esc cascade (stop-confirm→launchMsg), idle terminal empty state, role-gated Stop button (admin/manager), brand token migration (#d4a017→brand-400, #888→rmpg-400), apiFetch cases shape fix (.data unwrap), GlobalCatalogSearch searchRef prop.
+// v1149: Alerts — role gates (admin/manager/supervisor) for create/edit/delete, created_at relative time formatting.
+// v1148: NCIC Terminal — deep-link strip, N shortcut, Esc nav, Export/Clear session (admin/manager), timezone-aware timestamps
 // v1146: Analytics — ?report=+?date_range= deep-link (strip after mount), N shortcut focuses plate search input, Esc cascade (confirmExport→showRaw), ConfirmDialog for Export action (admin/manager), role gate canExport (admin/manager) on Export button, 3-state empty states (loading/no-data/no-search-results) across all tabs, parseTimestamp replaces new Date() in fmtTs.
 // v1153: Module Directory — ?module= deep-link (strip after mount), N shortcut focuses search, Esc cascade (clear search→blur), 3-state empty (loading badges/no-results/empty-favorites), brand token migration (hex→CSS var), dead PanelTitleBar clone removed (import shared component), apiFetch types tightened (any→typed), useSearchParams replaces manual URL param read.
 // v1145: Alerts — role gates (admin/manager/supervisor) for create/edit/delete, N shortcut skips non-managers, created_at relative time formatting.
