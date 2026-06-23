@@ -67,6 +67,14 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1086: Daily Activity Reports (Page 68 audit). Fixed: search param was sent
+//        by the client but silently ignored by the Worker (no LIKE clause);
+//        pagination.totalPages missing from API response (client showed page 1
+//        always); client sent limit= but Worker read per_page=; reviewed_by_name
+//        never populated (only officer join, no reviewer join). Added:
+//        ?officer_id= and ?date= URL deep-links (pre-seed filter + strip);
+//        equipment_issues + recommendations edit fields (were in PDF + type but
+//        no UI to write them); ensureTable idempotent ALTER for new cols.
 // v1083: Evidence (Page 65) — add 8 missing backend sub-resource endpoints
 //   (chain-action, checkout, checkin, disposition, request-release,
 //   approve-release, custody-validation, linked-records); fix ?id= deep-link
