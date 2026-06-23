@@ -44,7 +44,7 @@
 //     on the Map page's shift planning overlay).
 // ============================================================
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
@@ -86,7 +86,7 @@ function todayStr() {
 // surface used by other "terminal-state" pills across the app.
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   draft:     { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--rmpg-600)' },
-  active:    { bg: 'rgba(34,197,94,0.15)',            text: '#22c55e',         border: '#16a34a' },
+  active:    { bg: 'rgba(var(--sev-ok-rgb),0.15)',     text: 'var(--sev-ok)',   border: 'rgba(var(--sev-ok-rgb),0.5)' },
   completed: { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--rmpg-500)' },
   archived:  { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-500)', border: 'var(--rmpg-600)' },
 };
@@ -160,8 +160,17 @@ export default function ShiftPlansPage() {
   // ?plan_id=<id>          — auto-select this plan once the hook hydrates.
   //
   // Params are stripped with setSearchParams({ replace: true }) so a
-  // refresh doesn't re-trigger. Mirrors GangIntelPage / VictimServicesPage.
+  // refresh doesn't re-trigger. deepLinkRef guards against double-fire
+  // on React StrictMode double-invocation. Mirrors GangIntelPage /
+  // VictimServicesPage / ReportsPage patterns.
+  const deepLinkRef = useRef(false);
+  // pending plan_id from deep-link, watched until the hook has it in state
+  const pendingDeepLinkPlanRef = useRef<string | null>(null);
+
   useEffect(() => {
+    if (deepLinkRef.current) return;
+    deepLinkRef.current = true;
+
     const dateParam = searchParams.get('date');
     const planParam = searchParams.get('plan_id');
     let consumedAny = false;
@@ -173,6 +182,7 @@ export default function ShiftPlansPage() {
       // The plan may not be in state yet (server hydrate races) — the
       // separate watch effect below picks it up once it lands.
       sp.setActivePlanId(planParam);
+      pendingDeepLinkPlanRef.current = planParam;
       consumedAny = true;
     }
     if (consumedAny) {
@@ -187,6 +197,20 @@ export default function ShiftPlansPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Watch for the deep-link plan to hydrate and toast the result
+  useEffect(() => {
+    const pending = pendingDeepLinkPlanRef.current;
+    if (!pending || sp.plans.length === 0) return;
+    const found = sp.plans.find(p => p.id === pending);
+    if (found) {
+      addToast(`Shift plan "${found.name}" loaded`, 'success');
+    } else {
+      addToast('Shift plan not found', 'error');
+    }
+    pendingDeepLinkPlanRef.current = null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp.plans]);
 
   // Persist per-user state on every change
   useEffect(() => {
@@ -336,10 +360,10 @@ export default function ShiftPlansPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (clearAllConfirm) { setClearAllConfirm(false); return; }
-        if (deletePlanTarget) { setDeletePlanTarget(null); return; }
-        if (showCreateForm) { setShowCreateForm(false); return; }
-        if (sp.activePlanId) { sp.setActivePlanId(null); return; }
+        if (clearAllConfirm) { e.stopPropagation(); setClearAllConfirm(false); return; }
+        if (deletePlanTarget) { e.stopPropagation(); setDeletePlanTarget(null); return; }
+        if (showCreateForm) { e.stopPropagation(); setShowCreateForm(false); return; }
+        if (sp.activePlanId) { e.stopPropagation(); sp.setActivePlanId(null); return; }
         return;
       }
       if ((e.key === 'n' || e.key === 'N')
@@ -470,7 +494,7 @@ export default function ShiftPlansPage() {
                     className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
                     style={{
                       background: newPlanShift === key ? val.color : 'transparent',
-                      color: newPlanShift === key ? '#000' : val.color,
+                      color: newPlanShift === key ? 'var(--surface-base)' : val.color,
                       border: `1px solid ${val.color}`,
                     }}
                   >
