@@ -26,11 +26,13 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { isValidVIN, isValidPlate } from '../utils/validate';
 import { localToday, safeDateStr, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
 import EmptyState from '../components/EmptyState';
 import { openCodeViolationNoticePdf, openTowOrderPdf } from '../utils/codeEnforcementPdf';
+import { useAuth } from '../context/AuthContext';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },
@@ -93,6 +95,9 @@ const timeAgo = (date: string): string => {
 export default function CodeEnforcementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  // admin/manager/supervisor can void violations, cancel tows, and create records
+  const canEnforce = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { errors: vFormErrors, validate: validateVForm, clearAllErrors: clearVErrors } = useFormValidation();
   const { errors: tFormErrors, validate: validateTForm, clearAllErrors: clearTErrors } = useFormValidation();
@@ -161,6 +166,40 @@ export default function CodeEnforcementPage() {
     isActive: tFormOpen,
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // ── ConfirmDialog state ───────────────────────────────────────────────
+  // Destructive status transitions (void violation / cancel tow) require an
+  // explicit confirmation and are restricted to admin/manager/supervisor.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmPending, setConfirmPending] = useState<(() => Promise<void>) | null>(null);
+  const [confirmTitle, setConfirmTitle] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmDetails, setConfirmDetails] = useState<React.ReactNode>(null);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
+
+  const openConfirm = useCallback((opts: {
+    title: string;
+    message: string;
+    details?: React.ReactNode;
+    onConfirm: () => Promise<void>;
+  }) => {
+    setConfirmTitle(opts.title);
+    setConfirmMessage(opts.message);
+    setConfirmDetails(opts.details ?? null);
+    setConfirmPending(() => opts.onConfirm);
+    setConfirmOpen(true);
+  }, []);
+
+  const handleConfirmAction = useCallback(async () => {
+    if (!confirmPending) return;
+    setConfirmSubmitting(true);
+    try { await confirmPending(); } finally {
+      setConfirmSubmitting(false);
+      setConfirmOpen(false);
+      setConfirmPending(null);
+    }
+  }, [confirmPending]);
+
   // NOTE: 5 unused state+handler blocks (severityScore, compTimeline, fineCalc,
   // compDashboard, geoClusters) were declared but never rendered or called — dead
   // since this page was first stubbed. Removed in v1036 to drop the bundle weight
@@ -352,6 +391,7 @@ export default function CodeEnforcementPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (confirmOpen)      { setConfirmOpen(false); return; }
         if (showReinspection) { setShowReinspection(false); setReinspectionDate(''); return; }
         if (tFormOpen)        { clearTFormDraft(); setTFormOpen(false); return; }
         if (vFormOpen)        { clearVFormDraft(); setVFormOpen(false); return; }
@@ -359,21 +399,25 @@ export default function CodeEnforcementPage() {
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
-      if (e.key === 'n' || e.key === 'N') {
+      if ((e.key === 'n' || e.key === 'N') && canEnforce) {
         e.preventDefault();
         handleOpenNew();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showReinspection, tFormOpen, vFormOpen, clearTFormDraft, clearVFormDraft, handleOpenNew]);
+  }, [confirmOpen, showReinspection, tFormOpen, vFormOpen, clearTFormDraft, clearVFormDraft, handleOpenNew]);
 
-  // \u2500\u2500 /code-enforcement?violation_id=\u2026 / ?tow_id=\u2026 deep-link auto-select \u2500\u2500
+  // \u2500\u2500 /code-enforcement?violation_id=\u2026 / ?case_id=\u2026 / ?tow_id=\u2026 deep-link \u2500\u2500
+  // ?case_id= is an alias for ?violation_id= \u2014 inbound links from case pages
+  // use the case_id field to cross-reference an attached violation.
   // Once the matching list hydrates, find by id, switch tabs if needed, and
   // strip the query so a manual refresh doesn't re-select. Surfaces a one-time
   // toast when the id misses (e.g. archived or in another org's view).
   const [searchParams, setSearchParams] = useSearchParams();
-  const pendingViolationIdRef = useRef<string | null>(searchParams.get('violation_id'));
+  const pendingViolationIdRef = useRef<string | null>(
+    searchParams.get('violation_id') ?? searchParams.get('case_id')
+  );
   const pendingTowIdRef = useRef<string | null>(searchParams.get('tow_id'));
   useEffect(() => {
     const target = pendingViolationIdRef.current;
@@ -385,6 +429,7 @@ export default function CodeEnforcementPage() {
       addToast(`Violation ${target} not in the current view (try clearing filters)`, 'warning');
       const next = new URLSearchParams(searchParams);
       next.delete('violation_id');
+      next.delete('case_id');
       setSearchParams(next, { replace: true });
       return;
     }
@@ -393,6 +438,7 @@ export default function CodeEnforcementPage() {
     setSelectedViolation(hit);
     const next = new URLSearchParams(searchParams);
     next.delete('violation_id');
+    next.delete('case_id');
     setSearchParams(next, { replace: true });
   }, [violations, vLoading, searchParams, setSearchParams, addToast]);
 
@@ -427,14 +473,16 @@ export default function CodeEnforcementPage() {
       <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Code Enforcement" icon={Construction}>
           <ExportButton exportUrl="/api/code-enforcement/export/csv" exportFilename="code_violations_export.csv" />
-          <button type="button"
-            onClick={handleOpenNew}
-            className="toolbar-btn toolbar-btn-primary print:hidden"
-            title={`New ${activeTab === 'violations' ? 'violation' : 'tow order'} (N)`}
-          >
-            <Plus style={{ width: 11, height: 11 }} />
-            New
-          </button>
+          {canEnforce && (
+            <button type="button"
+              onClick={handleOpenNew}
+              className="toolbar-btn toolbar-btn-primary print:hidden"
+              title={`New ${activeTab === 'violations' ? 'violation' : 'tow order'} (N)`}
+            >
+              <Plus style={{ width: 11, height: 11 }} />
+              New
+            </button>
+          )}
         </PanelTitleBar>
 
         {fetchError && (
@@ -626,11 +674,34 @@ export default function CodeEnforcementPage() {
               <div className="panel-beveled p-3">
                 <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
-                  {['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'].filter(s => s !== selectedViolation.status).map(s => (
-                    <button type="button" key={s} onClick={() => handleViolationStatus(selectedViolation.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
+                  {(['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'] as const)
+                    .filter(s => s !== selectedViolation.status)
+                    .filter(s => (s === 'voided' || s === 'referred') ? canEnforce : true)
+                    .map(s => (
+                    <button
+                      type="button"
+                      key={s}
+                      onClick={() => {
+                        if (s === 'voided') {
+                          openConfirm({
+                            title: 'Void Violation',
+                            message: 'Voiding this violation is a destructive action. It will remove the violation from active enforcement and cannot be reversed without admin intervention.',
+                            details: <><div>Violation: <strong>{selectedViolation.violation_number}</strong></div><div className="mt-0.5">{selectedViolation.description}</div></>,
+                            onConfirm: async () => { await handleViolationStatus(selectedViolation.id, 'voided'); },
+                          });
+                        } else {
+                          handleViolationStatus(selectedViolation.id, s);
+                        }
+                      }}
+                      className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`}
+                      style={isMobile ? { minHeight: 48 } : undefined}
+                    >
                       {s.replace(/_/g, ' ')}
                     </button>
                   ))}
+                  {!canEnforce && (
+                    <span className="text-[9px] text-rmpg-500 italic self-center">Void/refer require supervisor+</span>
+                  )}
                 </div>
               </div>
               {/* Schedule Reinspection */}
@@ -738,11 +809,34 @@ export default function CodeEnforcementPage() {
               <div className="panel-beveled p-3">
                 <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
-                  {['dispatched', 'in_progress', 'completed', 'released', 'cancelled'].filter(s => s !== selectedTow.status).map(s => (
-                    <button type="button" key={s} onClick={() => handleTowStatus(selectedTow.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
+                  {(['dispatched', 'in_progress', 'completed', 'released', 'cancelled'] as const)
+                    .filter(s => s !== selectedTow.status)
+                    .filter(s => s === 'cancelled' ? canEnforce : true)
+                    .map(s => (
+                    <button
+                      type="button"
+                      key={s}
+                      onClick={() => {
+                        if (s === 'cancelled') {
+                          openConfirm({
+                            title: 'Cancel Tow Order',
+                            message: 'Cancelling this tow order will remove it from active dispatch. This action requires supervisor authorization.',
+                            details: <><div>Tow Order: <strong>{selectedTow.tow_number}</strong></div><div className="mt-0.5">{[selectedTow.vehicle_year, selectedTow.vehicle_color, selectedTow.vehicle_make, selectedTow.vehicle_model].filter(Boolean).join(' ')}</div></>,
+                            onConfirm: async () => { await handleTowStatus(selectedTow.id, 'cancelled'); },
+                          });
+                        } else {
+                          handleTowStatus(selectedTow.id, s);
+                        }
+                      }}
+                      className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`}
+                      style={isMobile ? { minHeight: 48 } : undefined}
+                    >
                       {s.replace(/_/g, ' ')}
                     </button>
                   ))}
+                  {!canEnforce && (
+                    <span className="text-[9px] text-rmpg-500 italic self-center">Cancel requires supervisor+</span>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -935,6 +1029,19 @@ export default function CodeEnforcementPage() {
         onCancel={() => { clearTFormDraft(); setTFormOpen(false); }}
         isSaving={submitting}
         saveLabel="Create Tow"
+      />
+
+      {/* ── Destructive-action confirm dialog ── */}
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleConfirmAction}
+        title={confirmTitle}
+        message={confirmMessage}
+        details={confirmDetails}
+        confirmLabel="Confirm"
+        confirmVariant="warning"
+        isLoading={confirmSubmitting}
       />
     </div>
   );

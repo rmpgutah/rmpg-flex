@@ -3,6 +3,10 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1123: Code Enforcement — role gates (canEnforce: admin/manager/supervisor) gate
+//        New button, N shortcut, void/refer violation, cancel tow; ConfirmDialog for
+//        void + cancel (warning variant); ?case_id= deep-link alias for ?violation_id=;
+//        Esc cascade now closes ConfirmDialog first; all existing features preserved.
 // v1104: Tasks page — role gates (delete=admin|manager, urgent-priority=supervisor+),
 //        notificationRouting: add task/task_assignment entity types + fix case_task
 //        routing from /cases?task_id= (no-op) to /tasks?task_id= (correct deep-link).
