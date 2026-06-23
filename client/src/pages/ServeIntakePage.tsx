@@ -4,9 +4,11 @@ import ServeAttemptCalendar from '../components/serve/ServeAttemptCalendar';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { apiFetch } from '../hooks/useApi';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
 import ServeIntakeAttemptModal from '../components/serve-intake/ServeIntakeAttemptModal';
 import ServeRecordMatchPanel from '../components/serve/ServeRecordMatchPanel';
 import { parseDefendants, type DetectedDefendant } from '../utils/serveIntakeDefendants';
@@ -319,11 +321,27 @@ export default function ServeIntakePage() {
   const [detectedDefendants, setDetectedDefendants] = useState<DetectedDefendant[]>([]);
   const [selectedDefendants, setSelectedDefendants] = useState<string[]>([]);
   const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, FieldVerdict>>({});
+  // ConfirmDialog for the "Process Another Set" reset — clears uploaded documents.
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [clientsLoading, setClientsLoading] = useState(true);
   useEffect(() => {
+    setClientsLoading(true);
     apiFetch<{id:number;name:string;contact_name:string|null;contact_phone:string|null}[]>('/serve-intake/clients')
       .then((data) => { setClients(data); setClientLoadError(null); })
-      .catch((err: any) => setClientLoadError(err?.message || 'Failed to load clients — refresh to retry'));
+      .catch((err: any) => setClientLoadError(err?.message || 'Failed to load clients — refresh to retry'))
+      .finally(() => setClientsLoading(false));
   }, []);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  // Roles that may create new intake records.
+  const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Deep-link: ?intake_id= jumps to a completed intake result. Captured at mount
+  // via ref so the value survives later setSearchParams strips.
+  const pendingIntakeIdRef = useRef<string | null>(searchParams.get('intake_id'));
+
   const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -345,6 +363,43 @@ export default function ServeIntakePage() {
       window.removeEventListener('drop', stop);
     };
   }, []);
+
+  // Deep-link: strip ?intake_id= after mount (no-op if absent).
+  useEffect(() => {
+    const id = pendingIntakeIdRef.current;
+    if (!id) return;
+    pendingIntakeIdRef.current = null;
+    const next = new URLSearchParams(searchParams);
+    next.delete('intake_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Keyboard shortcuts:
+  //   N  — start a new intake (focus the file picker); gated by canManage
+  //   Esc — cascade: close OCR preview → attempt modal → reset result
+  useEffect(() => {
+    const isTyping = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showOcrPreview) { e.stopPropagation(); setShowOcrPreview(false); return; }
+        if (showAttemptModal) { e.stopPropagation(); setShowAttemptModal(false); return; }
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        if (isTyping(e.target)) return;
+        if (!canManage) return;
+        e.preventDefault();
+        fileInputRef.current?.click();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showOcrPreview, showAttemptModal, canManage]);
+
   // Merge OCR field values from newly-loaded images into editOverrides.
   // "Fill empty slots" strategy: only writes keys not already set by the
   // operator (or a prior file), so manual edits and earlier-file values
@@ -381,8 +436,6 @@ export default function ServeIntakePage() {
       return prev.filter(n => detected.some(d => d.name === n));
     });
   }, [files]);
-
-  const navigate = useNavigate();
 
   const extractPdfText = useCallback(async (file: File): Promise<{ text: string; pages: number }> => {
     try {
@@ -844,14 +897,14 @@ export default function ServeIntakePage() {
         role="button"
         tabIndex={0}
         aria-label="Upload documents: drag and drop or press Enter to browse"
-        className={`border-2 border-dashed rounded-sm p-8 text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#d4a017]/40 transition-all ${
+        className={`border-2 border-dashed rounded-sm p-8 text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-400/40 transition-all ${
           dragActive
-            ? 'border-[#d4a017] bg-[#d4a017]/10 ring-2 ring-[#d4a017]/40'
+            ? 'border-brand-400 bg-brand-400/10 ring-2 ring-brand-400/40'
             : 'border-rmpg-600 hover:border-rmpg-400 hover:bg-surface-raised/50 focus:border-rmpg-400'
         }`}
         style={dragActive ? undefined : { background: 'var(--surface-sunken)' }}
       >
-        <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-[#d4a017]' : 'text-rmpg-500'}`} />
+        <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-brand-400' : 'text-rmpg-500'}`} />
         <p className="text-sm font-bold text-rmpg-300">{dragActive ? 'RELEASE TO ADD DOCUMENTS' : 'DRAG & DROP DOCUMENTS'}</p>
         <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — a whole job folder works too</p>
         <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
@@ -1030,7 +1083,7 @@ export default function ServeIntakePage() {
                 }}
                 className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
               >
-                <option value="">— Select client (optional) —</option>
+                <option value="">— {clientsLoading ? 'Loading clients…' : 'Select client (optional)'} —</option>
                 {clients.map(cl => (
                   <option key={cl.id} value={cl.id}>{cl.name}{cl.contact_name ? ` · ${cl.contact_name}` : ''}</option>
                 ))}
@@ -1129,7 +1182,7 @@ export default function ServeIntakePage() {
                           type="text"
                           value={editingFields[key]}
                           onChange={e => setEditingFields(prev => ({ ...prev, [key]: e.target.value }))}
-                          className="w-full bg-[#111] border border-border-subtle rounded-sm px-2 py-0.5 text-xs text-rmpg-100 mt-0.5"
+                          className="w-full bg-surface-overlay border border-border-subtle rounded-sm px-2 py-0.5 text-xs text-rmpg-100 mt-0.5"
                           autoFocus
                         />
                       ) : (
@@ -1162,14 +1215,14 @@ export default function ServeIntakePage() {
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase font-bold tracking-wider text-rmpg-300 flex items-center gap-1.5">
               {uploadPhase === 'analyzing' ? (
-                <><Loader2 className="w-3 h-3 animate-spin text-[#d4a017]" /> Analyzing Documents</>
+                <><Loader2 className="w-3 h-3 animate-spin text-brand-400" /> Analyzing Documents</>
               ) : (
-                <><Upload className="w-3 h-3 text-[#d4a017]" /> Uploading Documents</>
+                <><Upload className="w-3 h-3 text-brand-400" /> Uploading Documents</>
               )}
             </span>
             <span className="flex items-center gap-2">
               {uploadPhase === 'uploading' && uploadStat && (
-                <span className="text-[10px] font-bold font-mono text-[#d4a017]">{uploadStat.pct.toFixed(0)}%</span>
+                <span className="text-[10px] font-bold font-mono text-brand-400">{uploadStat.pct.toFixed(0)}%</span>
               )}
               {uploadPhase === 'uploading' && (
                 <button
@@ -1184,7 +1237,7 @@ export default function ServeIntakePage() {
           </div>
           <div className="w-full h-1.5 bg-surface-raised rounded-sm overflow-hidden">
             <div
-              className={`h-full bg-[#d4a017] ${uploadPhase === 'analyzing' ? 'animate-pulse' : 'transition-all'}`}
+              className={`h-full bg-brand-400 ${uploadPhase === 'analyzing' ? 'animate-pulse' : 'transition-all'}`}
               style={{ width: uploadPhase === 'analyzing' ? '100%' : `${uploadStat?.pct ?? 0}%` }}
             />
           </div>
@@ -1225,17 +1278,22 @@ export default function ServeIntakePage() {
 
       {/* Process Button */}
       {files.length > 0 && !result && (
-        <button
-          onClick={processIntake}
-          disabled={processing || files.every(f => f.status === 'error') || blockProcessing}
-          className="w-full toolbar-btn toolbar-btn-primary py-3 text-sm font-bold justify-center"
-        >
-          {processing ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> {uploadPhase === 'analyzing' ? 'Analyzing Documents…' : 'Uploading Documents…'}</>
-          ) : (
-            <><Upload className="w-4 h-4" /> Create Person + Serve Queue Entry</>
+        <>
+          <button
+            onClick={processIntake}
+            disabled={processing || files.every(f => f.status === 'error') || blockProcessing || !canManage}
+            className="w-full toolbar-btn toolbar-btn-primary py-3 text-sm font-bold justify-center"
+          >
+            {processing ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> {uploadPhase === 'analyzing' ? 'Analyzing Documents…' : 'Uploading Documents…'}</>
+            ) : (
+              <><Upload className="w-4 h-4" /> Create Person + Serve Queue Entry</>
+            )}
+          </button>
+          {!canManage && (
+            <p className="text-[10px] text-rmpg-500 text-center">Contact a supervisor to process intakes.</p>
           )}
-        </button>
+        </>
       )}
 
       {error && (
@@ -1374,7 +1432,7 @@ export default function ServeIntakePage() {
               </button>
             )}
             <button
-              onClick={() => { setFiles([]); setResult(null); setEditOverrides({}); }}
+              onClick={() => setConfirmReset(true)}
               className={`toolbar-btn justify-center py-2 ${result.serve_queue_id == null ? 'col-span-2' : ''}`}
             >
               Process Another Set of Documents
@@ -1399,6 +1457,15 @@ export default function ServeIntakePage() {
           callNumber={result.call_number}
         />
       )}
+      <ConfirmDialog
+        isOpen={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); }}
+        title="Start New Intake?"
+        message="This will clear all loaded documents and results."
+        confirmLabel="Clear & Start New"
+        confirmVariant="warning"
+      />
       </>}
     </div>
   );
