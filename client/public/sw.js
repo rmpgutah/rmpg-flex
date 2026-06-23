@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1128: Shift Plans — useSearchParams replaces window.history.replaceState for deep-link strip (?plan_id=/?date=), canManage role gate (admin/manager/supervisor) on create/edit/delete/archive/clear-all/N-shortcut, N shortcut gated, context menu mutate items gated.
 // v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
 // v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
 //        N shortcut (admin|manager), Esc cascade (delete->form->search), search bar
