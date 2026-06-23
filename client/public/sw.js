@@ -59,6 +59,13 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1081: Patrol (/patrol) — Page 63 of the full-app frontend pass. Added Esc
+//        smart-cascade (QR modal → Checkpoint modal), N shortcut to open the
+//        New Checkpoint form on the Checkpoints tab, four-way empty-state
+//        distinction (no-checkpoints-ever / no-scans-with-filters / no-scans-
+//        ever / no-active-checkpoints-for-compliance), and removed dead
+//        coverageData/handleLoadCoverage state that was defined but never
+//        rendered anywhere in the JSX.
 // v1070: Cmd+K Global Search — scope recent-search history per user.id
 //        instead of sharing one bare 'rmpg-recent-searches-v2' localStorage
 //        key across every operator on the MDT. A shared patrol laptop was
