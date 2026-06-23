@@ -321,6 +321,24 @@
 //        records. Covered by 21 unit tests in documentIntakePdf.test.ts.
 //        SW name auto-stamps via vite plugin — bump here is documentation.
 
+// v1076: Documents (/documents) — Page 58 of the full-app frontend pass.
+//        URL deep-link (?folder=&q=&file_id=) so cross-page links and
+//        refreshes land on the same view; ?folder= hydrates the initial
+//        directory, ?file_id= opens that file once contents load, both
+//        stripped after applying. Three native window.confirm() prompts
+//        (deleteFolder / deleteFile / bulkDelete) replaced with shared
+//        ConfirmDialog (danger variant, Cancel pre-focused, identifying
+//        details — subfolder/file counts, file size + MIME, bulk count).
+//        Esc cascade: file-info modal → rename → new-folder → confirm
+//        dialogs → clear search → clear selection → up one folder. 'N'
+//        opens the file picker (parity with Equipment / FlexCam / CRM
+//        audits). Emoji file icons (🖼️📄🎬🎵📝📊📦📃📎) replaced with
+//        Lucide File* components — emojis don't pick up theme variables
+//        so they read pure-color against the Spillman day/night skin and
+//        were flagged by the page-audit emoji-chrome rule. Two
+//        `hover:text-[#d4a017]` hardcoded hex swapped to `hover:text-brand-400`
+//        so the Edit-PDF affordance follows brand-gold token instead of
+//        a literal.
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
