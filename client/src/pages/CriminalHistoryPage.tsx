@@ -2,9 +2,24 @@
 // RMPG Flex — Criminal History Standalone Page
 // Search persons by name/DOB/DL, view caution flags, and display
 // chronological criminal history timeline.
+//
+// v1088 improvements:
+// - Fix search API: name → /records/persons/search?q=  (FK-accurate).
+//   Previously the page sent ?name=/?dob=/?dl= params that the server
+//   does not read, so every name search silently returned the full
+//   500-person unfiltered list.
+// - Switch history fetch to /records/persons/:id/system-history (one
+//   round-trip, FK-joined — incidents/warrants/citations/calls are now
+//   accurate to the person record, not a loose name-text search).
+// - Add CriminalHistorySection panel (formal arrest/conviction records
+//   from the criminal_history table — previously absent from this page).
+// - Add WarrantNsopwStatus panel (NSOPW nationwide SOR cross-reference).
+// - Esc smart-cascade: Esc while person selected → back to list.
+// - ?subject= URL param: pre-fills name search box (complements ?person_id=).
+// - Fix useCallback dependency arrays (selectPerson/handleSearch).
 // ============================================================
 
-import {useState, useCallback, useEffect, useRef} from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2, Eye, Printer } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
@@ -18,6 +33,8 @@ import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openCriminalHistoryPdf } from '../utils/criminalHistoryPdf';
+import CriminalHistorySection from '../components/CriminalHistorySection';
+import WarrantNsopwStatus from '../components/WarrantNsopwStatus';
 
 interface PersonResult {
   id: string;
@@ -25,9 +42,12 @@ interface PersonResult {
   last_name: string;
   middle_name?: string;
   date_of_birth?: string;
+  dob?: string;
   sex?: string;
+  gender?: string;
   race?: string;
   drivers_license?: string;
+  dl_number?: string;
   dl_state?: string;
   caution_flags?: string;
   is_sex_offender?: boolean;
@@ -38,7 +58,7 @@ interface PersonResult {
 
 interface HistoryEntry {
   id: string;
-  type: 'incident' | 'citation' | 'field_interview' | 'warrant' | 'trespass';
+  type: 'incident' | 'citation' | 'field_interview' | 'warrant' | 'call';
   date: string;
   reference_number: string;
   description: string;
@@ -47,11 +67,42 @@ interface HistoryEntry {
   location?: string;
 }
 
+// system-history response shape from /records/persons/:id/system-history
+interface SystemHistory {
+  warrants: any[];
+  incidents: any[];
+  calls: any[];
+  citations: any[];
+  summary: {
+    total_warrants: number;
+    active_warrants: number;
+    total_incidents: number;
+    total_calls: number;
+    total_citations: number;
+    active_citations: number;
+  };
+}
+
+function normPerson(p: any): PersonResult {
+  return {
+    ...p,
+    // server returns dob on the bulk list, date_of_birth on full detail
+    date_of_birth: p.date_of_birth || p.dob || undefined,
+    // server returns dl_number on bulk list, drivers_license on full detail
+    drivers_license: p.drivers_license || p.dl_number || undefined,
+    sex: p.sex || p.gender || undefined,
+  };
+}
+
 export default function CriminalHistoryPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // ?subject= pre-fills the name search box
+  const subjectParam = searchParams.get('subject') || '';
+  const [searchQuery, setSearchQuery] = useState(subjectParam);
   const [searchType, setSearchType] = useState<'name' | 'dob' | 'dl'>('name');
   const [persons, setPersons] = useState<PersonResult[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<PersonResult | null>(null);
@@ -65,6 +116,20 @@ export default function CriminalHistoryPage() {
   // the placeholder copy is different so the operator can tell which.
   const [lastSearchedQuery, setLastSearchedQuery] = useState<string | null>(null);
 
+  // ── Esc cascade: deselect person → back to list ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (selectedPerson) {
+        setSelectedPerson(null);
+        setHistory([]);
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener('keydown', handler, { capture: true });
+    return () => document.removeEventListener('keydown', handler, { capture: true });
+  }, [selectedPerson]);
+
   const handleSearch = useCallback(async () => {
     const trimmed = searchQuery.trim();
     if (!trimmed) return;
@@ -72,18 +137,25 @@ export default function CriminalHistoryPage() {
     setFetchError('');
     setLastSearchedQuery(trimmed);
     try {
-      const params = new URLSearchParams({ [searchType]: trimmed });
-      const data = await apiFetch<any>(`/records/persons?${params}`);
-      // `/records/persons` has no rewrite handler and falls through to legacy,
-      // which may return a bare array OR an envelope ({ data | results | persons: [...] }).
-      // Normalize to an array so `persons.map` can never throw "D.map is not a function".
-      const list = Array.isArray(data)
+      let data: any;
+      if (searchType === 'name') {
+        // /records/persons/search?q= does a proper LIKE across name/alias/phone
+        // and returns a bare array.
+        data = await apiFetch<any>(`/records/persons/search?q=${encodeURIComponent(trimmed)}`);
+      } else {
+        // Fall back to the bulk list endpoint with the correct `search` param.
+        // The server's GET /records/persons reads ?search= (not ?dob=/?dl=),
+        // so DOB and DL searches also go through the generic LIKE path.
+        data = await apiFetch<any>(`/records/persons?search=${encodeURIComponent(trimmed)}`);
+      }
+      // Normalize envelope variants (bare array, { data: [] }, { results: [] }, { persons: [] })
+      const list: any[] = Array.isArray(data)
         ? data
         : Array.isArray(data?.data) ? data.data
         : Array.isArray(data?.results) ? data.results
         : Array.isArray(data?.persons) ? data.persons
         : [];
-      setPersons(list);
+      setPersons(list.map(normPerson));
       setSelectedPerson(null);
       setHistory([]);
     } catch (err: any) {
@@ -93,87 +165,82 @@ export default function CriminalHistoryPage() {
       setPersons([]);
     }
     setLoading(false);
-  }, [searchQuery, searchType]);
+  }, [searchQuery, searchType, addToast]);
 
   const selectPerson = useCallback(async (person: PersonResult) => {
     setSelectedPerson(person);
     setHistoryLoading(true);
     try {
-      // Fetch all related records for this person. Warrants were added 2026-06:
-      // the HistoryEntry type union already had a 'warrant' case + the renderer
-      // handled the row, but no fetch ever populated those rows — a person
-      // with active warrants got a list-tile "WARRANTS" badge and an empty
-      // timeline. /warrants/check/:personId returns { warrants: [...] } with
-      // active local warrants for the subject.
-      const [incidents, citations, fis, warrantCheck] = await Promise.all([
-        apiFetch<any>(`/records/persons/${person.id}/incidents`).catch(() => ({ data: [] })),
-        apiFetch<any>(`/citations?q=${encodeURIComponent(`${person.first_name} ${person.last_name}`)}`).catch(() => ({ data: [] })),
-        apiFetch<any>(`/field-interviews?search=${encodeURIComponent(`${person.first_name} ${person.last_name}`)}`).catch(() => ({ data: [] })),
-        apiFetch<any>(`/warrants/check/${person.id}`).catch(() => ({ warrants: [] })),
-      ]);
+      // Single round-trip via /system-history which FK-joins all related records.
+      // Previously the page made 4 separate fetches using fuzzy name-text search
+      // for citations and FIs — those returned records for anyone with a similar
+      // name, not just this person. The system-history endpoint uses person_id
+      // FK joins throughout, so the history is now accurate to the subject.
+      const sh = await apiFetch<SystemHistory>(`/records/persons/${person.id}/system-history`).catch(() => ({
+        warrants: [], incidents: [], calls: [], citations: [],
+        summary: { total_warrants: 0, active_warrants: 0, total_incidents: 0, total_calls: 0, total_citations: 0, active_citations: 0 },
+      }));
 
       const entries: HistoryEntry[] = [];
 
       // Incidents
-      const incData = Array.isArray(incidents) ? incidents : (incidents?.data || []);
-      incData.forEach((inc: any) => {
+      (sh.incidents || []).forEach((inc: any) => {
         entries.push({
           id: String(inc.id),
           type: 'incident',
-          date: inc.occurred_date || inc.created_at || '',
+          date: inc.created_at || '',
           reference_number: inc.incident_number || '',
-          description: `${inc.incident_type?.replace(/_/g, ' ').toUpperCase()} — ${inc.location_address || 'N/A'}`,
+          description: `${(inc.incident_type || '').replace(/_/g, ' ').toUpperCase()}${inc.location_address ? ` — ${inc.location_address}` : ''}`,
           status: inc.status || '',
-          officer_name: inc.officer_name,
           location: inc.location_address,
         });
       });
 
-      // Citations — API returns { data: [...], pagination: {...} }
-      const citData = Array.isArray(citations?.data) ? citations.data : Array.isArray(citations) ? citations : [];
-      citData.forEach((cit: any) => {
+      // Calls for service
+      (sh.calls || []).forEach((call: any) => {
+        entries.push({
+          id: String(call.id),
+          type: 'call',
+          date: call.created_at || '',
+          reference_number: call.call_number || '',
+          description: `${(call.incident_type || 'Call').replace(/_/g, ' ').toUpperCase()}${call.location_address ? ` — ${call.location_address}` : ''}`,
+          status: call.status || '',
+          location: call.location_address,
+        });
+      });
+
+      // Citations
+      (sh.citations || []).forEach((cit: any) => {
         entries.push({
           id: String(cit.id),
           type: 'citation',
-          date: cit.created_at || '',
+          date: cit.violation_date || cit.created_at || '',
           reference_number: cit.citation_number || '',
           description: cit.violation_description || 'Citation',
           status: cit.status || '',
-          location: cit.location,
         });
       });
 
-      // Field Interviews — API returns { data: [...], pagination: {...} }
-      const fiData = Array.isArray(fis?.data) ? fis.data : Array.isArray(fis) ? fis : [];
-      fiData.forEach((fi: any) => {
-        entries.push({
-          id: String(fi.id),
-          type: 'field_interview',
-          date: fi.created_at || '',
-          reference_number: fi.fi_number || `FI-${fi.id}`,
-          description: fi.contact_reason || fi.narrative || 'Field Interview',
-          status: 'completed',
-          location: fi.location,
-        });
-      });
-
-      // Warrants — /warrants/check/:personId returns { warrants: [...] }.
-      // The row shape is the local warrants table (warrant_number, warrant_type,
-      // charge_description, status, plus issued_date/created_at on the wire).
-      const warrData: any[] = Array.isArray(warrantCheck?.warrants) ? warrantCheck.warrants : [];
-      warrData.forEach((w: any) => {
+      // Warrants — the system-history endpoint returns ALL warrant statuses;
+      // surface them all so the operator sees the full picture.
+      (sh.warrants || []).forEach((w: any) => {
         entries.push({
           id: String(w.id),
           type: 'warrant',
           date: w.issued_date || w.created_at || '',
           reference_number: w.warrant_number || `WAR-${w.id}`,
-          description: w.charge_description
-            || `${(w.warrant_type || 'Warrant').toString().toUpperCase()}`,
+          description: w.description
+            || w.charge_description
+            || `${(w.type || w.warrant_type || 'Warrant').toString().toUpperCase()}`,
           status: w.status || 'active',
         });
       });
 
-      entries.sort((a, b) => ((b.date ? parseTimestamp(b.date).getTime() : 0) || 0) - ((a.date ? parseTimestamp(a.date).getTime() : 0) || 0));
+      entries.sort((a, b) => {
+        const ta = a.date ? parseTimestamp(a.date).getTime() : 0;
+        const tb = b.date ? parseTimestamp(b.date).getTime() : 0;
+        return (tb || 0) - (ta || 0);
+      });
       setHistory(entries);
     } catch (err) {
       console.error('History fetch error:', err);
@@ -181,8 +248,7 @@ export default function CriminalHistoryPage() {
       setHistory([]);
     }
     setHistoryLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [addToast]);
 
   const openUtahCourts = useCallback((person?: PersonResult | null) => {
     const base = 'https://www.utcourts.gov/xchange/CaseSearch';
@@ -218,6 +284,7 @@ export default function CriminalHistoryPage() {
       case 'citation': return <Shield className="w-3 h-3 text-amber-400" />;
       case 'field_interview': return <User className="w-3 h-3 text-purple-400" />;
       case 'warrant': return <AlertTriangle className="w-3 h-3 text-red-400" />;
+      case 'call': return <FileText className="w-3 h-3 text-rmpg-400" />;
       default: return <FileText className="w-3 h-3 text-rmpg-400" />;
     }
   };
@@ -228,19 +295,18 @@ export default function CriminalHistoryPage() {
       case 'citation': return 'text-amber-400 bg-amber-900/30 border-amber-700/50';
       case 'field_interview': return 'text-purple-400 bg-purple-900/30 border-purple-700/50';
       case 'warrant': return 'text-red-400 bg-red-900/30 border-red-700/50';
+      case 'call': return 'text-rmpg-400 bg-rmpg-700/30 border-rmpg-600/50';
       default: return 'text-rmpg-400 bg-rmpg-700/30 border-rmpg-600/50';
     }
   };
 
   // Set document title
-  useEffect(() => { document.title = 'Criminal History \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Criminal History — RMPG Flex'; }, []);
 
-  // \u2500\u2500 ?person_id=<id> URL deep-link auto-select \u2500\u2500
-  // Eighth consecutive page-pass implementing this contract. From Person
-  // Dossier / NCIC subject-history \u2192 "view criminal history" lands here
-  // pre-selected. Fetches the single person + calls selectPerson; strips
+  // ── ?person_id=<id> URL deep-link auto-select ──
+  // From Person Dossier / NCIC subject-history → "view criminal history" lands
+  // here pre-selected. Fetches the single person + calls selectPerson; strips
   // the param so a refresh doesn't re-fetch.
-  const [searchParams, setSearchParams] = useSearchParams();
   const pendingPersonIdRef = useRef<string | null>(searchParams.get('person_id'));
   useEffect(() => {
     const target = pendingPersonIdRef.current;
@@ -251,9 +317,9 @@ export default function CriminalHistoryPage() {
       try {
         const data = await apiFetch<any>(`/records/persons/${target}`);
         const person: PersonResult | null = data && data.id != null
-          ? (data as PersonResult)
+          ? normPerson(data)
           : data?.data && data.data.id != null
-            ? (data.data as PersonResult)
+            ? normPerson(data.data)
             : null;
         if (cancelled || !person) {
           if (!cancelled) addToast(`Person ${target} not found`, 'warning');
@@ -268,11 +334,38 @@ export default function CriminalHistoryPage() {
         if (!cancelled) {
           const next = new URLSearchParams(searchParams);
           next.delete('person_id');
+          next.delete('subject');
           setSearchParams(next, { replace: true });
         }
       }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── ?subject= pre-populate: if set, fire search immediately ──
+  const didAutoSearchRef = useRef(false);
+  useEffect(() => {
+    if (didAutoSearchRef.current) return;
+    if (subjectParam && !pendingPersonIdRef.current) {
+      didAutoSearchRef.current = true;
+      // Clear the param without disrupting the URL
+      const next = new URLSearchParams(searchParams);
+      next.delete('subject');
+      setSearchParams(next, { replace: true });
+      // Fire the search with the pre-filled value
+      const trimmed = subjectParam.trim();
+      if (!trimmed) return;
+      setLoading(true);
+      setLastSearchedQuery(trimmed);
+      apiFetch<any>(`/records/persons/search?q=${encodeURIComponent(trimmed)}`)
+        .then((data: any) => {
+          const list: any[] = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+          setPersons(list.map(normPerson));
+        })
+        .catch(() => addToast('Failed to search persons', 'error'))
+        .finally(() => setLoading(false));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -345,9 +438,7 @@ export default function CriminalHistoryPage() {
         {/* Person Results List */}
         <div className={`${isMobile ? (selectedPerson ? 'hidden' : 'w-full') : 'w-1/3'} border-r border-rmpg-700/50 overflow-auto`}>
           {persons.length === 0 && !loading && (
-            // Distinguish "no search yet" from "search ran and returned zero" —
-            // previously the operator saw the same generic instructional
-            // message either way and couldn't tell if their search ran.
+            // Distinguish "no search yet" from "search ran and returned zero"
             <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
               <div className="text-center max-w-[280px]">
                 <Search className="w-7 h-7 mx-auto mb-2 text-rmpg-600" />
@@ -437,11 +528,11 @@ export default function CriminalHistoryPage() {
                     <div className="flex justify-end gap-1">
                       {/* Court-ready PDF — subject card + caution flags +
                           5-up summary tiles + chronological history table +
-                          signature block. Replaces "screenshot the panel". */}
+                          signature block. */}
                       <button type="button"
                         onClick={() => openCriminalHistoryPdf({
                           subject: selectedPerson as any,
-                          history,
+                          history: history as any,
                           preparedBy: user
                             ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
                             : undefined,
@@ -481,11 +572,28 @@ export default function CriminalHistoryPage() {
                 )}
               </div>
 
-              {/* History Timeline */}
+              {/* NSOPW — Nationwide Sex Offender Registry cross-reference.
+                  Always shown when a person is selected so the operator never
+                  has to navigate away for SOR status. personId must be a
+                  number; guard against legacy string ids that aren't numeric. */}
+              {!isNaN(Number(selectedPerson.id)) && (
+                <WarrantNsopwStatus personId={Number(selectedPerson.id)} />
+              )}
+
+              {/* Formal criminal_history table records (arrests/convictions/charges).
+                  This is the dedicated CRUD panel that lives in ArrestRecordsPage
+                  and PersonsTab — surfaced here so officers can see and annotate
+                  formal records without leaving the criminal history workflow. */}
+              <CriminalHistorySection
+                personId={selectedPerson.id}
+                personName={`${selectedPerson.first_name || ''} ${selectedPerson.last_name || ''}`.trim()}
+              />
+
+              {/* Operational event history (incidents + calls + citations + warrants) */}
               <div className="panel-surface p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">
-                    Criminal History — {history.length} records
+                    Operational History — {history.length} records
                   </h3>
                   <div className="flex gap-1">
                     <button type="button" onClick={() => setViewMode('table')}
@@ -507,7 +615,7 @@ export default function CriminalHistoryPage() {
                 ) : history.length === 0 ? (
                   <div className="text-center py-6">
                     <Shield className="w-6 h-6 mx-auto mb-2 text-rmpg-600" />
-                    <p className="text-rmpg-500 text-[10px] font-mono uppercase tracking-wider">No criminal history on file</p>
+                    <p className="text-rmpg-500 text-[10px] font-mono uppercase tracking-wider">No operational history on file</p>
                   </div>
                 ) : viewMode === 'table' ? (
                   <div className="space-y-1">
@@ -537,7 +645,7 @@ export default function CriminalHistoryPage() {
                   <div className="relative pl-6">
                     {/* Vertical line */}
                     <div className="absolute left-2 top-0 bottom-0 w-px bg-rmpg-700" />
-                    {history.map((entry, idx) => {
+                    {history.map((entry) => {
                       const isExpanded = expandedEntry === `${entry.type}-${entry.id}`;
                       const dotColor = entry.type === 'incident' ? 'bg-brand-500' : entry.type === 'citation' ? 'bg-amber-500' :
                         entry.type === 'field_interview' ? 'bg-purple-500' : entry.type === 'warrant' ? 'bg-red-500' : 'bg-rmpg-500';
@@ -580,6 +688,7 @@ export default function CriminalHistoryPage() {
               <div className="text-center">
                 <User className="w-10 h-10 mx-auto mb-2 text-rmpg-600" />
                 <p>Select a person to view their criminal history</p>
+                <p className="text-[9px] text-rmpg-600 mt-1">Press Esc at any time to return to the results list</p>
               </div>
             </div>
           )}

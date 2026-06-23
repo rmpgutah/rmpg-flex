@@ -36,6 +36,8 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
+import SpillmanModuleGroup from '../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../components/spillman/SpillmanModuleGroup';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
@@ -845,13 +847,42 @@ const PatrolPage: React.FC = () => {
           (esp. the Mileage Audit chain, which can run to hundreds of rows)
           scrolls underneath. Without this the user loses the way out of
           MILEAGE AUDIT as soon as they scroll down the chain. */}
-      <TabBar
-        spillman
-        className="sticky top-0 z-30 bg-surface-base"
-        tabs={patrolTabs}
-        activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map' | 'summary' | 'mileage' | 'pricing' | 'contracts' | 'billing')}
-      />
+      {/* Tab Navigation (grouped Spillman module strip) */}
+      <div className="sticky top-0 z-30">
+        <SpillmanModuleGroup
+          groups={[
+            {
+              label: 'Field Ops',
+              tone: 'steel',
+              tabs: [
+                { id: 'checkpoints', label: 'Checkpoints' },
+                { id: 'scans',       label: 'Scan Log' },
+                { id: 'compliance',  label: 'Compliance' },
+                { id: 'map',         label: 'Map' },
+              ],
+            },
+            {
+              label: 'Reporting',
+              tone: 'gold',
+              tabs: [
+                { id: 'summary',  label: 'Shift Summary' },
+                { id: 'mileage',  label: 'Mileage Audit' },
+              ],
+            },
+            {
+              label: 'Finance',
+              tone: 'neutral',
+              tabs: [
+                { id: 'pricing',   label: 'Pricing' },
+                { id: 'contracts', label: 'Contracts' },
+                { id: 'billing',   label: 'Billing Review' },
+              ],
+            },
+          ] as ModuleGroupSpec[]}
+          activeTab={activeTab}
+          onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map' | 'summary' | 'mileage' | 'pricing' | 'contracts' | 'billing')}
+        />
+      </div>
 
       {/* Error Banner */}
       {error && (
