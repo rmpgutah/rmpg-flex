@@ -3,7 +3,7 @@
 // Multi-state warrant search with US coverage map
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Globe, Search, User, AlertTriangle, MapPin, Loader2, X, Shield, Gavel, ChevronDown, Printer } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -226,27 +226,38 @@ export default function NationalWarrantSearchPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
 
+  // ── Ref: first name input (for N / `/` shortcut focus) ────
+  const firstNameRef = useRef<HTMLInputElement>(null);
+
   // URL deep-link contract — operators land here from /persons, /warrants,
   // dispatch, NCIC, etc. with the subject's name + DOB. Honored params:
-  //   ?last_name= ?first_name= ?dob= ?state= ?offense_level=
-  //   ?warrant_type= ?charge_keyword= ?auto=1
-  // `auto=1` triggers a search on mount once we've hydrated. Mirrors the
-  // pattern used by Cases / FI / Citations / Patrol (12+ prior pages).
+  //   ?last_name=  ?first_name=  ?dob=  ?state=  ?offense_level=
+  //   ?warrant_type=  ?charge_keyword=  ?auto=1
+  //   ?search=<keyword>  (quick charge-keyword alias, implies auto=1)
+  //   ?warrant_id=<id>  (deep-link to a specific result row; highlighted)
+  // `auto=1` (or ?search= present) triggers a search on mount once we've
+  // hydrated. Mirrors the pattern used by Cases / FI / Citations / Patrol.
   const [searchParams, setSearchParams] = useSearchParams();
-  const initial = useMemo(() => ({
-    last_name: searchParams.get('last_name') ?? '',
-    first_name: searchParams.get('first_name') ?? '',
-    dob: searchParams.get('dob') ?? '',
-    state: searchParams.get('state') ?? '',
-    offense_level: searchParams.get('offense_level') ?? '',
-    warrant_type: searchParams.get('warrant_type') ?? '',
-    charge_keyword: searchParams.get('charge_keyword') ?? '',
-    auto: searchParams.get('auto') === '1',
+  const initial = useMemo(() => {
+    const quickSearch = searchParams.get('search') ?? '';
+    return {
+      last_name: searchParams.get('last_name') ?? '',
+      first_name: searchParams.get('first_name') ?? '',
+      dob: searchParams.get('dob') ?? '',
+      state: searchParams.get('state') ?? '',
+      offense_level: searchParams.get('offense_level') ?? '',
+      warrant_type: searchParams.get('warrant_type') ?? '',
+      // ?search= is a convenience alias for charge_keyword; existing
+      // ?charge_keyword= takes precedence if both arrive.
+      charge_keyword: searchParams.get('charge_keyword') ?? quickSearch,
+      warrant_id: searchParams.get('warrant_id') ?? '',
+      auto: searchParams.get('auto') === '1' || quickSearch.length > 0,
+    };
   // The ref-equality of `searchParams` only matters for the first paint;
   // we strip the params after consuming them so this memo never re-runs
   // with a different shape. Disable react-hooks/exhaustive-deps lint.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), []);
+  }, []);
 
   // Search form state — hydrated from the URL when present.
   const [firstName, setFirstName] = useState(initial.first_name);
@@ -258,8 +269,15 @@ export default function NationalWarrantSearchPage() {
   const [chargeKeyword, setChargeKeyword] = useState(initial.charge_keyword);
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<any>(null);
+  // `searched` tracks whether at least one search has been fired so the
+  // empty panel shows "no results" vs "not searched yet" messaging.
+  const [searched, setSearched] = useState(false);
   const [coverage, setCoverage] = useState<any>(null);
   const [coverageLoading, setCoverageLoading] = useState(true);
+
+  // ?warrant_id= deep-link — highlights a specific result row and scrolls
+  // to it once the auto-triggered search resolves. Cleared on Esc or click.
+  const [highlightId, setHighlightId] = useState(initial.warrant_id);
 
   // Map hover tooltip
   const [hoveredState, setHoveredState] = useState<string | null>(null);
@@ -298,6 +316,7 @@ export default function NationalWarrantSearchPage() {
     if (!body.first_name && !body.last_name && !body.dob && !body.state && !body.charge_keyword) return;
 
     setSearching(true);
+    setSearched(true);
     setResults(null);
     try {
       const data = await apiFetch<any>('/api/warrants/national-search', {
@@ -314,11 +333,10 @@ export default function NationalWarrantSearchPage() {
   }, [firstName, lastName, dob, stateFilter, offenseLevel, warrantType, chargeKeyword]);
 
   // ── Deep-link auto-search + URL strip ─────────────────────
-  // On first mount only, if the URL carries enough to search AND ?auto=1,
-  // fire one POST then clear ALL deep-link params so a refresh isn't a
-  // second hit and so the URL doesn't leak the subject's PII into copy-
-  // pasted links. Honored even without `auto=1` to the extent of
-  // pre-filling the form (initial state above).
+  // On first mount only, if the URL carries enough to search AND ?auto=1
+  // (or ?search=), fire one POST then clear ALL deep-link params so a
+  // refresh isn't a second hit and the URL doesn't leak subject PII.
+  // Even without auto=1, URL params pre-fill the form (initial state above).
   useEffect(() => {
     if (initial.auto && (initial.last_name || initial.first_name || initial.dob || initial.state || initial.charge_keyword)) {
       void handleSearch(undefined, {
@@ -331,18 +349,61 @@ export default function NationalWarrantSearchPage() {
         charge_keyword: initial.charge_keyword,
       });
     }
-    // Strip deep-link params unconditionally so the URL is portable.
+    // Strip ALL deep-link params (incl. ?search= and ?warrant_id=)
+    // unconditionally so the URL is copy-paste safe.
     if (Array.from(searchParams.keys()).some(k =>
-      ['last_name', 'first_name', 'dob', 'state', 'offense_level', 'warrant_type', 'charge_keyword', 'auto'].includes(k)
+      ['last_name', 'first_name', 'dob', 'state', 'offense_level', 'warrant_type',
+       'charge_keyword', 'auto', 'search', 'warrant_id'].includes(k)
     )) {
       const next = new URLSearchParams(searchParams);
-      ['last_name', 'first_name', 'dob', 'state', 'offense_level', 'warrant_type', 'charge_keyword', 'auto']
-        .forEach(k => next.delete(k));
+      ['last_name', 'first_name', 'dob', 'state', 'offense_level', 'warrant_type',
+       'charge_keyword', 'auto', 'search', 'warrant_id'].forEach(k => next.delete(k));
       setSearchParams(next, { replace: true });
     }
   // Run exactly once on mount with the captured `initial` snapshot.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Global keyboard shortcuts ─────────────────────────────
+  // N or `/` → focus First Name field (standard CAD search shortcut).
+  // Esc       → Esc cascade: highlight → state filter → results.
+  // Both stop propagation so they don't bubble to parent pages.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const inInput = target.tagName === 'INPUT' || target.tagName === 'SELECT' ||
+        target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      if ((e.key === 'n' || e.key === 'N' || e.key === '/') && !inInput && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        firstNameRef.current?.focus();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        // Cascade: clear row highlight → clear state filter → clear results.
+        if (highlightId) {
+          e.stopPropagation();
+          setHighlightId('');
+          return;
+        }
+        if (stateFilter) {
+          e.stopPropagation();
+          setStateFilter('');
+          return;
+        }
+        if (results !== null) {
+          e.stopPropagation();
+          setResults(null);
+          setSearched(false);
+          setCollapsedGroups(new Set());
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [highlightId, stateFilter, results]);
 
   const clearSearch = () => {
     setFirstName('');
@@ -353,7 +414,9 @@ export default function NationalWarrantSearchPage() {
     setWarrantType('');
     setChargeKeyword('');
     setResults(null);
+    setSearched(false);
     setCollapsedGroups(new Set());
+    setHighlightId('');
   };
 
   const handleStateClick = (code: string) => {
@@ -416,11 +479,16 @@ export default function NationalWarrantSearchPage() {
             <span className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">
               Search Parameters
             </span>
+            <span className="ml-auto text-[10px] text-rmpg-600">
+              <kbd className="px-1 py-0.5 bg-surface-sunken border border-border-subtle text-rmpg-500 font-mono text-[9px]">N</kbd> to focus
+            </span>
           </div>
 
           {/* Row 1: Name, DOB, State, Search button */}
           <div className={`grid gap-2 ${isMobile ? 'grid-cols-1' : 'grid-cols-[1fr_1fr_120px_140px_auto]'}`}>
-            <input id="ff-nationalwarrantsearchpage-0"
+            <input
+              id="ff-nationalwarrantsearchpage-0"
+              ref={firstNameRef}
               type="text"
               placeholder="First Name"
               value={firstName}
@@ -464,7 +532,7 @@ export default function NationalWarrantSearchPage() {
                   type="button"
                   onClick={clearSearch}
                   className="toolbar-btn text-rmpg-400 hover:text-rmpg-100 px-2 py-1.5 text-xs"
-                  title="Clear search"
+                  title="Clear search (Esc)"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -680,7 +748,13 @@ export default function NationalWarrantSearchPage() {
                 {!collapsedGroups.has('LOCAL') && (
                   <div className="divide-y divide-[var(--border-subtle)]">
                     {localResults.map((w: any, i: number) => (
-                      <WarrantRow key={`local-${i}`} warrant={w} preparedBy={preparedBy} />
+                      <WarrantRow
+                        key={`local-${i}`}
+                        warrant={w}
+                        preparedBy={preparedBy}
+                        highlighted={highlightId ? String(w.id ?? w.warrant_id ?? '') === highlightId : false}
+                        onClearHighlight={() => setHighlightId('')}
+                      />
                     ))}
                   </div>
                 )}
@@ -711,7 +785,13 @@ export default function NationalWarrantSearchPage() {
                   {!isCollapsed && (
                     <div className="divide-y divide-[var(--border-subtle)]">
                       {warrants.map((w: any, i: number) => (
-                        <WarrantRow key={`${stateCode}-${i}`} warrant={w} preparedBy={preparedBy} />
+                        <WarrantRow
+                          key={`${stateCode}-${i}`}
+                          warrant={w}
+                          preparedBy={preparedBy}
+                          highlighted={highlightId ? String(w.id ?? w.warrant_id ?? '') === highlightId : false}
+                          onClearHighlight={() => setHighlightId('')}
+                        />
                       ))}
                     </div>
                   )}
@@ -719,19 +799,24 @@ export default function NationalWarrantSearchPage() {
               );
             })}
 
-            {/* No Results */}
+            {/* No Results — post-search empty state */}
             {totalResults === 0 && (
               <div className="panel-raised p-8 text-center">
                 <Search className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-                <div className="text-xs text-rmpg-400">No warrants found matching your criteria.</div>
-                <div className="text-[10px] text-rmpg-500 mt-1">Try broadening your search parameters.</div>
+                <div className="text-xs text-rmpg-300 font-medium">No warrants found</div>
+                <div className="text-[10px] text-rmpg-400 mt-1">
+                  No active warrants match the criteria you entered.
+                </div>
+                <div className="text-[10px] text-rmpg-500 mt-1">
+                  Try broadening your search — fewer fields, looser spelling, or a different state.
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ─── Empty State (no search yet) ────────────── */}
-        {!results && !searching && (
+        {/* ─── Idle empty state — not searched yet ─────── */}
+        {!results && !searched && !searching && (
           <div className="panel-raised p-8 text-center">
             <Globe className="w-10 h-10 text-rmpg-500 mx-auto mb-3 opacity-40" />
             <div className="text-xs text-rmpg-400">
@@ -739,6 +824,9 @@ export default function NationalWarrantSearchPage() {
             </div>
             <div className="text-[10px] text-rmpg-500 mt-1">
               Searches across {sourceCount}+ sources in {statesCovered} states.
+            </div>
+            <div className="text-[10px] text-rmpg-600 mt-2">
+              Press <kbd className="px-1 py-0.5 bg-surface-sunken border border-border-subtle text-rmpg-500 font-mono text-[9px]">N</kbd> to start typing
             </div>
           </div>
         )}
@@ -754,9 +842,29 @@ const warrantName = (w: any): string =>
     : (w.full_name ? String(w.full_name).toUpperCase() : 'UNKNOWN');
 
 // ── Warrant Result Row ──────────────────────────────────────
-function WarrantRow({ warrant, preparedBy }: { warrant: any; preparedBy?: string }) {
+function WarrantRow({
+  warrant,
+  preparedBy,
+  highlighted,
+  onClearHighlight,
+}: {
+  warrant: any;
+  preparedBy?: string;
+  highlighted?: boolean;
+  onClearHighlight?: () => void;
+}) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  // Scroll the highlighted row into view once on mount. Handles the
+  // ?warrant_id= deep-link case where the auto-search result needs to
+  // surface without the user having to scroll manually.
+  useEffect(() => {
+    if (highlighted && rowRef.current) {
+      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlighted]);
 
   const openPdf = useCallback(() => {
     openNationalWarrantPdf({ warrant: warrant as NationalWarrantHit, preparedBy });
@@ -779,8 +887,12 @@ function WarrantRow({ warrant, preparedBy }: { warrant: any; preparedBy?: string
 
   return (
     <div
-      className="px-3 py-2 hover:bg-surface-sunken transition-colors flex items-start gap-3"
+      ref={rowRef}
+      className={`px-3 py-2 hover:bg-surface-sunken transition-colors flex items-start gap-3 ${
+        highlighted ? 'ring-1 ring-inset ring-brand-500/60 bg-brand-900/10' : ''
+      }`}
       onContextMenu={(e) => openMenu(e, buildWarrantMenu())}
+      onClick={highlighted && onClearHighlight ? onClearHighlight : undefined}
     >
       {/* Photo thumbnail */}
       {warrant.photo_url ? (

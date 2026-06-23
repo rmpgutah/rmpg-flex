@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1120: National Warrants — ?search= / ?warrant_id= deep-link, N shortcut, Esc cascade (highlight→state→results), 3-state empty (idle/searching/no-results), row highlight + scroll-into-view for warrant_id deep-link.
 // v1119: DL Search — ?dl_number= / ?person_id= deep-link, N shortcut focuses search, Esc cascade (modal→panel→results), 3-state empty (not-searched/loading/no-results), ConfirmDialog for SOR import, dead Camera import removed.
 // v1118: Recruitment — ConfirmDialog replaces inline delete div, ?applicant_id= / ?recruit_id=
 //        deep-link, N shortcut, Esc cascade (delete → form), 3-state empty (loading/error/no-data/
