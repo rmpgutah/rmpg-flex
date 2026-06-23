@@ -377,6 +377,35 @@
 //            (covered by 2 new vitest assertions). Client-only PR; no
 //            Worker route changes, no D1 migration.
 //        SW name auto-stamps via vite plugin — bump here is documentation.
+// v1071: Person Dossier (/intel/person/:id) — Page 53 of the full-app
+//        frontend pass. The 360° subject workspace already aggregated
+//        identity, flags, cluster, timeline, associates, vehicles,
+//        addresses, escalation, and watched-state from a single
+//        /api/intel/dossier/person/:id call — and the server has shipped
+//        `linked_intel` (disseminated intel reports naming this subject)
+//        for a year — but the page never rendered it. The data was only
+//        reachable from the Intel Reports list, never from the subject
+//        whose name was in the report. New LINKED INTELLIGENCE section
+//        (left column, below Addresses) lists each report with number,
+//        threat level (color-coded), role, title, dissemination date,
+//        and handling code; each row deep-links to /intel/reports/:id.
+//        A header-band chip ("N INTEL REPORTS") flags presence at a
+//        glance. Court-ready dossier PDF (dossierPdfGenerator) gained
+//        matching LINKED INTELLIGENCE + ACTIVITY TREND sections — the
+//        printed packet now reflects the screen, including the 30d-vs-
+//        90d escalation metric that was previously chip-only. Esc cascade
+//        added (photo zoom → navigate back; read-only page, short stack
+//        by design). 404 from the dossier endpoint now renders a
+//        distinct "No person on file for #id" empty state instead of
+//        the generic red error line — important when a merged/deleted
+//        person id is followed from a stale link. Photo click-to-
+//        enlarge modal (full-bleed, Esc to close, click-outside to
+//        dismiss). PDF export button now disabled-while-generating
+//        with a 600ms debounce to defeat the double-press-two-PDFs
+//        race when jsPDF Arial-font registration is slow. Escalation
+//        chip carries a tooltip with raw recent/baseline counts.
+//        Tests extended: linked_intel rendering, escalation tooltip
+//        content, 404 empty state distinction, Esc handler wiring.
 
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
