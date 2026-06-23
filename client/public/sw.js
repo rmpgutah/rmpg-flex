@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1206: Login — ?username= deep-link pre-fills username field (useRef guard+strip), N shortcut focuses username (credentials step only, skips if target is INPUT/TEXTAREA), Esc cascade adds clearError() as first branch, #888888 hex → text-rmpg-400 tokens (labels, icons, InfoRow, accentColor, "Secure Authentication" subtitle).
 // v1195: Document Intake — ConfirmDialog gates discard-review (Esc→confirm or button), ?doc_id= deep-link (scroll review panel + toast if not loaded), N+canUpload role gate (admin|manager|supervisor|officer|dispatcher), Esc cascade stopPropagation per branch (discardConfirmOpen→review), 4-state empty (idle/processing/error/review), canUpload gates drop-zone+picker+drag, AlertTriangle error state with retry, reviewPanelRef scroll target.
 // v1200: Interaction Recorder — ConfirmDialog gates stop/discard (warning variant), ?recording_id= deep-link (scroll+toast+strip+useRef guard), N focuses location input (any-role gate), Esc closes stop-confirm, canDelete (admin|manager) gates DEL button, 3-state loading/no-data empty states, #888888/#d4a017 hex → rmpg-400/brand-400 tokens, parseTimestamp for row timestamps.
 // v1199: Gang Intel — canCreate (admin|manager) gates New Member button + N shortcut, ?person_id= deep-link alias + missing-target toast, gangs dead-fetch removed, bg-black/70 token replaces rgba(0,0,0,0.70), Gang interface removed.
