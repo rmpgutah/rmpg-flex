@@ -143,6 +143,7 @@ import microbilt from './routes/microbilt';
 import screening from './routes/screening';
 import sorSources from './routes/sorSources';
 import nsopw from './routes/nsopw';
+import mapAnnotations from './routes/mapAnnotations';
 import personIntel from './routes/personIntel';
 import serve from './routes/serve';
 
@@ -392,6 +393,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Leave + disciplinary + performance reviews; /benefits returns [] (table deferred). Payroll/exit/grievances/PIPs stay on legacy.' },
   { prefix: '/api/iped', router: iped, auth: 'required',
     note: 'Read-only surface over forensic_hash_sets + forensic_hash_entries + iped_imports tables. GET /status, /hash-sets, /hash-sets/:id, /downloads.' },
+  { prefix: '/api/map/annotations', router: mapAnnotations, auth: 'required',
+    note: 'Shared map annotation pins (map_annotations table). All authenticated roles.' },
   { prefix: '/api/narcotics', router: narcotics, auth: 'required',
     note: 'Narcotics & vice: investigations, CI management, buy/bust ops, drug trend analysis' },
   { prefix: '/api/nav', router: nav, auth: 'required',
