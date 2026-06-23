@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Plus, Search, ClipboardList, MapPin, User, Clock, FileText,
-  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye, AlertTriangle, Trash2,
-  Printer,
+  Archive, RotateCcw, X, Save, Loader2, Eye, AlertTriangle, Trash2,
+  Printer, ExternalLink,
 } from 'lucide-react';
 import { openFiCardPdf } from '../utils/fiCardPdf';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
@@ -101,6 +101,7 @@ export default function FieldInterviewsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
@@ -121,6 +122,11 @@ export default function FieldInterviewsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
+  // Deep-link pre-filters consumed once from URL — persisted in state so
+  // the list stays scoped even after the params are stripped.
+  const [filterPersonId, setFilterPersonId] = useState<string | null>(null);
+  const [filterOfficerId, setFilterOfficerId] = useState<string | null>(null);
 
   // Form
   const [formOpen, setFormOpen] = useState(false);
@@ -149,12 +155,8 @@ export default function FieldInterviewsPage() {
   const [repeatWarning, setRepeatWarning] = useState<string | null>(null);
   const repeatCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Delete
-  const [deleteTarget, setDeleteTarget] = useState<FieldInterview | null>(null);
-  // Admin hard-delete confirmation — previously used the native confirm()
-  // dialog which has no a11y, no keyboard polish, and is visually
-  // inconsistent with the rest of the app. Routes through the existing
-  // ConfirmDialog component instead.
+  // Admin hard-delete confirmation — routes through ConfirmDialog instead of
+  // the native confirm() prompt for a11y + visual consistency.
   const [hardDeleteTarget, setHardDeleteTarget] = useState<FieldInterview | null>(null);
 
   // ── Fetch ──
@@ -167,6 +169,8 @@ export default function FieldInterviewsPage() {
         ...(searchQuery ? { search: searchQuery } : {}),
         ...(filterReason ? { contact_reason: filterReason } : {}),
         archived: showArchived ? 'true' : 'false',
+        ...(filterPersonId ? { person_id: filterPersonId } : {}),
+        ...(filterOfficerId ? { officer_id: filterOfficerId } : {}),
       });
       const res = await apiFetch<{ data: FieldInterview[]; pagination: any }>(`/field-interviews?${params}`);
       setFis(res.data || []);
@@ -177,7 +181,7 @@ export default function FieldInterviewsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, searchQuery, filterReason, showArchived]);
+  }, [page, searchQuery, filterReason, showArchived, filterPersonId, filterOfficerId]);
 
   useEffect(() => { fetchFis(); }, [fetchFis]);
   useLiveSync('alerts', () => fetchFis({ silent: true }));
@@ -370,11 +374,19 @@ export default function FieldInterviewsPage() {
   // Set document title
   useEffect(() => { document.title = 'Field Interviews \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcuts: Escape closes modals; `N` opens a new FI card from
-  // anywhere on the page (mirrors Dispatch's `N` binding for operator muscle
-  // memory). Suppressed when the user is actually typing into an input/
-  // textarea/contenteditable so "N" doesn't fire while they're filling out
-  // the form they just opened.
+  // Keep live refs so the keyboard handler always sees the latest modal state
+  // without re-registering on every state change (which would miss keystrokes
+  // during rapid typing).
+  const hardDeleteTargetRef = useRef(hardDeleteTarget);
+  const formOpenRef = useRef(formOpen);
+  const selectedFiRef = useRef(selectedFi);
+  useEffect(() => { hardDeleteTargetRef.current = hardDeleteTarget; }, [hardDeleteTarget]);
+  useEffect(() => { formOpenRef.current = formOpen; }, [formOpen]);
+  useEffect(() => { selectedFiRef.current = selectedFi; }, [selectedFi]);
+
+  // Keyboard shortcuts: Escape closes modals (smart cascade — innermost first);
+  // `N` opens a new FI card from anywhere on the page (mirrors Dispatch's `N`
+  // binding). Suppressed when the user is typing into an input/textarea/select.
   useEffect(() => {
     const isTypingInField = (target: EventTarget | null): boolean => {
       if (!(target instanceof HTMLElement)) return false;
@@ -382,7 +394,13 @@ export default function FieldInterviewsPage() {
       return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
     };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setFormOpen(false); setEditingFi(null); return; }
+      if (e.key === 'Escape') {
+        // Smart cascade: dismiss innermost layer first.
+        if (hardDeleteTargetRef.current !== null) { setHardDeleteTarget(null); return; }
+        if (formOpenRef.current) { clearFormDraft(); setFormOpen(false); setEditingFi(null); return; }
+        if (selectedFiRef.current) { setSelectedFi(null); return; }
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
       if (e.key === 'n' || e.key === 'N') {
@@ -395,11 +413,26 @@ export default function FieldInterviewsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── /field-interviews?fi_id=<id> deep-link auto-select ──
-  // Seventh consecutive page-pass implementing this contract. Once `fis`
-  // hydrates, find by id and set as selectedFi; strip the query so a
-  // refresh doesn't re-select. Surfaces a one-time toast if the id misses.
+  // ── ?person_id= / ?officer_id= deep-link pre-filters ──
+  // Consumed once at mount: strip from URL and activate the server-side
+  // filter so the list only shows FIs for that person / officer.
   const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const pid = searchParams.get('person_id');
+    const oid = searchParams.get('officer_id');
+    if (!pid && !oid) return;
+    if (pid) setFilterPersonId(pid);
+    if (oid) setFilterOfficerId(oid);
+    const next = new URLSearchParams(searchParams);
+    next.delete('person_id');
+    next.delete('officer_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── /field-interviews?fi_id=<id> deep-link auto-select ──
+  // Once `fis` hydrates, find by id and set as selectedFi; strip the query so
+  // a refresh doesn't re-select. Surfaces a one-time toast if the id misses.
   const pendingFiIdRef = useRef<string | null>(searchParams.get('fi_id'));
   useEffect(() => {
     const target = pendingFiIdRef.current;
@@ -461,6 +494,21 @@ export default function FieldInterviewsPage() {
         </div>
       </div>
 
+      {/* Scoped-filter banner — shown when the list is pre-filtered via a
+          ?person_id= or ?officer_id= deep-link (e.g. from PersonDossierPage). */}
+      {(filterPersonId || filterOfficerId) && (
+        <div className="px-3 py-1.5 bg-brand-900/30 border-b border-brand-700/40 text-brand-300 text-[10px] flex items-center gap-2">
+          <Eye className="w-3 h-3 flex-shrink-0 text-brand-400" aria-hidden="true" />
+          <span className="flex-1">
+            {filterPersonId ? `Showing FIs linked to person #${filterPersonId}` : `Showing FIs for officer #${filterOfficerId}`}
+          </span>
+          <button type="button" className="text-brand-400 hover:text-brand-200 underline text-[10px]"
+            onClick={() => { setFilterPersonId(null); setFilterOfficerId(null); setPage(1); }}>
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Error Banner */}
       {error && (
         <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2" role="alert">
@@ -480,12 +528,21 @@ export default function FieldInterviewsPage() {
               <span className="text-[10px] text-rmpg-500 animate-pulse">Loading field interviews...</span>
             </div>
           ) : fis.length === 0 ? (
-            <EmptyState
-              icon={ClipboardList}
-              title="No field interviews found"
-              description="Create a new FI card to get started."
-              action={{ label: 'New FI Card', onClick: handleOpenNew }}
-            />
+            (searchQuery || filterReason || showArchived || filterPersonId || filterOfficerId) ? (
+              <EmptyState
+                icon={Search}
+                title="No field interviews match your filters"
+                description="Try clearing the search or adjusting the filters."
+                action={{ label: 'Clear filters', onClick: () => { setSearchQuery(''); setFilterReason(''); setShowArchived(false); setFilterPersonId(null); setFilterOfficerId(null); setPage(1); } }}
+              />
+            ) : (
+              <EmptyState
+                icon={ClipboardList}
+                title="No field interviews yet"
+                description="Create a new FI card to get started."
+                action={{ label: 'New FI Card', onClick: handleOpenNew }}
+              />
+            )
           ) : (
             fis.map((fi, idx) => (
               <div
@@ -611,15 +668,45 @@ export default function FieldInterviewsPage() {
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Build</span><div className="text-rmpg-100 mt-0.5">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Hair / Eyes</span><div className="text-rmpg-100 mt-0.5">{[selectedFi.subject_hair, selectedFi.subject_eye].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Clothing</span><div className="text-rmpg-100 mt-0.5">{selectedFi.subject_clothing || '—'}</div></div>
+              {selectedFi.subject_description && (
+                <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Description</span><div className="text-rmpg-100 mt-0.5">{selectedFi.subject_description}</div></div>
+              )}
+              {selectedFi.gang_affiliation && (
+                <div className="col-span-2">
+                  <span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Gang Affiliation</span>
+                  <div className="text-amber-300 font-semibold mt-0.5">{selectedFi.gang_affiliation}</div>
+                </div>
+              )}
               <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Location</span><div className="text-rmpg-100 mt-0.5">{formatAddressDisplay(selectedFi.location)}</div></div>
               {((selectedFi as any).section_id || (selectedFi as any).zone_id || (selectedFi as any).beat_id) && (
-                <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-rmpg-100">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
+                <div className="col-span-2"><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Section / Zone / Beat</span><div className="text-rmpg-100 mt-0.5">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Reason</span><div className="text-rmpg-100 mt-0.5 capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Contact Type</span><div className="text-rmpg-100 mt-0.5">{formatLabel(selectedFi.contact_type)}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Action Taken</span><div className="text-rmpg-100 mt-0.5 capitalize">{selectedFi.action_taken}</div></div>
               <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Officer</span><div className="text-rmpg-100 mt-0.5">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>
-              {selectedFi.vehicle_plate && <div><span className="text-rmpg-500 text-[10px] uppercase">Vehicle</span><div className="text-rmpg-100">{selectedFi.vehicle_plate} {selectedFi.vehicle_description}</div></div>}
+              {selectedFi.vehicle_plate && <div><span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Vehicle</span><div className="text-rmpg-100 mt-0.5">{selectedFi.vehicle_plate} {selectedFi.vehicle_description}</div></div>}
+              {/* Person record cross-reference — only shown when the FI is linked
+                  to a canonical persons row. Opens PersonDossierPage (#1663). */}
+              {selectedFi.person_id && (
+                <div className="col-span-2 mt-1">
+                  <span className="text-rmpg-500 text-[9px] uppercase font-semibold tracking-wider select-none">Person Record</span>
+                  <div className="mt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/intel/person/${selectedFi.person_id}`)}
+                      className="toolbar-btn text-brand-400 hover:text-brand-300"
+                      style={{ fontSize: 10 }}
+                    >
+                      <ExternalLink style={{ width: 10, height: 10 }} />
+                      {selectedFi.linked_person_last
+                        ? `${selectedFi.linked_person_last}, ${selectedFi.linked_person_first || ''}`.trim()
+                        : `Person #${selectedFi.person_id}`}
+                      &nbsp;— Open Dossier
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Narrative */}

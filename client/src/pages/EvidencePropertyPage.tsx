@@ -76,6 +76,9 @@ export default function EvidencePropertyPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // Approve/deny release requires supervisor-tier authority (same roles that can
+  // approve on the backend: admin / manager / supervisor).
+  const canApproveRelease = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
@@ -87,9 +90,12 @@ export default function EvidencePropertyPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
 
-  // Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  // Filters — ?status= and ?case_id= deep-links pre-seed on mount.
+  // ?case_id= pre-fills the search field with the case id so the list
+  // narrows to evidence linked to that case (relies on the API's ?search=
+  // param which the backend checks against incident_number / case_id).
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('case_id') || '');
+  const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') || '');
   const [filterType, setFilterType] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -477,7 +483,10 @@ export default function EvidencePropertyPage() {
   // case + incident references → "view this evidence" land directly on the
   // item. One-shot per page load; param is stripped after applying.
   const [searchParams, setSearchParams] = useSearchParams();
-  const pendingEvidenceIdRef = useRef<string | null>(searchParams.get('evidence_id'));
+  // Accept both ?evidence_id= (canonical) and ?id= (QuickSearchCard mobile link).
+  const pendingEvidenceIdRef = useRef<string | null>(
+    searchParams.get('evidence_id') || searchParams.get('id'),
+  );
   useEffect(() => {
     const target = pendingEvidenceIdRef.current;
     if (!target || loading) return;
@@ -507,6 +516,7 @@ export default function EvidencePropertyPage() {
         if (!cancelled) {
           const next = new URLSearchParams(searchParams);
           next.delete('evidence_id');
+          next.delete('id');
           setSearchParams(next, { replace: true });
         }
       }
@@ -859,16 +869,21 @@ export default function EvidencePropertyPage() {
                           {selected.release_to && <span className="text-[10px] text-rmpg-300">To: {selected.release_to}</span>}
                         </div>
                         {selected.release_reason && <div className="text-[10px] text-rmpg-400">Reason: {selected.release_reason}</div>}
-                        <div className="flex gap-1">
-                          <button type="button" onClick={() => handleApproveRelease('approve')} disabled={releaseSubmitting}
-                            className="toolbar-btn text-green-400 border-green-700/50 hover:bg-green-900/30">
-                            <CheckCircle style={{ width: 11, height: 11 }} /> Approve Release
-                          </button>
-                          <button type="button" onClick={() => handleApproveRelease('deny')} disabled={releaseSubmitting}
-                            className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
-                            <X style={{ width: 11, height: 11 }} /> Deny
-                          </button>
-                        </div>
+                        {/* Approve/Deny gate: supervisor/manager/admin only — mirrors backend PUT approve-release role check. */}
+                        {canApproveRelease ? (
+                          <div className="flex gap-1">
+                            <button type="button" onClick={() => handleApproveRelease('approve')} disabled={releaseSubmitting}
+                              className="toolbar-btn text-green-400 border-green-700/50 hover:bg-green-900/30">
+                              <CheckCircle style={{ width: 11, height: 11 }} /> Approve Release
+                            </button>
+                            <button type="button" onClick={() => handleApproveRelease('deny')} disabled={releaseSubmitting}
+                              className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
+                              <X style={{ width: 11, height: 11 }} /> Deny
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-rmpg-500">Awaiting supervisor approval</div>
+                        )}
                       </div>
                     ) : selected.release_status === 'released' ? (
                       <div className="space-y-2">

@@ -30,6 +30,8 @@ import type { OfficerWithStatus } from './utils/personnelMappers';
 import {
   MAIN_TABS, type MainTab, type DetailTab, type ModalMode,
 } from './utils/personnelConstants';
+import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 import { getWeekMonday } from './utils/personnelFormatters';
 import OfficerAvatar from './components/OfficerAvatar';
 import CredentialProgressBar from './components/CredentialProgressBar';
@@ -1536,39 +1538,43 @@ export default function PersonnelPage() {
       </div>
       )}
 
-      {/* Tab Navigation */}
-      <div className="tab-bar overflow-x-auto scrollbar-dark" role="tablist" aria-label="Personnel management tabs" style={{ scrollbarWidth: 'none' }}>
-        {MAIN_TABS.map(tab => {
-          const Icon = tab.icon;
-          const count = tab.id === 'roster' ? officers.length
-            : tab.id === 'duty_board' ? onDutyCount
-            : tab.id === 'time' ? clockedInCount
-            : tab.id === 'credentials' && expiringCreds > 0 ? expiringCreds
-            : undefined;
-          const alert = tab.id === 'credentials' && expiringCreds > 0;
-          const isActive = activeTab === tab.id;
-          return (
-            <button type="button"
-              key={tab.id}
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => { setActiveTab(tab.id); if (tab.id !== 'roster') setSelectedOfficer(null); }}
-              className={`tab-bar-item ${isActive ? 'active' : ''}`}
-            >
-              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-brand-400' : ''}`} />
-              {tab.label}
-              {count !== undefined && (
-                <span className={`text-[8px] px-1 py-0.5 ml-0.5 font-mono ${
-                  alert ? 'bg-amber-900/30 text-amber-400 border border-amber-700/30' : 'text-rmpg-500'
-                }`}>
-                  {count}
-                </span>
-              )}
-              {alert && <span className="led-dot led-amber" />}
-            </button>
-          );
-        })}
-      </div>
+      {/* Tab Navigation (grouped Spillman module strip) */}
+      <SpillmanModuleGroup
+        groups={[
+          {
+            label: 'Operations',
+            tone: 'steel',
+            tabs: [
+              { id: 'command',    label: 'Command' },
+              { id: 'roster',     label: 'Roster',     count: officers.length || undefined },
+              { id: 'duty_board', label: 'Duty Board', count: onDutyCount || undefined },
+            ],
+          },
+          {
+            label: 'Planning',
+            tone: 'gold',
+            tabs: [
+              { id: 'schedule',   label: 'Schedule' },
+              { id: 'time',       label: 'Time',        count: clockedInCount || undefined },
+              { id: 'deployment', label: 'Deployment' },
+            ],
+          },
+          {
+            label: 'Administration',
+            tone: 'neutral',
+            tabs: [
+              { id: 'credentials', label: 'Credentials', count: expiringCreds > 0 ? expiringCreds : undefined },
+              { id: 'training',    label: 'Training' },
+              { id: 'equipment',   label: 'Equipment' },
+            ],
+          },
+        ] as ModuleGroupSpec[]}
+        activeTab={activeTab}
+        onTabChange={(id) => {
+          setActiveTab(id as MainTab);
+          if (id !== 'roster') setSelectedOfficer(null);
+        }}
+      />
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-hidden flex">

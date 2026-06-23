@@ -11,6 +11,8 @@ import type {
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
 import { DETAIL_TABS, ROLE_COLORS, type DetailTab } from './utils/personnelConstants';
+import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 import { toDisplayLabel } from '../../utils/formatters';
 import OfficerAvatar from './components/OfficerAvatar';
 import ProfileDetailTab from './detail-tabs/ProfileDetailTab';
@@ -422,25 +424,48 @@ export default function PersonnelDetailPanel({
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="tab-bar" role="tablist" aria-label="Officer detail tabs">
-        {DETAIL_TABS.map(({ id, label, icon: Icon }) => {
-          const alertBadge = id === 'credentials' && hasCredAlert;
-          return (
-            <button type="button"
-              key={id}
-              role="tab"
-              aria-selected={activeTab === id}
-              className={`tab-bar-item ${activeTab === id ? 'active' : ''}`}
-              onClick={() => onTabChange(id)}
-            >
-              <Icon className="w-3 h-3" />
-              {label}
-              {alertBadge && <span className="led-dot led-amber ml-1" title="Credential alert" />}
-            </button>
-          );
-        })}
-      </div>
+      {/* Tab Bar — grouped Spillman module strip */}
+      <SpillmanModuleGroup
+        groups={[
+          {
+            label: 'Profile',
+            tone: 'steel',
+            tabs: [
+              { id: 'profile',     label: 'Profile' },
+              { id: 'credentials', label: 'Credentials', count: hasCredAlert ? 1 : undefined },
+            ],
+          },
+          {
+            label: 'Scheduling',
+            tone: 'gold',
+            tabs: [
+              { id: 'schedule',   label: 'Schedule' },
+              { id: 'time',       label: 'Time Log' },
+              { id: 'deployment', label: 'Deployment' },
+            ],
+          },
+          {
+            label: 'Performance',
+            tone: 'green',
+            tabs: [
+              { id: 'activity', label: 'Activity' },
+              { id: 'training', label: 'Training' },
+              { id: 'fitness',  label: 'Fitness' },
+            ],
+          },
+          {
+            label: 'Equipment',
+            tone: 'neutral',
+            tabs: [
+              { id: 'equipment',     label: 'Equipment' },
+              { id: 'body_cameras',  label: 'Body Cams' },
+              { id: 'dash_cameras',  label: 'Dash Cams' },
+            ],
+          },
+        ] as ModuleGroupSpec[]}
+        activeTab={activeTab}
+        onTabChange={(id) => onTabChange(id as DetailTab)}
+      />
 
       {/* Tab Content */}
       <div className="flex-1 min-h-0 overflow-y-auto min-h-0 p-4 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>

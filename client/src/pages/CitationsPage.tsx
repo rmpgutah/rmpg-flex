@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -37,6 +37,7 @@ import {
   Zap,
   Lock,
   Gavel,
+  ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
@@ -355,6 +356,7 @@ export default function CitationsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
@@ -880,6 +882,9 @@ export default function CitationsPage() {
     m.copy('Copy citation #', c.citation_number, <Copy size={12} />),
     m.copy('Copy violator', c.person_name),
     m.copyId(c.id),
+    ...(c.vehicle_plate
+      ? [m.go('View plate history', `/intel/plate-log?plate=${encodeURIComponent(c.vehicle_plate)}`, <ExternalLink size={12} />)]
+      : []),
     ...(c.latitude != null && c.longitude != null
       ? [m.go('Show on map', `/map?flyto=${c.latitude},${c.longitude}`, <MapPin size={12} />)]
       : []),
@@ -1272,7 +1277,21 @@ export default function CitationsPage() {
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {c.vehicle_description && <div><span className="text-rmpg-400">Description:</span> <span className="text-rmpg-200">{c.vehicle_description}</span></div>}
-                {c.vehicle_plate && <div><span className="text-rmpg-400">Plate:</span> <span className="text-rmpg-200 font-mono">{c.vehicle_plate}</span> <span className="text-rmpg-500">({c.vehicle_state || 'UT'})</span></div>}
+                {c.vehicle_plate && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-rmpg-400">Plate:</span>
+                    <span className="text-rmpg-200 font-mono">{c.vehicle_plate}</span>
+                    <span className="text-rmpg-500">({c.vehicle_state || 'UT'})</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/intel/plate-log?plate=${encodeURIComponent(c.vehicle_plate!)}`)}
+                      className="inline-flex items-center gap-0.5 text-[9px] text-brand-400 hover:text-brand-300 transition-colors"
+                      title="View plate history in Plate Log"
+                    >
+                      <ExternalLink size={9} /> ALPR
+                    </button>
+                  </div>
+                )}
                 {(c as any).vehicle_vin && <div><span className="text-rmpg-400">VIN:</span> <span className="text-rmpg-200 font-mono">{(c as any).vehicle_vin}</span></div>}
                 {((c as any).vehicle_year || (c as any).vehicle_make) && (
                   <div>
@@ -1383,6 +1402,14 @@ export default function CitationsPage() {
             <section>
               <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
                 <Scale size={10} /> Court Information
+                <button
+                  type="button"
+                  onClick={() => navigate('/court')}
+                  className="ml-auto inline-flex items-center gap-0.5 text-[9px] text-brand-400 hover:text-brand-300 transition-colors font-normal normal-case tracking-normal"
+                  title="Open Court Tracker"
+                >
+                  <ExternalLink size={9} /> Court Tracker
+                </button>
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {c.court_date && (() => {
@@ -1974,6 +2001,33 @@ export default function CitationsPage() {
       }
     })();
   }, [citations, loading, searchParams, setSearchParams, addToast]);
+
+  // ── ?plate=<plate> deep-link — pre-fill the search box with a plate ──
+  // Incoming from PlateLogPage context-menu "View citations for this plate".
+  // Strips the param after applying so refresh doesn't re-run it.
+  useEffect(() => {
+    const plate = searchParams.get('plate');
+    if (!plate) return;
+    setSearchQuery(plate.toUpperCase());
+    setPage(1);
+    const next = new URLSearchParams(searchParams);
+    next.delete('plate');
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── ?officer_id=<id> deep-link — pre-fill search with officer's badge ──
+  // Incoming from PersonnelPage officer card "View this officer's citations".
+  useEffect(() => {
+    const officerId = searchParams.get('officer_id');
+    if (!officerId) return;
+    setSearchQuery(officerId);
+    setPage(1);
+    const next = new URLSearchParams(searchParams);
+    next.delete('officer_id');
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keyboard shortcuts: Esc smart-cascade (smallest modal first), and `N`
   // opens a new citation from anywhere on the page (mirrors Field Interviews
