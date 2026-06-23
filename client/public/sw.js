@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1169: Help — N/slash focuses search, ?article=/?section= deep-link aliases (strip after mount), ConfirmDialog replaces alert() on PDF errors, Print/PDF gated to admin (canPrint), Esc cascade adds stopPropagation per branch, healthLoading state distinct empty, #d4a017/#888888/#ffffff/#aaaaaa → brand-400/rmpg-* CSS var tokens.
 // v1168: FlexCam Footage — ConfirmDialog for evidence lock, N shortcut focuses play button, Esc stopPropagation per cascade branch (lockConfirm→shortcuts→fullscreen→playbackErr→pause), canManage (admin/manager) role gates on Lock/CourtPkg/Repair, parseTimestamp replaces new Date(string) in court-pkg message, brand-400 token replaces inline #d4a017 on evidence badge.
 // v1167: FlexCam — ConfirmDialog for repair+court-pkg, canLock role gate (admin/manager), N shortcut triggers refresh, Esc cascade adds stopPropagation, ?trip_id= deep-link, loading skeleton, brand token migration (#d4a017→brand-400), <a>→<Link> for PLAY, parseTimestamp replaces new Date() in custody timestamps.
 // v1166: Email — useSearchParams replaces window.history.replaceState for ?enrolled=/?folder=/?thread_id=/?message_id=/?compose= deep-links, canManage (admin/manager) role gates on bulk-delete/empty-folder/block-sender/sweep-sender/auto-categorize/delete-folder.
