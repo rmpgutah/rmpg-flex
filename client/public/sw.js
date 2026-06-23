@@ -3,6 +3,77 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1104: Tasks page — role gates (delete=admin|manager, urgent-priority=supervisor+),
+//        notificationRouting: add task/task_assignment entity types + fix case_task
+//        routing from /cases?task_id= (no-op) to /tasks?task_id= (correct deep-link).
+// v1102: Crime Analysis (/crime-analysis) — Page 79 of the full-app frontend
+//        pass. Added ?days= / ?date_range= deep-link (also seeds ?start_date=
+//        / ?end_date= for custom range), stripped after mount. Fixed BlueGradient
+//        stops (were both #888888, now steel-blue CSS vars). Cell keys changed
+//        from array index to stable d.name. Empty states now distinguish "no data
+//        for this period" vs "no data available" based on filterActive flag.
+// v1101: Reports pages (/reports, /reports/custom) — Page 78 of the full-app
+//        frontend audit. Backend: added 7 missing endpoints (comparison,
+//        daily-briefing, weekly-digest, patrol-tracking, POST /reports/custom,
+//        POST /records/reports/:id/approve, POST /records/reports/:id/return);
+//        fixed citation-revenue and response-times response shapes (were
+//        returning wrong field names → cards showed all-zeros); fixed
+//        crime-trends to return monthlyTrend[] + per-type MoM/YoY table rows
+//        instead of raw day/type/count triples. Frontend: CustomReportBuilder
+//        gains ?type= deep-link (pre-selects source), Esc cascade
+//        (preview→filters→columns→source→/reports). No window.confirm/prompt.
+// v1100: Communications — Page 77 of the full-app frontend pass.
+//        Implemented messages CRUD backend (GET/POST/PUT read+ack/DELETE)
+//        + emergency-broadcast (accepts content not message) + drafts POST
+//        + activity-feed real D1 query in stubs router. Client: BOLO search
+//        field + distinct empty states (no-BOLOs vs no-results), role gates
+//        (canCreateBolo: supervisor+ only sees New BOLO/resolve/archive/N
+//        shortcut), Esc cascade clears boloSearch, subject not required in
+//        compose (auto-derived from content).
+// v1099: Training pages — Page 76 of the full-app frontend audit.
+//        TrainingDocsPage: replaced window.confirm() with ConfirmDialog,
+//        removed dead isGodMode variable, fixed stale-closure keyboard
+//        shortcut (loadDocuments now in deps), added ?doc_id= deep-link,
+//        improved empty-state (no-data vs filtered vs no-category).
+//        TrainingManagementPage: fixed critical bug where "New Course"
+//        modal never opened (showForm was editingRecord !== null, but
+//        openNew sets editingRecord = null); added separate showForm boolean,
+//        role gate (admin/manager/hr only), Esc cascade, N shortcut,
+//        replaced inline delete div with ConfirmDialog, added Docs Library
+//        cross-link button. Worker: added 3 missing endpoints —
+//        GET /personnel/training-materials, GET /personnel/training-alerts,
+//        POST /personnel/training-bulk-assign.
+// v1098: Dashcam pages (Page 75) — fixed status panel shape mismatch
+//        (DashcamPage read enabled/deviceCount/port/models/uptime which the
+//        API never emitted; now reads total_devices/online_devices/active_devices).
+//        Removed broken POST /howen/enable stub call and unguarded power-toggle
+//        button. Added ?device_id= deep-link + Esc cascade to DashcamPage.
+//        Added role-gate (canManage) imports. Replaced 6x hardcoded #d4a017
+//        with text-brand-400. Distinct empty states for no-devices vs no-results.
+//        Removed unused AlertTriangle + Smartphone imports. Removed dead
+//        isGodMode duplicate (= isAdmin) from DashCamerasPage.
+// v1097: Body Cameras (/body-cameras) — Page 74 audit. Fixed canManage to
+//        include manager role (matched backend WRITE_ROLES). Added ?camera_id=
+//        and ?officer_id= deep-links (camera row highlight + officer search
+//        seed). Added N shortcut to open Assign Camera. Distinct empty-state
+//        messages (no data vs no search results). Removed dead isGodMode alias.
+// v1096: Fleet v2 (FleetShell) — Page 73 of the full-app frontend pass.
+//        Added N shortcut (open New Vehicle modal when not typing),
+//        Esc cascade (closes New Vehicle modal before propagating),
+//        ?unit_id= deep-link param (alongside ?vehicle_id= and ?fleet_id=),
+//        VehicleDetailRoute now distinguishes loading vs 404 (no more
+//        silent blank on a bad ID), GpsTrackingRoute link updated from
+//        /fleet-legacy to /map (the actual GPS map surface).
+// v1095: Personnel (/personnel) — Page 72 of the full-app frontend pass.
+//        Removed dead state (analytics, analyticsLoading, dashcamEvents,
+//        deviceMappings, dashcamLoading, refreshDashcamData — never read).
+//        Role gate: terminate/archive/restore buttons in detail panel now
+//        hidden for officer/dispatcher/client_viewer (admin|manager|supervisor|
+//        human_resources only). N shortcut extended to credentials, training,
+//        and deployment tabs (was roster+equipment only). Fixed hex tokens:
+//        #0a1a0a → bg-green-950/30 (DutyBoard/Deployment/Training),
+//        #1a0a0a → bg-red-950/30 (DashCam impact alert). FitnessCommendations
+//        apiFetch now guards against wrapper objects {data:[]} on both loads.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
@@ -3748,6 +3819,10 @@
 //       truncation limit. Server /api/process-server/:id/attempt now
 //       persists next_attempt_note when the column exists, falls back
 //       gracefully when migration 0142 hasn't landed.
+// v1103: CRM/Overwatch — task delete ConfirmDialog, role gate for intel tabs
+//        (webintel/competitors/firecrawl/deepresearch now require supervisor+),
+//        ?section= URL param stripped after seeding, ?contact_id= deep-link
+//        routes to Contacts tab, Esc cascade covers task-delete confirm.
 // Stamped at build time by the stamp-sw-version Vite plugin (vite.config.ts)
 // with the git short SHA → 'rmpg-flex-<sha>'. Dev server serves 'rmpg-flex-BUILD'.
 const CACHE_NAME = 'rmpg-flex-BUILD';

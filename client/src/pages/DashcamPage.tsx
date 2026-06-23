@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { formatEnumValue } from '../utils/formatters';
 import PanelTitleBar from '../components/PanelTitleBar';
-import { Camera, MapPin, AlertTriangle, Radio, RefreshCw, Activity, Power, PowerOff, Search, Monitor, Smartphone } from 'lucide-react';
+import { Camera, MapPin, Radio, RefreshCw, Activity, Search, Monitor } from 'lucide-react';
 import IconButton from '../components/IconButton';
 import UnitPicker from '../components/UnitPicker';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -20,6 +23,12 @@ const EVENT_ICONS: Record<string, string> = {
 };
 
 export default function DashcamPage() {
+  const { addToast } = useToast();
+  const { user } = useAuth();
+  const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
+
+  const [searchParams] = useSearchParams();
+
   const [status, setStatus] = useState<any>(null);
   const [devices, setDevices] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
@@ -80,6 +89,39 @@ export default function DashcamPage() {
     return () => clearInterval(iv);
   }, []);
 
+  // Deep-link: ?device_id=<numeric howen_devices.id>
+  // Navigating from the fleet page or a notification lands the operator
+  // directly on the right device with the detail panel open.
+  useEffect(() => {
+    const target = searchParams.get('device_id');
+    if (!target || loading) return;
+    const numeric = parseInt(target, 10);
+    if (isNaN(numeric)) return;
+    // Try in-page list first; fall back to direct fetch when paged out.
+    const hit = devices.find((d) => d.id === numeric);
+    if (hit) {
+      loadDeviceDetail(numeric);
+    } else if (!loading) {
+      loadDeviceDetail(numeric).catch(() =>
+        addToast(`Device ${target} not found`, 'warning'),
+      );
+    }
+  // Run once after initial load completes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Esc cascade — Esc closes the detail panel.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedDevice) {
+        setSelectedDevice(null);
+        setDeviceDetail(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedDevice]);
+
   const loadDeviceDetail = async (id: number) => {
     try {
       const data = await apiFetch<any>(`/howen/devices/${id}`);
@@ -87,18 +129,6 @@ export default function DashcamPage() {
       setSelectedDevice(data);
     } catch (err: any) {
       setError('Failed to load device details');
-    }
-  };
-
-  const toggleReceiver = async () => {
-    try {
-      await apiFetch('/howen/enable', {
-        method: 'POST',
-        body: JSON.stringify({ enabled: !status?.enabled }),
-      });
-      await fetchStatus();
-    } catch (err: any) {
-      setError('Failed to toggle receiver');
     }
   };
 
@@ -143,37 +173,44 @@ export default function DashcamPage() {
             <div className="text-xs text-text-muted flex items-center gap-1">
               <Radio className="w-3 h-3" /> RECEIVER
             </div>
-            <div className="text-lg font-semibold mt-1 flex items-center gap-2">
-              <span className={status.enabled ? 'text-green-400' : 'text-red-400'}>
-                {status.enabled ? 'LISTENING' : 'STOPPED'}
+            {/* The Howen receiver is managed server-side (port 33000 TCP).
+                Online count is inferred from last_connection_at — no
+                enable/disable API exists, so the toggle was removed. */}
+            <div className="text-lg font-semibold mt-1">
+              <span className={(status.online_devices ?? status.online ?? 0) > 0 ? 'text-green-400' : 'text-red-400'}>
+                {(status.online_devices ?? status.online ?? 0) > 0 ? 'ONLINE' : 'IDLE'}
               </span>
-              <IconButton onClick={toggleReceiver} aria-label={status.enabled ? 'Stop receiver' : 'Start receiver'}>
-                {status.enabled ? <PowerOff className="w-3 h-3" /> : <Power className="w-3 h-3" />}
-              </IconButton>
             </div>
-            <div className="text-xs text-text-muted mt-1">Port {status.port}</div>
+            <div className="text-xs text-text-muted mt-1">Port 33000 H-protocol</div>
           </div>
           <div className="bg-surface-raised border border-border-default p-3">
             <div className="text-xs text-text-muted flex items-center gap-1">
               <Monitor className="w-3 h-3" /> DEVICES
             </div>
-            <div className="text-lg font-semibold mt-1 text-[#d4a017]">{status.deviceCount}</div>
-            <div className="text-xs text-text-muted mt-1">{devices.filter(d => d.is_active).length} active</div>
+            <div className="text-lg font-semibold mt-1 text-brand-400">
+              {status.total_devices ?? status.total ?? 0}
+            </div>
+            <div className="text-xs text-text-muted mt-1">
+              {status.active_devices ?? devices.filter(d => d.is_active).length} active
+            </div>
           </div>
           <div className="bg-surface-raised border border-border-default p-3">
             <div className="text-xs text-text-muted flex items-center gap-1">
-              <MapPin className="w-3 h-3" /> PROTOCOL
+              <MapPin className="w-3 h-3" /> ONLINE NOW
             </div>
-            <div className="text-sm font-semibold mt-1 text-[#d4a017]">H-protocol</div>
-            <div className="text-xs text-text-muted mt-1">{status.models?.join(', ')}</div>
+            <div className="text-sm font-semibold mt-1 text-brand-400">
+              {status.online_devices ?? status.online ?? 0}
+            </div>
+            <div className="text-xs text-text-muted mt-1">last 15 min</div>
           </div>
           <div className="bg-surface-raised border border-border-default p-3">
             <div className="text-xs text-text-muted flex items-center gap-1">
-              <Activity className="w-3 h-3" /> UPTIME
+              <Activity className="w-3 h-3" /> PROTOCOL
             </div>
-            <div className="text-lg font-semibold mt-1 text-[#d4a017]">
-              {status.uptime > 0 ? `${Math.floor(status.uptime / 60)}m` : '—'}
+            <div className="text-lg font-semibold mt-1 text-brand-400">
+              HERO-ME40
             </div>
+            <div className="text-xs text-text-muted mt-1">H-protocol</div>
           </div>
         </div>
       )}
@@ -239,7 +276,7 @@ export default function DashcamPage() {
                         className={`border-b border-border-default cursor-pointer hover:bg-surface-raised ${selectedDevice?.id === d.id ? 'bg-surface-raised' : ''}`}
                         onClick={() => loadDeviceDetail(d.id)}
                       >
-                        <td className="px-3 py-1.5 font-mono text-[#d4a017]">{d.device_id}</td>
+                        <td className="px-3 py-1.5 font-mono text-brand-400">{d.device_id}</td>
                         <td className="px-3 py-1.5">{d.label || '—'}</td>
                         <td className="px-3 py-1.5">{d.call_sign || d.unit_id || '—'}</td>
                         <td className="px-3 py-1.5 text-text-muted">{d.model || d.fw_version || '—'}</td>
@@ -257,7 +294,13 @@ export default function DashcamPage() {
                       </tr>
                     ))}
                     {devices.length === 0 && (
-                      <tr><td colSpan={6} className="text-center py-8 text-text-muted">No devices registered</td></tr>
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-text-muted">
+                          {search.trim()
+                            ? <>No devices match &ldquo;{search}&rdquo;</>
+                            : 'No Howen devices registered — devices auto-register on first TCP connection'}
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
@@ -291,7 +334,7 @@ export default function DashcamPage() {
                       <tr key={e.id} className="border-b border-border-default">
                         <td className="px-3 py-1.5 font-mono text-text-muted">{e.event_at}</td>
                         <td className="px-3 py-1.5">
-                          <span className="text-[#d4a017]">{e.device_id}</span>
+                          <span className="text-brand-400">{e.device_id}</span>
                           {e.device_label && <span className="text-text-muted ml-1">({e.device_label})</span>}
                         </td>
                         <td className="px-3 py-1.5">
@@ -320,7 +363,7 @@ export default function DashcamPage() {
           {selectedDevice && deviceDetail ? (
             <div className="bg-surface-raised border border-border-default">
               <div className="px-3 py-2 border-b border-border-default flex items-center justify-between">
-                <span className="text-xs font-semibold tracking-wider text-[#d4a017]">{deviceDetail.device_id}</span>
+                <span className="text-xs font-semibold tracking-wider text-brand-400">{deviceDetail.device_id}</span>
                 <div className="flex items-center gap-1">
                   <IconButton onClick={() => loadDeviceDetail(selectedDevice.id)} aria-label="Refresh detail">
                     <RefreshCw className="w-3 h-3" />

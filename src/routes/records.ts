@@ -2206,6 +2206,51 @@ records.get('/reports/approval-queue', async (c) => {
   }
 });
 
+// POST /api/records/reports/:id/approve — supervisor approves a pending report.
+// Proxy to the incidents approve logic: updates status → 'approved'.
+records.post('/reports/:id/approve', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const id = c.req.param('id');
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  try {
+    const db = getDb(c.env);
+    const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
+    if (!report) return c.json({ error: 'Report not found' }, 404);
+    if (!['submitted', 'pending_approval', 'returned'].includes(report.status)) {
+      return c.json({ error: 'Report is not in a reviewable status', code: 'INVALID_STATUS' }, 409);
+    }
+    await db.prepare(`UPDATE incidents SET status = 'approved', supervisor_id = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(actor?.id ?? null, id).run();
+    return c.json({ success: true, id: Number(id), status: 'approved' });
+  } catch (err) {
+    console.error('POST /records/reports/:id/approve error:', err);
+    return c.json({ error: 'Failed to approve report' }, 500);
+  }
+});
+
+// POST /api/records/reports/:id/return — supervisor returns a report for revision.
+records.post('/reports/:id/return', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const id = c.req.param('id');
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  try {
+    const body = await c.req.json() as { reason?: string };
+    const reason = (body.reason ?? '').trim();
+    if (!reason) return c.json({ error: 'Return reason is required' }, 400);
+    const db = getDb(c.env);
+    const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
+    if (!report) return c.json({ error: 'Report not found' }, 404);
+    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, supervisor_notes = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(actor?.id ?? null, reason, id).run();
+    return c.json({ success: true, id: Number(id), status: 'returned', reason });
+  } catch (err) {
+    console.error('POST /records/reports/:id/return error:', err);
+    return c.json({ error: 'Failed to return report' }, 500);
+  }
+});
+
 /* ------------------------------------------------------------------ */
 /*  Record links (cross-entity linkage)                                */
 /* ------------------------------------------------------------------ */
