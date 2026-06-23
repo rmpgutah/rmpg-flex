@@ -1,3 +1,5 @@
+-- Person Intelligence Dossier schema — 4 tables + 5 indexes.
+-- All DDL idempotent (IF NOT EXISTS). Apply via scripts/apply-migration.sh after merge.
 CREATE TABLE IF NOT EXISTS person_intelligence (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   subject_seed TEXT NOT NULL,
