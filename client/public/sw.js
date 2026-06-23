@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1196: Documents — ?file_id= deep-link toasts on missing target (addToast added to effect deps), DossierGrid 3-state empty (loading/no-results/no-data via isLoading+searchQuery props), isLoading+searchQuery passed from DocumentsPage dossier view.
 // v1195: Document Intake — ConfirmDialog gates discard-review (Esc→confirm or button), ?doc_id= deep-link (scroll review panel + toast if not loaded), N+canUpload role gate (admin|manager|supervisor|officer|dispatcher), Esc cascade stopPropagation per branch (discardConfirmOpen→review), 4-state empty (idle/processing/error/review), canUpload gates drop-zone+picker+drag, AlertTriangle error state with retry, reviewPanelRef scroll target.
 // v1194: DL Search — brand-gold-500 tokens replace text/bg/border [var(--brand-gold)] (19 sites), fromDeepLinkRef guard toasts on no-results deep-link, addToast in handleSearch deps.
 // v1191: Dashboard — ?panel=/?widget= deep-link (scroll+strip+useRef guard), N shortcut opens New Call (canCreate gate), Esc cascade (NewCallModal→IncidentModal stopPropagation per branch), canCreate gates newCall/newIncident/newCitation/quickCapture toolbar buttons, 3-state activeBolos empty (loading/no-BOLOs/list), panel id attrs for deep-link targets.
