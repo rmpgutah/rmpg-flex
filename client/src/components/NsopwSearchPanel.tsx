@@ -100,6 +100,13 @@ export default function NsopwSearchPanel({
   initialSurname = '', initialForename = '', initialDob = '', initialOffenderId,
   autoSearch = false, compact = false, onClearOffenderId,
 }: Props) {
+  const { user } = useAuth();
+  const { addToast } = useToast();
+  // canPrint: admin/manager/supervisor may print court-ready offender cards.
+  const canPrint = !!(
+    user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor'
+  );
+
   const [surname, setSurname] = useState(initialSurname);
   const [forename, setForename] = useState(initialForename);
   const [dob, setDob] = useState(initialDob);
@@ -167,9 +174,12 @@ export default function NsopwSearchPanel({
           matchedFields: [],
           reason: `direct offender_id=${id} load`,
         });
+        addToast(`Offender #${id} loaded from deep link`, 'info');
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : `failed to load offender ${id}`);
+          const msg = err instanceof Error ? err.message : `failed to load offender ${id}`;
+          setError(msg);
+          addToast(`Offender #${id} not found`, 'error');
         }
       } finally {
         if (!cancelled) {
@@ -180,6 +190,7 @@ export default function NsopwSearchPanel({
       }
     })();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOffenderId]);
 
   // N shortcut — focus Last Name field when not typing in a form element.
@@ -270,13 +281,13 @@ export default function NsopwSearchPanel({
       {deepLinkOffender && (
         <Section title="OFFENDER (DEEP LINK)" tone="amber"
           subtitle="Loaded directly by URL — operator review required (no name/DOB cross-check was performed).">
-          <OffenderRow c={deepLinkOffender} queryContext={{ surname, forename, dob }} />
+          <OffenderRow c={deepLinkOffender} queryContext={{ surname, forename, dob }} canPrint={canPrint} />
         </Section>
       )}
 
       {result && (
         <ResultView result={result} onRetry={() => void search()}
-          queryContext={{ surname, forename, dob }} />
+          queryContext={{ surname, forename, dob }} canPrint={canPrint} />
       )}
 
       {/* First-load empty state — distinguishes "no search yet" from
@@ -340,10 +351,11 @@ function mapRowToOffenderCard(row: Record<string, unknown>): OffenderCard {
 
 // ────────────────────────────────────────────────────────────
 
-function ResultView({ result, onRetry, queryContext }: {
+function ResultView({ result, onRetry, queryContext, canPrint }: {
   result: NsopwResult;
   onRetry: () => void;
   queryContext?: { surname?: string; forename?: string; dob?: string };
+  canPrint?: boolean;
 }) {
   if (!result.configured) {
     return (
@@ -403,7 +415,7 @@ function ResultView({ result, onRetry, queryContext }: {
           subtitle="Name + DOB matched exactly. High confidence.">
           {result.confirmed.map((c) => (
             <OffenderRow key={`${c.offender.jurisdiction}:${c.offender.nsopwOffenderId}`} c={c}
-              queryContext={queryContext} />
+              queryContext={queryContext} canPrint={canPrint} />
           ))}
         </Section>
       )}
@@ -414,7 +426,7 @@ function ResultView({ result, onRetry, queryContext }: {
           subtitle="Borderline — needs officer review (no DOB, phonetic name, or partial match).">
           {result.possible.map((c) => (
             <OffenderRow key={`${c.offender.jurisdiction}:${c.offender.nsopwOffenderId}`} c={c}
-              queryContext={queryContext} />
+              queryContext={queryContext} canPrint={canPrint} />
           ))}
         </Section>
       )}
@@ -453,9 +465,10 @@ function Section({ title, subtitle, tone, children }: {
   );
 }
 
-function OffenderRow({ c, queryContext }: {
+function OffenderRow({ c, queryContext, canPrint }: {
   c: Classified;
   queryContext?: { surname?: string; forename?: string; dob?: string };
+  canPrint?: boolean;
 }) {
   const o = c.offender;
   // Prefer the locally persisted photo (worker-served from R2) over the
@@ -528,15 +541,17 @@ function OffenderRow({ c, queryContext }: {
         )}
       </div>
       <div className="text-right flex flex-col items-end gap-1">
-        <button
-          type="button"
-          onClick={() => void printOffenderCard(c, queryContext)}
-          className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-surface-raised border border-border-subtle hover:bg-surface-sunken"
-          title="Print court-ready Offender Identification Card"
-          aria-label="Print Offender Identification Card"
-        >
-          <Printer className="w-3 h-3" /> Print
-        </button>
+        {canPrint && (
+          <button
+            type="button"
+            onClick={() => void printOffenderCard(c, queryContext)}
+            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-surface-raised border border-border-subtle hover:bg-surface-sunken"
+            title="Print court-ready Offender Identification Card"
+            aria-label="Print Offender Identification Card"
+          >
+            <Printer className="w-3 h-3" /> Print
+          </button>
+        )}
         {o.detailUrl && (
           <a href={o.detailUrl} target="_blank" rel="noopener noreferrer"
             className="text-[10px] underline text-rmpg-300 hover:text-white">
