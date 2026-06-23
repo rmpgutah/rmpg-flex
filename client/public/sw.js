@@ -3,6 +3,16 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1101: Reports pages (/reports, /reports/custom) — Page 78 of the full-app
+//        frontend audit. Backend: added 7 missing endpoints (comparison,
+//        daily-briefing, weekly-digest, patrol-tracking, POST /reports/custom,
+//        POST /records/reports/:id/approve, POST /records/reports/:id/return);
+//        fixed citation-revenue and response-times response shapes (were
+//        returning wrong field names → cards showed all-zeros); fixed
+//        crime-trends to return monthlyTrend[] + per-type MoM/YoY table rows
+//        instead of raw day/type/count triples. Frontend: CustomReportBuilder
+//        gains ?type= deep-link (pre-selects source), Esc cascade
+//        (preview→filters→columns→source→/reports). No window.confirm/prompt.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
