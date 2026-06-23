@@ -59,6 +59,22 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1077: Help (/help) — Page 59 of the full-app frontend pass. URL
+//        deep-linking: ?topic=overview|shortcuts|modules|dispatch|faq|system
+//        +?faq=<idx> +?search=<term>; back/forward buttons stay in sync.
+//        Added a content search across shortcuts, modules, and FAQ
+//        (press / to focus, Esc smart-cascade: clear search → collapse
+//        expanded FAQ → drop back to Overview). New Quick Reference Card
+//        PDF (helpQuickReferencePdf.ts) — 2-page tear-off with shortcuts,
+//        priorities, statuses, and CAD commands — exposed from the Help
+//        page sidebar AND the MenuBar Help → Training & Docs submenu.
+//        Single source of truth for reference data extracted to
+//        utils/helpReferenceData.ts so HelpPage + the PDF builder + the
+//        MenuBar item all consume the same constants. Stale System Info
+//        fixed: "Express + SQLite" → "Cloudflare Workers + Hono / D1 /
+//        R2 / KV / Durable Objects"; auth now reflects "JWT (TOTP/
+//        WebAuthn not yet ported)". DB schema version + user count
+//        surfaced from /api/health response.
 // v1073: Mass Notification Templates (/alerts) — Page 55 of the
 //        full-app frontend pass. AlertsPage manages Rave-Alert-parity
 //        notification templates (the API at /api/alerts is templates +
