@@ -115,6 +115,42 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
   }
 }
 
+// ── Migration 0152 runtime reconciler ───────────────────────
+// Same pattern as reconcileScheduleSchema — deploy.yml's migration
+// apply is continue-on-error, so the Worker self-heals.
+let qualityGateReconciled = false;
+async function ensureQualityGateColumns(db: D1Database): Promise<void> {
+  if (qualityGateReconciled) return;
+  qualityGateReconciled = true;
+
+  try {
+    await execute(db, `CREATE TABLE IF NOT EXISTS serve_intake_judge_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      model TEXT NOT NULL,
+      ms INTEGER NOT NULL,
+      raw_response TEXT,
+      flagged_field_count INTEGER NOT NULL DEFAULT 0,
+      overall_status TEXT NOT NULL,
+      fallback_chain TEXT NOT NULL,
+      upload_user_id INTEGER
+    )`);
+  } catch (err) { console.warn('[serve-intake] judge_runs create failed:', err); }
+
+  for (const [name, type] of [
+    ['quality_status', "TEXT NOT NULL DEFAULT 'clean'"],
+    ['judge_run_id', 'INTEGER'],
+    ['quality_reviewed_by', 'INTEGER'],
+    ['quality_reviewed_at', 'TEXT'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_queue', name))) {
+        await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+}
+
 const si = new Hono<Env>();
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -378,6 +414,7 @@ si.post('/upload', async (c) => {
   }
 
   const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
   const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
   const allDates = new Set<string>();
 
