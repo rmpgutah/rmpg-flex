@@ -4,19 +4,19 @@
 // exhibit tracking, analysis, and hash management.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import { humanizeCaseType } from '../utils/statusLabels';
 import {
   Microscope, Plus, Search, Filter, ChevronRight, FileText, Clock, AlertTriangle,
   CheckCircle, XCircle, Loader2, Eye, ArrowRight, Beaker, Hash, Link2, Activity,
   Fingerprint, Cpu, FlaskConical, Shield, Network, ChevronLeft, Package, Trash2,
-  RefreshCw, Info, Edit3, Send, Unlink, HardDrive, ArrowDownUp, X,
+  RefreshCw, Info, Edit3, Send, Unlink, HardDrive, ArrowDownUp, X, Printer,
 } from 'lucide-react';
-import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import FormModal from '../components/FormModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import IncidentPickerInline from '../components/IncidentPickerInline';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
@@ -26,6 +26,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import { useToast } from '../components/ToastProvider';
 import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { openForensicCasePdf } from '../utils/forensicCasePdf';
+import { computePayloadHash } from '../utils/pdfIntegrity';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -42,23 +44,28 @@ const CASE_TYPES = [
   { value: 'other', label: 'Other', desc: 'Other forensic examination not listed above', icon: Microscope },
 ] as const;
 
+// Priority + status colors map to severity tokens from theme-palettes.css.
+// These re-theme automatically between night (steel-blue) and day (light-grey).
+// Same semantic ladder used by Dispatch CFS severity, audit alerts, and SOR
+// hit indicators, so an officer's visual muscle memory ("red = bad / amber =
+// urgent / green = done") carries across surfaces.
 const PRIORITIES = [
   { value: 'routine', label: 'Routine', desc: 'Standard processing — 30 day turnaround', color: 'var(--rmpg-500)' },
-  { value: 'expedited', label: 'Expedited', desc: 'Priority processing — 14 day turnaround', color: '#888888' },
-  { value: 'urgent', label: 'Urgent', desc: 'Urgent case need — 7 day turnaround', color: '#f59e0b' },
-  { value: 'rush', label: 'Rush', desc: 'Immediate attention — 48 hour turnaround', color: '#ef4444' },
+  { value: 'expedited', label: 'Expedited', desc: 'Priority processing — 14 day turnaround', color: 'var(--text-muted)' },
+  { value: 'urgent', label: 'Urgent', desc: 'Urgent case need — 7 day turnaround', color: 'var(--sev-warn)' },
+  { value: 'rush', label: 'Rush', desc: 'Immediate attention — 48 hour turnaround', color: 'var(--sev-critical)' },
 ] as const;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; nextAction: string }> = {
   submitted: { label: 'Submitted', color: 'var(--rmpg-400)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
-  intake: { label: 'Intake', color: '#a78bfa', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
+  intake: { label: 'Intake', color: 'var(--sev-special-soft)', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
   assigned: { label: 'Assigned', color: 'var(--rmpg-400)', bgColor: 'bg-surface-sunken/20', nextAction: 'Examiner is preparing to begin analysis' },
-  in_progress: { label: 'In Progress', color: '#fbbf24', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
-  analysis_complete: { label: 'Analysis Complete', color: '#34d399', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
-  report_draft: { label: 'Report Draft', color: '#a3e635', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
-  report_final: { label: 'Report Final', color: '#22c55e', bgColor: 'bg-green-900/20', nextAction: 'Final report is available' },
+  in_progress: { label: 'In Progress', color: 'var(--sev-warn-soft)', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
+  analysis_complete: { label: 'Analysis Complete', color: 'var(--sev-ok-soft)', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
+  report_draft: { label: 'Report Draft', color: 'var(--sev-ok-soft)', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
+  report_final: { label: 'Report Final', color: 'var(--sev-ok)', bgColor: 'bg-green-900/20', nextAction: 'Final report is available' },
   closed: { label: 'Closed', color: 'var(--rmpg-500)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case is complete and archived' },
-  cancelled: { label: 'Cancelled', color: '#ef4444', bgColor: 'bg-red-900/20', nextAction: 'Case was cancelled' },
+  cancelled: { label: 'Cancelled', color: 'var(--sev-critical)', bgColor: 'bg-red-900/20', nextAction: 'Case was cancelled' },
 };
 
 const ANALYSIS_TYPES = [
@@ -153,7 +160,14 @@ type Tab = typeof TABS[number];
 
 interface ForensicCase {
   id: number;
-  lab_case_number: string;
+  /** Server column is `lab_number` (e.g. "LAB-26-0042"). The legacy
+   *  client name `lab_case_number` did not match the row shape from
+   *  `src/routes/forensics.ts` GET /:id, so it always rendered blank.
+   *  Aliased to keep older callers compiling while the canonical name
+   *  is `lab_number`. */
+  lab_number: string;
+  /** @deprecated alias for `lab_number` — kept so prior consumers don't break. */
+  lab_case_number?: string;
   title: string;
   case_type: string;
   status: string;
@@ -256,6 +270,7 @@ const EMPTY_WIZARD: WizardData = {
 
 export default function ForensicLabPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
@@ -297,6 +312,21 @@ export default function ForensicLabPage() {
   // Custody log transfer modal
   const [showCustodyModal, setShowCustodyModal] = useState(false);
   const [custodyForm, setCustodyForm] = useState({ from_person: '', to_person: '', action: 'received' as CustodyEvent['action'], notes: '' });
+  // Unlink-entity confirmation (replaces window.confirm)
+  const [confirmUnlinkId, setConfirmUnlinkId] = useState<number | null>(null);
+  const [unlinkBusy, setUnlinkBusy] = useState(false);
+  // Mark-complete modal (replaces window.prompt for exhibit + analysis results)
+  type CompleteTarget =
+    | { kind: 'exhibit'; id: number; label: string }
+    | { kind: 'analysis'; id: number; label: string };
+  const [completeTarget, setCompleteTarget] = useState<CompleteTarget | null>(null);
+  const [completeResults, setCompleteResults] = useState('');
+  const [completeConclusion, setCompleteConclusion] = useState('');
+  const [completeBusy, setCompleteBusy] = useState(false);
+  // Court PDF generation
+  const [pdfBusy, setPdfBusy] = useState(false);
+  // Deep-link hydration guard — fire only once, before user interaction.
+  const deepLinkHandled = useRef(false);
 
   // ── UPGRADE: Turnaround & QC ──
   const [turnaroundData, setTurnaroundData] = useState<any>(null);
@@ -307,7 +337,6 @@ export default function ForensicLabPage() {
   const [qcLoading, setQcLoading] = useState(false);
   const [qcForm, setQcForm] = useState({ check_type: 'peer_review', reviewer_notes: '', pass: true });
   const [qcSubmitting, setQcSubmitting] = useState(false);
-  const [analysisTemplates, setAnalysisTemplates] = useState<any>(null);
   const [showBacklogReport, setShowBacklogReport] = useState(false);
 
   const fetchTurnaroundData = async () => {
@@ -328,10 +357,11 @@ export default function ForensicLabPage() {
     catch (err: any) { setQcHistory([]); if (err?.name !== 'AbortError') addToast('Failed to load QC history', 'error'); } finally { setQcLoading(false); }
   };
 
-  const fetchAnalysisTemplates = async () => {
-    try { const r = await apiFetch<any>('/forensics/analysis-templates'); setAnalysisTemplates(r?.data || null); }
-    catch (err: any) { if (err?.name !== 'AbortError') addToast('Failed to load analysis templates', 'error'); }
-  };
+  // (Removed: fetchAnalysisTemplates + analysisTemplates state — declared
+  // but never rendered or wired to a UI. The /forensics/analysis-templates
+  // endpoint still exists if a future "preset methodology" picker wants
+  // to mount it; the dead client-side state was only adding bundle weight
+  // and a misleading "we have templates" mental model.)
 
   const handleQcSubmit = async () => {
     if (!selectedCase) return;
@@ -347,42 +377,12 @@ export default function ForensicLabPage() {
     finally { setQcSubmitting(false); }
   };
 
-  // ── Feature 27: Lab Queue ──
-  const [labQueue, setLabQueue] = useState<any[]>([]);
-  const handleLoadLabQueue = async () => {
-    try {
-      const data = await apiFetch<any>('/forensics/queue/priority');
-      setLabQueue(data?.data || []);
-    } catch { addToast('Failed to load lab queue', 'error'); }
-  };
-
-  // ── Feature 29: Report Templates ──
-  const [reportTemplates, setReportTemplates] = useState<any>(null);
-  const handleLoadTemplates = async () => {
-    try {
-      const data = await apiFetch<any>('/forensics/templates/report');
-      setReportTemplates(data?.data || data);
-    } catch { addToast('Failed to load templates', 'error'); }
-  };
-
-  // ── Feature 30: Capacity Planning ──
-  const [capacity, setCapacity] = useState<any>(null);
-  const handleLoadCapacity = async () => {
-    try {
-      const data = await apiFetch<any>('/forensics/capacity/planning');
-      setCapacity(data?.data || data);
-    } catch { addToast('Failed to load capacity data', 'error'); }
-  };
-
-  // ── Feature 26: Evidence Intake ──
-  const handleEvidenceIntake = async (caseId: number, formData: any) => {
-    try {
-      await apiFetch(`/forensics/${caseId}/evidence-intake`, {
-        method: 'POST', body: JSON.stringify(formData),
-      });
-      addToast('Evidence intake recorded', 'success');
-    } catch (err: any) { addToast(err?.message || 'Intake failed', 'error'); }
-  };
+  // (Removed: lab-queue / report-templates / capacity-planning / evidence-
+  // intake helpers — declared in v1024+ but never wired to a button. The
+  // server endpoints they target (/forensics/queue/priority, /templates/
+  // report, /capacity/planning, /:id/evidence-intake) also don't exist on
+  // live as of this PR. Re-introduce alongside the corresponding UI when
+  // a future PR actually ships those tabs.)
 
   // ── Fetch ──────────────────────────────────────────────
 
@@ -421,9 +421,18 @@ export default function ForensicLabPage() {
 
   const fetchCaseDetail = useCallback(async (id: number, signal?: AbortSignal) => {
     try {
-      const detail = await apiFetch<ForensicCase>(`/forensic-lab/${id}`, { signal });
+      // Server returns `{ data: row }` from GET /:id (see src/routes/forensics.ts:239).
+      // Previously the page typed the response as `ForensicCase` directly, so
+      // `detail.id` was always undefined and every selectedCase-keyed render
+      // path silently fell back to the empty state. Unwrap the envelope here
+      // and tolerate older clients that return the bare row (defensive `?? detail`).
+      const raw = await apiFetch<{ data: ForensicCase } | ForensicCase>(`/forensic-lab/${id}`, { signal });
+      const detail = (raw as { data?: ForensicCase })?.data ?? (raw as ForensicCase);
       setSelectedCase(detail);
-      // Fetch links and hashes in parallel
+      // Fetch links and hashes in parallel — these endpoints currently 404 on
+      // live (not implemented in src/routes/forensics.ts as of this PR), so the
+      // .catch() coerces to empty + the panels show "No links / hashes" rather
+      // than spamming the toast queue. Re-enable once the server endpoints land.
       apiFetch<any[]>(`/forensic-lab/${id}/links`, { signal }).then(l => setCaseLinks(l || [])).catch(() => setCaseLinks([]));
       apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`, { signal })
         .then(d => { setHashes(d.hashes || []); setHashStats(d.stats || null); })
@@ -654,15 +663,56 @@ export default function ForensicLabPage() {
     }
   };
 
-  const handleUnlinkEntity = async (linkId: number) => {
-    if (!selectedCase) return;
-    if (!window.confirm('Remove this linked entity?')) return;
+  // Unlink is two-step: handleUnlinkEntity opens ConfirmDialog (replaces
+  // the old window.confirm), confirmUnlinkEntity executes after the operator
+  // accepts. Browser-native confirm is unacceptable on a chain-of-custody
+  // surface — Esc + click outside should both cancel, and the dialog must
+  // render inside the app theme so an officer recognises it as part of RMPG.
+  const handleUnlinkEntity = (linkId: number) => {
+    setConfirmUnlinkId(linkId);
+  };
+
+  const confirmUnlinkEntity = async () => {
+    if (!selectedCase || confirmUnlinkId == null) return;
+    setUnlinkBusy(true);
     try {
-      await apiFetch(`/forensic-lab/${selectedCase.id}/links/${linkId}`, { method: 'DELETE' });
+      await apiFetch(`/forensic-lab/${selectedCase.id}/links/${confirmUnlinkId}`, { method: 'DELETE' });
       fetchCaseLinks(selectedCase.id);
+      addToast('Linked entity removed', 'success');
     } catch (err) {
       console.error('Unlink error:', err);
       addToast('Failed to unlink entity', 'error');
+    } finally {
+      setUnlinkBusy(false);
+      setConfirmUnlinkId(null);
+    }
+  };
+
+  // Mark-complete flow for exhibits + analyses. Replaces the two
+  // `window.prompt()` calls that captured court-record results as
+  // single-line text with no validation or richtext. Now goes through
+  // a real modal with required Results + optional Conclusion fields.
+  const submitComplete = async () => {
+    if (!completeTarget || !completeResults.trim()) return;
+    setCompleteBusy(true);
+    try {
+      if (completeTarget.kind === 'exhibit') {
+        await handleExhibitStatusChange(completeTarget.id, 'complete', { results: completeResults.trim() });
+      } else {
+        await handleAnalysisStatusChange(completeTarget.id, 'complete', {
+          results: completeResults.trim(),
+          conclusion: completeConclusion.trim() || undefined,
+        });
+      }
+      addToast(`${completeTarget.label} marked complete`, 'success');
+      setCompleteTarget(null);
+      setCompleteResults('');
+      setCompleteConclusion('');
+    } catch (err) {
+      console.error('Mark complete error:', err);
+      addToast('Failed to mark complete', 'error');
+    } finally {
+      setCompleteBusy(false);
     }
   };
 
@@ -738,6 +788,94 @@ export default function ForensicLabPage() {
     await saveMetadata({ imaging });
   };
 
+  // ── Court-ready PDF ────────────────────────────────────
+  //
+  // Forensic case files are direct court-record material. The page shipped
+  // with full in-app detail panels but no print path — defense counsel
+  // subpoenas these during discovery, and a screenshot of the SPA isn't
+  // discoverable. This generates a paginated PDF with case header, exhibits
+  // (incl. chain-of-custody mini-tables), analyses, findings/conclusion,
+  // tamper-evidence statement, and a SHA-256 payload-hash trailer that
+  // binds the document to the underlying case state at print time.
+  // Mirrors auditLogPdf / evidenceItemPdf for visual consistency in
+  // court-package binders. Phase-D Ed25519 signing arrives via the same
+  // pdfIntegrity surface the record forms already use, but the document
+  // is meaningful without it (the payload hash alone is the operative
+  // binding for "this PDF describes the same row that was in the DB").
+  const handleGenerateCourtPdf = async () => {
+    if (!selectedCase) return;
+    setPdfBusy(true);
+    try {
+      const exhibits = selectedCase.exhibits || [];
+      const analyses = selectedCase.analyses || [];
+      const bundle = {
+        case: selectedCase,
+        exhibits,
+        analyses,
+      };
+      const payloadHash = await computePayloadHash(bundle);
+      openForensicCasePdf({
+        case: {
+          id: selectedCase.id,
+          lab_number: selectedCase.lab_number || selectedCase.lab_case_number,
+          title: selectedCase.title,
+          case_type: selectedCase.case_type,
+          status: selectedCase.status,
+          priority: selectedCase.priority,
+          description: selectedCase.description || undefined,
+          findings: selectedCase.findings || undefined,
+          conclusion: selectedCase.conclusion || undefined,
+          notes: selectedCase.notes || undefined,
+          requesting_officer: selectedCase.requesting_officer_name || undefined,
+          lead_examiner_name: selectedCase.assigned_examiner_name || undefined,
+          received_date: selectedCase.received_date || undefined,
+          due_date: selectedCase.due_date || undefined,
+          completed_date: selectedCase.completed_date || undefined,
+          created_at: selectedCase.created_at,
+        },
+        exhibits: exhibits.map((ex: any) => ({
+          id: ex.id,
+          exhibit_number: ex.exhibit_number,
+          exhibit_type: ex.exhibit_type,
+          description: ex.description,
+          quantity: ex.quantity,
+          condition_received: ex.condition_received,
+          storage_location: ex.storage_location,
+          storage_temp: ex.storage_temp,
+          collected_by: ex.collected_by,
+          collected_date: ex.collected_date,
+          collection_method: ex.collection_method,
+          hash_md5: ex.hash_md5,
+          hash_sha256: ex.hash_sha256,
+          disposition: ex.disposition,
+          disposition_date: ex.disposition_date,
+          notes: ex.notes,
+          chain_of_custody: ex.chain_of_custody,
+        })),
+        analyses: analyses.map((a: any) => ({
+          id: a.id,
+          analysis_type: a.analysis_type,
+          status: a.status,
+          methodology: a.methodology,
+          equipment_used: a.equipment_used,
+          results: a.results,
+          conclusion: a.conclusion,
+          notes: a.notes,
+          analyst_name: a.examiner_name || a.analyst_name,
+          started_at: a.started_at,
+          completed_at: a.completed_at,
+        })),
+        payloadHash,
+      });
+      addToast('Court PDF opened in a new tab', 'success');
+    } catch (err) {
+      console.error('Generate forensic PDF error:', err);
+      addToast('Failed to generate court PDF', 'error');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   // ── Helpers ────────────────────────────────────────────
 
   const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: 'var(--rmpg-500)', bgColor: 'bg-surface-sunken/20', nextAction: '' };
@@ -759,7 +897,7 @@ export default function ForensicLabPage() {
     m.action('Open case', () => fetchCaseDetail(c.id), { icon: <Eye size={12} /> }),
     m.action('View connections', () => navigate(`/connections?type=case&id=${c.id}`), { icon: <Network size={12} /> }),
     m.separator(),
-    m.copy('Copy lab case number', c.lab_case_number),
+    m.copy('Copy lab case number', c.lab_number || c.lab_case_number || ''),
     m.copyId(c.id),
     ...(c.title ? [m.copy('Copy title', c.title)] : []),
   ];
@@ -767,13 +905,86 @@ export default function ForensicLabPage() {
   // Set document title
   useEffect(() => { document.title = 'Forensic Lab \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Keyboard shortcuts — Esc smart-cascade + N opens New Case tab.
+  // Esc closes the topmost open surface only, in this priority order, so
+  // a stacked open-modal-over-detail-view doesn't pop the whole detail
+  // by accident. The cascade was previously a one-line setShowAnalysisModal
+  // call that ignored every other modal + the detail view + the filter chip.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowAnalysisModal(false); }
+      // Don't intercept when the operator is mid-type in an input/textarea
+      // — let the browser's native blur-on-Esc handle the field, and let
+      // 'N' actually type the letter.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
+        return;
+      }
+      if (e.key === 'Escape') {
+        // Cascade: topmost open surface first
+        if (completeTarget) { setCompleteTarget(null); setCompleteResults(''); setCompleteConclusion(''); return; }
+        if (confirmUnlinkId != null) { setConfirmUnlinkId(null); return; }
+        if (showAnalysisModal) { setShowAnalysisModal(false); return; }
+        if (showExhibitModal) { setShowExhibitModal(false); return; }
+        if (showEditModal) { setShowEditModal(false); return; }
+        if (showCustodyModal) { setShowCustodyModal(false); return; }
+        if (linkSearchResults.length > 0) { setLinkSearchResults([]); setLinkSearchTerm(''); return; }
+        if (showFilters) { setShowFilters(false); return; }
+        if (fetchError) { setFetchError(''); return; }
+        if (selectedCase) { setSelectedCase(null); setDetailTab('overview'); return; }
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        // Quick-jump to New Case tab from the list view. Only when no modal
+        // is open + no case is selected, so it doesn't fight the typing in
+        // a richtext field somewhere in the detail panels.
+        if (!selectedCase && !completeTarget && !showAnalysisModal && !showExhibitModal
+          && !showEditModal && !showCustodyModal && confirmUnlinkId == null) {
+          setActiveTab('New Case');
+          setWizardStep(0);
+        }
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+  }, [completeTarget, confirmUnlinkId, showAnalysisModal, showExhibitModal,
+      showEditModal, showCustodyModal, linkSearchResults.length, showFilters,
+      fetchError, selectedCase]);
+
+  // Deep-link hydration — supports ?case_id=<n>, ?tab=<detail-tab>,
+  // and ?new=1 (jump straight to the New Case wizard). Mirrors the
+  // contract every other v1024+ audited page exposes so a supervisor can
+  // paste a link to a specific case from an audit report or chat.
+  // Params are stripped after first paint so a refresh doesn't repeatedly
+  // re-pin the operator to a stale link they've since clicked away from.
+  useEffect(() => {
+    if (deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+    const caseIdRaw = searchParams.get('case_id') || searchParams.get('id');
+    const tabRaw = searchParams.get('tab');
+    const newCase = searchParams.get('new');
+    if (caseIdRaw) {
+      const n = parseInt(caseIdRaw, 10);
+      if (Number.isFinite(n)) {
+        fetchCaseDetail(n);
+        if (tabRaw && ['overview', 'exhibits', 'analyses', 'timeline', 'links', 'hashes', 'qc', 'turnaround'].includes(tabRaw)) {
+          setDetailTab(tabRaw as any);
+        }
+      }
+    } else if (newCase === '1') {
+      setActiveTab('New Case');
+      setWizardStep(0);
+    }
+    // Strip handled params so we don't re-trigger on every render. Keeps
+    // other query params (none today, but future-proof) intact.
+    if (caseIdRaw || tabRaw || newCase) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('case_id'); next.delete('id'); next.delete('tab'); next.delete('new');
+      setSearchParams(next, { replace: true });
+    }
+    // Intentionally omit dependencies — this MUST be a one-shot. The
+    // `deepLinkHandled` ref guards re-runs even when React strict-mode
+    // double-invokes effects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ══════════════════════════════════════════════════════════
@@ -798,7 +1009,7 @@ export default function ForensicLabPage() {
           <Microscope size={16} className="text-brand-400" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-brand-400">{selectedCase.lab_case_number}</span>
+              <span className="text-xs font-mono text-brand-400">{selectedCase.lab_number || selectedCase.lab_case_number || `FC-${selectedCase.id}`}</span>
               <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
               <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
               {overdue && <span className="text-[9px] px-1.5 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
@@ -888,6 +1099,13 @@ export default function ForensicLabPage() {
                 </button>
                 <button type="button" onClick={() => navigate(`/connections?type=case&id=${selectedCase.id}`)} className="toolbar-btn text-[10px]">
                   <Network size={10} /> View Connections
+                </button>
+                <button type="button" onClick={handleGenerateCourtPdf} disabled={pdfBusy}
+                  className="toolbar-btn text-[10px] disabled:opacity-50"
+                  title="Generate a court-ready PDF with tamper-evidence payload hash"
+                >
+                  {pdfBusy ? <Loader2 size={10} className="animate-spin" /> : <Printer size={10} />}
+                  Court PDF
                 </button>
               </div>
 
@@ -1039,7 +1257,7 @@ export default function ForensicLabPage() {
                 const custodyLog = meta.custody_log || [];
                 const CUSTODY_ACTIONS = ['received', 'transferred', 'stored', 'analyzed', 'returned'] as const;
                 const actionColors: Record<string, string> = {
-                  received: '#aaaaaa', transferred: '#f59e0b', stored: '#a78bfa', analyzed: '#34d399', returned: 'var(--rmpg-500)',
+                  received: 'var(--text-muted)', transferred: 'var(--sev-warn)', stored: 'var(--sev-special-soft)', analyzed: 'var(--sev-ok-soft)', returned: 'var(--rmpg-500)',
                 };
                 return (
                   <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
@@ -1203,8 +1421,8 @@ export default function ForensicLabPage() {
               ) : (
                 <div className="space-y-2">
                   {selectedCase.exhibits.map(ex => {
-                    const exStatus = ex.status === 'complete' ? { color: '#22c55e', icon: CheckCircle } :
-                      ex.status === 'examining' ? { color: '#f59e0b', icon: Activity } :
+                    const exStatus = ex.status === 'complete' ? { color: 'var(--sev-ok)', icon: CheckCircle } :
+                      ex.status === 'examining' ? { color: 'var(--sev-warn)', icon: Activity } :
                       { color: 'var(--rmpg-400)', icon: Package };
                     return (
                       <div key={ex.id} className="panel-beveled bg-surface-sunken p-3 border-l-[3px]" style={{ borderLeftColor: exStatus.color }}>
@@ -1238,8 +1456,9 @@ export default function ForensicLabPage() {
                               )}
                               {ex.status === 'examining' && (
                                 <button type="button" onClick={() => {
-                                  const result = prompt('Enter examination results:');
-                                  if (result) handleExhibitStatusChange(ex.id, 'complete', { results: result });
+                                  setCompleteTarget({ kind: 'exhibit', id: ex.id, label: `Exhibit ${ex.exhibit_number || ex.id}` });
+                                  setCompleteResults('');
+                                  setCompleteConclusion('');
                                 }} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
                                   Mark Complete
                                 </button>
@@ -1273,7 +1492,7 @@ export default function ForensicLabPage() {
               ) : (
                 <div className="space-y-2">
                   {selectedCase.analyses.map(an => {
-                    const anStatus = an.status === 'complete' ? '#22c55e' : an.status === 'in_progress' ? '#f59e0b' : '#aaaaaa';
+                    const anStatus = an.status === 'complete' ? 'var(--sev-ok)' : an.status === 'in_progress' ? 'var(--sev-warn)' : 'var(--text-muted)';
                     const typeLabel = ANALYSIS_TYPES.find(t => t.value === an.analysis_type)?.label || an.analysis_type;
                     return (
                       <div key={an.id} className="panel-beveled bg-surface-sunken p-3 border-l-[3px]" style={{ borderLeftColor: anStatus }}>
@@ -1305,9 +1524,10 @@ export default function ForensicLabPage() {
                           )}
                           {an.status === 'in_progress' && (
                             <button type="button" onClick={() => {
-                              const results = prompt('Enter analysis results:');
-                              const conclusion = prompt('Enter conclusion:');
-                              if (results) handleAnalysisStatusChange(an.id, 'complete', { results, conclusion: conclusion || undefined });
+                              const typeLabel = ANALYSIS_TYPES.find(t => t.value === an.analysis_type)?.label || an.analysis_type;
+                              setCompleteTarget({ kind: 'analysis', id: an.id, label: typeLabel });
+                              setCompleteResults('');
+                              setCompleteConclusion('');
                             }} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
                               Complete Analysis
                             </button>
@@ -1886,6 +2106,70 @@ export default function ForensicLabPage() {
             </div>
           </FormModal>
         )}
+
+        {/* Unlink-entity confirmation — replaces the legacy window.confirm.
+            ConfirmDialog enforces in-theme rendering, Esc + click-outside
+            cancel, busy-state on Confirm, and the kind of identifying
+            context (which entity is being unlinked) that a chain-of-custody
+            surface owes the operator. */}
+        <ConfirmDialog
+          isOpen={confirmUnlinkId != null}
+          onClose={() => setConfirmUnlinkId(null)}
+          onConfirm={confirmUnlinkEntity}
+          title="Remove linked entity"
+          message="The link will be deleted from this forensic case. The underlying entity (person / vehicle / case) is not affected."
+          confirmLabel="Remove link"
+          confirmVariant="danger"
+          isLoading={unlinkBusy}
+        />
+
+        {/* Mark-complete modal — replaces the two window.prompt() calls
+            that previously captured court-record results as single-line
+            text. Required Results + optional Conclusion field, both
+            multi-line so an examiner can paste a paragraph. The
+            Conclusion field is hidden for exhibits (analyses only). */}
+        {completeTarget && (
+          <FormModal
+            isOpen={completeTarget != null}
+            onClose={() => { setCompleteTarget(null); setCompleteResults(''); setCompleteConclusion(''); }}
+            onSubmit={submitComplete}
+            title={`Mark ${completeTarget.label} complete`}
+            icon={CheckCircle}
+            submitLabel={completeBusy ? 'Saving…' : 'Mark Complete'}
+            maxWidth="max-w-lg"
+            isDirty={completeResults.trim().length > 0 || completeConclusion.trim().length > 0}
+          >
+            <div className="space-y-3">
+              <div className="p-2 bg-surface-sunken/10 border border-border-subtle/30 rounded-sm text-[10px] text-rmpg-300">
+                <Info size={10} className="inline mr-1" />
+                Results entered here are part of the court record for this case. Be specific —
+                include methodology, observations, and any deviation from the documented protocol.
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">
+                  Results <span className="text-red-400">*</span>
+                </label>
+                <RichTextArea
+                  value={completeResults}
+                  onChange={(e) => setCompleteResults(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none h-28"
+                  placeholder="Examination results, observations, measurements…"
+                />
+              </div>
+              {completeTarget.kind === 'analysis' && (
+                <div>
+                  <label className="block text-[11px] text-rmpg-400 mb-1">Conclusion (optional)</label>
+                  <RichTextArea
+                    value={completeConclusion}
+                    onChange={(e) => setCompleteConclusion(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-100 focus:border-brand-500 focus:outline-none h-20"
+                    placeholder="Investigative conclusion based on the results above…"
+                  />
+                </div>
+              )}
+            </div>
+          </FormModal>
+        )}
       </div>
     );
   }
@@ -2077,14 +2361,45 @@ export default function ForensicLabPage() {
                 ))}
               </div>
             ) : cases.length === 0 ? (
-              <div className="panel-beveled bg-surface-sunken p-8 text-center">
-                <Microscope size={32} className="text-rmpg-600 mx-auto mb-3" />
-                <p className="text-sm text-rmpg-300">No forensic cases found</p>
-                <p className="text-xs text-rmpg-500 mt-1">Create a new case using the "New Case" tab above</p>
-                <button type="button" onClick={() => setActiveTab('New Case')} className="mt-3 toolbar-btn toolbar-btn-primary text-xs">
-                  <Plus size={12} /> Create First Case
-                </button>
-              </div>
+              // Empty-state distinction — "no rows in the DB" is a different
+              // operator condition from "your filter selected an impossible
+              // slice". The prior copy was identical for both and offered no
+              // recovery from a too-narrow filter; the "Clear filters" path
+              // is the same audit fix v1024+ pages apply.
+              (() => {
+                const hasActiveFilters = !!(searchTerm || filterStatus || filterType);
+                if (hasActiveFilters) {
+                  return (
+                    <div className="panel-beveled bg-surface-sunken p-8 text-center">
+                      <Filter size={32} className="text-rmpg-600 mx-auto mb-3" />
+                      <p className="text-sm text-rmpg-300">No cases match the active filters</p>
+                      <p className="text-xs text-rmpg-500 mt-1">
+                        {[
+                          searchTerm && `search "${searchTerm}"`,
+                          filterStatus && `status=${getStatusConfig(filterStatus).label}`,
+                          filterType && `type=${getCaseTypeLabel(filterType)}`,
+                        ].filter(Boolean).join(', ')}
+                      </p>
+                      <button type="button"
+                        onClick={() => { setSearchTerm(''); setFilterStatus(''); setFilterType(''); }}
+                        className="mt-3 toolbar-btn text-xs"
+                      >
+                        <X size={12} /> Clear all filters
+                      </button>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="panel-beveled bg-surface-sunken p-8 text-center">
+                    <Microscope size={32} className="text-rmpg-600 mx-auto mb-3" />
+                    <p className="text-sm text-rmpg-300">No forensic cases yet</p>
+                    <p className="text-xs text-rmpg-500 mt-1">Create a new case using the "New Case" tab above (or press N).</p>
+                    <button type="button" onClick={() => setActiveTab('New Case')} className="mt-3 toolbar-btn toolbar-btn-primary text-xs">
+                      <Plus size={12} /> Create First Case
+                    </button>
+                  </div>
+                );
+              })()
             ) : (
               <div className="space-y-2">
                 {cases.map(c => {
@@ -2102,7 +2417,7 @@ export default function ForensicLabPage() {
                       <div className="flex items-start gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[10px] font-mono text-brand-400">{c.lab_case_number}</span>
+                            <span className="text-[10px] font-mono text-brand-400">{c.lab_number || c.lab_case_number || `FC-${c.id}`}</span>
                             <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
                             <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
                             {overdue && <span className="text-[8px] px-1 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
@@ -2215,7 +2530,7 @@ export default function ForensicLabPage() {
                         }`}
                         style={wizardData.priority === p.value ? { borderColor: p.color, color: p.color } : undefined}
                       >
-                        <div className="text-[11px] font-bold" style={{ color: wizardData.priority === p.value ? p.color : '#888888' }}>{p.label}</div>
+                        <div className="text-[11px] font-bold" style={{ color: wizardData.priority === p.value ? p.color : 'var(--text-muted)' }}>{p.label}</div>
                         <div className="text-[8px] text-rmpg-500">{p.desc}</div>
                       </button>
                     ))}
