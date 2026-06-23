@@ -91,7 +91,10 @@ export default function CrimeAnalysisPage() {
   /* ── Derived data ──────────────────────────────────────────── */
   // filterActive = user has chosen a custom or non-default period, so "no
   // data" means the filter returned nothing rather than the system being empty.
-  const filterActive = dateRange !== '90' || (dateRange === 'custom' && !!(startDate || endDate));
+  // 'custom' is never '90', so the second clause is always true when the first is false.
+  // Extracting to a named variable avoids TS2367 from narrowing inside ||.
+  const dr = dateRange;
+  const filterActive = dr !== '90';
   const emptyHint = filterActive ? 'No data for this period' : 'No data available';
 
   const totalIncidents = data?.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0;
