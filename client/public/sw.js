@@ -59,6 +59,12 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1082: Incidents (Page 64) — source-call buttons now deep-link to
+//        /dispatch?call_id=<id> so clicking the call number from an incident
+//        auto-selects that call in the Dispatch CAD board. Previously both
+//        "SOURCE CALL" header and "Linked Call" info-panel buttons navigated
+//        to /dispatch with no context, leaving operators to find the call
+//        manually. No schema or API changes.
 // v1081: Patrol (/patrol) — Page 63 of the full-app frontend pass. Added Esc
 //        smart-cascade (QR modal → Checkpoint modal), N shortcut to open the
 //        New Checkpoint form on the Checkpoints tab, four-way empty-state
