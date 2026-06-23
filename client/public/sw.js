@@ -59,6 +59,15 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1086: Daily Activity Reports (Page 68 audit). Fixed: search param was sent
+//        by the client but silently ignored by the Worker (no LIKE clause);
+//        pagination.totalPages missing from API response (client showed page 1
+//        always); client sent limit= but Worker read per_page=; reviewed_by_name
+//        never populated (only officer join, no reviewer join). Added:
+//        ?officer_id= and ?date= URL deep-links (pre-seed filter + strip);
+//        equipment_issues + recommendations edit fields (were in PDF + type but
+//        no UI to write them); ensureTable idempotent ALTER for new cols.
+
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
