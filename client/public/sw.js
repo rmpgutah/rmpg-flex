@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1133: Connections Analyst — ?connection_id=+?type= deep-link (strip after mount), N shortcut saves investigation (canManage), Esc cascade (annotation→save modal→load dropdown→path mode), ConfirmDialog for delete-investigation, role gate save/delete (admin/manager/supervisor), no-seed + no-results empty states, brand token migration (var(--brand-gold)/var(--surface-sunken)/brand-400 Tailwind tokens).
 // v1124: Court Tracker — role gates (canManage: admin/manager), ?case_id= deep-link, API shape fixes (upcoming/single-event/conflicts/stats/calendar wrapped in {data}), byType event_type key fix, case_id filter on GET /events.
 // v1123: Code Enforcement — role gates (canEnforce: admin/manager/supervisor) gate
 //        New button, N shortcut, void/refer violation, cancel tow; ConfirmDialog for
