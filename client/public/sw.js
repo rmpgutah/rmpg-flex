@@ -801,6 +801,126 @@
 //            Lucide would require a layout-affecting size pass on every
 //            row, deferred until the rail itself is up for review.
 //
+// v1064: Tasks — Page 47 of the full-app frontend pass. TasksPage was a
+//        127-line minimum-viable view: list + new/edit/delete + three
+//        stats cards. The backend (src/routes/tasks.ts) already supported
+//        filtering (status / priority / assignee / linked-entity /
+//        overdue) plus an `assigned_by` column + `completed_at` timestamp,
+//        none of which the UI surfaced — and the page silently swallowed
+//        every fetch error in an empty `catch { /* */ }`.
+//
+//        What changed:
+//          • URL deep-link contract — `?task_id=<n>` opens the row in
+//            its edit modal and decorates it with a brand-gold left rail
+//            for 4 seconds; falls back to a direct GET /tasks/:id when
+//            the target is outside the current filter slice (toast on
+//            miss). `?status=` / `?priority=` / `?assignee=` /
+//            `?entity_type=` / `?overdue=true` hydrate the filter bar.
+//            All consumed params are stripped after first paint so a
+//            refresh doesn't re-pin the operator to a stale link. The
+//            row right-click menu's new "Copy deep-link" action mirrors
+//            the same URL so a supervisor can paste a task link into
+//            chat directly.
+//          • Filter bar — Status / Priority / Assignee (OfficerPicker)
+//            / Linked Type / Overdue-only checkbox, all mapping 1:1 to
+//            the GET /tasks query params the route already accepted.
+//          • Court-style PDF export — new client/src/utils/taskPdf.ts
+//            (gold banner, filter snapshot, paginated landscape rows
+//            with overdue accent + zebra striping, signature block for
+//            exporting + reviewing supervisor). Same Arial + RMPG-gold
+//            visual contract as the audit-log, bodycam, FI, and
+//            evidence-item PDFs so a court packet stitched from
+//            multiple surfaces looks consistent. Lower-evidentiary than
+//            auditLogPdf — task rows are mutable so there's no
+//            tamper-evidence claim — but the filter snapshot and
+//            signature block document reproducibility. Unit-tested in
+//            client/src/utils/__tests__/taskPdf.test.ts (16 cases —
+//            empty filters, all-fields filters, pagination, overdue
+//            accent path, optional-field omission, timestamp format).
+//          • Due-date countdown — new pure util client/src/utils/
+//            taskDueCountdown.ts (`describeDueDate` → 'OVERDUE 3d' /
+//            'Due today' / 'Due tomorrow' / 'Due in 5d' /
+//            'Due 2026-07-15') colour-coded via `dueToneTextClass`
+//            (red overdue → amber today → brand soon → muted later).
+//            Pure module, timezone-aware (America/Denver — operating
+//            jurisdiction). Unit-tested in __tests__/taskDueCountdown
+//            .test.ts (10 cases — empty inputs, parse failures, every
+//            tone bucket, ISO-timestamp tolerance, MT day-boundary
+//            edge case). Completed/cancelled tasks bypass the
+//            countdown and surface "Closed YYYY-MM-DD" instead, since
+//            once a task is closed the "overdue" framing is misleading.
+//          • Linked-entity navigation — reuses `getAuditEntityRoute`
+//            (the same util Audit Log uses) so a task linked to
+//            warrant #47 / case #12 / incident #8 renders as an
+//            ExternalLink chip in the Linked column, click opens the
+//            target page via the established `?<entity>_id=`
+//            contract, and the row right-click menu offers the same
+//            "Open …" item. Non-routable types still render as plain
+//            text without the chip. Same util gained a new mapping
+//            for `task` / `task_assignment` / `tasks` →
+//            `/tasks?task_id=` so audit-log rows for task mutations
+//            now navigate back into the Tasks page (4 new cases in
+//            auditEntityRoute.test.ts).
+//          • ConfirmDialog for deletion — replaces the bespoke inline
+//            overlay (which had its own focus + Esc + backdrop
+//            handling and would have drifted from the rest of the
+//            app over time). ConfirmDialog already pre-focuses
+//            Cancel for danger variants, locks the body scroll, has
+//            no global Enter binding, and renders an identifying
+//            details block (#id, assignee, due date) so the operator
+//            sees exactly what they're about to destroy.
+//          • Empty-state distinction — same finding as the prior 17
+//            pages: 'No tasks found' used identical copy for a
+//            filtered-to-zero slice and a never-populated queue.
+//            Now branches on `hasActiveFilters` ('No tasks match the
+//            active filters' with a hint to widen the filters, vs
+//            'No tasks yet' with a hint to press N).
+//          • Esc smart-cascade — close-newest-open-first: confirm
+//            dialog → form modal → row highlight → error banner →
+//            active filter set. Skips while typing in any input /
+//            textarea / select / contenteditable so the browser's
+//            native blur-on-Esc still works in the filter inputs.
+//          • `N` shortcut for new task — matches the muscle memory
+//            established by Geography / Serve / DARs / Code
+//            Enforcement / Dash Cameras / Field Interviews / etc.
+//            Skipped while a modal is open or a typing surface is
+//            focused so it doesn't fire inside the title field.
+//          • Inline supervisor metadata — `assigned_by_name` is now
+//            rendered as 'by Sgt. X' under the assignee, so the
+//            chain of assignment is visible without opening the
+//            edit modal. The right-click menu's quick-status toggle
+//            ('Mark complete' / 'Reopen task') hits the same PUT
+//            endpoint the modal uses, so the backend's automatic
+//            `completed_at` stamp + audit-log write still run.
+//          • Audit-visible failure — the prior `catch { /* */ }`
+//            silently swallowed every load error. The new version
+//            surfaces a dismissable inline error banner with an
+//            AlertTriangle icon and the underlying message so an
+//            operator can see when /tasks is degraded instead of
+//            staring at an empty list.
+//          • Icon-only buttons — Pencil/Trash row actions now use
+//            <IconButton aria-label="..."> so the missing accessible
+//            names are caught at the TypeScript layer (IconButton's
+//            `aria-label` is a required prop) rather than waiting
+//            for a screen-reader audit.
+//
+//        Out of scope (deferred):
+//          • Per-user 'my tasks' cache key — the form-draft hook is
+//            globally scoped throughout the app; reworking just
+//            Tasks would diverge from the system-wide pattern.
+//            /cases already exposes `/cases/tasks/mine` which is the
+//            canonical 'tasks assigned to me' surface; a future
+//            merge could collapse the two task tables
+//            (task_assignments and case_tasks) into a unified queue,
+//            but that's its own program.
+//          • Inline task-comments thread inside the edit modal —
+//            backend POST /tasks/:id/comments already exists, but
+//            surfacing the thread inline needs design work to fit
+//            it alongside the form fields without ballooning the
+//            modal. Tracked separately.
+//
+//        No migration; no server route changes; no SW behavior changes
+//        (this version is a content bump only).
 // v1058: FlexCam — Page 41 of the full-app frontend pass. FlexCamPage
 //        (327 lines, request list) + FlexCamFootagePage (1225 lines,
 //        MDT-style chunk player with evidence lock / court package /

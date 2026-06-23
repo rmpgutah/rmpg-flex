@@ -123,12 +123,23 @@ export function getAuditEntityRoute(
   if (t === 'user' || t === 'users' || t === 'officer_credential') {
     return { label: 'Open user', path: `/personnel?user_id=${encodeURIComponent(id)}` };
   }
+  // Task assignments — the Tasks page (Page 47 of the frontend audit) now
+  // honours `?task_id=<n>` to highlight + open the row in its edit modal,
+  // matching the same deep-link contract every other page in this sweep
+  // established (v1024-v1058). An audit row like
+  // `task_assignment_updated entity_type=task entity_id=83` is therefore
+  // routable in both directions.
+  if (t === 'task' || t === 'task_assignment' || t === 'tasks') {
+    return { label: 'Open task', path: `/tasks?task_id=${encodeURIComponent(id)}` };
+  }
 
   // Non-routable entity types fall through:
   //   audit (the log itself), records (legacy alias for the page),
   //   system, config, client_contract, invoice, payment, expense_report,
   //   time_entry, fleet_vehicle, fleetio, alpr_capture, field_photo,
-  //   research_finding, deep_research_job, use_of_force.
+  //   research_finding, deep_research_job, use_of_force,
+  //   task_comment (no in-app comment-detail view; comments live on the
+  //   parent task — open `task` instead from the surrounding audit row).
   // Returning null tells the caller to omit the row's "Open …" action.
   return null;
 }
