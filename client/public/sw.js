@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1199: Gang Intel — canCreate (admin|manager) gates New Member button + N shortcut, ?person_id= deep-link alias + missing-target toast, gangs dead-fetch removed, bg-black/70 token replaces rgba(0,0,0,0.70), Gang interface removed.
 // v1198: Forgot Password — ?email= deep-link pre-fills input (strip+useRef guard), N shortcut focuses email field, Esc resets form, #888888 hex → text-rmpg-400 tokens (label/footer/icon), hover:text-rmpg-400 replaces inline onMouseEnter/Leave handlers.
 // v1197: Forensic Lab — canDelete (admin/manager) gates Cancel Case (ConfirmDialog), ?sample_id= deep-link alias + invalid-id toast, e.stopPropagation() per Esc cascade branch (completeTarget→confirmUnlinkId→confirmCloseCase→modals→filters→selectedCase), primaryInputRef focuses title on N, confirmCloseCase added to keyboard-effect deps.
 // v1196: Documents — ?file_id= deep-link toasts on missing target (addToast added to effect deps), DossierGrid 3-state empty (loading/no-results/no-data via isLoading+searchQuery props), isLoading+searchQuery passed from DocumentsPage dossier view.
