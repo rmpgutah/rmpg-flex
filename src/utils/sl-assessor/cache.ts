@@ -39,6 +39,18 @@ export function cacheKeyParcel(parcelNo: string): string {
   return `assessor:parcel:${parcelNo}`;
 }
 
+// Durable (no-TTL) companion keys. The orchestrator writes both the 30d-TTL
+// fresh key AND the durable key on every successful fetch so a future fetch
+// failure can serve last-known-good as a stale fallback. Durable keys are
+// only read when the live chain produces nothing — they NEVER override a
+// fresh result.
+export function durableKeyParcels(addr: string): string {
+  return `assessor:parcels:durable:${normalizeAddress(addr)}`;
+}
+export function durableKeyParcel(parcelNo: string): string {
+  return `assessor:parcel:durable:${parcelNo}`;
+}
+
 const TTL_30_DAYS_S = 60 * 60 * 24 * 30;
 
 export interface CacheEnv { KV: KVNamespace; }
@@ -50,6 +62,13 @@ export async function getCached<T>(env: CacheEnv, key: string): Promise<T | null
 
 export async function putCached<T>(env: CacheEnv, key: string, value: T): Promise<void> {
   await env.KV.put(key, JSON.stringify(value), { expirationTtl: TTL_30_DAYS_S });
+}
+
+/** Write WITHOUT an expirationTtl so the value survives past the 30d TTL. Used
+ *  for the "stale fallback" tier — last-known-good is better than nothing when
+ *  every live source is failing. */
+export async function putCachedDurable<T>(env: CacheEnv, key: string, value: T): Promise<void> {
+  await env.KV.put(key, JSON.stringify(value));
 }
 
 export async function invalidate(env: CacheEnv, key: string): Promise<void> {

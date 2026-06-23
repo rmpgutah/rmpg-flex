@@ -575,8 +575,14 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
               parcels={assessor.parcels}
               cached={assessor.cached}
               loading={assessor.loading}
+              error={assessor.error}
+              code={assessor.code}
+              source={assessor.source}
+              degraded={assessor.degraded}
+              manualUrl={assessor.manualUrl}
               onApply={onApplyAssessor}
               onDismiss={assessor.dismiss}
+              onRetry={assessor.retry}
             />
             {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
               <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>
