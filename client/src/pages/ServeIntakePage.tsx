@@ -9,6 +9,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import ServeIntakeAttemptModal from '../components/serve-intake/ServeIntakeAttemptModal';
 import ServeRecordMatchPanel from '../components/serve/ServeRecordMatchPanel';
 import { parseDefendants, type DetectedDefendant } from '../utils/serveIntakeDefendants';
@@ -323,6 +324,8 @@ export default function ServeIntakePage() {
   const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, FieldVerdict>>({});
   // ConfirmDialog for the "Process Another Set" reset — clears uploaded documents.
   const [confirmReset, setConfirmReset] = useState(false);
+  // ConfirmDialog for removing a single document from the pre-submit list.
+  const [confirmRemoveFileIdx, setConfirmRemoveFileIdx] = useState<number | null>(null);
   const [clientsLoading, setClientsLoading] = useState(true);
   useEffect(() => {
     setClientsLoading(true);
@@ -332,15 +335,18 @@ export default function ServeIntakePage() {
       .finally(() => setClientsLoading(false));
   }, []);
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const { user } = useAuth();
   // Roles that may create new intake records.
   const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
   const canManage = MANAGE_ROLES.has(user?.role ?? '');
 
   const [searchParams, setSearchParams] = useSearchParams();
-  // Deep-link: ?intake_id= jumps to a completed intake result. Captured at mount
-  // via ref so the value survives later setSearchParams strips.
+  // Deep-link: ?intake_id= jumps to the intake result indicated.
+  // ?case_id= navigates to the dispatch call for that case.
+  // Both captured at mount via ref so the values survive later setSearchParams strips.
   const pendingIntakeIdRef = useRef<string | null>(searchParams.get('intake_id'));
+  const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
 
   const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -364,19 +370,30 @@ export default function ServeIntakePage() {
     };
   }, []);
 
-  // Deep-link: strip ?intake_id= after mount (no-op if absent).
+  // Deep-link: strip ?intake_id= / ?case_id= after mount (no-ops if absent).
+  // ?case_id= redirects to /dispatch immediately; ?intake_id= toasts the id.
   useEffect(() => {
-    const id = pendingIntakeIdRef.current;
-    if (!id) return;
+    const intakeId = pendingIntakeIdRef.current;
+    const caseId = pendingCaseIdRef.current;
     pendingIntakeIdRef.current = null;
+    pendingCaseIdRef.current = null;
     const next = new URLSearchParams(searchParams);
-    next.delete('intake_id');
-    setSearchParams(next, { replace: true });
+    if (caseId) {
+      next.delete('case_id');
+      setSearchParams(next, { replace: true });
+      navigate(`/dispatch?call_id=${caseId}`);
+      return;
+    }
+    if (intakeId) {
+      next.delete('intake_id');
+      setSearchParams(next, { replace: true });
+      addToast(`Viewing intake #${intakeId}`, 'info');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Keyboard shortcuts:
   //   N  — start a new intake (focus the file picker); gated by canManage
-  //   Esc — cascade: close OCR preview → attempt modal → reset result
+  //   Esc — cascade: OCR preview → attempt modal → confirmReset → confirmRemoveFileIdx
   useEffect(() => {
     const isTyping = (t: EventTarget | null) => {
       if (!(t instanceof HTMLElement)) return false;
@@ -387,6 +404,8 @@ export default function ServeIntakePage() {
       if (e.key === 'Escape') {
         if (showOcrPreview) { e.stopPropagation(); setShowOcrPreview(false); return; }
         if (showAttemptModal) { e.stopPropagation(); setShowAttemptModal(false); return; }
+        if (confirmReset) { e.stopPropagation(); setConfirmReset(false); return; }
+        if (confirmRemoveFileIdx !== null) { e.stopPropagation(); setConfirmRemoveFileIdx(null); return; }
         return;
       }
       if (e.key === 'n' || e.key === 'N') {
@@ -398,7 +417,7 @@ export default function ServeIntakePage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showOcrPreview, showAttemptModal, canManage]);
+  }, [showOcrPreview, showAttemptModal, confirmReset, confirmRemoveFileIdx, canManage]);
 
   // Merge OCR field values from newly-loaded images into editOverrides.
   // "Fill empty slots" strategy: only writes keys not already set by the
@@ -685,10 +704,15 @@ export default function ServeIntakePage() {
 
   // Remove the row AND, if it's a scanned PDF, its hidden rasterized OCR pages
   // (derivedFrom === the removed file's name) so they don't upload orphaned.
+  // Gated to canManage — non-managers cannot remove documents.
   const removeFile = (idx: number) => setFiles(prev => {
     const target = prev[idx];
     return prev.filter((f, i) => i !== idx && f.derivedFrom !== target?.name);
   });
+  const requestRemoveFile = (idx: number) => {
+    if (!canManage) return;
+    setConfirmRemoveFileIdx(idx);
+  };
   const changeFileType = (idx: number, type: string) => setFiles(prev => prev.map((f, i) => i === idx ? { ...f, type } : f));
 
   const openOcrPreview = (file: UploadedFile) => {
@@ -918,6 +942,15 @@ export default function ServeIntakePage() {
         />
       </div>
 
+      {/* Empty state — no files loaded, not processing, no completed result */}
+      {!processing && !result && files.length === 0 && (
+        <p className="text-center text-[10px] text-rmpg-600 py-2">
+          {canManage
+            ? 'Drop a job packet above or press N to browse — PDF, images, or a whole folder.'
+            : 'Contact a supervisor to process service intakes.'}
+        </p>
+      )}
+
       {files.some(f => !f.derivedFrom) && (
         <div className="space-y-1">
           <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">
@@ -990,7 +1023,9 @@ export default function ServeIntakePage() {
                   <Eye className="w-3 h-3" /> Review
                 </button>
               )}
-              <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
+              {canManage && (
+                <IconButton onClick={() => requestRemoveFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
+              )}
             </div>
           ))}
         </div>
@@ -1072,22 +1107,29 @@ export default function ServeIntakePage() {
             {/* Client selector — links the serve to an active RMPG client */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Client</p>
             <div className="mb-3">
-              <select
-                id="ff-intake-client"
-                value={selectedClientId ?? ''}
-                onChange={e => {
-                  const id = e.target.value ? Number(e.target.value) : null;
-                  setSelectedClientId(id);
-                  const name = clients.find(c => c.id === id)?.name ?? '';
-                  setEditOverrides(prev => ({ ...prev, client_name: name }));
-                }}
-                className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
-              >
-                <option value="">— {clientsLoading ? 'Loading clients…' : 'Select client (optional)'} —</option>
-                {clients.map(cl => (
-                  <option key={cl.id} value={cl.id}>{cl.name}{cl.contact_name ? ` · ${cl.contact_name}` : ''}</option>
-                ))}
-              </select>
+              {clientLoadError ? (
+                <div className="flex items-center gap-1.5 px-2 py-1.5 bg-red-900/30 border border-red-700/50 rounded-sm text-[10px] text-red-300">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                  {clientLoadError}
+                </div>
+              ) : (
+                <select
+                  id="ff-intake-client"
+                  value={selectedClientId ?? ''}
+                  onChange={e => {
+                    const id = e.target.value ? Number(e.target.value) : null;
+                    setSelectedClientId(id);
+                    const name = clients.find(c => c.id === id)?.name ?? '';
+                    setEditOverrides(prev => ({ ...prev, client_name: name }));
+                  }}
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                >
+                  <option value="">— {clientsLoading ? 'Loading clients…' : 'Select client (optional)'} —</option>
+                  {clients.map(cl => (
+                    <option key={cl.id} value={cl.id}>{cl.name}{cl.contact_name ? ` · ${cl.contact_name}` : ''}</option>
+                  ))}
+                </select>
+              )}
             </div>
             {/* Case details */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Case</p>
@@ -1465,6 +1507,24 @@ export default function ServeIntakePage() {
         message="This will clear all loaded documents and results."
         confirmLabel="Clear & Start New"
         confirmVariant="warning"
+      />
+      <ConfirmDialog
+        isOpen={confirmRemoveFileIdx !== null}
+        onClose={() => setConfirmRemoveFileIdx(null)}
+        onConfirm={() => {
+          if (confirmRemoveFileIdx !== null) {
+            removeFile(confirmRemoveFileIdx);
+            setConfirmRemoveFileIdx(null);
+          }
+        }}
+        title="Remove Document?"
+        message={
+          confirmRemoveFileIdx !== null && files[confirmRemoveFileIdx]
+            ? `Remove "${files[confirmRemoveFileIdx].name}" from this batch?`
+            : 'Remove this document from the intake batch?'
+        }
+        confirmLabel="Remove"
+        confirmVariant="danger"
       />
       </>}
     </div>
