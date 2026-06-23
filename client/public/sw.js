@@ -59,6 +59,26 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1088: Criminal History (/criminal-history) — Page 70 of the full-app
+//        frontend pass.
+//        (1) Fixed silent search bug: name/DOB/DL searches sent ?name=/?dob=/?dl=
+//            params the server does not read, returning the full 500-person
+//            unfiltered list instead of matching records. Name now routes to
+//            /records/persons/search?q= (proper LIKE); DOB/DL use the bulk
+//            list's ?search= param.
+//        (2) Switched person history to /records/persons/:id/system-history
+//            (single round-trip, FK-joined) — previously 4 separate fetches
+//            used fuzzy name-text search for citations/FIs, returning records
+//            for anyone with a similar name, not the selected person.
+//        (3) Added CriminalHistorySection panel — formal arrest/conviction/
+//            charge records from the criminal_history table were absent.
+//        (4) Added WarrantNsopwStatus panel — NSOPW nationwide SOR cross-ref.
+//        (5) Esc smart-cascade: Esc while person selected returns to list.
+//        (6) ?subject= URL param pre-fills and auto-fires name search.
+//        (7) ConfirmDialog on CriminalHistorySection delete (was bare click).
+//        (8) normPerson() handles dob/gender/dl_number aliases from bulk list.
+//        SW name auto-stamps via vite plugin — bump here is documentation.
+
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
