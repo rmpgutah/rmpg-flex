@@ -59,6 +59,12 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1082: Incidents (Page 64) — source-call buttons now deep-link to
+//        /dispatch?call_id=<id> so clicking the call number from an incident
+//        auto-selects that call in the Dispatch CAD board. Previously both
+//        "SOURCE CALL" header and "Linked Call" info-panel buttons navigated
+//        to /dispatch with no context, leaving operators to find the call
+//        manually. No schema or API changes.
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,
