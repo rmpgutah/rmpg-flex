@@ -24,6 +24,10 @@ vi.mock('../../hooks/useApi', () => ({
 // SightingsMap pulls in Mapbox GL (no WebGL in jsdom) — stub it; the map isn't
 // under test here.
 vi.mock('../../components/SightingsMap', () => ({ default: () => null }));
+// useAuth is used for role-gating (canManage); stub it as admin for tests.
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { role: 'admin', full_name: 'Test Admin', username: 'testadmin' } }),
+}));
 
 describe('PlateLogPage', () => {
   beforeEach(() => {
