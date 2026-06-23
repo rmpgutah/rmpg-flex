@@ -4,7 +4,7 @@
 // highest-stakes records in the system: court-admissible,
 // IA-reviewable, and Utah-POST state-DOJ-reportable.
 //
-// What this page now does (audited in v1061):
+// What this page now does (audited in v1127):
 //   • Deep-links — ?uof_id= jumps to a specific report (with a
 //     /:id direct-fetch fallback when it's outside the current
 //     page slice); ?incident_id= + ?subject_id= pre-filter the
@@ -469,16 +469,17 @@ export default function UseOfForcePage() {
       if (e.key !== 'Escape') return;
       if (isTyping(e.target)) return;
       // 1) Create modal open
-      if (showForm) { setShowForm(false); return; }
+      if (showForm) { e.stopPropagation(); setShowForm(false); return; }
       // 2) Review confirm dialog open (ConfirmDialog handles its own Esc,
       //    but covering it here keeps the order explicit when nested).
-      if (reviewDialog) { setReviewDialog(null); setReviewNotes(''); return; }
+      if (reviewDialog) { e.stopPropagation(); setReviewDialog(null); setReviewNotes(''); return; }
       // 3) Error banner
-      if (error) { setError(''); return; }
+      if (error) { e.stopPropagation(); setError(''); return; }
       // 4) Detail panel selected
-      if (selected) { setSelected(null); return; }
+      if (selected) { e.stopPropagation(); setSelected(null); return; }
       // 5) Active filters
       if (filterStatus || searchQuery || filterIncidentId || filterSubjectId) {
+        e.stopPropagation();
         setFilterStatus(''); setSearchQuery(''); setFilterIncidentId(''); setFilterSubjectId('');
         setPage(1);
         return;
