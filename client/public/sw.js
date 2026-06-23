@@ -3,6 +3,17 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1108: Billing (/billing, /invoices) — Page 85 of the full-app frontend
+//        pass. BillingPage: replaced todayLocal() helper with localToday()
+//        from dateUtils (consistent timezone handling). InvoicesPage: added
+//        ?invoice_id= deep-link (opens + selects invoice after load) +
+//        ?client_id= pre-filter; N shortcut (canEdit only, skips while
+//        typing) opens New Invoice; Esc cascade (payment form → line-item
+//        form → detail panel → create panel); ConfirmDialog for delete-
+//        payment and delete-line-item (were instant no-confirmation deletes);
+//        useToast feedback on delete success/error; distinct empty states —
+//        loading spinner / "no invoices match filters" + clear CTA / "no
+//        invoices yet" + create CTA.
 // v1107: QA (/qa) — Page 84 of the full-app frontend pass. Replaced inline
 //        delete dialog with ConfirmDialog (with review details). Added ?qa_id=
 //        / ?review_id= deep-link (stripped after mount with replace:true). Added
