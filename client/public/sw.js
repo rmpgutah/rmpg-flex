@@ -29,6 +29,7 @@
 // v1117: Accreditation — role gates (canManage: admin/manager), ?standard_id= / ?accred_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces inline delete modal, search filter, typed formData, dead-code cleanup.
 // v1116: Narcotics — role gates (canManage: admin/manager/supervisor), ?narcotics_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
 // v1115: Alarm Management — role gates (canWrite/canDelete: admin/manager/supervisor), ?alarm_id= deep-link, N shortcut, Esc cascade, 3-state empty states, ConfirmDialog replaces inline delete modal, search filter, dead-code cleanup.
+// v1134: Forensic Lab — role gates (canManage: admin/manager/supervisor) for create/edit/QC/custody actions and New Case tab/shortcut.
 // v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
 // v1114: Victim Services — role gates (canManage: admin/manager/supervisor), ?victim_id= / ?case_id= deep-link, N shortcut, Esc cascade, 3-state empty (loading/error/no-data/no-results), ConfirmDialog replaces DeleteRecordModal, search filter, dead-code cleanup.
 // v1113: Crisis Response — ?crisis_id=/?incident_id= deep-link (strip after mount),
