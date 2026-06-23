@@ -9,6 +9,10 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ServeIntakeAttemptModal from '../components/serve-intake/ServeIntakeAttemptModal';
 import ServeRecordMatchPanel from '../components/serve/ServeRecordMatchPanel';
+import { parseDefendants, type DetectedDefendant } from '../utils/serveIntakeDefendants';
+import type { FieldVerdict } from '../types/serveIntakeJudge';
+import DefendantsPicker from '../components/serve-intake/DefendantsPicker';
+import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -312,6 +316,9 @@ export default function ServeIntakePage() {
   // intakes with no client attached, breaking downstream billing
   // auto-assign. Surface the failure and block submit.
   const [clientLoadError, setClientLoadError] = useState<string | null>(null);
+  const [detectedDefendants, setDetectedDefendants] = useState<DetectedDefendant[]>([]);
+  const [selectedDefendants, setSelectedDefendants] = useState<string[]>([]);
+  const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, FieldVerdict>>({});
   useEffect(() => {
     apiFetch<{id:number;name:string;contact_name:string|null;contact_phone:string|null}[]>('/serve-intake/clients')
       .then((data) => { setClients(data); setClientLoadError(null); })
@@ -360,6 +367,18 @@ export default function ServeIntakePage() {
         if (!next[k]) next[k] = value;
       }
       return next;
+    });
+    let bestDefendant = '';
+    let bestConf = 0;
+    for (const f of files) {
+      const v = f.ocrResult?.fields?.defendant;
+      if (v?.value && v.confidence > bestConf) { bestDefendant = v.value; bestConf = v.confidence; }
+    }
+    const detected = parseDefendants(bestDefendant);
+    setDetectedDefendants(detected);
+    setSelectedDefendants(prev => {
+      if (prev.length === 0 && detected.length > 0) return detected.map(d => d.name);
+      return prev.filter(n => detected.some(d => d.name === n));
     });
   }, [files]);
 
@@ -642,6 +661,10 @@ export default function ServeIntakePage() {
   // failure (e.g. all files exceed the per-file 25 MB cap).
   const processIntake = useCallback(async () => {
     if (files.length === 0) return;
+    if (detectedDefendants.length > 1 && selectedDefendants.length === 0) {
+      setError('Pick at least one defendant to serve.');
+      return;
+    }
     setProcessing(true);
     setError(null);
     setResult(null);
@@ -661,6 +684,9 @@ export default function ServeIntakePage() {
         // uses it for born-digital PDFs so it doesn't have to round-trip
         // through the OCR container (which isn't rolled out in prod).
         // Only empty/scanned PDFs fall through to the container path.
+        if (selectedDefendants.length > 0 || detectedDefendants.length > 1) {
+          formData.append('defendants_selected', JSON.stringify(selectedDefendants));
+        }
         formData.append('client_text', JSON.stringify(
           filesWithBlobs.map(f => ({ name: f.name, type: f.type, text: f.text || '' })),
         ));
@@ -713,6 +739,9 @@ export default function ServeIntakePage() {
         const body = JSON.parse(resp.text) as IntakeResult & { warning?: string };
         if (body.success) {
           setResult(body);
+          if ((body as any).judge_verdicts) {
+            setJudgeVerdicts((body as any).judge_verdicts);
+          }
         } else {
           // Surface the server's specific reason (e.g. "Documents stored
           // but no recipient could be extracted (…)") rather than a
@@ -746,7 +775,7 @@ export default function ServeIntakePage() {
     setProcessing(false);
     setUploadPhase('idle');
     setUploadStat(null);
-  }, [files, editOverrides]);
+  }, [files, editOverrides, detectedDefendants, selectedDefendants]);
 
   // Abort an in-flight upload. Only offered during the byte-transfer phase —
   // once the server is analyzing it may already be committing records, so
@@ -925,6 +954,11 @@ export default function ServeIntakePage() {
             <span className="text-[9px] text-rmpg-500 ml-1">— Fields pre-filled from OCR. Edit any value before submitting.</span>
           </div>
           <div className="p-3">
+            <DefendantsPicker
+              detected={detectedDefendants}
+              selected={selectedDefendants}
+              onChange={setSelectedDefendants}
+            />
             {/* Recipient identity */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Recipient</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
@@ -944,6 +978,7 @@ export default function ServeIntakePage() {
                     placeholder="—"
                     className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
                   />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
               ))}
             </div>
@@ -960,6 +995,7 @@ export default function ServeIntakePage() {
                   placeholder="—"
                   className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
                 />
+                {judgeVerdicts['recipient_address'] && <JudgeFlagChip verdict={judgeVerdicts['recipient_address']} />}
               </div>
               {[
                 { key: 'recipient_city',  label: 'City' },
@@ -976,6 +1012,7 @@ export default function ServeIntakePage() {
                     placeholder="—"
                     className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
                   />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
               ))}
             </div>
