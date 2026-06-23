@@ -67,6 +67,19 @@ describe('notificationRouting', () => {
       expect(routeForEntity({ type: 'patrol_missed' })).toBe('/patrol');
     });
 
+    it('builds /affairs?complaint_id= for ia_complaint entity_type', () => {
+      // IA complaint deep-link contract added v1070. Notification routing
+      // should land the supervisor directly on the complaint, not the IA
+      // landing list.
+      expect(routeForEntity({ type: 'system', entity_type: 'ia_complaint', entity_id: 17 }))
+        .toBe('/affairs?complaint_id=17');
+    });
+
+    it('builds /affairs?investigation_id= for ia_investigation entity_type', () => {
+      expect(routeForEntity({ type: 'system', entity_type: 'ia_investigation', entity_id: 8 }))
+        .toBe('/affairs?investigation_id=8');
+    });
+
     it('url-encodes the entity id (guards against an id like "1/2")', () => {
       // No realistic id will contain a slash, but the helper still has
       // to be safe against one because the id type is `string | number`
