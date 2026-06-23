@@ -62,6 +62,7 @@ export function VehicleDetailRoute() {
   const [searchParams, setSearchParams] = useSearchParams();
   useFleetV2View(`/fleet/v2/vehicles/${id ?? ''}`);
   const [vehicle, setVehicle] = useState<FleetVehicleDetail | null>(null);
+  const [loadError, setLoadError] = useState(false);
   // Tab is URL-driven so an operator can land directly on, say,
   // /fleet/v2/vehicles/42?tab=inspections from a deep-link in dispatch or
   // a court-prep email. Falls through to 'overview' if the param is
@@ -95,9 +96,23 @@ export function VehicleDetailRoute() {
 
   useEffect(() => {
     if (!id) return;
-    apiFetchV2<FleetVehicleDetail>(`/fleet/${id}`).then(setVehicle).catch(() => setVehicle(null));
+    setVehicle(null);
+    setLoadError(false);
+    apiFetchV2<FleetVehicleDetail>(`/fleet/${id}`)
+      .then(setVehicle)
+      .catch(() => setLoadError(true));
   }, [id]);
 
+  if (loadError) {
+    return (
+      <div className="p-4 text-rmpg-400 text-sm">
+        Vehicle #{id} could not be loaded. It may not exist or you may not have access.
+        <div className="mt-2">
+          <a href="/fleet/v2/vehicles" className="text-brand-400 hover:underline text-xs">Back to Vehicles</a>
+        </div>
+      </div>
+    );
+  }
   if (!vehicle) return <div className="p-4 text-rmpg-400 text-sm">Loading vehicle #{id}…</div>;
 
   return (
