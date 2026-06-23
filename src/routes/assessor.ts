@@ -27,27 +27,31 @@ import { getDb, columnExists, ensureAssessorColumns } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
 import {
-  cacheKeyParcels, cacheKeyParcel, getCached, putCached,
+  cacheKeyParcel, getCached, putCached,
 } from '../utils/sl-assessor/cache';
-import { searchByAddress, getParcel } from '../utils/sl-assessor/client';
+import { getParcel } from '../utils/sl-assessor/client';
 import { applyParcelToRecord } from '../utils/sl-assessor/autofill';
 import {
   AssessorConfigError, AssessorHttpError, AssessorParseError, AssessorTimeoutError,
 } from '../utils/sl-assessor/types';
 import type { Parcel, ParcelSummary } from '../utils/sl-assessor/types';
+import { lookupParcelsWithFallback, lookupParcelWithFallback } from '../utils/sl-assessor/lookup';
 
 const app = new Hono<Env>();
 
 function handleError(c: any, e: unknown) {
+  // POST /apply still uses the legacy client.getParcel() (so it can raise
+  // typed errors that the caller might want to act on). The lookup-route
+  // handlers below NEVER throw — they always return a structured 200.
   if (e instanceof AssessorConfigError)
-    return c.json({ code: 'not_configured', message: e.message }, 503);
+    return c.json({ ok: false, code: 'not_configured', message: e.message });
   if (e instanceof AssessorTimeoutError)
-    return c.json({ code: 'timeout', message: e.message }, 503);
+    return c.json({ ok: false, code: 'timeout', message: e.message });
   if (e instanceof AssessorHttpError)
-    return c.json({ code: 'upstream', status: e.status, message: e.message }, 503);
+    return c.json({ ok: false, code: 'upstream', status: e.status, message: e.message });
   if (e instanceof AssessorParseError)
-    return c.json({ code: 'parse_error', message: e.message }, 500);
-  return c.json({ code: 'unknown', message: (e as Error)?.message ?? 'unknown' }, 500);
+    return c.json({ ok: false, code: 'parse_error', message: e.message }, 500);
+  return c.json({ ok: false, code: 'unknown', message: (e as Error)?.message ?? 'unknown' }, 500);
 }
 
 // Lookup endpoints are role-gated even though they're GETs: every cache MISS
@@ -57,30 +61,41 @@ function handleError(c: any, e: unknown) {
 // /backfill and /review-queue, plus dispatcher + supervisor for field lookups.
 const LOOKUP_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
 
+// /parcels and /parcel/:parcel_no return 200 on every outcome (success, no
+// match, upstream failure, not configured). The body's `code` + `ok` flag
+// is the real signal. This matches the project-wide convention codified in
+// notConfigured.ts and prevents apiFetch from retry-storming 503s.
 app.get('/parcels', requireRole(...LOOKUP_ROLES), async (c) => {
   const address = c.req.query('address')?.trim();
-  if (!address) return c.json({ code: 'missing_address' }, 400);
-  const key = cacheKeyParcels(address);
-  try {
-    const cached = await getCached<ParcelSummary[]>(c.env, key);
-    if (cached) return c.json({ parcels: cached, cached: true, source_url: null });
-    const parcels = await searchByAddress(c.env, address);
-    await putCached(c.env, key, parcels);
-    return c.json({ parcels, cached: false, source_url: null });
-  } catch (e) { return handleError(c, e); }
+  if (!address) return c.json({ ok: false, code: 'missing_address' }, 400);
+  const r = await lookupParcelsWithFallback(c.env, address);
+  return c.json({
+    ok: r.code === 'ok',
+    parcels: r.parcels,
+    cached: r.source === 'cache' || r.source === 'stale_cache',
+    source: r.source,
+    code: r.code,
+    degraded: r.degraded,
+    manual_url: r.manual_url,
+    diagnostic: r.diagnostic,
+  });
 });
 
 app.get('/parcel/:parcel_no', requireRole(...LOOKUP_ROLES), async (c) => {
   const parcelNo = c.req.param('parcel_no');
-  if (!parcelNo) return c.json({ code: 'missing_parcel_no' }, 400);
-  const key = cacheKeyParcel(parcelNo);
-  try {
-    const cached = await getCached<Parcel>(c.env, key);
-    if (cached) return c.json({ parcel: cached, sales: cached.sales, cached: true });
-    const parcel = await getParcel(c.env, parcelNo);
-    await putCached(c.env, key, parcel);
-    return c.json({ parcel, sales: parcel.sales, cached: false });
-  } catch (e) { return handleError(c, e); }
+  if (!parcelNo) return c.json({ ok: false, code: 'missing_parcel_no' }, 400);
+  const r = await lookupParcelWithFallback(c.env, parcelNo);
+  return c.json({
+    ok: r.code === 'ok' && r.parcel !== null,
+    parcel: r.parcel,
+    sales: r.parcel?.sales ?? [],
+    cached: r.source === 'cache' || r.source === 'stale_cache',
+    source: r.source,
+    code: r.code,
+    degraded: r.degraded,
+    manual_url: r.manual_url,
+    diagnostic: r.diagnostic,
+  });
 });
 
 /**

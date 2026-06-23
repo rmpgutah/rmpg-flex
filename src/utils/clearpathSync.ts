@@ -78,6 +78,66 @@ export function r2KeyFor(deviceId: string, timestampMs: number, channel: string)
   return `${R2_PREFIX}${safeDevice}/${timestampMs}_${channel}.mp4`;
 }
 
+/** Decide whether the camera is currently offline (sleeping with the vehicle).
+ *  ClearPath's on-demand pipeline accepts the POST instantly but the dashcam
+ *  can only upload the mp4 when the LTE modem is awake — which requires the
+ *  vehicle's ignition to be on. While the vehicle is parked, every requested
+ *  clip sits in "Waiting for Camera…" on ClearPath's side, our poll returns
+ *  zero candidates, and chunks burn through their poll-attempt budget and die
+ *  as 'missing'. The fix: when the camera is offline, the poller skips the
+ *  attempt-counter increment so requests survive the parking window and
+ *  fulfill the next time the vehicle drives.
+ *
+ *  Heuristic (pure, given a mapping row + current epoch ms):
+ *    • ignition_state='on'  → online (camera always uploads while driving).
+ *    • ignition_state='off' AND last_synced_at older than `staleMinutes`
+ *      → offline (GPS module also gone to sleep with the vehicle).
+ *    • Anything else (unknown ignition, recent GPS) → online by default so a
+ *      sensor blip can't suspend a healthy queue.
+ *  staleMinutes defaults to 15 — ClearPath GPS modules stay awake for a few
+ *  minutes after ignition off, so a fresher GPS sync means the camera might
+ *  still be reachable. */
+export function isCameraOfflineFromMapping(
+  m: { ignition_state: string | null; last_synced_at: string | null },
+  nowMs: number,
+  staleMinutes = 15,
+): boolean {
+  const ignition = (m.ignition_state || '').toLowerCase();
+  if (ignition === 'on') return false;
+  if (ignition !== 'off') return false; // unknown — don't suspend
+  if (!m.last_synced_at) return true;
+  const lastMs = Date.parse(
+    m.last_synced_at.includes('T') ? m.last_synced_at : m.last_synced_at.replace(' ', 'T') + 'Z',
+  );
+  if (!Number.isFinite(lastMs)) return true;
+  return nowMs - lastMs > staleMinutes * 60_000;
+}
+
+/** Bulk lookup: which of the given cpg_device_ids have an offline camera right
+ *  now? Returns a Set of device ids currently considered offline (matching
+ *  isCameraOfflineFromMapping). Unmapped devices are treated as ONLINE
+ *  (returning early-abandon behaviour) so an upstream bug can't suspend the
+ *  whole queue. Single round-trip per poll batch.  */
+export async function getOfflineCameraDeviceIds(
+  db: D1Database, deviceIds: string[], nowMs = Date.now(),
+): Promise<Set<string>> {
+  const offline = new Set<string>();
+  const ids = Array.from(new Set(deviceIds.filter(Boolean)));
+  if (!ids.length) return offline;
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = await query<{ cpg_device_id: string; ignition_state: string | null; last_synced_at: string | null }>(
+    db,
+    `SELECT cpg_device_id, ignition_state, last_synced_at
+       FROM cpg_device_mappings
+      WHERE is_active = 1 AND cpg_device_id IN (${placeholders})`,
+    ...ids,
+  ).catch(() => [] as Array<{ cpg_device_id: string; ignition_state: string | null; last_synced_at: string | null }>);
+  for (const r of rows) {
+    if (isCameraOfflineFromMapping(r, nowMs)) offline.add(r.cpg_device_id);
+  }
+  return offline;
+}
+
 // ── Schema reconcile (backstop if 0117 didn't reach live) ────
 
 let mediaSchemaReady = false;

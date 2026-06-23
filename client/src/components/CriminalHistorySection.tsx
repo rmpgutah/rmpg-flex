@@ -12,6 +12,7 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from './ToastProvider';
 import { toDisplayLabel } from '../utils/formatters';
+import ConfirmDialog from './ConfirmDialog';
 
 // ── Types ──────────────────────────────────────────
 
@@ -123,6 +124,8 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CriminalRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchRecords = useCallback(async () => {
     try {
@@ -183,13 +186,18 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
     setShowForm(true);
   };
 
-  const handleDelete = async (id: number) => {
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/records/criminal-history/${id}`, { method: 'DELETE' });
+      await apiFetch(`/records/criminal-history/${deleteTarget.id}`, { method: 'DELETE' });
+      setDeleteTarget(null);
       await fetchRecords();
     } catch (err: any) {
       console.error('Delete criminal history failed:', err);
       addToast(err?.message || 'Failed to delete criminal history', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -458,7 +466,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                     <button type="button" onClick={() => handleEdit(rec)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit">
                       <Pencil className="w-3 h-3" />
                     </button>
-                    <button type="button" onClick={() => handleDelete(rec.id)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Delete">
+                    <button type="button" onClick={() => setDeleteTarget(rec)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Delete record">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
@@ -491,6 +499,22 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Criminal Record"
+        message="Permanently delete this criminal history record? This cannot be undone."
+        details={deleteTarget ? (
+          <span className="font-mono text-[10px] text-rmpg-200">
+            {deleteTarget.offense} ({deleteTarget.record_type})
+          </span>
+        ) : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }
