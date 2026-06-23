@@ -107,8 +107,6 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   // the Saved Results tab of /web-research with the row highlighted.
   research_result: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
   web_research: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
-arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
-  arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
   court_event: (id) => `/court-records?event_id=${encodeURIComponent(id)}`,
 // IA complaint / investigation — added v1070 alongside the IA page deep-link
   // contract. Both land on /affairs?complaint_id= because the investigation
