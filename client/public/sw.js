@@ -3,6 +3,16 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1109: Risk Management (/risk) — Page 86 frontend audit. Replaced inline
+//        delete div with ConfirmDialog. Added ?risk_id= deep-link (opens edit
+//        modal, stripped with replace:true). N shortcut opens New Assessment
+//        (admin/manager only). Esc cascade: delete confirm → form. Empty states
+//        now distinguish loading vs no-data vs no-search-results. Role gates:
+//        canWrite (admin|manager) hides New/Edit/Delete from other roles.
+//        API envelope correctly unwraps .data array from /risk/assessments.
+//        Dead state removed (showForm erroneously derived from editingRecord
+//        !== null). Hardcoded hex (#888888) migrated to text-rmpg-400 token.
+//        Filter bar with live client-side search added to toolbar.
 // v1108: Billing (/billing, /invoices) — Page 85 of the full-app frontend
 //        pass. BillingPage: replaced todayLocal() helper with localToday()
 //        from dateUtils (consistent timezone handling). InvoicesPage: added
