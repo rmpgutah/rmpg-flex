@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
@@ -30,6 +31,7 @@ import {
   Eye,
   Flame,
   Telescope,
+  Check,
 } from 'lucide-react';
 import IconButton from '../components/IconButton';
 import LeadsTab from '../components/crm/LeadsTab';
@@ -44,7 +46,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
-import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import ClientFormModal from '../components/ClientFormModal';
@@ -142,12 +144,26 @@ function invoiceStatusColor(s: string): string {
 // CRM PAGE
 // ════════════════════════════════════════════════════════
 export default function CrmPage() {
-  const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  const { user } = useAuth();
+  // Per-user localStorage key — the prior global 'crm_active_section' key
+  // leaked the previous operator's last-viewed tab to the next person who
+  // logged in on a shared shift workstation. Same data-leak pattern called
+  // out in earlier audits; namespacing on user.id (or anonymous fallback)
+  // gives each operator their own remembered section.
+  const sectionKey = useMemo(() => `crm_active_section:${user?.id ?? 'anon'}`, [user?.id]);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeSection, setActiveSection] = useState<CrmSection>(() => {
-    const saved = localStorage.getItem('crm_active_section');
+    // URL deep-link wins over saved-section so a link from elsewhere
+    // (?section=tasks&client_id=42) lands the operator on the right tab.
+    const urlSection = searchParams.get('section') as CrmSection | null;
+    if (urlSection && SIDEBAR_ITEMS.some((i) => i.id === urlSection)) return urlSection;
+    const saved = localStorage.getItem(sectionKey)
+      // One-shot migration: lift the legacy global key into per-user namespace
+      // so an existing user doesn't suddenly lose their preferred section.
+      || (user?.id ? localStorage.getItem('crm_active_section') : null);
     return (saved as CrmSection) || 'dashboard';
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -220,8 +236,8 @@ export default function CrmPage() {
     try { const res = await apiFetch<any>('/crm/revenue-forecast'); setRevenueForecast(res); } catch { /* ignore */ }
   }, []);
 
-  // Persist active section
-  useEffect(() => { try { localStorage.setItem('crm_active_section', activeSection); } catch { /* ignore */ } }, [activeSection]);
+  // Persist active section (per-user)
+  useEffect(() => { try { localStorage.setItem(sectionKey, activeSection); } catch { /* ignore */ } }, [activeSection, sectionKey]);
 
   // ── Data Fetching ──────────────────────────────────────
   const fetchDashboard = useCallback(async () => {
@@ -300,6 +316,32 @@ export default function CrmPage() {
     }).catch((err) => { console.warn('[CrmPage] fetch personnel failed:', err); })]).finally(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
   }, [fetchDashboard, fetchClients, fetchTasks]);
+
+  // ── URL deep-link: /crm?client_id=<n>&section=clients ──────────────────
+  // Cross-page contract — incidents / cases / patrol can link directly to a
+  // client. One-shot per page load; the param is stripped after applying so
+  // back-button / refresh don't keep re-selecting the same row. Mirrors the
+  // FlexCam (?request_id=) / AuditLog (?source_*=) pattern.
+  const pendingClientIdRef = useRef<string | null>(searchParams.get('client_id'));
+  useEffect(() => {
+    const target = pendingClientIdRef.current;
+    if (!target) return;
+    // Wait until clients have loaded so the selection actually resolves;
+    // an empty clients[] would silently drop the deep-link.
+    if (clients.length === 0) return;
+    pendingClientIdRef.current = null;
+    // Accept the param whether the row is in the list or not — `selectedClient`
+    // tolerates a miss (renders the "Select a client" placeholder) and reload
+    // is a Refresh away. Switch the section to Clients so the operator sees
+    // the detail pane instead of the dashboard.
+    setActiveSection('clients');
+    setSelectedClientId(target);
+    const next = new URLSearchParams(searchParams);
+    next.delete('client_id');
+    next.delete('section');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients]);
 
   // Fetch section data on tab change
   useEffect(() => {
@@ -448,14 +490,43 @@ export default function CrmPage() {
   // Set document title
   useEffect(() => { document.title = 'CRM \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Keyboard shortcuts
+  // - Esc smart-cascade: close the NEWEST-open modal first, then the
+  //   activity modal, the client modal, then drop the selected client.
+  //   Matches the page-wide audit contract (FlexCam, AuditLog).
+  // - 'N' opens a new record relevant to the current section (parity with
+  //   Cases / Audit Log shortcut surface). Skipped while typing.
   useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowTaskModal(false); setEditingTask(null); }
+      if (e.key === 'Escape') {
+        if (showTaskModal) { setShowTaskModal(false); setEditingTask(null); return; }
+        if (showActivityModal) { setShowActivityModal(false); return; }
+        if (showClientModal) { setShowClientModal(false); setEditingClient(null); return; }
+        if (selectedClientId) { setSelectedClientId(null); return; }
+        return;
+      }
+      if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (isTypingInField(e.target)) return;
+        // Don't shortcut while a modal is already open.
+        if (showTaskModal || showActivityModal || showClientModal) return;
+        if (activeSection === 'tasks') { e.preventDefault(); openNewTask(); return; }
+        if (activeSection === 'clients') { e.preventDefault(); setEditingClient(null); setShowClientModal(true); return; }
+        if (activeSection === 'dashboard') {
+          e.preventDefault();
+          setActivityForm({ client_id: '', activity_type: 'note', subject: '', details: '' });
+          setShowActivityModal(true);
+          return;
+        }
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [showTaskModal, showActivityModal, showClientModal, selectedClientId, activeSection]);
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -1044,7 +1115,11 @@ export default function CrmPage() {
         </PanelTitleBar>
         <div className="p-4">
           {filteredProperties.length === 0 ? (
-            <div className="text-center py-12 text-rmpg-400 text-sm">No properties found</div>
+            <div className="text-center py-12 text-rmpg-400 text-sm">
+              {propertySearch.trim()
+                ? `No properties match "${propertySearch}"`
+                : properties.length === 0 ? 'No properties yet' : 'No properties found'}
+            </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {filteredProperties.map(p => (
@@ -1088,7 +1163,11 @@ export default function CrmPage() {
         </PanelTitleBar>
         <div className="p-4">
           {contacts.length === 0 ? (
-            <div className="text-center py-12 text-rmpg-400 text-sm">No contacts found</div>
+            <div className="text-center py-12 text-rmpg-400 text-sm">
+              {(contactSearch.trim() || contactRelationship)
+                ? 'No contacts match these filters'
+                : 'No contacts yet'}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -1143,7 +1222,11 @@ export default function CrmPage() {
         </PanelTitleBar>
         <div className="p-4">
           {filteredInvoices.length === 0 ? (
-            <div className="text-center py-12 text-rmpg-400 text-sm">No invoices found</div>
+            <div className="text-center py-12 text-rmpg-400 text-sm">
+              {invoiceFilter
+                ? `No invoices with status "${toDisplayLabel(invoiceFilter)}"`
+                : invoices.length === 0 ? 'No invoices yet' : 'No invoices found'}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -1207,8 +1290,17 @@ export default function CrmPage() {
               <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
                 <CheckSquare className="w-7 h-7 text-rmpg-600" />
               </div>
-              <p className="text-sm font-medium text-rmpg-400">No tasks found</p>
-              <p className="text-[10px] text-rmpg-600 mt-1">Click "New Task" to create one</p>
+              {/* Distinguish "no records at all" vs "filter hides everything" so
+                  the operator doesn't think they need to create one when they
+                  really just have an Active/Completed filter applied. */}
+              <p className="text-sm font-medium text-rmpg-400">
+                {taskFilter && taskFilter !== '' ? 'No tasks match this filter' : 'No tasks yet'}
+              </p>
+              <p className="text-[10px] text-rmpg-600 mt-1">
+                {taskFilter && taskFilter !== ''
+                  ? 'Switch the filter to "All" to widen the view'
+                  : 'Press N or click "New Task" to create one'}
+              </p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -1223,7 +1315,7 @@ export default function CrmPage() {
                         : 'border-rmpg-500 hover:border-brand-400'
                     }`}
                   >
-                    {task.status === 'completed' && <span className="text-[10px]">✓</span>}
+                    {task.status === 'completed' && <Check className="w-2.5 h-2.5" aria-hidden />}
                   </button>
 
                   {/* Content */}

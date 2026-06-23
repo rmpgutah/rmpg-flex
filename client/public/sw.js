@@ -59,6 +59,57 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1068: CRM / Overwatch (/crm) — Page 51 of the full-app frontend pass.
+//        Highest-evidentiary surface for client relationships, leads,
+//        revenue pipeline, contracts, and Firecrawl Deep Research jobs.
+//        Audit gaps that landed before this page:
+//          • No URL deep-link contract — cross-page navigation from
+//            incidents/cases/patrol couldn't carry the operator straight
+//            to a specific client/section. Now hydrates `?client_id=<n>`
+//            and `?section=<tab>` from the URL, switches to Clients,
+//            selects the row, and strips the params so a refresh
+//            doesn't re-pin the operator to a stale link. Mirrors the
+//            FlexCam (`?request_id=`) / AuditLog (`?entry_id=`)
+//            contract established in v1058 / v1057.
+//          • Native window.confirm() in DeepResearchTab for "Delete this
+//            research job?" — escaped the steel-blue theme, blocked the
+//            polling loop on a synchronous JS prompt, and bypassed the
+//            page's focus/Esc contract. Replaced with the standard
+//            ConfirmDialog (cancel-default-focus for danger variants,
+//            body-scroll lock, details block showing subject + source
+//            and finding counts so the operator sees what they're about
+//            to destroy).
+//          • Esc was a single-shot "close task modal" — now a smart
+//            cascade: newest-open modal first (task → activity → client),
+//            then drop the selected client. Matches the FlexCam audit
+//            cascade. Typing-surface targets unaffected so native
+//            blur-on-Esc still works in filter inputs.
+//          • Keyboard shortcut N for "New …" — opens a new task on the
+//            Tasks tab, a new client on the Clients tab, or the Log-
+//            Activity dialog on the Dashboard. Skipped while typing or
+//            while a modal is already open. Parity with the Cases /
+//            Audit Log shortcut surface.
+//          • Per-user localStorage for the active section — the prior
+//            global `crm_active_section` key leaked the previous
+//            operator's last-viewed tab to the next user on a shared
+//            shift workstation. Same privacy pattern called out in
+//            earlier audits; now namespaced on user.id with a one-shot
+//            migration so existing users don't lose their preferred
+//            section on first load after this ships.
+//          • Empty-state distinction — Tasks/Properties/Contacts/
+//            Invoices all collapsed "filter hides everything" and
+//            "no records exist" into one "No X found" string. Now
+//            branches on the active filter so the operator doesn't
+//            think they need to create a record when really they
+//            just have an Active/Completed filter applied. Tasks
+//            empty state also surfaces the new N shortcut.
+//          • Dead code — removed unused `useIsMobile()` import (the
+//            hook was destructured but `isMobile` was never read).
+//          • Emoji-glyph checkbox — replaced the literal U+2713 on
+//            completed task checkboxes with Lucide's <Check />,
+//            consistent with the rest of the page chrome (which is
+//            100% Lucide).
+
 // v1057: Audit Log (/audit) — Page 40 of the full-app frontend pass.
 //        The audit log is THE highest-evidentiary surface in the app: it
 //        proves chain-of-custody, who saw/edited what, and when. Defense
