@@ -3,6 +3,15 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1098: Dashcam pages (Page 75) — fixed status panel shape mismatch
+//        (DashcamPage read enabled/deviceCount/port/models/uptime which the
+//        API never emitted; now reads total_devices/online_devices/active_devices).
+//        Removed broken POST /howen/enable stub call and unguarded power-toggle
+//        button. Added ?device_id= deep-link + Esc cascade to DashcamPage.
+//        Added role-gate (canManage) imports. Replaced 6x hardcoded #d4a017
+//        with text-brand-400. Distinct empty states for no-devices vs no-results.
+//        Removed unused AlertTriangle + Smartphone imports. Removed dead
+//        isGodMode duplicate (= isAdmin) from DashCamerasPage.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
