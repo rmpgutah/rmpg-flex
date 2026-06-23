@@ -177,7 +177,7 @@ export default function PersonIntelPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-rmpg-100 truncate">{d.subject_name}</span>
                     <RiskBadge score={d.risk_score ?? 0} />
-                    {d.linked_person_id && <CheckCircle2 className="w-3 h-3 text-green-400" title="Linked to person record" />}
+                    {d.linked_person_id && <div title="Linked to person record"><CheckCircle2 className="w-3 h-3 text-green-400" /></div>}
                   </div>
                   <div className="flex items-center gap-3 mt-0.5">
                     {d.status === 'running' ? (

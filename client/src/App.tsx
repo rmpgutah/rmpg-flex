@@ -164,6 +164,8 @@ const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
 const RiskPage = lazyRetry(() => import('./pages/RiskPage'));
 const InteragencyPage = lazyRetry(() => import('./pages/InteragencyPage'));
 const GangIntelPage = lazyRetry(() => import('./pages/GangIntelPage'));
+const PersonIntelPage = lazyRetry(() => import('./pages/PersonIntelPage'));
+const PersonIntelDossierPage = lazyRetry(() => import('./pages/PersonIntelDossierPage'));
 const SpecialOpsPage = lazyRetry(() => import('./pages/SpecialOpsPage'));
 const CrisisResponsePage = lazyRetry(() => import('./pages/CrisisResponsePage'));
 const VictimServicesPage = lazyRetry(() => import('./pages/VictimServicesPage'));
@@ -614,6 +616,8 @@ function AppRoutes() {
             <Route path="/risk" element={<RouteErrorBoundary><RiskPage /></RouteErrorBoundary>} />
             <Route path="/interagency" element={<RouteErrorBoundary><InteragencyPage /></RouteErrorBoundary>} />
             <Route path="/gang-intel" element={<RouteErrorBoundary><GangIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel" element={<RouteErrorBoundary><PersonIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel/:id" element={<RouteErrorBoundary><PersonIntelDossierPage /></RouteErrorBoundary>} />
             <Route path="/special-ops" element={<RouteErrorBoundary><SpecialOpsPage /></RouteErrorBoundary>} />
             <Route path="/crisis-response" element={<RouteErrorBoundary><CrisisResponsePage /></RouteErrorBoundary>} />
             <Route path="/victim-services" element={<RouteErrorBoundary><VictimServicesPage /></RouteErrorBoundary>} />
