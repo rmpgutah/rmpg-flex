@@ -601,7 +601,8 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
                 <ServeStatusFolder
                   key={folder}
                   status={folder}
-                  config={cfg}
+                  label={cfg.label}
+                  defaultOpen={cfg.defaultOpen}
                   count={folderJobs.length}
                 >
                   {folderJobs.map((job) => (

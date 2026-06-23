@@ -229,32 +229,6 @@ export default function CommunityPage() {
     fetchStats();
   }, [fetchEvents, fetchStats]);
 
-  // ── URL deep-link: ?event_id=N ───────────────────────────
-  useEffect(() => {
-    const rawId = searchParams.get('event_id');
-    if (!rawId || deepLinkRef.current) return;
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) { setSearchParams((p) => { p.delete('event_id'); return p; }, { replace: true }); return; }
-    // Wait until events are loaded then auto-open (consume exactly once)
-    if (eventsLoading) return;
-    deepLinkRef.current = true;
-    const found = events.find((e) => e.id === id);
-    if (found) {
-      openEdit(found);
-    } else {
-      addToast(`Event #${id} not found`, 'warning');
-    }
-    setSearchParams((p) => { p.delete('event_id'); return p; }, { replace: true });
-  }, [eventsLoading, events, searchParams, openEdit, addToast, setSearchParams]);
-
-  // ── Tab lazy-load ────────────────────────────────────────
-
-  useEffect(() => {
-    if (activeTab === 'tips') fetchTips();
-    else if (activeTab === 'watch-groups') fetchWatchGroups();
-    else if (activeTab === 'alerts') fetchAlerts();
-  }, [activeTab, fetchTips, fetchWatchGroups, fetchAlerts]);
-
   // ── Form helpers ─────────────────────────────────────────
 
   const openNew = useCallback(() => {
@@ -277,6 +251,31 @@ export default function CommunityPage() {
     });
     setShowForm(true);
   }, []);
+
+  // ── URL deep-link: ?event_id=N ───────────────────────────
+  useEffect(() => {
+    const rawId = searchParams.get('event_id');
+    if (!rawId || deepLinkRef.current) return;
+    const id = parseInt(rawId, 10);
+    if (isNaN(id)) { setSearchParams((p) => { p.delete('event_id'); return p; }, { replace: true }); return; }
+    if (eventsLoading) return;
+    deepLinkRef.current = true;
+    const found = events.find((e) => e.id === id);
+    if (found) {
+      openEdit(found);
+    } else {
+      addToast(`Event #${id} not found`, 'warning');
+    }
+    setSearchParams((p) => { p.delete('event_id'); return p; }, { replace: true });
+  }, [eventsLoading, events, searchParams, openEdit, addToast, setSearchParams]);
+
+  // ── Tab lazy-load ────────────────────────────────────────
+
+  useEffect(() => {
+    if (activeTab === 'tips') fetchTips();
+    else if (activeTab === 'watch-groups') fetchWatchGroups();
+    else if (activeTab === 'alerts') fetchAlerts();
+  }, [activeTab, fetchTips, fetchWatchGroups, fetchAlerts]);
 
   const closeForm = useCallback(() => {
     setShowForm(false);
