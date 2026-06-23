@@ -71,7 +71,48 @@
 //        when no user is signed in (mid-login first render). Mirrors the
 //        SkipTracerPage history pattern (PR #1657 / SW v1065).
 //        SW name auto-stamps via vite plugin — bump here is documentation.
-
+// v1070: Internal Affairs (/affairs) — Page 52 of the full-app frontend pass.
+//        IA complaints are court / civil-rights material the moment a 42 USC
+//        1983 or POST decertification proceeding starts. The page shipped with
+//        a list + form modal but no detail panel, no URL deep-link contract,
+//        no court-ready PDF, no Esc handler, no N shortcut, no privacy banner,
+//        no investigations surfacing at all (the /affairs/complaints/:id/
+//        investigations endpoint existed but was never called), and zero
+//        recordAudit() hooks anywhere on the IA route.
+//        Client (client/src/pages/AffairsPage.tsx, +affairsComplaintPdf.ts):
+//          - URL deep-link: ?complaint_id=<n>, ?investigation_id=<n>, ?new=1
+//          - Split list / detail surface; detail loads the investigations
+//            list on demand from the existing route.
+//          - Court-ready PDF (affairsComplaintPdf) with the same RMPG-gold
+//            CONFIDENTIAL banner, tamper-evidence statement, payload-hash
+//            trailer and signature lines as forensicCasePdf / arrests /
+//            evidenceItemPdf — UT GRAMA §63G-2-302 + POST §53-6-211 cited
+//            on the confidentiality strip.
+//          - Esc smart-cascade: delete → form → error → detail → filters.
+//          - N opens "new complaint" (typing-suppressed). Visible "(N)" hint.
+//          - Privacy advisory banner on the page itself + CONFIDENTIAL footer
+//            on every PDF page.
+//          - Status / type / free-text filter bar with distinct empty states
+//            for "nothing filed yet" vs "filter matches nothing".
+//          - Document title reflects the selected complaint.
+//          - 17 unit tests for affairsComplaintPdf helpers + smoke generation.
+//        notificationRouting.ts: ia_complaint + ia_investigation entity types
+//          deep-link to /affairs?complaint_id= / ?investigation_id= so a
+//          watchlist hit / supervisor referral notification lands directly
+//          on the row instead of the IA list. +2 tests.
+//        Worker (src/routes/affairs.ts):
+//          - recordAudit() wired into create / update / delete on complaints,
+//            create / update on investigations, raise / resolve on early-
+//            intervention flags — IA edits are now part of the central audit
+//            seam (audit_log + flex_events mirror). Actions:
+//            IA_COMPLAINT_FILED / IA_COMPLAINT_UPDATED / IA_COMPLAINT_DELETED
+//            / IA_INVESTIGATION_OPENED / IA_INVESTIGATION_UPDATED /
+//            IA_FLAG_RAISED / IA_FLAG_RESOLVED.
+//          - Missed auto-stamp: status='reviewed' now stamps reviewed_at via
+//            COALESCE alongside the existing status='completed' →
+//            completed_at stamp.
+//        No D1 migration — ia_complaints / ia_investigations /
+//        early_intervention_flags schema unchanged.
 // v1069: Invoices — wire up GET /api/invoices/:id/pdf-data on the Worker.
 //        No client code changed; the endpoint already had three callers in
 //        client/src/pages/admin/AdminInvoiceTab.tsx (Preview, Download PDF,

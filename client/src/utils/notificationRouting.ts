@@ -89,6 +89,14 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   use_of_force: (id) => `/use-of-force?uof_id=${encodeURIComponent(id)}`,
   arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
   arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
+  // IA complaint / investigation — added v1070 alongside the IA page deep-link
+  // contract. Both land on /affairs?complaint_id= because the investigation
+  // is only viewable inside the parent complaint detail panel (the IA route
+  // exposes /affairs/complaints/:id/investigations but not a standalone
+  // investigation viewer). The investigation_id stays in the URL so the
+  // page can scroll/highlight the row inside the complaint detail.
+  ia_complaint: (id) => `/affairs?complaint_id=${encodeURIComponent(id)}`,
+  ia_investigation: (id) => `/affairs?investigation_id=${encodeURIComponent(id)}`,
 };
 
 /**
