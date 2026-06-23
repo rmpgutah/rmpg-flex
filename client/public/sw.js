@@ -3,6 +3,15 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1098: Dashcam pages (Page 75) — fixed status panel shape mismatch
+//        (DashcamPage read enabled/deviceCount/port/models/uptime which the
+//        API never emitted; now reads total_devices/online_devices/active_devices).
+//        Removed broken POST /howen/enable stub call and unguarded power-toggle
+//        button. Added ?device_id= deep-link + Esc cascade to DashcamPage.
+//        Added role-gate (canManage) imports. Replaced 6x hardcoded #d4a017
+//        with text-brand-400. Distinct empty states for no-devices vs no-results.
+//        Removed unused AlertTriangle + Smartphone imports. Removed dead
+//        isGodMode duplicate (= isAdmin) from DashCamerasPage.
 // v1097: Body Cameras (/body-cameras) — Page 74 audit. Fixed canManage to
 //        include manager role (matched backend WRITE_ROLES). Added ?camera_id=
 //        and ?officer_id= deep-links (camera row highlight + officer search

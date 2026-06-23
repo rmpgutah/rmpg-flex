@@ -107,7 +107,6 @@ export default function DashCamerasPage() {
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const isAdmin = user?.role === 'admin';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
