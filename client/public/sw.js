@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1125: NSOPW Offender Registry — deep-link setSearchParams strip, N shortcut, Esc cascade, parseTimestamp for last-run display.
 // v1124: Court Tracker — role gates (canManage: admin/manager), ?case_id= deep-link, API shape fixes (upcoming/single-event/conflicts/stats/calendar wrapped in {data}), byType event_type key fix, case_id filter on GET /events.
 // v1123: Code Enforcement — role gates (canEnforce: admin/manager/supervisor) gate
 //        New button, N shortcut, void/refer violation, cancel tow; ConfirmDialog for
