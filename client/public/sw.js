@@ -3,7 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
-// v1165: Downloads — ?file_id= deep-link (resolves to platform tab, stripped with replace:true), N shortcut triggers active-platform download, Esc snaps to recommended tab, distinct loading/error empty states, ArrowLeft dead import removed, #888/#1a1700/#4a3f00/#f59e0b/#fbbf24/#0a0a0a/#4ade80/#242424/#1a1a1a hex → CSS var tokens.
+// v1170: Invoices — divide-border-subtle token replaces inline CSS var, PAYMENT_METHODS map/find shadow-m renamed to pm, CreatePanel RichTextArea ids + labels deduped from line-item form ids.
 // v1164: Incidents — manager/supervisor role gates for delete/approve/return/archive, isGodMode → canSupervise (admin|manager|supervisor), #ec4899 hex → CSS var token.
 // v1163: Field Interviews — ?interview_id= deep-link (alias for ?fi_id=, strip after mount), Esc stopPropagation per cascade branch, canManage (admin/manager/supervisor) role gates on Edit/Archive/New FI, dead StatusBadge import removed, localToday() replaces new Date() in EMPTY_FORM, rgba hex → toolbar-btn token on submit button.
 // v1160: Criminal History — N shortcut focuses search, ConfirmDialog before PDF export, Print gated admin/manager/supervisor, Esc cascade extended (printConfirm → person deselect).
