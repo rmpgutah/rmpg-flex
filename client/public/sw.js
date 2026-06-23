@@ -3360,6 +3360,10 @@
 //       truncation limit. Server /api/process-server/:id/attempt now
 //       persists next_attempt_note when the column exists, falls back
 //       gracefully when migration 0142 hasn't landed.
+// v1103: CRM/Overwatch — task delete ConfirmDialog, role gate for intel tabs
+//        (webintel/competitors/firecrawl/deepresearch now require supervisor+),
+//        ?section= URL param stripped after seeding, ?contact_id= deep-link
+//        routes to Contacts tab, Esc cascade covers task-delete confirm.
 // Stamped at build time by the stamp-sw-version Vite plugin (vite.config.ts)
 // with the git short SHA → 'rmpg-flex-<sha>'. Dev server serves 'rmpg-flex-BUILD'.
 const CACHE_NAME = 'rmpg-flex-BUILD';
