@@ -19,6 +19,9 @@ import {
   Gavel,
   FileWarning,
   Pencil,
+  CheckCircle2,
+  Bot,
+  Flame,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
@@ -36,15 +39,20 @@ interface ServeJobCardProps {
   onEditAttempt?: (jobId: number, attempt: ServeAttempt) => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  // ── Selection mode (bulk actions) ──────────────────────────────────────────
+  /** Whether this card is currently selected for bulk operations. */
+  isSelected?: boolean;
+  /** Toggle the selected state of this card. */
+  onToggleSelect?: () => void;
 }
 
-const STATUS_COLORS: Record<string, { bg: string; glow: string }> = {
-  pending: { bg: 'bg-rmpg-500', glow: 'shadow-[0_0_6px_rgba(136, 136, 136,0.5)]' },
-  in_progress: { bg: 'bg-amber-500 animate-pulse', glow: 'shadow-[0_0_6px_rgba(245,158,11,0.5)]' },
-  served: { bg: 'bg-green-500', glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]' },
-  failed: { bg: 'bg-red-500', glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]' },
-  skipped: { bg: 'bg-rmpg-500', glow: 'shadow-[0_0_6px_rgba(107,114,128,0.5)]' },
-  archived: { bg: 'bg-rmpg-600', glow: 'shadow-[0_0_6px_rgba(75,85,99,0.5)]' },
+const STATUS_COLORS: Record<string, { bg: string; glow: string; dot: string; label: string; badge: string }> = {
+  pending:     { bg: 'bg-rmpg-500',              glow: 'shadow-[0_0_6px_rgba(136,136,136,0.5)]',  dot: 'bg-rmpg-400',    label: 'PENDING',     badge: 'bg-rmpg-800/60 text-rmpg-300 border-rmpg-600/50' },
+  in_progress: { bg: 'bg-amber-500 animate-pulse', glow: 'shadow-[0_0_6px_rgba(245,158,11,0.5)]', dot: 'bg-amber-400 animate-pulse', label: 'IN PROGRESS', badge: 'bg-amber-900/50 text-amber-300 border-amber-700/50' },
+  served:      { bg: 'bg-green-500',             glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]',   dot: 'bg-green-400',   label: 'SERVED',      badge: 'bg-green-900/50 text-green-300 border-green-700/50' },
+  failed:      { bg: 'bg-red-500',               glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]',   dot: 'bg-red-400',     label: 'FAILED',      badge: 'bg-red-900/50 text-red-300 border-red-700/50' },
+  skipped:     { bg: 'bg-rmpg-500',              glow: 'shadow-[0_0_6px_rgba(107,114,128,0.5)]', dot: 'bg-rmpg-400',    label: 'SKIPPED',     badge: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50' },
+  archived:    { bg: 'bg-rmpg-600',              glow: 'shadow-[0_0_6px_rgba(75,85,99,0.5)]',    dot: 'bg-rmpg-500',    label: 'ARCHIVED',    badge: 'bg-rmpg-900/60 text-rmpg-500 border-rmpg-700/50' },
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -103,6 +111,8 @@ export default React.memo(function ServeJobCard({
   onEditAttempt,
   isExpanded = false,
   onToggleExpand,
+  isSelected = false,
+  onToggleSelect,
 }: ServeJobCardProps) {
   const isDueSoon = useMemo(() => {
     if (!job.deadline) return false;
@@ -116,6 +126,9 @@ export default React.memo(function ServeJobCard({
     return parseTimestamp(job.deadline).getTime() <= Date.now();
   }, [job.deadline]);
 
+  const isCritical = job.urgency_tier === 'critical';
+  const statusCfg = STATUS_COLORS[job.status] ?? STATUS_COLORS.pending;
+
   const fullAddress = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
     .filter(Boolean)
     .join(', ');
@@ -123,19 +136,45 @@ export default React.memo(function ServeJobCard({
   const TimeIcon = TIME_WINDOW_CONFIG[job.time_window]?.icon ?? Clock;
   const timeLabel = TIME_WINDOW_CONFIG[job.time_window]?.label ?? job.time_window;
 
+  // Selection mode is active whenever the prop is wired up (parent has at
+  // least one card selected or is displaying the selection UI).
+  const selectionModeActive = onToggleSelect !== undefined;
+
   return (
     <div
       role="article"
       tabIndex={0}
-      aria-label={`Serve job: ${job.recipient_name}`}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand?.(); } }}
+      aria-label={`Serve job: ${job.recipient_name}${isSelected ? ' — selected' : ''}`}
+      aria-selected={selectionModeActive ? isSelected : undefined}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          // In selection mode Space/Enter toggles selection; otherwise expand.
+          if (selectionModeActive && e.key === ' ') {
+            onToggleSelect?.();
+          } else {
+            onToggleExpand?.();
+          }
+        }
+      }}
       className={`
         panel-beveled rounded-[2px] transition-all duration-150 hover:bg-surface-raised hover:shadow-md
-        ${isDueSoon ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
-        ${isOverdue ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
+        ${isDueSoon && !isSelected ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
+        ${isOverdue && !isSelected ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
+        ${isSelected ? 'ring-1 ring-brand-400 shadow-[0_0_8px_rgba(212,160,23,0.25)]' : ''}
+        ${!isDueSoon && !isOverdue && !isSelected && isCritical ? 'ring-1 ring-red-500/60' : ''}
       `}
       style={{ background: 'var(--surface-base)', borderColor: 'var(--border-subtle)' }}
     >
+      {/* Selection mode banner — only shown when the parent is wiring selection */}
+      {selectionModeActive && (
+        <div className="flex items-center gap-1 px-2 pt-1 pb-0">
+          <span className="text-[8px] font-bold tracking-wider text-brand-400 uppercase">
+            Selection mode
+          </span>
+        </div>
+      )}
+
       {/* Clickable header area */}
       <div
         className="p-2 cursor-pointer select-none"
@@ -145,15 +184,60 @@ export default React.memo(function ServeJobCard({
         aria-expanded={isExpanded}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleExpand?.(); } }}
       >
-        {/* Top row: name + attempt dots */}
+        {/* Top row: name + attempt dots + optional checkbox */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2 min-w-0">
             {/* Status LED */}
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[job.status]?.bg || 'bg-rmpg-500'} ${STATUS_COLORS[job.status]?.glow || ''}`} aria-label={`Status: ${job.status}`} />
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusCfg.bg} ${statusCfg.glow}`} aria-label={`Status: ${job.status}`} />
             <span className="text-sm font-bold text-rmpg-100 truncate">{job.recipient_name}</span>
+            {/* Intake-screened shield — warrant check completed */}
+            {job.intake_screened_at && (
+              <span
+                title={`Warrant check completed ${safeDateStr(job.intake_screened_at)}`}
+                className="flex-shrink-0 text-green-400"
+                aria-label="Warrant/intake check completed"
+              >
+                <Shield className="w-3 h-3" />
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <AttemptDots count={job.attempt_count} max={job.max_attempts} />
+
+            {/* Checkbox — only rendered when selection mode is active */}
+            {selectionModeActive && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
+                aria-label={isSelected ? `Deselect ${job.recipient_name}` : `Select ${job.recipient_name}`}
+                aria-pressed={isSelected}
+                className={`
+                  w-4 h-4 rounded-[2px] border flex items-center justify-center flex-shrink-0
+                  transition-colors focus:outline-none focus:ring-1 focus:ring-brand-400
+                  ${isSelected
+                    ? 'bg-brand-400 border-brand-400'
+                    : 'bg-surface-sunken border-border-default hover:border-brand-400/60'}
+                `}
+              >
+                {isSelected && (
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 10 8"
+                    width="8"
+                    height="6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-surface-base"
+                  >
+                    <polyline points="1,4 3.5,6.5 9,1" />
+                  </svg>
+                )}
+              </button>
+            )}
+
             {isExpanded ? (
               <ChevronUp className="w-3.5 h-3.5 text-rmpg-400" />
             ) : (
@@ -206,9 +290,35 @@ export default React.memo(function ServeJobCard({
             </span>
           )}
 
-          {/* Status label */}
-          <span className="text-[9px] font-mono text-rmpg-400 ml-auto">
-            {job.status.replace(/_/g, ' ').toUpperCase()}
+          {/* Auto-assigned badge */}
+          {!!job.auto_assigned && (
+            <span title="Auto-assigned by system" className="inline-flex items-center gap-0.5 text-[8px] font-bold text-rmpg-300 bg-rmpg-600/40 border border-rmpg-500/50 px-1 py-0 rounded-[2px]">
+              <Bot className="w-2.5 h-2.5" />AUTO-ASSIGNED
+            </span>
+          )}
+          {/* Urgency tier badge — critical uses Flame + animate-pulse */}
+          {job.urgency_tier && job.urgency_tier !== 'normal' && (
+            <span title={`Urgency: ${job.urgency_tier}`} className={`inline-flex items-center gap-0.5 text-[8px] font-bold px-1 py-0 rounded-[2px] border ${
+              job.urgency_tier === 'critical'
+                ? 'text-red-300 bg-red-900/40 border-red-600/60 animate-pulse'
+                : 'text-amber-400 bg-amber-900/20 border-amber-600/50'
+            }`}>
+              {job.urgency_tier === 'critical'
+                ? <Flame className="w-2.5 h-2.5" />
+                : <AlertTriangle className="w-2.5 h-2.5" />}
+              {job.urgency_tier.toUpperCase()}
+            </span>
+          )}
+          {/* Closed chip — green-800/green-300, shown whenever closed_at is set */}
+          {job.closed_at && (
+            <span title={`Closed ${safeDateStr(job.closed_at)}`} className="inline-flex items-center gap-0.5 text-[8px] font-bold text-green-300 bg-green-900/50 border border-green-700/50 px-1 py-0 rounded-[2px]">
+              <CheckCircle2 className="w-2.5 h-2.5" />CLOSED {safeDateStr(job.closed_at)}
+            </span>
+          )}
+          {/* Status chip — colored dot + label */}
+          <span className={`text-[9px] font-mono border px-1 py-0 inline-flex items-center gap-1 ml-auto ${statusCfg.badge}`}>
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusCfg.dot}`} />
+            {statusCfg.label}
           </span>
         </div>
       </div>
@@ -300,6 +410,20 @@ export default React.memo(function ServeJobCard({
                 </span>
               </div>
             )}
+            {job.closed_at && (
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-green-400" />
+                <span className="text-rmpg-400">Closed:</span>
+                <span className="text-green-300">{safeDateStr(job.closed_at)}</span>
+              </div>
+            )}
+            {job.intake_screened_at && (
+              <div className="flex items-center gap-1">
+                <Shield className="w-3 h-3 text-green-400" />
+                <span className="text-rmpg-400">Screened:</span>
+                <span className="text-green-300">{safeDateStr(job.intake_screened_at)}</span>
+              </div>
+            )}
           </div>
 
           {/* Service instructions */}
@@ -367,6 +491,21 @@ export default React.memo(function ServeJobCard({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Empty-state prompt: no attempts yet on an in-progress job */}
+          {job.status === 'in_progress' && Array.isArray(job.attempts) && job.attempts.length === 0 && (
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label={`Log first attempt for ${job.recipient_name}`}
+              onClick={(e) => { e.stopPropagation(); onAttempt(job.id); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttempt(job.id); } }}
+              className="flex items-center gap-2 px-2 py-1.5 rounded-[2px] border border-dashed border-amber-700/40 bg-amber-900/10 cursor-pointer hover:bg-amber-900/20 transition-colors"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+              <span className="text-[10px] text-amber-400 italic">Log first attempt</span>
             </div>
           )}
 
