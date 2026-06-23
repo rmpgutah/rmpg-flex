@@ -3,6 +3,16 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1107: QA (/qa) — Page 84 of the full-app frontend pass. Replaced inline
+//        delete dialog with ConfirmDialog (with review details). Added ?qa_id=
+//        / ?review_id= deep-link (stripped after mount with replace:true). Added
+//        N shortcut (new review when not in input) and Esc cascade (close modal
+//        or delete dialog). Role gates: admin/manager/supervisor for create/edit,
+//        admin/manager for delete. DataTable loading prop wired for skeleton vs
+//        empty-state distinction. Removed `showForm = editingRecord !== null`
+//        dead pattern — replaced with separate formOpen boolean. Migrated
+//        hardcoded hex (#888888, #991b1b, #f87171) to CSS variable tokens via
+//        ConfirmDialog. Fixed created_at column to use formatDateTime().
 // v1106: Asset Management — ?asset_id= deep-link, Esc cascade, N shortcut, search bar,
 //        distinct empty states, ConfirmDialog delete, role-gated delete (admin|manager).
 // v1105: Jail Management — role gate delete (admin|manager), parseTimestamp in
