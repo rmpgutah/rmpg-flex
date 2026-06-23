@@ -552,6 +552,11 @@ sv.put('/:id', async (c) => {
   }
 
   sets.push("updated_at = datetime('now','localtime')");
+  // Stamp closed_at when an operator explicitly marks the job served —
+  // write-once: only set when transitioning to 'served' (not on every edit).
+  if (body.status === 'served') {
+    sets.push("closed_at = COALESCE(closed_at, datetime('now','localtime'))");
+  }
   args.push(id);
   await execute(getDb(c.env), `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
   return c.json({ success: true });
@@ -640,16 +645,17 @@ async function logAttempt(c: any, defaultResult: string) {
     typeof body.next_attempt_note === 'string'
       ? await columnExists(db, 'serve_queue', 'next_attempt_note')
       : false;
+  const closedClause = newStatus === 'served' ? ", closed_at = datetime('now','localtime')" : '';
   if (hasNextAttemptCol) {
     await execute(
       db,
-      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
       nextNum, newStatus, body.next_attempt_note || null, id,
     );
   } else {
     await execute(
       db,
-      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
       nextNum, newStatus, id,
     );
   }
@@ -698,7 +704,7 @@ sv.post('/:id/substitute-service', async (c) => {
   );
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime') WHERE id = ?`,
     nextNum, id,
   );
   await generateServeCharges(db, id);
