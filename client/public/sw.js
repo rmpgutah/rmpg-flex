@@ -59,6 +59,11 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1083: Evidence (Page 65) — add 8 missing backend sub-resource endpoints
+//   (chain-action, checkout, checkin, disposition, request-release,
+//   approve-release, custody-validation, linked-records); fix ?id= deep-link
+//   from QuickSearchCard; gate Approve/Deny release to supervisor+; seed
+//   ?status= and ?case_id= URL filters on mount.
 // v1084: Citations (/citations) — Page 66 of the full-app frontend pass.
 //        (1) Stats bar was always showing zeros: GET /citations/stats returned
 //        byStatus as a row array (camelCase) but CitationsPage read it as
