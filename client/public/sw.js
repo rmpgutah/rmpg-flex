@@ -59,6 +59,18 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
+// v1070: Cmd+K Global Search — scope recent-search history per user.id
+//        instead of sharing one bare 'rmpg-recent-searches-v2' localStorage
+//        key across every operator on the MDT. A shared patrol laptop was
+//        leaking one officer's recent name/plate/badge queries to the next
+//        person who opened the dialog. Now keyed on
+//        `rmpg_globalsearch_recent_${user.id}`, with a one-time read-through
+//        migration that copies the legacy bare key into the first
+//        signed-in user's slot and then deletes the legacy key so the
+//        next user doesn't inherit it. Reads/writes are skipped entirely
+//        when no user is signed in (mid-login first render). Mirrors the
+//        SkipTracerPage history pattern (PR #1657 / SW v1065).
+//        SW name auto-stamps via vite plugin — bump here is documentation.
 // v1079: Web Research (/web-research) — Page 61 of the full-app frontend pass.
 //        WebResearchPage was a Firecrawl-backed search + saved-results
 //        surface but had no court-ready export, no URL deep-link, no
