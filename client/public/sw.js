@@ -3,6 +3,12 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1102: Crime Analysis (/crime-analysis) — Page 79 of the full-app frontend
+//        pass. Added ?days= / ?date_range= deep-link (also seeds ?start_date=
+//        / ?end_date= for custom range), stripped after mount. Fixed BlueGradient
+//        stops (were both #888888, now steel-blue CSS vars). Cell keys changed
+//        from array index to stable d.name. Empty states now distinguish "no data
+//        for this period" vs "no data available" based on filterActive flag.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
