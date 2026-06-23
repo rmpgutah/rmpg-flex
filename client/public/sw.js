@@ -3,6 +3,8 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1106: Asset Management — ?asset_id= deep-link, Esc cascade, N shortcut, search bar,
+//        distinct empty states, ConfirmDialog delete, role-gated delete (admin|manager).
 // v1105: Jail Management — role gate delete (admin|manager), parseTimestamp in
 //        fmtRelativeAge, JailRecordsPage: deep-link ?source_key=, N shortcut,
 //        Esc cascade, loading/empty states, role gate ingest (supervisor+),
