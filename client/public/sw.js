@@ -801,6 +801,80 @@
 //            Lucide would require a layout-affecting size pass on every
 //            row, deferred until the rail itself is up for review.
 //
+// v1061: Use of Force (/use-of-force) — Page 44 of the full-app frontend
+//        pass. UoF reports are simultaneously court-admissible, IA-
+//        reviewable, and Utah POST state-DOJ reportable — among the
+//        highest-stakes records in the system. The page had a working
+//        list + create flow but was missing every operator affordance
+//        the adjacent court surfaces (BWC, dashcam, audit) had landed:
+//        - URL deep-link contract: ?uof_id=<n> opens that report (with
+//          a /:id direct-fetch fallback when it's outside the current
+//          50-row slice, plus a toast on 404 instead of silent miss);
+//          ?incident_id=<n> + ?subject_id=<n> pre-filter the list AND
+//          pre-fill the create-form's pickers so an officer drilling
+//          in from a person/incident record doesn't re-pick the entity.
+//          uof_id is mirror-stripped after consumption; the two filter
+//          deep-links are also stripped so a refresh doesn't silently
+//          re-apply over operator edits.
+//        - Court-ready PDF: useOfForceReportPdf.ts — RMPG-gold banner,
+//          stacked lethal-force + injuries alerts, incident block,
+//          officer/subject demographics, force details, justification,
+//          de-escalation, injuries, narrative, linked footage table
+//          (BWC + dashcam clips fetched from the new /:id/footage
+//          endpoint which joins footage_evidence_links populated by
+//          autoPreserve at submission), supervisor review block, and a
+//          two-signature block for reporting officer + reviewer. Mountain
+//          Time everywhere. Helpers unit-tested. Print available from
+//          both the detail panel header and the row right-click menu.
+//        - Server additions: GET /use-of-force/:id (single-row fetch
+//          for the deep-link fallback) + GET /use-of-force/:id/footage
+//          (returns { flexcam: FootageRequest[], bodycam: BodycamVideo[] }
+//          — schema-tolerant so older D1 column gaps soft-fail the join
+//          instead of 500'ing). No migration needed; both endpoints sit
+//          on top of existing tables and the autoPreserve entity_type
+//          'use_of_force' linkage that's been in place since #1261.
+//        - Esc smart-cascade: closes the create modal → review confirm
+//          dialog → error banner → detail-panel selection → active
+//          filter set (in that order). Ignores typing surfaces.
+//        - N shortcut: opens the New Report modal from anywhere on the
+//          page that isn't a typing surface (matches Records / Citations
+//          / Incidents). Modifier-keys skip the shortcut so OS bindings
+//          (Cmd-N) aren't hijacked.
+//        - Per-user form draft (24h TTL via useFormDraft, keyed on
+//          user id) — UoF narratives are long-form and the prior loss
+//          of a half-typed report to an accidental tab close was a real
+//          operator complaint. "Draft restored" banner inside the modal
+//          with a one-click Discard.
+//        - ConfirmDialog for supervisor Approve / Return: previously
+//          a single click immediately mutated the report; now both
+//          decisions route through the shared dialog with an optional
+//          (recommended for Return) review-notes textarea that round-
+//          trips to the server's `notes` body field and lands in the
+//          new "Supervisor Review" detail block.
+//        - Linked-footage panel on the detail surface: lists BWC clips
+//          + FlexCam dashcam requests tied to the report, with the
+//          evidence-locked chip + evidence number when present, so an
+//          IA reviewer can see at a glance what video evidence backs
+//          the report without leaving the page.
+//        - Theme tokens: STATUS_COLORS' hard #888888/#22c55e/#f59e0b
+//          hex strings are now token-backed tones (text-rmpg-300/
+//          text-green-400/text-amber-400 + matching swatch + border
+//          classes) so the status pills + stat counters re-theme
+//          between night (steel-blue) and day (light-grey).
+//        - Empty-state distinction: loading spinner with "Loading
+//          reports…" label, hard error with the message, and a zero-
+//          rows panel that branches between "no reports filed" (cold
+//          start) and "no matching reports" (filters applied) — the
+//          previous shared "No reports" string left operators unsure
+//          whether to wait, escalate, or widen filters.
+//        - Notification routing: added 'use_of_force' → /use-of-force?
+//          uof_id= to notificationRouting.ts so an IA-emitted alert
+//          like "UoF #42 returned for revision" deep-links to the
+//          report instead of dumping the operator on the list page.
+//        - Migration: none. The /:id and /:id/footage routes are net-
+//          new but read from existing tables (use_of_force + the
+//          footage_evidence_links table already in place since #1261);
+//          no column adds. recordAudit still fires on CREATE / REVIEW.
 // v1058: FlexCam — Page 41 of the full-app frontend pass. FlexCamPage
 //        (327 lines, request list) + FlexCamFootagePage (1225 lines,
 //        MDT-style chunk player with evidence lock / court package /
