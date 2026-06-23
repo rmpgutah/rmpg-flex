@@ -34,6 +34,7 @@ import {
   Check,
 } from 'lucide-react';
 import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
 import LeadsTab from '../components/crm/LeadsTab';
 import ProposalsTab from '../components/crm/ProposalsTab';
 import ReportsTab from '../components/crm/ReportsTab';
@@ -63,7 +64,12 @@ import type {
 
 type CrmSection = 'dashboard' | 'clients' | 'properties' | 'contacts' | 'invoices' | 'tasks' | 'leads' | 'proposals' | 'reports' | 'webintel' | 'competitors' | 'firecrawl' | 'deepresearch';
 
-const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[] = [
+// Intel/research tabs require at least supervisor role — these pull live web
+// data, launch Firecrawl jobs, and expose raw intelligence. Officers and
+// dispatchers (read-only) should not see them in the sidebar.
+const INTEL_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
+const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType; intelOnly?: true }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'leads', label: 'Leads', icon: Target },
   { id: 'clients', label: 'Clients', icon: Building2 },
@@ -73,10 +79,10 @@ const SIDEBAR_ITEMS: { id: CrmSection; label: string; icon: React.ElementType }[
   { id: 'invoices', label: 'Invoices', icon: FileText },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
-  { id: 'webintel', label: 'Web Intel', icon: Globe },
-  { id: 'competitors', label: 'Competitors', icon: Eye },
-  { id: 'firecrawl', label: 'Firecrawl', icon: Flame },
-  { id: 'deepresearch', label: 'Deep Research', icon: Telescope },
+  { id: 'webintel', label: 'Web Intel', icon: Globe, intelOnly: true },
+  { id: 'competitors', label: 'Competitors', icon: Eye, intelOnly: true },
+  { id: 'firecrawl', label: 'Firecrawl', icon: Flame, intelOnly: true },
+  { id: 'deepresearch', label: 'Deep Research', icon: Telescope, intelOnly: true },
 ];
 
 const TASK_TYPES = ['follow_up', 'site_visit', 'contract_renewal', 'billing', 'other'] as const;
@@ -148,6 +154,7 @@ export default function CrmPage() {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
   const { user } = useAuth();
+  const isIntelUser = INTEL_ROLES.has(user?.role ?? '');
   // Per-user localStorage key — the prior global 'crm_active_section' key
   // leaked the previous operator's last-viewed tab to the next person who
   // logged in on a shared shift workstation. Same data-leak pattern called
@@ -204,6 +211,10 @@ export default function CrmPage() {
 
   // Officers for assignment
   const [officers, setOfficers] = useState<{ id: string; full_name: string }[]>([]);
+
+  // Task delete confirmation
+  const [taskToDelete, setTaskToDelete] = useState<CrmTask | null>(null);
+  const [deletingTask, setDeletingTask] = useState(false);
 
   // Activity log modal
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -323,6 +334,13 @@ export default function CrmPage() {
   // back-button / refresh don't keep re-selecting the same row. Mirrors the
   // FlexCam (?request_id=) / AuditLog (?source_*=) pattern.
   const pendingClientIdRef = useRef<string | null>(searchParams.get('client_id'));
+  // ?contact_id= routes to the Contacts tab and pre-searches by id.
+  const pendingContactIdRef = useRef<string | null>(searchParams.get('contact_id'));
+  // ?section= is seeded into activeSection at init time (above). Strip it
+  // from the URL in a one-shot effect so refresh / back-button don't lock
+  // the operator to the same tab when they've since navigated away.
+  const pendingSectionStripRef = useRef<boolean>(searchParams.has('section'));
+
   useEffect(() => {
     const target = pendingClientIdRef.current;
     if (!target) return;
@@ -339,9 +357,39 @@ export default function CrmPage() {
     const next = new URLSearchParams(searchParams);
     next.delete('client_id');
     next.delete('section');
+    next.delete('contact_id');
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clients]);
+
+  // Strip standalone ?section= (when there's no client_id, the effect above
+  // never fires, so the param would persist in the URL across navigation).
+  // Also handles ?contact_id= routing when no client_id is present.
+  useEffect(() => {
+    const hasClientId = pendingClientIdRef.current !== null;
+    // If client_id deep-link is also present, that effect handles all cleanup.
+    if (hasClientId) return;
+
+    const contactId = pendingContactIdRef.current;
+    const shouldStrip = pendingSectionStripRef.current || contactId !== null;
+    if (!shouldStrip) return;
+
+    pendingSectionStripRef.current = false;
+    pendingContactIdRef.current = null;
+
+    if (contactId) {
+      // Route to contacts tab and pre-fill search with the contact id so the
+      // operator lands directly on that person without extra clicks.
+      setActiveSection('contacts');
+      setContactSearch(contactId);
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('section');
+    next.delete('contact_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch section data on tab change
   useEffect(() => {
@@ -395,15 +443,23 @@ export default function CrmPage() {
     }
   };
 
-  const deleteTask = async (id: string | number) => {
+  // Stage for confirm dialog; actual delete in confirmDeleteTask below.
+  const deleteTask = (task: CrmTask) => { setTaskToDelete(task); };
+
+  const confirmDeleteTask = useCallback(async () => {
+    if (!taskToDelete) return;
+    setDeletingTask(true);
     try {
-      await apiFetch(`/crm/tasks/${id}`, { method: 'DELETE' });
+      await apiFetch(`/crm/tasks/${taskToDelete.id}`, { method: 'DELETE' });
       addToast('Task deleted', 'success');
+      setTaskToDelete(null);
       fetchTasks();
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete task', 'error');
+    } finally {
+      setDeletingTask(false);
     }
-  };
+  }, [taskToDelete, addToast, fetchTasks]);
 
   const toggleTaskComplete = async (task: CrmTask) => {
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
@@ -481,7 +537,7 @@ export default function CrmPage() {
     m.copy('Copy title', task.title),
     m.copyId(task.id),
     m.separator(),
-    m.action('Delete', () => deleteTask(task.id), { icon: <Trash2 size={12} />, danger: true }),
+    m.action('Delete', () => deleteTask(task), { icon: <Trash2 size={12} />, danger: true }),
   ];
 
   // ════════════════════════════════════════════════════════
@@ -504,6 +560,8 @@ export default function CrmPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // Cascade: innermost modal first → task delete confirm → task edit → activity → client → client selection
+        if (taskToDelete) { setTaskToDelete(null); return; }
         if (showTaskModal) { setShowTaskModal(false); setEditingTask(null); return; }
         if (showActivityModal) { setShowActivityModal(false); return; }
         if (showClientModal) { setShowClientModal(false); setEditingClient(null); return; }
@@ -513,7 +571,7 @@ export default function CrmPage() {
       if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (isTypingInField(e.target)) return;
         // Don't shortcut while a modal is already open.
-        if (showTaskModal || showActivityModal || showClientModal) return;
+        if (taskToDelete || showTaskModal || showActivityModal || showClientModal) return;
         if (activeSection === 'tasks') { e.preventDefault(); openNewTask(); return; }
         if (activeSection === 'clients') { e.preventDefault(); setEditingClient(null); setShowClientModal(true); return; }
         if (activeSection === 'dashboard') {
@@ -526,7 +584,7 @@ export default function CrmPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showTaskModal, showActivityModal, showClientModal, selectedClientId, activeSection]);
+  }, [taskToDelete, showTaskModal, showActivityModal, showClientModal, selectedClientId, activeSection]);
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -547,7 +605,7 @@ export default function CrmPage() {
           </div>
         </div>
         <nav className="flex-1 py-1">
-          {SIDEBAR_ITEMS.map(item => {
+          {SIDEBAR_ITEMS.filter(item => !item.intelOnly || isIntelUser).map(item => {
             const Icon = item.icon;
             const isActive = activeSection === item.id;
             return (
@@ -591,10 +649,10 @@ export default function CrmPage() {
         {activeSection === 'invoices' && renderInvoices()}
         {activeSection === 'tasks' && renderTasks()}
         {activeSection === 'reports' && <ReportsTab />}
-        {activeSection === 'webintel' && <WebIntelPanel />}
-        {activeSection === 'competitors' && <CompetitorMonitorPanel />}
-        {activeSection === 'firecrawl' && <FirecrawlTab />}
-        {activeSection === 'deepresearch' && <DeepResearchTab />}
+        {activeSection === 'webintel' && (isIntelUser ? <WebIntelPanel /> : renderIntelGate())}
+        {activeSection === 'competitors' && (isIntelUser ? <CompetitorMonitorPanel /> : renderIntelGate())}
+        {activeSection === 'firecrawl' && (isIntelUser ? <FirecrawlTab /> : renderIntelGate())}
+        {activeSection === 'deepresearch' && (isIntelUser ? <DeepResearchTab /> : renderIntelGate())}
       </div>
 
       {/* ── Task Modal ────────────────────────────────── */}
@@ -734,12 +792,42 @@ export default function CrmPage() {
           isSubmitting={false}
         />
       )}
+
+      {/* ── Task Delete Confirmation ───────────────────── */}
+      <ConfirmDialog
+        isOpen={taskToDelete !== null}
+        onClose={() => { if (!deletingTask) setTaskToDelete(null); }}
+        onConfirm={confirmDeleteTask}
+        title="Delete task?"
+        message="This permanently removes the task."
+        details={taskToDelete ? (
+          <div className="mt-2 text-[11px] text-rmpg-300">
+            <div><span className="text-rmpg-500">Title:</span> {taskToDelete.title}</div>
+            {taskToDelete.client_name && <div><span className="text-rmpg-500">Client:</span> {taskToDelete.client_name}</div>}
+          </div>
+        ) : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deletingTask}
+      />
     </div>
   );
 
   // ════════════════════════════════════════════════════════
   // SECTION RENDERERS
   // ════════════════════════════════════════════════════════
+
+  function renderIntelGate() {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center p-8 max-w-xs">
+          <AlertTriangle className="w-8 h-8 text-rmpg-500 mx-auto mb-3" />
+          <p className="text-sm font-medium text-rmpg-400">Access restricted</p>
+          <p className="text-xs text-rmpg-600 mt-1">This section requires supervisor, manager, or admin role.</p>
+        </div>
+      </div>
+    );
+  }
 
   function renderDashboard() {
     return (
@@ -1343,7 +1431,7 @@ export default function CrmPage() {
                   {/* Actions */}
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <IconButton onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200" aria-label={`Edit task ${task.title}`}><Edit3 className="w-3 h-3" /></IconButton>
-                    <IconButton onClick={() => deleteTask(task.id)} className="p-1 text-rmpg-400 hover:text-red-400" aria-label={`Delete task ${task.title}`}><Trash2 className="w-3 h-3" /></IconButton>
+                    <IconButton onClick={() => deleteTask(task)} className="p-1 text-rmpg-400 hover:text-red-400" aria-label={`Delete task ${task.title}`}><Trash2 className="w-3 h-3" /></IconButton>
                   </div>
                 </div>
               ))}
