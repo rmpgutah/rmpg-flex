@@ -57,7 +57,7 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 ];
 
 const MARKER_COLORS: Record<string, string> = {
-  pending: '#888888',
+  pending: 'var(--text-muted)',
   in_progress: '#eab308',
   served: '#22c55e',
   failed: '#ef4444',
@@ -127,12 +127,13 @@ export default function ServePage() {
   const m = useMenuActions();
   // ── URL deep-link contract ──
   // /serve?job_id=<n>            — auto-expand that job's card (Queue tab)
+  // /serve?serve_id=<n>          — alias for job_id (same behaviour)
+  // /serve?case_id=<n>           — expand the first job whose case_number matches
   // /serve?status=<filter>       — apply a status filter (pending|in_progress|served|failed|all)
   // /serve?tab=<Queue|Route|Map|Stats|Assign|My%20Run>  — preselect a tab
   // /serve?date=YYYY-MM-DD       — preselect the date picker
   // Honored once on mount; the param is stripped so a manual refresh does
-  // not re-select. A miss for ?job_id raises a toast pointing at the
-  // current filter (a job served yesterday won't be in today's queue).
+  // not re-select. A miss raises a toast pointing at the current filter.
   const [searchParams, setSearchParams] = useSearchParams();
   // ── Core state ──────────────────────────────────────────────────────
   const initialDateParam = searchParams.get('date');
@@ -148,7 +149,11 @@ export default function ServePage() {
   const [activeTab, setActiveTab] = useState<Tab>(validTab);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(validStatus);
   // Pending deep-link target — resolved once jobs hydrate.
-  const pendingJobIdRef = useRef<string | null>(searchParams.get('job_id'));
+  // ?serve_id= and ?job_id= are interchangeable; ?case_id= is stored separately.
+  const pendingJobIdRef = useRef<string | null>(
+    searchParams.get('serve_id') ?? searchParams.get('job_id'),
+  );
+  const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
   // Delete-job confirm replaces the v480 window.confirm(). Carries the
   // job so the dialog body can show "for {name} (case {n})" detail.
   const [deleteJob, setDeleteJob] = useState<ServeJob | null>(null);
@@ -891,21 +896,41 @@ export default function ServePage() {
     return () => window.removeEventListener('keydown', handler);
   }, [deleteJob, attemptJob, editAttempt, skipTraceJob, routePlannerOpen, createJobOpen, clearFormDraft, openCreate]);
 
-  // \u2500\u2500 Deep-link resolver \u2014 runs once jobs hydrate, then strips the param \u2500\u2500
+  // \u2500\u2500 Deep-link resolver \u2014 runs once jobs hydrate, then strips the params \u2500\u2500
   useEffect(() => {
-    const target = pendingJobIdRef.current;
-    if (!target || loading) return;
+    if (loading) return;
     if (jobs.length === 0) return; // wait one more cycle for hydration
-    const hit = jobs.find((j) => String(j.id) === String(target));
-    pendingJobIdRef.current = null;
-    if (!hit) {
-      addToast(`Serve job ${target} not in the current view (try clearing the date filter)`, 'warning');
-    } else {
-      setActiveTab('Queue');
-      setExpandedJobId(hit.id);
+
+    // ?job_id= / ?serve_id= \u2014 expand by numeric job id
+    const jobTarget = pendingJobIdRef.current;
+    if (jobTarget) {
+      pendingJobIdRef.current = null;
+      const hit = jobs.find((j) => String(j.id) === String(jobTarget));
+      if (!hit) {
+        addToast(`Serve job ${jobTarget} not in the current view (try clearing the date filter)`, 'warning');
+      } else {
+        setActiveTab('Queue');
+        setExpandedJobId(hit.id);
+      }
     }
+
+    // ?case_id= \u2014 expand first job whose case_number matches
+    const caseTarget = pendingCaseIdRef.current;
+    if (caseTarget) {
+      pendingCaseIdRef.current = null;
+      const hit = jobs.find((j) => String(j.case_number) === String(caseTarget));
+      if (!hit) {
+        addToast(`No serve job found for case ${caseTarget} in the current view`, 'warning');
+      } else {
+        setActiveTab('Queue');
+        setExpandedJobId(hit.id);
+      }
+    }
+
     const next = new URLSearchParams(searchParams);
     next.delete('job_id');
+    next.delete('serve_id');
+    next.delete('case_id');
     setSearchParams(next, { replace: true });
   }, [jobs, loading, searchParams, setSearchParams, addToast]);
 
@@ -915,7 +940,8 @@ export default function ServePage() {
   useEffect(() => {
     if (consumedInitialParamsRef.current) return;
     consumedInitialParamsRef.current = true;
-    if (!initialTabParam && !initialStatusParam && !initialDateParam) return;
+    const hasInitial = initialTabParam || initialStatusParam || initialDateParam;
+    if (!hasInitial) return;
     const next = new URLSearchParams(searchParams);
     if (initialTabParam) next.delete('tab');
     if (initialStatusParam) next.delete('status');
@@ -964,7 +990,7 @@ export default function ServePage() {
         <div className="flex items-center gap-1.5">
           <Briefcase size={16} className="text-brand-gold-500" />
           {!isMobile && <span className="text-sm font-semibold text-rmpg-100 tracking-wider">PROCESS SERVER</span>}
-          {!isMobile && <span className="block h-px w-full bg-[#d4a017]/30 mt-0.5" />}
+          {!isMobile && <span className="block h-px w-full bg-brand-400/30 mt-0.5" />}
         </div>
 
         {/* Date picker + route stats */}
@@ -1229,12 +1255,8 @@ export default function ServePage() {
                   {/* Progress bar */}
                   <div className="w-full h-1.5 bg-surface-overlay rounded-full overflow-hidden">
                     <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${progressPct}%`,
-                        background: progressPct === 100 ? '#22c55e' : '#d4a017',
-                        boxShadow: `0 0 6px ${progressPct === 100 ? '#22c55e' : '#d4a017'}40`,
-                      }}
+                      className={`h-full rounded-full transition-all duration-500 ${progressPct === 100 ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.25)]' : 'bg-brand-400 shadow-[0_0_6px_var(--brand-gold-glow,rgba(212,160,23,0.25))]'}`}
+                      style={{ width: `${progressPct}%` }}
                     />
                   </div>
 
@@ -1256,10 +1278,9 @@ export default function ServePage() {
                         >
                           {/* Stop number */}
                           <span
-                            className="w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-rmpg-100 flex-shrink-0"
-                            style={{
-                              background: isCompleted ? '#22c55e' : isFailed ? '#ef4444' : job.status === 'in_progress' ? '#eab308' : '#888888',
-                            }}
+                            className={`w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-rmpg-100 flex-shrink-0 ${
+                              isCompleted ? 'bg-green-500' : isFailed ? 'bg-red-500' : job.status === 'in_progress' ? 'bg-amber-500' : 'bg-rmpg-500'
+                            }`}
                           >
                             {idx + 1}
                           </span>
@@ -1284,11 +1305,15 @@ export default function ServePage() {
                           </div>
 
                           {/* Status badge */}
-                          <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0" style={{
-                            background: isCompleted ? '#22c55e20' : isFailed ? '#ef444420' : job.status === 'in_progress' ? '#eab30820' : '#88888820',
-                            color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#aaaaaa',
-                            border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#88888830'}`,
-                          }}>
+                          <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0 border ${
+                            isCompleted
+                              ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                              : isFailed
+                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                : job.status === 'in_progress'
+                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                  : 'bg-rmpg-500/10 text-rmpg-400 border-rmpg-500/20'
+                          }`}>
                             {toDisplayLabel(job.status)}
                           </span>
                         </div>
