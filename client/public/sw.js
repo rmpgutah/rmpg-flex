@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1121: Law Book — ?section= deep-link alias, / shortcut to focus search, Esc stopPropagation, canManage role gate, sev-* token migration.
 // v1104: Tasks page — role gates (delete=admin|manager, urgent-priority=supervisor+),
 //        notificationRouting: add task/task_assignment entity types + fix case_task
 //        routing from /cases?task_id= (no-op) to /tasks?task_id= (correct deep-link).
