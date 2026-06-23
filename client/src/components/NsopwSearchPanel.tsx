@@ -91,11 +91,14 @@ interface Props {
   autoSearch?: boolean;
   /** Compact mode trims spacing for embedding inside another panel. */
   compact?: boolean;
+  /** Called after the deep-link offender_id is consumed so the parent can
+   *  strip it from the URL via setSearchParams (constraint: no window.history). */
+  onClearOffenderId?: () => void;
 }
 
 export default function NsopwSearchPanel({
   initialSurname = '', initialForename = '', initialDob = '', initialOffenderId,
-  autoSearch = false, compact = false,
+  autoSearch = false, compact = false, onClearOffenderId,
 }: Props) {
   const [surname, setSurname] = useState(initialSurname);
   const [forename, setForename] = useState(initialForename);
@@ -170,18 +173,40 @@ export default function NsopwSearchPanel({
         }
       } finally {
         if (!cancelled) {
-          // Best-effort URL cleanup — keep the surname/forename/dob params
-          // (if any) so the operator can replay the surrounding search.
-          try {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('offender_id');
-            window.history.replaceState(null, '', url.toString());
-          } catch { /* ignore — non-browser env */ }
+          // Notify parent to strip offender_id from URL via setSearchParams
+          // (constraint: no window.history.replaceState).
+          onClearOffenderId?.();
         }
       }
     })();
     return () => { cancelled = true; };
   }, [initialOffenderId]);
+
+  // N shortcut — focus Last Name field when not typing in a form element.
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        document.getElementById('ff-nsopw-surname')?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, []);
+
+  // Esc cascade — clears error → results → deep-link offender card in order.
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (error) { e.stopPropagation(); setError(null); return; }
+      if (result) { e.stopPropagation(); setResult(null); return; }
+      if (deepLinkOffender) { e.stopPropagation(); setDeepLinkOffender(null); return; }
+    };
+    document.addEventListener('keydown', handleEsc, true);
+    return () => document.removeEventListener('keydown', handleEsc, true);
+  }, [error, result, deepLinkOffender]);
 
   const sp = compact ? 'space-y-2' : 'space-y-3';
   return (

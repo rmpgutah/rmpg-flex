@@ -877,7 +877,7 @@ export default function AdminPage() {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} aria-hidden="true" />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--surface-base), rgb(var(--rmpg-500-rgb)) 30%, rgb(var(--rmpg-500-rgb)) 70%, var(--surface-base))' }} aria-hidden="true" />
             <RmpgLogo height={64} />
             <div className="flex-1 min-w-0">
               <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)', letterSpacing: '0.12em' }}>System Administration</h1>
@@ -912,10 +912,10 @@ export default function AdminPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-all duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                 style={{
-                  color: isActive ? '#ffffff' : '#888888',
-                  background: isActive ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(136,136,136,0.4)' : '1px solid transparent',
-                  borderBottom: isActive ? '2px solid #888888' : '2px solid transparent',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                  background: isActive ? 'rgba(var(--rmpg-500-rgb), 0.15)' : 'transparent',
+                  border: isActive ? '1px solid rgba(var(--rmpg-500-rgb), 0.4)' : '1px solid transparent',
+                  borderBottom: isActive ? '2px solid rgb(var(--rmpg-500-rgb))' : '2px solid transparent',
                 }}
               >
                 <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} aria-hidden="true" />
@@ -959,11 +959,11 @@ export default function AdminPage() {
                       id={`admin-tab-${tab.id}`}
                       aria-controls={`admin-tabpanel-${tab.id}`}
                       onClick={() => setActiveTab(tab.id)}
-                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-[rgba(136,136,136,0.08)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-rmpg-500/[0.08] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                       style={{
-                        color: isActive ? '#ffffff' : '#888888',
-                        background: isActive ? 'rgba(136, 136, 136, 0.14)' : undefined,
-                        borderLeft: isActive ? '2px solid #888888' : '2px solid transparent',
+                        color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                        background: isActive ? 'rgba(var(--rmpg-500-rgb), 0.14)' : undefined,
+                        borderLeft: isActive ? '2px solid rgb(var(--rmpg-500-rgb))' : '2px solid transparent',
                         fontWeight: isActive ? 600 : 400,
                       }}
                     >
