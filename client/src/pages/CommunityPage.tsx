@@ -229,6 +229,29 @@ export default function CommunityPage() {
     fetchStats();
   }, [fetchEvents, fetchStats]);
 
+  // ── Form helpers ─────────────────────────────────────────
+
+  const openNew = useCallback(() => {
+    setEditingEvent(null);
+    setFormData(EMPTY_FORM);
+    setShowForm(true);
+  }, []);
+
+  const openEdit = useCallback((ev: CommunityEvent) => {
+    setEditingEvent(ev);
+    setFormData({
+      event_name: ev.event_name ?? '',
+      event_type: ev.event_type ?? 'other',
+      description: ev.description ?? '',
+      location: ev.location ?? '',
+      start_date: ev.start_date ?? '',
+      end_date: ev.end_date ?? '',
+      status: ev.status ?? 'planned',
+      notes: ev.notes ?? '',
+    });
+    setShowForm(true);
+  }, []);
+
   // ── URL deep-link: ?event_id=N ───────────────────────────
   useEffect(() => {
     const rawId = searchParams.get('event_id');
@@ -254,29 +277,6 @@ export default function CommunityPage() {
     else if (activeTab === 'watch-groups') fetchWatchGroups();
     else if (activeTab === 'alerts') fetchAlerts();
   }, [activeTab, fetchTips, fetchWatchGroups, fetchAlerts]);
-
-  // ── Form helpers ─────────────────────────────────────────
-
-  const openNew = useCallback(() => {
-    setEditingEvent(null);
-    setFormData(EMPTY_FORM);
-    setShowForm(true);
-  }, []);
-
-  const openEdit = useCallback((ev: CommunityEvent) => {
-    setEditingEvent(ev);
-    setFormData({
-      event_name: ev.event_name ?? '',
-      event_type: ev.event_type ?? 'other',
-      description: ev.description ?? '',
-      location: ev.location ?? '',
-      start_date: ev.start_date ?? '',
-      end_date: ev.end_date ?? '',
-      status: ev.status ?? 'planned',
-      notes: ev.notes ?? '',
-    });
-    setShowForm(true);
-  }, []);
 
   const closeForm = useCallback(() => {
     setShowForm(false);
