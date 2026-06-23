@@ -14,6 +14,7 @@ import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMe
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 import { useToast } from '../../../components/ToastProvider';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -130,6 +131,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   // ─── Forms ────────────────────────────────────────────────
   const [showPeriodForm, setShowPeriodForm] = useState(false);
   const [showRateForm, setShowRateForm] = useState(false);
+  const [confirmDeletePeriodId, setConfirmDeletePeriodId] = useState<number | null>(null);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
   const [editingEntry, setEditingEntry] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
 
@@ -278,14 +281,21 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     } catch { addToast('Failed to create pay period', 'error'); }
   };
 
-  const handleDeletePeriod = async (id: number) => {
-    if (!confirm('Delete this pay period and all its entries?')) return;
+  const handleDeletePeriod = (id: number) => {
+    setConfirmDeletePeriodId(id);
+  };
+
+  const doDeletePeriod = async () => {
+    if (confirmDeletePeriodId === null) return;
+    setConfirmDeleteLoading(true);
     try {
-      await apiFetch(`/hr/payroll/periods/${id}`, { method: 'DELETE' });
+      await apiFetch(`/hr/payroll/periods/${confirmDeletePeriodId}`, { method: 'DELETE' });
       addToast('Pay period deleted', 'success');
-      if (selectedPeriod?.id === id) setSelectedPeriod(null);
+      if (selectedPeriod?.id === confirmDeletePeriodId) setSelectedPeriod(null);
+      setConfirmDeletePeriodId(null);
       fetchPeriods();
     } catch (e: any) { addToast(e.message || 'Failed to delete', 'error'); }
+    finally { setConfirmDeleteLoading(false); }
   };
 
   const handleClosePeriod = async (id: number) => {
@@ -526,7 +536,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             </h3>
             <div className="flex-1" />
             {isManager && (
-              <button type="button" onClick={() => setShowPeriodForm(!showPeriodForm)}
+              <button type="button" data-hr-new-btn onClick={() => setShowPeriodForm(!showPeriodForm)}
                 className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> New Period
               </button>
@@ -974,6 +984,18 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           )}
         </div>
       )}
+
+      {/* Delete period confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeletePeriodId !== null}
+        onClose={() => setConfirmDeletePeriodId(null)}
+        onConfirm={doDeletePeriod}
+        title="Delete Pay Period"
+        message="Delete this pay period and all its entries? This cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={confirmDeleteLoading}
+      />
 
       {/* ═══════════════════════════════════════════════════════ */}
       {/* Leave Balances */}
