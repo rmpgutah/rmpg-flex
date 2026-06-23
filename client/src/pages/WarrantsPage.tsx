@@ -10,6 +10,8 @@ import {
   UserCheck, Eye, Pencil, ShieldAlert,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import SpillmanModuleGroup from '../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../components/spillman/SpillmanModuleGroup';
 import { ScreeningWorkspace } from './ScreeningPage';
 import IconButton from '../components/IconButton';
 import RmpgLogo from '../components/RmpgLogo';
@@ -1613,29 +1615,38 @@ export default function WarrantsPage() {
         <PrintButton />
       </PanelTitleBar>
 
-      {/* ---- TAB BAR ---- */}
-      <div className={`tab-bar tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`}>
-        {TABS.map((tab) => {
-          if (tab.roleGated && !isGodMode && !isAdminOrManager) return null;
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button type="button"
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`tab-bar-item ${isActive ? 'active' : ''}`}
-            >
-              <Icon className="w-3 h-3" />
-              <span className="whitespace-nowrap">{tab.label}</span>
-              {tab.id === 'dashboard' && dashStats && dashStats.activeWarrants > 0 && (
-                <span className="ml-1 px-1 rounded-sm bg-red-600 text-rmpg-100 text-[8px] font-bold leading-tight">
-                  {dashStats.activeWarrants}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* ---- TAB BAR (Spillman grouped module strip) ---- */}
+      <SpillmanModuleGroup
+        groups={[
+          {
+            label: 'Core',
+            tone: 'steel',
+            tabs: [
+              { id: 'dashboard', label: 'Dashboard', count: dashStats && dashStats.activeWarrants > 0 ? dashStats.activeWarrants : undefined },
+              { id: 'warrants',  label: 'Warrants' },
+            ],
+          },
+          {
+            label: 'Intelligence',
+            tone: 'gold',
+            tabs: [
+              { id: 'search-all', label: 'Search All' },
+              { id: 'screening',  label: 'Screening' },
+              { id: 'watch',      label: 'Watch List' },
+            ],
+          },
+          ...(isGodMode || isAdminOrManager ? [{
+            label: 'Admin',
+            tone: 'red' as const,
+            tabs: [
+              { id: 'sources',  label: 'Sources' },
+              { id: 'scrapers', label: 'Scrapers' },
+            ],
+          }] : []),
+        ] as ModuleGroupSpec[]}
+        activeTab={activeTab}
+        onTabChange={(id) => setActiveTab(id as TabId)}
+      />
 
       {/* ---- STATS BAR ---- */}
       <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-rmpg-700 text-[10px] font-mono flex-wrap">
