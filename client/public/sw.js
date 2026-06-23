@@ -3,6 +3,10 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1105: Jail Management — role gate delete (admin|manager), parseTimestamp in
+//        fmtRelativeAge, JailRecordsPage: deep-link ?source_key=, N shortcut,
+//        Esc cascade, loading/empty states, role gate ingest (supervisor+),
+//        brand tokens (no hardcoded hex), booking search filter.
 // v1104: Tasks page — role gates (delete=admin|manager, urgent-priority=supervisor+),
 //        notificationRouting: add task/task_assignment entity types + fix case_task
 //        routing from /cases?task_id= (no-op) to /tasks?task_id= (correct deep-link).
