@@ -5,13 +5,15 @@
 // intel reports naming this person. PDF export via dossierPdfGenerator
 // (Arial-only stack).
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import { UserSearch, FileDown, Network, FolderOpen, Eye, EyeOff, X, FileText } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import { generateDossierPdf, type DossierData, type LinkedIntelEntry } from '../utils/dossierPdfGenerator';
 import { formatLabel } from '../utils/formatters';
+import { formatDate } from '../utils/dateUtils';
+import { useAuth } from '../context/AuthContext';
 
 interface DossierResponse extends DossierData {
   watched?: boolean;
@@ -22,6 +24,8 @@ interface DossierResponse extends DossierData {
 const SENTINELS = new Set(['', 'none', 'n/a', 'na', 'null', '0', 'unknown']);
 const real = (v: unknown) => v != null && !SENTINELS.has(String(v).trim().toLowerCase());
 const show = (v: unknown) => (real(v) ? String(v) : '—');
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 const KIND_COLOR: Record<string, string> = {
   call: 'text-[#d4a017]', incident: 'text-orange-400', citation: 'text-rmpg-300',
@@ -37,7 +41,7 @@ const THREAT_COLOR: Record<string, string> = {
 function Field({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="flex gap-2 text-[11px] py-[2px]">
-      <span className="text-[#888888] w-24 shrink-0">{label}</span>
+      <span className="text-rmpg-400 w-24 shrink-0">{label}</span>
       <span className="text-rmpg-200">{show(value)}</span>
     </div>
   );
@@ -46,7 +50,7 @@ function Field({ label, value }: { label: string; value: unknown }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-surface-base border border-border-default">
-      <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default">{title}</div>
+      <div className="px-2 py-[3px] text-[9px] font-semibold text-brand-400 border-b border-border-default">{title}</div>
       <div className="p-2">{children}</div>
     </div>
   );
@@ -54,12 +58,24 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function PersonDossierPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<DossierResponse | null>(null);
   const [watched, setWatched] = useState(false);
   const [error, setError] = useState<{ message: string; notFound: boolean } | null>(null);
   const [photoOpen, setPhotoOpen] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  // Deep-link: ?person_id=<n> → redirect to /intel/person/<n> (strip param).
+  useEffect(() => {
+    const personId = searchParams.get('person_id');
+    if (personId) {
+      setSearchParams({}, { replace: true });
+      navigate(`/intel/person/${personId}`, { replace: true });
+    }
+  }, [searchParams, setSearchParams, navigate]);
 
   useEffect(() => {
     setData(null); setError(null);
@@ -78,22 +94,35 @@ export default function PersonDossierPage() {
       if (e.key !== 'Escape') return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      if (photoOpen) { setPhotoOpen(false); return; }
+      if (photoOpen) { e.stopPropagation(); setPhotoOpen(false); return; }
       navigate(-1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [photoOpen, navigate]);
 
+  // N shortcut: open the linked person record (canManage only).
+  useEffect(() => {
+    if (!canManage || !id) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      navigate(`/records?tab=persons&id=${id}`);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canManage, id, navigate]);
+
   if (error) {
     if (error.notFound) {
       return (
         <div className="p-4 space-y-3">
           <PanelTitleBar title="PERSON DOSSIER" icon={UserSearch} />
-          <div className="bg-surface-base border border-border-default p-4 text-[11px] text-[#888888]">
+          <div className="bg-surface-base border border-border-default p-4 text-[11px] text-rmpg-400">
             No person on file for id <span className="text-rmpg-200">#{id}</span>. The record may have been merged, deleted, or never existed.
             <div className="mt-3">
-              <button onClick={() => navigate(-1)} className="text-[#d4a017] hover:underline">← Back</button>
+              <button onClick={() => navigate(-1)} className="text-brand-400 hover:underline">← Back</button>
             </div>
           </div>
         </div>
@@ -101,7 +130,7 @@ export default function PersonDossierPage() {
     }
     return <div className="p-4 text-[11px] text-red-400">{error.message}</div>;
   }
-  if (!data) return <div className="p-4 text-[11px] text-[#888888]">Loading dossier…</div>;
+  if (!data) return <div className="p-4 text-[11px] text-rmpg-400">Loading dossier…</div>;
 
   const p = data.person;
   const name = [p.first_name, p.middle_name, p.last_name].filter(real).join(' ') || `Person #${p.id}`;
@@ -136,10 +165,10 @@ export default function PersonDossierPage() {
               <img src={p.photo_url} alt={name} className="w-full h-full object-cover" />
             </button>
           )
-          : <div className="w-20 h-24 bg-surface-overlay border border-border-default flex items-center justify-center text-[9px] text-[#888888]">NO PHOTO</div>}
+          : <div className="w-20 h-24 bg-surface-overlay border border-border-default flex items-center justify-center text-[9px] text-rmpg-400">NO PHOTO</div>}
         <div className="flex-1 min-w-0">
           <div className="text-lg text-rmpg-100 font-semibold">{name}</div>
-          <div className="text-[11px] text-[#888888]">
+          <div className="text-[11px] text-rmpg-400">
             DOB {show(p.dob)} · {show(p.gender)} · {show(p.race)}
             {real(p.dl_number) && <> · DL {p.dl_number} ({show(p.dl_state)})</>}
           </div>
@@ -171,18 +200,20 @@ export default function PersonDossierPage() {
           </div>
         </div>
         <div className="flex gap-1">
-          <IconButton
-            aria-label={watched ? 'Remove from watchlist' : 'Add to watchlist'}
-            title={watched ? 'Watching — click to stop' : 'Watch: alert me on new activity'}
-            onClick={async () => {
-              try {
-                if (watched) await apiFetch(`/intel/watchlist/person/${p.id}`, { method: 'DELETE' });
-                else await apiFetch('/intel/watchlist', { method: 'POST', body: JSON.stringify({ entity_type: 'person', entity_id: p.id }) });
-                setWatched(!watched);
-              } catch (e) { console.error(e); }
-            }}>
-            {watched ? <Eye className="w-4 h-4 text-[#d4a017]" /> : <EyeOff className="w-4 h-4" />}
-          </IconButton>
+          {canManage && (
+            <IconButton
+              aria-label={watched ? 'Remove from watchlist' : 'Add to watchlist'}
+              title={watched ? 'Watching — click to stop' : 'Watch: alert me on new activity'}
+              onClick={async () => {
+                try {
+                  if (watched) await apiFetch(`/intel/watchlist/person/${p.id}`, { method: 'DELETE' });
+                  else await apiFetch('/intel/watchlist', { method: 'POST', body: JSON.stringify({ entity_type: 'person', entity_id: p.id }) });
+                  setWatched(!watched);
+                } catch (e) { console.error(e); }
+              }}>
+              {watched ? <Eye className="w-4 h-4 text-[#d4a017]" /> : <EyeOff className="w-4 h-4" />}
+            </IconButton>
+          )}
           <IconButton
             aria-label="Export dossier PDF"
             title={pdfBusy ? 'Generating…' : 'Export PDF'}
@@ -221,7 +252,7 @@ export default function PersonDossierPage() {
             <Section title="LINKED IDENTITIES">
               {data.cluster.map((m) => (
                 <Link key={m.person_id} to={`/intel/person/${m.person_id}`}
-                  className="block text-[11px] text-[#d4a017] hover:underline py-[2px]">
+                  className="block text-[11px] text-brand-400 hover:underline py-[2px]">
                   {m.name} (#{m.person_id})
                 </Link>
               ))}
@@ -229,32 +260,32 @@ export default function PersonDossierPage() {
           )}
 
           <Section title={`KNOWN ASSOCIATES (${data.associates.length})`}>
-            {data.associates.length === 0 && <div className="text-[11px] text-[#888888]">None on record.</div>}
+            {data.associates.length === 0 && <div className="text-[11px] text-rmpg-400">None on record.</div>}
             {data.associates.map((a) => (
               <Link key={a.person_id} to={`/intel/person/${a.person_id}`}
                 className="flex justify-between text-[11px] py-[2px] hover:bg-surface-raised">
-                <span className="text-[#d4a017]">{a.name}</span>
-                <span className="text-[#888888]">{a.shared_events}× ({a.kinds.join(', ')})</span>
+                <span className="text-brand-400">{a.name}</span>
+                <span className="text-rmpg-400">{a.shared_events}× ({a.kinds.join(', ')})</span>
               </Link>
             ))}
           </Section>
 
           <Section title={`VEHICLES (${data.vehicles.length})`}>
-            {data.vehicles.length === 0 && <div className="text-[11px] text-[#888888]">None on record.</div>}
+            {data.vehicles.length === 0 && <div className="text-[11px] text-rmpg-400">None on record.</div>}
             {data.vehicles.map((v) => (
               <div key={v.id} className="text-[11px] text-rmpg-200 py-[2px]">
                 {[v.color, v.year, v.make, v.model].filter(real).join(' ')}
-                {real(v.plate_number) && <span className="text-[#d4a017]"> · {v.plate_number}</span>}
+                {real(v.plate_number) && <span className="text-brand-400"> · {v.plate_number}</span>}
               </div>
             ))}
           </Section>
 
           <Section title="ADDRESSES">
-            {data.addresses.length === 0 && <div className="text-[11px] text-[#888888]">None on record.</div>}
+            {data.addresses.length === 0 && <div className="text-[11px] text-rmpg-400">None on record.</div>}
             {data.addresses.map((a, i) => (
               <div key={i} className="text-[11px] py-[2px]">
                 <span className="text-rmpg-200">{a.address}</span>
-                <span className="text-[#888888]"> — {a.source}</span>
+                <span className="text-rmpg-400"> — {a.source}</span>
               </div>
             ))}
           </Section>
@@ -272,18 +303,18 @@ export default function PersonDossierPage() {
                   className="block py-[3px] border-b border-border-default last:border-b-0 hover:bg-surface-raised"
                 >
                   <div className="flex items-baseline gap-2 text-[11px]">
-                    <FileText className="w-3 h-3 text-[#d4a017] shrink-0" />
-                    <span className="text-[#d4a017]">{r.report_number || `IR-${r.id}`}</span>
+                    <FileText className="w-3 h-3 text-brand-400 shrink-0" />
+                    <span className="text-brand-400">{r.report_number || `IR-${r.id}`}</span>
                     {r.threat_level && (
-                      <span className={`text-[9px] font-semibold ${THREAT_COLOR[r.threat_level] || 'text-[#888888]'}`}>
+                      <span className={`text-[9px] font-semibold ${THREAT_COLOR[r.threat_level] || 'text-rmpg-400'}`}>
                         {r.threat_level.toUpperCase()}
                       </span>
                     )}
                   </div>
                   <div className="text-[10px] text-rmpg-200 ml-5 truncate">{r.title}</div>
-                  <div className="text-[9px] text-[#888888] ml-5">
+                  <div className="text-[9px] text-rmpg-400 ml-5">
                     {r.role || 'subject'}
-                    {r.disseminated_at && ` · ${String(r.disseminated_at).slice(0, 10)}`}
+                    {r.disseminated_at && ` · ${formatDate(r.disseminated_at)}`}
                     {r.handling_code && ` · ${r.handling_code}`}
                   </div>
                 </Link>
@@ -294,16 +325,16 @@ export default function PersonDossierPage() {
 
         {/* Right column — timeline */}
         <Section title={`CONTACT TIMELINE (${data.timeline.length})`}>
-          {data.timeline.length === 0 && <div className="text-[11px] text-[#888888]">No system contacts.</div>}
+          {data.timeline.length === 0 && <div className="text-[11px] text-rmpg-400">No system contacts.</div>}
           {data.timeline.map((e) => (
             <div key={`${e.kind}:${e.id}`} className="flex items-baseline gap-2 text-[11px] py-[2px] border-b border-border-default last:border-b-0">
-              <span className="text-[#888888] w-20 shrink-0">{e.date ? String(e.date).slice(0, 10) : '—'}</span>
+              <span className="text-rmpg-400 w-20 shrink-0">{formatDate(e.date)}</span>
               <span className={`w-28 shrink-0 text-[9px] font-semibold ${KIND_COLOR[e.kind] || 'text-rmpg-400'}`}>
                 {e.kind.replace(/_/g, ' ').toUpperCase()}
               </span>
               <span className="text-rmpg-200">{e.title}</span>
-              {e.status && <span className="text-[#888888] text-[9px]">({formatLabel(e.status)})</span>}
-              {e.subtitle && <span className="text-[#888888] truncate">{e.subtitle}</span>}
+              {e.status && <span className="text-rmpg-400 text-[9px]">({formatLabel(e.status)})</span>}
+              {e.subtitle && <span className="text-rmpg-400 truncate">{e.subtitle}</span>}
             </div>
           ))}
         </Section>
@@ -328,7 +359,7 @@ export default function PersonDossierPage() {
             >
               <X className="w-4 h-4" />
             </button>
-            <div className="mt-2 text-[10px] text-[#888888] text-center">{name} — press Esc to close</div>
+            <div className="mt-2 text-[10px] text-rmpg-400 text-center">{name} — press Esc to close</div>
           </div>
         </div>
       )}
