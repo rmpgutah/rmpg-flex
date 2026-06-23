@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1149: GeoData Viewer — ?layer= deep-link (strip after mount), N shortcut focuses feature search, Esc cascade (detail panel→column filter→search clear), 3-state empty states (loading/no-features/no-search-results with clear-search action), brand tokens (#34d399→var(--green-400), #f87171→var(--red-400), #a78bfa→var(--purple-400), #fb923c→var(--orange-400), #888→var(--rmpg-400), #666→var(--rmpg-600), #080808/#0a0a0a→CSS surface vars).
 // v1148: NCIC Terminal — deep-link strip, N shortcut, Esc nav, Export/Clear session (admin/manager), timezone-aware timestamps
 // v1152: Recon Connect — ConfirmDialog for stop session (admin/manager gate), ?category= deep-link (strip after mount), N shortcut focuses catalog search, Esc cascade (stop-confirm→launchMsg), idle terminal empty state, role-gated Stop button (admin/manager), brand token migration (#d4a017→brand-400, #888→rmpg-400), apiFetch cases shape fix (.data unwrap), GlobalCatalogSearch searchRef prop.
 // v1149: Alerts — role gates (admin/manager/supervisor) for create/edit/delete, created_at relative time formatting.
