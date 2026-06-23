@@ -43,7 +43,7 @@ export default function AdminDevSettingsTab({ role }: Props) {
   const [simLat, setSimLat] = useState('');
   const [simLng, setSimLng] = useState('');
   const [simMsg, setSimMsg] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => { setLocalFlags({ ...flags }); }, [flags]);
 
