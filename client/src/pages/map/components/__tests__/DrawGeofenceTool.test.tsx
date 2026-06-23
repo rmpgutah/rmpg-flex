@@ -3,7 +3,7 @@ import { vi, test, expect, beforeEach } from 'vitest';
 import DrawGeofenceTool from '../DrawGeofenceTool';
 
 vi.mock('@mapbox/mapbox-gl-draw', () => {
-  const MockDraw = vi.fn().mockImplementation(function () {
+  const MockDraw = vi.fn().mockImplementation(function (this: any) {
     this.getAll = vi.fn().mockReturnValue({ type: 'FeatureCollection', features: [{ type: 'Feature' }] });
     this.deleteAll = vi.fn();
     this.changeMode = vi.fn();
