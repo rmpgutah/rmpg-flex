@@ -936,30 +936,42 @@ export default function WarrantsPage() {
     if (activeTab === 'warrants') fetchWarrants();
   }, [activeTab, fetchWarrants]);
 
-  // Phase 1: hydrate filter chips from URL on mount
+  // Phase 1: hydrate filter chips from URL on mount.
+  // Uses searchParams (via useSearchParams) so react-router owns the URL and
+  // ?warrant_id= / ?personId= deep-links are not clobbered on first render.
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    setFilterPriority(p.get('priority_min') === '70');
-    setFilterSinceWeek(p.get('since_days') === '7');
-    setFilterMatches(p.get('matches_person') === '1');
-    setFilterStateChip(p.get('state') || '');
-    setFilterFederal(p.get('state_prefix') === 'fed_');
-    setFilterArchivedChip(p.get('include_archived') === '1');
+    setFilterPriority(searchParams.get('priority_min') === '70');
+    setFilterSinceWeek(searchParams.get('since_days') === '7');
+    setFilterMatches(searchParams.get('matches_person') === '1');
+    setFilterStateChip(searchParams.get('state') || '');
+    setFilterFederal(searchParams.get('state_prefix') === 'fed_');
+    setFilterArchivedChip(searchParams.get('include_archived') === '1');
+    // Also hydrate the ?status= deep-link into the dropdown filter so that
+    // /warrants?status=active lands with the Active filter pre-selected.
+    const statusParam = searchParams.get('status');
+    if (statusParam && WARRANT_STATUSES.some(s => s.value === statusParam)) {
+      setFilterStatus(statusParam);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Phase 1: persist filter chips to URL when they change
+  // Phase 1: persist filter chips to URL when they change.
+  // Uses setSearchParams so react-router remains the single URL authority —
+  // window.history.replaceState was previously used here but it silently
+  // dropped params managed by react-router (e.g. ?warrant_id=).
   useEffect(() => {
-    const p = new URLSearchParams();
-    if (filterPriority) p.set('priority_min', '70');
-    if (filterSinceWeek) p.set('since_days', '7');
-    if (filterMatches) p.set('matches_person', '1');
-    if (filterStateChip) p.set('state', filterStateChip);
-    if (filterFederal) p.set('state_prefix', 'fed_');
-    if (filterArchivedChip) p.set('include_archived', '1');
-    const qs = p.toString();
-    window.history.replaceState({}, '', qs ? `?${qs}` : window.location.pathname);
-  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      // Remove chip params that are no longer active; set those that are.
+      if (filterPriority) next.set('priority_min', '70'); else next.delete('priority_min');
+      if (filterSinceWeek) next.set('since_days', '7'); else next.delete('since_days');
+      if (filterMatches) next.set('matches_person', '1'); else next.delete('matches_person');
+      if (filterStateChip) next.set('state', filterStateChip); else next.delete('state');
+      if (filterFederal) next.set('state_prefix', 'fed_'); else next.delete('state_prefix');
+      if (filterArchivedChip) next.set('include_archived', '1'); else next.delete('include_archived');
+      return next;
+    }, { replace: true });
+  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip, setSearchParams]);
 
   // Live sync — skip while form modal is open to prevent UI freezes during person search
   const silentRefreshWarrants = useCallback(() => {
@@ -1555,6 +1567,7 @@ export default function WarrantsPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'n' && e.key !== 'N') return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!isAdminOrManager) return; // role-gate mirrors toolbar button
       const t = e.target as HTMLElement | null;
       if (t) {
         const tag = t.tagName;
@@ -1569,7 +1582,7 @@ export default function WarrantsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formOpen, serveModalOpen, personProfileOpen, utahDetailWarrant, deletingWarrant, activeTab]);
+  }, [formOpen, serveModalOpen, personProfileOpen, utahDetailWarrant, deletingWarrant, activeTab, isAdminOrManager]);
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
