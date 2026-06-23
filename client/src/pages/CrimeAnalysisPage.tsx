@@ -7,6 +7,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   TrendingUp, BarChart3, Clock, MapPin, Users, AlertTriangle, RefreshCw, Loader2,
   Calendar,
@@ -42,14 +43,30 @@ const GRID_PROPS = { stroke: '#1e1e1e', strokeDasharray: '3 3' } as const;
 export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState('90');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+
+  // Deep-link seed: ?days=30|90|180|365|custom or ?date_range= alias — read
+  // once on mount, then strip the param so the URL stays clean.
+  const VALID_DAYS = new Set(['30', '90', '180', '365', 'custom']);
+  const seedDays = searchParams.get('days') ?? searchParams.get('date_range') ?? '90';
+  const [dateRange, setDateRange] = useState(() => VALID_DAYS.has(seedDays) ? seedDays : '90');
+  const [startDate, setStartDate] = useState(searchParams.get('start_date') ?? '');
+  const [endDate, setEndDate] = useState(searchParams.get('end_date') ?? '');
 
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
+
+  // Strip deep-link params after seeding so the address bar stays tidy.
+  useEffect(() => {
+    const hasSeedParam = searchParams.has('days') || searchParams.has('date_range')
+      || searchParams.has('start_date') || searchParams.has('end_date');
+    if (!hasSeedParam) return;
+    const next = new URLSearchParams(searchParams);
+    ['days', 'date_range', 'start_date', 'end_date'].forEach((k) => next.delete(k));
+    setSearchParams(next, { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -72,6 +89,11 @@ export default function CrimeAnalysisPage() {
   useLiveSync('incidents', fetchData);
 
   /* ── Derived data ──────────────────────────────────────────── */
+  // filterActive = user has chosen a custom or non-default period, so "no
+  // data" means the filter returned nothing rather than the system being empty.
+  const filterActive = dateRange !== '90' || (dateRange === 'custom' && !!(startDate || endDate));
+  const emptyHint = filterActive ? 'No data for this period' : 'No data available';
+
   const totalIncidents = data?.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0;
 
   const offenseData = (data?.topOffenses || []).slice(0, 10).map((o: any) => ({
@@ -113,8 +135,8 @@ export default function CrimeAnalysisPage() {
   const BlueGradient = (
     <defs>
       <linearGradient id="blueBar" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#888888" />
-        <stop offset="100%" stopColor="#888888" />
+        <stop offset="0%" stopColor="var(--rmpg-600, #1e4a7a)" />
+        <stop offset="100%" stopColor="var(--rmpg-400, #3a7fc1)" />
       </linearGradient>
     </defs>
   );
@@ -157,7 +179,9 @@ export default function CrimeAnalysisPage() {
   if (!data) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="text-xs text-rmpg-500">No data available</div>
+        <div className="text-xs text-rmpg-500">
+          {filterActive ? 'No data for the selected period' : 'No data available'}
+        </div>
       </div>
     );
   }
@@ -224,7 +248,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Top Offenses" icon={BarChart3} />
             <div className="p-3">
               {offenseData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No offense data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={offenseData} layout="vertical" margin={{ left: 4, right: 30, top: 4, bottom: 4 }}>
@@ -245,7 +269,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Hotspots (Top Locations)" icon={MapPin} />
             <div className="p-3">
               {hotspotData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No hotspot data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={hotspotData} layout="vertical" margin={{ left: 4, right: 30, top: 4, bottom: 4 }}>
@@ -266,7 +290,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Time of Day Distribution" icon={Clock} />
             <div className="p-3">
               {todData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No time data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <>
                   <ResponsiveContainer width="100%" height={180}>
@@ -305,7 +329,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Day of Week" icon={Calendar} />
             <div className="p-3">
               {dowData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No day data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <ResponsiveContainer width="100%" height={180}>
                   <BarChart data={dowData} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
@@ -324,8 +348,8 @@ export default function CrimeAnalysisPage() {
                     <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} width={28} />
                     <Tooltip content={<ChartTooltip formatter={(l: string, v: number) => `${v} incidents`} />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                     <Bar dataKey="count" radius={[2, 2, 0, 0]} barSize={24}>
-                      {dowData.map((d: any, i: number) => (
-                        <Cell key={i} fill={d.isWeekend ? 'url(#purpleBar)' : 'url(#greenBar)'} />
+                      {dowData.map((d: any) => (
+                        <Cell key={d.name} fill={d.isWeekend ? 'url(#purpleBar)' : 'url(#greenBar)'} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -347,7 +371,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Repeat Offenders (3+ Incidents)" icon={Users} />
             <div className="p-3">
               {(data?.repeatOffenders || []).length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No repeat offenders</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <div className="space-y-1">
                   {(data?.repeatOffenders || []).slice(0, 15).map((person: any, idx: number) => {
@@ -374,7 +398,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Response Metrics by Priority" icon={AlertTriangle} />
             <div className="p-3">
               {(data?.responseMetrics || []).length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No response data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <div className="space-y-2">
                   {(data?.responseMetrics || []).map((metric: any, idx: number) => {
@@ -413,7 +437,7 @@ export default function CrimeAnalysisPage() {
             <PanelTitleBar title="Monthly Incident Trend" icon={TrendingUp} />
             <div className="p-3">
               {trendData.length === 0 ? (
-                <div className="text-center py-4 text-rmpg-500 text-xs">No trend data</div>
+                <div className="text-center py-4 text-rmpg-500 text-xs">{emptyHint}</div>
               ) : (
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={trendData} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>

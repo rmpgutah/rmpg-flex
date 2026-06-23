@@ -3,6 +3,12 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1102: Crime Analysis (/crime-analysis) — Page 79 of the full-app frontend
+//        pass. Added ?days= / ?date_range= deep-link (also seeds ?start_date=
+//        / ?end_date= for custom range), stripped after mount. Fixed BlueGradient
+//        stops (were both #888888, now steel-blue CSS vars). Cell keys changed
+//        from array index to stable d.name. Empty states now distinguish "no data
+//        for this period" vs "no data available" based on filterActive flag.
 // v1101: Reports pages (/reports, /reports/custom) — Page 78 of the full-app
 //        frontend audit. Backend: added 7 missing endpoints (comparison,
 //        daily-briefing, weekly-digest, patrol-tracking, POST /reports/custom,
