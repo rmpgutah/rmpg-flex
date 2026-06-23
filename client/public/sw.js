@@ -3,6 +3,15 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1182: Colorado DOC — ?doc_number= deep-link auto-runs DOC lookup (toast if missing), N shortcut focuses search input, Esc cascade (close detail panel→clear search), canManage (admin/manager/supervisor) gates Create Person Record, loading skeleton distinct from no-results/empty, #888888 hex → rmpg-400 CSS var token.
+// v1181: Code Enforcement — Esc cascade e.stopPropagation() per branch (confirmOpen→showReinspection→tFormOpen→vFormOpen), canEnforce added to keyboard-effect deps, text-[var(--brand-gold)] → text-brand-gold-500 token migration (6 sites).
+// v1179: Body Cameras — Esc cascade e.stopPropagation() per branch, parseTimestamp replaces new Date(string) in video-delete label/details.
+// v1177: Assets — canCreate/canEdit role gates (admin|manager|supervisor) on New Asset button, edit pencil, row-click, context-menu, and N shortcut; toast for missing ?asset_id= deep-link target.
+// v1176: Alarm Management — dead React import removed, DataTable loading prop wired, emptyDescription added for error/no-data/no-results states.
+// v1175: Accreditation — deep-link ?standard_id= with missing-record toast, DataTable loading prop for distinct loading/no-data/no-results empty states.
+// v1183: Community — deepLinkRef guard on ?event_id= deep-link, Esc cascade adds e.stopPropagation() per branch (deleteTarget→form), N shortcut focuses nameInputRef, 3-state empty messages per tab (loading/no-data/no-results), emptyDescription added per tab.
+// v1184: Court Records — e.stopPropagation() per Esc cascade branch (outcomeConfirm→outcomeModal→createModal→expandedRow→error→filters), canManage (admin|manager) gates New Event button, N shortcut, Record Outcome button + context-menu item.
+// v1178: Billing — canManage (admin|manager) role gates on New Invoice / Edit / Delete (button + context menu + row-click + N shortcut), Esc cascade adds e.stopPropagation() per branch (deleteConfirm→formModal→filterClear) + switched to document.addEventListener, role-aware empty-state hint.
 // v1174: Warrants — ConfirmDialog for single archive, Esc cascade adds e.stopPropagation() per branch + archiveConfirmOpen, role gates: canManageWarrants (admin|manager|supervisor|dispatcher) on Serve/Edit/Recall, isAdminOrManager on Archive/Delete/Unarchive.
 // v1173: Tasks — Esc cascade e.stopPropagation() per branch, brand-gold CSS var replaces inline hex fallback.
 // v1168: FlexCam Footage — ConfirmDialog for evidence lock, N shortcut focuses play button, Esc stopPropagation per cascade branch (lockConfirm→shortcuts→fullscreen→playbackErr→pause), canManage (admin/manager) role gates on Lock/CourtPkg/Repair, parseTimestamp replaces new Date(string) in court-pkg message, brand-400 token replaces inline #d4a017 on evidence badge.
