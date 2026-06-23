@@ -3,6 +3,7 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v1167: FlexCam — ConfirmDialog for repair+court-pkg, canLock role gate (admin/manager), N shortcut triggers refresh, Esc cascade adds stopPropagation, ?trip_id= deep-link, loading skeleton, brand token migration (#d4a017→brand-400), <a>→<Link> for PLAY, parseTimestamp replaces new Date() in custody timestamps.
 // v1170: Invoices — divide-border-subtle token replaces inline CSS var, PAYMENT_METHODS map/find shadow-m renamed to pm, CreatePanel RichTextArea ids + labels deduped from line-item form ids.
 // v1164: Incidents — manager/supervisor role gates for delete/approve/return/archive, isGodMode → canSupervise (admin|manager|supervisor), #ec4899 hex → CSS var token.
 // v1163: Field Interviews — ?interview_id= deep-link (alias for ?fi_id=, strip after mount), Esc stopPropagation per cascade branch, canManage (admin/manager/supervisor) role gates on Edit/Archive/New FI, dead StatusBadge import removed, localToday() replaces new Date() in EMPTY_FORM, rgba hex → toolbar-btn token on submit button.
