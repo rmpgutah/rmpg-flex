@@ -819,6 +819,9 @@ export interface PersonPdfData {
   dl_state?: string;
   dl_class?: string;
   dl_expiry?: string;
+  dl_issue_date?: string;
+  dl_restrictions?: string;
+  dl_endorsements?: string;
   id_type?: string;
   id_number?: string;
   id_state?: string;
@@ -3532,6 +3535,16 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const d3 = addFieldPair(doc, 'DL Class', data.dl_class || '', lx + fifthW * 3, y, fifthW);
     const d4 = addFieldPair(doc, 'DL Expiry', fmtDate(data.dl_expiry), lx + fifthW * 4, y, fifthW);
     y = Math.max(d1, d2, d3, d4);
+    // Row 1b: Issue Date (2/5), Restrictions (3/5)
+    if (data.dl_issue_date || data.dl_restrictions) {
+      const di1 = addFieldPair(doc, 'DL Issue Date', fmtDate(data.dl_issue_date), lx, y, fifthW * 2);
+      const di2 = addFieldPair(doc, 'Restrictions', data.dl_restrictions || '', lx + fifthW * 2, y, fifthW * 3);
+      y = Math.max(di1, di2);
+    }
+    // Row 1c: Endorsements
+    if (data.dl_endorsements) {
+      y = addFieldPair(doc, 'Endorsements', data.dl_endorsements, lx, y, ffw);
+    }
     // Row 2: ID Type (1/5), ID Number (2/5), ID State (1/5), ID Expiry (1/5)
     const i1 = addFieldPair(doc, 'ID Type', data.id_type || '', lx, y, fifthW);
     const i2 = addFieldPair(doc, 'ID Number', data.id_number || '', lx + fifthW, y, fifthW * 2);
