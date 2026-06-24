@@ -57,6 +57,7 @@ import mapData from './routes/mapData';
 import tiles from './routes/tiles';
 import geo from './routes/geo';
 import admin from './routes/admin';
+import adminDev from './routes/adminDev';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import announcements from './routes/announcements';
@@ -126,6 +127,7 @@ import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
 import forensics from './routes/forensics';
+import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
 import patrol from './routes/patrol';
@@ -142,6 +144,7 @@ import microbilt from './routes/microbilt';
 import screening from './routes/screening';
 import sorSources from './routes/sorSources';
 import nsopw from './routes/nsopw';
+import mapAnnotations from './routes/mapAnnotations';
 import personIntel from './routes/personIntel';
 import serve from './routes/serve';
 
@@ -309,6 +312,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin/reanalysis', router: reanalysis, auth: 'required',
     note: 'Footage backfill, ALPR confidence correction, analytics replay. All endpoints require admin role (enforced per-route).' },
+  { prefix: '/api/admin/dev', router: adminDev, auth: 'required',
+    note: 'Dev panel: feature flags (KV-backed GET/PUT), mock GPS injection + call seed. Admin role enforced per-route; GET /feature-flags is readable by any authed user.' },
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
@@ -383,12 +388,16 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
     note: 'Alias for /api/forensics — client ForensicLabPage uses this path' },
+  { prefix: '/api/geofences', router: geofences, auth: 'required',
+    note: 'Geofence zone CRUD — writes to geofence_zones. All authenticated roles.' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
     note: 'Leave + disciplinary + performance reviews; /benefits returns [] (table deferred). Payroll/exit/grievances/PIPs stay on legacy.' },
   { prefix: '/api/iped', router: iped, auth: 'required',
     note: 'Read-only surface over forensic_hash_sets + forensic_hash_entries + iped_imports tables. GET /status, /hash-sets, /hash-sets/:id, /downloads.' },
+  { prefix: '/api/map/annotations', router: mapAnnotations, auth: 'required',
+    note: 'Shared map annotation pins (map_annotations table). All authenticated roles.' },
   { prefix: '/api/narcotics', router: narcotics, auth: 'required',
     note: 'Narcotics & vice: investigations, CI management, buy/bust ops, drug trend analysis' },
   { prefix: '/api/nav', router: nav, auth: 'required',
