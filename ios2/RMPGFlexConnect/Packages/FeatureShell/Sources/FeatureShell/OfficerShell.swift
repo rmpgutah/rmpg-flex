@@ -1,33 +1,57 @@
 import SwiftUI
 import DesignSystem
+import CoreAPI
+import CoreAuth
+import FeatureDuty
 import FeatureQuickActions
+import FeatureCFS
 
 public struct OfficerShell: View {
+    // Kept for tests (ShellTabsTests.testOfficerHasFiveTabs etc.)
     public static let tabs: [TabSpec] = [
         TabSpec(id: "home",    title: "Home",    systemImage: "house.fill",            milestone: "M1"),
         TabSpec(id: "cfs",     title: "CFS",     systemImage: "list.bullet.rectangle", milestone: "M1"),
-        TabSpec(id: "scan",    title: "Scan",    systemImage: "camera.viewfinder",     milestone: "M1"),
+        TabSpec(id: "scan",    title: "Scan ID", systemImage: "camera.viewfinder",     milestone: "M1"),
         TabSpec(id: "reports", title: "Reports", systemImage: "doc.text",              milestone: "M1"),
         TabSpec(id: "more",    title: "More",    systemImage: "ellipsis.circle",       milestone: "M1"),
     ]
 
-    public init() {}
+    @Bindable var session: AuthSession
+    @State private var dutyState = DutyState()
+
+    private var apiClient: APIClient {
+        APIClient(
+            baseURL: URL(string: "https://api.rmpgutah.us")!,
+            tokenProvider: { KeychainStore.get(AuthSession.tokenKey) }
+        )
+    }
+
+    public init(session: AuthSession) {
+        self.session = session
+    }
 
     public var body: some View {
         TabView {
-            HomeTabRoot()
+            HomeView(dutyState: dutyState, apiClient: apiClient)
                 .tabItem { Label("Home", systemImage: "house.fill") }
-            ForEach(Self.tabs.dropFirst()) { tab in
-                PlaceholderScreen(title: tab.title, milestone: tab.milestone)
-                    .tabItem {
-                        Label(tab.title, systemImage: tab.systemImage)
-                    }
-            }
+
+            CFSTabView(vm: CallsViewModel(api: CFSAPI(client: apiClient)))
+                .tabItem { Label("CFS", systemImage: "list.bullet.rectangle") }
+
+            ScanTabView(apiClient: apiClient)
+                .tabItem { Label("Scan ID", systemImage: "camera.viewfinder") }
+
+            PlaceholderScreen(title: "Reports", milestone: "M1")
+                .tabItem { Label("Reports", systemImage: "doc.text") }
+
+            MoreTabView(session: session)
+                .tabItem { Label("More", systemImage: "ellipsis.circle") }
         }
         .tint(ThemeColors.night.brandGold)
     }
 }
 
+// Kept for tests (ShellTabsTests references it)
 public struct TabSpec: Identifiable, Equatable, Sendable {
     public let id: String
     public let title: String
@@ -39,48 +63,5 @@ public struct TabSpec: Identifiable, Equatable, Sendable {
         self.title = title
         self.systemImage = systemImage
         self.milestone = milestone
-    }
-}
-
-/// The Home tab wraps `PlaceholderScreen` in a `NavigationStack` so we can
-/// host a toolbar with the "+" Quick Actions launcher.
-struct HomeTabRoot: View {
-    @State private var showQuickActions = false
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        NavigationStack {
-            PlaceholderScreen(title: "Home", milestone: "M1")
-                .toolbar {
-                    #if os(iOS)
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showQuickActions = true
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(theme.colors.brandGold)
-                        }
-                        .accessibilityLabel("Quick Actions")
-                    }
-                    #else
-                    ToolbarItem(placement: .automatic) {
-                        Button {
-                            showQuickActions = true
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(theme.colors.brandGold)
-                        }
-                        .accessibilityLabel("Quick Actions")
-                    }
-                    #endif
-                }
-                .sheet(isPresented: $showQuickActions) {
-                    QuickActionsSheetView()
-                        .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
-                }
-        }
     }
 }
