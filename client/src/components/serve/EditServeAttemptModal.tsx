@@ -14,6 +14,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, Save, Loader2, AlertTriangle, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeAttempt } from '../../types';
+import { toDisplayLabel } from '../../utils/formatters';
 import {
   PSO_CATEGORIES,
   codesInCategory,
