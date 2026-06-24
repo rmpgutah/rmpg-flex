@@ -45,6 +45,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
 import { generateServeCharges } from '../utils/serveChargeStore';
+import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
 import { geocodeAddress } from './geocode';
 import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
 
@@ -559,6 +560,11 @@ sv.put('/:id', async (c) => {
   }
   args.push(id);
   await execute(getDb(c.env), `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  // Fire-and-forget: if status was explicitly set to a terminal outcome,
+  // sync back to the originating CFS call (if one exists).
+  if (body.status === 'served' || body.status === 'failed') {
+    syncServeCompletionToCfs(getDb(c.env), id).catch(() => {});
+  }
   return c.json({ success: true });
 });
 
@@ -663,6 +669,8 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   // break the serve write, so failures are swallowed by generateServeCharges.
   if (newStatus === 'served' || newStatus === 'failed') {
     await generateServeCharges(db, id);
+    // Fire-and-forget: sync the terminal outcome back to the originating CFS
+    syncServeCompletionToCfs(db, id).catch(() => {});
   }
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
 }
@@ -708,6 +716,7 @@ sv.post('/:id/substitute-service', async (c) => {
     nextNum, id,
   );
   await generateServeCharges(db, id);
+  syncServeCompletionToCfs(db, id).catch(() => {});
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum });
 });
 
@@ -843,6 +852,9 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
           `UPDATE serve_queue SET status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
           nextStatus, queueId);
         recomputed = { status: nextStatus };
+        if (nextStatus === 'served' || nextStatus === 'failed') {
+          syncServeCompletionToCfs(db, queueId).catch(() => {});
+        }
       }
     }
   }
@@ -932,6 +944,10 @@ sv.delete('/:queueId/attempt/:attemptId', async (c) => {
     }),
   );
 
+  if (newStatus === 'served' || newStatus === 'failed') {
+    syncServeCompletionToCfs(db, queueId).catch(() => {});
+  }
+
   return c.json({
     success: true,
     deleted_attempt_id: attemptId,
@@ -982,6 +998,18 @@ sv.put('/bulk-status', async (c) => {
     `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
      WHERE id IN (${placeholders})`
   ).bind(status, ...ids).run();
+
+  // Fire-and-forget: sync terminal outcomes back to their originating CFS rows
+  if (status === 'served' || status === 'failed') {
+    const affected = await query<{ id: number }>(
+      db, `SELECT id FROM serve_queue WHERE id IN (${placeholders}) AND call_id IS NOT NULL`,
+      ...ids,
+    );
+    for (const q of affected) {
+      syncServeCompletionToCfs(db, q.id).catch(() => {});
+    }
+  }
+
   return c.json({ updated: ids.length, status });
 });
 

@@ -12,7 +12,7 @@ import {
   DollarSign, Target, Send,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { formatPhoneInput } from '../../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
 import ScraperAdminPanel from './ScraperAdminPanel';
@@ -89,10 +89,6 @@ function formatDate(d?: string | null): string {
 function formatDateTime(d?: string | null): string {
   if (!d) return '\u2014';
   return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-}
-
-function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 function scoreColor(score: number): string {

@@ -1,14 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { toDisplayLabel } from '../formatters';
 import {
   wrapText,
   fmtTimestamp,
   fmtDate,
   parseChain,
-  prettyLabel,
   generateForensicCasePdf,
   type ForensicCaseForPdf,
-  type ForensicExhibitForPdf,
-  type ForensicAnalysisForPdf,
 } from '../forensicCasePdf';
 
 function mkCase(overrides: Partial<ForensicCaseForPdf> = {}): ForensicCaseForPdf {
@@ -128,16 +126,16 @@ describe('parseChain', () => {
 });
 
 describe('prettyLabel', () => {
-  it('returns em-dash for missing input', () => {
-    expect(prettyLabel(undefined)).toBe('—');
-    expect(prettyLabel('')).toBe('—');
+  it('returns empty string for missing input', () => {
+    expect(toDisplayLabel(undefined)).toBe('');
+    expect(toDisplayLabel('')).toBe('');
   });
   it('converts snake_case to Title Case', () => {
-    expect(prettyLabel('digital_forensics')).toBe('Digital Forensics');
-    expect(prettyLabel('chain_of_custody')).toBe('Chain Of Custody');
+    expect(toDisplayLabel('digital_forensics')).toBe('Digital Forensics');
+    expect(toDisplayLabel('chain_of_custody')).toBe('Chain Of Custody');
   });
   it('preserves single-word labels', () => {
-    expect(prettyLabel('intake')).toBe('Intake');
+    expect(toDisplayLabel('intake')).toBe('Intake');
   });
 });
 

@@ -32,6 +32,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
+import { toDisplayLabel } from '../utils/formatters';
 import { safeDateTimeStr } from '../utils/dateUtils';
 import { openWebResearchReportPdf } from '../utils/webResearchReportPdf';
 
@@ -876,7 +877,7 @@ export default function WebResearchPage() {
                             : 'bg-brand-600/20 text-brand-400 border border-brand-600/30'
                         }`}
                       >
-                        {(result.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                        {toDisplayLabel(result.type)}
                       </span>
                       {result.linked_entity_type && (
                         <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-mono uppercase bg-green-500/20 text-green-400 border border-green-500/30 rounded-sm">

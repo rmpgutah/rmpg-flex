@@ -17,7 +17,6 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { handleWebSocket } from './routes/ws';
@@ -42,6 +41,7 @@ import { processBackfillTick } from './utils/sl-assessor/backfill';
 import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
+import { traceMiddleware, requestLogMiddleware, log, logErrorToDb } from './utils/logger';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
@@ -86,7 +86,8 @@ app.get('/updates/latest.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'w
 app.get('/updates/latest-mac.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
 
 // ─── Global middleware ───────────────────────────────────────
-app.use('*', logger());
+app.use('*', traceMiddleware());
+app.use('*', requestLogMiddleware());
 app.use('*', secureHeaders({
   contentSecurityPolicy: {
     defaultSrc: ["'self'"],
@@ -175,7 +176,21 @@ app.onError((err, c) => {
   const route = `${method} ${path}`;
   const detail = err instanceof Error ? err.message : String(err);
   const userId = c.get('userId') as number | undefined;
-  console.error(`Unhandled in ${route} (userId=${userId}):`, err);
+  const traceId = c.get('traceId') as string | undefined;
+  log.error(`Unhandled in ${route}`, { userId, traceId, route }, err);
+
+  // Persist to error_log table (fire-and-forget)
+  logErrorToDb(c.env.DB, {
+    severity: 'error',
+    category: 'route',
+    message: detail,
+    details: err instanceof Error ? { name: err.name, stack: err.stack?.split('\n').slice(0, 6).join('\n'), route } : { route },
+    traceId,
+    userId,
+    source: route,
+    statusCode: 500,
+  }, c.executionCtx);
+
   return c.json({
     error: 'Internal server error',
     code: 'UNHANDLED',

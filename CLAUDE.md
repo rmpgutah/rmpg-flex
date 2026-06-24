@@ -212,6 +212,41 @@ PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.
 
 ## Code Patterns
 
+### Logging & observability (2026-06-24: structured JSON logger)
+
+**Use `src/utils/logger.ts` instead of raw `console.log/error`** for all new code. The structured logger (`log.info / log.warn / log.error`) writes JSON lines with service name, log level, trace ID, and machine-parseable context. Each line is a single `JSON.stringify` call — compatible with Workers Logs, `wrangler tail --format json`, and external log sinks.
+
+```ts
+import { log } from '../utils/logger';
+log.info('User logged in', { userId: 123 });
+log.error('DB query failed', { sql }, err);  // err is formatted as {name, message, stack}
+```
+
+**Trace IDs** are auto-generated per-request via `traceMiddleware()` (replaces `logger()` from `hono/logger`). Every response gets `X-Trace-Id` header. Access from any middleware/handler via `c.get('traceId')`.
+
+```ts
+app.use('*', traceMiddleware());      // sets traceId on c.var + X-Trace-Id header
+app.use('*', requestLogMiddleware()); // logs every request as JSON
+```
+
+**Error persistence** (`error_log` table, migration 0156): unhandled route errors are automatically persisted via `logErrorToDb()` in the global `onError` handler. The table stores severity, category, message, JSON details, trace ID, user ID, source route, and status code. Fire-and-forget via `waitUntil` — never blocks the response.
+
+```ts
+logErrorToDb(c.env.DB, {
+  severity: 'error',
+  category: 'route',
+  message: err.message,
+  details: { route, userId },
+  traceId,
+  source: route,
+  statusCode: 500,
+}, c.executionCtx);
+```
+
+**Health check** (`GET /api/health`) probes D1, KV, R2 (`MAP_DATA`, `UPLOADS`, `DOWNLOADS`), and all 6 Durable Object namespaces. Returns latency per service. Status is `'ok'` when all connected; `'degraded'` when any service is unreachable (still HTTP 200 — health probes don't fail the site).
+
+**Log migration plan**: Convert existing `console.log/error` calls incrementally. High-priority targets: route handlers, cron sweepers, and integration clients (Fleet.io, Roboflow, ClearPath). Legacy `console.*` calls co-exist — the structured logger is additive, not a removal gate.
+
 ### Worker route (Hono)
 ```ts
 import { Hono } from 'hono';

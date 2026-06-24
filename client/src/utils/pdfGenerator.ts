@@ -17,6 +17,7 @@ import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType 
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 // Document hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts) is
 // dormant as of 2026-05-04 per user request. The trailer page +
 // per-page footer hash prefix are removed; payload-hash computation +
@@ -2719,8 +2720,6 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   const rx = getRightColumnX(doc);
   const mx = LAYOUT.PAGE_MARGIN;  // margin x
   const capFirst = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-  const formatServiceType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
-  const formatDocumentType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
   const incidentAlertFlags = buildIncidentAlertFlags(data, [
     data.call_number ? 'DISPATCH LINK' : '',
     data.contract_id ? 'CLIENT CONTRACT' : '',
@@ -2820,7 +2819,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       const attemptNum = data.pso_attempt_number || 1;
 
       // Row 1: Service Type / Authorization / Billing Code
-      const fy1 = addFieldPair(doc, 'Service Type', formatServiceType(data.pso_service_type), lx, y, thirdW);
+      const fy1 = addFieldPair(doc, 'Service Type', toDisplayLabel(data.pso_service_type), lx, y, thirdW);
       const fy2 = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx + thirdW, y, thirdW);
       const fy3 = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', lx + thirdW * 2, y, thirdW);
       y = Math.max(fy1, fy2, fy3);
@@ -2944,7 +2943,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     y = checkPageBreak(doc, y, 15);
     { const sec = openAutoSection(doc, 'Process Service Details', y); y = sec.contentY;
       const thirdW = ffw / 3;
-      const fy1 = addFieldPair(doc, 'Document Type', formatDocumentType(data.process_service_type), lx, y, thirdW);
+      const fy1 = addFieldPair(doc, 'Document Type', toDisplayLabel(data.process_service_type), lx, y, thirdW);
       const fy2 = addFieldPair(doc, 'Serve To', data.process_served_to || '', lx + thirdW, y, thirdW);
       const fy3 = addFieldPair(doc, 'Attempts', data.process_attempts != null ? String(data.process_attempts) : '', lx + thirdW * 2, y, thirdW);
       y = Math.max(fy1, fy2, fy3);

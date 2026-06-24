@@ -90,6 +90,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { getAuditEntityRoute } from '../utils/auditEntityRoute';
 import { describeDueDate, dueToneTextClass } from '../utils/taskDueCountdown';
 import { generateTasksPdf } from '../utils/taskPdf';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   ClipboardList, Clock, AlertTriangle, Plus, Pencil, Trash2, Eye,
   FileText, X, CheckCircle2, RotateCcw, ExternalLink,
@@ -604,7 +605,7 @@ export default function TasksPage() {
           >
             <option value="">All</option>
             {['pending', 'in_progress', 'review', 'completed', 'cancelled'].map((s) => (
-              <option key={s} value={s}>{s.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}</option>
+              <option key={s} value={s}>{toDisplayLabel(s)}</option>
             ))}
           </select>
         </div>
