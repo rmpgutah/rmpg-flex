@@ -7,6 +7,7 @@ import {
   Activity, RotateCcw, Pencil, Hash,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { toDisplayLabel } from '../../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -623,7 +624,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                       rec.status === 'active' ? 'bg-red-900/40 text-red-400' :
                       rec.status === 'released' ? 'bg-green-900/40 text-green-400' :
                       'bg-rmpg-700 text-rmpg-400'
-                    }`}>{(rec.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                    }`}>{toDisplayLabel(rec.status || '')}</span>
                   </div>
                   <div className="flex items-center gap-3 text-[9px] text-rmpg-500">
                     {rec.booking_date && <span>Booked: {rec.booking_date.split('T')[0]}</span>}
