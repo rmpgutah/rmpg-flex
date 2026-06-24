@@ -31,7 +31,7 @@ export function FeatureFlagsProvider({ children }: { children: React.ReactNode }
   const [flags, setFlags] = useState<FeatureFlags>(DEFAULT_FLAGS);
 
   const load = () => {
-    apiFetch<Partial<FeatureFlags>>('/admin/feature-flags')
+    apiFetch<Partial<FeatureFlags>>('/admin/dev/feature-flags')
       .then(data => setFlags({ ...DEFAULT_FLAGS, ...data }))
       .catch(() => {});
   };

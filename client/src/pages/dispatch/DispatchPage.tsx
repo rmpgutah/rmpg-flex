@@ -1465,6 +1465,14 @@ export default function DispatchPage() {
   // PSO incident types — must be declared before filteredCalls which references it
   const PSO_INCIDENT_TYPES = ['pso_client_request'];
 
+  // When the admin-config disposition list is empty (production default),
+  // derive the correct fallback codes from the incident type so PSO calls
+  // see PS codes in the clear prompt and general calls see general codes.
+  const effectiveDispositionCodes = useMemo(() => {
+    if (dispositionCodes.length > 0) return dispositionCodes;
+    return dispositionGroupsForIncident(selectedCall?.incident_type).flatMap((g) => g.codes);
+  }, [dispositionCodes, selectedCall?.incident_type]);
+
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
   // Effective queue sort mode (server pref → local fallback → default). Hoisted
@@ -2594,7 +2602,7 @@ export default function DispatchPage() {
                 <div className="px-2">
                   <DispositionPrompt
                     callNumber={selectedCall.call_number}
-                    dispositionCodes={dispositionCodes}
+                    dispositionCodes={effectiveDispositionCodes}
                     onConfirm={handleConfirmClear}
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
@@ -6163,7 +6171,7 @@ export default function DispatchPage() {
                 <div className="px-3">
                   <DispositionPrompt
                     callNumber={selectedCall.call_number}
-                    dispositionCodes={dispositionCodes}
+                    dispositionCodes={effectiveDispositionCodes}
                     onConfirm={handleConfirmClear}
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
