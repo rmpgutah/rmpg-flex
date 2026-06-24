@@ -9,6 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../CoreAPI"),
+        .package(path: "../CoreAuth"),
         .package(path: "../DesignSystem"),
         .package(path: "../FeatureDuty"),
         .package(path: "../FeatureCFS"),
@@ -16,7 +17,7 @@ let package = Package(
     targets: [
         .target(
             name: "FeatureQuickActions",
-            dependencies: ["CoreAPI", "DesignSystem", "FeatureDuty", "FeatureCFS"]
+            dependencies: ["CoreAPI", "CoreAuth", "DesignSystem", "FeatureDuty", "FeatureCFS"]
         ),
         .testTarget(
             name: "FeatureQuickActionsTests",

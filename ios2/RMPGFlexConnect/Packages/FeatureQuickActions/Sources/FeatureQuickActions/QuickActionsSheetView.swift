@@ -61,9 +61,18 @@ public struct QuickActionsSheetView: View {
                 NewCitationForm(apiClient: apiClient)
             case "tasks":
                 TasksView(apiClient: apiClient)
-            case "process_server", "quick_capture", "field_camera":
-                PendingActionSheet(action: action)
-                    .presentationDetents([.medium])
+            case "process_server":
+                ProcessServerForm(apiClient: apiClient)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            case "quick_capture":
+                FieldCaptureView(mode: .alpr, apiClient: apiClient)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            case "field_camera":
+                FieldCaptureView(mode: .photo, apiClient: apiClient)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             default:
                 PendingActionSheet(action: action)
                     .presentationDetents([.medium])
