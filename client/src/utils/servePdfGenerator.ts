@@ -297,6 +297,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
@@ -448,6 +449,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
@@ -634,7 +636,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
         caseNumber: data.caseNumber,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
         officer: data.serverName,
         badge: data.serverBadge,
       },
@@ -678,6 +680,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
@@ -1003,7 +1006,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
         caseNumber: data.caseNumber,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
         officer: data.serverName,
         badge: data.serverBadge,
       },
@@ -1026,6 +1029,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
@@ -1151,10 +1155,10 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     barcode: {
       formMetadata: {
         form: 'SERVICE-LOG',
-        caseNumber: `LOG-${(data.dateRange?.start || new Date().toISOString().slice(0, 10)).replace(/-/g, '')}`,
+        caseNumber: `LOG-${(data.dateRange?.start || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })).replace(/-/g, '')}`,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: data.dateRange?.end || new Date().toISOString().slice(0, 10),
+        reportDate: data.dateRange?.end || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
         officer: data.officerName,
         badge: data.officerBadge,
       },

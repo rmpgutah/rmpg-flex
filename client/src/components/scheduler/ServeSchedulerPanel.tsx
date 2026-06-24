@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ExternalLink } from 'lucide-react';
+import { CalendarDays, ExternalLink, RefreshCw, Sparkles } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import WeekTimeline from './WeekTimeline';
@@ -24,11 +24,13 @@ export default function ServeSchedulerPanel() {
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
 
   const today = useMemo(todayDenver, []);
 
   const refetch = useCallback(async () => {
     try {
+      setLoading(true);
       setError(null);
       const include = 'tier';
       const range = view === 'week' ? 7 : 31;
@@ -75,6 +77,18 @@ export default function ServeSchedulerPanel() {
     }
   }, [refetch]);
 
+  const handleBackfill = useCallback(async () => {
+    setBackfilling(true);
+    try {
+      await apiFetch('/serve-intake/schedule/backfill', { method: 'POST' });
+      await refetch();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Backfill failed');
+    } finally {
+      setBackfilling(false);
+    }
+  }, [refetch]);
+
   const todayCount = slots.filter((s) => s.scheduled_date === today).length;
   const criticalCount = slots.filter((s) => s.urgency_tier === 'critical').length;
 
@@ -112,6 +126,27 @@ export default function ServeSchedulerPanel() {
         ? <div className="p-3 text-[11px] text-red-300">{error}</div>
         : loading
         ? <div className="p-3 text-[11px] text-rmpg-400">Loading…</div>
+        : !loading && slots.length === 0
+        ? (
+          <div className="p-4 flex flex-col items-center gap-2 text-center">
+            <p className="text-[11px] text-rmpg-400">
+              No scheduled attempt windows found for this period.
+            </p>
+            <p className="text-[10px] text-rmpg-500">
+              Jobs added manually or synced from ServeManager need their schedules generated.
+            </p>
+            <button
+              type="button"
+              onClick={handleBackfill}
+              disabled={backfilling}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-brand-500/20 text-brand-200 border border-brand-500/40 rounded-[2px] hover:bg-brand-500/30 disabled:opacity-50 transition-colors"
+            >
+              {backfilling
+                ? <><RefreshCw size={11} className="animate-spin" /> Generating…</>
+                : <><Sparkles size={11} /> Generate Schedule</>}
+            </button>
+          </div>
+        )
         : view === 'week'
         ? (
           <WeekTimeline
