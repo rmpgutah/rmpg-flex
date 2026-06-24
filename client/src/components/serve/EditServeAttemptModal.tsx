@@ -173,7 +173,7 @@ export default function EditServeAttemptModal({
               onChange={(e) => setAttemptType(e.target.value as AttemptTypeOption)}
             >
               {ATTEMPT_TYPES.map((t) => (
-                <option key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+                <option key={t} value={t}>{toDisplayLabel(t)}</option>
               ))}
             </select>
           </div>
