@@ -60,6 +60,7 @@ import admin from './routes/admin';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import announcements from './routes/announcements';
+import automation from './routes/automation';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
 import alerts from './routes/notifications';
@@ -132,6 +133,7 @@ import patrol from './routes/patrol';
 import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
 import iped from './routes/iped';
+import serve from './routes/serve';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
 import skiptracer from './routes/skiptracer';
@@ -143,7 +145,7 @@ import screening from './routes/screening';
 import sorSources from './routes/sorSources';
 import nsopw from './routes/nsopw';
 import personIntel from './routes/personIntel';
-import serve from './routes/serve';
+import investigation from './routes/investigation';
 
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
@@ -399,9 +401,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/patrol', router: patrolMileage, auth: 'required',
     note: 'Mileage anchor (auto-pickup) + admin fix/audit chain rewrite + FORM PS-211 trip-log payload' },
-  { prefix: '/api/person-intel', router: personIntel, auth: 'required',
-    note: 'Person Intelligence Dossier: create/list/get dossier + officer data-point annotations + delete' },
-  { prefix: '/api/radio', router: radio, auth: 'required',
+    { prefix: '/api/person-intel', router: personIntel, auth: 'required',
+      note: 'Person Intelligence Dossier: create/list/get dossier + officer data-point annotations + delete' },
+  { prefix: '/api/investigation', router: investigation, auth: 'required',
+    note: 'Case intelligence & cross-reference engine: FTS5 unified search, entity link CRUD, MO pattern matching. See investigation.ts.' },
+    { prefix: '/api/radio', router: radio, auth: 'required',
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
@@ -454,6 +458,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assessor', router: assessor, auth: 'required',
     note: 'Salt Lake County Assessor lookup + apply: /parcels?address, /parcel/:no, POST /apply. KV-cached 30d; 503 when FIRECRAWL_API_KEY is unset.' },
+  { prefix: '/api/automation', router: automation, auth: 'required',
+    note: 'Case management automation rules: CRUD, toggle, execution log. Cron-driven SLA escalation and unassigned-alert rules.' },
   { prefix: '/api/assets', router: assets, auth: 'required',
     note: 'Asset/inventory management: equipment, checkouts, weapons, ammo, K9 records' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
