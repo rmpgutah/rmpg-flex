@@ -62,7 +62,9 @@ export function traceMiddleware(): MiddlewareHandler {
     // Reuse client-provided trace ID if present (for distributed tracing)
     const traceId = c.req.header('X-Trace-Id') || generateTraceId();
     c.set('traceId', traceId);
-    c.res.headers.set('X-Trace-Id', traceId);
+    // c.header defers to the final response so the header isn't lost
+    // when the handler replaces c.res via c.json() / c.text() etc.
+    c.header('X-Trace-Id', traceId);
     await next();
   };
 }
@@ -169,10 +171,16 @@ export interface ErrorLogEntry {
  * @param ctx    ExecutionContext for waitUntil (optional — when absent,
  *               the INSERT runs inline and may block the response)
  */
+// Structural ExecutionContext — matches both Hono's c.executionCtx and
+// the @cloudflare/workers-types type; avoids generic param mismatch.
+interface ExecCtx {
+  waitUntil(p: Promise<unknown>): void;
+}
+
 export function logErrorToDb(
   db: D1Database,
   entry: ErrorLogEntry,
-  ctx?: ExecutionContext,
+  ctx?: ExecCtx,
 ): void {
   const work = (async () => {
     try {

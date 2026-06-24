@@ -707,7 +707,7 @@ export default function ServePage() {
     try {
       await apiFetch('/process-server/reorder', {
         method: 'PUT',
-        body: JSON.stringify({ orderedIds: orderedJobIds }),
+        body: JSON.stringify({ items: orderedJobIds.map((id, i) => ({ id, sort_order: i })) }),
       });
       refreshJobs();
       fetchSavedRoute(); // Refresh saved route for Route tab

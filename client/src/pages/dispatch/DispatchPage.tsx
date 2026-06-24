@@ -32,7 +32,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../../utils/caseNumbers';
-import { formatPhoneInput } from '../../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -241,7 +241,7 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 
 function formatServiceType(val: string | undefined | null): string {
   if (!val) return '';
-  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return SERVICE_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 function formatCallDuration(ms: number): string {
@@ -258,7 +258,7 @@ function formatCallDuration(ms: number): string {
 
 function formatDocumentType(val: string | undefined | null): string {
   if (!val) return '';
-  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return DOCUMENT_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 export default function DispatchPage() {

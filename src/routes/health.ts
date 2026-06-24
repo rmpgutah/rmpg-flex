@@ -25,7 +25,8 @@ async function checkD1(db: D1Database): Promise<{ connected: boolean; version: s
   }
 }
 
-async function checkKV(kv: KVNamespace): Promise<{ connected: boolean; latencyMs?: number }> {
+async function checkKV(kv: KVNamespace | undefined): Promise<{ connected: boolean; latencyMs?: number }> {
+  if (!kv) return { connected: false };
   const start = Date.now();
   try {
     await kv.get('__health_probe');
@@ -35,7 +36,8 @@ async function checkKV(kv: KVNamespace): Promise<{ connected: boolean; latencyMs
   }
 }
 
-async function checkR2(bucket: R2Bucket, name: string): Promise<{ connected: boolean; latencyMs?: number }> {
+async function checkR2(bucket: R2Bucket | undefined, name: string): Promise<{ connected: boolean; latencyMs?: number }> {
+  if (!bucket) return { connected: false };
   const start = Date.now();
   try {
     await bucket.head('__health_probe');

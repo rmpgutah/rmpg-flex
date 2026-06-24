@@ -396,15 +396,19 @@ sv.get('/', async (c) => {
     where.push('(recipient_name LIKE ? OR case_number LIKE ? OR recipient_address LIKE ?)');
     args.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
-  // call_id is re-emitted AFTER q.* so the CASE wins on duplicate column
-  // names: serve_queue rows can reference hard-deleted calls (pre-soft-
-  // delete era) and ServePage fetches /dispatch/calls/:id for every
-  // non-null call_id — a dead ref produced a guaranteed 404 per render.
+  // FK reference guards: CASE expressions are re-emitted AFTER q.* so
+  // they win on duplicate column names. serve_queue rows can reference
+  // hard-deleted records (pre-soft-delete era) or records purged during
+  // data cleanup — a dead FK produces a guaranteed downstream error.
   const sql = `SELECT q.*, u.full_name AS officer_name,
-      CASE WHEN cfs.id IS NULL THEN NULL ELSE q.call_id END AS call_id
+      CASE WHEN cfs.id IS NULL THEN NULL ELSE q.call_id END AS call_id,
+      CASE WHEN p.id IS NULL THEN NULL ELSE q.recipient_person_id END AS recipient_person_id,
+      CASE WHEN prop.id IS NULL THEN NULL ELSE q.property_id END AS property_id
     FROM serve_queue q
     LEFT JOIN users u ON u.id = q.officer_id
     LEFT JOIN calls_for_service cfs ON cfs.id = q.call_id
+    LEFT JOIN persons p ON p.id = q.recipient_person_id
+    LEFT JOIN properties prop ON prop.id = q.property_id
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY
       CASE q.priority WHEN 'urgent' THEN 1 WHEN 'rush' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END,
@@ -573,7 +577,7 @@ sv.put('/:id', async (c) => {
 // ─────────────────────────────────────────────────────────────
 
 async function logAttempt(c: Context<Env>, defaultResult: string) {
-  const id = parseInt(c.req.param('id'), 10);
+  const id = parseInt(c.req.param('id') ?? '', 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const body = (await c.req.json().catch(() => ({}))) as any;
   const user = c.get('user') as { id: number } | undefined;
@@ -953,6 +957,81 @@ sv.delete('/:queueId/attempt/:attemptId', async (c) => {
     deleted_attempt_id: attemptId,
     attempt_count: newCount,
     queue_status: newStatus,
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Renumber attempts after deletion (admin/manager/supervisor only)
+// ─────────────────────────────────────────────────────────────
+// POST /:queueId/renumber-attempts
+//
+// After an admin deletes attempt #2 of 3, remaining attempts still
+// carry numbers 1 and 3 — gaps that can confuse notice-of-attempt
+// PDF generation and timeline displays. This endpoint re-sequences
+// all remaining attempts to contiguous numbers (1, 2, 3, …).
+//
+// Billing records are NOT affected — they reference attempt IDs,
+// not attempt numbers.
+sv.post('/:queueId/renumber-attempts', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const queueId = parseInt(c.req.param('queueId'), 10);
+  if (isNaN(queueId)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const user = c.get('user') as { id: number } | undefined;
+
+  const queue = await queryFirst<{ id: number }>(
+    db, 'SELECT id FROM serve_queue WHERE id = ?', queueId,
+  );
+  if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
+
+  const attempts = await query<{ id: number; attempt_number: number }>(
+    db,
+    'SELECT id, attempt_number FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC, id ASC',
+    queueId,
+  );
+
+  if (!attempts.length) {
+    return c.json({ success: true, renumbered: 0, message: 'No attempts to renumber' });
+  }
+
+  const updates: { id: number; old: number; new: number }[] = [];
+  const stmts: any[] = [];
+  for (let i = 0; i < attempts.length; i++) {
+    const newNum = i + 1;
+    if (attempts[i].attempt_number !== newNum) {
+      updates.push({ id: attempts[i].id, old: attempts[i].attempt_number, new: newNum });
+      stmts.push(
+        db.prepare('UPDATE serve_attempts SET attempt_number = ? WHERE id = ?')
+          .bind(newNum, attempts[i].id),
+      );
+    }
+  }
+
+  if (stmts.length > 0) {
+    await db.batch(stmts);
+    // Update attempt_count to reflect the actual count
+    await execute(db,
+      'UPDATE serve_queue SET attempt_count = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?',
+      attempts.length, queueId,
+    );
+  }
+
+  await execute(db,
+    `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'renumber', 'serve_attempts', ?, ?)`,
+    user?.id ?? null, queueId, JSON.stringify({
+      serve_queue_id: queueId,
+      total_attempts: attempts.length,
+      renumberings: updates,
+    }),
+  );
+
+  return c.json({
+    success: true,
+    queue_id: queueId,
+    attempt_count: attempts.length,
+    renumbered: updates.length,
+    changes: updates,
   });
 });
 
