@@ -278,7 +278,7 @@ public struct RecordsTabView: View {
                 Spacer()
                 Image(systemName: "magnifyingglass").font(.system(size: 44))
                     .foregroundStyle(theme.colors.textMuted)
-                Text("No results for "\(vm.query)"")
+                Text("No results for \"\(vm.query)\"")
                     .font(.headline).foregroundStyle(theme.colors.textPrimary)
                 Spacer()
             }
