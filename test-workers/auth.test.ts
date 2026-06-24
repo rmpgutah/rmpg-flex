@@ -4,13 +4,13 @@
 import { env } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { Hono } from 'hono';
-import { authMiddleware, authMiddlewareWithOptionalAuth, readOnlyRoleGuard, requireRole } from '../src/middleware/auth';
+import { authMiddleware, readOnlyRoleGuard, requireRole } from '../src/middleware/auth';
 
 describe('auth middleware — unauthenticated access', () => {
   it('returns 401 when Authorization header is missing', async () => {
     // Apply authMiddleware to an endpoint and verify 401 without a token
     const authApp = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
-    authApp.use('*', (await import('../src/middleware/auth')).authMiddleware);
+    authApp.use('*', authMiddleware);
     authApp.get('/profile', (c) => c.json({ ok: true }));
 
     const res = await authApp.request('/profile', {}, env as unknown as Record<string, unknown>);
