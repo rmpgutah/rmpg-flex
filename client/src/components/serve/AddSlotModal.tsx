@@ -9,12 +9,12 @@ interface AddSlotModalProps {
   visible: boolean;
   queueId: string;
   officers: any[];
-  onSave: (slot: any) => Promise<<voidvoid>;
+  onSave: (slot: any) => Promise<void>;
   onCancel: () => void;
   onClose: () => void;
 }
 
-const AddSlotModal: React.FC<<AddAddSlotModalProps> = ({
+const AddSlotModal: React.FC<AddSlotModalProps> = ({
   visible,
   queueId,
   officers,
@@ -59,10 +59,10 @@ const AddSlotModal: React.FC<<AddAddSlotModalProps> = ({
   };
 
   return (
-    <<ModalModal
+    <Modal
       title={
         <span>
-          <<PlusPlusOutlined /> Add New Attempt Slot
+          <PlusOutlined /> Add New Attempt Slot
         </span>
       }
       open={visible}
@@ -72,61 +72,61 @@ const AddSlotModal: React.FC<<AddAddSlotModalProps> = ({
       destroyOnClose
       width={600}
     >
-      <<FormForm form={form} layout="vertical" initialValues={{ notify_before_secs: 1800 }}>
-        <<FormForm.Item
+      <Form form={form} layout="vertical" initialValues={{ notify_before_secs: 1800 }}>
+        <Form.Item
           name="scheduled_date"
-          label={<<spanspan><<CalendarCalendarOutlined /> Scheduled Date</span>}
+          label={<span><CalendarOutlined /> Scheduled Date</span>}
           rules={[{ required: true, message: 'Please select a date' }]}
         >
-          <<DatePickerDatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+          <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
         </Form.Item>
 
-        <<divdiv style={{ display: 'flex', gap: '16px' }}>
-          <<FormForm.Item
+        <div style={{ display: 'flex', gap: '16px' }}>
+          <Form.Item
             name="window_start"
-            label={<<spanspan><<ClockClockCircleOutlined /> Window Start</span>}
+            label={<span><ClockCircleOutlined /> Window Start</span>}
             rules={[{ required: true, message: 'Required' }]}
             style={{ flex: 1 }}
           >
-            <<TimeTimePicker format="HH:mm" style={{ width: '100%' }} />
+            <TimePicker format="HH:mm" style={{ width: '100%' }} />
           </Form.Item>
 
-          <<FormForm.Item
+          <Form.Item
             name="window_end"
-            label={<<spanspan><<ClockClockCircleOutlined /> Window End</span>}
+            label={<span><ClockCircleOutlined /> Window End</span>}
             rules={[{ required: true, message: 'Required' }]}
             style={{ flex: 1 }}
           >
-            <<TimeTimePicker format="HH:mm" style={{ width: '100%' }} />
+            <TimePicker format="HH:mm" style={{ width: '100%' }} />
           </Form.Item>
         </div>
 
-        <<FormForm.Item
+        <Form.Item
           name="officer_id"
-          label={<<spanspan><<UserUserOutlined /> Assigned Officer</span>}
+          label={<span><UserOutlined /> Assigned Officer</span>}
           rules={[{ required: true, message: 'Please assign an officer' }]}
         >
-          <<SelectSelect placeholder="Select an officer" optionFilterProp="label">
+          <Select placeholder="Select an officer" optionFilterProp="label">
             {officers.map((o) => (
-              <<SelectSelect.Option key={o.id} value={o.id} label={o.name}>
+              <Select.Option key={o.id} value={o.id} label={o.name}>
                 {o.name}
               </Select.Option>
             ))}
           </Select>
         </Form.Item>
 
-        <<FormForm.Item
+        <Form.Item
           name="window_label"
-          label={<<spanspan><<FileFileTextOutlined /> Focus / Label (Optional)</span>}
+          label={<span><FileTextOutlined /> Focus / Label (Optional)</span>}
         >
-          <<InputInput placeholder="e.g. Evening - High Residential Hit Rate" />
+          <Input placeholder="e.g. Evening - High Residential Hit Rate" />
         </Form.Item>
 
-        <<FormForm.Item
+        <Form.Item
           name="notify_before_secs"
           label="Notify Before Window (seconds)"
         >
-          <<SelectSelect
+          <Select
             options={[
               { value: 900, label: '15 mins' },
               { value: 1800, label: '30 mins' },
