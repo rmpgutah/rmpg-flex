@@ -116,6 +116,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   setActiveFormKey('PS-300');
   setActiveCaseNumber(data.caseNumber || `JOB-${data.jobId}`);
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
@@ -179,26 +180,20 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   }
 
   // ── Section 4: Service Instructions & Notes ────────────────
-  if (data.serviceInstructions || data.notes) {
+  // Always render this section so it's available as a field notes space.
+  // Use addFieldPair for consistent label/value rendering — avoids the
+  // raw doc.text() Y-calc drift that garbled the label row in early builds.
+  {
     y = checkPageBreak(doc, y, 20);
     const sec = openAutoSection(doc, '4. Service Instructions & Notes', y); y = sec.contentY;
     if (data.serviceInstructions) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text('SERVICE INSTRUCTIONS', lx, y + getCapHeight(FONT.SIZE_FIELD_LABEL));
-      y += SPACING.LG;
-      y = addWrappedText(doc, sanitizePdfText(data.serviceInstructions), lx, y, ffw, FONT.SIZE_FIELD_VALUE ?? 9);
-      y += SPACING.SM;
+      y = addFieldPair(doc, 'Service Instructions', sanitizePdfText(data.serviceInstructions), lx, y, ffw, 40);
     }
     if (data.notes) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text('NOTES', lx, y + getCapHeight(FONT.SIZE_FIELD_LABEL));
-      y += SPACING.LG;
-      y = addWrappedText(doc, sanitizePdfText(data.notes), lx, y, ffw, FONT.SIZE_FIELD_VALUE ?? 9);
-      y += SPACING.SM;
+      y = addFieldPair(doc, 'Notes', sanitizePdfText(data.notes), lx, y, ffw, 20);
+    }
+    if (!data.serviceInstructions && !data.notes) {
+      y = addFieldPair(doc, 'Service Instructions', 'None specified.', lx, y, ffw);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -262,25 +257,39 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   }
 
   // ── Section 6: Skip Trace Results ─────────────────────────
-  if (data.skipTraces && data.skipTraces.length > 0) {
+  // Always rendered — shows "None conducted" when no traces, keeping
+  // section numbering consecutive for a professional look.
+  {
+    const traceCount = data.skipTraces?.length ?? 0;
+    const traceLabel = traceCount > 0
+      ? `6. Skip Trace Results  (${traceCount} search${traceCount !== 1 ? 'es' : ''})`
+      : '6. Skip Trace Results';
     y = checkPageBreak(doc, y, 30);
-    const sec = openAutoSection(doc, `6. Skip Trace Results  (${data.skipTraces.length} searches)`, y); y = sec.contentY;
+    const sec = openAutoSection(doc, traceLabel, y); y = sec.contentY;
 
-    const cols = getProportionalColumns(doc, [1.5, 1.5, 0.7, 4]);
-    const headers = [
-      { label: 'DATE',      x: cols[0] },
-      { label: 'SOURCE',    x: cols[1] },
-      { label: '# ADDRS',   x: cols[2] },
-      { label: 'ADDRESSES', x: cols[3] },
-    ];
-    const rows = (data.skipTraces || []).map(t => [
-      sanitizePdfText(t.date || '—'),
-      sanitizePdfText((t.searchType || '').toUpperCase()),
-      String(t.addressesFound),
-      sanitizePdfText(t.addressesTried.join('; ') || 'None'),
-    ]);
-    y = addTableWithShading(doc, headers, rows, y, cols);
-    y += SPACING.SM;
+    if (traceCount === 0) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE ?? 9);
+      doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text('No skip traces conducted.', lx, y + getCapHeight(FONT.SIZE_FIELD_VALUE ?? 9));
+      y += SPACING.LG + SPACING.SM;
+    } else {
+      const cols = getProportionalColumns(doc, [1.5, 1.5, 0.7, 4]);
+      const headers = [
+        { label: 'DATE',      x: cols[0] },
+        { label: 'SOURCE',    x: cols[1] },
+        { label: '# ADDRS',   x: cols[2] },
+        { label: 'ADDRESSES', x: cols[3] },
+      ];
+      const rows = (data.skipTraces ?? []).map(t => [
+        sanitizePdfText(t.date || '—'),
+        sanitizePdfText((t.searchType || '').toUpperCase()),
+        String(t.addressesFound),
+        sanitizePdfText(t.addressesTried.join('; ') || 'None'),
+      ]);
+      y = addTableWithShading(doc, headers, rows, y, cols);
+      y += SPACING.SM;
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -326,7 +335,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
         caseNumber: data.caseNumber || `JOB-${data.jobId}`,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
         officer: data.officerName,
         badge: data.officerBadge,
       },
