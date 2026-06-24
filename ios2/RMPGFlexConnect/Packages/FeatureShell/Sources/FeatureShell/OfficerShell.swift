@@ -7,12 +7,12 @@ import FeatureQuickActions
 import FeatureCFS
 
 public struct OfficerShell: View {
-    // Kept for tests (ShellTabsTests.testOfficerHasFiveTabs etc.)
+    // Static array kept for ShellTabsTests
     public static let tabs: [TabSpec] = [
         TabSpec(id: "home",    title: "Home",    systemImage: "house.fill",            milestone: "M1"),
         TabSpec(id: "cfs",     title: "CFS",     systemImage: "list.bullet.rectangle", milestone: "M1"),
         TabSpec(id: "scan",    title: "Scan ID", systemImage: "camera.viewfinder",     milestone: "M1"),
-        TabSpec(id: "reports", title: "Reports", systemImage: "doc.text",              milestone: "M1"),
+        TabSpec(id: "records", title: "Records", systemImage: "doc.text.magnifyingglass", milestone: "M1"),
         TabSpec(id: "more",    title: "More",    systemImage: "ellipsis.circle",       milestone: "M1"),
     ]
 
@@ -41,8 +41,8 @@ public struct OfficerShell: View {
             ScanTabView(apiClient: apiClient)
                 .tabItem { Label("Scan ID", systemImage: "camera.viewfinder") }
 
-            PlaceholderScreen(title: "Reports", milestone: "M1")
-                .tabItem { Label("Reports", systemImage: "doc.text") }
+            RecordsTabView(client: apiClient)
+                .tabItem { Label("Records", systemImage: "doc.text.magnifyingglass") }
 
             MoreTabView(session: session)
                 .tabItem { Label("More", systemImage: "ellipsis.circle") }
@@ -51,7 +51,7 @@ public struct OfficerShell: View {
     }
 }
 
-// Kept for tests (ShellTabsTests references it)
+// TabSpec kept for tests
 public struct TabSpec: Identifiable, Equatable, Sendable {
     public let id: String
     public let title: String
@@ -59,9 +59,7 @@ public struct TabSpec: Identifiable, Equatable, Sendable {
     public let milestone: String
 
     public init(id: String, title: String, systemImage: String, milestone: String) {
-        self.id = id
-        self.title = title
-        self.systemImage = systemImage
-        self.milestone = milestone
+        self.id = id; self.title = title
+        self.systemImage = systemImage; self.milestone = milestone
     }
 }
