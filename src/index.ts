@@ -701,6 +701,16 @@ export default {
         .then((r) => { const n = r?.meta?.changes ?? 0; if (n) console.log(`[sessions] purged ${n} dead session row(s)`); })
         .catch((err) => console.error('Sessions purge failed:', err)),
     );
+    // Auto skip-trace weekly sweep — retries stale jobs whose prior
+    // auto skip-trace found no results (at least 7 days between retries).
+    // Must run before the serve-nudge sweep to avoid a stale nudge from
+    // this cycle landing on the same job.
+    ctx.waitUntil(
+      import('./utils/autoSkipTraceSweep')
+        .then(({ sweepAutoSkipTraces }) => sweepAutoSkipTraces(env.DB, env))
+        .then((n) => { if (n) console.log(`[auto-skip-trace] ${n} skip-trace(s) triggered`); })
+        .catch((err) => console.error('[auto-skip-trace] sweep failed:', err)),
+    );
     // Process-serve needs-attention sweep — raises notifications + supervisor
     // email digest for overdue/approaching/diligence-gap/unassigned jobs.
     // Deduped by serve_nudges (per-job per-condition renotify window).

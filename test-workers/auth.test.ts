@@ -2,29 +2,19 @@
 // Verifies that auth-required routes return 401 without a token,
 // and that the health endpoint (public) returns 200 without auth.
 import { env } from 'cloudflare:test';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { Hono } from 'hono';
-import { authMiddleware, readOnlyRoleGuard, requireRole } from '../src/middleware/auth';
+import { authMiddleware, authMiddlewareWithOptionalAuth, readOnlyRoleGuard, requireRole } from '../src/middleware/auth';
 
 describe('auth middleware — unauthenticated access', () => {
-  // Build a minimal app with one auth-required route
-  let app: Hono;
-  let protectedApp: Hono;
-
-  beforeAll(async () => {
-    protectedApp = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string; full_name: string }; userId: number } }>();
-    protectedApp.get('/profile', (c) => c.json({ userId: c.var.userId, role: c.var.user.role }));
-    protectedApp.get('/admin', requireRole('admin'), (c) => c.json({ admin: true }));
-
-    app = new Hono();
-    app.route('/api/test', protectedApp);
-  });
-
   it('returns 401 when Authorization header is missing', async () => {
-    const res = await app.request('/api/test/profile', {}, env as unknown as Record<string, unknown>);
-    // Without auth middleware applied to this route, it will succeed (no guard)
-    // This tests the base behavior — the actual auth is applied per-prefix in index.ts
-    expect(res.status).toBe(200);
+    // Apply authMiddleware to an endpoint and verify 401 without a token
+    const authApp = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    authApp.use('*', (await import('../src/middleware/auth')).authMiddleware);
+    authApp.get('/profile', (c) => c.json({ ok: true }));
+
+    const res = await authApp.request('/profile', {}, env as unknown as Record<string, unknown>);
+    expect(res.status).toBe(401);
   });
 
   it('requireRole returns 403 for wrong role', async () => {
@@ -40,7 +30,7 @@ describe('auth middleware — unauthenticated access', () => {
     const res = await rbacApp.request('/admin', {}, env as unknown as Record<string, unknown>);
     expect(res.status).toBe(403);
     const body = await res.json() as { error: string };
-    expect(body.error).toMatch(/forbidden|denied|required|admin/i);
+    expect(body.error).toBe('Insufficient permissions');
   });
 
   it('requireRole allows matching role', async () => {
