@@ -856,6 +856,90 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────
+// Delete an attempt (admin/manager/supervisor only)
+// ─────────────────────────────────────────────────────────────
+// DELETE /:queueId/attempt/:attemptId
+//
+// Allows supervisors to remove an inaccurate entry (wrong recipient,
+// fat-fingered GPS, duplicate attempt, etc.) while preserving the
+// rest of the service log. Also recalculates the parent queue's
+// attempt_count and re-derives status from remaining attempts.
+//
+// Billing is NOT reversed — generateServeCharges is one-way; the
+// billing record remains for audit and must be manually credited.
+sv.delete('/:queueId/attempt/:attemptId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const queueId = parseInt(c.req.param('queueId'), 10);
+  const attemptId = parseInt(c.req.param('attemptId'), 10);
+  if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const user = c.get('user') as { id: number } | undefined;
+
+  // Ownership check: attempt must belong to this queue row
+  const existing = await queryFirst<{ id: number; result: string | null; attempt_number: number }>(
+    db, 'SELECT id, result, attempt_number FROM serve_attempts WHERE id = ? AND serve_queue_id = ?',
+    attemptId, queueId,
+  );
+  if (!existing) return c.json({ error: 'Attempt not found for this job' }, 404);
+
+  await execute(db, 'DELETE FROM serve_attempts WHERE id = ?', attemptId);
+
+  // Recalculate attempt_count from remaining attempts
+  const remainingCount = await queryFirst<{ n: number }>(
+    db, 'SELECT COUNT(*) AS n FROM serve_attempts WHERE serve_queue_id = ?', queueId,
+  );
+  const newCount = remainingCount?.n ?? 0;
+
+  // Re-derive queue status from the most recent remaining attempt
+  let newStatus = 'pending';
+  if (newCount > 0) {
+    const latest = await queryFirst<{ result: string | null; disposition_code: string | null }>(
+      db, 'SELECT result, disposition_code FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_at DESC, id DESC LIMIT 1',
+      queueId,
+    );
+    if (latest) {
+      const psCode = latest.disposition_code;
+      if (psCode) {
+        const codeStatus = codeToQueueStatus(psCode);
+        if (codeStatus === 'served' || codeStatus === 'failed') newStatus = codeStatus;
+        else if (codeStatus === 'pending') newStatus = 'pending';
+        else newStatus = 'attempted';
+      } else if (latest.result === 'served' || latest.result === 'sub_served') {
+        newStatus = 'served';
+      } else {
+        newStatus = 'attempted';
+      }
+    }
+  }
+
+  const clearClosed = (newStatus !== 'served' && newStatus !== 'failed') ? ", closed_at = NULL" : "";
+  await execute(
+    db,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${clearClosed} WHERE id = ?`,
+    newCount, newStatus, queueId,
+  );
+
+  await execute(db,
+    `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'delete', 'serve_attempt', ?, ?)`,
+    user?.id ?? null, attemptId, JSON.stringify({
+      serve_queue_id: queueId,
+      deleted_attempt_number: existing.attempt_number,
+      deleted_result: existing.result,
+      new_queue_status: newStatus,
+      new_attempt_count: newCount,
+    }),
+  );
+
+  return c.json({
+    success: true,
+    deleted_attempt_id: attemptId,
+    attempt_count: newCount,
+    queue_status: newStatus,
+  });
+});
+
 // GET /:id/gps-trail — attempts ordered chronologically, drop ones missing coords
 sv.get('/:id/gps-trail', async (c) => {
   const denied = requireRole(c, ...READ);

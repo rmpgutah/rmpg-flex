@@ -687,6 +687,17 @@ export default function ServePage() {
     return result;
   }, [attemptJob, refreshJobs, setJobs, addToast]);
 
+  const handleDeleteAttempt = useCallback(async (queueId: number, attempt: ServeAttempt) => {
+    try {
+      await apiFetch(`/process-server/${queueId}/attempt/${attempt.id}`, { method: 'DELETE' });
+      setEditAttempt(null);
+      addToast(`Attempt #${attempt.attempt_number} deleted`, 'success');
+      setTimeout(refreshJobs, 300);
+    } catch (e) {
+      addToast(`Could not delete attempt: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    }
+  }, [addToast, refreshJobs]);
+
   const handleRouteOptimized = useCallback(async (
     orderedJobIds: number[],
     data: { totalDistance: number; totalDuration: number; fuelCost: number },
@@ -1888,6 +1899,7 @@ export default function ServePage() {
           queueId={editAttempt.jobId}
           attempt={editAttempt.attempt}
           onSaved={refreshJobs}
+          onDelete={canManage ? handleDeleteAttempt : undefined}
         />
       )}
 
