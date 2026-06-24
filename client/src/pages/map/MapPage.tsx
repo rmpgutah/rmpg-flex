@@ -133,6 +133,11 @@ import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, 
 import { applyRmpgBasemap, type BasemapVariant } from '../../utils/mapboxBasemap';
 import MapToolbar, { type MapTool } from '../../components/MapToolbar';
 import DrawGeofenceTool from './components/DrawGeofenceTool';
+import AnnotationTool from './components/AnnotationTool';
+import BufferRingTool from './components/BufferRingTool';
+import RulerTool from './components/RulerTool';
+import GpsReplayTool from './components/GpsReplayTool';
+import NavOverlayTool from './components/NavOverlayTool';
 import { useBuildingsLayer } from './components/BuildingsLayer';
 import MinimapControl from './components/MinimapControl';
 import { useScaleControl, useFullscreenControl } from './components/ScaleFullscreenControls';
@@ -3698,6 +3703,11 @@ export default function MapPage() {
   // MapToolbar tool definitions — flag=null means always visible
   const MAP_TOOLS: MapTool[] = [
     { id: 'draw', icon: '✏️', label: 'Draw Geofence', flag: 'draw', component: DrawGeofenceTool },
+    { id: 'annotations', icon: '📍', label: 'Annotations', flag: 'annotations', component: AnnotationTool },
+    { id: 'buffer', icon: '⭕', label: 'Buffer Rings', flag: 'buffer_rings', component: BufferRingTool },
+    { id: 'ruler', icon: '📏', label: 'Ruler', flag: 'ruler', component: RulerTool },
+    { id: 'gps_replay', icon: '▶️', label: 'GPS Replay', flag: 'gps_replay', component: GpsReplayTool },
+    { id: 'nav', icon: '🧭', label: 'Nav Overlay', flag: 'nav_overlay', component: NavOverlayTool },
     {
       id: 'buildings',
       icon: '🏢',
