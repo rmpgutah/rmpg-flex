@@ -4,21 +4,19 @@ import CoreAPI
 import FeatureDuty
 import FeatureCFS
 
-/// Half-sheet grid of all `QuickActionsRegistry.all`. Tap a tile → for the two
-/// implemented actions, presents a real screen. The other six show
-/// `PendingActionSheet` until their handlers ship.
 @MainActor
 public struct QuickActionsSheetView: View {
     @Environment(\.theme) private var theme
     @State private var tapped: QuickAction?
 
-    /// The shared duty state lives at the app level; pass it down via the env.
-    /// For now we hold one locally so the Quick Actions sheet can demo end-to-end.
-    @State private var dutyState = DutyState()
+    @Bindable private var dutyState: DutyState
     private let apiClient: APIClient
 
-    public init(apiClient: APIClient = APIClient(baseURL: URL(string: "https://api.rmpgutah.us")!)) {
+    public init(apiClient: APIClient = APIClient(baseURL: URL(string: "https://api.rmpgutah.us")!),
+                dutyState: DutyState? = nil) {
         self.apiClient = apiClient
+        // Use the provided shared state, or create a local one for standalone use.
+        _dutyState = Bindable(wrappedValue: dutyState ?? DutyState())
     }
 
     private let columns = [
