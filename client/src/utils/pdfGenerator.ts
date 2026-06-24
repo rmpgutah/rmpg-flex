@@ -1298,8 +1298,13 @@ export function addSignatureBlock(
     if (sigData!.printedName) doc.text(sanitizePdfText(sigData!.printedName).toUpperCase(), x + SPACING.MD, valY);
     if (sigData!.badgeNumber) doc.text(sanitizePdfText(sigData!.badgeNumber).toUpperCase(), x + colW + SPACING.MD, valY);
     const now = new Date();
-    const pad2 = (n: number) => String(n).padStart(2, '0');
-    const dateStr = sigData!.date || `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+    // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
+    // Legal documents require the correct local timestamp — UTC drift corrupts records.
+    const dateStr = sigData!.date || now.toLocaleString('en-US', {
+      timeZone: 'America/Denver',
+      month: '2-digit', day: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).replace(', ', ' ');
     doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
   }
 
