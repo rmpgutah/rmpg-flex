@@ -5,14 +5,15 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Edit2, Flame, Download, Maximize2, Minimize2, Loader2, AlertTriangle,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, SkipBack, SkipForward,
   Play, Pause, Volume2, VolumeX, Map, Shield, FileText, Link2, Car, User, Gauge,
-  Copy, Check,
+  Copy, Check, Video,
 } from 'lucide-react';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -164,6 +165,7 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
       const x = ((p.timestamp - startMs) / totalMs) * 100;
       const y = h - (speeds[i] / maxSpeed) * (h - 4);
       const mph = speeds[i];
+      // Speed colors: red >65, amber >45, green ≤45
       const color = mph > 65 ? '#ef4444' : mph > 45 ? '#f59e0b' : '#22c55e';
       return { x, y, color };
     });
@@ -238,21 +240,14 @@ function HudSection({ title, icon: Icon, children, defaultOpen = false, isOpen, 
 export default function DashCamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { addToast } = useToast();
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
+  const isAdminOrManager = ['admin', 'manager'].includes(user?.role || '');
 
   // Set document title
-  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to go back
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { navigate(-1); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [navigate]);
+  useEffect(() => { document.title = 'Dash Cam Player — RMPG Flex'; }, []);
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -260,6 +255,8 @@ export default function DashCamDetailPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const downloadRef = useRef<HTMLAnchorElement>(null);
+  const deepLinkRef = useRef(false);
 
   // State
   const [video, setVideo] = useState<any>(null);
@@ -283,6 +280,10 @@ export default function DashCamDetailPage() {
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [mapRecoverNonce, setMapRecoverNonce] = useState(0);
   const mapRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
+  // ConfirmDialog state — burn HUD overlay
+  const [burnConfirmOpen, setBurnConfirmOpen] = useState(false);
+  const [burning, setBurning] = useState(false);
 
   // Section open states
   const [sections, setSections] = useState({
@@ -314,8 +315,9 @@ export default function DashCamDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<any>(`/fleet/dashcam-videos/${id}`);
-      setVideo(data);
+      const res = await apiFetch<any>(`/fleet/dashcam-videos/${id}`);
+      // Unwrap .data envelope if present
+      setVideo(res?.data ?? res);
     } catch (err: any) {
       setError(err?.message || 'Video not found');
     } finally {
@@ -326,12 +328,38 @@ export default function DashCamDetailPage() {
   const fetchNeighbors = useCallback(async () => {
     if (!id) return;
     try {
-      const data = await apiFetch<{ prev?: number; next?: number }>(`/fleet/dashcam-videos/${id}/neighbors`);
+      const res = await apiFetch<any>(`/fleet/dashcam-videos/${id}/neighbors`);
+      const data: { prev?: number; next?: number } = res?.data ?? res;
       setNeighbors(data);
     } catch { setNeighbors(null); }
   }, [id]);
 
   useEffect(() => { fetchVideo(); fetchNeighbors(); }, [fetchVideo, fetchNeighbors]);
+
+  // ── Deep-link: ?clip_id=<id> ─────────────────
+  // Navigates to the referenced clip and strips the param.
+
+  useEffect(() => {
+    if (deepLinkRef.current) return;
+    const clipId = searchParams.get('clip_id');
+    if (!clipId) return;
+    deepLinkRef.current = true;
+    const numId = parseInt(clipId, 10);
+    if (!numId || isNaN(numId)) {
+      addToast('Clip not found', 'error');
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('clip_id'); return n; }, { replace: true });
+      return;
+    }
+    if (String(numId) !== id) {
+      // Navigate to the targeted clip
+      navigate(`/dash-cameras/${numId}`, { replace: true });
+      return;
+    }
+    // Same page — just strip param and toast
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('clip_id'); return n; }, { replace: true });
+    addToast(`Clip #${numId} loaded`, 'info');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── GPS Track ────────────────────────────────
 
@@ -476,27 +504,12 @@ export default function DashCamDetailPage() {
     });
   }, [mapSectionOpen, video, gpsTrack, mapRecoverNonce]);
 
-  // Tear down the map + recovery listener on unmount (kept separate so a
-  // video/gpsTrack change doesn't destroy the persisted map instance above).
+  // Tear down the map + recovery listener on unmount
   useEffect(() => () => {
     if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
     try { markerRef.current?.remove(); } catch { /* gone */ }
     markerRef.current = null;
     if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
-  }, []);
-
-  // Cleanup Mapbox on unmount
-  useEffect(() => {
-    return () => {
-      if (markerRef.current) {
-        markerRef.current.remove();
-        markerRef.current = null;
-      }
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-    };
   }, []);
 
   // Update marker position during playback
@@ -576,13 +589,19 @@ export default function DashCamDetailPage() {
     finally { setClassifying(false); }
   };
 
-  const handleBurn = async () => {
+  const handleBurnConfirmed = async () => {
     if (!video) return;
+    setBurning(true);
     try {
       await apiFetch(`/fleet/dashcam-videos/${video.id}/burn`, { method: 'POST' });
       addToast('HUD burn started', 'success');
+      setBurnConfirmOpen(false);
       fetchVideo();
-    } catch (err: any) { addToast(err?.message || 'Burn failed', 'error'); }
+    } catch (err: any) {
+      addToast(err?.message || 'Burn failed', 'error');
+    } finally {
+      setBurning(false);
+    }
   };
 
   const handleEditSave = async (videoId: number, data: DashCamVideoEditData) => {
@@ -604,6 +623,23 @@ export default function DashCamDetailPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       // Don't capture when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Esc cascade: burnConfirm → editModal → fullscreen → back
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (burnConfirmOpen) { setBurnConfirmOpen(false); return; }
+        if (editingVideo) { setEditingVideo(null); return; }
+        if (isFullscreen) { toggleFullscreen(); return; }
+        navigate(-1);
+        return;
+      }
+
+      // N shortcut — primary action: trigger download of original clip
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        downloadRef.current?.click();
+        return;
+      }
 
       switch (e.key) {
         case ' ':
@@ -661,7 +697,11 @@ export default function DashCamDetailPage() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [togglePlayPause, skip, toggleFullscreen, setSpeed]);
+  }, [
+    togglePlayPause, skip, toggleFullscreen, setSpeed,
+    burnConfirmOpen, editingVideo, isFullscreen, navigate,
+    playbackRate,
+  ]);
 
   // ── Derived Values ───────────────────────────
 
@@ -672,39 +712,26 @@ export default function DashCamDetailPage() {
   const incidentLink = links.find((l: any) => l.entity_type === 'call');
   const otherLinks = links.filter((l: any) => l.entity_type !== 'call');
 
-  // ── Loading / Error ──────────────────────────
-
-  // ── Render ────────────────────────────────────
-
-  // Set document title
-  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setEditingVideo(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+  // ── Loading / Error / Empty States ──────────────────────────
 
   if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ height: 'calc(100dvh - 120px)' }}>
-        <div className="flex items-center gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" />
-          <span className="text-[11px] text-rmpg-400">Loading video...</span>
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading" />
+          <span className="text-[11px] text-rmpg-400">Loading video&hellip;</span>
         </div>
       </div>
     );
   }
 
-  if (error || !video) {
+  if (error) {
     return (
       <div className="flex items-center justify-center" style={{ height: 'calc(100dvh - 120px)' }}>
         <div className="text-center">
           <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-          <p className="text-xs text-rmpg-400 mb-3">{error || 'Video not found'}</p>
+          <p className="text-xs text-rmpg-400 mb-1">{error}</p>
+          <p className="text-[10px] text-rmpg-500 mb-3">The video could not be loaded.</p>
           <button type="button" onClick={() => navigate('/dash-cameras')}
             className="toolbar-btn text-[10px] px-4 py-1.5 inline-flex items-center gap-1">
             <ChevronLeft className="w-3 h-3" /> Back to Gallery
@@ -714,6 +741,22 @@ export default function DashCamDetailPage() {
     );
   }
 
+  if (!video) {
+    return (
+      <div className="flex items-center justify-center" style={{ height: 'calc(100dvh - 120px)' }}>
+        <div className="text-center">
+          <Video className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
+          <p className="text-xs text-rmpg-400 mb-3">No video found for this ID.</p>
+          <button type="button" onClick={() => navigate('/dash-cameras')}
+            className="toolbar-btn text-[10px] px-4 py-1.5 inline-flex items-center gap-1">
+            <ChevronLeft className="w-3 h-3" /> Back to Gallery
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render ─────────────────────────────────────
 
   return (
     <div id="hud-container" className="relative flex" style={{ height: 'calc(100dvh - 120px)', background: '#000' }}>
@@ -1082,7 +1125,8 @@ export default function DashCamDetailPage() {
                     <span className={`text-[10px] font-bold uppercase ${CLASSIFICATION_BADGE[video.classification] || ''}`}>
                       {video.classification}
                     </span>
-                    {canManage && (
+                    {/* Role gate: admin/manager only may reclassify */}
+                    {isAdminOrManager && (
                       <div className="flex gap-0.5 ml-1">
                         {(['routine', 'evidence', 'flagged', 'restricted'] as const).map(cls => (
                           <button type="button" key={cls} onClick={() => handleClassify(cls)} disabled={classifying}
@@ -1159,8 +1203,9 @@ export default function DashCamDetailPage() {
               <span>{formatDuration(video.duration_seconds)}</span>
             </div>
 
-            {canManage && (
-              <button type="button" onClick={handleBurn}
+            {/* Role gate: admin/manager only for burn */}
+            {isAdminOrManager && (
+              <button type="button" onClick={() => setBurnConfirmOpen(true)}
                 disabled={video.burn_status === 'processing' || video.burn_status === 'pending'}
                 className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 disabled:opacity-30">
                 <Flame className="w-3.5 h-3.5" /> Burn HUD Overlay
@@ -1176,8 +1221,13 @@ export default function DashCamDetailPage() {
               {linkCopied ? <><Check className="w-3.5 h-3.5 text-green-400" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Link</>}
             </button>
 
+            {/* Hidden anchor target for N-shortcut — same href as the visible button below */}
+            {/* eslint-disable-next-line jsx-a11y/anchor-has-content */}
+            <a ref={downloadRef} href={streamUrl} download aria-hidden="true" tabIndex={-1} className="sr-only" />
+
             <a href={streamUrl} download
-              className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
+              className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline"
+              title="Download original (N)">
               <Download className="w-3.5 h-3.5" /> Download Original
             </a>
 
@@ -1222,6 +1272,24 @@ export default function DashCamDetailPage() {
         video={editingVideo}
         onSave={handleEditSave}
         isSubmitting={editSubmitting}
+      />
+
+      {/* ── Burn HUD Confirm Dialog ── */}
+      <ConfirmDialog
+        isOpen={burnConfirmOpen}
+        onClose={() => setBurnConfirmOpen(false)}
+        onConfirm={handleBurnConfirmed}
+        title="Burn HUD Overlay"
+        message="This will permanently burn the on-screen HUD overlay (GPS, speed, timestamp, unit) into a new copy of the video. The original is preserved. Continue?"
+        details={
+          <>
+            <div>Clip: {video.unit_call_sign || '—'} &middot; {formatDate(video.recorded_at)}</div>
+            {video.case_number && <div>Case #: {video.case_number}</div>}
+          </>
+        }
+        confirmLabel="Start Burn"
+        confirmVariant="warning"
+        isLoading={burning}
       />
     </div>
   );

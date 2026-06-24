@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useSearchParams } from 'react-router-dom';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import SettingsPage from '../SettingsPage';
 
@@ -102,17 +102,31 @@ describe('SettingsPage', () => {
       return 0;
     });
 
-    window.history.replaceState(null, '', '/settings?section=tones');
-    render(<MemoryRouter initialEntries={["/settings?section=tones"]}><SettingsPage /></MemoryRouter>);
+    // Capture the MemoryRouter's location after the section param is consumed.
+    // useSearchParams / setSearchParams update the router's in-memory location;
+    // they do NOT touch window.location.search (MemoryRouter is sandboxed).
+    let capturedSearch: string | null = null;
+    function LocationSpy() {
+      const [sp] = useSearchParams();
+      capturedSearch = sp.toString();
+      return null;
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/settings?section=tones']}>
+        <SettingsPage />
+        <LocationSpy />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
-    // The param should be stripped from the URL after consumption.
-    expect(window.location.search).toBe('');
+    // The param should be stripped from the router URL after consumption.
+    await waitFor(() => expect(capturedSearch).toBe(''));
 
     rafSpy.mockRestore();
   });
 
-  it('ignores unknown ?section= values without scrolling', () => {
+  it('ignores unknown ?section= values without scrolling', async () => {
     const scrollSpy = vi.fn();
     Element.prototype.scrollIntoView = scrollSpy as unknown as typeof Element.prototype.scrollIntoView;
     const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
@@ -120,12 +134,23 @@ describe('SettingsPage', () => {
       return 0;
     });
 
-    window.history.replaceState(null, '', '/settings?section=bogus');
-    render(<MemoryRouter initialEntries={["/settings?section=bogus"]}><SettingsPage /></MemoryRouter>);
+    let capturedSearch: string | null = null;
+    function LocationSpy() {
+      const [sp] = useSearchParams();
+      capturedSearch = sp.toString();
+      return null;
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/settings?section=bogus']}>
+        <SettingsPage />
+        <LocationSpy />
+      </MemoryRouter>,
+    );
 
     expect(scrollSpy).not.toHaveBeenCalled();
     // Unknown param is kept (we only strip whitelisted ones).
-    expect(window.location.search).toBe('?section=bogus');
+    await waitFor(() => expect(capturedSearch).toBe('section=bogus'));
 
     rafSpy.mockRestore();
   });

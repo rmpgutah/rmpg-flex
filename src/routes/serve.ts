@@ -552,6 +552,11 @@ sv.put('/:id', async (c) => {
   }
 
   sets.push("updated_at = datetime('now','localtime')");
+  // Stamp closed_at when an operator explicitly marks the job served —
+  // write-once: only set when transitioning to 'served' (not on every edit).
+  if (body.status === 'served') {
+    sets.push("closed_at = COALESCE(closed_at, datetime('now','localtime'))");
+  }
   args.push(id);
   await execute(getDb(c.env), `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
   return c.json({ success: true });
@@ -640,16 +645,17 @@ async function logAttempt(c: any, defaultResult: string) {
     typeof body.next_attempt_note === 'string'
       ? await columnExists(db, 'serve_queue', 'next_attempt_note')
       : false;
+  const closedClause = newStatus === 'served' ? ", closed_at = datetime('now','localtime')" : '';
   if (hasNextAttemptCol) {
     await execute(
       db,
-      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
       nextNum, newStatus, body.next_attempt_note || null, id,
     );
   } else {
     await execute(
       db,
-      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
       nextNum, newStatus, id,
     );
   }
@@ -698,7 +704,7 @@ sv.post('/:id/substitute-service', async (c) => {
   );
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime') WHERE id = ?`,
     nextNum, id,
   );
   await generateServeCharges(db, id);
@@ -867,6 +873,51 @@ sv.get('/:id/gps-trail', async (c) => {
     trail: rows,
     polyline: rows.map((r) => [r.longitude, r.latitude]),  // GeoJSON [lng,lat] order
   });
+});
+
+// ── Bulk status update ────────────────────────────────────────────────────────
+// POST /serve/bulk-status { ids: number[], status: string }
+// Lets dispatchers batch-move selected jobs between folders (Queue → Archive, etc.)
+sv.put('/bulk-status', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const body = await c.req.json<{ ids?: number[]; status?: string }>();
+  const { ids, status } = body;
+  if (!Array.isArray(ids) || ids.length === 0) return c.json({ error: 'ids required' }, 400);
+  const VALID = ['pending', 'in_progress', 'served', 'failed', 'archived'] as const;
+  if (!status || !(VALID as readonly string[]).includes(status)) {
+    return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
+  }
+  const db = getDb(c.env);
+  const closedAt = (status === 'served' || status === 'failed')
+    ? `datetime('now','localtime')`
+    : 'NULL';
+  // D1 doesn't support array bindings — use a parameterized IN clause
+  const placeholders = ids.map(() => '?').join(',');
+  await db.prepare(
+    `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
+     WHERE id IN (${placeholders})`
+  ).bind(status, ...ids).run();
+  return c.json({ updated: ids.length, status });
+});
+
+// ── Folder stats ──────────────────────────────────────────────────────────────
+// GET /serve/folder-stats?date=YYYY-MM-DD
+sv.get('/folder-stats', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10);
+  const db = getDb(c.env);
+  const rows = await query<{ status: string; cnt: number }>(
+    db,
+    `SELECT status, COUNT(*) AS cnt FROM serve_queue
+     WHERE DATE(created_at) = ? OR DATE(scheduled_date) = ?
+     GROUP BY status`,
+    date, date,
+  );
+  const stats: Record<string, number> = {};
+  for (const r of rows) stats[r.status] = r.cnt;
+  return c.json({ date, stats });
 });
 
 export default sv;

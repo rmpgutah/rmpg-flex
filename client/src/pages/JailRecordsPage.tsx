@@ -7,6 +7,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Building2, Search, X, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
@@ -60,6 +61,7 @@ export default function JailRecordsPage() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sourcesError, setSourcesError] = useState(false);
+  const [showIngestConfirm, setShowIngestConfirm] = useState(false);
 
   // Role gate: only supervisor+ can ingest roster data
   const canIngest = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
@@ -80,12 +82,30 @@ export default function JailRecordsPage() {
     Promise.all([loadSources(), loadBookings()]).finally(() => setLoading(false));
   }, [loadSources, loadBookings]);
 
-  // ── Deep-link: ?source_key=<key> scrolls the source row into view ──────────
-  const deepLinkConsumedRef = useRef(false);
+  // ── Deep-link: ?booking_id=<id> scrolls the booking row into view ─────────────────────
+  const bookingDeepLinkRef = useRef(false);
+  const bookingIdParam = searchParams.get('booking_id');
+  useEffect(() => {
+    if (loading || bookingDeepLinkRef.current || !bookingIdParam) return;
+    bookingDeepLinkRef.current = true;
+    const id = Number(bookingIdParam);
+    if (Number.isFinite(id) && bookings.some(b => b.id === id)) {
+      const el = document.getElementById(`booking-row-${id}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      addToast(`Booking #${bookingIdParam} not found.`, 'warning');
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('booking_id');
+    setSearchParams(next, { replace: true });
+  }, [loading, bookings, bookingIdParam, searchParams, setSearchParams, addToast]);
+
+  // ── Deep-link: ?source_key=<key> scrolls the source row into view ───────────────────
+  const sourceDeepLinkRef = useRef(false);
   const sourceKeyParam = searchParams.get('source_key');
   useEffect(() => {
-    if (loading || deepLinkConsumedRef.current || !sourceKeyParam) return;
-    deepLinkConsumedRef.current = true;
+    if (loading || sourceDeepLinkRef.current || !sourceKeyParam) return;
+    sourceDeepLinkRef.current = true;
     const target = sources.find(s => s.source_key === sourceKeyParam);
     if (target) {
       const el = document.getElementById(`source-row-${sourceKeyParam}`);
@@ -98,7 +118,7 @@ export default function JailRecordsPage() {
     setSearchParams(next, { replace: true });
   }, [loading, sources, sourceKeyParam, searchParams, setSearchParams, addToast]);
 
-  // ── N shortcut → focus the county input (primary entry point) ───────────────
+  // ── N shortcut → focus the county input (primary entry point) ───────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'n' && e.key !== 'N') return;
@@ -108,17 +128,23 @@ export default function JailRecordsPage() {
       const tag = t.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (t.isContentEditable) return;
+      if (!canIngest) return;
       e.preventDefault();
       document.getElementById('jail-records-county-input')?.focus();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  }, [canIngest]);
 
-  // ── Esc cascade: clear search → blur ingest ─────────────────────────────────
+  // ── Esc cascade: close ingest confirm → clear booking search ────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (showIngestConfirm) {
+        e.stopPropagation();
+        setShowIngestConfirm(false);
+        return;
+      }
       if (bookingSearch) {
         e.stopPropagation();
         setBookingSearch('');
@@ -127,19 +153,20 @@ export default function JailRecordsPage() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [bookingSearch]);
+  }, [showIngestConfirm, bookingSearch]);
 
-  const ingest = async () => {
+  const doIngest = async () => {
     if (!text.trim() || busy || !canIngest) return;
     setBusy(true);
     setResult(null);
+    setShowIngestConfirm(false);
     try {
       const r = await apiFetch<IngestResult>('/intel/jail/ingest', {
         method: 'POST', body: JSON.stringify({ county: county.trim() || undefined, format, text }),
       });
       setResult(r);
       setText('');
-      addToast(`Ingested ${r.ingested} booking${r.ingested === 1 ? '' : 's'}${r.matched > 0 ? ` · ${r.matched} known subject(s)` : ''}${r.alerts > 0 ? ` · ${r.alerts} FLAGGED` : ''}`, r.alerts > 0 ? 'error' : 'success');
+      addToast(`Ingested ${r.ingested} booking${r.ingested === 1 ? '' : 's'}${r.matched > 0 ? ` \xb7 ${r.matched} known subject(s)` : ''}${r.alerts > 0 ? ` \xb7 ${r.alerts} FLAGGED` : ''}`, r.alerts > 0 ? 'error' : 'success');
       loadBookings();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Ingest failed';
@@ -166,6 +193,9 @@ export default function JailRecordsPage() {
 
   const bookingsEmpty = !loading && bookings.length === 0;
   const bookingsFiltered = !loading && bookings.length > 0 && filteredBookings.length === 0;
+
+  // Line count for the confirm message
+  const lineCount = text.trim().split('\n').filter(l => l.trim()).length;
 
   return (
     <div className="p-4 space-y-4">
@@ -216,7 +246,7 @@ export default function JailRecordsPage() {
               className="w-full input-dark text-[11px] font-mono resize-y"
             />
             <button
-              onClick={ingest}
+              onClick={() => { if (text.trim() && !busy) setShowIngestConfirm(true); }}
               disabled={busy || !text.trim()}
               className="w-full py-1.5 text-[11px] font-semibold border border-brand-400 text-brand-400 hover:bg-surface-raised disabled:opacity-40"
             >
@@ -224,8 +254,8 @@ export default function JailRecordsPage() {
             </button>
             {result && (
               <div className="text-[11px] text-rmpg-200">
-                Parsed {result.parsed} · ingested {result.ingested} · matched {result.matched} known subject(s)
-                {result.alerts > 0 && <span className="text-red-500 font-semibold"> · {result.alerts} FLAGGED HIT(S)</span>}
+                Parsed {result.parsed} \xb7 ingested {result.ingested} \xb7 matched {result.matched} known subject(s)
+                {result.alerts > 0 && <span className="text-red-500 font-semibold"> \xb7 {result.alerts} FLAGGED HIT(S)</span>}
               </div>
             )}
           </>
@@ -273,7 +303,11 @@ export default function JailRecordsPage() {
           </div>
         )}
         {filteredBookings.map((b) => (
-          <div key={b.id} className="px-2 py-[2px] text-[11px] flex items-center gap-2 border-b border-border-subtle last:border-b-0">
+          <div
+            key={b.id}
+            id={`booking-row-${b.id}`}
+            className="px-2 py-[2px] text-[11px] flex items-center gap-2 border-b border-border-subtle last:border-b-0"
+          >
             <span className="text-rmpg-200 w-44 shrink-0 truncate">{b.full_name}</span>
             <span className="text-rmpg-500 min-w-0 flex-1 truncate">{b.charges || ''}</span>
             <span className="text-rmpg-500">{b.county || ''}</span>
@@ -322,6 +356,18 @@ export default function JailRecordsPage() {
         Live county portals are JS-rendered and can't be auto-scraped from the edge yet — use manual ingest for those.
         UDC/VINELink adapters are wired and self-report health; authorized feeds flip a source to active.
       </div>
+
+      <ConfirmDialog
+        isOpen={showIngestConfirm}
+        onClose={() => setShowIngestConfirm(false)}
+        onConfirm={doIngest}
+        title="Confirm Roster Ingest"
+        message={`Ingest ${lineCount} entr${lineCount === 1 ? 'y' : 'ies'} and cross-hit against known subjects?`}
+        details={county.trim() ? <span>County: {county.trim()}</span> : undefined}
+        confirmLabel="INGEST + CROSS-HIT"
+        confirmVariant="warning"
+        isLoading={busy}
+      />
     </div>
   );
 }

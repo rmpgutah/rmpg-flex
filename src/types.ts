@@ -35,6 +35,10 @@ export type Bindings = {
   // pipeline (expand → search → extract → verify → synthesize) + scheduled
   // monitors. See src/durable-objects/DeepResearchDO.ts.
   DEEP_RESEARCH: DurableObjectNamespace;
+  // PersonIntelDO namespace — one instance per dossier (idFromName(`pi-${id}`));
+  // alarm-driven multi-phase intelligence pipeline. See
+  // src/durable-objects/PersonIntelDO.ts.
+  PERSON_INTEL_DO: DurableObjectNamespace;
   // VoiceHubDO namespace — one instance per radio channel / panic
   // incident; the single shared hub that relays + records live voice.
   // See src/durable-objects/VoiceHubDO.ts.

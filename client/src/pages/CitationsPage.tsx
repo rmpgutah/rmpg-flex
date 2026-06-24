@@ -349,12 +349,18 @@ function formatCurrency(n: number | null | undefined): string {
   return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// ── Role constants ─────────────────────────────────────────
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 // ── Component ──────────────────────────────────────────────
 
 export default function CitationsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // canManage: admin / manager / supervisor may create, edit, and void citations
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { openMenu } = useContextMenu();
@@ -873,9 +879,9 @@ export default function CitationsPage() {
 
   const buildCitationMenu = (c: Citation): ContextMenuItem[] => [
     m.action('Open citation', () => handleSelectCitation(c), { icon: <Eye size={12} /> }),
-    m.action('Edit citation', () => handleEditCitation(c), { icon: <Pencil size={12} /> }),
+    ...(canManage ? [m.action('Edit citation', () => handleEditCitation(c), { icon: <Pencil size={12} /> })] : []),
     m.separator(),
-    ...(c.status !== 'voided'
+    ...(canManage && c.status !== 'voided'
       ? [m.action('Void citation', () => handleVoid(c), { icon: <Ban size={12} />, danger: true })]
       : []),
     m.separator(),
@@ -954,9 +960,11 @@ export default function CitationsPage() {
             />
           </div>
           <div className={`flex items-center gap-2 ${isMobile ? 'w-full' : ''}`}>
+            {canManage && (
             <button type="button" onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
               <Plus size={isMobile ? 16 : 12} /> New
             </button>
+            )}
             <ExportButton exportUrl="/api/citations/export/csv" exportFilename="citations.csv" />
             <button type="button" onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
               <RefreshCw size={isMobile ? 18 : 14} />
@@ -1128,10 +1136,12 @@ export default function CitationsPage() {
               entityId={c.id}
               iconOnly
             />
+            {canManage && (
             <button type="button" onClick={() => handleEditCitation(c)} className="toolbar-btn text-[10px]">
               <FileText size={12} /> Edit
             </button>
-            {(c.status !== 'voided' || isAdmin) && (
+            )}
+            {canManage && (c.status !== 'voided' || isAdmin) && (
               <button type="button" onClick={() => handleVoid(c)} className="toolbar-btn text-[10px] text-red-400 hover:text-red-300">
                 <Ban size={12} /> {c.status === 'voided' && isAdmin ? 'Un-Void' : 'Void'}
               </button>
@@ -1940,9 +1950,11 @@ export default function CitationsPage() {
         <p className="text-xs text-center text-rmpg-500 mb-6 max-w-xs">
           Select a citation from the list to view details, or create a new one.
         </p>
+        {canManage && (
         <button type="button" onClick={handleNewCitation} className="toolbar-btn toolbar-btn-primary print:hidden">
           <Plus size={14} /> New Citation
         </button>
+        )}
       </div>
     );
   };
@@ -2044,17 +2056,17 @@ export default function CitationsPage() {
         // Smallest modal first. ConfirmDialog handles its own Esc via its
         // overlay, but we also close the inline payment form and the
         // person-search dropdown before falling through to the form panel.
-        if (voidTarget) { setVoidTarget(null); return; }
-        if (showPaymentForm) { setShowPaymentForm(false); return; }
-        if (showPersonDropdown) { setShowPersonDropdown(false); return; }
-        if (mode !== 'list') { handleCancelForm(); return; }
+        if (voidTarget) { e.stopPropagation(); setVoidTarget(null); return; }
+        if (showPaymentForm) { e.stopPropagation(); setShowPaymentForm(false); return; }
+        if (showPersonDropdown) { e.stopPropagation(); setShowPersonDropdown(false); return; }
+        if (mode !== 'list') { e.stopPropagation(); handleCancelForm(); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
       if (e.key === 'n' || e.key === 'N') {
-        // Don't fire while a destructive confirm is open
-        if (voidTarget || mode !== 'list') return;
+        // Don't fire while a destructive confirm is open, and gate on canManage
+        if (voidTarget || mode !== 'list' || !canManage) return;
         e.preventDefault();
         handleNewCitation();
       }
@@ -2109,7 +2121,7 @@ export default function CitationsPage() {
       </div>
 
       {/* Mobile FAB for new citation */}
-      {isMobile && !selectedCitation && mode === 'list' && (
+      {isMobile && !selectedCitation && mode === 'list' && canManage && (
         <button type="button" onClick={handleNewCitation} className="mobile-fab" aria-label="New Citation">
           <Plus size={24} />
         </button>

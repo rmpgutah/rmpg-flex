@@ -255,7 +255,12 @@ export default function IncidentsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const isManager = user?.role === 'manager';
+  const isSupervisor = user?.role === 'supervisor';
+  // canSupervise: roles that can approve, return, close, and delete incidents
+  const canSupervise = isAdmin || isManager || isSupervisor;
+  // isGodMode alias retained for backward compat with existing gate expressions below
+  const isGodMode = canSupervise;
   const isMobile = useIsMobile();
 
   // ── Right-click context menu ──
@@ -2079,7 +2084,7 @@ export default function IncidentsPage() {
                   case: 'var(--sev-special-soft)',
                   warrant: 'var(--sev-critical)',
                   citation: 'var(--sev-warn)',
-                  arrest: '#ec4899',
+                  arrest: 'var(--pink-400, #ec4899)',
                 };
                 const typeColorRgb: Record<string, string> = {
                   incident: 'var(--spm-text-muted-rgb)',
@@ -2087,7 +2092,7 @@ export default function IncidentsPage() {
                   case: 'var(--sev-special-rgb)',
                   warrant: 'var(--sev-critical-rgb)',
                   citation: 'var(--sev-warn-rgb)',
-                  arrest: '236 72 153',
+                  arrest: 'var(--pink-400-rgb, 236 72 153)',
                 };
                 const fg = typeColors[link.linked_type] || 'var(--rmpg-500)';
                 const rgb = typeColorRgb[link.linked_type] || 'var(--rmpg-500-rgb)';
@@ -2382,7 +2387,7 @@ export default function IncidentsPage() {
                 </button>
               </>
             )}
-            {(isAdmin || selectedIncident.status === 'draft') && (
+            {(canSupervise || selectedIncident.status === 'draft') && (
               <button type="button"
                 onClick={() => setDeleteTarget(selectedIncident)}
                 className="toolbar-btn toolbar-btn-danger"
