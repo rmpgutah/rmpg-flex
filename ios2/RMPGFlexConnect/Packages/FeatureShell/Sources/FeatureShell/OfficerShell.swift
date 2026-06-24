@@ -6,13 +6,14 @@ import FeatureDuty
 import FeatureQuickActions
 import FeatureCFS
 
+@MainActor
 public struct OfficerShell: View {
     // Kept for tests (ShellTabsTests.testOfficerHasFiveTabs etc.)
     public static let tabs: [TabSpec] = [
         TabSpec(id: "home",    title: "Home",    systemImage: "house.fill",            milestone: "M1"),
         TabSpec(id: "cfs",     title: "CFS",     systemImage: "list.bullet.rectangle", milestone: "M1"),
         TabSpec(id: "scan",    title: "Scan ID", systemImage: "camera.viewfinder",     milestone: "M1"),
-        TabSpec(id: "reports", title: "Reports", systemImage: "doc.text",              milestone: "M1"),
+        TabSpec(id: "records", title: "Records", systemImage: "doc.text",              milestone: "M1"),
         TabSpec(id: "more",    title: "More",    systemImage: "ellipsis.circle",       milestone: "M1"),
     ]
 
@@ -41,8 +42,8 @@ public struct OfficerShell: View {
             ScanTabView(apiClient: apiClient)
                 .tabItem { Label("Scan ID", systemImage: "camera.viewfinder") }
 
-            PlaceholderScreen(title: "Reports", milestone: "M1")
-                .tabItem { Label("Reports", systemImage: "doc.text") }
+            RecordsTabView(client: apiClient)
+                .tabItem { Label("Records", systemImage: "doc.text") }
 
             MoreTabView(session: session)
                 .tabItem { Label("More", systemImage: "ellipsis.circle") }
