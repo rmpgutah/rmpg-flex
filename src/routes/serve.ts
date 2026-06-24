@@ -40,7 +40,7 @@
 //   - cost-estimate                  (config-driven pricing tables)
 // ============================================================
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
@@ -566,7 +566,7 @@ sv.put('/:id', async (c) => {
 // Attempts — richer than the intake variant (gps + photo refs)
 // ─────────────────────────────────────────────────────────────
 
-async function logAttempt(c: any, defaultResult: string) {
+async function logAttempt(c: Context<Env>, defaultResult: string) {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const body = (await c.req.json().catch(() => ({}))) as any;

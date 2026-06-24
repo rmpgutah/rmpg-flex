@@ -578,7 +578,7 @@ export default function ServePage() {
       await apiFetch('/process-server/sync-from-sm', { method: 'POST' });
       refreshJobs();
     } catch {
-      // sync failed
+      addToast('Sync from ServeManager failed', 'error');
     } finally {
       setSyncing(false);
     }
@@ -609,7 +609,7 @@ export default function ServePage() {
       });
       refreshJobs();
     } catch {
-      // flag failed
+      addToast('Could not flag address — please try again', 'error');
     }
   }, [refreshJobs]);
 
@@ -659,7 +659,7 @@ export default function ServePage() {
       dueDiligenceComplete?: boolean;
       attemptNumber?: number;
       jobStatus?: string;
-    }>(`/api/process-server/${attemptJob.id}/attempt`, {
+    }>(`/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -701,7 +701,7 @@ export default function ServePage() {
       refreshJobs();
       fetchSavedRoute(); // Refresh saved route for Route tab
     } catch {
-      // reorder failed — local state still updated
+      addToast('Could not save route order on server', 'error');
     }
   }, [refreshJobs, fetchSavedRoute]);
 
@@ -770,7 +770,7 @@ export default function ServePage() {
       setEditJob(null);
       refreshJobs();
     } catch {
-      // error
+      addToast('Could not save job', 'error');
     } finally {
       setFormSubmitting(false);
     }

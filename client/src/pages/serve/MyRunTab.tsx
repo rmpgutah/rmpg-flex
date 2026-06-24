@@ -60,7 +60,7 @@ function priorityColor(p: string): string {
 /** POST a quick served/failed status update. Returns the new status string. */
 async function quickStatusUpdate(jobId: number, result: 'served' | 'failed'): Promise<string> {
   const attemptType = result === 'served' ? 'personal' : 'failed';
-  const res = await apiFetch<{ jobStatus?: string }>(`/api/process-server/${jobId}/attempt`, {
+  const res = await apiFetch<{ jobStatus?: string }>(`/process-server/${jobId}/attempt`, {
     method: 'POST',
     body: JSON.stringify({
       attempt_type: attemptType,
