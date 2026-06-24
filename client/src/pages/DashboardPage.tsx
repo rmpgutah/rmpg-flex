@@ -29,6 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import SpmGroup from './dashboard/SpmGroup';
 import DashboardViewSelector from './dashboard/DashboardViewSelector';
 import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
+import ServeDashboardPerformance from '../components/serve/ServeDashboardPerformance';
 import {
   resolveDashboardView, canSwitchView, writeSavedView,
   VIEW_PANELS, toolbarActionsForView,
@@ -1325,6 +1326,11 @@ export default function DashboardPage() {
       {/* Serve Scheduler Panel — dispatch + admin only */}
       {hasPanel('serveSchedule') && (
         <ServeSchedulerPanel />
+      )}
+
+      {/* Serve Performance Panel — dispatch + admin only */}
+      {hasPanel('servePerformance') && (
+        <ServeDashboardPerformance />
       )}
 
       {/* Main Content Grid */}
