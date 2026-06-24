@@ -542,6 +542,9 @@ export interface Person {
   dl_state?: string;
   dl_expiry?: string;
   dl_class?: string;
+  dl_issue_date?: string;
+  dl_restrictions?: string;
+  dl_endorsements?: string;
   ssn_last4?: string;
   ssn_full?: string;
   id_image_url?: string;

@@ -18,6 +18,7 @@ import {
   X,
   Users,
   Briefcase,
+  ScanLine,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { recordTypeLabel } from '../utils/recordTypeLabel';
@@ -38,6 +39,7 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { AssessorBackfillButton } from '../components/AssessorBackfillButton';
 import { AssessorReviewQueueBanner } from '../components/AssessorReviewQueueBanner';
+import DlScanImportModal from '../components/DlScanImportModal';
 
 // Tab hooks + components
 import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
@@ -140,6 +142,9 @@ export default function RecordsPage() {
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [linkSource, setLinkSource] = useState<{ type: RecordEntityType; id: string } | null>(null);
   const [linkRefreshKey, setLinkRefreshKey] = useState(0);
+
+  // DL barcode scan-to-import
+  const [showDlScan, setShowDlScan] = useState(false);
 
   // "New" record triggers
   const [newPersonTrigger, setNewPersonTrigger] = useState(0);
@@ -545,6 +550,12 @@ export default function RecordsPage() {
               <Users className="w-3.5 h-3.5" />
               Duplicates
             </button>
+            {!showArchived && (
+              <button type="button" className="toolbar-btn print:hidden text-brand-400" title="Scan a driver's license barcode to import" onClick={() => setShowDlScan(true)}>
+                <ScanLine className="w-3.5 h-3.5" />
+                Scan ID
+              </button>
+            )}
             {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
@@ -931,6 +942,25 @@ export default function RecordsPage() {
         isOpen={showDuplicatesModal}
         onClose={() => setShowDuplicatesModal(false)}
         onMergeComplete={() => fetchPersons({ silent: true })}
+      />
+
+      <DlScanImportModal
+        isOpen={showDlScan}
+        onClose={() => setShowDlScan(false)}
+        onImported={(person, created) => {
+          setShowDlScan(false);
+          addToast(
+            created
+              ? `Person record created for ${person.first_name} ${person.last_name}`
+              : `Matched existing record for ${person.first_name} ${person.last_name}`,
+            'success',
+          );
+          // Reload persons list and select the imported/matched person
+          fetchPersons({ silent: true }).then(() => {
+            personsState.setSelectedPerson(person);
+            if (activeTab !== 'persons') setActiveTab('persons');
+          });
+        }}
       />
     </div>
   );
