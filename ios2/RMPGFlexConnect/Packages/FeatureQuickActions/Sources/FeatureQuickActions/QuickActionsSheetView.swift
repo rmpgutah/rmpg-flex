@@ -59,7 +59,9 @@ public struct QuickActionsSheetView: View {
                 NewIncidentForm(apiClient: apiClient)
             case "new_citation":
                 NewCitationForm(apiClient: apiClient)
-            case "process_server", "quick_capture", "field_camera", "tasks":
+            case "tasks":
+                TasksView(apiClient: apiClient)
+            case "process_server", "quick_capture", "field_camera":
                 PendingActionSheet(action: action)
                     .presentationDetents([.medium])
             default:

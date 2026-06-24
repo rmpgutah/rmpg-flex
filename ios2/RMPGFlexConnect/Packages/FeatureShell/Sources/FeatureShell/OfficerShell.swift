@@ -18,6 +18,7 @@ public struct OfficerShell: View {
 
     @Bindable var session: AuthSession
     @State private var dutyState = DutyState()
+    @State private var tracker = LocationTracker()
 
     private var apiClient: APIClient {
         APIClient(
@@ -48,6 +49,13 @@ public struct OfficerShell: View {
                 .tabItem { Label("More", systemImage: "ellipsis.circle") }
         }
         .tint(ThemeColors.night.brandGold)
+        .onChange(of: dutyState.isOnDuty) { _, isOnDuty in
+            if isOnDuty {
+                tracker.start(apiClient: apiClient)
+            } else {
+                tracker.stop()
+            }
+        }
     }
 }
 
