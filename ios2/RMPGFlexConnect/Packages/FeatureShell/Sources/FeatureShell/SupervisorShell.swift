@@ -1,5 +1,8 @@
 import SwiftUI
 import DesignSystem
+import CoreAPI
+import CoreAuth
+import FeatureCFS
 
 public struct SupervisorShell: View {
     public static let tabs: [TabSpec] = [
@@ -9,16 +12,32 @@ public struct SupervisorShell: View {
         TabSpec(id: "more",    title: "More",    systemImage: "ellipsis.circle",        milestone: "M2"),
     ]
 
-    public init() {}
+    @Bindable var session: AuthSession
+
+    private var apiClient: APIClient {
+        APIClient(
+            baseURL: URL(string: "https://api.rmpgutah.us")!,
+            tokenProvider: { KeychainStore.get(AuthSession.tokenKey) }
+        )
+    }
+
+    public init(session: AuthSession) {
+        self.session = session
+    }
 
     public var body: some View {
         TabView {
-            ForEach(Self.tabs) { tab in
-                PlaceholderScreen(title: tab.title, milestone: tab.milestone)
-                    .tabItem {
-                        Label(tab.title, systemImage: tab.systemImage)
-                    }
-            }
+            CommandView(apiClient: apiClient)
+                .tabItem { Label("Command", systemImage: "shield.lefthalf.filled") }
+
+            UnitsView(apiClient: apiClient)
+                .tabItem { Label("Units", systemImage: "mappin.and.ellipse") }
+
+            CFSTabView(vm: CallsViewModel(api: CFSAPI(client: apiClient)))
+                .tabItem { Label("CFS", systemImage: "list.bullet.rectangle") }
+
+            MoreTabView(session: session)
+                .tabItem { Label("More", systemImage: "ellipsis.circle") }
         }
         .tint(ThemeColors.night.brandGold)
     }
