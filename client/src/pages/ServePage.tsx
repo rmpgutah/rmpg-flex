@@ -181,6 +181,8 @@ export default function ServePage() {
   // Edit modal for a previously-logged attempt — carries both the job
   // (so we know which queueId to PUT against) and the specific attempt row.
   const [editAttempt, setEditAttempt] = useState<{ jobId: number; attempt: ServeAttempt } | null>(null);
+  /** Delete confirmation for a previously-logged attempt. */
+  const [deleteAttempt, setDeleteAttempt] = useState<{ jobId: number; attempt: ServeAttempt } | null>(null);
   const [skipTraceJob, setSkipTraceJob] = useState<ServeJob | null>(null);
   const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
   const [createJobOpen, setCreateJobOpen] = useState(false);
@@ -536,6 +538,20 @@ export default function ServePage() {
     return result;
   }, [attemptJob, refreshJobs]);
 
+  const handleDeleteAttempt = useCallback(async () => {
+    if (!deleteAttempt) return;
+    try {
+      await apiFetch(`/process-server/${deleteAttempt.jobId}/attempt/${deleteAttempt.attempt.id}`, {
+        method: 'DELETE',
+      });
+      setDeleteAttempt(null);
+      refreshJobs();
+      addToast('Attempt deleted', 'success');
+    } catch {
+      addToast('Failed to delete attempt', 'error');
+    }
+  }, [deleteAttempt, refreshJobs, addToast]);
+
   const handleRouteOptimized = useCallback(async (
     orderedJobIds: number[],
     data: { totalDistance: number; totalDuration: number; fuelCost: number },
@@ -877,6 +893,7 @@ export default function ServePage() {
         if (deleteJob)       { e.stopPropagation(); setDeleteJob(null); return; }
         if (attemptJob)      { e.stopPropagation(); setAttemptJob(null); return; }
         if (editAttempt)     { e.stopPropagation(); setEditAttempt(null); return; }
+        if (deleteAttempt)   { e.stopPropagation(); setDeleteAttempt(null); return; }
         if (skipTraceJob)    { e.stopPropagation(); setSkipTraceJob(null); return; }
         if (routePlannerOpen){ e.stopPropagation(); setRoutePlannerOpen(false); return; }
         if (createJobOpen)   { e.stopPropagation(); setCreateJobOpen(false); setEditJob(null); clearFormDraft(); return; }
@@ -1195,6 +1212,7 @@ export default function ServePage() {
                     onFlagAddress={handleFlagAddress}
                     onEdit={openEdit}
                     onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
+                    onDeleteAttempt={(jobId, attempt) => setDeleteAttempt({ jobId, attempt })}
                     isExpanded={expandedJobId === job.id}
                     onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                   />
@@ -1920,6 +1938,21 @@ export default function ServePage() {
         confirmLabel={deleting ? 'Deleting…' : 'Delete Job'}
         confirmVariant="danger"
         isLoading={deleting}
+      />
+
+      {/* Delete-attempt confirm — operator correction rollback */}
+      <ConfirmDialog
+        isOpen={!!deleteAttempt}
+        onClose={() => setDeleteAttempt(null)}
+        onConfirm={handleDeleteAttempt}
+        title="Delete Attempt"
+        message={
+          deleteAttempt
+            ? `Delete attempt #${deleteAttempt.attempt.attempt_number} logged at ${deleteAttempt.attempt.attempt_at}? This removes the attempt record and may change the job status. Evidence photos and signature data remain in storage.`
+            : ''
+        }
+        confirmLabel="Delete Attempt"
+        confirmVariant="danger"
       />
 
       <UnsavedChangesGuard hasUnsavedChanges={createJobOpen && formIsDirty} />

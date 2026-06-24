@@ -19,6 +19,7 @@ import {
   Gavel,
   FileWarning,
   Pencil,
+  Trash2,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
@@ -34,6 +35,8 @@ interface ServeJobCardProps {
   onEdit: (jobId: number) => void;
   /** Edit a previously-logged attempt — opens EditServeAttemptModal in the parent. */
   onEditAttempt?: (jobId: number, attempt: ServeAttempt) => void;
+  /** Delete a previously-logged attempt — opens a confirm dialog in the parent. */
+  onDeleteAttempt?: (jobId: number, attempt: ServeAttempt) => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
 }
@@ -101,6 +104,7 @@ export default React.memo(function ServeJobCard({
   onFlagAddress,
   onEdit,
   onEditAttempt,
+  onDeleteAttempt,
   isExpanded = false,
   onToggleExpand,
 }: ServeJobCardProps) {
@@ -352,18 +356,32 @@ export default React.memo(function ServeJobCard({
                         group-hover:opacity-100 pencil was invisible to them.
                         Bumped icon + padding clears the iOS-HIG 44×44 minimum
                         without enlarging the row visually. */}
-                    {onEditAttempt && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onEditAttempt(job.id, attempt); }}
-                        className="ml-auto flex-shrink-0 text-amber-400 hover:text-amber-300 active:text-amber-200 bg-rmpg-800/40 hover:bg-rmpg-800/70 border border-amber-700/40 hover:border-amber-500/60 rounded-[2px] inline-flex items-center gap-1 px-1.5 py-1 text-[10px] font-medium focus:outline-none focus:ring-1 focus:ring-amber-400"
-                        title={`Edit attempt #${attempt.attempt_number}`}
-                        aria-label={`Edit attempt ${attempt.attempt_number} for ${job.recipient_name}`}
-                      >
-                        <Pencil className="w-3 h-3" />
-                        <span>Edit</span>
-                      </button>
-                    )}
+                    <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+                      {onEditAttempt && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onEditAttempt(job.id, attempt); }}
+                          className="text-amber-400 hover:text-amber-300 active:text-amber-200 bg-rmpg-800/40 hover:bg-rmpg-800/70 border border-amber-700/40 hover:border-amber-500/60 rounded-[2px] inline-flex items-center gap-1 px-1.5 py-1 text-[10px] font-medium focus:outline-none focus:ring-1 focus:ring-amber-400"
+                          title={`Edit attempt #${attempt.attempt_number}`}
+                          aria-label={`Edit attempt ${attempt.attempt_number} for ${job.recipient_name}`}
+                        >
+                          <Pencil className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+                      )}
+                      {onDeleteAttempt && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onDeleteAttempt(job.id, attempt); }}
+                          className="text-red-400 hover:text-red-300 active:text-red-200 bg-rmpg-800/40 hover:bg-rmpg-800/70 border border-red-700/40 hover:border-red-500/60 rounded-[2px] inline-flex items-center gap-1 px-1.5 py-1 text-[10px] font-medium focus:outline-none focus:ring-1 focus:ring-red-400"
+                          title={`Delete attempt #${attempt.attempt_number}`}
+                          aria-label={`Delete attempt ${attempt.attempt_number} for ${job.recipient_name}`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Delete</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -856,6 +856,95 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────
+// Delete an attempt
+// ─────────────────────────────────────────────────────────────
+// DELETE /:queueId/attempt/:attemptId
+//
+// Removes a previously-logged attempt from the queue. If the
+// deleted attempt was the most recent one that determined the
+// parent queue status, re-derives status from the next-most-
+// recent attempt (or resets to pending if none remain).
+// Evidence rows (photos, signature) become orphaned — they
+// remain in the attachment store but are no longer linked.
+sv.delete('/:queueId/attempt/:attemptId', async (c) => {
+  const denied = requireRole(c, ...WRITE);
+  if (denied) return c.json({ error: denied }, 403);
+  const queueId = parseInt(c.req.param('queueId'), 10);
+  const attemptId = parseInt(c.req.param('attemptId'), 10);
+  if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+
+  // Ownership check: attempt must belong to this queue row.
+  const existing = await queryFirst<{ id: number; result: string | null; attempt_number: number }>(
+    db,
+    'SELECT id, result, attempt_number FROM serve_attempts WHERE id = ? AND serve_queue_id = ?',
+    attemptId, queueId,
+  );
+  if (!existing) return c.json({ error: 'Attempt not found for this job' }, 404);
+
+  await execute(db, 'DELETE FROM serve_attempts WHERE id = ?', attemptId);
+
+  // ── Parent status recompute ───────────────────────────────
+  // After deletion the queue's status may no longer reflect
+  // reality. Re-derive from the most recent remaining attempt.
+  const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string }>(
+    db, 'SELECT attempt_count, max_attempts, status FROM serve_queue WHERE id = ?', queueId);
+  let recomputed: { status: string } | null = null;
+
+  if (queue) {
+    // Decrement attempt_count
+    const newCount = Math.max(0, (queue.attempt_count ?? 0) - 1);
+    await execute(db, 'UPDATE serve_queue SET attempt_count = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?',
+      newCount, queueId);
+
+    const latest = await queryFirst<{ result: string | null; disposition_code: string | null }>(
+      db,
+      'SELECT result, disposition_code FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_at DESC, id DESC LIMIT 1',
+      queueId,
+    );
+
+    if (latest) {
+      let nextStatus = queue.status;
+      const psCode = latest.disposition_code;
+      if (psCode) {
+        const codeStatus = codeToQueueStatus(psCode);
+        if (codeStatus === 'served' || codeStatus === 'failed') nextStatus = codeStatus;
+        else if (codeStatus === 'pending') nextStatus = 'pending';
+        else nextStatus = newCount >= (queue.max_attempts ?? 3) ? 'failed' : 'attempted';
+      } else if (latest.result === 'served' || latest.result === 'sub_served') {
+        nextStatus = 'served';
+      } else if (newCount >= (queue.max_attempts ?? 3)) {
+        nextStatus = 'failed';
+      } else {
+        nextStatus = 'attempted';
+      }
+      if (nextStatus !== queue.status) {
+        // If the new status is pending/attempted, clear closed_at
+        const closeClause = (nextStatus === 'pending' || nextStatus === 'attempted')
+          ? ', closed_at = NULL'
+          : '';
+        await execute(db,
+          `UPDATE serve_queue SET status = ?, updated_at = datetime('now','localtime')${closeClause} WHERE id = ?`,
+          nextStatus, queueId);
+        recomputed = { status: nextStatus };
+      }
+    } else {
+      // No attempts remain — reset to pending
+      await execute(db,
+        "UPDATE serve_queue SET status = 'pending', closed_at = NULL, updated_at = datetime('now','localtime') WHERE id = ?",
+        queueId);
+      recomputed = { status: 'pending' };
+    }
+  }
+
+  return c.json({
+    success: true,
+    attempt_id: attemptId,
+    queue_status_recomputed: recomputed,
+  });
+});
+
 // GET /:id/gps-trail — attempts ordered chronologically, drop ones missing coords
 sv.get('/:id/gps-trail', async (c) => {
   const denied = requireRole(c, ...READ);
