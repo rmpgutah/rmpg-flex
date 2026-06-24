@@ -882,8 +882,9 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
 // rest of the service log. Also recalculates the parent queue's
 // attempt_count and re-derives status from remaining attempts.
 //
-// Billing is NOT reversed — generateServeCharges is one-way; the
-// billing record remains for audit and must be manually credited.
+// Billing auto-reversal: when the last served attempt is deleted and
+// the queue status reverts from 'served', non-invoiced serve_charges
+// are auto-voided. Invoiced charges are left for manual credit.
 sv.delete('/:queueId/attempt/:attemptId', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);
@@ -892,6 +893,12 @@ sv.delete('/:queueId/attempt/:attemptId', async (c) => {
   if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
   const user = c.get('user') as { id: number } | undefined;
+
+  // Snapshot pre-deletion queue status for billing reversal detection
+  const prevQueue = await queryFirst<{ status: string }>(
+    db, 'SELECT status FROM serve_queue WHERE id = ?', queueId,
+  );
+  if (!prevQueue) return c.json({ error: 'Queue entry not found' }, 404);
 
   // Ownership check: attempt must belong to this queue row
   const existing = await queryFirst<{ id: number; result: string | null; attempt_number: number }>(
@@ -950,6 +957,16 @@ sv.delete('/:queueId/attempt/:attemptId', async (c) => {
 
   if (newStatus === 'served' || newStatus === 'failed') {
     syncServeCompletionToCfs(db, queueId).catch(() => {});
+  }
+
+  // Auto-void charges when the last served attempt is deleted and the
+  // queue reverts from 'served'. Only non-invoiced charges are voided;
+  // invoiced charges require a manual credit note.
+  if (prevQueue.status === 'served' && newStatus !== 'served') {
+    await execute(db,
+      `UPDATE serve_charges SET status = 'void', notes = ? WHERE serve_queue_id = ? AND status NOT IN ('invoiced', 'void')`,
+      'Auto-voided: the served attempt was deleted', queueId,
+    ).catch(() => {});
   }
 
   return c.json({
