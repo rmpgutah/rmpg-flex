@@ -15,7 +15,6 @@ public struct QuickActionsSheetView: View {
     public init(apiClient: APIClient = APIClient(baseURL: URL(string: "https://api.rmpgutah.us")!),
                 dutyState: DutyState? = nil) {
         self.apiClient = apiClient
-        // Use the provided shared state, or create a local one for standalone use.
         _dutyState = Bindable(wrappedValue: dutyState ?? DutyState())
     }
 
@@ -51,9 +50,18 @@ public struct QuickActionsSheetView: View {
         .sheet(item: $tapped) { action in
             switch action.id {
             case "start_patrol":
-                StartPatrolView(dutyState: dutyState)
+                StartPatrolView(dutyState: dutyState, apiClient: apiClient)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             case "new_call":
                 NewCallForm(vm: NewCallViewModel(api: CFSAPI(client: apiClient)))
+            case "new_incident":
+                NewIncidentForm(apiClient: apiClient)
+            case "new_citation":
+                NewCitationForm(apiClient: apiClient)
+            case "process_server", "quick_capture", "field_camera", "tasks":
+                PendingActionSheet(action: action)
+                    .presentationDetents([.medium])
             default:
                 PendingActionSheet(action: action)
                     .presentationDetents([.medium])

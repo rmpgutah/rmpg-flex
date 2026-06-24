@@ -15,6 +15,7 @@ public struct HomeView: View {
     @State private var callCount = 0
     @State private var recentCalls: [ActiveCall] = []
     @State private var now = Date()
+    @State private var clockingOff = false
 
     private let apiClient: APIClient
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -94,8 +95,22 @@ public struct HomeView: View {
             }
             Spacer()
             if dutyState.isOnDuty {
-                Button { dutyState.clockOff() } label: {
-                    Text("CLOCK OFF").font(.caption2.weight(.bold)).tracking(0.5)
+                Button {
+                    Task {
+                        clockingOff = true
+                        let api = DutyAPI(client: apiClient)
+                        _ = try? await api.clockOff()
+                        dutyState.clockOff()
+                        clockingOff = false
+                    }
+                } label: {
+                    Group {
+                        if clockingOff {
+                            ProgressView().scaleEffect(0.7).tint(theme.colors.critical)
+                        } else {
+                            Text("CLOCK OFF").font(.caption2.weight(.bold)).tracking(0.5)
+                        }
+                    }
                         .padding(.horizontal, 10).padding(.vertical, 7)
                         .background(theme.colors.critical.opacity(0.12))
                         .foregroundStyle(theme.colors.critical)
