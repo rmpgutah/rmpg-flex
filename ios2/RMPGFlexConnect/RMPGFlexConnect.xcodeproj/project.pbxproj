@@ -109,7 +109,7 @@
 				LastSwiftUpdateCheck = 1640;
 				LastUpgradeCheck = 2650;
 			};
-			buildConfigurationList = BB0000000000000000000042 /* Build configuration list for PBXProject "RMPGFlexConnect" */;
+			buildConfigurationList = BB0000000000000000000042 /* Build configuration list for PBXProject "RMPG Flex Connect" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -154,7 +154,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		BB0000000000000000000080 /* Debug configuration for PBXProject "RMPGFlexConnect" */ = {
+		BB0000000000000000000080 /* Debug configuration for PBXProject "RMPG Flex Connect" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -206,7 +206,7 @@
 			};
 			name = Debug;
 		};
-		BB0000000000000000000081 /* Release configuration for PBXProject "RMPGFlexConnect" */ = {
+		BB0000000000000000000081 /* Release configuration for PBXProject "RMPG Flex Connect" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -280,7 +280,7 @@
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -321,7 +321,7 @@
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -345,11 +345,11 @@
 			);
 			defaultConfigurationName = Release;
 		};
-		BB0000000000000000000042 /* Build configuration list for PBXProject "RMPGFlexConnect" */ = {
+		BB0000000000000000000042 /* Build configuration list for PBXProject "RMPG Flex Connect" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB0000000000000000000080 /* Debug configuration for PBXProject "RMPGFlexConnect" */,
-				BB0000000000000000000081 /* Release configuration for PBXProject "RMPGFlexConnect" */,
+				BB0000000000000000000080 /* Debug configuration for PBXProject "RMPG Flex Connect" */,
+				BB0000000000000000000081 /* Release configuration for PBXProject "RMPG Flex Connect" */,
 			);
 			defaultConfigurationName = Release;
 		};
