@@ -86,9 +86,11 @@ describe('MdtPage — duty boundary routing', () => {
     expect(mod.default).toBeDefined();
   });
 
-  it('OFF → POST /dispatch/duty/end (clock out + release vehicle), not legacy status', async () => {
+  it('OFF → ConfirmDialog → POST /dispatch/duty/end (clock out + release vehicle), not legacy status', async () => {
     await renderMdt();
     fireEvent.click(screen.getByRole('button', { name: 'OFF' }));
+    // OFF triggers a ConfirmDialog — must confirm before API is called.
+    fireEvent.click(screen.getByRole('button', { name: /go off duty/i }));
 
     await waitFor(() => expect(calledWith('/dispatch/duty/end', 'POST')).toBe(true));
     // OFF must NOT take the legacy units/:id/status path.

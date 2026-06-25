@@ -221,7 +221,7 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
     });
     if (rcResult.card) {
       for (const [k, v] of Object.entries(rcResult.appliedFlags)) {
-        if (body[k] == null || body[k] === '') body[k] = v as any;
+        if (body[k] == null || body[k] === '') body[k] = v;
       }
     }
 
@@ -256,11 +256,11 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
     }
     // Same guard for client_id when present (some clients send it
     // directly on create instead of inheriting via property).
-    if ((body as any).client_id != null && (body as any).client_id !== '') {
+    if (body.client_id != null && body.client_id !== '') {
       const exists = await queryFirst<{ id: number }>(
-        db, 'SELECT id FROM clients WHERE id = ?', (body as any).client_id,
+        db, 'SELECT id FROM clients WHERE id = ?', body.client_id,
       );
-      if (!exists) (body as any).client_id = null;
+      if (!exists) body.client_id = null;
     }
     // dispatcher_id is taken from JWT below — but verify the user row
     // still exists (sessions can outlive deleted users).
@@ -305,7 +305,7 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
         if (district) {
           const fill = (key: string, value: unknown) => {
             if (value != null && value !== '' && (body[key] == null || body[key] === '')) {
-              body[key] = value as any;
+              body[key] = value;
             }
           };
           fill('sector_id', district.sector_id);
@@ -432,7 +432,7 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
       await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call });
 
       return c.json({ ...call, runCard: rcResult.card }, 201);
-    } catch (sqlErr: any) {
+    } catch (sqlErr: unknown) {
       // Surface the real SQL error so the dispatcher (and we) can see
       // which column / FK is rejecting. Without this the client sees a
       // generic 500 and we can't debug from production.
@@ -440,13 +440,13 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
       log.error('Create call INSERT failed', { msg, userId, cols, params: bindParams });
       if (msg.includes('FOREIGN KEY')) {
         return c.json({
-          error: `Foreign key constraint failed. dispatcher_id=${userId} (must reference users.id), property_id=${body.property_id ?? null}, client_id=${(body as any).client_id ?? null}. Detail: ${msg}`,
+          error: `Foreign key constraint failed. dispatcher_id=${userId} (must reference users.id), property_id=${body.property_id ?? null}, client_id=${body.client_id ?? null}. Detail: ${msg}`,
           code: 'FK_VIOLATION',
         }, 500);
       }
       return c.json({ error: `Failed to create call: ${msg}`, code: 'INSERT_FAILED' }, 500);
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     log.error('Create call outer error', {}, err);
     return c.json({ error: `Failed to create call: ${err?.message || 'unknown'}`, code: 'OUTER_ERROR' }, 500);
   }
@@ -562,7 +562,7 @@ calls.post('/archive-bulk', requireRole(...WRITE_ROLES), async (c) => {
     const result = await execute(db,
       `UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE status IN (${placeholders})`,
       ...statuses);
-    const archived_count = (result as any)?.meta?.changes ?? 0;
+    const archived_count = result.meta.changes ?? 0;
     // Release every unit whose linked call is now (or already was) terminal —
     // also heals any strays left over from pre-fix archives.
     try {
@@ -1376,7 +1376,7 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
       if (call.latitude != null && call.longitude != null) {
         const dLat = 0.001;
         const dLng = 0.001 / Math.max(0.01, Math.cos(call.latitude * Math.PI / 180));
-        const alerts = await query<any>(db, `
+        const alerts = await query<Record<string, unknown>>(db, `
           SELECT id, address, latitude, longitude, alert_type, alert_level,
                  title, description, flags
           FROM premise_alerts
@@ -1386,7 +1386,7 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
             AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
           call.latitude - dLat, call.latitude + dLat,
           call.longitude - dLng, call.longitude + dLng);
-        const within50m = alerts.filter((a: any) => {
+        const within50m = alerts.filter((a) => {
           const dLatR = (a.latitude - call.latitude!) * Math.PI / 180;
           const dLngR = (a.longitude - call.longitude!) * Math.PI / 180;
           const aa = Math.sin(dLatR / 2) ** 2 + Math.cos(call.latitude! * Math.PI / 180) * Math.cos(a.latitude * Math.PI / 180) * Math.sin(dLngR / 2) ** 2;
@@ -1593,9 +1593,9 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     const parentId = parseInt(c.req.param('id') ?? '', 10);
     if (isNaN(parentId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
 
-    const parentBase = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
+    const parentBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
     if (!parentBase) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
-    const parentExt = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentId);
+    const parentExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentId);
 
     if (!['pso_client_request', 'process_service'].includes(String(parentBase.incident_type))) {
       return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
@@ -1703,9 +1703,9 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
     const childId = parseInt(c.req.param('id') ?? '', 10);
     if (isNaN(childId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
 
-    const childBase = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', childId);
+    const childBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', childId);
     if (!childBase) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
-    const childExt = await queryFirst<Record<string, any>>(db, 'SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?', childId);
+    const childExt = await queryFirst<Record<string, unknown>>(db, 'SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?', childId);
 
     const parentId = childExt?.parent_call_id;
     if (parentId == null) return c.json({ error: 'This call is not a re-dispatch — it has no parent call', code: 'NOT_A_REDISPATCH' }, 400);
@@ -1718,7 +1718,7 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
       await recordAudit(c, { action: 'ADMIN_OVERRIDE', entityType: 'call', entityId: childId, details: `Admin override: bypassed pending-only undo-redispatch (status: ${childBase.status})`, actorId: userId });
     }
 
-    const parentBase = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
+    const parentBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
     if (!parentBase) return c.json({ error: 'Parent call not found', code: 'PARENT_NOT_FOUND' }, 404);
 
     // Delete child + related rows. D1 may not enforce FK ON DELETE CASCADE, so

@@ -105,7 +105,7 @@ gps.post('/', async (c) => {
     // best-effort on-foot detection below — reading it here would let a single
     // unlanded migration 500 the entire GPS write path (breadcrumbs, unit
     // position, trips). It is read separately, guarded, inside that block.
-    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null }>(db,
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null; current_call_id: number | null }>(db,
       'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
@@ -157,7 +157,7 @@ gps.post('/', async (c) => {
         actor_id: userId, entity_type: 'unit', entity_id: unitId,
         unit_id: callSign ?? unitId, lat: lastPt.latitude, lng: lastPt.longitude,
         value: lastPt.speed, category: 'avl',
-        payload: { points: points.length, heading: lastPt.heading ?? null, call_id: (unit as any)?.current_call_id ?? null },
+        payload: { points: points.length, heading: lastPt.heading ?? null, call_id: unit.current_call_id ?? null },
       })]);
     }
     // Mirror latest fix onto units row, including heading + speed so the
@@ -206,7 +206,7 @@ gps.post('/', async (c) => {
     // Manual transitions always win: we only ever move FORWARD from the
     // unit's current status, and only while the call itself is still in an
     // engaged status. Best-effort — never breaks the breadcrumb write.
-    if (unitId && unit && (unit as any).current_call_id != null
+    if (unitId && unit && unit.current_call_id != null
         && lastPt && lastPt.latitude != null && lastPt.longitude != null
         && (unit.status === 'dispatched' || unit.status === 'enroute')) {
       try {

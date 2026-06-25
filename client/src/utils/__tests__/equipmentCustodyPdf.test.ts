@@ -6,14 +6,14 @@ describe('toDisplayLabel (used for actions)', () => {
   it('converts snake_case to Title Case', () => {
     expect(toDisplayLabel('check_in')).toBe('Check In');
     expect(toDisplayLabel('check_out')).toBe('Check Out');
-    expect(toDisplayLabel('return_to_room')).toBe('Return to Room');
+    expect(toDisplayLabel('return_to_room')).toBe('Return To Room');
   });
   it('handles a single-word action', () => {
     expect(toDisplayLabel('checkout')).toBe('Checkout');
   });
-  it('returns em-dash for missing value', () => {
-    expect(toDisplayLabel(undefined)).toBe('—');
-    expect(toDisplayLabel('')).toBe('—');
+  it('returns empty string for missing value', () => {
+    expect(toDisplayLabel(undefined)).toBe('');
+    expect(toDisplayLabel('')).toBe('');
   });
 });
 

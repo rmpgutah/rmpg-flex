@@ -180,10 +180,10 @@ audioMode.get('/mine/audio-mode', requireRole(...READ_ROLES), async (c) => {
 audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const user = c.get('user') as any;
+    const user = c.get('user') as { id: number; role: string; username?: string; full_name?: string } | undefined;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const mode = String(body.audio_mode || '').toLowerCase();
     if (!VALID_AUDIO_MODES.includes(mode)) {
       return c.json({ error: `audio_mode must be one of ${VALID_AUDIO_MODES.join(', ')}`, code: 'INVALID_AUDIO_MODE' }, 400);
@@ -214,7 +214,7 @@ audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
     const isManager = user && ['admin', 'manager', 'supervisor'].includes(user.role);
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const mileage = Number(body.mileage);
     if (!Number.isFinite(mileage)) {
       return c.json({ error: 'mileage must be a number', code: 'INVALID_MILEAGE' }, 400);
@@ -362,7 +362,7 @@ premiseAlerts.post('/', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const address = String(body.address || '').trim();
     const title = String(body.title || '').trim();
     const alert_level = String(body.alert_level || 'info').toLowerCase();
@@ -407,10 +407,10 @@ premiseAlerts.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
-    const before = await queryFirst<any>(db, 'SELECT * FROM premise_alerts WHERE id = ?', id);
+    const before = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM premise_alerts WHERE id = ?', id);
     if (!before) return c.json({ error: 'Premise alert not found', code: 'PA_NOT_FOUND' }, 404);
 
-    const b = await c.req.json().catch(() => ({} as any));
+    const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const alert_level = b.alert_level ? String(b.alert_level).toLowerCase() : before.alert_level;
     if (!VALID_ALERT_LEVELS.includes(alert_level)) {
       return c.json({ error: `alert_level must be one of ${VALID_ALERT_LEVELS.join(', ')}`, code: 'PA_INVALID_LEVEL' }, 400);
@@ -478,17 +478,17 @@ premiseAlerts.get('/near/scan', requireRole(...READ_ROLES), async (c) => {
     }
     const dLat = radius / 111000;
     const dLng = radius / (111000 * Math.max(0.01, Math.cos(toRad(lat))));
-    const candidates = await query<any>(db, `
+    const candidates = await query<Record<string, unknown>>(db, `
       SELECT * FROM premise_alerts
       WHERE active = 1
         AND latitude BETWEEN ? AND ?
         AND longitude BETWEEN ? AND ?
         AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
-      lat - dLat, lat + dLat, lng - dLng, lng + dLng);
+      lat - dLat, lat + dLng, lng - dLng, lng + dLng);
     const within = candidates
-      .map((p: any) => ({ ...p, flags: safeJson(p.flags, []), distance_meters: Math.round(haversineMeters(lat, lng, p.latitude, p.longitude)) }))
-      .filter((p: any) => p.distance_meters <= radius)
-      .sort((a: any, b: any) => a.distance_meters - b.distance_meters);
+      .map((p) => ({ ...p, flags: safeJson(p.flags as string, []), distance_meters: Math.round(haversineMeters(lat, lng, Number(p.latitude), Number(p.longitude))) }))
+      .filter((p) => p.distance_meters <= radius)
+      .sort((a, b) => a.distance_meters - b.distance_meters);
     return c.json({ count: within.length, radius_meters: radius, alerts: within });
   } catch (err) {
     log.error('[dispatch] premise-alerts/near error', {}, err);
@@ -507,7 +507,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
-    const base = await queryFirst<any>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const base = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!base) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
     // Tactical flags overflowed to calls_for_service_ext when the base table hit
     // the D1 100-col cap (see calls.ts UPDATABLE_CALL_COLUMNS_EXT). The write path
@@ -537,7 +537,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
       const dLat = 50 / 111000;
       const dLng = 50 / (111000 * Math.max(0.01, Math.cos(toRad(call.latitude))));
       try {
-        const candidates = await query<any>(db, `
+        const candidates = await query<Record<string, unknown>>(db, `
           SELECT id, address, latitude, longitude, alert_level, title, description
           FROM premise_alerts
           WHERE active = 1
@@ -547,7 +547,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
           call.latitude - dLat, call.latitude + dLat,
           call.longitude - dLng, call.longitude + dLng);
         for (const a of candidates) {
-          const d = haversineMeters(call.latitude, call.longitude, a.latitude, a.longitude);
+          const d = haversineMeters(call.latitude, call.longitude, a.latitude as number, a.longitude as number);
           if (d <= 50) {
             const sev: 'critical' | 'high' | 'medium' = a.alert_level === 'critical' ? 'critical' : a.alert_level === 'warning' ? 'high' : 'medium';
             warnings.push({
@@ -563,7 +563,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
 
     // ── Linked persons (incident_persons via incidents.call_id) ──
     try {
-      const linkedPersons = await query<any>(db, `
+      const linkedPersons = await query<Record<string, unknown>>(db, `
         SELECT p.first_name, p.last_name
         FROM incident_persons ip
         JOIN persons p ON ip.person_id = p.id
@@ -584,7 +584,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
 
     // ── Active warrants for any linked person ──
     try {
-      const warrants = await query<any>(db, `
+      const warrants = await query<Record<string, unknown>>(db, `
         SELECT w.warrant_number, w.type, w.subject_person_id, p.first_name, p.last_name
         FROM warrants w
         LEFT JOIN persons p ON w.subject_person_id = p.id
@@ -636,17 +636,17 @@ const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'b
 unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const user = c.get('user') as any;
+    const user = c.get('user') as { id: number; role: string } | undefined;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
 
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const status = String(body.status || '').toLowerCase();
     if (!VALID_UNIT_STATUSES.includes(status)) {
       return c.json({ error: `status must be one of ${VALID_UNIT_STATUSES.join(', ')}`, code: 'INVALID_STATUS', valid: VALID_UNIT_STATUSES }, 400);
     }
 
-    const unit = await queryFirst<any>(db, 'SELECT id, officer_id FROM units WHERE id = ?', unitId);
+    const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT id, officer_id FROM units WHERE id = ?', unitId);
     if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
 
     // Officers can only change their own unit; supervisors+ can change any
@@ -656,7 +656,7 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
     }
 
     await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", status, unitId);
-    const updated = await queryFirst<any>(db, 'SELECT * FROM units WHERE id = ?', unitId);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', unitId);
     return c.json(updated);
   } catch (err) {
     log.error('[dispatch] unit status error', {}, err);
@@ -790,7 +790,7 @@ bolos.post('/', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const type = String(body.type || '').toLowerCase();
     const title = String(body.title || '').trim();
     if (!type || !title) return c.json({ error: 'type and title are required', code: 'BOLO_MISSING_FIELDS' }, 400);
@@ -825,9 +825,9 @@ bolos.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
-    const before = await queryFirst<any>(db, 'SELECT * FROM bolos WHERE id = ?', id);
+    const before = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM bolos WHERE id = ?', id);
     if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
-    const b = await c.req.json().catch(() => ({} as any));
+    const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     // The Communications "Resolve" button sends status:'resolved', which is not a
     // valid bolos.status enum value (live CHECK = active/expired/cancelled) and
     // would 400. Treat "resolved" as "cancelled" (no longer needed).
@@ -922,7 +922,7 @@ bolos.post('/expire-check', requireRole(...WRITE_ROLES), async (c) => {
 bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const daysRaw = Number(body.days_expired ?? 7);
     const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 3650) : 7;
     const res = await execute(db, "UPDATE bolos SET status = 'cancelled' WHERE status = 'expired' AND expired_at IS NOT NULL AND expired_at <= datetime('now', ?)", `-${days} days`);
@@ -952,13 +952,13 @@ welfareActive.get('/active', requireRole(...WRITE_ROLES), async (c) => {
       JOIN units un ON un.officer_id = u.id
       WHERE un.status = 'onscene' AND un.current_call_id IS NOT NULL`);
 
-    const watches: any[] = [];
+    const watches: Record<string, unknown>[] = [];
     for (const cand of candidates) {
       try {
-        const id = (c.env as any).WELFARE_WATCH.idFromName(`u-${cand.id}`);
-        const stub = (c.env as any).WELFARE_WATCH.get(id);
+        const id = c.env.WELFARE_WATCH.idFromName(`u-${cand.id}`);
+        const stub = c.env.WELFARE_WATCH.get(id);
         const r = await stub.fetch('https://do/state', { method: 'GET' });
-        const state = await r.json();
+        const state = await r.json<{ idle?: boolean }>();
         if (state && !state.idle) {
           watches.push({
             user_id: cand.id,
@@ -1362,7 +1362,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
           `UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?
            WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)`,
           prevUnitStatus, id, now, unitId, id);
-        if (((res as any)?.meta?.changes ?? 0) > 0) revertedUnitIds.push(unitId);
+        if ((res.meta.changes ?? 0) > 0) revertedUnitIds.push(unitId);
       }
     }
 
@@ -1643,10 +1643,10 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
 
-    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
-    if (requireCleared && !['cleared', 'closed'].includes(call.status)) {
+    if (requireCleared && !['cleared', 'closed'].includes(call.status as string)) {
       return c.json({ error: 'Can only generate incident reports from cleared or closed calls', code: 'CALL_NOT_CLEARED' }, 400);
     }
 
@@ -1756,7 +1756,7 @@ callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervis
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
 
-    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
     // Dedup: one serve job per call. Return the existing row if present.
@@ -1800,7 +1800,7 @@ callActions.patch('/:id/pin', requireRole('admin', 'manager', 'supervisor', 'dis
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const pinned = body.pinned ? 1 : 0;
 
     const call = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
