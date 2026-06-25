@@ -8,6 +8,7 @@
 // tests/intelPatterns.test.ts.
 // ============================================================
 
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from './db';
 import { isRealValue, normalizeAddress } from './intelMatch';

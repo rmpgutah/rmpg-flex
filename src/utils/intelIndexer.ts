@@ -11,6 +11,7 @@
 // the Worker subrequest budget.
 // ============================================================
 
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute, executeBatch } from './db';
 import { isRealValue, normalizePhone, normalizeAddress, nameSimilarity } from './intelMatch';

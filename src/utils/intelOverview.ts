@@ -2,6 +2,7 @@
 // Each section is isolated: a failing query yields its empty default, never
 // a 500 (mirrors the dossier endpoint's resilience). All tables/columns here
 // are verified against live D1 (785de7ae).
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst } from './db';
 
