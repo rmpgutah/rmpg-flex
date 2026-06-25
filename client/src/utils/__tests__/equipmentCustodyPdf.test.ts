@@ -1,18 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { prettyAction, logEntryActor, logEntryDate } from '../equipmentCustodyPdf';
+import { logEntryActor, logEntryDate } from '../equipmentCustodyPdf';
+import { toDisplayLabel } from '../formatters';
 
-describe('prettyAction', () => {
+describe('toDisplayLabel (used for actions)', () => {
   it('converts snake_case to Title Case', () => {
-    expect(prettyAction('check_in')).toBe('Check In');
-    expect(prettyAction('check_out')).toBe('Check Out');
-    expect(prettyAction('return_to_room')).toBe('Return To Room');
+    expect(toDisplayLabel('check_in')).toBe('Check In');
+    expect(toDisplayLabel('check_out')).toBe('Check Out');
+    expect(toDisplayLabel('return_to_room')).toBe('Return to Room');
   });
   it('handles a single-word action', () => {
-    expect(prettyAction('checkout')).toBe('Checkout');
+    expect(toDisplayLabel('checkout')).toBe('Checkout');
   });
   it('returns em-dash for missing value', () => {
-    expect(prettyAction(undefined)).toBe('—');
-    expect(prettyAction('')).toBe('—');
+    expect(toDisplayLabel(undefined)).toBe('—');
+    expect(toDisplayLabel('')).toBe('—');
   });
 });
 

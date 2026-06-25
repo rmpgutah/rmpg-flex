@@ -4,6 +4,10 @@ import { vi, describe, it, expect } from 'vitest';
 import IntelSearch from '../IntelSearch';
 import { IntelProvider } from '../IntelContext';
 
+vi.mock('../../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 1, role: 'admin', username: 'test' } }),
+}));
+
 vi.mock('../../../hooks/useApi', () => ({
   apiFetch: vi.fn(async (path: string) => {
     if (path.startsWith('/intel/saved-searches')) return [{ id: 1, name: 'Gang plates', query_text: 'flag:gang', created_at: '' }];

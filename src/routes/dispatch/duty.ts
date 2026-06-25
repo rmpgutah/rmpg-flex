@@ -23,6 +23,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 import { setFleetOdometer } from '../../utils/fleetOdometer';
+import { log } from '../../utils/logger';
 
 const duty = new Hono<Env>();
 
@@ -75,7 +76,7 @@ function validateMileage(raw: unknown, previous: number | null, overrideReason: 
 
 // Whose shift this request acts on: self by default; another officer only for
 // dispatch-tier roles passing officer_id.
-function resolveOfficerId(c: any, requested?: unknown): number | null {
+function resolveOfficerId(c: { get: (key: string) => unknown }, requested?: unknown): number | null {
   const self = c.get('userId') as number | undefined;
   const role = (c.get('user') as { role?: string } | undefined)?.role;
   const reqId = requested != null ? Number(requested) : NaN;
@@ -218,7 +219,7 @@ duty.get('/roster', async (c) => {
     }
     return c.json({ officers: await loadRoster(getDb(c.env)) });
   } catch (err) {
-    console.error('GET /dispatch/duty/roster failed:', err);
+    log.error('GET /dispatch/duty/roster failed', {}, err);
     return c.json({ error: 'Failed to load duty roster', detail: (err as Error)?.message }, 500);
   }
 });
@@ -231,7 +232,7 @@ duty.get('/onduty', async (c) => {
     const officers = (await loadRoster(getDb(c.env))).filter((o) => o.on_shift);
     return c.json({ officers });
   } catch (err) {
-    console.error('GET /dispatch/duty/onduty failed:', err);
+    log.error('GET /dispatch/duty/onduty failed', {}, err);
     return c.json({ error: 'Failed to load on-duty roster', detail: (err as Error)?.message }, 500);
   }
 });
@@ -250,7 +251,7 @@ duty.get('/timecard', async (c) => {
        ORDER BY clock_in DESC LIMIT 60`, officerId);
     return c.json({ entries });
   } catch (err) {
-    console.error('GET /dispatch/duty/timecard failed:', err);
+    log.error('GET /dispatch/duty/timecard failed', {}, err);
     return c.json({ error: 'Failed to load timecard', detail: (err as Error)?.message }, 500);
   }
 });
@@ -262,7 +263,7 @@ duty.get('/me', async (c) => {
     if (!officerId) return c.json({ error: 'No officer in session', code: 'NO_OFFICER' }, 401);
     return c.json(await stateFor(getDb(c.env), officerId));
   } catch (err) {
-    console.error('GET /dispatch/duty/me failed:', err);
+    log.error('GET /dispatch/duty/me failed', {}, err);
     return c.json({ error: 'Failed to load shift state', detail: (err as Error)?.message }, 500);
   }
 });
@@ -365,11 +366,11 @@ duty.post('/start', async (c) => {
     await assignUnitVehicle(db, unit.id, unit.call_sign, officerName, vehicle.id, vehicle.vehicle_number);
 
     const fresh = await queryFirst(db, `SELECT * FROM units WHERE id = ?`, unit.id);
-    try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { /* never break the write */ }
+    try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { log.warn('[duty/start] broadcast unit_updated failed', { unitId: unit.id }); /* never break the write */ }
 
     return c.json(await stateFor(db, officerId), 200);
   } catch (err) {
-    console.error('POST /dispatch/duty/start failed:', err);
+    log.error('POST /dispatch/duty/start failed', {}, err);
     return c.json({ error: 'Failed to start shift', detail: (err as Error)?.message }, 500);
   }
 });
@@ -426,7 +427,7 @@ duty.post('/end', async (c) => {
         `UPDATE units SET status = 'off_duty', current_call_id = NULL, on_foot = 0, on_foot_since = NULL, on_foot_alerted = 0, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, unit.id);
       await releaseUnitVehicle(db, unit.id);
       const fresh = await queryFirst(db, `SELECT * FROM units WHERE id = ?`, unit.id);
-      try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { /* never break the write */ }
+      try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { log.warn('[duty/end] broadcast unit_updated failed', { unitId: unit.id }); /* never break the write */ }
     }
 
     // 3) Tear down any armed WelfareWatchDO for this officer. Without this,
@@ -454,15 +455,15 @@ duty.post('/end', async (c) => {
             call_number: prev.call_number ?? null,
             reason: 'shift_end',
           });
-        } catch { /* broadcast is non-fatal */ }
+        } catch { log.warn('[duty/end] broadcast welfare_auto_cleared failed', { officerId }); /* broadcast is non-fatal */ }
       }
     } catch (err) {
-      console.error('[duty/end] welfare DO teardown failed (non-fatal)', { officerId, err: (err as Error)?.message });
+      log.error('[duty/end] welfare DO teardown failed (non-fatal)', { officerId, err: (err as Error)?.message });
     }
 
     return c.json(await stateFor(db, officerId), 200);
   } catch (err) {
-    console.error('POST /dispatch/duty/end failed:', err);
+    log.error('POST /dispatch/duty/end failed', {}, err);
     return c.json({ error: 'Failed to end shift', detail: (err as Error)?.message }, 500);
   }
 });

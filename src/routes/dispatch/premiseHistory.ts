@@ -8,6 +8,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query } from '../../utils/db';
+import { log } from '../../utils/logger';
 
 const premise = new Hono<Env>();
 
@@ -119,7 +120,7 @@ premise.get('/address-occupants', async (c) => {
       try {
         const parsed = JSON.parse(p.flags || '[]');
         if (Array.isArray(parsed)) flags = parsed.map((x: any) => (typeof x === 'string' ? x : x?.type)).filter(Boolean);
-      } catch { /* flags free-form/absent */ }
+      } catch { log.warn('[premise-history] person flags parse failed', { personId: p.id }); /* flags free-form/absent */ }
       const gangRaw = (p.gang_affiliation ?? '').toString().trim();
       const gang = SENTINEL.has(gangRaw.toLowerCase()) ? null : gangRaw;
       const warrants = Number(p.active_warrants) || 0;
@@ -140,7 +141,7 @@ premise.get('/address-occupants', async (c) => {
       has_flagged: occupants.some((o) => o.caution),
     });
   } catch (err) {
-    console.error('[dispatch] address-occupants lookup failed:', err);
+    log.error('[dispatch] address-occupants lookup failed', {}, err);
     return c.json({ occupants: [], occupant_count: 0, has_flagged: false });
   }
 });

@@ -33,7 +33,7 @@ vi.mock('../../components/ToastProvider', () => ({
 // 2026-06-22). Mock returns a stable user so the shift-report + FI handlers
 // route user.id through the auth context the way the live app does.
 vi.mock('../../context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: '42', username: 'jdoe', first_name: 'J', last_name: 'Doe' } }),
+  useAuth: () => ({ user: { id: '42', username: 'jdoe', first_name: 'J', last_name: 'Doe', role: 'admin' } }),
 }));
 // useSearchParams is used by the new ?call_id= deep-link effect. Mock returns
 // an empty URLSearchParams so the effect is a no-op in tests that don't

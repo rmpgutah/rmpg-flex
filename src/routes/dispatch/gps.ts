@@ -8,6 +8,7 @@ import { applyTripEvent, type ApplyArgs } from '../../utils/tripStore';
 import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdometer';
 import { type IncomingFix } from '../../utils/tripTelemetry';
 import type { TripEvent } from '../../utils/tripEngine';
+import { log } from '../../utils/logger';
 
 const gps = new Hono<Env>();
 
@@ -83,7 +84,7 @@ gps.post('/', async (c) => {
       Math.abs(pt.latitude) <= 90 && Math.abs(pt.longitude) <= 180 &&
       !(Math.abs(pt.latitude) < 0.1 && Math.abs(pt.longitude) < 0.1));
     if (points.length !== normalized.length) {
-      console.warn(`[gps] dropped ${normalized.length - points.length} fix(es) with non-finite coords`);
+      log.warn(`[gps] dropped ${normalized.length - points.length} fix(es) with non-finite coords`);
     }
     if (points.length === 0) {
       // Every point was invalid — succeed with 0 stored so the client clears
@@ -117,7 +118,7 @@ gps.post('/', async (c) => {
     // 200 (not 4xx) so the offline queue clears its buffer instead of
     // retrying — repeated rejection would re-drain the same poisoned batch.
     if (unit && !isTakeHome && isUnitOffDuty(unit.status)) {
-      console.log(`[gps] dropped ${points.length} fix(es) from off-duty unit ${unit.call_sign ?? unit.id} (status=${unit.status}) user=${userId}`);
+      log.info(`[gps] dropped ${points.length} fix(es) from off-duty unit ${unit.call_sign ?? unit.id} (status=${unit.status}) user=${userId}`);
       return c.json({
         accepted: 0,
         dropped: points.length,
@@ -190,9 +191,9 @@ gps.post('/', async (c) => {
           lastLng: lastPt.longitude,
           source: lastPt.source ?? null,
         });
-        if (t) console.log(`[gps] unit ${callSign} on-foot transition: ${t}`);
+        if (t) log.info(`[gps] unit ${callSign} on-foot transition: ${t}`);
       } catch (err) {
-        console.error('[gps] on-foot detection failed (non-fatal)', err);
+        log.error('[gps] on-foot detection failed (non-fatal)', {}, err);
       }
     }
 
@@ -275,7 +276,7 @@ gps.post('/', async (c) => {
                 }
               }
             } catch (err) {
-              console.warn('[gps] auto-mileage failed (non-fatal):', err);
+              log.warn('[gps] auto-mileage failed (non-fatal)', { err });
             }
 
             await emitAlert(c.env, 'dispatch_update', {
@@ -285,7 +286,7 @@ gps.post('/', async (c) => {
           }
         }
       } catch (err) {
-        console.warn('[gps] auto status transition failed (non-fatal):', err);
+        log.warn('[gps] auto status transition failed (non-fatal)', { err });
       }
     }
 
@@ -326,7 +327,7 @@ gps.post('/', async (c) => {
               prevLat, prevLng,
             },
           });
-        } catch { /* trip engine is non-fatal — never break GPS write */ }
+        } catch { log.warn('[gps] trip engine failed', { unitId, pointCount: points.length }); /* trip engine is non-fatal — never break GPS write */ }
         prevLat = pt.latitude;
         prevLng = pt.longitude;
       }
@@ -351,7 +352,7 @@ gps.post('/', async (c) => {
                WHERE id IN (${placeholders}) AND trip_id IS NULL`,
               activeTrip.id, ...inserted);
           }
-        } catch { /* non-fatal — replay degrades, GPS write still succeeds */ }
+        } catch { log.warn('[gps] breadcrumb trip_id backfill failed', { unitId, insertedCount: inserted.length }); /* non-fatal — replay degrades, GPS write still succeeds */ }
       }
     }
 
@@ -366,7 +367,7 @@ gps.post('/', async (c) => {
         speed: lastPt?.speed ?? null,
         at: new Date().toISOString(),
       });
-    } catch { /* non-fatal */ }
+    } catch { log.warn('[gps] live fan-out (emitAlert) failed', { unitId, callSign }); /* non-fatal */ }
 
     // Echo the resolved unit back so the client's useGpsTracking can populate
     // unitId/callSign without a separate GET /dispatch/gps/my-unit (which can
@@ -378,11 +379,11 @@ gps.post('/', async (c) => {
       ...(isTakeHome ? { take_home: true } : {}),
     }, 201);
   } catch (err) {
-    console.error('[gps] POST failed:', err);
+    log.error('[gps] POST failed', {}, err);
     const detail = err instanceof Error ? err.message : String(err);
     if (err && typeof err === 'object' && 'code' in err) {
       const code = (err as any).code;
-      console.error('[gps] D1 error code:', code);
+      log.error('[gps] D1 error code', { code });
     }
     return c.json({ error: 'GPS update failed', detail }, 500);
   }
@@ -427,28 +428,12 @@ gps.get('/current', async (c) => {
     `);
     return c.json(rows);
   } catch (err) {
-    console.error('[gps] GET /current failed:', err);
+    log.error('[gps] GET /current failed', {}, err);
     return c.json({ error: 'Failed to get GPS' }, 500);
   }
 });
 
 // GET /dispatch/gps/my-unit
-//
-// CROSS-INTEGRATION NOTE (Claude Opus 4.8 — d3001d25):
-//   Returns the calling user's assigned unit if one exists. The
-//   NAV page + DispatchMiniMap use this to resolve the officer's
-//   call sign and GPS source for the instrument panel + vehicle
-//   marker. The response shape is the full units row joined with
-//   the officer's name from users.
-//
-//   The pre-Claude version returned { message: 'No unit assigned' }
-//   with a 404 status code, which causes apiFetch to reject. The
-//   useGpsTracking + NavPage consumers both .catch() this, so it
-//   didn't crash the page — but the NavPage instrument panel
-//   rendered "No unit assigned" permanently even when the unit
-//   existed (the 404 is swallowed as a rejection, so the consumer
-//   never retries). Now returns 200 with a null unit so the
-//   consumer can distinguish "no unit yet" from "fetch error".
 gps.get('/my-unit', async (c) => {
   try {
     const db = getDb(c.env);
@@ -460,7 +445,7 @@ gps.get('/my-unit', async (c) => {
     if (!unit) return c.json(null, 200);
     return c.json(unit);
   } catch (err) {
-    console.error('[gps] GET /my-unit failed:', err);
+    log.error('[gps] GET /my-unit failed', {}, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -470,19 +455,6 @@ gps.get('/my-unit', async (c) => {
 // breadcrumb position (lat, lng, gps_updated_at) so the NAV panel
 // can render the vehicle marker on the mini-map and show speed/
 // heading in the instrument cluster.
-//
-// CROSS-INTEGRATION (Claude Opus 4.8 — d3001d25):
-//   The pre-Claude DispatchMiniMap had no awareness of "which car
-//   does this officer drive right now" — it plotted the unit's GPS
-//   pin but couldn't add the vehicle outline. This endpoint bridges
-//   officer → unit → fleet_vehicle → gps_breadcrumb in one call,
-//   read by useNavTravel (or the DispatchMiniMap on non-nav pages)
-//   to render the gold-border vehicle marker.
-//
-//   Steps: (1) units.officer_id = user.id → unit.id
-//          (2) fleet_vehicles.assigned_unit_id = unit.id → vehicle
-//          (3) gps_breadcrumbs.unit_id = unit.id, MAX(recorded_at)
-//              → latest position fix
 gps.get('/my-vehicle', async (c) => {
   try {
     const db = getDb(c.env);
@@ -532,7 +504,7 @@ gps.get('/my-vehicle', async (c) => {
       vehicle: vehicle || null,
     });
   } catch (err) {
-    console.error('[gps] GET /my-vehicle failed:', err);
+    log.error('[gps] GET /my-vehicle failed', {}, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -646,7 +618,7 @@ gps.get('/trails', async (c) => {
     const trails = [...byUnit.values()].map((t) => ({ ...t, points: downsample(t.points, 1200) }));
     return c.json(trails);
   } catch (err) {
-    console.error('[gps] GET /trails failed:', err);
+    log.error('[gps] GET /trails failed', {}, err);
     return c.json([]);
   }
 });
@@ -681,7 +653,7 @@ gps.get('/history', async (c) => {
       points: downsample(rows, 4000),
     });
   } catch (err) {
-    console.error('[gps] GET /history failed:', err);
+    log.error('[gps] GET /history failed', {}, err);
     return c.json({ error: 'Failed to load GPS history' }, 500);
   }
 });
@@ -860,7 +832,7 @@ gps.get('/call-trail/:callId', async (c) => {
       },
     });
   } catch (err) {
-    console.error('[gps] GET /call-trail failed:', err);
+    log.error('[gps] GET /call-trail failed', {}, err);
     return c.json({ error: 'Failed to fetch call trail' }, 500);
   }
 });

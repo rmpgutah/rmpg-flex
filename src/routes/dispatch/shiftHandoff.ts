@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, queryFirst, execute } from '../../utils/db';
+import { log } from '../../utils/logger';
 
 const handoff = new Hono<Env>();
 
@@ -16,6 +17,7 @@ handoff.get('/', async (c) => {
       updated_at: row.updated_at ?? null,
     } : { text: '', updated_by: null, updated_at: null });
   } catch {
+    log.warn('[shiftHandoff] GET failed, table may not exist', {});
     return c.json({ text: '', updated_by: null, updated_at: null });
   }
 });
@@ -36,7 +38,7 @@ handoff.put('/', async (c) => {
     );
     return c.json({ success: true, ...row });
   } catch (err) {
-    console.error('[shiftHandoff] PUT failed:', err);
+    log.error('[shiftHandoff] PUT failed', {}, err);
     return c.json({ success: false, error: 'Failed to save shift handoff' }, 500);
   }
 });

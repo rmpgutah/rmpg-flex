@@ -18,6 +18,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 import { findOrCreateBusiness } from '../../utils/serveIntakeRecords';
 import { screenPersonForSor } from '../../utils/screening/nsopwAdapter';
+import { log } from '../../utils/logger';
 // Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
 // naive truthiness check fires a bogus officer-safety alert on a subject with no
 // flags. isFlagSet() (shared) treats those sentinels as absent.
@@ -136,7 +137,7 @@ links.post('/calls/:id/persons', async (c) => {
       });
     }
   } catch (err) {
-    console.warn('warrant-alert check failed (non-fatal):', err);
+    log.warn('warrant-alert check failed (non-fatal)', { err });
   }
 
   // OFFICER SAFETY: also screen this subject against NSOPW. Fires
@@ -149,7 +150,7 @@ links.post('/calls/:id/persons', async (c) => {
   // data for subjects who were registered out of state.
   c.executionCtx.waitUntil(
     screenPersonForSor(c.env, body.person_id, { triggeredBy: 'cfs_subject_add' })
-      .catch((err) => console.warn('[nsopw] cfs_subject_add screen failed:', err)),
+      .catch((err) => log.warn('[nsopw] cfs_subject_add screen failed', { err })),
   );
 
   // Officer MDT voice — "Subject added: <last name>". Person flags
@@ -229,8 +230,8 @@ links.patch('/calls/:id/persons/:linkId', async (c) => {
 // Returns 409 with the candidate list. Caller picks via merge_into_id
 // (link the existing record) or force_create:true (create new anyway).
 //
-// Static segment beats :linkId in Hono's router, so this path takes
-// precedence over PATCH /calls/:id/persons/:linkId without explicit order.
+// Static segment beats :linkId in Hono's router without explicit ordering
+// because it's registered first. Keep static routes above parameterized ones.
 links.post('/calls/:id/persons/quick-add', async (c) => {
   const db = getDb(c.env);
   const callId = c.req.param('id');
