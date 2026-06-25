@@ -2,6 +2,7 @@
 // GlobalSearch). Builds targeted identifier/name/addr/case lookups + FTS free
 // text, enriches person hits with photo_url + flags + cluster, and returns
 // facet counts. Each branch is try/catch-isolated. SQL verified vs live D1.
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query } from './db';
 import { personFlagsForIds } from './intelQueryFlags';

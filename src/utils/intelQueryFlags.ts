@@ -1,3 +1,4 @@
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query } from './db';
 

@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
+import { apiFetch } from '../../../hooks/useApi';
+import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
+import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
 
 interface FuelRow {
   id: number;
@@ -15,7 +18,33 @@ interface FuelRow {
 
 export function FuelTab({ vehicleId }: { vehicleId: number }) {
   const [rows, setRows] = useState<FuelRow[]>([]);
+  const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
   const [loading, setLoading] = useState(true);
+
+  const fetchConflicts = (ids: number[]) => {
+    if (ids.length === 0) return;
+    apiFetch<{ conflicts: Record<string, unknown>[] }>(
+      `/fleetio/conflicts?table=fleet_fuel_log&ids=${ids.join(',')}`,
+    )
+      .then((r) => {
+        if (!r?.conflicts) return;
+        const map = new Map<number, ConflictBadgeConflict[]>();
+        for (const c of r.conflicts) {
+          const rmpgId = c.rmpg_id as number;
+          if (!map.has(rmpgId)) map.set(rmpgId, []);
+          map.get(rmpgId)!.push({
+            id: c.id as number,
+            field: c.field as string,
+            local_value: c.local_value as string | null | undefined,
+            remote_value: c.remote_value as string | null | undefined,
+            resolution: c.resolution as string | null | undefined,
+            created_at: c.created_at as string | undefined,
+          });
+        }
+        setConflicts(map);
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -24,6 +53,7 @@ export function FuelTab({ vehicleId }: { vehicleId: number }) {
         if (cancelled) return;
         const arr = Array.isArray(r) ? r : (r as { results?: FuelRow[] })?.results ?? [];
         setRows(arr);
+        fetchConflicts(arr.map((x) => x.id));
       })
       .catch(() => { if (!cancelled) setRows([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -53,20 +83,35 @@ export function FuelTab({ vehicleId }: { vehicleId: number }) {
             <th className="text-right px-2 py-1.5 font-semibold">Total</th>
             <th className="text-right px-2 py-1.5 font-semibold">Odo</th>
             <th className="text-right px-2 py-1.5 font-semibold">MPG</th>
+            <th className="text-center px-2 py-1.5 font-semibold">Sync</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className="border-b border-rmpg-700">
-              <td className="px-2 py-0.5 text-rmpg-300">{r.fuel_date ?? '—'}</td>
-              <td className="px-2 py-0.5 text-rmpg-300">{r.station ?? '—'}</td>
-              <td className="px-2 py-0.5 text-right text-rmpg-300">{r.gallons != null ? r.gallons.toFixed(2) : '—'}</td>
-              <td className="px-2 py-0.5 text-right text-rmpg-300">{r.cost_per_gallon != null ? `$${r.cost_per_gallon.toFixed(2)}` : '—'}</td>
-              <td className="px-2 py-0.5 text-right text-rmpg-300">{r.total_cost != null ? `$${r.total_cost.toFixed(2)}` : '—'}</td>
-              <td className="px-2 py-0.5 text-right text-rmpg-300">{r.odometer != null ? r.odometer.toLocaleString() : '—'}</td>
-              <td className="px-2 py-0.5 text-right text-rmpg-100">{r.mpg != null ? r.mpg.toFixed(1) : '—'}</td>
-            </tr>
-          ))}
+          {rows.map((r) => {
+            const rowConflicts = conflicts.get(r.id);
+            return (
+              <tr key={r.id} className="border-b border-rmpg-700">
+                <td className="px-2 py-0.5 text-rmpg-300">{r.fuel_date ?? '—'}</td>
+                <td className="px-2 py-0.5 text-rmpg-300">{r.station ?? '—'}</td>
+                <td className="px-2 py-0.5 text-right text-rmpg-300">{r.gallons != null ? r.gallons.toFixed(2) : '—'}</td>
+                <td className="px-2 py-0.5 text-right text-rmpg-300">{r.cost_per_gallon != null ? `$${r.cost_per_gallon.toFixed(2)}` : '—'}</td>
+                <td className="px-2 py-0.5 text-right text-rmpg-300">{r.total_cost != null ? `$${r.total_cost.toFixed(2)}` : '—'}</td>
+                <td className="px-2 py-0.5 text-right text-rmpg-300">{r.odometer != null ? r.odometer.toLocaleString() : '—'}</td>
+                <td className="px-2 py-0.5 text-right text-rmpg-100">{r.mpg != null ? r.mpg.toFixed(1) : '—'}</td>
+                <td className="px-2 py-0.5 text-center">
+                  {rowConflicts?.length ? (
+                    <div className="inline-flex gap-0.5">
+                      {rowConflicts.map((c) => (
+                        <FleetioConflictBadge key={c.id} conflict={c} compact />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-rmpg-500">—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
