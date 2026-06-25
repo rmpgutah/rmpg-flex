@@ -59,8 +59,9 @@ function isSafeToReload(navigationBlockedMs = 0): boolean {
   if (window.location.pathname.startsWith('/navigation')) {
     if (navigationBlockedMs < NAVIGATION_BLOCK_MAX_MS) return false;
   }
-  // 2. Global dirty flag — set by UnsavedChangesGuard when any form has unsaved edits.
-  if ((window as any).__rmpg_hasUnsavedChanges) return false;
+  // 2. Global dirty counter — incremented by UnsavedChangesGuard / useUnsavedChanges when
+  //    any form has unsaved edits (counter prevents false negatives when multiple forms are open).
+  if ((window as any).__rmpg_unsavedChangesCount > 0) return false;
   const ae = document.activeElement as HTMLElement | null;
   if (ae) {
     const tag = ae.tagName;
