@@ -114,7 +114,7 @@ export async function rebuildIntelIndex(db: D1Database): Promise<Record<string, 
         type, rows.length);
       counts[type] = rows.length;
     } catch (err: any) {
-      console.error(`[intel-index] ${type} sync failed:`, err?.message);
+      log.error('[intel-index] sync failed', { entity_type: type, error: err?.message });
       counts[type] = -1;
     }
   }

@@ -11,6 +11,7 @@
 // returned no results are retried on a weekly cycle.
 // ============================================================
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';

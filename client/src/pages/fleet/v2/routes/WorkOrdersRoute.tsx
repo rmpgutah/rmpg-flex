@@ -8,11 +8,14 @@
 // wizard) is its own focused PR (5c); for now clicking a row opens the
 // legacy /fleet maintenance tab in a new tab.
 // ============================================================
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, X } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
+import { apiFetch } from '../../../../hooks/useApi';
 import { FleetListShell } from '../shell/FleetListShell';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
+import FleetioConflictBadge from '../../../../components/FleetioConflictBadge';
+import type { ConflictBadgeConflict } from '../../../../components/FleetioConflictBadge';
 
 interface WorkOrderRow {
   id: number;
@@ -58,6 +61,36 @@ export function WorkOrdersRoute() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
+  const fetchedIds = useRef<string>('');
+
+  useEffect(() => {
+    const ids = rows.map((r) => r.id);
+    const key = ids.join(',');
+    if (!ids.length || key === fetchedIds.current) return;
+    fetchedIds.current = key;
+    apiFetch<{ conflicts: Record<string, unknown>[] }>(
+      `/fleetio/conflicts?table=work_order&ids=${ids.join(',')}`,
+    )
+      .then((r) => {
+        if (!r?.conflicts) return;
+        const map = new Map<number, ConflictBadgeConflict[]>();
+        for (const c of r.conflicts) {
+          const rmpgId = c.rmpg_id as number;
+          if (!map.has(rmpgId)) map.set(rmpgId, []);
+          map.get(rmpgId)!.push({
+            id: c.id as number,
+            field: c.field as string,
+            local_value: c.local_value as string | null | undefined,
+            remote_value: c.remote_value as string | null | undefined,
+            resolution: c.resolution as string | null | undefined,
+            created_at: c.created_at as string | undefined,
+          });
+        }
+        setConflicts(map);
+      })
+      .catch(() => {});
+  }, [rows]);
 
   const fetchRows = useCallback(() => {
     setErr(null);
@@ -163,6 +196,7 @@ export function WorkOrdersRoute() {
               <th className="text-left px-3 py-1.5 font-semibold">Summary</th>
               <th className="text-right px-3 py-1.5 font-semibold">Est</th>
               <th className="text-right px-3 py-1.5 font-semibold">Actual</th>
+              <th className="text-center px-3 py-1.5 font-semibold">Sync</th>
             </tr>
           </thead>
           <tbody>
@@ -181,6 +215,18 @@ export function WorkOrdersRoute() {
                 </td>
                 <td className="px-3 py-1 text-right text-rmpg-300 font-mono">{fmtUsd(r.est_cost)}</td>
                 <td className="px-3 py-1 text-right text-rmpg-100 font-mono">{fmtUsd(r.actual_cost)}</td>
+                <td className="px-3 py-1 text-center">
+                  {(() => {
+                    const c = conflicts.get(r.id);
+                    return c?.length ? (
+                      <div className="inline-flex gap-0.5">
+                        {c.map((x) => <FleetioConflictBadge key={x.id} conflict={x} compact />)}
+                      </div>
+                    ) : (
+                      <span className="text-rmpg-500">—</span>
+                    );
+                  })()}
+                </td>
               </tr>
             ))}
           </tbody>
