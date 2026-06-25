@@ -31,6 +31,11 @@ import { devLog } from '../utils/devLog';
 const RELOAD_COOLDOWN_MS = 5 * 60_000;
 const RELOAD_STAMP_KEY = 'rmpg_last_sw_reload';
 
+/** Max time to defer reload when blocked by NavigationPage. After this,
+ *  the update applies even if still on /navigation — protects against
+ *  a full-shift patrol with no page change. */
+const NAVIGATION_BLOCK_MAX_MS = 10 * 60_000;
+
 function reloadCooldownActive(): boolean {
   try {
     const last = parseInt(localStorage.getItem(RELOAD_STAMP_KEY) || '0', 10);
@@ -42,17 +47,27 @@ function stampReload(): void {
   try { localStorage.setItem(RELOAD_STAMP_KEY, String(Date.now())); } catch { /* private mode */ }
 }
 
-/** True when reloading right now would NOT lose unsaved work. */
-function isSafeToReload(): boolean {
+/** True when reloading right now would NOT lose unsaved work.
+ *  @param navigationBlockedMs milliseconds since we first detected a
+ *         NavigationPage block (0 = no block tracked yet). After
+ *         NAVIGATION_BLOCK_MAX_MS the guard releases so the update
+ *         eventually lands even on a full-shift drive with no page change. */
+function isSafeToReload(navigationBlockedMs = 0): boolean {
+  // 1. Don't yank the driver out of navigation mid-trip — but
+  //    release after NAVIGATION_BLOCK_MAX_MS so critical updates
+  //    eventually reach an all-shift driver.
+  if (window.location.pathname.startsWith('/navigation')) {
+    if (navigationBlockedMs < NAVIGATION_BLOCK_MAX_MS) return false;
+  }
+  // 2. Global dirty flag — set by UnsavedChangesGuard when any form has unsaved edits.
+  if ((window as any).__rmpg_hasUnsavedChanges) return false;
   const ae = document.activeElement as HTMLElement | null;
   if (ae) {
     const tag = ae.tagName;
-    // A focused field means the operator is actively typing.
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;
     if (ae.isContentEditable) return false;
   }
-  // An open modal/dialog almost always wraps an in-progress action (add/edit
-  // forms in this app are modals). Defer until it closes.
+  // 3. Open modal/dialog — almost always wraps an in-progress action (add/edit forms).
   if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return false;
   return true;
 }
@@ -61,6 +76,7 @@ export default function WebUpdateBanner() {
   const { updateAvailable, applyUpdate } = useServiceWorker();
   const initialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const navigationBlockedSinceRef = useRef<number>(0);
 
   const electron = (window as any).electron;
   const isElectron = !!electron?.isElectron;
@@ -96,9 +112,19 @@ export default function WebUpdateBanner() {
         if (retryRef.current) clearInterval(retryRef.current);
         return;
       }
-      if (isSafeToReload()) {
+      // Track when navigation blocking started so we can impose a max timeout.
+      // Reset when the driver leaves /navigation so a return visit starts fresh.
+      if (window.location.pathname.startsWith('/navigation')) {
+        if (navigationBlockedSinceRef.current === 0) {
+          navigationBlockedSinceRef.current = Date.now();
+        }
+      } else {
+        navigationBlockedSinceRef.current = 0;
+      }
+      if (isSafeToReload(Date.now() - navigationBlockedSinceRef.current)) {
         if (retryRef.current) clearInterval(retryRef.current);
         stampReload();
+        navigationBlockedSinceRef.current = 0;
         doReload();
       }
     };

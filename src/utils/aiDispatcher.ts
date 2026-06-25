@@ -31,6 +31,7 @@
 
 // `Ai` is a global type from @cloudflare/workers-types (same as src/types.ts
 // references it) — no import needed.
+import { log } from './logger';
 import type { LookupRequest, ActionRequest, ActionType } from './dispatcherAwareness';
 
 // App-level timeout for any Workers AI call. Without it a stalled model
@@ -400,9 +401,9 @@ export async function transcribeTransmission(
     const res = (await withAiTimeout(ai.run(WHISPER_MODEL, input as never), 'whisper-turbo')) as { text?: string };
     const text = (res?.text || '').trim();
     if (text) return text;
-    console.warn('[aiDispatcher] turbo whisper returned empty — trying base whisper');
+    log.warn('turbo whisper returned empty — trying base whisper');
   } catch (err) {
-    console.warn('[aiDispatcher] turbo whisper failed, trying base whisper:', (err as Error)?.message);
+    log.warn('turbo whisper failed, trying base whisper', {}, err);
   }
 
   // Fallback — base whisper (classic array-of-bytes input; no prompt support).
@@ -411,7 +412,7 @@ export async function transcribeTransmission(
     const text = (res?.text || '').trim();
     return text.length > 0 ? text : null;
   } catch (err) {
-    console.error('[aiDispatcher] transcription failed (both models):', (err as Error)?.message);
+    log.error('transcription failed (both models)', {}, err);
     return null;
   }
 }
@@ -444,7 +445,7 @@ export async function ocrImage(ai: Ai, image: Uint8Array): Promise<string | null
     const text = String(out?.response ?? out?.description ?? '').trim();
     return text.length > 0 ? text : null;
   } catch (err) {
-    console.warn('[aiDispatcher] OCR failed:', (err as Error)?.message);
+    log.warn('OCR failed', {}, err);
     return null;
   }
 }
@@ -542,7 +543,7 @@ export async function ocrExtractStructured(ai: Ai, image: Uint8Array): Promise<O
     }
     return { docType, rawText: rawText || raw, fields };
   } catch (err) {
-    console.warn('[aiDispatcher] structured OCR failed:', (err as Error)?.message);
+    log.warn('structured OCR failed', {}, err);
     return null;
   }
 }
@@ -776,9 +777,9 @@ async function runLLM(
     try {
       const res = (await withAiTimeout(ai.run(model, { messages, ...opts } as never), `llm:${model}`)) as { response?: unknown };
       if (res?.response != null && res.response !== '') return res.response;
-      console.warn(`[aiDispatcher] ${model} returned empty — trying next`);
+      log.warn(`${model} returned empty — trying next`);
     } catch (err) {
-      console.warn(`[aiDispatcher] ${model} failed:`, (err as Error)?.message);
+      log.warn(`${model} failed`, {}, err);
     }
   }
   return null;
@@ -868,7 +869,7 @@ export async function phraseLookupReply(
     if (!reply) return resultText;
     return clampSpoken(reply, cap);
   } catch (err) {
-    console.error('[aiDispatcher] phrase lookup failed:', (err as Error)?.message);
+    log.error('phrase lookup failed', {}, err);
     return resultText;
   }
 }

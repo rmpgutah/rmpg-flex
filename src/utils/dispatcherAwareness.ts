@@ -20,6 +20,7 @@
 // 2026-05-29, not /migrations/ — see [[feedback-verify-live-schema-before-insert]].
 // ============================================================
 
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
@@ -37,7 +38,7 @@ const OFF_DUTY_UNIT_STATUSES = ['off_duty', 'offline', 'out_of_service', 'oos', 
 
 async function safe<T>(p: Promise<T[]>): Promise<T[]> {
   try { return await p; } catch (err) {
-    console.warn('[awareness] query failed (skipped):', (err as Error)?.message);
+    log.warn('query failed (skipped)', {}, err);
     return [];
   }
 }
@@ -233,7 +234,7 @@ export async function runLookup(
     if (req.type === 'eta') return await lookupEta(env, db, unit);
     return null;
   } catch (err) {
-    console.error('[awareness] lookup failed:', (err as Error)?.message);
+    log.error('lookup failed', {}, err);
     return null;
   }
 }
@@ -624,7 +625,7 @@ async function broadcastBoard(env: Bindings, action: string, payload: Record<str
   try {
     await emitAlert(env, 'dispatch_update', { action, ...payload });
   } catch (err) {
-    console.warn('[awareness] board broadcast failed (non-fatal):', (err as Error)?.message);
+    log.warn('board broadcast failed (non-fatal)', {}, err);
   }
 }
 
@@ -788,7 +789,7 @@ export function evaluateActionPolicy(req: ActionRequest): { allow: boolean; reas
 export async function runAction(env: Bindings, db: D1Database, req: ActionRequest, ctx: ActionContext = {}): Promise<ActionResult | null> {
   const gate = evaluateActionPolicy(req);
   if (!gate.allow) {
-    console.warn('[awareness] action refused:', gate.reason, JSON.stringify(req));
+    log.warn('action refused', { reason: gate.reason, request: JSON.stringify(req) });
     return null;
   }
   try {
@@ -799,7 +800,7 @@ export async function runAction(env: Bindings, db: D1Database, req: ActionReques
     if (req.type === 'create_bolo') return await createBolo(db, req, ctx);
     return null;
   } catch (err) {
-    console.error('[awareness] action failed:', (err as Error)?.message);
+    log.error('action failed', {}, err);
     return null;
   }
 }
@@ -822,7 +823,7 @@ async function createBolo(db: D1Database, req: ActionRequest, ctx: ActionContext
   const issuedBy = ctx.issuedBy;
   if (!issuedBy || !Number.isFinite(issuedBy)) {
     // No known issuer → can't satisfy the NOT NULL FK. Refuse (honesty guard).
-    console.warn('[awareness] BOLO refused — no issuing user id');
+    log.warn('BOLO refused — no issuing user id');
     return null;
   }
   const boloType = mapBoloType(req.bolo_type);
@@ -864,7 +865,7 @@ async function createBolo(db: D1Database, req: ActionRequest, ctx: ActionContext
     boloNumber = out.value;
     res = out.result;
   } catch (err) {
-    console.warn('[awareness] BOLO insert failed:', (err as Error)?.message);
+    log.warn('BOLO insert failed', {}, err);
     return null;
   }
   if (!res.meta.last_row_id) return null;
@@ -885,7 +886,7 @@ async function setUnitStatus(env: Bindings, db: D1Database, req: ActionRequest):
     db, 'SELECT id, call_sign FROM units WHERE UPPER(call_sign) = UPPER(?) LIMIT 1', callSign,
   );
   if (!unit) {
-    console.warn(`[awareness] status write refused — unknown call-sign "${callSign}"`);
+    log.warn('status write refused — unknown call-sign', { callSign });
     return null;
   }
   await execute(
@@ -977,7 +978,7 @@ async function createCall(env: Bindings, db: D1Database, req: ActionRequest): Pr
     callNumber = out.value;
     res = out.result;
   } catch (err) {
-    console.warn('[awareness] createCall insert failed:', (err as Error)?.message);
+    log.warn('createCall insert failed', {}, err);
     return null;
   }
   if (!res.meta.last_row_id) return null;
@@ -999,7 +1000,7 @@ async function createCall(env: Bindings, db: D1Database, req: ActionRequest): Pr
         district.area_code ?? null, district.area_name ?? null, callId,
       );
     } catch (err) {
-      console.warn('[awareness] createCall area ext write skipped (non-fatal):', (err as Error)?.message);
+      log.warn('createCall area ext write skipped (non-fatal)', {}, err);
     }
   }
 

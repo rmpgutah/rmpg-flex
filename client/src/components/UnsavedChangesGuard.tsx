@@ -26,6 +26,12 @@ export default function UnsavedChangesGuard({
   const [showDialog, setShowDialog] = useState(false);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
 
+  // ── Global dirty flag (consumed by WebUpdateBanner.isSafeToReload) ──
+  useEffect(() => {
+    (window as any).__rmpg_hasUnsavedChanges = hasUnsavedChanges;
+    return () => { (window as any).__rmpg_hasUnsavedChanges = false; };
+  }, [hasUnsavedChanges]);
+
   // ── Browser close / refresh guard ──────────────────────────
   useEffect(() => {
     if (!hasUnsavedChanges) return;
