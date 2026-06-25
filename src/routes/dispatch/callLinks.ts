@@ -158,7 +158,7 @@ links.post('/calls/:id/persons', async (c) => {
   // not a generic "person added" prompt.
   const officerIds = await getOfficerUserIdsForCall(db, callId);
   if (officerIds.length > 0) {
-    const flag = created as any;
+    const flag = created;
     const hasSafety = isFlagSet(flag?.caution_flags) || isFlagSet(flag?.is_sex_offender) || isFlagSet(flag?.gang_affiliation);
     const short = hasSafety
       ? `Subject added with caution flag: ${person.last_name}`
@@ -322,7 +322,7 @@ links.post('/calls/:id/persons/quick-add', async (c) => {
   // shouldn't bypass the MDT voice warning.
   const officerIds = await getOfficerUserIdsForCall(db, callId);
   if (officerIds.length > 0 && link) {
-    const flag = link as any;
+    const flag = link;
     const hasSafety = isFlagSet(flag?.caution_flags) || isFlagSet(flag?.is_sex_offender) || isFlagSet(flag?.gang_affiliation);
     const short = hasSafety
       ? `Subject added with caution flag: ${flag?.last_name ?? ''}`
@@ -542,7 +542,7 @@ links.post('/calls/:id/vehicles/quick-add', async (c) => {
 
   const officerIds = await getOfficerUserIdsForCall(db, callId);
   if (officerIds.length > 0 && link) {
-    const v = link as any;
+    const v = link;
     const short = v.plate_number
       ? `Vehicle added: plate ${v.plate_number}`
       : (`Vehicle added: ${v.make || ''} ${v.model || ''}`.trim() || 'Vehicle added');
@@ -623,7 +623,7 @@ links.put('/calls/:id/property', async (c) => {
 
   // If the property carries hazard_notes, push them as an officer-safety
   // flag to each assigned officer's MDT — mirrors the legacy warnings path.
-  if ((updated as any)?.hazard_notes) {
+  if ((updated as Record<string, unknown>)?.hazard_notes) {
     const officerIds = await getOfficerUserIdsForCall(db, callId);
     for (const uid of officerIds) {
       await emitAlert(c.env, 'dispatch_alert', {
