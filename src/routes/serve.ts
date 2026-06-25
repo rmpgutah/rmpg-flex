@@ -514,6 +514,30 @@ sv.get('/:id', async (c) => {
   return c.json({ ...row, attempts });
 });
 
+// ── Serve audit trail ──────────────────────────────────────────
+// GET /serve/:id/audit
+// Returns activity_log entries for this serve queue (assignments,
+// attempt deletions, renumbering events).
+sv.get('/:id/audit', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const queueIdStr = String(id);
+  const rows = await query<any>(
+    db,
+    `SELECT a.id, a.action, a.entity_type, a.entity_id, a.details, a.created_at, u.full_name AS user_name
+     FROM activity_log a LEFT JOIN users u ON a.user_id = u.id
+     WHERE (a.entity_type = 'serve_assignment' AND a.entity_id = ?)
+        OR (a.entity_type = 'serve_attempt' AND (a.details LIKE ? OR a.details LIKE ?))
+        OR (a.entity_type = 'serve_attempts' AND a.entity_id = ?)
+     ORDER BY a.id DESC LIMIT 500`,
+    id, `%"serve_queue_id":${queueIdStr},%`, `%"serve_queue_id":${queueIdStr}}%`, id,
+  );
+  return c.json(rows);
+});
+
 sv.put('/:id', async (c) => {
   const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);

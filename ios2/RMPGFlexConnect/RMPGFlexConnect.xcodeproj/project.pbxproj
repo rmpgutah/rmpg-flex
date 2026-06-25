@@ -14,6 +14,16 @@
 		F07C2D422FE99AE4005907A2 /* FeatureQuickActions in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000205 /* FeatureQuickActions */; };
 		F07C2D432FE99AE4005907A2 /* FeatureDuty in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000206 /* FeatureDuty */; };
 		F07C2D442FE99AE4005907A2 /* FeatureCFS in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000207 /* FeatureCFS */; };
+		F07C2D452FE99AE4005907A2 /* CoreOffline in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000208 /* CoreOffline */; };
+		F07C2D462FE99AE4005907A2 /* CoreLocation in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000209 /* CoreLocation */; };
+		F07C2D472FE99AE4005907A2 /* CorePush in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000210 /* CorePush */; };
+		F07C2D482FE99AE4005907A2 /* CoreAudio in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000211 /* CoreAudio */; };
+		F07C2D492FE99AE4005907A2 /* FeatureRunPlate in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000212 /* FeatureRunPlate */; };
+		F07C2D4A2FE99AE4005907A2 /* FeatureRunID in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000213 /* FeatureRunID */; };
+		F07C2D4B2FE99AE4005907A2 /* FeatureMap in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000214 /* FeatureMap */; };
+		F07C2D4C2FE99AE4005907A2 /* FeatureReports in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000215 /* FeatureReports */; };
+		F07C2D4D2FE99AE4005907A2 /* FeatureLiveActivity in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000216 /* FeatureLiveActivity */; };
+		F07C2D4E2FE99AE4005907A2 /* FeatureWidgets in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000217 /* FeatureWidgets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +49,16 @@
 				F07C2D402FE99AE4005907A2 /* DesignSystem in Frameworks */,
 				F07C2D3F2FE99AE4005907A2 /* CoreAuth in Frameworks */,
 				F07C2D3E2FE99AE4005907A2 /* CoreAPI in Frameworks */,
+				F07C2D452FE99AE4005907A2 /* CoreOffline in Frameworks */,
+				F07C2D462FE99AE4005907A2 /* CoreLocation in Frameworks */,
+				F07C2D472FE99AE4005907A2 /* CorePush in Frameworks */,
+				F07C2D482FE99AE4005907A2 /* CoreAudio in Frameworks */,
+				F07C2D492FE99AE4005907A2 /* FeatureRunPlate in Frameworks */,
+				F07C2D4A2FE99AE4005907A2 /* FeatureRunID in Frameworks */,
+				F07C2D4B2FE99AE4005907A2 /* FeatureMap in Frameworks */,
+				F07C2D4C2FE99AE4005907A2 /* FeatureReports in Frameworks */,
+				F07C2D4D2FE99AE4005907A2 /* FeatureLiveActivity in Frameworks */,
+				F07C2D4E2FE99AE4005907A2 /* FeatureWidgets in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -94,6 +114,16 @@
 				BB0000000000000000000205 /* FeatureQuickActions */,
 				BB0000000000000000000206 /* FeatureDuty */,
 				BB0000000000000000000207 /* FeatureCFS */,
+				BB0000000000000000000208 /* CoreOffline */,
+				BB0000000000000000000209 /* CoreLocation */,
+				BB0000000000000000000210 /* CorePush */,
+				BB0000000000000000000211 /* CoreAudio */,
+				BB0000000000000000000212 /* FeatureRunPlate */,
+				BB0000000000000000000213 /* FeatureRunID */,
+				BB0000000000000000000214 /* FeatureMap */,
+				BB0000000000000000000215 /* FeatureReports */,
+				BB0000000000000000000216 /* FeatureLiveActivity */,
+				BB0000000000000000000217 /* FeatureWidgets */,
 			);
 			productName = RMPGFlexConnect;
 			productReference = BB0000000000000000000020 /* RMPG Flex Connect.app */;
@@ -126,6 +156,16 @@
 				BB0000000000000000000305 /* XCLocalSwiftPackageReference "Packages/FeatureQuickActions" */,
 				BB0000000000000000000306 /* XCLocalSwiftPackageReference "Packages/FeatureDuty" */,
 				BB0000000000000000000307 /* XCLocalSwiftPackageReference "Packages/FeatureCFS" */,
+				BB0000000000000000000308 /* XCLocalSwiftPackageReference "Packages/CoreOffline" */,
+				BB0000000000000000000309 /* XCLocalSwiftPackageReference "Packages/CoreLocation" */,
+				BB0000000000000000000310 /* XCLocalSwiftPackageReference "Packages/CorePush" */,
+				BB0000000000000000000311 /* XCLocalSwiftPackageReference "Packages/CoreAudio" */,
+				BB0000000000000000000312 /* XCLocalSwiftPackageReference "Packages/FeatureRunPlate" */,
+				BB0000000000000000000313 /* XCLocalSwiftPackageReference "Packages/FeatureRunID" */,
+				BB0000000000000000000314 /* XCLocalSwiftPackageReference "Packages/FeatureMap" */,
+				BB0000000000000000000315 /* XCLocalSwiftPackageReference "Packages/FeatureReports" */,
+				BB0000000000000000000316 /* XCLocalSwiftPackageReference "Packages/FeatureLiveActivity" */,
+				BB0000000000000000000317 /* XCLocalSwiftPackageReference "Packages/FeatureWidgets" */,
 			);
 			preferredProjectObjectVersion = 100;
 			productRefGroup = BB0000000000000000000011 /* Products */;
@@ -384,6 +424,46 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/FeatureCFS;
 		};
+		BB0000000000000000000308 /* XCLocalSwiftPackageReference "Packages/CoreOffline" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CoreOffline;
+		};
+		BB0000000000000000000309 /* XCLocalSwiftPackageReference "Packages/CoreLocation" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CoreLocation;
+		};
+		BB0000000000000000000310 /* XCLocalSwiftPackageReference "Packages/CorePush" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CorePush;
+		};
+		BB0000000000000000000311 /* XCLocalSwiftPackageReference "Packages/CoreAudio" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CoreAudio;
+		};
+		BB0000000000000000000312 /* XCLocalSwiftPackageReference "Packages/FeatureRunPlate" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureRunPlate;
+		};
+		BB0000000000000000000313 /* XCLocalSwiftPackageReference "Packages/FeatureRunID" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureRunID;
+		};
+		BB0000000000000000000314 /* XCLocalSwiftPackageReference "Packages/FeatureMap" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureMap;
+		};
+		BB0000000000000000000315 /* XCLocalSwiftPackageReference "Packages/FeatureReports" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureReports;
+		};
+		BB0000000000000000000316 /* XCLocalSwiftPackageReference "Packages/FeatureLiveActivity" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureLiveActivity;
+		};
+		BB0000000000000000000317 /* XCLocalSwiftPackageReference "Packages/FeatureWidgets" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureWidgets;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -421,6 +501,56 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BB0000000000000000000307 /* XCLocalSwiftPackageReference "Packages/FeatureCFS" */;
 			productName = FeatureCFS;
+		};
+		BB0000000000000000000208 /* CoreOffline */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000308 /* XCLocalSwiftPackageReference "Packages/CoreOffline" */;
+			productName = CoreOffline;
+		};
+		BB0000000000000000000209 /* CoreLocation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000309 /* XCLocalSwiftPackageReference "Packages/CoreLocation" */;
+			productName = CoreLocation;
+		};
+		BB0000000000000000000210 /* CorePush */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000310 /* XCLocalSwiftPackageReference "Packages/CorePush" */;
+			productName = CorePush;
+		};
+		BB0000000000000000000211 /* CoreAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000311 /* XCLocalSwiftPackageReference "Packages/CoreAudio" */;
+			productName = CoreAudio;
+		};
+		BB0000000000000000000212 /* FeatureRunPlate */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000312 /* XCLocalSwiftPackageReference "Packages/FeatureRunPlate" */;
+			productName = FeatureRunPlate;
+		};
+		BB0000000000000000000213 /* FeatureRunID */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000313 /* XCLocalSwiftPackageReference "Packages/FeatureRunID" */;
+			productName = FeatureRunID;
+		};
+		BB0000000000000000000214 /* FeatureMap */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000314 /* XCLocalSwiftPackageReference "Packages/FeatureMap" */;
+			productName = FeatureMap;
+		};
+		BB0000000000000000000215 /* FeatureReports */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000315 /* XCLocalSwiftPackageReference "Packages/FeatureReports" */;
+			productName = FeatureReports;
+		};
+		BB0000000000000000000216 /* FeatureLiveActivity */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000316 /* XCLocalSwiftPackageReference "Packages/FeatureLiveActivity" */;
+			productName = FeatureLiveActivity;
+		};
+		BB0000000000000000000217 /* FeatureWidgets */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000000000000000000317 /* XCLocalSwiftPackageReference "Packages/FeatureWidgets" */;
+			productName = FeatureWidgets;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

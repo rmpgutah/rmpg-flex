@@ -10,15 +10,25 @@ let package = Package(
     dependencies: [
         .package(path: "../CoreAPI"),
         .package(path: "../CoreAuth"),
+        .package(path: "../CoreAudio"),
+        .package(path: "../CoreLocation"),
         .package(path: "../DesignSystem"),
         .package(path: "../FeatureDuty"),
         .package(path: "../FeatureCFS"),
         .package(path: "../FeatureQuickActions"),
+        .package(path: "../FeatureReports"),
+        .package(path: "../FeatureRunPlate"),
+        .package(path: "../FeatureRunID"),
+        .package(path: "../FeatureLiveActivity"),
     ],
     targets: [
         .target(
             name: "FeatureShell",
-            dependencies: ["CoreAPI", "CoreAuth", "DesignSystem", "FeatureDuty", "FeatureCFS", "FeatureQuickActions"]
+            dependencies: [
+                "CoreAPI", "CoreAuth", "CoreAudio", "CoreLocation",
+                "DesignSystem", "FeatureDuty", "FeatureCFS", "FeatureQuickActions",
+                "FeatureReports", "FeatureRunPlate", "FeatureRunID", "FeatureLiveActivity",
+            ]
         ),
         .testTarget(
             name: "FeatureShellTests",

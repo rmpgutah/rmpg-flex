@@ -35,6 +35,7 @@ import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import EditServeAttemptModal from '../components/serve/EditServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
+import ServeAuditLogModal from '../components/serve/ServeAuditLogModal';
 import FormModal from '../components/FormModal';
 import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
 import type { ServeJob, ServeAttempt, ServeAttemptData, ServeSkipAddress, ServeFolder } from '../types';
@@ -186,6 +187,7 @@ export default function ServePage() {
   // (so we know which queueId to PUT against) and the specific attempt row.
   const [editAttempt, setEditAttempt] = useState<{ jobId: number; attempt: ServeAttempt } | null>(null);
   const [skipTraceJob, setSkipTraceJob] = useState<ServeJob | null>(null);
+  const [auditJobId, setAuditJobId] = useState<number | null>(null);
   const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
   const [createJobOpen, setCreateJobOpen] = useState(false);
   const [editJob, setEditJob] = useState<ServeJob | null>(null);
@@ -1440,6 +1442,7 @@ export default function ServePage() {
                                 onFlagAddress={handleFlagAddress}
                                 onEdit={openEdit}
                                 onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
+                                onAudit={setAuditJobId}
                                 isExpanded={expandedJobId === job.id}
                                 onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                               />
@@ -1486,6 +1489,7 @@ export default function ServePage() {
                           onFlagAddress={handleFlagAddress}
                           onEdit={openEdit}
                           onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
+                          onAudit={setAuditJobId}
                           isExpanded={expandedJobId === job.id}
                           onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                         />
@@ -1921,6 +1925,14 @@ export default function ServePage() {
           job={skipTraceJob}
           onAddToRoute={handleSkipTraceAddToRoute}
           onLookupComplete={refreshJobs}
+        />
+      )}
+
+      {/* Audit Log Modal */}
+      {auditJobId != null && (
+        <ServeAuditLogModal
+          jobId={auditJobId}
+          onClose={() => setAuditJobId(null)}
         />
       )}
 

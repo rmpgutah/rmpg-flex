@@ -37,6 +37,8 @@ interface ServeJobCardProps {
   onEdit: (jobId: number) => void;
   /** Edit a previously-logged attempt — opens EditServeAttemptModal in the parent. */
   onEditAttempt?: (jobId: number, attempt: ServeAttempt) => void;
+  /** Open audit trail modal for this job. */
+  onAudit?: (jobId: number) => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
   // ── Selection mode (bulk actions) ──────────────────────────────────────────
@@ -109,6 +111,7 @@ export default React.memo(function ServeJobCard({
   onFlagAddress,
   onEdit,
   onEditAttempt,
+  onAudit,
   isExpanded = false,
   onToggleExpand,
   isSelected = false,
@@ -515,6 +518,15 @@ export default React.memo(function ServeJobCard({
               <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Notes</span>
               <p className="text-rmpg-300 mt-0.5">{job.notes}</p>
             </div>
+          )}
+
+          {onAudit && (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); onAudit(job.id); }}
+              className="text-[9px] text-rmpg-400 hover:text-rmpg-200 uppercase tracking-wider font-bold transition-colors"
+            >
+              Audit Log
+            </button>
           )}
         </div>
       )}
