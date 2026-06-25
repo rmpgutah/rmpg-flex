@@ -21,7 +21,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute, ensureTimeEntryColumns } from '../utils/db';
+import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 
 const hr = new Hono<Env>();
