@@ -210,7 +210,7 @@ gps.post('/', async (c) => {
         && lastPt && lastPt.latitude != null && lastPt.longitude != null
         && (unit.status === 'dispatched' || unit.status === 'enroute')) {
       try {
-        const callId = (unit as any).current_call_id as number;
+        const callId = unit.current_call_id!;
         const call = await queryFirst<{ id: number; status: string; latitude: number | null; longitude: number | null; starting_mileage: number | null; ending_mileage: number | null }>(
           db, 'SELECT id, status, latitude, longitude, starting_mileage, ending_mileage FROM calls_for_service WHERE id = ?', callId);
         if (call && ['dispatched', 'enroute', 'onscene'].includes(call.status)) {
@@ -232,7 +232,7 @@ gps.post('/', async (c) => {
                       ${timeField} = COALESCE(${timeField}, datetime('now')), updated_at = datetime('now')
                 WHERE id = ? AND status IN ('dispatched','enroute')`,
               next, callId);
-            (unit as any).status = next; // echo the fresh status in the response
+            (unit as { status: string }).status = next; // echo the fresh status in the response
 
             // Auto-mileage from the fleet odometer + GPS travel — no manual
             // prompt anywhere in the chain:
@@ -382,7 +382,7 @@ gps.post('/', async (c) => {
     log.error('[gps] POST failed', {}, err);
     const detail = err instanceof Error ? err.message : String(err);
     if (err && typeof err === 'object' && 'code' in err) {
-      const code = (err as any).code;
+      const code = (err as { code?: unknown }).code;
       log.error('[gps] D1 error code', { code });
     }
     return c.json({ error: 'GPS update failed', detail }, 500);
