@@ -4,11 +4,14 @@ import { vi, describe, it, expect } from 'vitest';
 import IntelSearch from '../IntelSearch';
 import { IntelProvider } from '../IntelContext';
 
-vi.mock('../../../context/AuthContext', async (importOriginal) => {
-  const actual = await importOriginal();
+vi.mock('../../../context/AuthContext', () => {
+  const { createContext } = require('react');
+  const ctx = createContext(undefined);
   return {
-    ...actual,
+    AuthContext: ctx,
+    AuthProvider: ({ children }: any) => children,
     useAuth: () => ({ user: { id: 1, role: 'admin', username: 'test' } }),
+    default: ctx,
   };
 });
 

@@ -7,6 +7,8 @@ import {
   parseChain,
   generateForensicCasePdf,
   type ForensicCaseForPdf,
+  type ForensicExhibitForPdf,
+  type ForensicAnalysisForPdf,
 } from '../forensicCasePdf';
 
 function mkCase(overrides: Partial<ForensicCaseForPdf> = {}): ForensicCaseForPdf {

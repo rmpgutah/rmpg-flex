@@ -61,7 +61,7 @@ export default function ServeDashboardPerformance() {
   useEffect(() => { refetch(); }, [refetch]);
 
   // Silent refresh every 60s + on process-server module events
-  const tick = useRef<ReturnType<typeof setInterval>>();
+  const tick = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   useEffect(() => {
     tick.current = setInterval(refetch, 60_000);
     return () => clearInterval(tick.current);
