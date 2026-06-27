@@ -23,14 +23,15 @@ import type { BodyCameraFormData } from './personnel/modals/BodyCameraFormModal'
 import { mapBodyCamera, mapBodyCamVideo } from './personnel/utils/personnelMappers';
 import DeleteRecordModal from '../components/DeleteRecordModal';
 import { isEvidenceLocked, evidenceLockReason } from '../utils/evidenceLock';
+import { parseTimestamp } from '../utils/dateUtils';
 
 type ModalMode = 'none' | 'new_body_camera' | 'edit_body_camera' | 'upload_video';
 
 export default function BodyCamerasPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
-  const canManage = user?.role === 'admin';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // Backend WRITE_ROLES = { admin, manager }; supervisors are read-all but not write.
+  const canManage = user?.role === 'admin' || user?.role === 'manager';
 
   // ----------------------------------------------------------
   // State
@@ -54,6 +55,48 @@ export default function BodyCamerasPage() {
   const [retentionStats, setRetentionStats] = useState<{ total_expired: number; total_storage_gb: number } | null>(null);
   const [pendingReviews, setPendingReviews] = useState(0);
   const [pendingRedactions, setPendingRedactions] = useState(0);
+
+  // searchParams declared once here — shared by all three deep-link effects below.
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Deep-link: ?camera_id= highlights a specific camera row; ?officer_id=
+  // pre-seeds the officer filter so only that officer's cameras and videos
+  // are shown. Params are stripped after seeding so a hard refresh doesn't
+  // re-apply stale values. These are read once at mount via a ref so the
+  // effect doesn't depend on searchParams (avoids double-fire on the strip).
+  const [highlightCameraId, setHighlightCameraId] = useState<number | null>(null);
+  const [officerFilter, setOfficerFilter] = useState<string>('');
+  const pendingCameraIdRef = useRef<string | null>(searchParams.get('camera_id'));
+  const pendingOfficerIdRef = useRef<string | null>(searchParams.get('officer_id'));
+
+  useEffect(() => {
+    const camTarget = pendingCameraIdRef.current;
+    const offTarget = pendingOfficerIdRef.current;
+    if ((!camTarget && !offTarget) || loading) return;
+    pendingCameraIdRef.current = null;
+    pendingOfficerIdRef.current = null;
+
+    if (offTarget) setOfficerFilter(offTarget);
+
+    if (camTarget) {
+      // Find by camera.id (numeric PK) or camera.camera_id (hardware serial).
+      const hit = cameras.find(
+        c => String(c.id) === camTarget || c.camera_id === camTarget,
+      );
+      if (hit) {
+        setHighlightCameraId(hit.id);
+      } else {
+        addToast(`Camera ${camTarget} not found`, 'warning');
+      }
+    }
+
+    // Strip consumed params.
+    const next = new URLSearchParams(searchParams);
+    next.delete('camera_id');
+    next.delete('officer_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameras, loading]);
 
   // Destructive-modal state lifted from below so the deep-link +
   // Esc-cascade effects (declared next) can read it. The previous
@@ -117,15 +160,13 @@ export default function BodyCamerasPage() {
   useLiveSync('bodycam_videos', fetchData);
 
   // ── /body-cameras?video_id=<id> URL deep-link auto-open ──
-  // 22nd consecutive page-pass on the cross-page contract. Court-package
-  // links, evidence cross-refs, and the dashcam ↔ BWC sibling lookup all
-  // need to open the player directly on a specific clip. Falls through
-  // to a direct fetch when the row is paginated out of the current list
-  // (officer filter, retention narrow). Param is stripped after applying
-  // so a hard refresh doesn't loop. The aliases `clip_id` and
-  // `recording_id` mirror the mission brief — older bookmarks generated
-  // before the canonical param was named survive.
-  const [searchParams, setSearchParams] = useSearchParams();
+  // Court-package links, evidence cross-refs, and the dashcam ↔ BWC
+  // sibling lookup all need to open the player directly on a specific
+  // clip. Falls through to a direct fetch when the row is paginated out
+  // of the current list. Param is stripped after applying so a hard
+  // refresh doesn't loop. The aliases `clip_id` and `recording_id` mirror
+  // the mission brief — older bookmarks generated before the canonical
+  // param was named survive.
   const pendingVideoIdRef = useRef<string | null>(
     searchParams.get('video_id')
     || searchParams.get('clip_id')
@@ -166,14 +207,11 @@ export default function BodyCamerasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videos, loading]);
 
-  // ── Esc smart-cascade ──
-  // Closes the smallest-open-first of the five modals BodyCamerasPage
+  // ── Keyboard shortcuts: Esc cascade + N shortcut ──
+  // Esc closes the smallest-open-first of the five modals BodyCamerasPage
   // owns (player → upload → camera form → camera-delete → video-delete).
-  // The player on its own already self-closes on Esc via React-Router /
-  // the role="dialog" handler, but pressing Esc while typing in the
-  // upload modal previously did nothing — and ConfirmDialog's Esc
-  // listener only fires when ConfirmDialog itself owns focus. Centralised
-  // here so every owner-controlled modal in the page behaves the same.
+  // N opens the "Assign Camera" form (canManage only) when no modal is
+  // open and the operator is not typing in a field.
   useEffect(() => {
     const isTypingInField = (target: EventTarget | null): boolean => {
       if (!(target instanceof HTMLElement)) return false;
@@ -181,22 +219,33 @@ export default function BodyCamerasPage() {
       return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
     };
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Top-most-first cascade: any open destructive dialog wins,
-      // then the player, then the upload modal, then the camera form.
-      if (cameraToDelete) { setCameraToDelete(null); return; }
-      if (videoToDelete) { setVideoToDelete(null); return; }
-      if (playingVideo) { setPlayingVideo(null); return; }
-      if (modal === 'upload_video') { setModal('none'); return; }
-      if (modal === 'new_body_camera' || modal === 'edit_body_camera') {
-        // Don't ambush an operator mid-typing in the form.
+      // Esc cascade: top-most-first — destructive dialog → player → upload → form.
+      if (e.key === 'Escape') {
+        if (cameraToDelete) { e.stopPropagation(); setCameraToDelete(null); return; }
+        if (videoToDelete) { e.stopPropagation(); setVideoToDelete(null); return; }
+        if (playingVideo) { e.stopPropagation(); setPlayingVideo(null); return; }
+        if (modal === 'upload_video') { e.stopPropagation(); setModal('none'); return; }
+        if (modal === 'new_body_camera' || modal === 'edit_body_camera') {
+          if (isTypingInField(e.target)) return;
+          e.stopPropagation(); setModal('none'); setEditData(undefined); return;
+        }
+        return;
+      }
+      // N shortcut: open "Assign Camera" when no modal is active.
+      if (e.key === 'n' || e.key === 'N') {
         if (isTypingInField(e.target)) return;
-        setModal('none'); setEditData(undefined); return;
+        if (modal !== 'none' || cameraToDelete || videoToDelete || playingVideo) return;
+        if (!canManage) return;
+        e.preventDefault();
+        openAdd();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [cameraToDelete, videoToDelete, playingVideo, modal]);
+  // openAdd is a stable arrow function defined below — exclude from deps to
+  // avoid a cycle; the handler closes over canManage + modal from state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraToDelete, videoToDelete, playingVideo, modal, canManage]);
 
   // ----------------------------------------------------------
   // Refresh (cameras + videos only, skip officers)
@@ -445,6 +494,8 @@ export default function BodyCamerasPage() {
             onBulkClassifyVideos={handleBulkClassifyVideos}
             onBulkDeleteCameras={handleBulkDeleteCameras}
             bulkLoading={bulkLoading}
+            highlightCameraId={highlightCameraId}
+            initialOfficerFilter={officerFilter}
           />
         )}
       </div>
@@ -547,7 +598,7 @@ export default function BodyCamerasPage() {
         recordType="body-cam video"
         recordLabel={
           videoToDelete?.title
-          || (videoToDelete?.recorded_at && new Date(videoToDelete.recorded_at).toLocaleString())
+          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString())
           || (videoToDelete ? `Video #${videoToDelete.id}` : undefined)
         }
         details={
@@ -557,7 +608,7 @@ export default function BodyCamerasPage() {
               {videoToDelete.classification && <div>Classification: {videoToDelete.classification}</div>}
               {videoToDelete.case_number && <div>Case {videoToDelete.case_number}</div>}
               {videoToDelete.recorded_at && (
-                <div className="text-rmpg-500">Recorded {new Date(videoToDelete.recorded_at).toLocaleString()}</div>
+                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString()}</div>
               )}
               {videoToDelete.duration_seconds != null && (
                 <div className="text-rmpg-500">{Math.round(videoToDelete.duration_seconds)}s</div>

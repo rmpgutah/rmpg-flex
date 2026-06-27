@@ -55,7 +55,7 @@ export function GpsTrackingRoute() {
       onSearchChange={setSearch}
     >
       <div className="px-4 py-2 border-b border-rmpg-700 bg-surface-raised text-[10px] text-rmpg-400">
-        Live positions from ClearPathGPS. Map view in v1: <Link to="/fleet-legacy" className="text-brand-400 hover:underline">/fleet-legacy</Link>.
+        Live positions from ClearPathGPS. Full map view: <Link to="/map" className="text-brand-400 hover:underline">Map page</Link>.
       </div>
       {loading ? (
         <div className="p-4 text-sm text-rmpg-400">Loading vehicle positions…</div>

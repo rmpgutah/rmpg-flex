@@ -21,6 +21,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ── Safe Array Helper ─────────────────────────────────────────
 // Ensures a value that may be a JSON string, undefined, or already an array is always an array
@@ -1665,7 +1666,7 @@ function WorkflowsPanel() {
                                 ? 'bg-amber-500/20 text-amber-400'
                                 : 'bg-emerald-500/20 text-emerald-400'
                           }`}>
-                            {(step.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                            {toDisplayLabel(step.type)}
                           </span>
                           <span className="text-rmpg-300 font-mono truncate">{step.url_or_query}</span>
                         </div>
@@ -3919,7 +3920,7 @@ function ConnectorsPanel() {
                 </button>
                 <StatusLed status={c.status} />
                 <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${typeBadgeColor(c.type)}`}>
-                  {(c.type || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}
+                  {toDisplayLabel(c.type)}
                 </span>
                 <span className="text-[10px] text-rmpg-100 font-medium min-w-0 truncate flex-1">{c.name}</span>
                 <span className="text-[9px] text-rmpg-500 font-mono shrink-0">every {c.schedule_hours}h</span>
@@ -5986,7 +5987,7 @@ function ExamplesPanel() {
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{ex.name}</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${categoryColors[ex.category] || 'bg-rmpg-700 border-rmpg-600 text-rmpg-400'}`}>
-                  {(ex.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                  {toDisplayLabel(ex.category)}
                 </span>
               </div>
               {ex.description && <div className="text-[10px] text-rmpg-400 leading-relaxed">{ex.description}</div>}
@@ -8885,7 +8886,7 @@ function N8nPanel() {
                       {runs.map(run => (
                         <div key={run.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800 rounded-sm border border-rmpg-700">
                           <StatusLed status={run.status} />
-                          <span className="text-[10px] text-rmpg-300 flex-1">{(run.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                          <span className="text-[10px] text-rmpg-300 flex-1">{toDisplayLabel(run.status)}</span>
                           {run.error && <span className="text-[9px] text-red-400 truncate max-w-[200px]">{run.error}</span>}
                           <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(run.started_at)}</span>
                         </div>

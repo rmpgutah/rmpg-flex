@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -272,7 +273,7 @@ export default function ThreatAssessmentPanel({
                       <div className="flex items-center gap-1 text-rmpg-300">
                         <MapPin size={9} className="text-red-400 shrink-0" />
                         <span className="font-semibold text-rmpg-200 uppercase">
-                          {(hazard.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                          {toDisplayLabel(hazard.type || '')}
                         </span>
                       </div>
                       <div className="text-rmpg-400 mt-0.5 pl-3">
