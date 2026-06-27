@@ -119,7 +119,8 @@ export default function InteragencyPage() {
 
   const EMPTY_FORM: Partial<Partner> = {
     agency_name: '', agency_type: '', jurisdiction: '',
-    contact_name: '', contact_email: '', contact_phone: '', data_share_level: 'none',
+    contact_name: '', contact_email: '', contact_phone: '',
+    data_share_level: 'none', status: 'pending',
   };
 
   const openNew = () => { setEditingRecord(null); setFormData(EMPTY_FORM); setShowForm(true); };
@@ -353,18 +354,33 @@ export default function InteragencyPage() {
                   onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
                 />
               </div>
-              <div>
-                <label htmlFor="ff-interagency-6" className="text-[10px] text-rmpg-400 uppercase font-semibold">Share Level</label>
-                <select
-                  id="ff-interagency-6"
-                  className="select-dark mt-1"
-                  value={formData.data_share_level || 'none'}
-                  onChange={(e) => setFormData({ ...formData, data_share_level: e.target.value })}
-                >
-                  {['none', 'basic', 'partial', 'full'].map((l) => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="ff-interagency-6" className="text-[10px] text-rmpg-400 uppercase font-semibold">Share Level</label>
+                  <select
+                    id="ff-interagency-6"
+                    className="select-dark mt-1"
+                    value={formData.data_share_level || 'none'}
+                    onChange={(e) => setFormData({ ...formData, data_share_level: e.target.value })}
+                  >
+                    {['none', 'basic', 'partial', 'full'].map((l) => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="ff-interagency-7" className="text-[10px] text-rmpg-400 uppercase font-semibold">Status</label>
+                  <select
+                    id="ff-interagency-7"
+                    className="select-dark mt-1"
+                    value={formData.status || 'pending'}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  >
+                    {['pending', 'active', 'suspended', 'terminated'].map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-4">

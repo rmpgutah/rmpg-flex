@@ -38,7 +38,7 @@ export default function NsopwLookupPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLink = useMemo(() => ({
     offenderId: searchParams.get('offender_id') ?? '',
-    surname: searchParams.get('surname') ?? '',
+    surname: searchParams.get('surname') ?? searchParams.get('name') ?? '',
     forename: searchParams.get('forename') ?? '',
     dob: searchParams.get('dob') ?? '',
   // The hash is the source of truth on mount; subsequent param changes

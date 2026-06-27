@@ -4,7 +4,7 @@
 // highest-stakes records in the system: court-admissible,
 // IA-reviewable, and Utah-POST state-DOJ-reportable.
 //
-// What this page now does (audited in v1061):
+// What this page now does (audited in v1127):
 //   • Deep-links — ?uof_id= jumps to a specific report (with a
 //     /:id direct-fetch fallback when it's outside the current
 //     page slice); ?incident_id= + ?subject_id= pre-filter the
@@ -38,7 +38,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Shield, Plus, Search, Loader2, CheckCircle, XCircle, Eye, Printer, FileText, Video } from 'lucide-react';
+import { Shield, Plus, Search, Loader2, CheckCircle, XCircle, Eye, Printer, FileText, Video, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
 import SplitPanel from '../components/SplitPanel';
@@ -93,6 +93,11 @@ interface FootageBundle {
 
 const FORCE_TYPES = ['verbal_command', 'physical_control', 'takedown', 'restraint', 'oc_spray', 'taser', 'baton', 'k9', 'less_lethal', 'firearm', 'vehicle', 'other'];
 const FORCE_LEVELS = ['Level 1 - Cooperative', 'Level 2 - Resistive', 'Level 3 - Assaultive', 'Level 4 - Life Threatening'];
+
+// Role gates — separate from isSuper (supervisor review).
+// Officers file UoF reports; only admin/manager may purge records.
+const CAN_CREATE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer']);
+const CAN_DELETE_ROLES = new Set(['admin', 'manager']);
 
 // Status colour tokens — CSS variables so the chip re-themes between
 // night (steel-blue) and day (light-grey). Pre-v1061 these were hard
@@ -157,10 +162,14 @@ export default function UseOfForcePage() {
   const [reviewDialog, setReviewDialog] = useState<{ report: UofReport; decision: 'approved' | 'returned' } | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UofReport | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
   const isSuper = ['admin', 'manager', 'supervisor'].includes((user as any)?.role || '');
+  const canCreate = CAN_CREATE_ROLES.has((user as any)?.role ?? '');
+  const canDelete = CAN_DELETE_ROLES.has((user as any)?.role ?? '');
 
   // ── Per-user form draft (24h TTL, scoped to the operator) ──
   // UoF reports are long-form — losing a tab mid-narrative was a real
@@ -391,6 +400,24 @@ export default function UseOfForcePage() {
     }
   };
 
+  // ── Delete report (admin/manager only) ──
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    try {
+      await apiFetch(`/use-of-force/${deleteTarget.id}`, { method: 'DELETE' });
+      addToast(`UoF report #${deleteTarget.id} deleted`, 'success');
+      if (selected?.id === deleteTarget.id) setSelected(null);
+      setDeleteTarget(null);
+      await fetchReports({ silent: true });
+      fetchStats();
+    } catch (err: any) {
+      addToast(err?.message || 'Delete failed', 'error');
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   // ── PDF export ──
   // Court-ready Use-of-Force report with linked BWC + dashcam clips.
   // Footage is already in state if the operator opened the detail
@@ -453,6 +480,10 @@ export default function UseOfForcePage() {
         m.action('Approve…', () => openReviewDialog('approved', r), { icon: <CheckCircle size={12} /> }),
         m.action('Return…', () => openReviewDialog('returned', r), { icon: <XCircle size={12} />, danger: true }),
       ] : []),
+      ...(canDelete ? [
+        m.separator(),
+        m.action('Delete report…', () => setDeleteTarget(r), { icon: <Trash2 size={12} />, danger: true }),
+      ] : []),
     ];
   };
 
@@ -469,16 +500,19 @@ export default function UseOfForcePage() {
       if (e.key !== 'Escape') return;
       if (isTyping(e.target)) return;
       // 1) Create modal open
-      if (showForm) { setShowForm(false); return; }
+      if (showForm) { e.stopPropagation(); setShowForm(false); return; }
       // 2) Review confirm dialog open (ConfirmDialog handles its own Esc,
       //    but covering it here keeps the order explicit when nested).
-      if (reviewDialog) { setReviewDialog(null); setReviewNotes(''); return; }
-      // 3) Error banner
-      if (error) { setError(''); return; }
-      // 4) Detail panel selected
-      if (selected) { setSelected(null); return; }
-      // 5) Active filters
+      if (reviewDialog) { e.stopPropagation(); setReviewDialog(null); setReviewNotes(''); return; }
+      // 3) Delete confirm dialog open
+      if (deleteTarget) { e.stopPropagation(); setDeleteTarget(null); return; }
+      // 4) Error banner
+      if (error) { e.stopPropagation(); setError(''); return; }
+      // 5) Detail panel selected
+      if (selected) { e.stopPropagation(); setSelected(null); return; }
+      // 6) Active filters
       if (filterStatus || searchQuery || filterIncidentId || filterSubjectId) {
+        e.stopPropagation();
         setFilterStatus(''); setSearchQuery(''); setFilterIncidentId(''); setFilterSubjectId('');
         setPage(1);
         return;
@@ -486,7 +520,7 @@ export default function UseOfForcePage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showForm, reviewDialog, error, selected, filterStatus, searchQuery, filterIncidentId, filterSubjectId]);
+  }, [showForm, reviewDialog, deleteTarget, error, selected, filterStatus, searchQuery, filterIncidentId, filterSubjectId]);
 
   // ── N shortcut: New Report ──
   // Mirrors Records / Citations / Incidents — pressing N anywhere
@@ -502,13 +536,14 @@ export default function UseOfForcePage() {
       if (e.key !== 'n' && e.key !== 'N') return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTyping(e.target)) return;
-      if (showForm || reviewDialog) return;
+      if (showForm || reviewDialog || deleteTarget) return;
+      if (!canCreate) return;
       e.preventDefault();
       setShowForm(true);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showForm, reviewDialog]);
+  }, [showForm, reviewDialog, deleteTarget, canCreate]);
 
   // Surface "draft restored" toast once.
   const restoredToastShown = useRef(false);
@@ -597,15 +632,17 @@ export default function UseOfForcePage() {
           <option value="reviewed">Reviewed</option>
           <option value="returned">Returned</option>
         </select>
-        <button
-          type="button"
-          className="toolbar-btn toolbar-btn-primary text-[9px]"
-          onClick={() => setShowForm(true)}
-          title="New report (N)"
-          style={{ padding: '2px 8px' }}
-        >
-          <Plus className="w-3 h-3" /> New
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            className="toolbar-btn toolbar-btn-primary text-[9px]"
+            onClick={() => setShowForm(true)}
+            title="New report (N)"
+            style={{ padding: '2px 8px' }}
+          >
+            <Plus className="w-3 h-3" /> New
+          </button>
+        )}
       </div>
 
       {/* List — three distinct empty states */}
@@ -838,26 +875,41 @@ export default function UseOfForcePage() {
       )}
 
       {/* Actions */}
-      {isSuper && selected.status === 'submitted' && (
+      {(isSuper && selected.status === 'submitted') || canDelete ? (
         <div className="flex gap-2 pt-2 border-t border-rmpg-700">
-          <button
-            type="button"
-            className="toolbar-btn text-green-400 text-[9px]"
-            onClick={() => openReviewDialog('approved')}
-            style={{ padding: '4px 12px' }}
-          >
-            <CheckCircle className="w-3 h-3" /> Approve…
-          </button>
-          <button
-            type="button"
-            className="toolbar-btn text-amber-400 text-[9px]"
-            onClick={() => openReviewDialog('returned')}
-            style={{ padding: '4px 12px' }}
-          >
-            <XCircle className="w-3 h-3" /> Return…
-          </button>
+          {isSuper && selected.status === 'submitted' && (
+            <>
+              <button
+                type="button"
+                className="toolbar-btn text-green-400 text-[9px]"
+                onClick={() => openReviewDialog('approved')}
+                style={{ padding: '4px 12px' }}
+              >
+                <CheckCircle className="w-3 h-3" /> Approve…
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn text-amber-400 text-[9px]"
+                onClick={() => openReviewDialog('returned')}
+                style={{ padding: '4px 12px' }}
+              >
+                <XCircle className="w-3 h-3" /> Return…
+              </button>
+            </>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              className="toolbar-btn text-red-400 text-[9px] ml-auto"
+              onClick={() => setDeleteTarget(selected)}
+              style={{ padding: '4px 12px' }}
+              title="Permanently delete this report"
+            >
+              <Trash2 className="w-3 h-3" /> Delete…
+            </button>
+          )}
         </div>
-      )}
+      ) : null}
 
       <div className="text-[8px] text-rmpg-600 pt-2">Created: {formatDateTime(selected.created_at)} | Updated: {formatDateTime(selected.updated_at)}</div>
     </div>
@@ -1021,6 +1073,24 @@ export default function UseOfForcePage() {
         confirmLabel={reviewDialog?.decision === 'approved' ? 'Approve' : 'Return'}
         confirmVariant={reviewDialog?.decision === 'approved' ? 'default' : 'warning'}
         isLoading={reviewBusy}
+      />
+
+      {/* Delete report confirm (admin/manager only) */}
+      <ConfirmDialog
+        isOpen={deleteTarget != null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Use of Force Report"
+        message="This permanently removes the report and all linked review records from the system. This action is irreversible and will be logged to the audit trail."
+        details={deleteTarget ? (
+          <div className="text-xs mt-2">
+            UoF #{deleteTarget.id} — {(deleteTarget.force_type || '').replace(/_/g, ' ')}
+            {deleteTarget.officer_name ? ` by ${deleteTarget.officer_name}` : ''}
+          </div>
+        ) : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deleteBusy}
       />
     </div>
   );
