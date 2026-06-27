@@ -42,11 +42,17 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
   const [submittingComm, setSubmittingComm] = useState(false);
 
   const loadFitness = async () => {
-    try { const data = await apiFetch<any[]>(`/personnel/fitness/${officerId}`); setFitness(data); } catch { addToast('Failed to load fitness scores', 'error'); }
+    try {
+      const raw = await apiFetch<any>(`/personnel/fitness/${officerId}`);
+      setFitness(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []));
+    } catch { addToast('Failed to load fitness scores', 'error'); }
   };
 
   const loadCommendations = async () => {
-    try { const data = await apiFetch<any[]>(`/personnel/commendations/${officerId}`); setCommendations(data); } catch { addToast('Failed to load commendations', 'error'); }
+    try {
+      const raw = await apiFetch<any>(`/personnel/commendations/${officerId}`);
+      setCommendations(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []));
+    } catch { addToast('Failed to load commendations', 'error'); }
   };
 
   useEffect(() => { loadFitness(); loadCommendations(); }, [officerId]);
