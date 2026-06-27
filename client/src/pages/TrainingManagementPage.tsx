@@ -59,6 +59,36 @@ export default function TrainingManagementPage() {
 
   const BLANK_FORM = { course_name: '', course_code: '', category: 'other', duration_hours: '', instructor_id: '', location: '', is_mandatory: 0 };
 
+  // Deep-link: ?training_id= / ?course_id= — open edit form for that course once loaded
+  //            ?officer_id= — open new course form pre-filled with that officer's instructor ID
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (loading || deepLinkHandled.current) return;
+    const courseId = searchParams.get('training_id') ?? searchParams.get('course_id');
+    const officerId = searchParams.get('officer_id');
+    if (!courseId && !officerId) return;
+    deepLinkHandled.current = true;
+    const next = new URLSearchParams(searchParams);
+    next.delete('training_id');
+    next.delete('course_id');
+    next.delete('officer_id');
+    setSearchParams(next, { replace: true });
+    if (courseId) {
+      const found = courses.find((c) => String(c.id) === courseId);
+      if (found) {
+        openEdit(found);
+        addToast(`Course "${found.course_name}" loaded`, 'success');
+      } else {
+        addToast(`Training course #${courseId} not found`, 'error');
+      }
+    } else if (officerId && canWrite) {
+      setEditingRecord(null);
+      setFormData({ ...BLANK_FORM, instructor_id: officerId });
+      setShowForm(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, courses, searchParams]);
+
   const openNew = () => {
     setEditingRecord(null);
     setFormData(BLANK_FORM);

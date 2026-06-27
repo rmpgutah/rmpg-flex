@@ -101,6 +101,8 @@ export default function NotificationsPage() {
   const [confirmClearRead, setConfirmClearRead] = useState(false);
   const [confirmCleanupOld, setConfirmCleanupOld] = useState(false);
   const [sweepBusy, setSweepBusy] = useState(false);
+  // Per-row delete confirmation — gated to admin/manager/supervisor only.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   // Fetch notifications
   const fetchNotifications = useCallback(async (page = 1) => {
@@ -180,6 +182,7 @@ export default function NotificationsPage() {
       if (e.key !== 'Escape') return;
       // ConfirmDialog owns its own Esc (cancels the confirm) \u2014 short-circuit
       // before the cascade so we don't double-close it.
+      if (confirmDeleteId !== null) return;
       if (confirmClearRead) return;
       if (confirmCleanupOld) return;
       if (showPrefs) {
@@ -200,7 +203,7 @@ export default function NotificationsPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [confirmClearRead, confirmCleanupOld, showPrefs, filterType, filterRead, fetchNotifications]);
+  }, [confirmDeleteId, confirmClearRead, confirmCleanupOld, showPrefs, filterType, filterRead, fetchNotifications]);
 
   // \u2500\u2500 Deep-link resolver \u2500\u2500
   // Runs once notifications hydrate. If the target id is in the current
@@ -399,8 +402,10 @@ export default function NotificationsPage() {
     m.separator(),
     m.copy('Copy title', n.title),
     m.copyId(n.id),
-    m.separator(),
-    m.action('Delete', () => deleteNotification(n.id), { icon: <Trash2 size={12} />, danger: true }),
+    ...(canManage ? [
+      m.separator(),
+      m.action('Delete', () => setConfirmDeleteId(n.id), { icon: <Trash2 size={12} />, danger: true }),
+    ] : []),
   ];
 
   // The total count for the "All" sidebar entry should reflect what the
@@ -440,7 +445,7 @@ export default function NotificationsPage() {
           <span className="text-rmpg-400">Snoozed: <strong className="text-amber-400">{stats.totalSnoozed}</strong></span>
           {stats.byPriority.map(p => (
             <span key={p.priority} className={`${p.priority === 'critical' ? 'text-red-400' : p.priority === 'high' ? 'text-amber-400' : 'text-rmpg-400'}`}>
-              {(p.priority || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}: {p.unread}/{p.total}
+              {toDisplayLabel(p.priority)}: {p.unread}/{p.total}
             </span>
           ))}
         </div>
@@ -512,7 +517,7 @@ export default function NotificationsPage() {
                       onChange={(e) => setPrefs(prev => prev ? { ...prev, [key]: e.target.checked } : prev)}
                       className="accent-brand-blue"
                     />
-                    {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    {toDisplayLabel(key)}
                   </label>
                 ))}
                 <div className="grid grid-cols-2 gap-3 mt-4">
@@ -600,7 +605,7 @@ export default function NotificationsPage() {
                     </div>
                     {n.body && <p className="text-[11px] text-rmpg-400 mt-0.5 line-clamp-2">{n.body}</p>}
                     <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
-                      <span>{(n.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span>{toDisplayLabel(n.type)}</span>
                       <span title={formatDateTime(n.created_at)}>{(() => {
                         const ms = Date.now() - parseTimestamp(n.created_at).getTime();
                         const mins = Math.floor(ms / 60000);
@@ -638,9 +643,11 @@ export default function NotificationsPage() {
                         <ArrowUpRight className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    <button type="button" onClick={() => deleteNotification(n.id)} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    {canManage && (
+                      <button type="button" onClick={() => setConfirmDeleteId(n.id)} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete notification (admin/manager/supervisor only)">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -673,6 +680,20 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
+
+      {/* ── Per-row delete confirmation ── */}
+      <ConfirmDialog
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => {
+          if (confirmDeleteId !== null) void deleteNotification(confirmDeleteId);
+          setConfirmDeleteId(null);
+        }}
+        title="Delete this notification?"
+        message="This permanently removes the notification from your inbox. This action cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
 
       {/* ── Destructive bulk-sweep confirmations ──
             "Clear Read" and "Cleanup 30d+" both used to fire DELETE on

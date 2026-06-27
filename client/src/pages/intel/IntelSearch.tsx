@@ -10,6 +10,15 @@
 //   • Esc smart-cascade: facet filters → query text. Closes the smallest-open
 //     state first so a single tap doesn't blow away a long query when the
 //     operator only meant to drop the type-facet.
+//
+// v1151 — Page 128 (Intel Search) audit:
+//   • ?subject_id= deep-link: converts person id to a pre-filled person:<id>
+//     query and strips the param on mount (replace, no history spam).
+//   • N shortcut: focuses the search input via forwarded inputRef from SearchBar.
+//   • Esc cascade: each branch calls e.stopPropagation() so siblings don't
+//     fire on the same keydown. ConfirmDialog Esc handled first.
+//   • ConfirmDialog for saved-search delete (admin/manager only).
+//   • Brand token cleanup in ResultCard, FacetSidebar, SearchBar.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { parseQuery } from './useQueryParser';
@@ -22,18 +31,44 @@ import FacetSidebar from './search/FacetSidebar';
 import ResultGroup, { groupByType } from './search/ResultGroup';
 import { stepIndex } from './search/stepIndex';
 import { useSavedSearches } from './useSavedSearches';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import { useAuth } from '../../context/AuthContext';
 
 export default function IntelSearch() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuth();
+  const canManage = ['admin', 'manager'].includes(user?.role ?? '');
+
   // Initial query comes from the URL so deep-links (?q=name:"Hale") work.
-  const [raw, setRaw] = useState(() => searchParams.get('q') || '');
+  // ?subject_id=<n> is also accepted — it hydrates a person:<id> query and is
+  // stripped immediately so back-navigation doesn't re-apply it.
+  const [raw, setRaw] = useState(() => {
+    const q = searchParams.get('q');
+    if (q) return q;
+    const subjectId = searchParams.get('subject_id');
+    if (subjectId) return `person:${subjectId}`;
+    return '';
+  });
   const [activeType, setActiveType] = useState<string | null>(null);
   const [activeFlags, setActiveFlags] = useState<string[]>([]);
   const { results, facets, loading, error, run } = useIntelQuery();
   const { selectEntity } = useIntelContext();
-  const { save, saved, recent } = useSavedSearches();
+  const { save, saved, recent, remove } = useSavedSearches();
   const navigate = useNavigate();
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // ConfirmDialog state for saved-search delete (admin/manager only).
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+
+  // Strip one-shot deep-link params on mount so the URL stays clean.
+  useEffect(() => {
+    if (!searchParams.get('subject_id')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('subject_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     clearTimeout(debounce.current);
@@ -76,25 +111,37 @@ export default function IntelSearch() {
   useEffect(() => setCursor(-1), [flat]);
   const highlightKey = cursor >= 0 && flat[cursor] ? `${flat[cursor].hit.type}:${flat[cursor].hit.id}` : null;
 
-  // Esc smart-cascade — clear facets first (smallest-open), then the query.
-  // Matches the Court Tracker / Cases / Trespass cascade contract. Skipped
-  // while focus is inside an input/textarea so the native form-clear
-  // semantics (Esc on a date picker, for example) still work — the
-  // SearchBar's <input> handles its own clear behavior via onChange.
+  // N shortcut — focus the search input.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'n' && e.key !== 'N') return;
       const t = e.target as HTMLElement | null;
-      // Allow Esc inside the search input only to clear the query — don't
-      // also drop facets in the same tap (cascade rule: smallest first).
-      const isSearchInput = t?.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'date';
-      if (activeFlags.length > 0 && !isSearchInput) { setActiveFlags([]); return; }
-      if (activeType && !isSearchInput) { setActiveType(null); return; }
-      if (raw) { setRaw(''); return; }
+      if (t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA') return;
+      e.preventDefault();
+      searchInputRef.current?.focus();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeFlags, activeType, raw]);
+  }, []);
+
+  // Esc smart-cascade — clear facets first (smallest-open), then the query.
+  // Each branch calls e.stopPropagation() so the cascade stops at exactly one
+  // step per press. Matches the Court Tracker / Cases / Trespass cascade
+  // contract. Skipped while focus is inside an input/textarea so the native
+  // form-clear semantics (Esc on a date picker) still work.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (deleteTarget) { e.stopPropagation(); setDeleteTarget(null); return; }
+      const t = e.target as HTMLElement | null;
+      const isSearchInput = t?.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'date';
+      if (activeFlags.length > 0 && !isSearchInput) { e.stopPropagation(); setActiveFlags([]); return; }
+      if (activeType && !isSearchInput) { e.stopPropagation(); setActiveType(null); return; }
+      if (raw) { e.stopPropagation(); setRaw(''); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeFlags, activeType, raw, deleteTarget]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c) => stepIndex(c < 0 ? -1 : c, +1, flat.length)); }
@@ -117,7 +164,13 @@ export default function IntelSearch() {
 
   return (
     <div className="p-3 space-y-3" onKeyDown={onKeyDown}>
-      <SearchBar value={raw} onChange={setRaw} onSave={(name) => save(name, raw)} />
+      <SearchBar
+        value={raw}
+        onChange={setRaw}
+        onSave={(name) => save(name, raw)}
+        inputRef={searchInputRef}
+        onRemoveSaved={canManage ? (id, name) => setDeleteTarget({ id, name }) : undefined}
+      />
       {!hasQuery && (saved.length > 0 || recent.length > 0) && (
         <div className="flex gap-1 flex-wrap">
           {saved.slice(0, 6).map((s) => (
@@ -160,11 +213,26 @@ export default function IntelSearch() {
               Type to search. Use operators like <span className="text-brand-400 font-mono">plate:</span>,
               <span className="text-brand-400 font-mono"> name:&quot;…&quot;</span>,
               <span className="text-brand-400 font-mono"> flag:warrant</span>, or just a name / plate / phone.
-              <div className="text-[10px] text-rmpg-500 mt-1">Tip: deep-link with <span className="font-mono text-rmpg-400">?q=&lt;query&gt;</span></div>
+              <div className="text-[10px] text-rmpg-500 mt-1">Tip: deep-link with <span className="font-mono text-rmpg-400">?q=&lt;query&gt;</span> or <span className="font-mono text-rmpg-400">?subject_id=&lt;id&gt;</span></div>
             </div>
           )}
         </div>
       </div>
+
+      {/* ConfirmDialog for saved-search delete — admin/manager only. */}
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (deleteTarget) { await remove(deleteTarget.id); }
+          setDeleteTarget(null);
+        }}
+        title="Delete Saved Search"
+        message="Remove this saved search? This cannot be undone."
+        details={deleteTarget ? <span className="font-mono text-brand-400">{deleteTarget.name}</span> : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }
