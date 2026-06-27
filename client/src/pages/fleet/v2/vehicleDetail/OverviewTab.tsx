@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { FleetVehicleDetail } from '../routes/VehicleDetailRoute';
-import { apiFetch } from '../../../hooks/useApi';
-import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
-import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
+import { apiFetch } from '../../../../hooks/useApi';
+import FleetioConflictBadge from '../../../../components/FleetioConflictBadge';
+import type { ConflictBadgeConflict } from '../../../../components/FleetioConflictBadge';
 
 /** Map display label → rmpg field name for conflict matching. */
 const FIELD_TO_COL: Record<string, string> = {
