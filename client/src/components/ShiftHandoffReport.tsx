@@ -8,6 +8,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
 import StatusBadge from './StatusBadge';
 import { safeDateTimeStr } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   FileText, Printer, Radio, AlertTriangle, StickyNote,
   MapPin, BarChart3, Plus, Clock, Car,
@@ -297,7 +298,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
               .filter(([k]) => k !== 'avg_response_time')
               .map(([key, val]) => (
                 <div key={key} className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-rmpg-300">{key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                  <span className="text-rmpg-300">{toDisplayLabel(key)}</span>
                   <span className="text-rmpg-100 font-bold">{typeof val === 'number' ? val.toFixed(1) : val}</span>
                 </div>
               ))}
