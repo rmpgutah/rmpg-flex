@@ -107,6 +107,7 @@ export default function DashCamerasPage() {
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const isAdmin = user?.role === 'admin';
+  const isAdminOrManager = ['admin', 'manager'].includes(user?.role || '');
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -293,7 +294,7 @@ export default function DashCamerasPage() {
     m.separator(),
     m.copy('Copy title', v.title),
     m.copyId(v.id),
-    ...(isAdmin ? [m.separator(), m.action('Delete', () => handleDelete(v.id), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ...(isAdminOrManager ? [m.separator(), m.action('Delete', () => handleDelete(v.id), { icon: <Trash2 size={12} />, danger: true })] : []),
   ];
 
   // ── Gallery View (Left Panel) ────────────
@@ -315,7 +316,7 @@ export default function DashCamerasPage() {
           {videos.length === 0 ? (
             <>
               <p className="text-xs text-rmpg-400">No dash camera videos uploaded yet</p>
-              {canManage && (
+              {isAdminOrManager && (
                 <button type="button" onClick={() => setShowUpload(true)}
                   className="mt-3 toolbar-btn toolbar-btn-primary text-[10px] px-4 py-1.5 inline-flex items-center gap-1.5">
                   <Plus className="w-3 h-3" /> Upload Video
@@ -452,8 +453,12 @@ export default function DashCamerasPage() {
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={6} className="text-center py-12">
-                  <Film className="w-6 h-6 mx-auto mb-2 text-rmpg-600" />
-                  <p className="text-xs text-rmpg-400">No videos found</p>
+                  <Film className="w-6 h-6 mx-auto mb-2 text-rmpg-600" aria-hidden="true" />
+                  {videos.length === 0 ? (
+                    <p className="text-xs text-rmpg-400">No dash camera videos uploaded yet</p>
+                  ) : (
+                    <p className="text-xs text-rmpg-400">No videos match your filters</p>
+                  )}
                 </td>
               </tr>
             ) : filtered.map(v => (
@@ -554,11 +559,11 @@ export default function DashCamerasPage() {
         />
         {/* Camera channel overlay */}
         {selectedVideo.cpg_channel && (
-          <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 text-[9px] font-mono font-bold uppercase tracking-wider"
-            style={{
-              color: selectedVideo.cpg_channel === 'outside' ? 'var(--rmpg-400)' : '#c084fc',
-              border: `1px solid ${selectedVideo.cpg_channel === 'outside' ? '#6a6a6a40' : '#7c3aed40'}`,
-            }}>
+          <div className={`absolute top-2 left-2 px-2 py-0.5 bg-black/70 text-[9px] font-mono font-bold uppercase tracking-wider border ${
+            selectedVideo.cpg_channel === 'outside'
+              ? 'text-rmpg-400 border-rmpg-600/40'
+              : 'text-purple-400 border-purple-700/40'
+          }`}>
             {selectedVideo.cpg_channel === 'outside' ? 'FRONT CAM' : 'REAR CAM'}
           </div>
         )}
@@ -725,7 +730,7 @@ export default function DashCamerasPage() {
                 className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1">
                 <Link2 className="w-3 h-3" /> Link Case
               </button>
-              {isAdmin && (
+              {isAdminOrManager && (
                 <button type="button" onClick={() => handleDelete(selectedVideo.id)}
                   className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1 text-red-400 hover:text-red-300">
                   <Trash2 className="w-3 h-3" /> Delete
@@ -758,35 +763,35 @@ export default function DashCamerasPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // Close-smallest-open-first cascade. Each branch returns after
-        // closing so a single Esc doesn't blast multiple layers at once.
-        if (videoToDelete) { setVideoToDelete(null); return; }
-        if (editingVideo) { setEditingVideo(null); return; }
-        if (linkingVideo) { setLinkingVideo(null); return; }
-        if (showUpload) { setShowUpload(false); return; }
-        if (playingVideo) { setPlayingVideo(null); return; }
-        if (selectedVideo) { setSelectedVideo(null); return; }
+        // Close-smallest-open-first cascade. Each branch stops propagation
+        // so a single Esc doesn't blast multiple layers at once.
+        if (videoToDelete) { e.stopPropagation(); setVideoToDelete(null); return; }
+        if (editingVideo) { e.stopPropagation(); setEditingVideo(null); return; }
+        if (linkingVideo) { e.stopPropagation(); setLinkingVideo(null); return; }
+        if (showUpload) { e.stopPropagation(); setShowUpload(false); return; }
+        if (playingVideo) { e.stopPropagation(); setPlayingVideo(null); return; }
+        if (selectedVideo) { e.stopPropagation(); setSelectedVideo(null); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
-      if ((e.key === 'n' || e.key === 'N') && canManage) {
+      if ((e.key === 'n' || e.key === 'N') && isAdminOrManager) {
         e.preventDefault();
         setShowUpload(true);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [videoToDelete, editingVideo, linkingVideo, showUpload, playingVideo, selectedVideo, canManage]);
+  }, [videoToDelete, editingVideo, linkingVideo, showUpload, playingVideo, selectedVideo, isAdminOrManager]);
 
-  // \u2500\u2500 /dash-cameras?clip_id=<id> URL deep-link auto-select \u2500\u2500
+  // \u2500\u2500 /dash-cameras?camera_id=<id> URL deep-link auto-select \u2500\u2500
   // Cross-page contract: case / incident / FI / evidence detail panels
-  // link "View dashcam" \u2192 /dash-cameras?clip_id=42 so the supervisor lands
+  // link "View dashcam" \u2192 /dash-cameras?camera_id=42 so the supervisor lands
   // directly on the right clip with the player primed. One-shot per page
   // load; the param is stripped after applying. Falls through to a
   // direct GET when the target is outside the current page of results.
   const [searchParams, setSearchParams] = useSearchParams();
-  const pendingClipIdRef = useRef<string | null>(searchParams.get('clip_id'));
+  const pendingClipIdRef = useRef<string | null>(searchParams.get('camera_id'));
   useEffect(() => {
     const target = pendingClipIdRef.current;
     if (!target || loading) return;
@@ -813,7 +818,7 @@ export default function DashCamerasPage() {
       } finally {
         if (!cancelled) {
           const next = new URLSearchParams(searchParams);
-          next.delete('clip_id');
+          next.delete('camera_id');
           setSearchParams(next, { replace: true });
         }
       }
@@ -880,7 +885,7 @@ export default function DashCamerasPage() {
         <RmpgLogo height={20} iconOnly />
         <PrintButton />
         <ExportButton exportUrl="/fleet/dashcam-videos?limit=5000&format=csv" exportFilename="dashcam-videos.csv" />
-        {canManage && (
+        {isAdminOrManager && (
           <button type="button" onClick={() => setShowUpload(true)}
             className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
             <Upload className="w-3 h-3" /> Upload
@@ -899,14 +904,14 @@ export default function DashCamerasPage() {
         <div className="w-px h-4 bg-rmpg-700 flex-shrink-0" />
 
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
-          <span className="led-dot" style={{ width: 5, height: 5, background: 'var(--rmpg-400)', boxShadow: '0 0 4px #a0a0a080' }} />
+          <span className="led-dot" style={{ width: 5, height: 5, background: 'var(--rmpg-400)', boxShadow: '0 0 4px rgb(var(--rmpg-400-rgb) / 0.5)' }} />
           <span className="text-[10px] font-mono font-bold text-rmpg-400">{stats.frontCam}</span>
           <span className="text-[8px] text-rmpg-500 uppercase">Front</span>
         </div>
         <div className="w-px h-4 bg-rmpg-700 flex-shrink-0" />
 
         <div className="px-3 flex items-center gap-1.5 whitespace-nowrap">
-          <span className="led-dot" style={{ width: 5, height: 5, background: '#c084fc', boxShadow: '0 0 4px #c084fc80' }} />
+          <span className="led-dot" style={{ width: 5, height: 5, background: 'var(--sev-special)', boxShadow: '0 0 4px rgb(var(--sev-special-rgb) / 0.5)' }} />
           <span className="text-[10px] font-mono font-bold text-purple-400">{stats.rearCam}</span>
           <span className="text-[8px] text-rmpg-500 uppercase">Rear</span>
         </div>
@@ -1088,7 +1093,7 @@ export default function DashCamerasPage() {
         recordType="dashcam video"
         recordLabel={
           videoToDelete?.title
-          || (videoToDelete?.recorded_at && new Date(videoToDelete.recorded_at).toLocaleString())
+          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString())
           || (videoToDelete ? `Video #${videoToDelete.id}` : undefined)
         }
         details={
@@ -1098,7 +1103,7 @@ export default function DashCamerasPage() {
               {videoToDelete.officer_name && <div>Officer: {videoToDelete.officer_name}</div>}
               {videoToDelete.vehicle_number && <div>Vehicle #{videoToDelete.vehicle_number}</div>}
               {videoToDelete.recorded_at && (
-                <div className="text-rmpg-500">Recorded {new Date(videoToDelete.recorded_at).toLocaleString()}</div>
+                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString()}</div>
               )}
               {videoToDelete.case_number && <div>Case {videoToDelete.case_number}</div>}
               {videoToDelete.classification && <div>Classification: {videoToDelete.classification}</div>}

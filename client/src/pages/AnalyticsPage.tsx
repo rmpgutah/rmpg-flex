@@ -11,12 +11,15 @@
 // every endpoint 503s and this page shows a clear "not provisioned yet" panel
 // with the setup steps instead of scary errors.
 // ============================================================
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ScanSearch, Search, RotateCcw, AlertTriangle, Database, Loader2, Car, MapPin, Terminal, Activity, Gauge } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import StatsCard from '../components/StatsCard';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface HealthResp {
   ok: boolean; query_ready: boolean; pipeline_bound: boolean;
@@ -60,7 +63,7 @@ const fmtTrust = (v: unknown): string => {
 };
 const fmtTs = (v: unknown): string => {
   if (!v) return '—';
-  const d = new Date(String(v));
+  const d = parseTimestamp(String(v));
   return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString();
 };
 const vehDesc = (s: PlateSighting): string =>
@@ -69,11 +72,33 @@ const vehDesc = (s: PlateSighting): string =>
 export default function AnalyticsPage() {
   const { user } = useAuth();
   const canQueryRaw = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
+  const canExport = ['admin', 'manager'].includes(user?.role ?? '');
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // ── Deep-link: ?report=plates|activity|operations & ?date_range=1|7|30|90 ─
+  const initialTab = searchParams.get('report') as Tab | null;
+  const initialDays = Number(searchParams.get('date_range') ?? 0);
 
   const [health, setHealth] = useState<HealthResp | null>(null);
   const [notProvisioned, setNotProvisioned] = useState(false);
-  const [days, setDays] = useState<number>(7);
-  const [tab, setTab] = useState<Tab>('plates');
+  const [days, setDays] = useState<number>(
+    ([1, 7, 30, 90] as number[]).includes(initialDays) ? initialDays : 7
+  );
+  const [tab, setTab] = useState<Tab>(
+    TABS.some((t) => t.key === initialTab) ? (initialTab as Tab) : 'plates'
+  );
+
+  // Strip deep-link params after mount so they don't persist in history
+  useEffect(() => {
+    if (searchParams.has('report') || searchParams.has('date_range')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('report');
+      next.delete('date_range');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Activity tab (flex_events)
   const [eventTypes, setEventTypes] = useState<EventSummaryRow[]>([]);
@@ -93,6 +118,7 @@ export default function AnalyticsPage() {
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   // Plate search
+  const plateInputRef = useRef<HTMLInputElement>(null);
   const [plateInput, setPlateInput] = useState('');
   const [sightings, setSightings] = useState<PlateSighting[] | null>(null);
   const [plateLoading, setPlateLoading] = useState(false);
@@ -106,7 +132,10 @@ export default function AnalyticsPage() {
   const [rawLoading, setRawLoading] = useState(false);
   const [rawError, setRawError] = useState<string | null>(null);
 
-  // 503 from any endpoint ⇒ the warehouse isn't provisioned yet.
+  // ConfirmDialog — export confirmation (admin/manager only)
+  const [confirmExport, setConfirmExport] = useState(false);
+
+  // 503 from any endpoint => the warehouse isn't provisioned yet.
   const is503 = (err: unknown) => (err as { status?: number })?.status === 503;
 
   const loadSummary = useCallback(async (d: number) => {
@@ -222,14 +251,66 @@ export default function AnalyticsPage() {
     else if (tab === 'operations') loadOps(days);
   }, [tab, days, loadActivity, loadOps]);
 
+  // ── Keyboard shortcuts ────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // N => focus the plate search input (switches to plates tab first)
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        if (tab !== 'plates') setTab('plates');
+        // Use rAF so the tab switch re-render has completed
+        requestAnimationFrame(() => plateInputRef.current?.focus());
+        return;
+      }
+
+      // Esc => close confirm dialog first, then raw console
+      if (e.key === 'Escape') {
+        if (confirmExport) { e.stopPropagation(); setConfirmExport(false); return; }
+        if (showRaw) { e.stopPropagation(); setShowRaw(false); return; }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [tab, confirmExport, showRaw]);
+
+  const handleExportConfirmed = useCallback(async () => {
+    setConfirmExport(false);
+    try {
+      const res = await apiFetch<{ url: string }>(`/analytics/alpr/export?days=${days}`);
+      if (res.url) window.open(res.url, '_blank', 'noopener');
+    } catch {
+      // Export is best-effort; the warehouse being unavailable is already surfaced
+    }
+  }, [days]);
+
+  // health drives notProvisioned only — suppress unused-var warning
+  void health;
+
   const totalReads = summary.reduce((acc, r) => acc + (Number(r.reads) || 0), 0);
   const hitPlates = summary.filter((r) => truthy(r.ever_hit)).length;
+
+  // Convenience: are we in the initial-load state with no data yet?
+  const summaryIdle = summaryLoading && summary.length === 0;
+  const actIdle = actLoading && eventTypes.length === 0 && events.length === 0;
+  const opsIdle = opsLoading && cfsTrends.length === 0 && gpsCoverage.length === 0;
 
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="PLATE ANALYTICS" icon={ScanSearch}>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-rmpg-400 uppercase tracking-wider">R2 Data Catalog · Iceberg</span>
+          {canExport && (
+            <button
+              onClick={() => setConfirmExport(true)}
+              aria-label="Export plate data"
+              className="px-2 py-1 text-[11px] font-semibold bg-surface-raised border border-border-default rounded-sm text-rmpg-300 hover:text-brand-400 transition-colors"
+            >
+              Export
+            </button>
+          )}
           <button
             onClick={() => {
               loadHealth();
@@ -263,7 +344,7 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* Window selector + summary cards */}
+      {/* Window selector */}
       <div className="flex items-center gap-2">
         <span className="text-[11px] text-rmpg-400 uppercase tracking-wider">Window</span>
         <div className="inline-flex rounded-sm overflow-hidden border border-border-default">
@@ -297,6 +378,7 @@ export default function AnalyticsPage() {
         ))}
       </div>
 
+      {/* ── Plates tab ── */}
       {tab === 'plates' && (<>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatsCard icon={ScanSearch} label={`Reads · last ${days}d`} value={totalReads.toLocaleString()} accent="blue" />
@@ -311,10 +393,11 @@ export default function AnalyticsPage() {
         </h3>
         <div className="flex gap-2 mb-3">
           <input
+            ref={plateInputRef}
             value={plateInput}
             onChange={(e) => setPlateInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') searchPlate(); }}
-            placeholder="Plate number…"
+            placeholder="Plate number… (N to focus)"
             className="flex-1 bg-surface-sunken border border-border-default rounded-sm px-3 py-2 text-sm text-rmpg-200 font-mono uppercase placeholder:text-rmpg-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             aria-label="Plate number to search"
           />
@@ -328,7 +411,13 @@ export default function AnalyticsPage() {
         </div>
         {plateError && <p className="text-red-400 text-[12px] mb-2">{plateError}</p>}
 
-        {sightings != null && !plateError && (
+        {/* Empty states: loading / no-results / results */}
+        {plateLoading && sightings == null && (
+          <p className="text-rmpg-400 text-[12px] flex items-center gap-1.5">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…
+          </p>
+        )}
+        {sightings != null && !plateError && !plateLoading && (
           sightings.length === 0 ? (
             <p className="text-rmpg-400 text-[12px]">No sightings of <span className="font-mono">{searchedPlate}</span> in the last {days} days.</p>
           ) : (
@@ -381,6 +470,11 @@ export default function AnalyticsPage() {
           <Database className="w-4 h-4" /> Busiest plates · last {days} days
         </h3>
         {summaryError && <p className="text-red-400 text-[12px]">{summaryError}</p>}
+        {summaryIdle && (
+          <p className="text-rmpg-400 text-[12px] flex items-center gap-1.5">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading plate summary…
+          </p>
+        )}
         {!summaryError && !notProvisioned && summary.length === 0 && !summaryLoading && (
           <p className="text-rmpg-400 text-[12px]">No reads recorded in this window yet.</p>
         )}
@@ -415,7 +509,7 @@ export default function AnalyticsPage() {
       </div>
       </>)}
 
-      {/* Activity tab — system-wide event firehose (flex_events) */}
+      {/* ── Activity tab — system-wide event firehose (flex_events) ── */}
       {tab === 'activity' && (
         <div className="space-y-4">
           {actError && <p className="text-red-400 text-[12px]">{actError}</p>}
@@ -423,9 +517,15 @@ export default function AnalyticsPage() {
             <h3 className="text-brand-400 font-semibold text-sm mb-3 flex items-center gap-2">
               <Activity className="w-4 h-4" /> Event volume · last {days} days
             </h3>
-            {eventTypes.length === 0 && !actLoading ? (
+            {actIdle && (
+              <p className="text-rmpg-400 text-[12px] flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading activity…
+              </p>
+            )}
+            {!actLoading && eventTypes.length === 0 && (
               <p className="text-rmpg-400 text-[12px]">No events recorded in this window yet.</p>
-            ) : (
+            )}
+            {eventTypes.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {eventTypes.map((t, i) => (
                   <button
@@ -442,9 +542,15 @@ export default function AnalyticsPage() {
           </div>
           <div className="bg-surface-raised border border-border-default rounded-sm p-4">
             <h3 className="text-brand-400 font-semibold text-sm mb-3">Recent activity</h3>
-            {events.length === 0 && !actLoading ? (
+            {actIdle && (
+              <p className="text-rmpg-400 text-[12px] flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading events…
+              </p>
+            )}
+            {!actLoading && events.length === 0 && (
               <p className="text-rmpg-400 text-[12px]">No recent events.</p>
-            ) : (
+            )}
+            {events.length > 0 && (
               <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
                 <table className="w-full text-left">
                   <thead className="sticky top-0 bg-surface-raised">
@@ -474,7 +580,7 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* Operations tab — CFS trends + patrol/AVL coverage */}
+      {/* ── Operations tab — CFS trends + patrol/AVL coverage ── */}
       {tab === 'operations' && (
         <div className="space-y-4">
           {opsError && <p className="text-red-400 text-[12px]">{opsError}</p>}
@@ -482,9 +588,15 @@ export default function AnalyticsPage() {
             <h3 className="text-brand-400 font-semibold text-sm mb-3 flex items-center gap-2">
               <Database className="w-4 h-4" /> Calls for service by type · last {days} days
             </h3>
-            {cfsTrends.length === 0 && !opsLoading ? (
+            {opsIdle && (
+              <p className="text-rmpg-400 text-[12px] flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading CFS trends…
+              </p>
+            )}
+            {!opsLoading && cfsTrends.length === 0 && (
               <p className="text-rmpg-400 text-[12px]">No calls recorded in this window yet.</p>
-            ) : (
+            )}
+            {cfsTrends.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
@@ -511,9 +623,15 @@ export default function AnalyticsPage() {
             <h3 className="text-brand-400 font-semibold text-sm mb-3 flex items-center gap-2">
               <Gauge className="w-4 h-4" /> Patrol / AVL coverage by unit · last {days} days
             </h3>
-            {gpsCoverage.length === 0 && !opsLoading ? (
+            {opsIdle && (
+              <p className="text-rmpg-400 text-[12px] flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading AVL coverage…
+              </p>
+            )}
+            {!opsLoading && gpsCoverage.length === 0 && (
               <p className="text-rmpg-400 text-[12px]">No AVL pings in this window yet.</p>
-            ) : (
+            )}
+            {gpsCoverage.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
@@ -541,7 +659,7 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* Raw R2 SQL console — command staff only */}
+      {/* ── Raw R2 SQL console — command staff only ── */}
       {canQueryRaw && (
         <div className="bg-surface-raised border border-border-default rounded-sm">
           <button
@@ -605,6 +723,17 @@ export default function AnalyticsPage() {
           )}
         </div>
       )}
+
+      {/* Export confirmation — admin/manager only */}
+      <ConfirmDialog
+        isOpen={confirmExport}
+        onClose={() => setConfirmExport(false)}
+        onConfirm={handleExportConfirmed}
+        title="Export plate analytics"
+        message={`Export all plate reads from the last ${days} days as a CSV download. This may take a moment for large windows.`}
+        confirmLabel="Export"
+        confirmVariant="default"
+      />
     </div>
   );
 }

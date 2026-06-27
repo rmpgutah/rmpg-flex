@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, Download, FileText, RotateCcw, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Download, FileText, RotateCcw, Copy, Check, Trash2 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
@@ -49,10 +49,13 @@ export default function TextEditorPage() {
   const [originalContent, setOriginalContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   // ConfirmDialog state for revert — replaces window.confirm
   const [revertOpen, setRevertOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // useRef guard: prevent re-firing deep-link toast on re-render
+  const deepLinkApplied = useRef(false);
 
   const isDirty = content !== originalContent;
 
