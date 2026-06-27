@@ -1,151 +1,497 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
-import { UserPlus, Users, CheckCircle, GraduationCap, Clock, Plus, Pencil, Trash2 } from 'lucide-react';
+import { localToday, safeDateStr } from '../utils/dateUtils';
+import { UserPlus, Users, CheckCircle, GraduationCap, Clock, Plus, Pencil, Trash2, XCircle } from 'lucide-react';
 
-interface Candidate { id: number; candidate_name: string; email: string; phone: string; position: string; stage: string; applied_date: string; notes: string; }
+interface Candidate {
+  id: number;
+  candidate_name: string;
+  email: string;
+  phone: string;
+  position: string;
+  stage: string;
+  applied_date: string;
+  notes: string;
+}
 interface RecruitStats { applicants: number; inProcess: number; hired: number; academyClasses: number; }
 
-const EMPTY_FORM = { candidate_name: '', email: '', phone: '', position: '', stage: 'applied', applied_date: new Date().toISOString().slice(0, 10), notes: '' };
+const EMPTY_FORM = {
+  candidate_name: '', email: '', phone: '', position: '',
+  stage: 'applied', applied_date: localToday(), notes: '',
+};
 
-const STAGES = ['applied', 'screening', 'testing', 'oral_board', 'background', 'conditional_offer', 'academy', 'fto', 'hired', 'rejected', 'withdrawn'];
+const STAGES = [
+  'applied', 'screening', 'testing', 'oral_board', 'background',
+  'conditional_offer', 'academy', 'fto', 'hired', 'rejected', 'withdrawn',
+];
+
+// Roles that may create / edit / delete candidate records.
+const MANAGE_ROLES = new Set(['admin', 'manager', 'human_resources']);
 
 export default function RecruitmentPage() {
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [stats, setStats] = useState<RecruitStats>({ applicants: 0, inProcess: 0, hired: 0, academyClasses: 0 });
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
+  const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<Candidate | null>(null);
-  const [formData, setFormData] = useState<any>(EMPTY_FORM);
+  const [formData, setFormData] = useState<typeof EMPTY_FORM>(EMPTY_FORM);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Candidate | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<Candidate | null>(null);
+  const [rejecting, setRejecting] = useState(false);
   const { addToast } = useToast();
   const m = useMenuActions();
+
+  // Deep-link: capture params once at mount before any setSearchParams calls.
+  const pendingApplicantIdRef = useRef<string | null>(searchParams.get('applicant_id'));
+  const pendingRecruitIdRef   = useRef<string | null>(searchParams.get('recruit_id'));
 
   const fetchData = useCallback(async () => {
     try {
       const [c, s] = await Promise.all([
-        apiFetch<Candidate[]>('/recruitment/candidates').catch(() => []),
-        apiFetch<RecruitStats>('/recruitment/stats').catch(() => ({ applicants: 0, inProcess: 0, hired: 0, academyClasses: 0 })),
+        apiFetch<Candidate[]>('/recruitment/candidates').catch(() => [] as Candidate[]),
+        apiFetch<RecruitStats>('/recruitment/stats').catch(
+          () => ({ applicants: 0, inProcess: 0, hired: 0, academyClasses: 0 } as RecruitStats),
+        ),
       ]);
-      setCandidates(c); setStats(s);
-    } finally { setLoading(false); }
+      setCandidates(c);
+      setStats(s);
+      setLoadState('ok');
+    } catch {
+      setLoadState('error');
+    }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const openNew = () => { setEditingRecord(null); setFormData({ ...EMPTY_FORM }); setFormError(null); setFormOpen(true); };
-  const openEdit = (rec: Candidate) => { setEditingRecord(rec); setFormData({ ...rec }); setFormError(null); setFormOpen(true); };
+  // -- Deep-link hydration --
+  // Applied once after first successful data load. Strips params after use so
+  // refresh does not re-open the modal. Mirrors VictimServicesPage / AffairsPage.
+  useEffect(() => {
+    if (loadState !== 'ok') return;
+
+    const applicantIdRaw = pendingApplicantIdRef.current;
+    const recruitIdRaw   = pendingRecruitIdRef.current;
+    if (!applicantIdRaw && !recruitIdRaw) return;
+
+    pendingApplicantIdRef.current = null;
+    pendingRecruitIdRef.current   = null;
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('applicant_id');
+    next.delete('recruit_id');
+
+    const rawId = applicantIdRaw ?? recruitIdRaw;
+    if (rawId) {
+      const id = Number(rawId);
+      if (Number.isFinite(id) && id > 0) {
+        const hit = candidates.find((c) => c.id === id);
+        if (hit) {
+          openEdit(hit);
+        } else {
+          apiFetch<Candidate>(`/recruitment/candidates/${id}`)
+            .then((rec) => { if (rec) openEdit(rec); })
+            .catch(() => addToast(`Candidate #${id} not found`, 'warning'));
+        }
+      }
+    }
+
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadState]);
+
+  // -- Keyboard shortcuts --
+  // N opens the New modal (canManage only, not while typing in a field).
+  // Esc closes the smallest-open-first: delete confirm > form modal.
+  useEffect(() => {
+    const isTypingInField = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+    };
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (rejectTarget) { e.stopPropagation(); setRejectTarget(null); return; }
+        if (deleteTarget) { e.stopPropagation(); setDeleteTarget(null); return; }
+        if (formOpen)     { e.stopPropagation(); setFormOpen(false);    return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && canManage) {
+        e.preventDefault();
+        openNew();
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [rejectTarget, deleteTarget, formOpen, canManage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openNew = () => {
+    setEditingRecord(null);
+    setFormData({ ...EMPTY_FORM });
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (rec: Candidate) => {
+    setEditingRecord(rec);
+    setFormData({ ...EMPTY_FORM, ...rec });
+    setFormError(null);
+    setFormOpen(true);
+  };
 
   const handleSave = async () => {
-    setFormSubmitting(true); setFormError(null);
+    setFormSubmitting(true);
+    setFormError(null);
     try {
       if (editingRecord) {
-        await apiFetch(`/recruitment/candidates/${editingRecord.id}`, { method: 'PUT', body: JSON.stringify(formData) });
+        await apiFetch(`/recruitment/candidates/${editingRecord.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(formData),
+        });
         addToast('Candidate updated', 'success');
       } else {
-        await apiFetch('/recruitment/candidates', { method: 'POST', body: JSON.stringify(formData) });
+        await apiFetch('/recruitment/candidates', {
+          method: 'POST',
+          body: JSON.stringify(formData),
+        });
         addToast('Candidate added', 'success');
       }
-      setFormOpen(false); fetchData();
+      setFormOpen(false);
+      fetchData();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Save failed';
-      setFormError(msg); addToast(msg, 'error');
-    } finally { setFormSubmitting(false); }
+      setFormError(msg);
+      addToast(msg, 'error');
+    } finally {
+      setFormSubmitting(false);
+    }
   };
 
   const handleDelete = async () => {
-    if (!deleteId) return;
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/recruitment/candidates/${deleteId}`, { method: 'DELETE' });
-      setDeleteId(null); fetchData();
+      await apiFetch(`/recruitment/candidates/${deleteTarget.id}`, { method: 'DELETE' });
+      setDeleteTarget(null);
+      fetchData();
       addToast('Candidate deleted', 'success');
-    } catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Delete failed', 'error');
+    } finally {
+      setDeleting(false);
+    }
   };
+
+  const handleReject = async () => {
+    if (!rejectTarget) return;
+    setRejecting(true);
+    try {
+      await apiFetch(`/recruitment/candidates/${rejectTarget.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...rejectTarget, stage: 'rejected' }),
+      });
+      setRejectTarget(null);
+      fetchData();
+      addToast('Candidate rejected', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Reject failed', 'error');
+    } finally {
+      setRejecting(false);
+    }
+  };
+
+  // Filtered view — driven by search input.
+  const filtered = useMemo(() => {
+    if (!search.trim()) return candidates;
+    const q = search.toLowerCase();
+    return candidates.filter((c) =>
+      c.candidate_name?.toLowerCase().includes(q) ||
+      c.position?.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q) ||
+      c.stage?.toLowerCase().includes(q),
+    );
+  }, [candidates, search]);
 
   const columns = [
     { key: 'candidate_name', label: 'Name' },
-    { key: 'position', label: 'Position' },
-    { key: 'email', label: 'Email' },
-    { key: 'stage', label: 'Stage', render: (r: Candidate) => <span className={`badge ${r.stage === 'hired' ? 'badge-available' : r.stage === 'rejected' || r.stage === 'withdrawn' ? 'badge-busy' : 'badge-pending'}`}>{r.stage?.replace(/_/g, ' ')}</span> },
-    { key: 'applied_date', label: 'Applied' },
-    { key: 'actions', label: '', width: '80px', render: (r: Candidate) => (
-      <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-rmpg-400 hover:text-rmpg-100" title="Edit"><Pencil size={12} /></button>
-        <button onClick={(e) => { e.stopPropagation(); setDeleteId(r.id); }} className="text-red-500 hover:text-red-300" title="Delete"><Trash2 size={12} /></button>
-      </div>
-    )},
+    { key: 'position',       label: 'Position' },
+    { key: 'email',          label: 'Email' },
+    {
+      key: 'stage', label: 'Stage',
+      render: (r: Candidate) => (
+        <span className={`badge ${r.stage === 'hired' ? 'badge-available' : r.stage === 'rejected' || r.stage === 'withdrawn' ? 'badge-busy' : 'badge-pending'}`}>
+          {r.stage?.replace(/_/g, ' ')}
+        </span>
+      ),
+    },
+    {
+      key: 'applied_date', label: 'Applied',
+      render: (r: Candidate) => safeDateStr(r.applied_date),
+    },
+    ...(canManage ? [{
+      key: 'actions', label: '', width: '96px',
+      render: (r: Candidate) => (
+        <div className="flex gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); openEdit(r); }}
+            className="text-rmpg-400 hover:text-rmpg-100"
+            title="Edit"
+          >
+            <Pencil size={12} />
+          </button>
+          {r.stage !== 'rejected' && r.stage !== 'withdrawn' && r.stage !== 'hired' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setRejectTarget(r); }}
+              className="text-amber-500 hover:text-amber-300"
+              title="Reject Applicant"
+            >
+              <XCircle size={12} />
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}
+            className="text-red-500 hover:text-red-300"
+            title="Delete"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      ),
+    }] : []),
   ];
 
-  if (loading) return <div className="p-6 text-rmpg-400">Loading recruitment data...</div>;
-
-  return (
-    <div className="p-4 space-y-4">
-      <PanelTitleBar title="RECRUITMENT" icon={UserPlus}>
-        <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}>
-          <Plus size={13} /> New Candidate
-        </button>
-      </PanelTitleBar>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <StatsCard label="TOTAL APPLICANTS" value={String(stats.applicants)} icon={Users} />
-        <StatsCard label="IN PROCESS" value={String(stats.inProcess)} icon={Clock} />
-        <StatsCard label="HIRED (YTD)" value={String(stats.hired)} icon={CheckCircle} />
-        <StatsCard label="ACADEMY CLASSES" value={String(stats.academyClasses)} icon={GraduationCap} />
-      </div>
-
+  // -- Empty state rendering --
+  const renderBody = () => {
+    if (loadState === 'loading') {
+      return <div className="p-6 text-rmpg-400 text-xs">Loading recruitment data…</div>;
+    }
+    if (loadState === 'error') {
+      return <div className="p-6 text-red-400 text-xs">Failed to load recruitment data. Try refreshing.</div>;
+    }
+    return (
       <DataTable
         columns={columns}
-        data={candidates}
-        emptyMessage="No candidates in pipeline"
+        data={filtered}
+        emptyMessage={
+          search.trim()
+            ? `No candidates match "${search}"`
+            : candidates.length === 0
+              ? 'No candidates in the pipeline yet'
+              : 'No candidates match the current filter'
+        }
         onRowClick={openEdit}
         rowContextMenu={(row) => [
           m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
           m.separator(),
           m.copy('Copy name', row.candidate_name),
           m.copyId(row.id),
-          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+          ...(canManage
+            ? [
+                ...(row.stage !== 'rejected' && row.stage !== 'withdrawn' && row.stage !== 'hired'
+                  ? [m.action('Reject Applicant', () => setRejectTarget(row), { danger: true, icon: <XCircle size={12} /> })]
+                  : []),
+                m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> }),
+              ]
+            : []),
         ]}
       />
+    );
+  };
 
+  return (
+    <div className="p-4 space-y-4">
+      <PanelTitleBar title="RECRUITMENT" icon={UserPlus}>
+        <input
+          type="search"
+          placeholder="Search candidates…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="input-dark text-xs h-7 px-2 w-44"
+          aria-label="Search candidates"
+        />
+        {canManage && (
+          <button
+            onClick={openNew}
+            className="toolbar-btn flex items-center gap-1.5"
+            style={{ height: 28, padding: '0 10px' }}
+            title="New Candidate (N)"
+          >
+            <Plus size={13} /> New Candidate
+          </button>
+        )}
+      </PanelTitleBar>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <StatsCard label="TOTAL APPLICANTS" value={String(stats.applicants)} icon={Users} />
+        <StatsCard label="IN PROCESS"       value={String(stats.inProcess)}  icon={Clock} />
+        <StatsCard label="HIRED (YTD)"      value={String(stats.hired)}      icon={CheckCircle} />
+        <StatsCard label="ACADEMY CLASSES"  value={String(stats.academyClasses)} icon={GraduationCap} />
+      </div>
+
+      {renderBody()}
+
+      {/* -- Add / Edit modal -- */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>
-          <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Candidate' : 'New Candidate'}</h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setFormOpen(false)}
+        >
+          <div
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-rmpg-100 mb-4">
+              {editingRecord ? 'Edit Candidate' : 'New Candidate'}
+            </h3>
             {formError && <div className="text-xs text-red-400 mb-2">{formError}</div>}
             <div className="grid grid-cols-2 gap-3">
-              <div><label htmlFor="ff-recruitmentpage-0" className="text-[9px] text-rmpg-400 uppercase font-bold">Name *</label><input id="ff-recruitmentpage-0" value={formData.candidate_name} onChange={e => setFormData({...formData, candidate_name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label htmlFor="ff-recruitmentpage-1" className="text-[9px] text-rmpg-400 uppercase font-bold">Position</label><input id="ff-recruitmentpage-1" value={formData.position} onChange={e => setFormData({...formData, position: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label htmlFor="ff-recruitmentpage-2" className="text-[9px] text-rmpg-400 uppercase font-bold">Email</label><input id="ff-recruitmentpage-2" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label htmlFor="ff-recruitmentpage-3" className="text-[9px] text-rmpg-400 uppercase font-bold">Phone</label><input id="ff-recruitmentpage-3" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label htmlFor="ff-recruitmentpage-4" className="text-[9px] text-rmpg-400 uppercase font-bold">Stage</label><select id="ff-recruitmentpage-4" value={formData.stage} onChange={e => setFormData({...formData, stage: e.target.value})} className="input-dark w-full mt-1 text-xs">{STAGES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}</select></div>
-              <div><label htmlFor="ff-recruitmentpage-5" className="text-[9px] text-rmpg-400 uppercase font-bold">Applied Date</label><input id="ff-recruitmentpage-5" type="date" value={formData.applied_date} onChange={e => setFormData({...formData, applied_date: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div>
+                <label htmlFor="ff-recruitment-name" className="text-[9px] text-rmpg-400 uppercase font-bold">Name *</label>
+                <input
+                  id="ff-recruitment-name"
+                  value={formData.candidate_name}
+                  onChange={(e) => setFormData({ ...formData, candidate_name: e.target.value })}
+                  className="input-dark w-full mt-1 text-xs"
+                />
+              </div>
+              <div>
+                <label htmlFor="ff-recruitment-position" className="text-[9px] text-rmpg-400 uppercase font-bold">Position</label>
+                <input
+                  id="ff-recruitment-position"
+                  value={formData.position}
+                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                  className="input-dark w-full mt-1 text-xs"
+                />
+              </div>
+              <div>
+                <label htmlFor="ff-recruitment-email" className="text-[9px] text-rmpg-400 uppercase font-bold">Email</label>
+                <input
+                  id="ff-recruitment-email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="input-dark w-full mt-1 text-xs"
+                />
+              </div>
+              <div>
+                <label htmlFor="ff-recruitment-phone" className="text-[9px] text-rmpg-400 uppercase font-bold">Phone</label>
+                <input
+                  id="ff-recruitment-phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="input-dark w-full mt-1 text-xs"
+                />
+              </div>
+              <div>
+                <label htmlFor="ff-recruitment-stage" className="text-[9px] text-rmpg-400 uppercase font-bold">Stage</label>
+                <select
+                  id="ff-recruitment-stage"
+                  value={formData.stage}
+                  onChange={(e) => setFormData({ ...formData, stage: e.target.value })}
+                  className="input-dark w-full mt-1 text-xs"
+                >
+                  {STAGES.map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="ff-recruitment-date" className="text-[9px] text-rmpg-400 uppercase font-bold">Applied Date</label>
+                <input
+                  id="ff-recruitment-date"
+                  type="date"
+                  value={formData.applied_date}
+                  onChange={(e) => setFormData({ ...formData, applied_date: e.target.value })}
+                  className="input-dark w-full mt-1 text-xs"
+                />
+              </div>
             </div>
-            <div className="mt-3"><label htmlFor="ff-recruitmentpage-6" className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea id="ff-recruitmentpage-6" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
+            <div className="mt-3">
+              <label htmlFor="ff-recruitment-notes" className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label>
+              <textarea
+                id="ff-recruitment-notes"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className="input-dark w-full mt-1 text-xs"
+                rows={3}
+              />
+            </div>
             <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleSave} disabled={formSubmitting || !formData.candidate_name} className="toolbar-btn toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>
+              <button
+                onClick={() => setFormOpen(false)}
+                className="toolbar-btn px-4"
+                style={{ height: 28 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={formSubmitting || !formData.candidate_name}
+                className="toolbar-btn toolbar-btn-primary px-4"
+                style={{ height: 28 }}
+              >
+                {formSubmitting ? 'Saving…' : 'Save'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {deleteId !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setDeleteId(null)}>
-          <div className="bg-surface-raised border border-red-800 p-6 max-w-sm w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-red-400 mb-2">Delete Candidate</h3>
-            <p className="text-xs text-rmpg-400 mb-4">This permanently removes this candidate record. This cannot be undone.</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setDeleteId(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleDelete} className="toolbar-btn toolbar-btn-primary px-4 text-red-400 border-red-800" style={{ height: 28, borderColor: '#991b1b' }}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* -- Reject confirm -- */}
+      <ConfirmDialog
+        isOpen={rejectTarget !== null}
+        onClose={() => setRejectTarget(null)}
+        onConfirm={handleReject}
+        title="Reject Applicant"
+        message="This will move the candidate to Rejected status. The record is kept for audit purposes."
+        details={rejectTarget && (
+          <>
+            <div><span className="text-rmpg-400">Name:</span> {rejectTarget.candidate_name}</div>
+            <div><span className="text-rmpg-400">Position:</span> {rejectTarget.position || '—'}</div>
+            <div><span className="text-rmpg-400">Stage:</span> {rejectTarget.stage?.replace(/_/g, ' ')}</div>
+          </>
+        )}
+        confirmLabel="Reject"
+        confirmVariant="warning"
+        isLoading={rejecting}
+      />
+
+      {/* -- Delete confirm -- */}
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Candidate"
+        message="This permanently removes this candidate record and cannot be undone."
+        details={deleteTarget && (
+          <>
+            <div><span className="text-rmpg-400">Name:</span> {deleteTarget.candidate_name}</div>
+            <div><span className="text-rmpg-400">Position:</span> {deleteTarget.position || '—'}</div>
+            <div><span className="text-rmpg-400">Stage:</span> {deleteTarget.stage?.replace(/_/g, ' ')}</div>
+          </>
+        )}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }
