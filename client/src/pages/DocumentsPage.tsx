@@ -148,9 +148,10 @@ export default function DocumentsPage() {
       setSearchParams(next, { replace: true });
     }
     // If the file isn't in the current folder, we don't have enough info
-    // here to navigate elsewhere — leaving the pending ref intact would
-    // keep re-firing, so we clear it once the folder finishes loading.
+    // here to navigate elsewhere — toast so the operator knows the link
+    // didn't resolve, then clear so we don't loop on every re-render.
     else if (!loading) {
+      addToast(`File "${target}" not found in this folder`, 'error');
       pendingFileIdRef.current = null;
       const next = new URLSearchParams(searchParams);
       next.delete('file_id');
@@ -159,7 +160,7 @@ export default function DocumentsPage() {
     // openFile is defined below; we intentionally close over the current
     // closure each render and only re-run when contents arrive.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files, loading]);
+  }, [files, loading, addToast]);
 
   const handleFileUpload = useCallback(async (fileList: FileList) => {
     if (!fileList.length) return;
@@ -610,6 +611,8 @@ export default function DocumentsPage() {
             folders={filteredFolders as import('./documents/DossierGrid').DossierFolder[]}
             files={filteredFiles as import('./documents/DossierGrid').DossierFile[]}
             selectedFiles={selectedFiles}
+            isLoading={loading}
+            searchQuery={searchQuery}
             onFolderOpen={navigateTo}
             onFileOpen={file => openFile(file as FileItem)}
             onFileSelect={(fileId, multi) => {

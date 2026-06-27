@@ -4,6 +4,7 @@
 // and raises a deduped anomaly_alert. Naturally idempotent: once a
 // report is 'due_review' it no longer matches the active filter.
 // ============================================================
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute } from './db';
 
@@ -28,7 +29,7 @@ export async function sweepRetention(db: D1Database): Promise<number> {
         JSON.stringify({ report_id: r.id, title: r.title }),
         `intel_retention:${r.id}`);
       flagged++;
-    } catch (e: any) { console.error('[intel-retention] flag failed:', e?.message); }
+    } catch (e: any) { log.error('[intel-retention] flag failed', { error: e?.message }); }
   }
   return flagged;
 }
