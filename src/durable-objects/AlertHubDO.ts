@@ -28,7 +28,7 @@
 // { type:'authenticate', token }. Only authenticated sockets receive alerts.
 
 import { jwtVerify } from 'jose';
-import { getDb, queryFirst } from '../utils/db';
+import { getDb, queryFirst, execute } from '../utils/db';
 
 interface AlertEnv {
   DB: D1Database;
@@ -47,10 +47,16 @@ interface ActivePanic {
   payload: unknown;   // the exact { type:'panic_alert', action, panic } frame
   acked: boolean;     // true once any dispatcher acknowledges — silences reminders
   firstAt: number;    // epoch ms of activation — bounds how long we nag
+  level?: number;     // escalation level (1 = initial; bumped while unacked)
 }
 
 const REMINDER_INTERVAL_MS = 15_000;   // re-broadcast unacked panics this often
 const REMINDER_MAX_MS = 5 * 60_000;    // stop nagging after 5 min (call card carries it)
+// Spillman parity: an UNACKNOWLEDGED emergency escalates. Level 1 at
+// activation, level 2 after 60s without dispatcher ack, level 3 after 180s.
+// Each bump persists to panic_alerts.escalation_level and broadcasts a
+// panic_escalated frame (consoles render the level; voice re-announces).
+const ESCALATION_STEPS_MS = [60_000, 180_000];
 const STORAGE_KEY = 'active_panics';
 
 export class AlertHubDO {
@@ -92,6 +98,16 @@ export class AlertHubDO {
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     (server as any).accept();
     this.conns.set(server, { userId: 0, role: '', authenticated: false });
+
+    // Sockets that never authenticate must not linger — without this, an
+    // attacker can hold unauthenticated connections open indefinitely.
+    setTimeout(() => {
+      const meta = this.conns.get(server);
+      if (meta && !meta.authenticated) {
+        try { (server as any).close(4001, 'Authentication timeout'); } catch { /* already closed */ }
+        this.conns.delete(server);
+      }
+    }, 10_000);
 
     server.addEventListener('message', (ev: MessageEvent) => {
       this.onMessage(server, ev).catch((err) => console.error('[AlertHubDO] msg', err));
@@ -147,7 +163,10 @@ export class AlertHubDO {
         meta.authenticated = true;
         this.send(ws, { type: 'alerts_ready' });
         // Mid-incident join: replay every still-active panic so a console
-        // that comes online during an emergency alarms immediately.
+        // that comes online during an emergency alarms immediately. Reconcile
+        // against D1 first, so a panic resolved by a direct DB write (which
+        // never fired the resolve emit) is evicted instead of replaying forever.
+        await this.reconcileActive();
         for (const a of this.active.values()) this.send(ws, a.payload);
       } catch {
         this.send(ws, { type: 'alerts_auth_error' });
@@ -156,8 +175,16 @@ export class AlertHubDO {
     }
   }
 
-  // Worker route handlers call this (via /emit) to fan an officer-safety
-  // event to the whole fleet and drive the forced-ack lifecycle.
+  // Worker route handlers call this (via /emit) to fan an event to the whole
+  // fleet. Two classes of caller:
+  //   • Officer-safety (type:'panic_alert')  — fanned out AND driven through the
+  //     forced-ack lifecycle below (persist + re-broadcast until acknowledged).
+  //   • Lightweight live updates (e.g. type:'unit_position', action:'gps_update'
+  //     from src/routes/dispatch/gps.ts) — fanned out fire-and-forget; the
+  //     lifecycle block is skipped (the `body.type !== 'panic_alert'` early
+  //     return). This is how the map gets live unit-pin/heading movement without
+  //     waiting on the ~7s board poll, since the rewrite's own /api/ws socket map
+  //     is empty (the live /api/ws lives on the legacy worker).
   private async handleEmit(body: { type?: string; action?: string; panic_id?: number; data?: Record<string, unknown> }): Promise<void> {
     const frame = { type: body.type, ...(body.data || {}) };
     // Always fan the event out immediately.
@@ -171,7 +198,7 @@ export class AlertHubDO {
     if (body.type !== 'panic_alert' || panicId == null) return;
 
     if (action === 'panic_activated') {
-      this.active.set(panicId, { panicId, payload: frame, acked: false, firstAt: Date.now() });
+      this.active.set(panicId, { panicId, payload: frame, acked: false, firstAt: Date.now(), level: 1 });
       await this.persist();
       await this.armReminder();
     } else if (action === 'panic_acknowledged') {
@@ -191,6 +218,33 @@ export class AlertHubDO {
     await this.state.storage.put(STORAGE_KEY, obj);
   }
 
+  // Self-heal against D1 (the source of truth). A panic resolved/cancelled
+  // directly in the DB — bypassing the resolve emit that would have called
+  // handleEmit('panic_resolved') — leaves a "zombie" entry here that the
+  // mid-incident-join replay (and any future reminder) would re-send to every
+  // new console forever. Evict any persisted panic the DB no longer holds in an
+  // open ('active'|'acknowledged') state. Only evicts DB-confirmed-closed
+  // alerts, so a genuinely live emergency is never dropped.
+  private async reconcileActive(): Promise<void> {
+    if (this.active.size === 0) return;
+    let changed = false;
+    const db = getDb(this.env as any);
+    for (const id of [...this.active.keys()]) {
+      try {
+        const row = await queryFirst<{ status: string }>(
+          db, 'SELECT status FROM panic_alerts WHERE id = ?', id,
+        );
+        if (!row || (row.status !== 'active' && row.status !== 'acknowledged')) {
+          this.active.delete(id);
+          changed = true;
+        }
+      } catch {
+        // Transient DB error — keep the entry so we never drop a live alarm.
+      }
+    }
+    if (changed) await this.persist();
+  }
+
   // Schedule the next reminder sweep if any panic still needs nagging.
   private async armReminder(): Promise<void> {
     const needs = [...this.active.values()].some(a => !a.acked && (Date.now() - a.firstAt) < REMINDER_MAX_MS);
@@ -200,15 +254,47 @@ export class AlertHubDO {
   }
 
   // DO alarm — re-broadcast every unacked, not-yet-expired panic so the
-  // alarm persists agency-wide until a dispatcher acknowledges it.
+  // alarm persists agency-wide until a dispatcher acknowledges it, and
+  // escalate panics that nobody has acknowledged (Spillman: an unanswered
+  // emergency gets louder, not quieter).
   async alarm(): Promise<void> {
+    // Drop any panic the DB has since closed before nagging the fleet again.
+    await this.reconcileActive();
     let stillNagging = false;
+    let levelsChanged = false;
     for (const a of this.active.values()) {
       if (a.acked) continue;
-      if ((Date.now() - a.firstAt) >= REMINDER_MAX_MS) continue;
+      const elapsed = Date.now() - a.firstAt;
+      if (elapsed >= REMINDER_MAX_MS) continue;
+
+      // Escalation sweep — bump the level when an unacked panic crosses a
+      // threshold. Best-effort D1 write; the broadcast is what consoles react
+      // to, and reconcileActive keeps D1 the source of truth for liveness.
+      const targetLevel = 1 + ESCALATION_STEPS_MS.filter((ms) => elapsed >= ms).length;
+      if (targetLevel > (a.level ?? 1)) {
+        a.level = targetLevel;
+        levelsChanged = true;
+        try {
+          await execute(
+            getDb(this.env as any),
+            'UPDATE panic_alerts SET escalation_level = ?, updated_at = datetime(\'now\') WHERE id = ? AND status = \'active\'',
+            targetLevel, a.panicId,
+          );
+        } catch (err) {
+          console.error('[AlertHubDO] escalation_level write failed (non-fatal)', err);
+        }
+        this.broadcast({
+          type: 'panic_alert',
+          action: 'panic_escalated',
+          panic_id: a.panicId,
+          panic: { id: a.panicId, panic_id: a.panicId, escalation_level: targetLevel },
+        });
+      }
+
       this.broadcast(a.payload);
       stillNagging = true;
     }
+    if (levelsChanged) await this.persist();
     if (stillNagging) await this.state.storage.setAlarm(Date.now() + REMINDER_INTERVAL_MS);
   }
 }

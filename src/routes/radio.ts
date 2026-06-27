@@ -25,7 +25,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { broadcastAll } from './ws';
+import { verifySignedResource } from '../utils/signedAccess';
 import {
   ocrImage,
   ocrExtractStructured,
@@ -98,7 +98,6 @@ rt.post('/channels', async (c) => {
   const id = Number(result.meta.last_row_id);
   // Broadcast so other dispatchers' channel pickers update without a refresh.
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  broadcastAll('radio_update', { action: 'channel_created', channel });
   return c.json({ success: true, id });
 });
 
@@ -118,7 +117,6 @@ rt.patch('/channels/:id', async (c) => {
   const db = getDb(c.env);
   await execute(db, `UPDATE radio_channels SET ${fields.join(', ')} WHERE id = ?`, ...args);
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  broadcastAll('radio_update', { action: 'channel_updated', channel });
   return c.json({ success: true });
 });
 
@@ -133,7 +131,6 @@ rt.delete('/channels/:id', async (c) => {
     "UPDATE radio_channels SET archived_at = datetime('now') WHERE id = ? AND archived_at IS NULL",
     id,
   );
-  broadcastAll('radio_update', { action: 'channel_archived', channel_id: id });
   return c.json({ success: true });
 });
 
@@ -202,7 +199,6 @@ rt.post('/transmissions', async (c) => {
        WHERE t.id = ?`,
     id,
   );
-  broadcastAll('radio_update', { action: 'transmission_logged', transmission });
   return c.json({ success: true, id });
 });
 
@@ -222,6 +218,16 @@ rt.delete('/transmissions/:id', async (c) => {
 rt.get('/transmissions/:id/audio', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  // authMiddleware passes GET media paths through when the request carries
+  // sig/exp instead of a token — in that case no `user` is set and WE are
+  // the verification point. A JWT-authenticated request has `user` set.
+  if (!c.get('user')) {
+    const signedOk = await verifySignedResource(c.env.JWT_SECRET, 'radio', String(id), {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    if (!signedOk) return c.json({ error: 'Authentication required' }, 401);
+  }
   const key = `radio-audio/${id}.webm`;
 
   const rangeHeader = c.req.header('Range');

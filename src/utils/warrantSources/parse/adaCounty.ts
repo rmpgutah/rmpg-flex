@@ -45,11 +45,11 @@ function text(s: string): string {
   return s
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&') // decode &amp; LAST so "&amp;lt;" can't collapse into "<"
     .replace(/\s+/g, ' ')
     .trim();
 }

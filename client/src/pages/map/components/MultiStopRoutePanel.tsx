@@ -98,7 +98,7 @@ export default function MultiStopRoutePanel({
         <button
           onClick={onClear}
           aria-label="Clear patrol route"
-          style={{ background: 'none', border: 'none', color: '#777', cursor: 'pointer', padding: 0, display: 'flex' }}
+          style={{ background: 'none', border: 'none', color: 'var(--rmpg-500)', cursor: 'pointer', padding: 0, display: 'flex' }}
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -106,7 +106,7 @@ export default function MultiStopRoutePanel({
 
       {/* Unit selector */}
       <div style={{ padding: '8px 10px', borderBottom: '1px solid #1a1a1a' }}>
-        <div style={{ fontSize: 7, color: '#777', letterSpacing: '0.06em', marginBottom: 3, textTransform: 'uppercase' }}>
+        <div style={{ fontSize: 7, color: 'var(--rmpg-500)', letterSpacing: '0.06em', marginBottom: 3, textTransform: 'uppercase' }}>
           Responding Unit
         </div>
         {routableUnits.length === 0 ? (
@@ -117,8 +117,8 @@ export default function MultiStopRoutePanel({
             onChange={(e) => onSelectUnit(e.target.value)}
             style={{
               width: '100%',
-              background: '#050505',
-              color: '#e0e0e0',
+              background: 'var(--surface-overlay)',
+              color: 'var(--text-secondary)',
               border: '1px solid #2e2e2e',
               borderRadius: 2,
               fontSize: 10,
@@ -172,7 +172,7 @@ export default function MultiStopRoutePanel({
                   {s.order}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: '#e0e0e0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.callNumber}
                   </div>
                   {s.label && (
@@ -183,7 +183,7 @@ export default function MultiStopRoutePanel({
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <div style={{ fontSize: 9, color: GOLD, fontWeight: 800 }}>{s.legEta}</div>
-                  <div style={{ fontSize: 7, color: '#666' }}>{s.legDistance}</div>
+                  <div style={{ fontSize: 7, color: 'var(--rmpg-500)' }}>{s.legDistance}</div>
                 </div>
               </div>
             ))
@@ -200,7 +200,7 @@ export default function MultiStopRoutePanel({
               >
                 <GripVertical className="w-3 h-3" style={{ color: '#444', flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: '#e0e0e0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.callNumber}
                   </div>
                   {s.label && (
@@ -212,7 +212,7 @@ export default function MultiStopRoutePanel({
                 <button
                   onClick={() => onRemoveStop(s.callNumber)}
                   aria-label={`Remove ${s.callNumber}`}
-                  style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }}
+                  style={{ background: 'none', border: 'none', color: 'var(--rmpg-500)', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }}
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -232,7 +232,7 @@ export default function MultiStopRoutePanel({
             background: `linear-gradient(to right, ${GOLD}10, transparent)`,
           }}
         >
-          <span style={{ fontSize: 7, color: '#777', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Total</span>
+          <span style={{ fontSize: 7, color: 'var(--rmpg-500)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Total</span>
           <span style={{ fontSize: 15, fontWeight: 900, color: GOLD }}>{result.totalEta}</span>
           <span style={{ fontSize: 10, color: '#999' }}>{result.totalDistance}</span>
         </div>
@@ -250,7 +250,7 @@ export default function MultiStopRoutePanel({
             justifyContent: 'center',
             gap: 6,
             padding: '6px 8px',
-            background: canOptimize ? GOLD : '#1a1a1a',
+            background: canOptimize ? GOLD : 'var(--surface-raised)',
             color: canOptimize ? '#0a0a0a' : '#555',
             border: `1px solid ${canOptimize ? GOLD : '#2e2e2e'}`,
             borderRadius: 2,

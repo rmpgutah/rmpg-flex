@@ -243,7 +243,7 @@ export default function DispatchQuickFillPanel({
       </div>
 
       {/* Categories */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {filtered.length === 0 && (
           <div className="px-3 py-4 text-[10px] text-rmpg-500 italic text-center">
             No phrases match &quot;{search}&quot;.
@@ -291,7 +291,7 @@ export default function DispatchQuickFillPanel({
                     <button
                       type="button"
                       onClick={() => handleCopy(p.phrase)}
-                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-200 transition-all"
+                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-200 transition-all"
                       title="Copy to clipboard"
                       aria-label={`Copy phrase: ${p.label}`}
                     >

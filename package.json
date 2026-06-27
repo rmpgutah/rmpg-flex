@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "build": "echo 'Wrangler handles bundling at deploy time'",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "sync:downloads": "bash scripts/sync-downloads-r2.sh",
@@ -10,25 +11,36 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate:local": "wrangler d1 migrations apply rmpg-flex --local",
-    "migrate:prod": "wrangler d1 migrations apply rmpg-flex --remote"
+    "test:worker": "vitest run -c vitest.workers.config.mts",
+    "migrate:local": "wrangler d1 execute rmpg-flex --local --file migrations/baseline/schema.sql && wrangler d1 migrations apply rmpg-flex --local",
+    "migrate:prod": "wrangler d1 migrations apply rmpg-flex --remote",
+    "baseline:build": "node scripts/build-baseline.mjs"
   },
   "dependencies": {
-    "@cloudflare/containers": "^0.3.6",
+    "@cloudflare/containers": "^0.3.7",
+    "@hono/zod-validator": "^0.8.0",
+    "@simplewebauthn/server": "^13.3.1",
     "bcryptjs": "^3.0.3",
-    "hono": "^4.12.21",
+    "hono": "^4.12.26",
     "jose": "^6.2.3",
+    "mp4box": "^2.4.1",
     "pmtiles": "^4.4.1",
-    "uuid": "^14.0.0",
+    "unpdf": "^1.6.2",
+    "uuid": "^14.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260601.1",
+    "@anthropic-ai/sdk": "^0.105.0",
+    "@cloudflare/vitest-pool-workers": "^0.16.18",
+    "@cloudflare/workers-types": "^4.20260621.1",
     "@types/bcryptjs": "^2.4.6",
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.0.0",
     "@types/uuid": "^10.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.8",
-    "wrangler": "^4.96.0"
+    "vitest": "^4.1.9",
+    "wrangler": "^4.103.0"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
   }
 }

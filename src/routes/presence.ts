@@ -10,7 +10,7 @@ presence.get('/', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT u.id, u.username, u.full_name, u.role, u.badge_number,
-        s.created_at as last_seen
+        MAX(s.created_at) as last_seen
       FROM sessions s
       JOIN users u ON s.user_id = u.id
       WHERE s.expires_at > datetime('now')

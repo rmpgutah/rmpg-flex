@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Search, Building2, Shield, MapPin, FileWarning, Trash2, Pencil, X, Phone,
   AlertTriangle, Calendar, Archive, RotateCcw, Globe, Users, Key, FileText, Wrench,
-  Camera, ArrowUpDown, Filter,
+  Camera, ArrowUpDown, Filter, Eye, Navigation,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import PropertyFormModal from '../../components/PropertyFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
@@ -14,6 +16,8 @@ import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
+import RecordAvatar from '../../components/records/RecordAvatar';
+import { propertyIcon } from '../../components/records/recordIcons';
 import type { Property, RecordEntityType } from '../../types';
 import type { PropertyFormData } from '../../components/PropertyFormModal';
 
@@ -104,7 +108,7 @@ export interface PropertiesTabProps {
   setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
   loadingProperties: boolean;
   setLoadingProperties: React.Dispatch<React.SetStateAction<boolean>>;
-  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null>>;
+  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null>>;
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
   handleArchiveRecord: (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => Promise<void>;
@@ -238,6 +242,7 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
 // ════════════════════════════════════════════════════
 
 export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
+  const { user } = useAuth();
   const {
     filteredProperties, selectedProperty, setSelectedProperty, properties,
     searchQuery, setSearchQuery, showArchived,
@@ -245,6 +250,31 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
     propertyModalOpen, editingProperty, propertySubmitting, handlePropertySubmit, closeModal, clients,
     propertySubmitError,
   } = state;
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+  const buildPropertyMenu = (prop: Property): ContextMenuItem[] => {
+    const addr = `${prop.address || ''}${prop.city ? `, ${prop.city}` : ''}${prop.state ? `, ${prop.state}` : ''} ${prop.zip || ''}`.trim();
+    return [
+      m.action('Open record', () => setSelectedProperty(selectedProperty?.id === prop.id ? null : prop), { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit property', () => openEditProperty(prop), { icon: <Pencil size={12} /> })] : []),
+      m.separator(),
+      m.copy('Copy name', prop.name),
+      m.copyId(prop.id),
+      ...(addr ? [m.copy('Copy address', addr, <MapPin size={12} />)] : []),
+      ...(addr ? [m.openExternal('Navigate to address', `https://maps.google.com/?q=${encodeURIComponent(addr)}`, <Navigation size={12} />)] : []),
+      m.separator(),
+      ...(prop.latitude != null && prop.longitude != null ? [m.go('Show on map', `/map?flyto=${prop.latitude},${prop.longitude}`, <Globe size={12} />)] : []),
+      ...(addr ? [m.go('Create call here', `/dispatch?newCall=1&location=${encodeURIComponent(addr)}&description=${encodeURIComponent(prop.name || '')}`, <MapPin size={12} />)] : []),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('properties', prop.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('properties', prop.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'property', id: prop.id, label: prop.name }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
 
   const [sortBy, setSortBy] = useState<'name' | 'client' | 'newest'>('name');
   const [filterType, setFilterType] = useState<string | null>(null);
@@ -296,7 +326,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -328,9 +358,19 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
         {displayProperties.length === 0 && (
           <div className="text-center py-16">
             <Building2 className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No properties match.' : 'No properties found.'}</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No properties match.'
+                : showArchived
+                  ? 'No archived property records.'
+                  : 'No properties found.'}
+            </p>
             <p className="text-[10px] text-rmpg-600 mt-1">
-              {searchQuery ? 'Try broadening your search.' : 'Click "New Property" to add a record.'}
+              {searchQuery
+                ? 'Try broadening your search.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Property" to add a record.'}
             </p>
           </div>
         )}
@@ -341,6 +381,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedProperty(selectedProperty?.id === prop.id ? null : prop); } }}
             onClick={() => setSelectedProperty(selectedProperty?.id === prop.id ? null : prop)}
+            onContextMenu={(e) => openMenu(e, buildPropertyMenu(prop))}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
               ${selectedProperty?.id === prop.id
@@ -351,14 +392,18 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
             aria-selected={selectedProperty?.id === prop.id}
           >
             <div className="flex items-start gap-3">
-              <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center border ${
-                prop.is_active ? 'bg-brand-900/30 text-brand-400 border-brand-700/50' : 'bg-rmpg-800 text-rmpg-500 border-rmpg-600'
-              }`}>
-                <Building2 className="w-4 h-4" />
-              </div>
+              {/* Building-type glyph (residential→home, retail→store, …) on the
+                  standard blue tile; muted/grey when the property is inactive. */}
+              <RecordAvatar
+                name={prop.name || 'property'}
+                icon={propertyIcon(prop)}
+                muted={!prop.is_active}
+                cornerBadge={prop.hazard_notes ? { code: 'HAZARD', tone: 'red', pulse: false } : null}
+                size={36}
+              />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-bold text-white truncate">{prop.name}</h4>
+                  <h4 className="text-sm font-bold text-rmpg-100 truncate">{prop.name}</h4>
                   {prop.hazard_notes && <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />}
                   <span className={`ml-auto px-1.5 py-0.5 text-[8px] font-bold border flex-shrink-0 ${
                     prop.is_active
@@ -383,6 +428,30 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
                     {prop.property_type}
                   </span>
                 )}
+              </div>
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                <div className="flex items-center gap-1">
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); openEditProperty(prop); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'property', id: prop.id, label: prop.name }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                  {(!showArchived || user?.role === 'admin') && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleArchive('properties', prop.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Archive">
+                      <Archive className="w-3 h-3" />
+                    </button>
+                  )}
+                  {showArchived && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleUnarchive('properties', prop.id); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title="Unarchive">
+                      <RotateCcw className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -430,6 +499,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         <RecordHero
           name={selectedProperty.name || propertyAddress || 'PROPERTY'}
           subtitle={<span className="flex items-center gap-1.5"><MapPin className="w-3 h-3 text-rmpg-400" />{propertyAddress}</span>}
+          icon={propertyIcon(selectedProperty)}
           flags={propertyPosturalFlags}
           tone="gold"
         >
@@ -445,7 +515,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           <div className="ml-auto flex items-center gap-1">
             {(!showArchived || user?.role === 'admin') && (
               <>
-                <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
+                <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors" title="Edit">
                   <Pencil className="w-3 h-3" />
                 </button>
                 <button type="button" onClick={() => setDeleteTarget({ type: 'property', id: selectedProperty.id, label: selectedProperty.name })} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
@@ -471,7 +541,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Client ──────────────────────────── */}
         {selectedProperty.client_name && (
           <CollapsibleSection title="Client" icon={Users} defaultOpen>
-            <p className="text-sm text-white font-semibold">{selectedProperty.client_name}</p>
+            <p className="text-sm text-rmpg-100 font-semibold">{selectedProperty.client_name}</p>
           </CollapsibleSection>
         )}
 
@@ -531,14 +601,14 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Post Orders (conditional) ────────── */}
         {selectedProperty.post_orders && (
           <CollapsibleSection title="Post Orders" icon={Shield} defaultOpen>
-            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.post_orders}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.post_orders}</p>
           </CollapsibleSection>
         )}
 
         {/* ── Hazard Notes (conditional) ─────── */}
         {(selectedProperty.hazard_notes || selectedProperty.known_hazards) && (
           <CollapsibleSection title="Hazard Notes" icon={FileWarning} accent="red">
-            {selectedProperty.hazard_notes && <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.hazard_notes}</p>}
+            {selectedProperty.hazard_notes && <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.hazard_notes}</p>}
             {selectedProperty.known_hazards && (
               <div className="mt-1.5"><span className="text-[10px] text-red-400 uppercase font-semibold">Known Hazards:</span> <span className="text-xs text-red-300/80 ml-1">{selectedProperty.known_hazards}</span></div>
             )}
@@ -562,14 +632,14 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Access Instructions (conditional) ── */}
         {selectedProperty.access_instructions && (
           <CollapsibleSection title="Access Instructions" icon={MapPin}>
-            <p className="text-xs text-gray-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
+            <p className="text-xs text-rmpg-300/80 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.access_instructions}</p>
           </CollapsibleSection>
         )}
 
         {/* ── Notes (conditional) ──────────────── */}
         {selectedProperty.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.notes}</p>
           </CollapsibleSection>
         )}
 

@@ -88,7 +88,7 @@ describe('utahApiAdapter', () => {
   });
 
   it('maps the age-matched candidate warrant to a RawWarrantHit', async () => {
-    const hits = await utahApiAdapter.fetchForPerson(local, { DB: {} as unknown as D1Database });
+    const hits = await utahApiAdapter.fetchForPerson!(local, { DB: {} as unknown as D1Database });
     const uw1 = hits.find((h) => h.warrant_id === 'UW1');
     expect(uw1).toBeTruthy();
     expect(uw1!.source_key).toBe('utah-warrant-watch');
@@ -103,7 +103,7 @@ describe('utahApiAdapter', () => {
   });
 
   it('rejects the namesake (age guard preserved) — UW2 must NOT appear', async () => {
-    const hits = await utahApiAdapter.fetchForPerson(local, { DB: {} as unknown as D1Database });
+    const hits = await utahApiAdapter.fetchForPerson!(local, { DB: {} as unknown as D1Database });
     expect(hits.some((h) => h.warrant_id === 'UW2')).toBe(false);
     // Only the matched candidate's warrant comes through.
     expect(hits.map((h) => h.warrant_id)).toEqual(['UW1']);

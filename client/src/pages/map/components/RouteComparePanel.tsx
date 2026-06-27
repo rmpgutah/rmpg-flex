@@ -69,7 +69,7 @@ export default function RouteComparePanel({
         padding: '8px 12px',
         fontFamily: "'JetBrains Mono', 'Courier New', monospace",
         fontSize: 10,
-        color: '#d1d5db',
+        color: 'var(--rmpg-300)',
         letterSpacing: '0.04em',
         borderRadius: 2,
         boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
@@ -81,14 +81,14 @@ export default function RouteComparePanel({
           type="button"
           onClick={onClose}
           aria-label="Close route comparison"
-          style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 0 }}
+          style={{ background: 'none', border: 'none', color: 'var(--rmpg-500)', cursor: 'pointer', padding: 0 }}
         >
           <X className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
       </div>
 
       {trails.length < 2 ? (
-        <div style={{ fontSize: 9, color: '#6b7280', fontStyle: 'italic' }}>
+        <div style={{ fontSize: 9, color: 'var(--rmpg-500)', fontStyle: 'italic' }}>
           Need at least 2 tracked units to compare.
         </div>
       ) : (
@@ -101,9 +101,9 @@ export default function RouteComparePanel({
                 onChange={(e) => onChangeA(e.target.value || null)}
                 style={{
                   width: '100%',
-                  background: '#141414',
+                  background: 'var(--surface-base)',
                   border: '1px solid #2b2b2b',
-                  color: '#d1d5db',
+                  color: 'var(--rmpg-300)',
                   fontSize: 10,
                   fontFamily: 'inherit',
                   padding: '2px 4px',
@@ -126,9 +126,9 @@ export default function RouteComparePanel({
                 onChange={(e) => onChangeB(e.target.value || null)}
                 style={{
                   width: '100%',
-                  background: '#141414',
+                  background: 'var(--surface-base)',
                   border: '1px solid #2b2b2b',
-                  color: '#d1d5db',
+                  color: 'var(--rmpg-300)',
                   fontSize: 10,
                   fontFamily: 'inherit',
                   padding: '2px 4px',
@@ -147,7 +147,7 @@ export default function RouteComparePanel({
           </div>
 
           {!statsA || !statsB ? (
-            <div style={{ fontSize: 9, color: '#6b7280', fontStyle: 'italic' }}>
+            <div style={{ fontSize: 9, color: 'var(--rmpg-500)', fontStyle: 'italic' }}>
               Pick two units to see the comparison.
             </div>
           ) : (
@@ -182,8 +182,8 @@ function Row({ label, aVal, bVal, delta }: { label: string; aVal: string; bVal: 
       }}
     >
       <span style={{ color: '#5a6e80', fontWeight: 900, fontSize: 9 }}>{label.toUpperCase()}</span>
-      <span style={{ color: '#d1d5db' }}>{aVal}</span>
-      <span style={{ color: '#d1d5db' }}>{bVal}</span>
+      <span style={{ color: 'var(--rmpg-300)' }}>{aVal}</span>
+      <span style={{ color: 'var(--rmpg-300)' }}>{bVal}</span>
       <span style={{ color: delta.startsWith('+') ? '#22c55e' : delta.startsWith('−') ? '#ef4444' : '#6b7280' }}>{delta}</span>
     </div>
   );

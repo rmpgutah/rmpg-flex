@@ -4,7 +4,7 @@
 // useVoiceChannel → VoiceHubDO. Recorded clips replay from R2.
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Filter, Star, Volume2, Mic, Radio as RadioIcon, Play, Pause } from 'lucide-react';
+import { Search, Filter, Star, Volume2, Mic, Radio as RadioIcon, Play, Pause, Download } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { matchesSearch, COMPARE_DATE, ls, playBeep, isInQuietHours } from '../helpers';
 import { DATE_RANGES, DURATION_FILTERS } from '../constants';
@@ -12,6 +12,9 @@ import { FilterChip, SectionHeader, EmptyConsole, Waveform, Sep } from '../compo
 import { useVoiceChannel, type DispatchRecordRef } from '../useVoiceChannel';
 import DispatchRecordPanel from '../../../components/DispatchRecordPanel';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
+import { getSignedParams, buildSignedQuerySync } from '../../../utils/signedUrls';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel, RadioTransmission } from '../types';
 
 interface Props {
@@ -89,6 +92,10 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   // does the real OR/negation parse on the returned set.
   useEffect(() => {
     let alive = true;
+    // Transient poll failures (e.g. one tick racing the 15-min token refresh)
+    // self-heal on the next 5s tick — log once per failure STREAK at warn, not
+    // an error per tick, so the console only flags sustained outages.
+    let failStreak = 0;
     const fetchTx = () => {
       const params = new URLSearchParams();
       if (selectedChannelId != null) params.set('channel_id', String(selectedChannelId));
@@ -98,10 +105,16 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
       apiFetch<RadioTransmission[]>(`/radio/transmissions?${params.toString()}`)
         .then((rows) => {
           if (!alive) return;
+          failStreak = 0;
           setTx(rows);
           notifyOnNewTx(rows);
         })
-        .catch((err) => { console.error('[radio] tx fetch', err); });
+        .catch((err) => {
+          if (!alive) return;
+          failStreak += 1;
+          if (failStreak === 1) console.warn('[radio] tx fetch failed (will retry on the next poll):', err);
+          else if (failStreak === 4) console.error('[radio] tx fetch failing repeatedly:', err);
+        });
     };
     fetchTx();
     const t = setInterval(fetchTx, 5000);
@@ -244,13 +257,42 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   );
 }
 
+// Shared one-at-a-time haze player for the context-menu "Play" action
+// (mirrors AudioPlayButton's DSP chain). Stops any prior clip first.
+let menuPlayer: RadioHazePlayer | null = null;
+function playTransmissionAudio(transmissionId: number) {
+  try { menuPlayer?.stop(); } catch { /* noop */ }
+  menuPlayer = new RadioHazePlayer();
+  menuPlayer.playUrl(transmissionAudioUrl(transmissionId)).catch((err) => {
+    console.error('[radio] haze playback failed', err);
+  });
+}
+
 function TxRow({ tx }: { tx: RadioTransmission }) {
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const time = useMemo(() => {
     try { return new Date(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
   }, [tx.transmitted_at]);
   const isLive = tx.duration_seconds > 0 && Date.now() - new Date(tx.transmitted_at).getTime() < 10_000;
+
+  const buildTxMenu = (): ContextMenuItem[] => [
+    ...(tx.audio_url
+      ? [
+          m.action('Play recording', () => playTransmissionAudio(tx.id), { icon: <Play size={12} /> }),
+          m.openExternal('Download audio', transmissionAudioUrl(tx.id), <Download size={12} />),
+          m.separator(),
+        ]
+      : []),
+    m.copy('Copy transcript', tx.transcript),
+    m.copy('Copy unit', tx.unit_label || tx.user_name),
+    m.copy('Copy channel', tx.channel_name),
+    m.copyId(tx.id),
+  ];
+
   return (
-    <li className="flex items-start gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30">
+    <li className="flex items-start gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30"
+      onContextMenu={(e) => openMenu(e, buildTxMenu())}>
       <span className="tabular-nums" style={{ color: 'var(--rt-muted)', minWidth: 70 }}>{time}</span>
       {isLive ? <Waveform color="var(--rt-tx)" /> : <span style={{ width: 24 }} />}
       <span className="font-bold" style={{ color: 'var(--rt-accent)', minWidth: 80 }}>{tx.unit_label || tx.user_name || '—'}</span>
@@ -263,13 +305,25 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
 }
 
 // Same-origin relative URL so it passes CSP connect-src 'self'; the zone
-// proxy forwards /api/radio/* to the rewrite worker. We fetch the clip via
-// the Web Audio path (not an <audio> element) so it can't set an
-// Authorization header — the JWT rides the ?token= fallback the auth
-// middleware accepts (same trick as bodycam video streams).
+// proxy forwards /api/radio/* to the rewrite worker. The clip is fetched via
+// the Web Audio path (not an <audio> element), so auth rides the query
+// string. LEGACY sync form — embeds the session JWT as ?token=; kept only
+// for synchronous call sites (context-menu download links). Playback paths
+// should use transmissionAudioUrlSigned() below.
 export function transmissionAudioUrl(transmissionId: number): string {
   const token = localStorage.getItem('rmpg_token') || '';
   return `/api/radio/transmissions/${transmissionId}/audio${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+}
+
+// Preferred form: per-resource HMAC params from /api/auth/sign-urls — keeps
+// the session JWT out of URLs (CF tail logs, proxy logs, browser history).
+// Falls back to the legacy ?token= URL if signing fails.
+export async function transmissionAudioUrlSigned(transmissionId: number): Promise<string> {
+  const params = await getSignedParams('radio', transmissionId);
+  if (params) {
+    return `/api/radio/transmissions/${transmissionId}/audio?${buildSignedQuerySync(params)}`;
+  }
+  return transmissionAudioUrl(transmissionId);
 }
 
 // Recorded clips replay through the SAME P25 radio-haze chain as live
@@ -292,8 +346,8 @@ export function AudioPlayButton({ transmissionId }: { transmissionId: number }) 
     }
     const player = playerRef.current ?? (playerRef.current = new RadioHazePlayer());
     setPlaying(true);
-    player
-      .playUrl(transmissionAudioUrl(transmissionId), () => setPlaying(false))
+    transmissionAudioUrlSigned(transmissionId)
+      .then((url) => player.playUrl(url, () => setPlaying(false)))
       .catch((err) => { console.error('[radio] haze playback failed', err); setPlaying(false); });
   };
 

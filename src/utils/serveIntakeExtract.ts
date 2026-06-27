@@ -1,3 +1,6 @@
+import { bytesToBase64 } from './anthropic';
+import { callAi } from './callAi';
+
 // ============================================================
 // RMPG Flex — Serve Intake structured-field extraction
 // ============================================================
@@ -142,7 +145,20 @@ EXTRACTION RULES (learned from real packets):
   • Bilingual documents (English + Spanish, etc.): extract from the ENGLISH text;
     ignore the translated duplicate.
   • Multiple defendants on a court form: list them in 'defendant'; do not force a
-    single recipient unless the ServeManager Recipient block names the party to serve.`;
+    single recipient unless the ServeManager Recipient block names the party to serve.
+  • plaintiff / defendant = the PARTY NAME ONLY. Do NOT include the label
+    "Attorney for Plaintiff/Defendant", monetary or damages amounts ("$300,000"),
+    e-filing stamps ("Filing# … E-Filed …"), judge names, or the margin line
+    numbers California pleadings print down the left edge (1, 2, 3 …). Strip
+    trailing party descriptors ("an individual", "a Domestic Business Corporation")
+    — keep just the name(s).
+  • Some courts (especially California family law — FL-300 and similar) caption
+    the parties as PETITIONER / RESPONDENT rather than Plaintiff / Defendant. Map
+    Petitioner → plaintiff and Respondent → defendant.
+  • If an embedded "Imported CSV Row" shows a service_city that disagrees with the
+    city printed in the rendered "Recipient:" block, TRUST the rendered
+    Recipient-block city — the CSV value is often a county seat, not the actual
+    municipality (e.g. CSV "Salt Lake City" vs printed "Holladay" → use Holladay).`;
 
 // Llama 3.3 70B has a 128K-token context. 24K chars (~6K tokens) was
 // far too conservative — a multi-document packet (e.g. a 47K-char court
@@ -346,7 +362,7 @@ function normalize(parsed: any, rawText: string, model: string, ms: number): Ext
   };
 }
 
-function tryParseModelJson(out: any): any {
+export function tryParseModelJson(out: any): any {
   // Workers AI returns either { response: string } or
   // { response: { … parsed JSON object … } } depending on whether
   // response_format coerced server-side. Handle both.
@@ -478,6 +494,60 @@ export async function extractFromImage(
       rawText: '', allDates: [], model: VISION_MODEL, ms: Date.now() - started,
       error: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+// ── Advanced OCR: Claude vision (when anthropic_api_key is configured) ─────
+// Drop-in for extractFromImage that uses the Claude Messages API instead of the
+// Workers-AI llama vision model — markedly stronger document OCR + structured
+// extraction. Reuses the SAME prompt + parser + normalizer so the result shape
+// is identical. Returns null (NOT a failure result) when the key is absent or
+// the call errors, so callers fall back to the Workers-AI path.
+export async function extractFromImageClaude(
+  env: { DB: D1Database; AI: Ai },
+  imageBytes: Uint8Array,
+  mediaType = 'image/jpeg',
+): Promise<ExtractionResult | null> {
+  if (imageBytes.byteLength === 0 || imageBytes.byteLength > MAX_VISION_BYTES) return null;
+  const started = Date.now();
+  try {
+    const r = await callAi(env, {
+      system: SYSTEM_PROMPT,
+      text: `${buildUserPrompt('(image-only document — OCR the visible text, then extract)')}\n\nReturn ONLY the JSON object, no prose.`,
+      image: { base64: bytesToBase64(imageBytes), mediaType },
+      maxTokens: 2048,
+      providers: ['claude', 'openai'], // paid only — caller falls back to Workers AI
+    });
+    const parsed = tryParseModelJson({ response: r.text });
+    const synthesized = Object.values<any>(parsed?.fields ?? {})
+      .map((f) => f?.value).filter(Boolean).join(' | ');
+    return normalize(parsed, synthesized, `${r.provider}:${r.model}`, Date.now() - started);
+  } catch {
+    return null; // fall back to Workers AI
+  }
+}
+
+// Advanced OCR: Claude text extraction (when anthropic_api_key is configured) —
+// drop-in for extractFromText that runs the SAME rich serve-doc system prompt on
+// Claude instead of Llama-70B. Returns null (not a failure result) when the key
+// is absent or the call errors, so callers fall back to the Workers-AI path.
+export async function extractFromTextClaude(
+  env: { DB: D1Database; AI: Ai }, rawText: string,
+): Promise<ExtractionResult | null> {
+  const trimmed = (rawText || '').trim();
+  if (trimmed.length < 20) return null;
+  const started = Date.now();
+  try {
+    const r = await callAi(env, {
+      system: SYSTEM_PROMPT,
+      text: `${buildUserPrompt(trimmed)}\n\nReturn ONLY the JSON object, no prose.`,
+      maxTokens: 2048,
+      providers: ['claude', 'openai'],
+    });
+    const parsed = tryParseModelJson({ response: r.text });
+    return normalize(parsed, rawText, `${r.provider}:${r.model}`, Date.now() - started);
+  } catch {
+    return null;
   }
 }
 
@@ -631,6 +701,31 @@ export function normalizeZip(raw: string): string {
   return m[2] ? `${m[1]}-${m[2]}` : m[1];
 }
 
+// Deterministic party/name de-noiser. Court-docket captions interleave the
+// party name with text that the model (or a layout-extractor) sometimes sweeps
+// into plaintiff/defendant/name fields: the "Attorney for Plaintiff" label, a
+// damages/Tier line, an e-filing stamp, the margin line-numbers California
+// pleadings print, and trailing party descriptors. These were observed verbatim
+// in real packets ("$300,000) MICHAEL J BURGESS", "Filing# 237921303 E-Filed …
+// HERIBERTO VALIENTE", "Attorney for Plaintiff Capital One, N.A."). The system
+// prompt also instructs against them, but this guarantees the garbage never
+// reaches a record even if the model ignores the instruction. Each pattern is
+// chosen to have ~zero false-positive risk on a real party/court/attorney name.
+export function scrubPartyNoise(raw: string): string {
+  let s = (raw || '').trim();
+  if (!s) return '';
+  s = s.replace(/^\s*attorneys?\s+for\s+(?:the\s+)?(?:plaintiff|defendant|petitioner|respondent)s?\b[\s:,.-]*/i, '');
+  s = s.replace(/\(?\s*tier\s+\d+\s+damages[^)]*\)?/ig, ' ');     // "(Tier 3 Damages exceed $300,000)"
+  s = s.replace(/\$\s?[\d,]+(?:\.\d+)?\)?/g, ' ');                 // bare "$300,000"
+  s = s.replace(/\bfiling\s*#?\s*\d+/ig, ' ');                     // "Filing# 237921303"
+  s = s.replace(/\be-?filed\b[^,;]*?(?:\bam\b|\bpm\b|\d{4})/ig, ' '); // "E-Filed 12/17/2025 11:28:33 AM"
+  s = s.replace(/\b\d{1,3}(?:\s+\d{1,3}){1,}\b/g, ' ');            // line-number runs "8 9 10" (2+ only → keeps "Pizzeria 24")
+  s = s.replace(/,?\s*(?:an\s+individual|individually|a\s+domestic[^,;]*|et\s+al\.?)\b\.?/ig, ''); // trailing descriptors
+  // Trim leftover separators — but keep a TRAILING period/hyphen: it's usually
+  // part of an abbreviation ("N.A.", "Inc.", "L.L.C."), not noise.
+  return s.replace(/\s{2,}/g, ' ').replace(/^[\s,;:.-]+/, '').replace(/[\s,;:]+$/, '').trim();
+}
+
 // Which target fields get which normalizer. Centralized so adding a new
 // date/phone field is a one-line change, not a scattered edit.
 const PHONE_FIELDS = new Set<TargetField>(['recipient_phone', 'attorney_phone']);
@@ -638,6 +733,11 @@ const STATE_FIELDS = new Set<TargetField>(['recipient_state']);
 const ZIP_FIELDS = new Set<TargetField>(['recipient_zip']);
 const DATE_FIELDS = new Set<TargetField>([
   'recipient_dob', 'filing_date', 'service_deadline', 'hearing_date',
+]);
+// Party / institutional name fields that get the caption de-noiser.
+const NAME_FIELDS = new Set<TargetField>([
+  'plaintiff', 'defendant', 'recipient_business_name', 'registered_agent_name',
+  'court_name', 'attorney_name',
 ]);
 
 // Apply the deterministic normalizers across a merged field map. Returns
@@ -667,6 +767,10 @@ export function normalizeFields(
         if (iso) next = iso;
         else { next = ''; conf = 0; }   // unparseable date → drop, don't guess
       }
+      else if (NAME_FIELDS.has(key)) {
+        next = scrubPartyNoise(value);
+        if (!next) conf = 0;            // scrubbed to nothing → it was all noise
+      }
     }
     out[k] = { value: next, confidence: conf };
   }
@@ -689,6 +793,12 @@ export interface QueueRow {
   deadline: string | null;
   service_instructions: string | null;
   notes: string | null;
+  // Case parties + hearing date. These were extracted but previously dropped on
+  // commit; serve_queue has dedicated columns (plaintiff_name / defendant_name /
+  // court_date) the client PDF + court-records views already read.
+  plaintiff: string | null;
+  defendant: string | null;
+  court_date: string | null;
 }
 
 export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueRow {
@@ -723,5 +833,9 @@ export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueR
     deadline: normalizeDeadline(get('service_deadline') || ''),
     service_instructions: get('service_instructions'),
     notes: get('service_windows'),
+    plaintiff: get('plaintiff'),
+    defendant: get('defendant'),
+    // hearing date → court_date; only a real calendar date (same guard as deadline).
+    court_date: normalizeDeadline(get('hearing_date') || ''),
   };
 }

@@ -17,24 +17,36 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
-import { authMiddleware } from './middleware/auth';
-import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
+import { handleWebSocket } from './routes/ws';
+import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { DeepResearchDO } from './durable-objects/DeepResearchDO';
+import { FlexCamRemuxDO } from './durable-objects/FlexCamRemuxDO';
+import { PersonIntelDO } from './durable-objects/PersonIntelDO';
+import { doCallbackToken, timingSafeEqual } from './utils/signedAccess';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runAllSourceScans } from './utils/warrantSources/runScan';
+import { runUtahSorPoll } from './utils/utahSorPoller';
+import { runScreeningScans } from './utils/screening/runScreeningScans';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
+import { syncAllVehicleGpsMileage } from './routes/fleet';
+import { processScheduledEmails, applyRulesToRecent } from './utils/emailProcessor';
+import { sweepTrips } from './utils/tripStore';
+import { processBackfillTick } from './utils/sl-assessor/backfill';
+import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
+import { traceMiddleware, requestLogMiddleware, log, logErrorToDb } from './utils/logger';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer, DeepResearchDO, FlexCamRemuxDO, PersonIntelDO };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
@@ -74,12 +86,32 @@ app.get('/updates/latest.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'w
 app.get('/updates/latest-mac.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
 
 // ─── Global middleware ───────────────────────────────────────
-app.use('*', logger());
-app.use('*', secureHeaders());
+app.use('*', traceMiddleware());
+app.use('*', requestLogMiddleware());
+app.use('*', secureHeaders({
+  contentSecurityPolicy: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'blob:', 'https://api.mapbox.com', 'https://js.arcgis.com', 'https://*.arcgis.com', 'https://static.cloudflareinsights.com', 'https://esm.sh', 'https://cdn.esm.sh', 'https://unpkg.com'],
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://api.mapbox.com', 'https://js.arcgis.com', 'https://*.arcgis.com'],
+    imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+    fontSrc: ["'self'", 'data:', 'https://*.gstatic.com', 'https://js.arcgis.com', 'https://*.arcgis.com'],
+    connectSrc: ["'self'", 'ws:', 'wss:', 'https://api.rmpgutah.us', 'https://*.rmpgutah.us', 'https://api.mapbox.com', 'https://events.mapbox.com', 'https://*.arcgis.com', 'https://*.arcgisonline.com', 'https://api.open-meteo.com', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'https://*.cartocdn.com', 'https://nominatim.openstreetmap.org', 'https://api.fbi.gov', 'https://photon.komoot.io', 'https://static.cloudflareinsights.com', 'https://esm.sh', 'https://cdn.esm.sh', 'https://storage.googleapis.com', 'https://unpkg.com'],
+    frameSrc: ["'self'", 'blob:', 'https://*.arcgis.com'],
+    mediaSrc: ["'self'", 'blob:', 'data:'],
+    workerSrc: ["'self'", 'blob:'],
+    childSrc: ["'self'", 'blob:'],
+    manifestSrc: ["'self'"],
+    frameAncestors: ["'self'"],
+    baseUri: ["'self'"],
+    formAction: ["'self'"],
+    objectSrc: ["'none'"],
+  },
+}));
 app.use('*', cors({
   origin: (origin: string, c: any) => {
     const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());
-    if (allowedOrigins.includes('*')) return origin;
+    // No wildcard support: '*' combined with credentials:true would let any
+    // site make authenticated cross-origin calls. Origins must be explicit.
     if (!origin || allowedOrigins.includes(origin)) return origin;
     return allowedOrigins[0];
   },
@@ -116,7 +148,12 @@ app.use('/api/*', async (c, next) => {
     if (!module || LIVE_SYNC_SKIP.has(module)) return;
     // second segment is the entity type unless it's a numeric id
     const entity = segs[1] && !/^\d+$/.test(segs[1]) ? segs[1] : undefined;
-    broadcastAll('data_changed', { module, entity });
+    // Fan the cache-invalidation nudge to clients via the live AlertHubDO bus
+    // (both the /api/ws and /api/alerts-ws client sockets fan-in to the same
+    // subscribe() bus, and /api/alerts-ws is already served by this worker).
+    // The rewrite's old per-isolate broadcastAll() was dead. Phase 4 (cutover):
+    // revive cross-device live refresh without flipping /api/ws.
+    await emitAlert(c.env, 'data_changed', { module, entity });
   } catch { /* live-sync must never break a real response */ }
 });
 
@@ -139,7 +176,21 @@ app.onError((err, c) => {
   const route = `${method} ${path}`;
   const detail = err instanceof Error ? err.message : String(err);
   const userId = c.get('userId') as number | undefined;
-  console.error(`Unhandled in ${route} (userId=${userId}):`, err);
+  const traceId = c.get('traceId') as string | undefined;
+  log.error(`Unhandled in ${route}`, { userId, traceId, route }, err);
+
+  // Persist to error_log table (fire-and-forget)
+  logErrorToDb(c.env.DB, {
+    severity: 'error',
+    category: 'route',
+    message: detail,
+    details: err instanceof Error ? { name: err.name, stack: err.stack?.split('\n').slice(0, 6).join('\n'), route } : { route },
+    traceId,
+    userId,
+    source: route,
+    statusCode: 500,
+  }, c.executionCtx);
+
   return c.json({
     error: 'Internal server error',
     code: 'UNHANDLED',
@@ -166,6 +217,10 @@ for (const m of ROUTE_REGISTRY) {
 for (const prefix of authPrefixes) {
   app.use(prefix, authMiddleware);
   app.use(`${prefix}/*`, authMiddleware);
+  // RBAC floor: read-only roles can't mutate anything on auth-required
+  // prefixes, regardless of whether the handler has its own requireRole.
+  app.use(prefix, readOnlyRoleGuard);
+  app.use(`${prefix}/*`, readOnlyRoleGuard);
 }
 
 // Mount routers in declared order — Hono dispatches in registration
@@ -179,29 +234,83 @@ for (const m of ROUTE_REGISTRY) {
 // ─── Internal: WelfareWatchDO → Worker callback ──────────────
 // The DO's alarm() can't call sendToUser/broadcastAll directly
 // (those live in the Worker module's per-isolate state). Instead
-// it posts to /__welfare-fire authenticated by X-DO-Secret == JWT_SECRET.
-// Lives outside ROUTE_REGISTRY because it's an internal callback,
-// not an API endpoint.
+// it posts to /__welfare-fire authenticated by X-DO-Secret, a value
+// DERIVED from JWT_SECRET (doCallbackToken) — never the signing key
+// itself — compared constant-time. Lives outside ROUTE_REGISTRY because
+// it's an internal callback, not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
-  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+  // Surface a missing JWT_SECRET as a loud 500 instead of a silent 403:
+  // a misconfigured secret would otherwise look identical to a forged
+  // request, and ops would never realize escalations were being dropped.
+  // The 500 + log gets noticed in deploy verification + dashboards.
+  if (!c.env.JWT_SECRET) {
+    console.error('[__welfare-fire] JWT_SECRET unset — DO callbacks cannot authenticate; escalations will be lost');
+    return c.json({ error: 'misconfigured: JWT_SECRET unset' }, 500);
+  }
+  const provided = c.req.header('X-DO-Secret') || '';
+  const expected = await doCallbackToken(c.env.JWT_SECRET);
+  if (!timingSafeEqual(provided, expected)) {
     return c.json({ error: 'forbidden' }, 403);
   }
   const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
   if (stage === 'prompt') {
-    sendToUser(watch.user_id, 'welfare_check', {
+    // Targeted to ONE officer's MDT — deliver via AlertHubDO with a
+    // target_user_id (WelfareCheckModal + the voice hook filter on it). The old
+    // sendToUser was per-isolate-dead, so the welfare-check prompt reached the
+    // officer never; a naive broadcast would pop the takeover on every console.
+    await emitAlert(c.env, 'welfare_check', {
       action: 'welfare_prompt',
+      target_user_id: watch.user_id,
       callSign: watch.call_sign,
       callId: watch.call_id,
       callNumber: watch.call_number,
       message: `Welfare check: ${watch.call_sign || 'unit'}, are you code 4${watch.call_number ? ` on call ${watch.call_number}` : ''}?`,
     });
   } else if (stage === 'alert') {
-    broadcastAll('dispatch_update', { action: 'welfare_alert', user_id: watch.user_id, call_sign: watch.call_sign, at: new Date().toISOString() });
+    // Deliver via AlertHubDO under the DISCRETE 'welfare_alert' type the client's
+    // voice-alert hook subscribes to. The old broadcastAll('dispatch_update',…)
+    // was double-dead: wrong type (client subscribes to 'welfare_alert', not a
+    // dispatch_update action) AND per-isolate (the live /api/ws is on legacy).
+    await emitAlert(c.env, 'welfare_alert', {
+      user_id: watch.user_id, call_sign: watch.call_sign,
+      message: `Officer welfare alert — ${watch.call_sign || 'unit'} has not acknowledged a welfare check.`,
+      at: new Date().toISOString(),
+    });
   } else if (stage === 'emergency') {
-    broadcastAll('dispatch_update', { action: 'welfare_emergency', user_id: watch.user_id, call_sign: watch.call_sign, call_id: watch.call_id, call_number: watch.call_number, triggered_by: 'automated_escalation', at: new Date().toISOString() });
+    // CRITICAL officer-safety: the auto-escalation when an officer goes
+    // unresponsive to welfare checks. Same double-dead bug — route via
+    // AlertHubDO under 'welfare_emergency' so it reaches every dispatcher.
+    await emitAlert(c.env, 'welfare_emergency', {
+      user_id: watch.user_id, call_sign: watch.call_sign,
+      call_id: watch.call_id, call_number: watch.call_number,
+      triggered_by: 'automated_escalation',
+      message: `WELFARE EMERGENCY — ${watch.call_sign || 'unit'} unresponsive${watch.call_number ? ' on ' + watch.call_number : ''}. All units respond.`,
+      at: new Date().toISOString(),
+    });
   }
   return c.json({ success: true });
 });
+
+// Throttled email poll. Per-minute cron, but only actually pulls when
+// (now - lastSync) >= pollInterval. Default pollInterval is 300s so the
+// default cadence is every 5 minutes — same as the admin tab's UI default.
+async function maybeRunEmailPoll(env: Bindings, ctx: ExecutionContext): Promise<void> {
+  const db = env.DB;
+  const [enabled, lastSyncStr, pollIntervalStr] = await Promise.all([
+    db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_enabled' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
+    db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_last_sync' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
+    db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_poll_interval' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
+  ]);
+  if (enabled?.config_value !== 'true') return;
+  const pollInterval = pollIntervalStr ? parseInt(pollIntervalStr.config_value, 10) : 300;
+  if (lastSyncStr?.config_value) {
+    const last = Date.parse(lastSyncStr.config_value);
+    if (Number.isFinite(last) && Date.now() - last < pollInterval * 1000) return;
+  }
+  const r = await runEmailPoll(env, ctx);
+  if (r.error) console.error(`[email-poll] ${r.error}`);
+  else if (!r.skipped) console.log(`[email-poll] scanned=${r.scanned} upserted=${r.upserted} ruleHits=${r.ruleHits} linked=${r.linked}`);
+}
 
 // ─── Worker export ───────────────────────────────────────────
 export default {
@@ -241,10 +350,319 @@ export default {
   // Errors are swallowed inside runUtahWarrantScan so one bad run
   // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
+    if (event.cron === '* * * * *') {
+      // Quick D1 connectivity check before launching all concurrent sweeps.
+      // When D1 has a transient network blip every sweep fails at the same
+      // instant — this collapses 9 individual errors into one quiet warning
+      // and lets the next tick attempt cleanly rather than thundering in.
+      try {
+        await env.DB.prepare('SELECT 1').first();
+      } catch (e) {
+        const msg = (e as Error)?.message ?? '';
+        if (msg.includes('Network connection lost') || msg.includes('D1_ERROR')) {
+          console.warn('[cron] D1 connectivity check failed — skipping this tick:', msg);
+          return;
+        }
+        // Unknown error — still attempt sweeps; individual handlers will surface it.
+      }
+      // Per-minute trip idle/stale sweep — backstop for units that go dark while
+      // stationary (lazy-on-gps-write handles the common case).
+      ctx.waitUntil(
+        sweepTrips(env.DB, env).then((n) => { if (n) console.log(`[trips] sweep closed ${n}`); })
+          .catch((err) => console.error('[trips] sweep failed:', err)),
+      );
+      // Intel watchlist sweep — alerts when a watched person/vehicle
+      // appears in new activity (notifications inbox, HIGH priority).
+      // No-ops cheaply when intel_watchlist is empty or missing.
+      ctx.waitUntil(
+        import('./utils/intelWatchlist')
+          .then(({ sweepWatchlist }) => sweepWatchlist(env.DB))
+          .then((n) => { if (n) console.log(`[watchlist] ${n} alert(s) raised`); })
+          .catch((err) => console.error('[watchlist] sweep failed:', err)),
+      );
+      // Deep Research monitors — re-run jobs whose monitor interval is due.
+      ctx.waitUntil(
+        import('./utils/deepResearchMonitor')
+          .then(({ sweepDeepResearchMonitors }) => sweepDeepResearchMonitors(env))
+          .then((n) => { if (n) console.log(`[deep-research] re-ran ${n} monitor(s)`); })
+          .catch((err) => console.error('[deep-research] monitor sweep failed:', err)),
+      );
+      // Intel cross-hit coverage sweep — screens persons/vehicles
+      // created in the last 2 minutes regardless of entry path; critical
+      // hits raise anomaly_alerts (dispatch banner). Cheap when idle.
+      ctx.waitUntil(
+        import('./utils/intelScreen')
+          .then(({ sweepNewEntities }) => sweepNewEntities(env.DB))
+          .then((n) => { if (n) console.log(`[intel-screen] ${n} alert(s) raised`); })
+          .catch((err) => console.error('[intel-screen] sweep failed:', err)),
+      );
+      // Officer-safety: on-foot overdue sweep — alerts dispatch when a
+      // unit has been on foot past the threshold. Cheap when none are.
+      ctx.waitUntil(
+        import('./utils/onFootSweep')
+          .then(({ sweepOnFootOverdue }) => sweepOnFootOverdue(env.DB, env))
+          .then((n) => { if (n) console.log(`[on-foot] ${n} overdue alert(s)`); })
+          .catch((err) => console.error('[on-foot] sweep failed:', err)),
+      );
+      // Email poll — throttled internally by ms_email_last_sync vs
+      // ms_email_poll_interval. No-op when not configured.
+      ctx.waitUntil(
+        maybeRunEmailPoll(env, ctx)
+          .catch((err) => console.error('[email-poll] failed:', err)),
+      );
+      // Email outbox drain — retries Graph /me/sendMail for queued sends
+      // whose backoff window has elapsed. Self-throttled by next_attempt_at.
+      ctx.waitUntil(
+        drainEmailOutbox(env)
+          .then((r) => { if (r.sent || r.failed) console.log(`[email-outbox] sent=${r.sent} failed=${r.failed} deferred=${r.deferred}`); })
+          .catch((err) => console.error('[email-outbox] failed:', err)),
+      );
+      // Schedule-send queue → enqueues due rows into the durable outbox,
+      // which the drain above then actually sends (uniform retry/backoff).
+      ctx.waitUntil(
+        drainScheduledEmails(env)
+          .then((n) => { if (n) console.log(`[email-scheduled] queued ${n}`); })
+          .catch((err) => console.error('[email-scheduled] failed:', err)),
+      );
+      // Expired snoozes → move back to inbox + mark unread.
+      ctx.waitUntil(
+        resurfaceSnoozedEmails(env)
+          .then((n) => { if (n) console.log(`[email-snooze] resurfaced ${n}`); })
+          .catch((err) => console.error('[email-snooze] failed:', err)),
+      );
+      // ClearPath dashcam media sync (Phase B) + per-clip ALPR (Phase C).
+      // Self-throttled by clearpathgps_last_media_sync vs the configured
+      // interval; no-ops cheaply when the integration or media sync is off.
+      ctx.waitUntil(
+        import('./utils/clearpathSync')
+          .then(({ maybeRunClearpathMediaSync }) => maybeRunClearpathMediaSync(env))
+          .catch((err) => console.error('[cpg-media] cron failed:', err)),
+      );
+      // Full-drive on-demand chunk processing — fires vendor requests for
+      // any queued full-drive trips (no flexcam_enabled gate).
+      ctx.waitUntil(
+        import('./utils/fullDrivePipeline')
+          .then(({ maybePollFullDriveChunks }) => maybePollFullDriveChunks(env))
+          .catch((err) => console.error('[full-drive] cron failed:', err)),
+      );
+      // FlexCam footage poll — downloads ready R2 chunks; no-op when disabled.
+      ctx.waitUntil(
+        import('./utils/footage/captureOrchestrator')
+          .then(({ maybeRunFootagePoll }) => maybeRunFootagePoll(env))
+          .catch((err) => console.error('[flexcam] poll error:', (err as Error)?.message)),
+      );
+      // FlexCam queue drain — bail out fulfilling/partial requests stalled
+      // >6h (frees the per-tick poll budget for new requests) + prune
+      // duplicate source-URL chunks within a request. Kill-switch via
+      // system_config integrations.flexcam_drain_enabled='false'.
+      ctx.waitUntil(
+        import('./utils/footage/queueDrainRunner')
+          .then(({ maybeRunQueueDrain }) => maybeRunQueueDrain(env))
+          .then((r) => {
+            if (!r) return;
+            const { requests_failed, requests_partialed, duplicates_pruned, chunks_to_missing } = r;
+            if (requests_failed || requests_partialed || duplicates_pruned) {
+              console.log(`[flexcam-drain] failed=${requests_failed} partialed=${requests_partialed} chunks_missing=${chunks_to_missing} dups_pruned=${duplicates_pruned}`);
+            }
+          })
+          .catch((err) => console.error('[flexcam-drain] cron failed:', (err as Error)?.message)),
+      );
+      // Jail roster detail enrichment (Salt Lake) — fetches each scraped
+      // inmate's full IML profile document (booking date, charges, bond) in a
+      // small, polite batch. KV-locked + no-ops cheaply when the backlog is empty.
+      ctx.waitUntil(
+        import('./utils/jailRoster/scraper')
+          .then(({ maybeEnrichSaltLakeDetails }) => maybeEnrichSaltLakeDetails(env))
+          .then((r) => { if (r && r.enriched) console.log(`[jail-roster] enriched ${r.enriched}/${r.attempted} (remaining ${r.remaining})`); })
+          .catch((err) => console.error('[jail-roster] enrich failed:', (err as Error)?.message)),
+      );
+      // Serve attempt pre-event notifications — fires dispatch alerts for
+      // upcoming attempt windows whose random pre-event time (30 min–6 h
+      // before the window opens) has arrived. No-ops when table is missing.
+      ctx.waitUntil(
+        import('./utils/serveAttemptScheduler')
+          .then(({ sweepAttemptNotifications }) => sweepAttemptNotifications(env.DB, env))
+          .then((n) => { if (n) console.log(`[serve-schedule] ${n} reminder(s) dispatched`); })
+          .catch((err) => console.error('[serve-schedule] sweep failed:', err)),
+      );
+      // Salt Lake County Assessor backfill — processes up to 5 queued
+      // address-lookup jobs per tick (rate-limited to 30/min internally),
+      // bounded by 22s wall-clock. No-op cheaply when queue is empty.
+      ctx.waitUntil(
+        processBackfillTick(env)
+          .then((n) => { if (n) console.log(`[assessor-backfill] processed ${n} jobs`); })
+          .catch((e) => console.error('[assessor-backfill] tick failed:', e)),
+      );
+      // Daily 04:00 America/Denver rebalance — UTC hour=10, minute=0 (DST drift accepted).
+      const utcNow = new Date();
+      if (utcNow.getUTCHours() === 10 && utcNow.getUTCMinutes() === 0) {
+        ctx.waitUntil(
+          import('./utils/serveRebalance')
+            .then(({ runDailyRebalance }) =>
+              runDailyRebalance(env.DB, utcNow.toISOString()),
+            )
+            .then((r) => console.log('[serve-rebalance] daily:', JSON.stringify(r)))
+            .catch((err) => console.error('[serve-rebalance] daily failed:', err)),
+        );
+      }
+      return;
+    }
+    // NHTSA vPIC monthly refresh. Runs at 03:00 UTC on day 1 of each month.
+    // PR 2 wires the trigger with a no-op stub; PR 2b drops in the bulk
+    // importer (refreshes ref_vehicle_makes / ref_vehicle_models /
+    // xref_model_year_to_specs against the public vPIC catalogue).
+    if (event.cron === '0 3 1 * *') {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            // PR 2b: import('./utils/nhtsaBulkRefresh').then(m => m.run(env));
+            console.log('[nhtsa-vpic] monthly refresh tick (stub — bulk importer lands in PR 2b)');
+          } catch (err) {
+            console.error('[nhtsa-vpic] monthly refresh failed:', err);
+          }
+        })(),
+      );
+      return;
+    }
+    // Fleet.io reconciliation. Runs every 30 minutes; replays pending
+    // outbound events through the adapter. PR 4 wired the real handler:
+    // applyOutbound drains pending rows, calls the adapter (updateVehicle /
+    // createFuelEntry today, more in PRs 5/6), records completed / failed
+    // with exponential backoff capped at 7 attempts.
+    //
+    // 503 NOTE: when FLEETIO_API_KEY isn't set, configFromEnv throws a
+    // FleetioConfigError on first use; applyOutbound catches it and bails
+    // the drain (no retries until the secret is provisioned). Cron then
+    // no-ops cleanly until /admin/fleetio rolls in the wrangler secret.
+    if (event.cron === '*/30 * * * *') {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            const [{ applyOutbound }, { configFromEnv, createVehicle, updateVehicle, archiveVehicle, createFuelEntry, updateFuelEntry, createWorkOrder, updateWorkOrder }] = await Promise.all([
+              import('./utils/fleetio/sync'),
+              import('./utils/fleetio/client'),
+            ]);
+            let config;
+            try {
+              config = configFromEnv(env as unknown as Record<string, unknown>);
+            } catch {
+              // Secrets unset — silent no-op, deliberate. (Operator console)
+              console.log('[fleetio-reconcile] FLEETIO secrets unset; skipping drain.');
+              return;
+            }
+            const result = await applyOutbound({
+              db: env.DB,
+              config,
+              adapter: {
+                // Cast: sync engine passes the ownership-filtered payload as
+                // an opaque Record. The strict FleetioVehicleCreatePayload type
+                // requires `name`; if it's missing Fleet.io will 422 and the
+                // sync engine marks the event failed — same outcome, just at
+                // the network boundary instead of compile time.
+                createVehicle: (args) => createVehicle({ config, payload: args.payload as unknown as Parameters<typeof createVehicle>[0]['payload'] }),
+                updateVehicle: (args) => updateVehicle({ config, fleetioId: args.fleetioId, payload: args.payload }),
+                archiveVehicle: (args) => archiveVehicle({ config, fleetioId: args.fleetioId, archivedAtIso: args.archivedAtIso }),
+                createFuelEntry: (args) => createFuelEntry({ config, payload: args.payload }),
+                updateFuelEntry: (args) => updateFuelEntry({ config, fleetioId: args.fleetioId, payload: args.payload }),
+                createWorkOrder: (args) => createWorkOrder({ config, payload: args.payload }),
+                updateWorkOrder: (args) => updateWorkOrder({ config, fleetioId: args.fleetioId, payload: args.payload }),
+              },
+            });
+            if (result.attempted > 0) {
+              console.log(`[fleetio-reconcile] attempted=${result.attempted} completed=${result.completed} failed=${result.failed} skipped=${result.skipped}`);
+            }
+          } catch (err) {
+            console.error('[fleetio-reconcile] cron failed:', err);
+          }
+        })(),
+      );
+      return;
+    }
     ctx.waitUntil(
       runAllSourceScans(env.DB).catch((err) => {
         console.error('Multi-source warrant scheduled scan failed:', err);
       }),
+    );
+    // Jail roster scrape — picks the single most-overdue enabled county and
+    // scrapes its public roster into arrest_records. No-op until a county is
+    // enabled in jail_roster_config (Admin > Jail Roster).
+    ctx.waitUntil(
+      import('./utils/jailRoster/scraper')
+        .then(({ runDueScrapes }) => runDueScrapes(env.DB))
+        .then((r) => { if (r.ran) console.log(`[jail-roster] scraped ${r.ran}`); })
+        .catch((err) => console.error('[jail-roster] scrape failed:', err)),
+    );
+    // Utah Sex Offender Registry poll — pulls from an agency-authorized
+    // feed (system_config sor_feed_url/key) into utah_sex_offenders.
+    // No-op until a feed is provisioned; never scrapes the public site.
+    ctx.waitUntil(
+      runUtahSorPoll(env.DB)
+        .then((r) => { if (r.configured) console.log(`[sor] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
+        .catch((err) => console.error('[sor] poll failed:', err)),
+    );
+    // iCrimeWatch statewide SOR scrape (agency 54438) via Firecrawl into
+    // utah_sex_offenders. Cadence-gated (KV, default 7d) so the 4-hourly cron
+    // doesn't hit the billable Firecrawl API every tick; no-op when not due or
+    // when FIRECRAWL_API_KEY is unset. The admin "Run SOR import" route forces.
+    ctx.waitUntil(
+      import('./utils/sorSources/icrimewatch')
+        .then(({ maybeRunIcrimewatchScanScheduled }) => maybeRunIcrimewatchScanScheduled(env, Date.now()))
+        .then((r) => { if (r.configured && !r.skipped) console.log(`[icw] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
+        .catch((err) => console.error('[icw] cron failed:', err)),
+    );
+    // FlexCam footage retention — purge non-evidence footage past the configured
+    // window (default 120 days / 4 months). Evidence-locked footage is never
+    // touched. Best-effort; cannot abort the other 4-hourly scans or crash the cron.
+    ctx.waitUntil(
+      import('./utils/footage/captureOrchestrator')
+        .then(({ purgeExpiredFootage }) => purgeExpiredFootage(env))
+        .then((r) => { if (r.purged) console.log(`[flexcam-retention] purged ${r.purged} request(s), ${r.objects} object(s)`); })
+        .catch((err) => console.error('[flexcam-retention] purge failed:', (err as Error)?.message)),
+    );
+    // Person-screening framework (INTERPOL / OFAC / Utah SOR). Watch-listed
+    // persons only; OFAC dataset is bulk-refreshed inside the orchestrator.
+    ctx.waitUntil(
+      runScreeningScans(env).catch((err) => console.error('[screening] scan failed:', err)),
+    );
+    // Intel Search index sync + person-resolution pass (migration 0098).
+    // Full re-sync is cheap at the current dataset size; failures are
+    // contained so they can't abort the other 4-hourly scans.
+    ctx.waitUntil(
+      import('./utils/intelIndexer')
+        .then(async ({ rebuildIntelIndex, computeResolutionSuggestions }) => {
+          const counts = await rebuildIntelIndex(env.DB);
+          const suggestions = await computeResolutionSuggestions(env.DB);
+          console.log(`[intel-index] synced ${JSON.stringify(counts)}, ${suggestions} resolution suggestions`);
+        })
+        .catch((err) => console.error('[intel-index] cron failed:', err)),
+    );
+    // Narrative entity extraction — mines recent call/incident text for
+    // known persons/plates/phones and queues link suggestions for /intel.
+    ctx.waitUntil(
+      import('./utils/intelExtract')
+        .then(({ runExtraction }) => runExtraction(env.DB, 6))
+        .then((n) => { if (n) console.log(`[intel-extract] ${n} suggestion(s) queued`); })
+        .catch((err) => console.error('[intel-extract] cron failed:', err)),
+    );
+    // Intel pattern detection + subject escalation (Wave 2) — repeat
+    // locations, near-repeat clusters, escalating subjects → anomaly_alerts.
+    ctx.waitUntil(
+      import('./utils/intelPatterns')
+        .then(async ({ detectRepeatLocations, detectNearRepeat, sweepEscalation }) => {
+          const a = await detectRepeatLocations(env.DB);
+          const b = await detectNearRepeat(env.DB);
+          const c2 = await sweepEscalation(env.DB);
+          if (a + b + c2) console.log(`[intel-pattern] alerts: repeat=${a} nearRepeat=${b} escalation=${c2}`);
+        })
+        .catch((err) => console.error('[intel-pattern] cron failed:', err)),
+    );
+    // Jail/booking roster scan (Wave 3a) — seeds the registry, pulls
+    // active sources, cross-hits bookings against known/flagged subjects.
+    ctx.waitUntil(
+      import('./utils/jailSources/runScan')
+        .then(({ runJailScan }) => runJailScan(env as any))
+        .then((s) => { const n = s.reduce((a, x) => a + x.ingested, 0); if (n) console.log(`[jail-scan] ingested ${n}`); })
+        .catch((err) => console.error('[jail-scan] cron failed:', err)),
     );
     // Dispatch anomaly detection — populates anomaly_alerts for the
     // AnomalyAlertBanner. Independent of the warrant scan; its own
@@ -263,6 +681,54 @@ export default {
         .then((s) => purgeOldRecordings(env.DB, env.UPLOADS, s.recording_retention_days))
         .then((r) => { if (r.deleted) console.log(`[radio] purged ${r.deleted} expired recording(s)`); })
         .catch((err) => console.error('Radio retention purge failed:', err)),
+    );
+    // Fleet GPS mileage sync — derives odometer from dispatch breadcrumbs
+    // for every assigned vehicle. Own catch so a failure here can't abort
+    // the other scans or crash the cron loop.
+    ctx.waitUntil(
+      syncAllVehicleGpsMileage(env.DB)
+        .then((r) => console.log(`[fleet-gps] checked ${r.checked}, ${r.with_gps} with GPS, ${r.total_gps_miles.toFixed(1)} mi available`))
+        .catch((err) => console.error('Fleet GPS mileage scan failed:', err)),
+    );
+    // Sessions hygiene — purge rows that can never authenticate again
+    // (expired > 1 day ago, or revoked > 7 days ago). Live D1 had 617 rows
+    // with only ~44 usable; dead rows inflated the Security page's session
+    // analytics and slow every sessions scan a little more each week.
+    ctx.waitUntil(
+      env.DB.prepare(
+        "DELETE FROM sessions WHERE expires_at <= datetime('now','-1 day') OR (is_active = 0 AND created_at <= datetime('now','-7 days'))"
+      ).run()
+        .then((r) => { const n = r?.meta?.changes ?? 0; if (n) console.log(`[sessions] purged ${n} dead session row(s)`); })
+        .catch((err) => console.error('Sessions purge failed:', err)),
+    );
+    // Auto skip-trace weekly sweep — retries stale jobs whose prior
+    // auto skip-trace found no results (at least 7 days between retries).
+    // Must run before the serve-nudge sweep to avoid a stale nudge from
+    // this cycle landing on the same job.
+    ctx.waitUntil(
+      import('./utils/autoSkipTraceSweep')
+        .then(({ sweepAutoSkipTraces }) => sweepAutoSkipTraces(env.DB, env))
+        .then((n) => { if (n) console.log(`[auto-skip-trace] ${n} skip-trace(s) triggered`); })
+        .catch((err) => console.error('[auto-skip-trace] sweep failed:', err)),
+    );
+    // Process-serve needs-attention sweep — raises notifications + supervisor
+    // email digest for overdue/approaching/diligence-gap/unassigned jobs.
+    // Deduped by serve_nudges (per-job per-condition renotify window).
+    ctx.waitUntil(
+      import('./utils/serveNudgeSweep')
+        .then(({ sweepServeNudges }) => sweepServeNudges(env.DB, env))
+        .then((n) => { if (n) console.log(`[serve-nudge] ${n} nudge(s) raised`); })
+        .catch((err) => console.error('[serve-nudge] sweep failed:', err)),
+    );
+    // Case-task due-date nudges — overdue/due-soon active tasks notify the
+    // assignee + supervisors. Runs on the 4-hourly cron (this block is after
+    // the per-minute `return` above, alongside serveNudgeSweep); deduped per
+    // recipient via the notifications table (≤ 1 nudge / 20h).
+    ctx.waitUntil(
+      import('./utils/caseTaskNudges')
+        .then(({ sweepCaseTaskNudges }) => sweepCaseTaskNudges(env.DB, env))
+        .then((n) => { if (n) console.log(`[case-task-nudge] ${n} nudge(s) raised`); })
+        .catch((err) => console.error('[case-task-nudge] sweep failed:', err)),
     );
   },
 };

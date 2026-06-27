@@ -64,21 +64,21 @@ function PanelTitleBar({
             type="button"
             className={`window-chrome-btn window-chrome-close ${onClose ? '' : 'opacity-40 cursor-default'}`}
             onClick={() => handleChromeAction(onClose)}
-            aria-label={onClose ? `Close ${title} panel` : undefined}
+            aria-label={onClose ? `Close ${title} panel` : `Close ${title} panel (disabled)`}
             tabIndex={onClose ? 0 : -1}
           />
           <button
             type="button"
             className={`window-chrome-btn window-chrome-minimize ${onMinimize ? '' : 'opacity-40 cursor-default'}`}
             onClick={() => handleChromeAction(onMinimize)}
-            aria-label={onMinimize ? `Minimize ${title} panel` : undefined}
+            aria-label={onMinimize ? `Minimize ${title} panel` : `Minimize ${title} panel (disabled)`}
             tabIndex={onMinimize ? 0 : -1}
           />
           <button
             type="button"
             className={`window-chrome-btn window-chrome-maximize ${onMaximize ? '' : 'opacity-40 cursor-default'}`}
             onClick={() => handleChromeAction(onMaximize)}
-            aria-label={onMaximize ? `Maximize ${title} panel` : undefined}
+            aria-label={onMaximize ? `Maximize ${title} panel` : `Maximize ${title} panel (disabled)`}
             tabIndex={onMaximize ? 0 : -1}
           />
         </div>

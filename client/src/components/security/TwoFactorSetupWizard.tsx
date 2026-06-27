@@ -38,7 +38,13 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
         throw new Error(data.error || 'Setup failed');
       }
       const data = await res.json();
-      setQrDataUri(data.qrCodeDataUri);
+      let qr = data.qrCodeDataUri as string | null;
+      if (!qr && data.otpauthUrl) {
+        // Worker returns otpauthUrl; render the QR locally (qrcode pkg).
+        const QRCode = (await import('qrcode')).default;
+        qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
+      }
+      setQrDataUri(qr || '');
       setManualKey(data.manualKey);
       setStep('scan');
     } catch (err: any) {
@@ -100,7 +106,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             style={{
               background: ['intro', 'scan', 'verify', 'backup'].indexOf(step) >= i
                 ? '#888888'
-                : '#222222',
+                : 'var(--border-subtle)',
             }}
           />
         ))}
@@ -114,10 +120,10 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
               <Shield className="w-5 h-5" style={{ color: '#d4a017' }} />
             </div>
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#e0e0e0' }}>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
                 Enable Two-Factor Authentication
               </h3>
-              <p className="text-[10px] mt-0.5" style={{ color: '#666666' }}>
+              <p className="text-[10px] mt-0.5 text-rmpg-500">
                 Add an extra layer of security to your account
               </p>
             </div>
@@ -150,7 +156,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             <button type="button"
               onClick={startSetup}
               disabled={loading}
-              className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-white text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+              className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-rmpg-100 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
             >
               {loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <QrCode className="w-3 h-3" />}
               Begin Setup
@@ -186,9 +192,9 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           {showManual && (
             <div
               className="flex items-center gap-2 p-2 font-mono text-xs"
-              style={{ background: '#050505', border: '1px solid #2b2b2b' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-default)' }}
             >
-              <span className="flex-1 tracking-widest text-center" style={{ color: '#e0e0e0' }}>
+              <span className="flex-1 tracking-widest text-center text-rmpg-300">
                 {manualKey}
               </span>
               <button type="button" onClick={copyManualKey} className="toolbar-btn p-1">
@@ -199,7 +205,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
 
           <button type="button"
             onClick={() => setStep('verify')}
-            className="toolbar-btn toolbar-btn-primary w-full h-8 text-white text-[10px] font-bold uppercase tracking-wider"
+            className="toolbar-btn toolbar-btn-primary w-full h-8 text-rmpg-100 text-[10px] font-bold uppercase tracking-wider"
           >
             I've Scanned the Code
           </button>
@@ -244,7 +250,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             <button type="button"
               onClick={confirmSetup}
               disabled={verifyCode.length !== 6 || loading}
-              className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
+              className="toolbar-btn toolbar-btn-primary flex-1 h-8 text-rmpg-100 text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               {loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'Verify & Enable'}
             </button>
@@ -280,10 +286,10 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
               <Shield className="w-8 h-8" style={{ color: '#22c55e' }} />
             </div>
           </div>
-          <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#e0e0e0' }}>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
             Setup Complete
           </h3>
-          <p className="text-[10px]" style={{ color: '#666666' }}>
+          <p className="text-[10px] text-rmpg-500">
             Your account is now protected with two-factor authentication.
           </p>
         </div>

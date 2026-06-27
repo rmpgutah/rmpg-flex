@@ -8,6 +8,7 @@ import { localToday, safeDateTimeStr, parseTimestamp } from '../../utils/dateUti
 import { escapeHtml } from '../../utils/sanitize';
 import { mapboxgl } from '../../utils/mapboxLoader';
 import { whenStyleReady } from './utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // ============================================================
 // Types
@@ -47,7 +48,7 @@ interface Props {
 const MPS_TO_MPH = 2.23694;
 
 const speedToColor = (mps: number | null): string => {
-  if (mps == null || mps < 0.2) return '#666666';
+  if (mps == null || mps < 0.2) return 'var(--rmpg-500)';
   const mph = mps * MPS_TO_MPH;
   if (mph < 3) return '#999999'; if (mph < 10) return '#22c55e';
   if (mph < 25) return '#22c55e'; if (mph < 35) return '#84cc16';
@@ -59,9 +60,19 @@ const statusToColor = (status: string): string => {
   switch (status) {
     case 'dispatched': return '#f59e0b'; case 'enroute': return '#888888';
     case 'onscene': return '#ef4444'; case 'available': return '#22c55e';
-    case 'busy': return '#8b5cf6'; case 'off_duty': return '#666666';
-    default: return '#666666';
+    case 'busy': return '#8b5cf6'; case 'off_duty': return 'var(--rmpg-500)';
+    default: return 'var(--rmpg-500)';
   }
+};
+
+/** Great-circle distance in meters (for trail gap/teleport splitting). */
+const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
 const formatSpeedMph = (mps: number | null) => mps == null ? '\u2014' : `${(mps * 2.237).toFixed(0)} mph`;
@@ -107,6 +118,10 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   // Map source/layer IDs for cleanup
   const sourceIdsRef = useRef<string[]>([]);
   const playbackMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  // Direction-arrow DOM markers. These were previously created but never
+  // retained, so clearMapObjects couldn't remove them — stale arrows piled
+  // up on the map across every trail reload.
+  const arrowMarkersRef = useRef<mapboxgl.Marker[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -118,16 +133,20 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   }, [isOpen]);
 
   const clearMapObjects = useCallback(() => {
-    if (!map) return;
-    for (const id of sourceIdsRef.current) {
-      try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
-      try { if (map.getSource(id)) map.removeSource(id); } catch {}
+    for (const m of arrowMarkersRef.current) {
+      try { m.remove(); } catch { /* map torn down */ }
     }
-    sourceIdsRef.current = [];
+    arrowMarkersRef.current = [];
     if (playbackMarkerRef.current) {
       playbackMarkerRef.current.remove();
       playbackMarkerRef.current = null;
     }
+    if (!map) return;
+    for (const id of sourceIdsRef.current) {
+      safeRemoveLayer(map, id);
+      safeRemoveSource(map, id);
+    }
+    sourceIdsRef.current = [];
   }, [map]);
 
   useEffect(() => {
@@ -147,40 +166,58 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     const points = data.points;
     if (points.length === 0) return;
 
-    // Build colored segments — each segment is a 2-point line with its own color
-    const segmentsByColor: Map<string, [number, number][]> = new Map();
+    // One feature per CONSECUTIVE point pair, colored by the leg's start
+    // speed, rendered through a single source + data-driven line-color.
+    //
+    // The old renderer grouped ALL points of the same speed-color into one
+    // LineString regardless of adjacency — so whenever the trail alternated
+    // colors (normal accelerate/brake driving), each color's line connected
+    // non-consecutive fixes with long straight chords slicing diagonally
+    // across the city. Adjacency-preserving pair segments are the fix.
+    //
+    // We also SPLIT the trail instead of connecting a pair when the fixes
+    // are separated by a long recording gap or imply an impossible jump —
+    // a parked/offline interval must render as a break, not a straight line.
+    const GAP_SPLIT_SEC = 600;        // >10 min between fixes → break the trail
+    const MAX_PLAUSIBLE_MPS = 80;     // ~179 mph — mirrors useGpsTracking's jump gate
+    const MAX_TELEPORT_M = 1500;      // no-timestamp fallback: never bridge >1.5 km
+    const features: GeoJSON.Feature[] = [];
     for (let i = 0; i < points.length - 1; i++) {
-      const color = speedToColor(points[i].speed);
-      const coords: [number, number] = [points[i].lng, points[i].lat];
-      if (!segmentsByColor.has(color)) segmentsByColor.set(color, []);
-      segmentsByColor.get(color)!.push(coords);
-    }
-    // Add last point
-    const lastPt = points[points.length - 1];
-    const lastColor = speedToColor(lastPt.speed);
-    if (!segmentsByColor.has(lastColor)) segmentsByColor.set(lastColor, []);
-    segmentsByColor.get(lastColor)!.push([lastPt.lng, lastPt.lat]);
-
-    let segIdx = 0;
-    for (const [color, coords] of segmentsByColor) {
-      const sourceId = `breadcrumb-line-${segIdx++}`;
-      sourceIdsRef.current.push(sourceId);
-      whenStyleReady(map, () => {
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
-        });
-        map.addLayer({
-          id: sourceId,
-          type: 'line',
-          source: sourceId,
-          paint: { 'line-color': color, 'line-width': 2, 'line-opacity': 0.9 },
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-        });
+      const a = points[i];
+      const b = points[i + 1];
+      const distM = haversineM(a.lat, a.lng, b.lat, b.lng);
+      const dtSec = (parseTimestamp(b.time).getTime() - parseTimestamp(a.time).getTime()) / 1000;
+      if (Number.isFinite(dtSec) && dtSec > 0) {
+        if (dtSec > GAP_SPLIT_SEC) continue;                    // recording gap
+        if (distM > 50 && distM / dtSec > MAX_PLAUSIBLE_MPS) continue; // teleport glitch
+      } else if (distM > MAX_TELEPORT_M) {
+        continue; // unparseable/identical timestamps — cap the bridge length
+      }
+      features.push({
+        type: 'Feature',
+        properties: { color: speedToColor(a.speed) },
+        geometry: { type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]] },
       });
     }
 
-    // Direction arrows at intervals
+    const sourceId = 'breadcrumb-trail';
+    sourceIdsRef.current.push(sourceId);
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      });
+      map.addLayer({
+        id: sourceId,
+        type: 'line',
+        source: sourceId,
+        paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-opacity': 0.9 },
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+      });
+    });
+
+    // Direction arrows at intervals (retained in arrowMarkersRef so
+    // clearMapObjects actually removes them on reload/close).
     const arrowInterval = Math.max(1, Math.floor(points.length / 20));
     for (let i = 0; i < points.length; i += arrowInterval) {
       const pt = points[i];
@@ -189,7 +226,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       el.style.cssText = `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:8px solid #f59e0b;transform:rotate(${pt.heading}deg);`;
       const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat([pt.lng, pt.lat]).addTo(map);
-      sourceIdsRef.current.push(`arrow-marker-${i}`);
+      arrowMarkersRef.current.push(marker);
     }
 
     // Fit bounds
@@ -270,29 +307,29 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       {!isOpen && (
         <button type="button" onClick={onToggle}
           className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-rmpg-300 rounded-sm"
-          style={{ background: 'rgba(10, 10, 10, 0.9)', border: '1px solid #2b2b2b' }}>
+          style={{ background: 'rgba(10, 10, 10, 0.9)', border: '1px solid var(--border-default)' }}>
           <History className="w-3.5 h-3.5 text-amber-400" /> GPS History
         </button>
       )}
       {isOpen && (
-        <div className="rounded-sm shadow-xl" style={{ width: 380, maxHeight: 'calc(100vh - 200px)', background: 'rgba(10, 10, 10, 0.95)', border: '1px solid #2b2b2b' }}>
-          <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
+        <div className="rounded-sm shadow-xl" style={{ width: 380, maxHeight: 'calc(100vh - 200px)', background: 'rgba(10, 10, 10, 0.95)', border: '1px solid var(--border-default)' }}>
+          <div className="flex items-center justify-between px-3 py-2 border-b border-rmpg-700">
             <div className="flex items-center gap-2">
               <History className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-xs font-bold text-[#d4a017] uppercase tracking-widest">GPS History</span>
             </div>
-            <button type="button" onClick={onToggle} className="text-rmpg-400 hover:text-white" aria-label="Close panel"><X className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={onToggle} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close panel"><X className="w-3.5 h-3.5" /></button>
           </div>
 
           {/* Unit selector + date range */}
-          <div className="p-3 space-y-2 border-b border-[#2b2b2b] bg-[rgba(0,0,0,0.2)]">
+          <div className="p-3 space-y-2 border-b border-rmpg-700 bg-[rgba(0,0,0,0.2)]">
             {unitsLoading ? (
               <div className="flex items-center gap-2 text-xs text-rmpg-400"><Loader2 className="w-3 h-3 animate-spin" /> Loading units...</div>
             ) : (
               <select id="ff-gpsbreadcrumbpanel-0"
                 value={selectedUnit || ''}
                 onChange={e => setSelectedUnit(Number(e.target.value) || null)}
-                className="w-full px-2 py-1.5 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none"
+                className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-[#888888] focus:outline-none"
               >
                 <option value="">Select a unit...</option>
                 {units.map(u => (
@@ -304,14 +341,14 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             )}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[9px] text-rmpg-400 block mb-0.5">From</label>
-                <input id="ff-gpsbreadcrumbpanel-1" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white" />
-                <input id="ff-gpsbreadcrumbpanel-2" type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white mt-1" />
+                <label htmlFor="ff-gpsbreadcrumbpanel-1" className="text-[9px] text-rmpg-400 block mb-0.5">From</label>
+                <input id="ff-gpsbreadcrumbpanel-1" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100" />
+                <input id="ff-gpsbreadcrumbpanel-2" type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 mt-1" />
               </div>
               <div>
-                <label className="text-[9px] text-rmpg-400 block mb-0.5">To</label>
-                <input id="ff-gpsbreadcrumbpanel-3" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white" />
-                <input id="ff-gpsbreadcrumbpanel-4" type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white mt-1" />
+                <label htmlFor="ff-gpsbreadcrumbpanel-3" className="text-[9px] text-rmpg-400 block mb-0.5">To</label>
+                <input id="ff-gpsbreadcrumbpanel-3" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100" />
+                <input id="ff-gpsbreadcrumbpanel-4" type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 mt-1" />
               </div>
             </div>
             <button type="button" onClick={loadTrail} disabled={!selectedUnit || loading}
@@ -328,16 +365,16 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
           {/* Playback controls */}
           {trail && (
-            <div className="px-3 py-2 border-b border-[#2b2b2b] bg-[rgba(0,0,0,0.15)]">
+            <div className="px-3 py-2 border-b border-rmpg-700 bg-[rgba(0,0,0,0.15)]">
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => stepPlayback(-1)} className="text-rmpg-400 hover:text-white p-1"><SkipBack className="w-3.5 h-3.5" /></button>
-                <button type="button" onClick={togglePlayback} className="text-rmpg-400 hover:text-white p-1">
+                <button type="button" onClick={() => stepPlayback(-1)} className="text-rmpg-400 hover:text-rmpg-100 p-1"><SkipBack className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={togglePlayback} className="text-rmpg-400 hover:text-rmpg-100 p-1">
                   {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-amber-400" />}
                 </button>
-                <button type="button" onClick={() => stepPlayback(1)} className="text-rmpg-400 hover:text-white p-1"><SkipForward className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => stepPlayback(1)} className="text-rmpg-400 hover:text-rmpg-100 p-1"><SkipForward className="w-3.5 h-3.5" /></button>
                 <span className="text-[10px] text-rmpg-300 font-mono ml-1">{playbackIdx + 1}/{trail.points.length}</span>
                 <select id="ff-gpsbreadcrumbpanel-5" value={playbackSpeed} onChange={e => setPlaybackSpeed(Number(e.target.value))}
-                  className="ml-auto px-1.5 py-0.5 text-[10px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-300">
+                  className="ml-auto px-1.5 py-0.5 text-[10px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-300">
                   <option value={1}>1x</option><option value={2}>2x</option><option value={5}>5x</option><option value={10}>10x</option>
                 </select>
               </div>
@@ -358,7 +395,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
           {/* Trail timeline scrubber */}
           {trail && trail.points.length > 0 && (
-            <div className="px-3 py-2 border-b border-[#2b2b2b]">
+            <div className="px-3 py-2 border-b border-rmpg-700">
               <div className="relative h-4 cursor-pointer" onClick={e => {
                 const rect = (e.target as HTMLElement).getBoundingClientRect?.() || e.currentTarget.getBoundingClientRect();
                 const pct = (e.clientX - (rect as DOMRect).left) / (rect as DOMRect).width;
@@ -366,7 +403,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                 setIsPlaying(false);
               }}>
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full h-1 bg-[#222222] rounded-full overflow-hidden">
+                  <div className="w-full h-1 bg-surface-raised rounded-full overflow-hidden">
                     <div style={{ width: `${(playbackIdx / Math.max(trail.points.length - 1, 1)) * 100}%`, height: '100%', background: '#f59e0b', borderRadius: 9999 }} />
                   </div>
                 </div>

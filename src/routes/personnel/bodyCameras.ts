@@ -32,6 +32,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { EVIDENCE_HOLD_VALUES, isEvidenceLocked } from '../../utils/evidenceLock';
+import { recordAudit } from '../../utils/auditLog';
 
 // Roles that can see every officer's cameras/videos. Officers (and any
 // other role not in this set) are scoped to officer_id = self. The
@@ -274,12 +276,81 @@ bodyCamerasRouter.delete('/:id', async (c) => {
     );
     if (!existing) return c.json({ error: 'Body camera not found' }, 404);
 
+    // Cascade hold check — block destruction of held evidence via
+    // the camera-delete path. ADMIN can opt out with ?force=true; the
+    // override is recorded in audit_log so the chain-of-custody story
+    // is "admin <id> force-deleted N held video(s) at <ts>", not
+    // "evidence disappeared." Non-admin roles cannot override.
+    const force = c.req.query('force') === 'true';
+    const canForce = force && actor.role === 'admin';
+    const holdList = Array.from(EVIDENCE_HOLD_VALUES);
+    const placeholders = holdList.map(() => '?').join(',');
+    const held = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM bodycam_videos WHERE camera_id = ? AND retention_status IN (${placeholders})`,
+      id, ...holdList,
+    );
+    const heldCount = held?.n || 0;
+    if (heldCount > 0 && !canForce) {
+      return c.json({
+        error: 'Camera has video on hold',
+        detail: `${heldCount} video(s) under legal/IA/court hold. Release the hold before retiring this camera, OR pass ?force=true as admin to override.`,
+        canOverride: actor.role === 'admin',
+        heldCount,
+      }, 409);
+    }
+
+    // Snapshot every assigned video BEFORE the cascade. The 2026-06-21
+    // safety pass caught that the previous version wrote ONE parent-
+    // camera audit row carrying only heldCount (an integer) — so a
+    // subpoena later asking "what happened to video #N tied to case Y"
+    // had no per-video trail. Now we record a row per destroyed video
+    // with the same shape as the per-video DELETE handler at line 538,
+    // so the chain-of-custody story is recoverable regardless of which
+    // path destroyed the row.
+    const assigned = await query<{ id: number; case_number: string | null; retention_status: string | null; classification: string | null }>(
+      db,
+      'SELECT id, case_number, retention_status, classification FROM bodycam_videos WHERE camera_id = ?',
+      id,
+    );
+
     await db.batch([
       db.prepare('DELETE FROM bodycam_videos WHERE camera_id = ?').bind(id),
       db.prepare('DELETE FROM body_cameras WHERE id = ?').bind(id),
     ]);
 
-    return c.json({ ok: true, id });
+    // Per-video audit rows first — these are the SUBPOENA-CRITICAL
+    // ones. recordAudit never throws (best-effort by design), so a
+    // single failure doesn't break the loop.
+    for (const v of assigned) {
+      const wasHeld = isEvidenceLocked(v.retention_status);
+      try {
+        await recordAudit(c, {
+          action: wasHeld && canForce ? 'bodycam_video_force_deleted' : 'bodycam_video_deleted',
+          entityType: 'bodycam_video',
+          entityId: v.id,
+          details: wasHeld && canForce
+            ? `ADMIN OVERRIDE via parent camera ${id}: held video destroyed (retention=${v.retention_status}; classification=${v.classification ?? 'n/a'}; case=${v.case_number ?? 'n/a'})`
+            : `Cascade delete via parent camera ${id} (classification=${v.classification ?? 'n/a'}; case=${v.case_number ?? 'n/a'}; retention=${v.retention_status ?? 'n/a'})`,
+          actorId: actor.id,
+        });
+      } catch { /* best-effort */ }
+    }
+
+    // Parent camera audit row last — gives the "operation" envelope.
+    try {
+      await recordAudit(c, {
+        action: canForce && heldCount > 0 ? 'body_camera_force_deleted' : 'body_camera_deleted',
+        entityType: 'body_camera',
+        entityId: id,
+        details: canForce && heldCount > 0
+          ? `ADMIN OVERRIDE: body camera ${id} destroyed despite ${heldCount} held video(s) — ${assigned.length} total video(s) destroyed in cascade`
+          : `Body camera ${id} destroyed; ${assigned.length} assigned video(s) cascaded`,
+        actorId: actor.id,
+      });
+    } catch { /* audit best-effort, don't 500 a successful destruction */ }
+
+    return c.json({ ok: true, id, videos_destroyed: assigned.length });
   } catch (err) {
     console.error('DELETE /personnel/body-cameras/:id failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
@@ -389,6 +460,108 @@ bodycamVideosRouter.get('/', async (c) => {
 // (See bodyCameraUploads.ts for handler bodies — split out so this
 // file stays readable and the edit surface stays small for review.)
 
+// GET /:id/custody — chain-of-custody timeline for a bodycam video.
+// Backed by audit_log entries with entity_type='bodycam_video' (writes
+// already emit there via recordAudit; see DELETE handler below). Same
+// shape the EvidenceItem PDF / chain-of-custody UIs consume:
+//   { at, action, by, by_name, location?, notes? }[]
+//
+// Registered BEFORE the bare /:id GET so Hono matches the longer pattern.
+// Reverse the order and /:id swallows /:id/custody as id='123/custody' → 400.
+bodycamVideosRouter.get('/:id/custody', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) {
+      return c.json({ error: 'Invalid id' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ officer_id: number }>(
+      db,
+      'SELECT officer_id FROM bodycam_videos WHERE id = ?',
+      id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!READ_ALL_ROLES.has(actor.role) && Number(row.officer_id) !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+
+    // audit_log carries entity_id as TEXT, so cast both sides.
+    const entries = await query<{
+      created_at: string;
+      action: string;
+      details: string | null;
+      user_id: number | null;
+      actor_name: string | null;
+    }>(db, `
+      SELECT a.created_at, a.action, a.details, a.user_id,
+             u.full_name AS actor_name
+        FROM audit_log a
+        LEFT JOIN users u ON u.id = a.user_id
+       WHERE a.entity_type = 'bodycam_video' AND CAST(a.entity_id AS INTEGER) = ?
+       ORDER BY a.created_at ASC, a.id ASC
+    `, id);
+
+    return c.json({
+      entries: entries.map(e => ({
+        at: e.created_at,
+        action: e.action,
+        by: e.user_id != null ? String(e.user_id) : '',
+        by_name: e.actor_name || '',
+        notes: e.details || '',
+      })),
+    });
+  } catch (err) {
+    console.error('GET /personnel/bodycam-videos/:id/custody failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /:id/view-event — log a viewing event for chain-of-custody.
+// BWC footage access is PII-sensitive and statutory court-record
+// material; recording WHO opened the player and WHEN is required to
+// reconstruct the chain even when no metadata change occurred. The
+// client fires this when VideoPlayer mounts a stream.
+bodycamVideosRouter.post('/:id/view-event', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ officer_id: number; classification: string | null; case_number: string | null }>(
+      db,
+      'SELECT officer_id, classification, case_number FROM bodycam_videos WHERE id = ?',
+      id,
+    );
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    if (!READ_ALL_ROLES.has(actor.role) && Number(row.officer_id) !== actor.id) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+
+    // Best-effort audit; never block the view on the audit row.
+    try {
+      await recordAudit(c, {
+        action: 'bodycam_video_viewed',
+        entityType: 'bodycam_video',
+        entityId: id,
+        details: `Classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'}`,
+        actorId: actor.id,
+      });
+    } catch { /* best-effort */ }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('POST /personnel/bodycam-videos/:id/view-event failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 bodycamVideosRouter.get('/:id', async (c) => {
   try {
     const actor = getActor(c);
@@ -463,14 +636,47 @@ bodycamVideosRouter.delete('/:id', async (c) => {
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env);
-    const row = await queryFirst<{ id: number; file_path: string | null }>(db, 'SELECT id, file_path FROM bodycam_videos WHERE id = ?', id);
+    const row = await queryFirst<{ id: number; file_path: string | null; retention_status: string | null; classification: string | null; case_number: string | null }>(
+      db,
+      'SELECT id, file_path, retention_status, classification, case_number FROM bodycam_videos WHERE id = ?',
+      id,
+    );
     if (!row) return c.json({ error: 'Video not found' }, 404);
+
+    // Server-side evidence-lock with admin override. Non-admin roles
+    // (manager/supervisor/officer) still get 409; only admin can
+    // ?force=true past a hold, and the override is loud in audit_log.
+    const force = c.req.query('force') === 'true';
+    const canForce = force && actor.role === 'admin';
+    const locked = isEvidenceLocked(row.retention_status);
+    if (locked && !canForce) {
+      return c.json({
+        error: 'Video under hold',
+        detail: `Retention status "${row.retention_status}" indicates an active hold. Release the hold before deleting, OR pass ?force=true as admin.`,
+        canOverride: actor.role === 'admin',
+        retention_status: row.retention_status,
+      }, 409);
+    }
+
     // Storage failure must not block the metadata delete.
     if (row.file_path && (c.env as { UPLOADS?: R2Bucket }).UPLOADS) {
       try { await (c.env as { UPLOADS: R2Bucket }).UPLOADS.delete(row.file_path); }
       catch (e) { console.warn('bodycam R2 delete failed (non-fatal):', e); }
     }
     await execute(db, 'DELETE FROM bodycam_videos WHERE id = ?', id);
+
+    try {
+      await recordAudit(c, {
+        action: locked && canForce ? 'bodycam_video_force_deleted' : 'bodycam_video_deleted',
+        entityType: 'bodycam_video',
+        entityId: id,
+        details: locked && canForce
+          ? `ADMIN OVERRIDE: held video destroyed (retention=${row.retention_status}; classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'})`
+          : `Classification=${row.classification ?? 'n/a'}; case=${row.case_number ?? 'n/a'}; retention=${row.retention_status ?? 'n/a'}`,
+        actorId: actor.id,
+      });
+    } catch { /* best-effort audit */ }
+
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /personnel/bodycam-videos/:id failed:', err);

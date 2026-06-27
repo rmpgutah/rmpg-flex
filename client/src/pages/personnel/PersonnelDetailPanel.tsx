@@ -4,6 +4,7 @@ import {
   Coffee, Printer, ChevronDown, Radio,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useAuth } from '../../context/AuthContext';
 import type {
   Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment,
   BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping,
@@ -11,6 +12,8 @@ import type {
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
 import { DETAIL_TABS, ROLE_COLORS, type DetailTab } from './utils/personnelConstants';
+import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 import { toDisplayLabel } from '../../utils/formatters';
 import OfficerAvatar from './components/OfficerAvatar';
 import ProfileDetailTab from './detail-tabs/ProfileDetailTab';
@@ -25,6 +28,7 @@ import DashCameraDetailTab from './detail-tabs/DashCameraDetailTab';
 import DeploymentDetailTab from './detail-tabs/DeploymentDetailTab';
 import FitnessCommendationsTab from './tabs/FitnessCommendationsTab';
 import PrintRecordButton from '../../components/PrintRecordButton';
+import EmailedDocuments from '../../components/EmailedDocuments';
 
 interface ActivityEntry {
   id: string;
@@ -145,28 +149,37 @@ function PersonnelPrintMenu({ officer, credentials, training, equipment, bodyCam
 }
 
 // ── On-Duty Toggle Component ──────────────────────────────────
-function DutyToggle({ officerId, currentStatus }: { officerId: string; currentStatus: string }) {
+function DutyToggle({ officerId, currentStatus, onToggled }: { officerId: string; currentStatus: string; onToggled?: () => void }) {
   const [toggling, setToggling] = useState(false);
   const isOnDuty = currentStatus === 'on_duty';
 
   const handleToggle = useCallback(async () => {
     setToggling(true);
     try {
-      // Find the officer's dispatch unit and toggle status
-      const units = await apiFetch<any[]>('/dispatch/units');
-      const myUnit = (units || []).find((u: any) => String(u.user_id) === String(officerId));
-      if (myUnit) {
-        await apiFetch(`/dispatch/units/${myUnit.id}/status`, {
-          method: 'PUT',
-          body: JSON.stringify({ status: isOnDuty ? 'off_duty' : 'available' }),
-        });
+      if (isOnDuty) {
+        await apiFetch('/dispatch/duty/end', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
+      } else {
+        await apiFetch('/dispatch/duty/start', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
       }
-    } catch (err) {
-      console.error('Duty toggle failed:', err);
+      onToggled?.();
+    } catch (err: any) {
+      if (err?.code === 'NEEDS_VEHICLE' || err?.code === 'NO_UNIT') {
+        const units = await apiFetch<any[]>('/dispatch/units').catch(() => []);
+        const myUnit = (units || []).find((u: any) => String(u.officer_id) === String(officerId));
+        if (myUnit) {
+          await apiFetch(`/dispatch/units/${myUnit.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: isOnDuty ? 'off_duty' : 'available' }),
+          });
+          onToggled?.();
+        }
+      } else {
+        console.error('Duty toggle failed:', err);
+      }
     } finally {
       setToggling(false);
     }
-  }, [officerId, isOnDuty]);
+  }, [officerId, isOnDuty, onToggled]);
 
   return (
     <button type="button"
@@ -209,6 +222,10 @@ interface Props {
   onAddEquipment: (officerId: string) => void;
   onEditEquipment: (eq: OfficerEquipment) => void;
   onDeleteEquipment: (eqId: string) => void;
+  /** Forwarded onto EquipmentDetailTab → custody PDF "Prepared by" line.
+   *  Optional — pages that don't have the current user pass undefined and
+   *  the PDF renders without it. */
+  preparedBy?: string;
   bodyCameras: BodyCamera[];
   bodyCamVideos: BodyCamVideo[];
   bodyCamerasLoading: boolean;
@@ -232,6 +249,7 @@ interface Props {
   onClockOut: (officerId: string) => void;
   onStartBreak: (officerId: string) => void;
   onEndBreak: (officerId: string) => void;
+  onDutyToggle?: () => void;
   onEditTimeEntry: (entry: TimeEntry) => void;
   onDeleteTimeEntry: (entryId: string) => void;
   onClose: () => void;
@@ -244,7 +262,7 @@ export default function PersonnelDetailPanel({
   onAddCredential, onEditCredential, onDeleteCredential,
   onAddSchedule, onDeleteSchedule,
   onAddTraining,
-  equipment, equipmentLoading, onAddEquipment, onEditEquipment, onDeleteEquipment,
+  equipment, equipmentLoading, onAddEquipment, onEditEquipment, onDeleteEquipment, preparedBy,
   bodyCameras, bodyCamVideos, bodyCamerasLoading,
   onAddBodyCamera, onEditBodyCamera, onDeleteBodyCamera,
   onUploadVideo, onDeleteVideo, onEditVideo, onPlayVideo,
@@ -252,9 +270,15 @@ export default function PersonnelDetailPanel({
   onAddDeployment,
   onEditOfficer, onDeleteOfficer,
   onArchiveOfficer, onUnarchiveOfficer, isArchived,
-  onClockIn, onClockOut, onStartBreak, onEndBreak, onEditTimeEntry, onDeleteTimeEntry,
+  onClockIn, onClockOut, onStartBreak, onEndBreak, onDutyToggle, onEditTimeEntry, onDeleteTimeEntry,
   onClose,
 }: Props) {
+  const { user: currentUser } = useAuth();
+  // Terminate/archive are destructive HR actions — restrict to roles that own
+  // personnel management. Dispatchers, officers, and client_viewers see the
+  // panel but cannot remove or archive anyone.
+  const canManageHR = (['admin', 'manager', 'supervisor', 'human_resources'] as string[])
+    .includes(currentUser?.role ?? '');
   const officerCreds = credentials.filter(c => c.officer_id === officer.id);
   const officerSchedules = schedules.filter(s => s.officer_id === officer.id);
   const officerTime = timeEntries.filter(t => t.officer_id === officer.id);
@@ -266,14 +290,14 @@ export default function PersonnelDetailPanel({
   const hasCredAlert = officerCreds.some(c => c.status === 'expired' || c.status === 'expiring_soon');
 
   return (
-    <div ref={personnelDetailRef} className="flex-1 flex flex-col overflow-hidden min-h-0 h-full" role="region" aria-label={`Details for ${officer.first_name} ${officer.last_name}`}>
+    <div ref={personnelDetailRef} className="flex-1 min-h-0 flex flex-col overflow-hidden min-h-0 h-full" role="region" aria-label={`Details for ${officer.first_name} ${officer.last_name}`}>
       {/* Consolidated Header — 2 bands: Identity+Status+Actions / Controls+Stats */}
       <div className="panel-beveled mx-2 mt-2 transition-all duration-200">
         {/* Band 1: Identity + status chips + actions */}
         <div className="p-3 flex items-start gap-3">
           <OfficerAvatar officer={officer} size="lg" />
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-white leading-tight truncate">
+            <h2 className="text-lg font-bold text-rmpg-100 leading-tight truncate">
               {officer.last_name}, {officer.first_name}
               {officer.middle_name && officer.middle_name.length > 0 ? ` ${officer.middle_name[0]}.` : ''}
             </h2>
@@ -329,17 +353,17 @@ export default function PersonnelDetailPanel({
               deployments={deployments.filter(d => d.officer_id === officer.id)}
               timeEntries={officerTime}
             />
-            {!isArchived && officer.termination_date && (
+            {canManageHR && !isArchived && officer.termination_date && (
               <button type="button" onClick={() => onArchiveOfficer(officer.id)} className="toolbar-btn text-[9px] text-amber-400" title="Archive">
                 <Archive className="w-3 h-3" />
               </button>
             )}
-            {!isArchived && (
+            {canManageHR && !isArchived && (
               <button type="button" onClick={onDeleteOfficer} className="toolbar-btn toolbar-btn-danger text-[9px]" title="Terminate">
                 <Trash2 className="w-3 h-3" />
               </button>
             )}
-            {isArchived && (
+            {canManageHR && isArchived && (
               <button type="button" onClick={() => onUnarchiveOfficer(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]" title="Restore">
                 <RotateCcw className="w-3 h-3" />
               </button>
@@ -376,13 +400,13 @@ export default function PersonnelDetailPanel({
                 <LogIn className="w-3 h-3" /> Clock In
               </button>
             )}
-            <DutyToggle officerId={officer.id} currentStatus={officer.status} />
+            <DutyToggle officerId={officer.id} currentStatus={officer.status} onToggled={onDutyToggle} />
           </div>
 
           {/* Quick stats — inline, right-aligned */}
           <div className="flex items-center gap-3 sm:gap-4">
             <div className="text-center">
-              <p className="text-sm font-bold font-mono text-white leading-none">{calcYearsOfService(officer.hire_date)}</p>
+              <p className="text-sm font-bold font-mono text-rmpg-100 leading-none">{calcYearsOfService(officer.hire_date)}</p>
               <p className="field-label text-[8px]">Service</p>
             </div>
             <div className="text-center">
@@ -407,29 +431,58 @@ export default function PersonnelDetailPanel({
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="tab-bar" role="tablist" aria-label="Officer detail tabs">
-        {DETAIL_TABS.map(({ id, label, icon: Icon }) => {
-          const alertBadge = id === 'credentials' && hasCredAlert;
-          return (
-            <button type="button"
-              key={id}
-              role="tab"
-              aria-selected={activeTab === id}
-              className={`tab-bar-item ${activeTab === id ? 'active' : ''}`}
-              onClick={() => onTabChange(id)}
-            >
-              <Icon className="w-3 h-3" />
-              {label}
-              {alertBadge && <span className="led-dot led-amber ml-1" title="Credential alert" />}
-            </button>
-          );
-        })}
-      </div>
+      {/* Tab Bar — grouped Spillman module strip */}
+      <SpillmanModuleGroup
+        groups={[
+          {
+            label: 'Profile',
+            tone: 'steel',
+            tabs: [
+              { id: 'profile',     label: 'Profile' },
+              { id: 'credentials', label: 'Credentials', count: hasCredAlert ? 1 : undefined },
+            ],
+          },
+          {
+            label: 'Scheduling',
+            tone: 'gold',
+            tabs: [
+              { id: 'schedule',   label: 'Schedule' },
+              { id: 'time',       label: 'Time Log' },
+              { id: 'deployment', label: 'Deployment' },
+            ],
+          },
+          {
+            label: 'Performance',
+            tone: 'green',
+            tabs: [
+              { id: 'activity', label: 'Activity' },
+              { id: 'training', label: 'Training' },
+              { id: 'fitness',  label: 'Fitness' },
+            ],
+          },
+          {
+            label: 'Equipment',
+            tone: 'neutral',
+            tabs: [
+              { id: 'equipment',     label: 'Equipment' },
+              { id: 'body_cameras',  label: 'Body Cams' },
+              { id: 'dash_cameras',  label: 'Dash Cams' },
+            ],
+          },
+        ] as ModuleGroupSpec[]}
+        activeTab={activeTab}
+        onTabChange={(id) => onTabChange(id as DetailTab)}
+      />
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-4 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
-        {activeTab === 'profile' && <ProfileDetailTab officer={officer} credentials={officerCreds} />}
+      <div className="flex-1 min-h-0 overflow-y-auto min-h-0 p-4 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
+        {activeTab === 'profile' && (
+          <>
+            <ProfileDetailTab officer={officer} credentials={officerCreds} />
+            {/* Emailed Documents (outbound PDFs sent from this record) */}
+            <EmailedDocuments recordType="personnel" recordId={officer.id} />
+          </>
+        )}
         {activeTab === 'credentials' && (
           <CredentialsDetailTab
             credentials={officerCreds}
@@ -476,6 +529,7 @@ export default function PersonnelDetailPanel({
             onEdit={onEditEquipment}
             onDelete={onDeleteEquipment}
             loading={equipmentLoading}
+            preparedBy={preparedBy}
           />
         )}
         {activeTab === 'body_cameras' && (
