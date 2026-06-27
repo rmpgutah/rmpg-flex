@@ -13,7 +13,7 @@ public struct RoleAwareShell: View {
     public var body: some View {
         switch role {
         case .officer:    OfficerShell(session: session)
-        case .supervisor: SupervisorShell()
+        case .supervisor: SupervisorShell(session: session)
         }
     }
 }

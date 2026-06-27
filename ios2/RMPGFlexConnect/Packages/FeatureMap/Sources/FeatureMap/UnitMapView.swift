@@ -2,13 +2,13 @@ import SwiftUI
 import MapKit
 import CoreLocation
 import FeatureCFS
-import CoreLocation as RMPGCoreLocation
+import CoreLocationService
 
 public struct UnitMapView: View {
     @State private var viewModel: UnitMapViewModel
     @State private var position: MapCameraPosition = .automatic
 
-    public init(apiClient: UnitMapAPIClient, gpsProvider: RMPGCoreLocation.GPSProvider) {
+    public init(apiClient: UnitMapAPIClient, gpsProvider: CoreLocationService.GPSProvider) {
         _viewModel = State(initialValue: UnitMapViewModel(apiClient: apiClient, gpsProvider: gpsProvider))
     }
 
@@ -96,13 +96,13 @@ struct CallAnnotationView: View {
 @Observable
 public final class UnitMapViewModel {
     private let apiClient: UnitMapAPIClient
-    private let gpsProvider: RMPGCoreLocation.GPSProvider
+    private let gpsProvider: CoreLocationService.GPSProvider
 
     public var units: [UnitAnnotation] = []
     public var activeCalls: [ActiveCall] = []
     public var myLocation: CLLocation?
 
-    init(apiClient: UnitMapAPIClient, gpsProvider: RMPGCoreLocation.GPSProvider) {
+    init(apiClient: UnitMapAPIClient, gpsProvider: CoreLocationService.GPSProvider) {
         self.apiClient = apiClient
         self.gpsProvider = gpsProvider
     }
@@ -121,11 +121,28 @@ public final class UnitMapViewModel {
     deinit { Task { await startPolling() } }
 }
 
-public struct UnitAnnotation: Identifiable, Sendable {
+public struct UnitAnnotation: Identifiable, Sendable, Decodable {
     public let id: String
     public let callSign: String
     public let status: String
     public let location: CLLocationCoordinate2D?
+
+    enum CodingKeys: String, CodingKey {
+        case id, callSign, status, latitude, longitude
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        callSign = try container.decode(String.self, forKey: .callSign)
+        status = try container.decode(String.self, forKey: .status)
+        if let lat = try container.decodeIfPresent(Double.self, forKey: .latitude),
+           let lng = try container.decodeIfPresent(Double.self, forKey: .longitude) {
+            location = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+        } else {
+            location = nil
+        }
+    }
 
     public var statusColor: Color {
         switch status {

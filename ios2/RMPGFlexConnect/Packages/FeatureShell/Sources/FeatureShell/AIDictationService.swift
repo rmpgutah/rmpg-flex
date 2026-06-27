@@ -1,5 +1,6 @@
 import Foundation
-import CoreAudio
+import SwiftUI
+import CoreAudioService
 
 public actor AIDictationService {
     private let audioRecorder: AudioRecorderService
@@ -15,7 +16,7 @@ public actor AIDictationService {
     public func recordAndTranscribe() async throws -> StructuredNarrative {
         try await audioRecorder.startRecording()
         try await Task.sleep(nanoseconds: 10_000_000_000)
-        guard let recordingURL = audioRecorder.stopRecording() else {
+        guard let recordingURL = await audioRecorder.stopRecording() else {
             throw DictationError.recordingFailed
         }
         defer { try? FileManager.default.removeItem(at: recordingURL) }
@@ -76,6 +77,7 @@ public enum DictationError: Error, LocalizedError {
     }
 }
 
+@MainActor
 public struct DictationButton: View {
     @State private var isRecording = false
     @State private var result: StructuredNarrative?
@@ -88,7 +90,21 @@ public struct DictationButton: View {
 
     public var body: some View {
         VStack(spacing: 12) {
-            Button(action: toggleRecording) {
+            Button {
+                isRecording.toggle()
+                if !isRecording {
+                    Task {
+                        do {
+                            result = try await service.recordAndTranscribe()
+                        } catch {
+                            self.error = error.localizedDescription
+                        }
+                    }
+                } else {
+                    result = nil
+                    error = nil
+                }
+            } label: {
                 Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 48))
                     .foregroundColor(isRecording ? .red : .blue)
@@ -110,22 +126,5 @@ public struct DictationButton: View {
             }
         }
         .padding()
-    }
-
-    private func toggleRecording() {
-        if isRecording {
-            isRecording = false
-            Task {
-                do {
-                    result = try await service.recordAndTranscribe()
-                } catch {
-                    self.error = error.localizedDescription
-                }
-            }
-        } else {
-            isRecording = true
-            result = nil
-            error = nil
-        }
     }
 }

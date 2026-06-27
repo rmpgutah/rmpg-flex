@@ -9,7 +9,7 @@
 // legacy /fleet maintenance tab in a new tab.
 // ============================================================
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, AlertTriangle, BarChart3, Calendar, Clock } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { apiFetch } from '../../../../hooks/useApi';
 import { FleetListShell } from '../shell/FleetListShell';
@@ -30,9 +30,32 @@ interface WorkOrderRow {
   actual_cost: number | null;
   category_code: string | null;
   notes: string | null;
+  priority?: string;
+  scheduled_date?: string | null;
+  failure_category?: string | null;
+  estimated_hours?: number | null;
+  labor_hours?: number | null;
+}
+
+interface WorkOrderStats {
+  by_status: Record<string, number>;
+  by_priority: Record<string, number>;
+  by_category: Record<string, number>;
+  total_est_cost: number;
+  total_actual_cost: number;
+  overdue_count: number;
+  scheduled_count: number;
+  monthly_trend: { month: string; opened: number; completed: number }[];
 }
 
 interface VehicleStub { id: number; vehicle_number: string | null; vehicle_name: string | null; }
+
+const PRIORITY_TONES: Record<string, string> = {
+  low: 'border-l-green-500/60',
+  normal: 'border-l-blue-500/60',
+  high: 'border-l-amber-500/60',
+  emergency: 'border-l-red-500/60',
+};
 
 const STATUS_LABELS: Record<WorkOrderRow['status'], string> = {
   open: 'Open',
@@ -62,6 +85,8 @@ export function WorkOrdersRoute() {
   const [err, setErr] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
+  const [stats, setStats] = useState<WorkOrderStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
   const fetchedIds = useRef<string>('');
 
   useEffect(() => {
@@ -104,6 +129,13 @@ export function WorkOrdersRoute() {
   }, [statusFilter, openOnly]);
 
   useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  useEffect(() => {
+    setStatsLoading(true);
+    apiFetchV2<WorkOrderStats>('/work-orders/stats')
+      .then((r) => { setStats(r); setStatsLoading(false); })
+      .catch(() => { setStatsLoading(false); });
+  }, []);
 
   useEffect(() => {
     // /api/fleet returns { data, pagination } — unwrap.
@@ -175,6 +207,32 @@ export function WorkOrdersRoute() {
         </>
       }
     >
+      {/* Stats bar */}
+      {!statsLoading && stats && (
+        <div className="grid grid-cols-5 gap-2 px-3 py-2 border-b border-rmpg-800/40 bg-surface-sunken/30">
+          <div className="text-center">
+            <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold">Total Open</div>
+            <div className="text-lg font-bold font-mono text-amber-400">{(stats.by_status?.open ?? 0) + (stats.by_status?.in_progress ?? 0) + (stats.by_status?.waiting_parts ?? 0)}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold">Overdue</div>
+            <div className={`text-lg font-bold font-mono ${stats.overdue_count > 0 ? 'text-red-400' : 'text-rmpg-400'}`}>{stats.overdue_count}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold">Scheduled</div>
+            <div className="text-lg font-bold font-mono text-blue-400">{stats.scheduled_count}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold">Est. Cost</div>
+            <div className="text-lg font-bold font-mono text-rmpg-100">${(stats.total_est_cost ?? 0).toLocaleString()}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[9px] text-rmpg-500 uppercase tracking-wider font-bold">Actual Cost</div>
+            <div className="text-lg font-bold font-mono text-rmpg-100">${(stats.total_actual_cost ?? 0).toLocaleString()}</div>
+          </div>
+        </div>
+      )}
+
       {err ? (
         <div className="m-3 p-3 rounded-sm border border-red-500/40 text-red-300 text-xs">
           {err}
@@ -192,6 +250,7 @@ export function WorkOrdersRoute() {
               <th className="text-left px-3 py-1.5 font-semibold">WO #</th>
               <th className="text-left px-3 py-1.5 font-semibold">Vehicle</th>
               <th className="text-left px-3 py-1.5 font-semibold">Status</th>
+              <th className="text-left px-3 py-1.5 font-semibold">Priority</th>
               <th className="text-left px-3 py-1.5 font-semibold">Opened</th>
               <th className="text-left px-3 py-1.5 font-semibold">Summary</th>
               <th className="text-right px-3 py-1.5 font-semibold">Est</th>
@@ -201,7 +260,7 @@ export function WorkOrdersRoute() {
           </thead>
           <tbody>
             {filtered.map((r) => (
-              <tr key={r.id} className="border-b border-rmpg-800/40 hover:bg-rmpg-800/40">
+              <tr key={r.id} className={`border-b border-rmpg-800/40 hover:bg-rmpg-800/40 ${r.priority ? PRIORITY_TONES[r.priority] ?? '' : ''} border-l-[3px] border-l-transparent`}>
                 <td className="px-3 py-1 font-mono text-rmpg-100">{r.number ?? `#${r.id}`}</td>
                 <td className="px-3 py-1 text-rmpg-100">{vehicleLabel(r.vehicle_id)}</td>
                 <td className="px-3 py-1">
@@ -209,8 +268,17 @@ export function WorkOrdersRoute() {
                     {STATUS_LABELS[r.status]}
                   </span>
                 </td>
+                <td className="px-3 py-1">
+                  {r.priority && r.priority !== 'normal' ? (
+                    <span className={`text-[10px] uppercase font-bold ${r.priority === 'emergency' ? 'text-red-400' : r.priority === 'high' ? 'text-amber-400' : 'text-rmpg-400'}`}>
+                      {r.priority}
+                    </span>
+                  ) : (
+                    <span className="text-rmpg-600">—</span>
+                  )}
+                </td>
                 <td className="px-3 py-1 font-mono text-rmpg-300">{shortDate(r.opened_at)}</td>
-                <td className="px-3 py-1 text-rmpg-200 max-w-[320px] truncate" title={r.summary ?? ''}>
+                <td className="px-3 py-1 text-rmpg-200 max-w-[280px] truncate" title={r.summary ?? ''}>
                   {r.summary ?? '—'}
                 </td>
                 <td className="px-3 py-1 text-right text-rmpg-300 font-mono">{fmtUsd(r.est_cost)}</td>
@@ -259,6 +327,10 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
   const [status, setStatus] = useState<WorkOrderRow['status']>('open');
   const [estCost, setEstCost] = useState('');
   const [notes, setNotes] = useState('');
+  const [priority, setPriority] = useState('normal');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [failureCategory, setFailureCategory] = useState('');
+  const [estimatedHours, setEstimatedHours] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -291,6 +363,10 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
         number: number.trim() || null,
         summary: summary.trim() || null,
         status,
+        priority,
+        scheduled_date: scheduledDate || null,
+        failure_category: failureCategory || null,
+        estimated_hours: estimatedHours ? parseFloat(estimatedHours) : null,
         est_cost: estCost ? parseFloat(estCost) : null,
         notes: notes.trim() || null,
       }),
@@ -376,6 +452,62 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
                 <option value="waiting_parts">Waiting parts</option>
               </select>
             </Field>
+            <Field label="Priority">
+              <select
+                className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="emergency">Emergency</option>
+              </select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Scheduled Date">
+              <input
+                type="date"
+                className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100 font-mono"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+              />
+            </Field>
+            <Field label="Est. hours">
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.5"
+                className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100 font-mono"
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(e.target.value)}
+                placeholder="e.g. 2.5"
+              />
+            </Field>
+          </div>
+          <Field label="Failure Category">
+            <select
+              className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
+              value={failureCategory}
+              onChange={(e) => setFailureCategory(e.target.value)}
+            >
+              <option value="">— None —</option>
+              <option value="mechanical">Mechanical</option>
+              <option value="electrical">Electrical</option>
+              <option value="body">Body / Cosmetics</option>
+              <option value="tires">Tires / Wheels</option>
+              <option value="brakes">Brakes</option>
+              <option value="engine">Engine</option>
+              <option value="transmission">Transmission</option>
+              <option value="hvac">HVAC</option>
+              <option value="lights">Lights / Sirens</option>
+              <option value="radio">Radio / Comms</option>
+              <option value="computer">Computer / MDT</option>
+              <option value="other">Other</option>
+            </select>
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
             <Field label="Est. cost ($)">
               <input
                 type="number"

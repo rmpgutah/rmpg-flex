@@ -2,7 +2,7 @@ import SwiftUI
 import DesignSystem
 import CoreAPI
 import CoreAuth
-import CoreLocation
+import CoreLocationService
 import FeatureDuty
 import FeatureQuickActions
 import FeatureCFS

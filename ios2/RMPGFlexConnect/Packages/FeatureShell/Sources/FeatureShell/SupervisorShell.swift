@@ -2,7 +2,7 @@ import SwiftUI
 import DesignSystem
 import CoreAPI
 import CoreAuth
-import CoreLocation
+import CoreLocationService
 import FeatureCFS
 import FeatureMap
 
@@ -74,7 +74,7 @@ public struct CommandDashboardView: View {
                             CommandStat(value: avgResponseTime, label: "AVG RESPONSE", icon: "clock")
                             CommandStat(value: "\(pendingApprovals)", label: "APPROVALS", icon: "doc.badge.clock", color: theme.colors.brandGold)
                         }
-                        SectionHeader(title: "ON DUTY UNITS")
+                        Text("ON DUTY UNITS").font(.headline).padding(.top, 8)
                         ForEach(0..<max(onDutyCount, 3), id: \.self) { i in
                             UnitBriefRow(callSign: "C\(342 + i)", status: "10-8", location: "Salt Lake City")
                         }

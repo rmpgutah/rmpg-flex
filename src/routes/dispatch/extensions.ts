@@ -192,8 +192,9 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
     if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
 
     // Officers can only change their own unit; supervisors+ can change any
-    const canForce = ['admin', 'manager', 'supervisor', 'dispatcher'].includes(user.role);
-    if (!canForce && unit.officer_id !== user.id) {
+    const userRole = user?.role ?? '';
+    const canForce = ['admin', 'manager', 'supervisor', 'dispatcher'].includes(userRole);
+    if (!canForce && unit.officer_id !== user?.id) {
       return c.json({ error: 'Officers may only change their own unit audio mode', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
 
@@ -411,7 +412,7 @@ premiseAlerts.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     if (!before) return c.json({ error: 'Premise alert not found', code: 'PA_NOT_FOUND' }, 404);
 
     const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-    const alert_level = b.alert_level ? String(b.alert_level).toLowerCase() : before.alert_level;
+    const alert_level = b.alert_level ? String(b.alert_level).toLowerCase() : String(before.alert_level ?? '');
     if (!VALID_ALERT_LEVELS.includes(alert_level)) {
       return c.json({ error: `alert_level must be one of ${VALID_ALERT_LEVELS.join(', ')}`, code: 'PA_INVALID_LEVEL' }, 400);
     }
@@ -533,9 +534,11 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
     if (call.hazmat) warnings.push({ type: 'HAZMAT', label: 'HAZMAT', severity: 'critical', source: 'call' });
 
     // ── Premise alerts within 50m ──
-    if (call.latitude != null && call.longitude != null) {
+    const clat = Number(call.latitude);
+    const clng = Number(call.longitude);
+    if (!isNaN(clat) && !isNaN(clng)) {
       const dLat = 50 / 111000;
-      const dLng = 50 / (111000 * Math.max(0.01, Math.cos(toRad(call.latitude))));
+      const dLng = 50 / (111000 * Math.max(0.01, Math.cos(toRad(clat))));
       try {
         const candidates = await query<Record<string, unknown>>(db, `
           SELECT id, address, latitude, longitude, alert_level, title, description
@@ -544,10 +547,10 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
             AND latitude BETWEEN ? AND ?
             AND longitude BETWEEN ? AND ?
             AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
-          call.latitude - dLat, call.latitude + dLat,
-          call.longitude - dLng, call.longitude + dLng);
+          clat - dLat, clat + dLat,
+          clng - dLng, clng + dLng);
         for (const a of candidates) {
-          const d = haversineMeters(call.latitude, call.longitude, a.latitude as number, a.longitude as number);
+          const d = haversineMeters(clat, clng, a.latitude as number, a.longitude as number);
           if (d <= 50) {
             const sev: 'critical' | 'high' | 'medium' = a.alert_level === 'critical' ? 'critical' : a.alert_level === 'warning' ? 'high' : 'medium';
             warnings.push({
@@ -596,17 +599,21 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
           )
         LIMIT 50`, id);
       for (const w of warrants) {
+        const wtype = String(w.type || 'unknown');
+        const wfn = String(w.first_name || '');
+        const wln = String(w.last_name || '');
+        const wnum = String(w.warrant_number || '');
         warnings.push({
           type: 'WARRANT',
-          label: `ACTIVE WARRANT: ${(w.type || 'unknown').toUpperCase()}`,
+          label: `ACTIVE WARRANT: ${wtype.toUpperCase()}`,
           severity: 'critical',
-          source: `${w.first_name || ''} ${w.last_name || ''}`.trim() || w.warrant_number,
+          source: `${wfn} ${wln}`.trim() || wnum,
         });
       }
     } catch { log.warn('[safety-briefing] warrants query failed', { callId: id }); /* warrants schema variance */ }
 
     // ── Incident-type hints ──
-    const itype = (call.incident_type || '').toLowerCase();
+    const itype = String(call.incident_type || '').toLowerCase();
     if ((itype.includes('shooting') || itype.includes('shots_fired')) && !warnings.find((w) => w.type === 'ARMED')) {
       warnings.push({ type: 'ARMED', label: 'POSSIBLE WEAPONS', severity: 'critical', source: 'Incident type' });
     }
@@ -651,7 +658,9 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
 
     // Officers can only change their own unit; supervisors+ can change any
     const supervisorRoles = ['admin', 'manager', 'supervisor', 'dispatcher'];
-    if (!supervisorRoles.includes(user.role) && unit.officer_id !== user.id) {
+    const uRole = user?.role ?? '';
+    const uId = user?.id;
+    if (!supervisorRoles.includes(uRole) && unit.officer_id !== uId) {
       return c.json({ error: 'Officers may only change their own unit status', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
 
@@ -831,7 +840,7 @@ bolos.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     // The Communications "Resolve" button sends status:'resolved', which is not a
     // valid bolos.status enum value (live CHECK = active/expired/cancelled) and
     // would 400. Treat "resolved" as "cancelled" (no longer needed).
-    let status = b.status ? String(b.status).toLowerCase() : before.status;
+    let status = b.status ? String(b.status).toLowerCase() : String(before.status ?? '');
     if (status === 'resolved') status = 'cancelled';
     if (!VALID_BOLO_STATUSES.includes(status)) return c.json({ error: `status must be one of ${VALID_BOLO_STATUSES.join(', ')}`, code: 'BOLO_INVALID_STATUS' }, 400);
 
@@ -1674,7 +1683,7 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
 
     const np: string[] = [];
     np.push(`Incident generated from dispatch call ${call.call_number}.`);
-    np.push(`\nCall Type: ${(call.incident_type || '').replace(/_/g, ' ').toUpperCase()}`);
+    np.push(`\nCall Type: ${String(call.incident_type || '').replace(/_/g, ' ').toUpperCase()}`);
     np.push(`Priority: ${call.priority}`);
     np.push(`Location: ${call.location_address || 'Unknown'}`);
     if (call.caller_name) np.push(`Caller: ${call.caller_name}${call.caller_phone ? ` (${call.caller_phone})` : ''}`);
@@ -1812,5 +1821,98 @@ callActions.patch('/:id/pin', requireRole('admin', 'manager', 'supervisor', 'dis
   } catch (err) {
     log.error('[dispatch] pin error', {}, err);
     return c.json({ error: 'Failed to toggle pin', code: 'PIN_ERR' }, 500);
+  }
+});
+
+// ─── Dispatch-to-Work-Order integration ─────────────────────
+// POST /:id/report-issue — create a work order from a dispatch call
+// when a unit reports a mechanical issue. Auto-links to the unit and
+// vehicle for the fleet repair workflow.
+callActions.post('/:id/report-issue', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const callId = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(callId) || callId <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT id, call_number, incident_type, location_address, assigned_unit_ids FROM calls_for_service WHERE id = ?', callId,
+    );
+    if (!call) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
+
+    const userId = c.get('userId') as number | undefined;
+    const body = await c.req.json<{
+      summary?: string; vehicle_id?: number; unit_id?: number;
+      failure_category?: string; priority?: string; notes?: string;
+    }>().catch(() => ({} as { summary?: string; vehicle_id?: number; unit_id?: number; failure_category?: string; priority?: string; notes?: string }));
+
+    // Resolve unit → vehicle when vehicle_id not explicitly provided
+    let vehicleId: number | null = body.vehicle_id ?? null;
+    let unitId: number | null = body.unit_id ?? null;
+    if (!vehicleId && unitId) {
+      const unit = await queryFirst<{ fleet_vehicle_id: number | null }>(
+        db, `SELECT fv.id AS fleet_vehicle_id
+             FROM units u LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
+             WHERE u.id = ?`, unitId,
+      );
+      if (unit?.fleet_vehicle_id) vehicleId = unit.fleet_vehicle_id;
+    }
+    if (!vehicleId && !unitId) {
+      // Parse from assigned_unit_ids
+      const unitIds = parseUnitIds(call.assigned_unit_ids);
+      if (unitIds.length > 0) {
+        unitId = unitIds[0];
+        const unit = await queryFirst<{ fleet_vehicle_id: number | null }>(
+          db, `SELECT fv.id AS fleet_vehicle_id
+               FROM units u LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
+               WHERE u.id = ?`, unitId,
+        );
+        if (unit?.fleet_vehicle_id) vehicleId = unit.fleet_vehicle_id;
+      }
+    }
+    if (!vehicleId) return c.json({ error: 'Could not determine vehicle. Provide vehicle_id or ensure unit is linked to a fleet vehicle.', code: 'NO_VEHICLE' }, 400);
+
+    // Validate priority
+    const validPriorities = new Set(['low', 'normal', 'high', 'emergency']);
+    const priority = body.priority && validPriorities.has(body.priority) ? body.priority : 'normal';
+
+    const result = await execute(db,
+      `INSERT INTO work_orders
+         (vehicle_id, summary, failure_category, priority, call_id, unit_id,
+          reported_by_user_id, status, notes, created_by,
+          custom_fields_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?,
+               ?)`,
+      vehicleId,
+      body.summary ?? `Mechanical issue reported from Call #${call.call_number ?? callId}`,
+      body.failure_category ?? null,
+      priority,
+      callId,
+      unitId,
+      userId ?? null,
+      body.notes ?? null,
+      userId ?? null,
+      JSON.stringify({ source: 'dispatch_report', call_number: call.call_number, incident_type: call.incident_type }),
+    );
+
+    const woId = Number(result.meta.last_row_id);
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM work_orders WHERE id = ?', woId);
+
+    // Log the action
+    try {
+      await execute(db,
+        `INSERT INTO cfs_action_log (call_id, action, verb, params, narrative, actor_id)
+         VALUES (?, 'work_order_created', 'report-issue', ?, ?, ?)`,
+        callId,
+        JSON.stringify({ work_order_id: woId, vehicle_id: vehicleId, unit_id: unitId, failure_category: body.failure_category }),
+        `Work order #${woId} created for vehicle maintenance issue`,
+        userId ?? null,
+      );
+    } catch { /* non-fatal */ }
+
+    log.info('[dispatch] work order created from call', { callId, workOrderId: woId, vehicleId, unitId });
+    return c.json({ data: created, call_id: callId, unit_id: unitId }, 201);
+  } catch (err) {
+    log.error('[dispatch] report-issue error', {}, err);
+    return c.json({ error: 'Failed to create work order', code: 'REPORT_ISSUE_ERR' }, 500);
   }
 });

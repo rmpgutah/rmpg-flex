@@ -7,12 +7,12 @@ let package = Package(
     products: [.library(name: "FeatureMap", targets: ["FeatureMap"])],
     dependencies: [
         .package(path: "../CoreAPI"),
-        .package(path: "../CoreLocation"),
+        .package(path: "../CoreLocationService"),
         .package(path: "../DesignSystem"),
         .package(path: "../FeatureCFS"),
     ],
     targets: [
-        .target(name: "FeatureMap", dependencies: ["CoreAPI", "CoreLocation", "DesignSystem", "FeatureCFS"]),
+        .target(name: "FeatureMap", dependencies: ["CoreAPI", "CoreLocationService", "DesignSystem", "FeatureCFS"]),
         .testTarget(name: "FeatureMapTests", dependencies: ["FeatureMap"]),
     ]
 )

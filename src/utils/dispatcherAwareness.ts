@@ -38,7 +38,7 @@ const OFF_DUTY_UNIT_STATUSES = ['off_duty', 'offline', 'out_of_service', 'oos', 
 
 async function safe<T>(p: Promise<T[]>): Promise<T[]> {
   try { return await p; } catch (err) {
-    log.warn('query failed (skipped)', {}, err);
+    log.warn('query failed (skipped)', { err });
     return [];
   }
 }
@@ -625,7 +625,7 @@ async function broadcastBoard(env: Bindings, action: string, payload: Record<str
   try {
     await emitAlert(env, 'dispatch_update', { action, ...payload });
   } catch (err) {
-    log.warn('board broadcast failed (non-fatal)', {}, err);
+    log.warn('board broadcast failed (non-fatal)', { err });
   }
 }
 
@@ -865,7 +865,7 @@ async function createBolo(db: D1Database, req: ActionRequest, ctx: ActionContext
     boloNumber = out.value;
     res = out.result;
   } catch (err) {
-    log.warn('BOLO insert failed', {}, err);
+    log.warn('BOLO insert failed', { err });
     return null;
   }
   if (!res.meta.last_row_id) return null;
@@ -978,7 +978,7 @@ async function createCall(env: Bindings, db: D1Database, req: ActionRequest): Pr
     callNumber = out.value;
     res = out.result;
   } catch (err) {
-    log.warn('createCall insert failed', {}, err);
+    log.warn('createCall insert failed', { err });
     return null;
   }
   if (!res.meta.last_row_id) return null;
@@ -1000,7 +1000,7 @@ async function createCall(env: Bindings, db: D1Database, req: ActionRequest): Pr
         district.area_code ?? null, district.area_name ?? null, callId,
       );
     } catch (err) {
-      log.warn('createCall area ext write skipped (non-fatal)', {}, err);
+      log.warn('createCall area ext write skipped (non-fatal)', { err });
     }
   }
 

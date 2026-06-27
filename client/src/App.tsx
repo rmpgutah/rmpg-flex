@@ -137,7 +137,6 @@ const BoloBoard = lazyRetry(() => import('./pages/intel/BoloBoard'));
 const IntelSearch = lazyRetry(() => import('./pages/intel/IntelSearch'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
 const AnalyticsPage = lazyRetry(() => import('./pages/AnalyticsPage'));
-const ALPRDashboardPage = lazyRetry(() => import('./pages/ALPRDashboardPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
 const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
 const InteractionRecorderPage = lazyRetry(() => import('./pages/InteractionRecorderPage'));
@@ -495,7 +494,6 @@ function AppRoutes() {
             <Route path="/radio" element={<RouteErrorBoundary><RadioPage /></RouteErrorBoundary>} />
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
             <Route path="/analytics" element={<RouteErrorBoundary><AnalyticsPage /></RouteErrorBoundary>} />
-            <Route path="/alpr" element={<RouteErrorBoundary><ALPRDashboardPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
             {/* === Fleet UI cutover (PR 7'c) ===
                  /fleet now serves the v2 Fleet.io-style shell.

@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreAPI
 import DesignSystem
 
 public struct PlateEntryView: View {

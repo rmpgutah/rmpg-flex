@@ -41,7 +41,7 @@ async function runReportLLM(
       const cleaned = text.replace(/```/g, '').trim();
       if (cleaned) return cleaned;
     } catch (err) {
-      log.warn(`${model} failed`, {}, err);
+      log.warn(`${model} failed`, { err });
     }
   }
   return null;

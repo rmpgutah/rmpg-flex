@@ -164,7 +164,7 @@ export function _rosterRowForTest(r: Record<string, unknown>) {
 }
 function rosterRow(r: Record<string, unknown>) {
   const onShift = r.entry_id != null;
-  const clockInMs = onShift ? new Date(r.clock_in).getTime() : NaN;
+  const clockInMs = onShift ? new Date(String(r.clock_in)).getTime() : NaN;
   return {
     officer_id: r.officer_id,
     name: r.full_name ?? null,
@@ -415,7 +415,7 @@ duty.post('/end', async (c) => {
       const totalMiles = startMi != null && endingMileage != null ? Math.max(0, Math.round((endingMileage - startMi) * 10) / 10) : null;
 
       const stamp = nowStamp();
-      const hrs = hoursBetween(entry.clock_in, stamp, Number(entry.break_minutes) || 0);
+      const hrs = hoursBetween(String(entry.clock_in), stamp, Number(entry.break_minutes) || 0);
       await execute(db,
         `UPDATE time_entries SET clock_out = ?, total_hours = ?, ending_mileage = ?, total_miles = ?, status = 'completed' WHERE id = ?`,
         stamp, hrs, endingMileage, totalMiles, entry.id);

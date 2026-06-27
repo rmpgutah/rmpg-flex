@@ -269,7 +269,7 @@ export async function getRadioSettings(db: D1Database): Promise<RadioSettings> {
       (out as unknown as Record<string, unknown>)[key] = coerce(key, String(r.config_value));
     }
   } catch (err) {
-    log.warn('read failed — using defaults', {}, err);
+    log.warn('read failed — using defaults', { err });
   }
   return out;
 }

@@ -231,31 +231,17 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
     // Back-compat: legacy rows used "{YY}-CFS{NNNNN}" — those still
     // co-exist; the LIKE here only scans the new format so we don't
     // collide with the old sequence.
-    //
-    // RACE CONDITION GUARD: Use a loop with collision detection instead of
-    // bare MAX() + INSERT. Concurrent requests could both read the same max,
-    // compute the same next number, and hit a UNIQUE constraint on insert.
     const year = new Date().getFullYear().toString().slice(-2);
     const prefix = `CFS${year}-`;
-    let callNumber: string = '';
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const [{ max }] = await query<{ max: string | null }>(
-        db,
-        "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
-        `${prefix}%`,
-      );
-      const seq = max
-        ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
-        : '00001';
-      callNumber = `${prefix}${seq}`;
-      // Check for collision before binding to the INSERT params
-      const exists = await queryFirst<{ id: number }>(
-        db, 'SELECT id FROM calls_for_service WHERE call_number = ? LIMIT 1', callNumber);
-      if (!exists) break; // Got a unique number, proceed with insert
-    }
-    if (!callNumber || callNumber.startsWith(`CFS${year}-00000`)) {
-      return c.json({ error: 'Call number generation failed after retries', code: 'CALL_NUMBER_GEN_FAIL' }, 500);
-    }
+    const [{ max }] = await query<{ max: string | null }>(
+      db,
+      "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
+      `${prefix}%`,
+    );
+    const seq = max
+      ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
+      : '00001';
+    const callNumber = `${prefix}${seq}`;
 
     // FK guard — restored-pending-draft can carry a stale property_id
     // from localStorage that no longer exists in this database. If
@@ -450,7 +436,7 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
       // Surface the real SQL error so the dispatcher (and we) can see
       // which column / FK is rejecting. Without this the client sees a
       // generic 500 and we can't debug from production.
-      const msg = String(sqlErr?.message || sqlErr || 'unknown');
+      const msg = String((sqlErr as Error)?.message || sqlErr || 'unknown');
       log.error('Create call INSERT failed', { msg, userId, cols, params: bindParams });
       if (msg.includes('FOREIGN KEY')) {
         return c.json({
@@ -462,12 +448,12 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
     }
   } catch (err: unknown) {
     log.error('Create call outer error', {}, err);
-    return c.json({ error: `Failed to create call: ${err?.message || 'unknown'}`, code: 'OUTER_ERROR' }, 500);
+    return c.json({ error: `Failed to create call: ${(err as Error)?.message || 'unknown'}`, code: 'OUTER_ERROR' }, 500);
   }
 });
 
 // GET /dispatch/calls/active - Active calls shortcut
-calls.get('/active', requireRole(...READ_ROLES), async (c) => {
+calls.get('/active', async (c) => {
   try {
     const db = getDb(c.env);
     // Narrow projection — see LIST_VIEW_COLUMNS for D1 100-col cap rationale.
@@ -487,7 +473,7 @@ calls.get('/active', requireRole(...READ_ROLES), async (c) => {
 });
 
 // GET /dispatch/calls/export - CSV export
-calls.get('/export', requireRole(...READ_ROLES), async (c) => {
+calls.get('/export', async (c) => {
   try {
     const db = getDb(c.env);
     const { status, priority, startDate, endDate } = c.req.query();
@@ -624,16 +610,12 @@ calls.get('/:id', async (c) => {
       db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
 
-    const soft = async <T>(fn: () => Promise<T>, fallback: T, context: string = 'unknown'): Promise<T> => {
-      try { return await fn(); } catch (err) {
-        const msg = (err as Error)?.message ?? 'unknown';
-        log.error(`[calls/:id] sub-query failed: ${context}`, { message: msg, call_id: id });
-        return fallback;
-      }
+    const soft = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try { return await fn(); } catch (err) { log.warn(`[calls/:id] sub-query degraded`, { message: (err as Error)?.message }); return fallback; }
     };
 
     const ext = await soft(() => queryFirst<Record<string, unknown>>(
-      db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id), null, 'calls_for_service_ext');
+      db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id), null);
 
     // Re-dispatch ("return visit") chain. For PSO/process-service calls, attach
     // the prior attempts as visit_history so the detail panel's "PRIOR VISITS"
@@ -671,13 +653,7 @@ calls.get('/:id', async (c) => {
       LEFT JOIN clients cl ON cl.id = COALESCE(ck.client_id, p.client_id)
     `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null), null);
 
-    let assignedIds: number[] = [];
-    try {
-      const parsed = JSON.parse(String(call.assigned_unit_ids || '[]'));
-      if (Array.isArray(parsed)) {
-        assignedIds = parsed.map((u) => Number(u)).filter((u) => Number.isFinite(u) && u > 0);
-      }
-    } catch { assignedIds = []; }
+    let assignedIds: number[] = []; try { assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')); if (!Array.isArray(assignedIds)) assignedIds = []; } catch { assignedIds = []; }
     const assignedUnits = assignedIds.length === 0 ? [] : await soft(() => query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number
       FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
@@ -1252,7 +1228,7 @@ calls.post('/:id/action', requireRole(...WRITE_ROLES), async (c): Promise<Respon
       ...(psoCrosslink ? { pso_crosslink: psoCrosslink } : {}),
     });
   } catch (err) {
-    log.error('POST /dispatch/calls/:id/action failed', { userId: c.get('userId'), callId: id, action: 'action' }, err);
+    log.error('POST /dispatch/calls/:id/action failed', {}, err);
     return c.json({ error: 'action failed' }, 500);
   }
 });
@@ -1410,10 +1386,10 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
             AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
           call.latitude - dLat, call.latitude + dLat,
           call.longitude - dLng, call.longitude + dLng);
-        const within50m = alerts.filter((a) => {
-          const dLatR = (a.latitude - call.latitude!) * Math.PI / 180;
-          const dLngR = (a.longitude - call.longitude!) * Math.PI / 180;
-          const aa = Math.sin(dLatR / 2) ** 2 + Math.cos(call.latitude! * Math.PI / 180) * Math.cos(a.latitude * Math.PI / 180) * Math.sin(dLngR / 2) ** 2;
+        const within50m = alerts.filter((a: Record<string, unknown>) => {
+          const dLatR = (Number(a.latitude) - call.latitude!) * Math.PI / 180;
+          const dLngR = (Number(a.longitude) - call.longitude!) * Math.PI / 180;
+          const aa = Math.sin(dLatR / 2) ** 2 + Math.cos(call.latitude! * Math.PI / 180) * Math.cos(Number(a.latitude) * Math.PI / 180) * Math.sin(dLngR / 2) ** 2;
           return 6371000 * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa)) <= 50;
         });
         if (within50m.length > 0) {
@@ -1597,7 +1573,7 @@ const REDISPATCH_BASE_COPY_COLS = [
   'weapons_involved', 'mental_health_crisis', 'juvenile_involved',
   'felony_in_progress', 'officer_safety_caution', 'k9_requested', 'ems_requested',
   'case_number', 'le_agency', 'le_case_number', 'le_notified',
-  'secondary_type', 'contact_method', 'assigned_unit_ids',
+  'secondary_type', 'contact_method',
 ] as const;
 
 const ordinal = (n: number): string => {
@@ -1683,7 +1659,7 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
 
     // ── Parent back-link note ──
     let parentNotes: any[] = [];
-    try { parentNotes = JSON.parse(parentBase.notes || '[]'); if (!Array.isArray(parentNotes)) parentNotes = []; } catch { parentNotes = []; }
+    try { parentNotes = JSON.parse(String(parentBase.notes ?? '[]')); if (!Array.isArray(parentNotes)) parentNotes = []; } catch { parentNotes = []; }
     parentNotes.push({ id: String(Date.now() + 1), author: 'System', text: `Re-dispatched → new call ${newCallNumber}`, timestamp: nowIso });
     await execute(db, "UPDATE calls_for_service SET notes = ?, updated_at = datetime('now') WHERE id = ?", JSON.stringify(parentNotes), parentId);
 
@@ -1700,7 +1676,7 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
       SELECT c.id, c.call_number, c.status, e.pso_attempt_number, c.created_at, c.cleared_at, c.disposition, e.parent_call_id
       FROM calls_for_service c
       LEFT JOIN calls_for_service_ext e ON e.id = c.id
-      WHERE e.parent_call_id = ? OR c.id = ? OR c.id IN (SELECT parent_call_id FROM calls_for_service_ext WHERE parent_call_id = ?)
+      WHERE c.id = ? OR e.parent_call_id = ?
       ORDER BY COALESCE(e.pso_attempt_number, 1) ASC, c.id ASC
     `, rootCallId, rootCallId);
 
@@ -1712,7 +1688,7 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
 
     return c.json({ ...newCall, chain, parent_call_number: parentBase.call_number }, 201);
   } catch (err) {
-    log.error('Re-dispatch call error', { userId, callId: parentId, action: 'redispatch' }, err);
+    log.error('Re-dispatch call error', {}, err);
     return c.json({ error: `Failed to re-dispatch call: ${(err as Error)?.message || 'unknown'}`, code: 'REDISPATCH_CALL_ERROR' }, 500);
   }
 });
@@ -1731,7 +1707,7 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
     if (!childBase) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
     const childExt = await queryFirst<Record<string, unknown>>(db, 'SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?', childId);
 
-    const parentId = childExt?.parent_call_id;
+    const parentId = childExt?.parent_call_id as number | undefined;
     if (parentId == null) return c.json({ error: 'This call is not a re-dispatch — it has no parent call', code: 'NOT_A_REDISPATCH' }, 400);
 
     // Pending-only, unless admin (which logs an override).
@@ -1760,7 +1736,7 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
 
     // Restore parent notes: drop the "Re-dispatched → new call X" note, add an undo note.
     let parentNotes: any[] = [];
-    try { parentNotes = JSON.parse(parentBase.notes || '[]'); if (!Array.isArray(parentNotes)) parentNotes = []; } catch { parentNotes = []; }
+    try { parentNotes = JSON.parse(String(parentBase.notes ?? '[]')); if (!Array.isArray(parentNotes)) parentNotes = []; } catch { parentNotes = []; }
     parentNotes = parentNotes.filter((n: any) => !String(n?.text || '').includes(`Re-dispatched → new call ${childBase.call_number}`));
     parentNotes.push({ id: String(Date.now()), author: user.full_name || 'System', text: `Return visit ${childBase.call_number} was undone`, timestamp: new Date().toISOString() });
     await execute(db, "UPDATE calls_for_service SET notes = ?, updated_at = datetime('now') WHERE id = ?", JSON.stringify(parentNotes), parentId);
@@ -1775,7 +1751,7 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
 
     return c.json({ success: true, parent: updated, deleted_call: childBase.call_number });
   } catch (err) {
-    log.error('Undo redispatch error', { userId, callId: childId, action: 'undo_redispatch' }, err);
+    log.error('Undo redispatch error', {}, err);
     return c.json({ error: `Failed to undo return visit: ${(err as Error)?.message || 'unknown'}`, code: 'UNDO_REDISPATCH_ERROR' }, 500);
   }
 });
@@ -1787,13 +1763,6 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
     if (!Array.isArray(body.call_ids) || !body.call_ids.length || !body.unit_id) {
       return c.json({ error: 'call_ids (array) and unit_id required' }, 400);
     }
-    // Validate all call_ids are finite integers
-    const cleanIds = body.call_ids
-      .map((id) => Number(id))
-      .filter((id) => Number.isInteger(id) && id > 0);
-    if (cleanIds.length === 0) {
-      return c.json({ error: 'No valid call_ids provided (must be positive integers)' }, 400);
-    }
     const db = getDb(c.env);
     // `call_sign` is the units table's human-readable id (UNIQUE NOT NULL);
     // there is NO `unit_number` column on units (that lives on the GPS-device
@@ -1804,7 +1773,7 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
       'SELECT id, call_sign FROM units WHERE id = ?', body.unit_id);
     if (!unit) return c.json({ error: 'Unit not found' }, 404);
     let updated = 0;
-    for (const callId of cleanIds.slice(0, 50)) {
+    for (const callId of body.call_ids.slice(0, 50)) {
       try {
         await execute(db,
           `UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = datetime('now') WHERE id = ?`,
@@ -1899,7 +1868,7 @@ calls.post('/force-close-all', requireRole(...WRITE_ROLES), async (c) => {
     await emitAlert(c.env, 'dispatch_update', { action: 'bulk_force_close', closed: ids.length, disposition });
     return c.json({ success: true, closed: ids.length });
   } catch (err) {
-    log.error('Force close-all error', { userId: c.get('userId'), action: 'force_close_all' }, err);
+    log.error('Force close-all error', {}, err);
     return c.json({ error: 'Force close failed' }, 500);
   }
 });
