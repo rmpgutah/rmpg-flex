@@ -9,7 +9,6 @@ import { openFiCardPdf } from '../utils/fiCardPdf';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
-import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
@@ -25,7 +24,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidPlate, isValidDate } from '../utils/validate';
-import { formatDate, formatDateTime, parseTimestamp } from '../utils/dateUtils';
+import { formatDate, formatDateTime, parseTimestamp, localToday } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import WarrantBadge from '../components/WarrantBadge';
 import { formatAddressDisplay } from '../utils/statusLabels';
@@ -71,7 +70,7 @@ const REASON_COLORS: Record<string, string> = {
 };
 
 const EMPTY_FORM = {
-  date: new Date().toISOString().slice(0, 10),
+  date: localToday(),
   subject_first_name: '', subject_last_name: '', subject_dob: '',
   subject_gender: '', subject_race: '', subject_height: '', subject_weight: '',
   subject_hair: '', subject_eye: '', subject_clothing: '', subject_description: '',
@@ -103,9 +102,10 @@ export default function FieldInterviewsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const canManage = isAdmin || user?.role === 'manager' || user?.role === 'supervisor';
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
-  const { identify: identifyDistrict } = useDistrictIdentify();
+  useDistrictIdentify(); // keep hook mounted for side-effects; identify not used on this page
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
@@ -233,7 +233,7 @@ export default function FieldInterviewsPage() {
     setEditingFi(fi);
     clearAllErrors();
     setFormData({
-      date: (fi as any).date || fi.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      date: (fi as any).date || fi.created_at?.slice(0, 10) || localToday(),
       subject_first_name: fi.subject_first_name || '',
       subject_last_name: fi.subject_last_name || '',
       subject_dob: fi.subject_dob || '',
@@ -359,14 +359,16 @@ export default function FieldInterviewsPage() {
       : 'Unknown Subject';
     return [
       m.action('Open FI card', () => setSelectedFi(fi), { icon: <Eye size={12} /> }),
-      m.action('Edit', () => handleEdit(fi), { icon: <FileText size={12} /> }),
+      ...(canManage ? [m.action('Edit', () => handleEdit(fi), { icon: <FileText size={12} /> })] : []),
       m.separator(),
       m.copy('Copy FI number', fi.fi_number),
       m.copyId(fi.id),
       m.separator(),
-      ...(fi.status === 'active'
-        ? [m.action('Archive', () => handleArchive(fi), { icon: <Archive size={12} /> })]
-        : [m.action('Restore', () => handleUnarchive(fi), { icon: <RotateCcw size={12} /> })]),
+      ...(canManage
+        ? fi.status === 'active'
+          ? [m.action('Archive', () => handleArchive(fi), { icon: <Archive size={12} /> })]
+          : [m.action('Restore', () => handleUnarchive(fi), { icon: <RotateCcw size={12} /> })]
+        : []),
       ...(isAdmin ? [m.action('Delete', () => handleDelete(fi), { icon: <Trash2 size={12} />, danger: true })] : []),
     ];
   };
@@ -380,9 +382,11 @@ export default function FieldInterviewsPage() {
   const hardDeleteTargetRef = useRef(hardDeleteTarget);
   const formOpenRef = useRef(formOpen);
   const selectedFiRef = useRef(selectedFi);
+  const canManageRef = useRef(canManage);
   useEffect(() => { hardDeleteTargetRef.current = hardDeleteTarget; }, [hardDeleteTarget]);
   useEffect(() => { formOpenRef.current = formOpen; }, [formOpen]);
   useEffect(() => { selectedFiRef.current = selectedFi; }, [selectedFi]);
+  useEffect(() => { canManageRef.current = canManage; }, [canManage]);
 
   // Keyboard shortcuts: Escape closes modals (smart cascade — innermost first);
   // `N` opens a new FI card from anywhere on the page (mirrors Dispatch's `N`
@@ -396,14 +400,15 @@ export default function FieldInterviewsPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         // Smart cascade: dismiss innermost layer first.
-        if (hardDeleteTargetRef.current !== null) { setHardDeleteTarget(null); return; }
-        if (formOpenRef.current) { clearFormDraft(); setFormOpen(false); setEditingFi(null); return; }
-        if (selectedFiRef.current) { setSelectedFi(null); return; }
+        if (hardDeleteTargetRef.current !== null) { e.stopPropagation(); setHardDeleteTarget(null); return; }
+        if (formOpenRef.current) { e.stopPropagation(); clearFormDraft(); setFormOpen(false); setEditingFi(null); return; }
+        if (selectedFiRef.current) { e.stopPropagation(); setSelectedFi(null); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
       if (e.key === 'n' || e.key === 'N') {
+        if (!canManageRef.current) return;
         e.preventDefault();
         handleOpenNew();
       }
@@ -433,7 +438,9 @@ export default function FieldInterviewsPage() {
   // ── /field-interviews?fi_id=<id> deep-link auto-select ──
   // Once `fis` hydrates, find by id and set as selectedFi; strip the query so
   // a refresh doesn't re-select. Surfaces a one-time toast if the id misses.
-  const pendingFiIdRef = useRef<string | null>(searchParams.get('fi_id'));
+  const pendingFiIdRef = useRef<string | null>(
+    searchParams.get('interview_id') ?? searchParams.get('fi_id'),
+  );
   useEffect(() => {
     const target = pendingFiIdRef.current;
     if (!target || loading) return;
@@ -445,6 +452,7 @@ export default function FieldInterviewsPage() {
       addToast(`FI ${target} not in the current view (try unarchiving or clearing filters)`, 'warning');
       const next = new URLSearchParams(searchParams);
       next.delete('fi_id');
+      next.delete('interview_id');
       setSearchParams(next, { replace: true });
       return;
     }
@@ -452,6 +460,7 @@ export default function FieldInterviewsPage() {
     setSelectedFi(hit);
     const next = new URLSearchParams(searchParams);
     next.delete('fi_id');
+    next.delete('interview_id');
     setSearchParams(next, { replace: true });
   }, [fis, loading, searchParams, setSearchParams, addToast]);
 
@@ -462,9 +471,11 @@ export default function FieldInterviewsPage() {
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
         <ExportButton exportUrl="/field-interviews/export/csv" exportFilename="field_interviews_export.csv" />
-        <button type="button" onClick={handleOpenNew} className="toolbar-btn">
-          <Plus style={{ width: 11, height: 11 }} /> New FI Card
-        </button>
+        {canManage && (
+          <button type="button" onClick={handleOpenNew} className="toolbar-btn">
+            <Plus style={{ width: 11, height: 11 }} /> New FI Card
+          </button>
+        )}
       </PanelTitleBar>
 
       {/* Toolbar */}
@@ -622,10 +633,12 @@ export default function FieldInterviewsPage() {
                 >
                   <Printer style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Print
                 </button>
-                <button type="button" onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
-                  <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Edit
-                </button>
-                {selectedFi.status === 'active' ? (
+                {canManage && (
+                  <button type="button" onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                    <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Edit
+                  </button>
+                )}
+                {canManage && (selectedFi.status === 'active' ? (
                   <button type="button" onClick={() => handleArchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <Archive style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Archive
                   </button>
@@ -633,7 +646,7 @@ export default function FieldInterviewsPage() {
                   <button type="button" onClick={() => handleUnarchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Restore
                   </button>
-                )}
+                ))}
                 {isAdmin && (
                   <button type="button" onClick={() => handleDelete(selectedFi)} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
@@ -896,7 +909,7 @@ export default function FieldInterviewsPage() {
 
               {/* Actions */}
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(136,136,136,0.3)', borderColor: 'rgba(136,136,136,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingFi ? 'Update' : 'Create'} FI Card
                 </button>

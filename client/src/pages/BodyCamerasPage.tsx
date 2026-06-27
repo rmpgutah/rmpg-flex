@@ -23,6 +23,7 @@ import type { BodyCameraFormData } from './personnel/modals/BodyCameraFormModal'
 import { mapBodyCamera, mapBodyCamVideo } from './personnel/utils/personnelMappers';
 import DeleteRecordModal from '../components/DeleteRecordModal';
 import { isEvidenceLocked, evidenceLockReason } from '../utils/evidenceLock';
+import { parseTimestamp } from '../utils/dateUtils';
 
 type ModalMode = 'none' | 'new_body_camera' | 'edit_body_camera' | 'upload_video';
 
@@ -220,13 +221,13 @@ export default function BodyCamerasPage() {
     const handler = (e: KeyboardEvent) => {
       // Esc cascade: top-most-first — destructive dialog → player → upload → form.
       if (e.key === 'Escape') {
-        if (cameraToDelete) { setCameraToDelete(null); return; }
-        if (videoToDelete) { setVideoToDelete(null); return; }
-        if (playingVideo) { setPlayingVideo(null); return; }
-        if (modal === 'upload_video') { setModal('none'); return; }
+        if (cameraToDelete) { e.stopPropagation(); setCameraToDelete(null); return; }
+        if (videoToDelete) { e.stopPropagation(); setVideoToDelete(null); return; }
+        if (playingVideo) { e.stopPropagation(); setPlayingVideo(null); return; }
+        if (modal === 'upload_video') { e.stopPropagation(); setModal('none'); return; }
         if (modal === 'new_body_camera' || modal === 'edit_body_camera') {
           if (isTypingInField(e.target)) return;
-          setModal('none'); setEditData(undefined); return;
+          e.stopPropagation(); setModal('none'); setEditData(undefined); return;
         }
         return;
       }
@@ -597,7 +598,7 @@ export default function BodyCamerasPage() {
         recordType="body-cam video"
         recordLabel={
           videoToDelete?.title
-          || (videoToDelete?.recorded_at && new Date(videoToDelete.recorded_at).toLocaleString())
+          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString())
           || (videoToDelete ? `Video #${videoToDelete.id}` : undefined)
         }
         details={
@@ -607,7 +608,7 @@ export default function BodyCamerasPage() {
               {videoToDelete.classification && <div>Classification: {videoToDelete.classification}</div>}
               {videoToDelete.case_number && <div>Case {videoToDelete.case_number}</div>}
               {videoToDelete.recorded_at && (
-                <div className="text-rmpg-500">Recorded {new Date(videoToDelete.recorded_at).toLocaleString()}</div>
+                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString()}</div>
               )}
               {videoToDelete.duration_seconds != null && (
                 <div className="text-rmpg-500">{Math.round(videoToDelete.duration_seconds)}s</div>
