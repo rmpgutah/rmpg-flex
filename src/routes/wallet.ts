@@ -21,6 +21,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { signWalletToken, verifyWalletToken } from '../utils/walletToken';
 import { walletValidity } from '../utils/walletValidity';
+import { recordAudit } from '../utils/auditLog';
 
 const wallet = new Hono<Env>();
 
@@ -60,21 +61,25 @@ async function getOrCreateCredential(db: any, userId: number): Promise<Credentia
   );
   if (existing) return existing;
   const walletId = crypto.randomUUID();
+  // user_id is UNIQUE. On an officer's first wallet view two concurrent requests
+  // (two tabs / a fast double-load) both pass the `existing` check; without
+  // ON CONFLICT the race loser's INSERT throws a UNIQUE violation that 500s the
+  // My-ID page. DO NOTHING + re-read makes issuance idempotent.
   await execute(
-    db, 'INSERT INTO wallet_credentials (wallet_id, user_id, status) VALUES (?, ?, ?)', walletId, userId, 'active',
+    db,
+    `INSERT INTO wallet_credentials (wallet_id, user_id, status) VALUES (?, ?, 'active')
+     ON CONFLICT(user_id) DO NOTHING`,
+    walletId, userId,
   );
-  return { wallet_id: walletId, user_id: userId, status: 'active', issued_at: new Date().toISOString(), revoked_at: null };
+  const row = await queryFirst<CredentialRow>(
+    db, 'SELECT wallet_id, user_id, status, issued_at, revoked_at FROM wallet_credentials WHERE user_id = ?', userId,
+  );
+  if (!row) throw new Error('wallet credential issuance failed');
+  return row;
 }
 
-async function auditCredential(db: any, actorUserId: number, action: string, walletId: string, details: unknown): Promise<void> {
-  try {
-    await execute(
-      db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, ?, 'officer_credential', ?, ?, datetime('now'))`,
-      actorUserId, action, walletId, JSON.stringify(details ?? {}),
-    );
-  } catch { /* audit is best-effort — never block the operation */ }
+async function auditCredential(c: any, actorUserId: number, action: string, walletId: string, details: unknown): Promise<void> {
+  await recordAudit(c, { action, entityType: 'officer_credential', entityId: walletId, details: JSON.stringify(details ?? {}), actorId: actorUserId });
 }
 
 // GET /api/wallet/me — my badge + wallet_id + a fresh rotating QR token.
@@ -151,7 +156,7 @@ wallet.post('/:walletId/revoke', requireRole(...ADMIN_ROLES), async (c) => {
   await execute(
     db, `UPDATE wallet_credentials SET status = 'revoked', revoked_at = datetime('now'), revoked_by = ? WHERE wallet_id = ?`, actor, walletId,
   );
-  await auditCredential(db, actor, 'wallet_revoke', walletId, { user_id: cred.user_id });
+  await auditCredential(c, actor, 'wallet_revoke', walletId, { user_id: cred.user_id });
   return c.json({ wallet_id: walletId, status: 'revoked' });
 });
 
@@ -166,7 +171,7 @@ wallet.post('/:walletId/reinstate', requireRole(...ADMIN_ROLES), async (c) => {
   await execute(
     db, `UPDATE wallet_credentials SET status = 'active', revoked_at = NULL, revoked_by = NULL WHERE wallet_id = ?`, walletId,
   );
-  await auditCredential(db, actor, 'wallet_reinstate', walletId, { user_id: cred.user_id });
+  await auditCredential(c, actor, 'wallet_reinstate', walletId, { user_id: cred.user_id });
   return c.json({ wallet_id: walletId, status: 'active' });
 });
 

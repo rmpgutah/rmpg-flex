@@ -2,6 +2,7 @@
 // time the import is elided, so containers/pdfToolsContainer.ts → types.ts
 // stays one-way at runtime.
 import type { PdfToolsContainer } from './containers/pdfToolsContainer';
+import type { AnalyticsPipeline } from './utils/analytics';
 
 export type Bindings = {
   DB: D1Database;
@@ -30,6 +31,14 @@ export type Bindings = {
   MAPBOX_ACCESS_TOKEN?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
+  // DeepResearchDO namespace — one instance per research job; alarm-driven
+  // pipeline (expand → search → extract → verify → synthesize) + scheduled
+  // monitors. See src/durable-objects/DeepResearchDO.ts.
+  DEEP_RESEARCH: DurableObjectNamespace;
+  // PersonIntelDO namespace — one instance per dossier (idFromName(`pi-${id}`));
+  // alarm-driven multi-phase intelligence pipeline. See
+  // src/durable-objects/PersonIntelDO.ts.
+  PERSON_INTEL_DO: DurableObjectNamespace;
   // VoiceHubDO namespace — one instance per radio channel / panic
   // incident; the single shared hub that relays + records live voice.
   // See src/durable-objects/VoiceHubDO.ts.
@@ -39,6 +48,11 @@ export type Bindings = {
   // officer-safety broadcasts (panic) + forced-ack. See
   // src/durable-objects/AlertHubDO.ts + src/utils/alertHub.ts.
   ALERT_HUB: DurableObjectNamespace;
+  // FlexCamRemuxDO namespace — one instance per footage_request_id
+  // (idFromName('rmx-' + id)) for lazy MP4 → fMP4 remux. Triggered
+  // by POST /api/flexcam/render/:id for format='mp4'. Free-plan
+  // compatible (new_sqlite_classes; see wrangler.toml).
+  FLEXCAM_REMUX: DurableObjectNamespace;
   // PDF Tools sidecar — Cloudflare Container holding qpdf + pdftotext
   // + ocrmypdf. Worker proxies to it via getContainer(env.PDF_TOOLS,
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows
@@ -73,6 +87,7 @@ export type Bindings = {
 export type Variables = {
   user: { id: number; username: string; role: string; full_name: string };
   userId: number;
+  traceId?: string;
 };
 
 export type Env = { Bindings: Bindings; Variables: Variables };

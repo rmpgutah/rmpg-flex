@@ -26,9 +26,9 @@ describe('cfs action planner', () => {
 
   it('priority supports absolute + delta', () => {
     const abs = planAction(call, 'pr_p1', 'priority', { to: '1' });
-    expect((abs as any).updates.priority).toBe(1);
+    expect((abs as any).updates.priority).toBe('P1');
     const esc = planAction(call, 'pr_up', 'priority', { delta: '-1' }); // 3 → 2
-    expect((esc as any).updates.priority).toBe(2);
+    expect((esc as any).updates.priority).toBe('P2');
     const bad = planAction(call, 'x', 'priority', { to: '9' });
     expect('error' in bad).toBe(true);
   });

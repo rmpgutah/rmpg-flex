@@ -91,7 +91,7 @@ export function buildingColorRamp(isLight: boolean): mapboxgl.ExpressionSpecific
   if (isLight) {
     return [
       'interpolate', ['linear'], ['get', 'height'],
-      0, '#cfcfcf',
+      0, 'var(--rmpg-300)',
       40, '#bdbdbd',
       120, '#a6a6a6',
       280, '#9a958a',

@@ -91,8 +91,10 @@ const SIGHTING_EXTRA_COLUMNS: Array<[string, string]> = [
 ];
 
 /** Create the table (with all columns) and reconcile any missing columns at
- *  runtime, so the route self-heals if migration 0108/0109 never reached D1. */
-async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
+ *  runtime, so the route self-heals if migration 0108/0109 never reached D1.
+ *  Returns whether the partial UNIQUE index on capture_id exists — the INSERT
+ *  may only use `ON CONFLICT(capture_id)` when it does (SQLite throws otherwise). */
+async function ensureAlprSchema(db: ReturnType<typeof getDb>): Promise<boolean> {
   await execute(db, `CREATE TABLE IF NOT EXISTS alpr_captures (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sighting_id INTEGER, capture_id TEXT, case_id TEXT,
@@ -107,12 +109,62 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_alpr_plate ON alpr_captures(plate)`);
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_alpr_capture_id ON alpr_captures(capture_id)`);
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_alpr_call ON alpr_captures(call_id)`);
+  // UNIQUE index on capture_id so the idempotent offline-replay insert can rely on
+  // ON CONFLICT(capture_id) DO NOTHING — closes the concurrent-replay race that
+  // check-then-insert leaves open. Partial index (WHERE capture_id IS NOT NULL) so
+  // the many NULL capture_id rows (non-replay captures) don't collide. Best-effort:
+  // if pre-existing duplicate capture_id rows on live block creation, swallow and
+  // fall back to the check-then-insert path.
+  try { await execute(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_alpr_capture_id_uniq ON alpr_captures(capture_id) WHERE capture_id IS NOT NULL`); }
+  catch { /* legacy dupes block the unique index — check-then-insert still guards */ }
+  // Whether the unique index actually landed. On live, pre-existing duplicate
+  // capture_id rows make the CREATE above fail (and be swallowed), so the INSERT
+  // must NOT emit ON CONFLICT(capture_id) — that would throw "does not match any
+  // UNIQUE constraint" and break every capture. Detect the real state here.
+  const uniqIdx = await queryFirst<{ name: string }>(db,
+    `SELECT name FROM sqlite_master WHERE type='index' AND name='idx_alpr_capture_id_uniq'`);
+  const hasCaptureUniqueIndex = !!uniqIdx;
   for (const [name, type] of ALPR_EXTRA_COLUMNS) {
     if (!(await columnExists(db, 'alpr_captures', name))) {
       try { await execute(db, `ALTER TABLE alpr_captures ADD COLUMN ${name} ${type}`); }
       catch { /* lost a race or already present — fine */ }
     }
   }
+  // vehicle_capture_photos: per-vehicle trust package + crop key store (migration 0118).
+  // Created here so the route self-heals on fresh deploys before the migration lands.
+  await execute(db, `CREATE TABLE IF NOT EXISTS vehicle_capture_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    capture_id INTEGER, vehicle_record_id INTEGER,
+    canonical_plate TEXT, raw_reads_json TEXT, variants_json TEXT,
+    read_count INTEGER DEFAULT 1, consensus_ratio REAL,
+    trust_score REAL, trust_basis TEXT,
+    full_r2_key TEXT, vehicle_r2_key TEXT, plate_r2_key TEXT,
+    vehicle_bbox_json TEXT, plate_bbox_json TEXT, source_type TEXT,
+    asserted INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')), created_by INTEGER
+  )`);
+  await execute(db, `CREATE INDEX IF NOT EXISTS idx_vcp_capture ON vehicle_capture_photos(capture_id)`);
+  await execute(db, `CREATE INDEX IF NOT EXISTS idx_vcp_plate ON vehicle_capture_photos(canonical_plate)`);
+
+  // field_photos is owned by fieldPhotos.ts — but the call-attached original from
+  // /capture links the photo to the call gallery, so ensure the table exists here
+  // too (mirrors fieldPhotos.ts ensureTable) rather than silently dropping the link.
+  await execute(db, `CREATE TABLE IF NOT EXISTS field_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    officer_id INTEGER NOT NULL,
+    call_id INTEGER,
+    incident_id INTEGER,
+    r2_key TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    latitude REAL,
+    longitude REAL,
+    notes TEXT,
+    taken_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  )`);
+  try { await execute(db, `ALTER TABLE field_photos ADD COLUMN incident_id INTEGER`); } catch { /* column exists */ }
+
   // vehicle_sightings is owned by migration 0100 — never CREATE it here, only
   // reconcile the structured-damage columns the enrich/accept paths write.
   for (const [name, type] of SIGHTING_EXTRA_COLUMNS) {
@@ -122,6 +174,18 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>) {
       }
     } catch { /* table absent or lost a race — fine, best-effort */ }
   }
+  return hasCaptureUniqueIndex;
+}
+
+/** Build the upsert suffix for the alpr_captures INSERT. SQLite only accepts
+ *  `ON CONFLICT(capture_id)` when a matching UNIQUE index exists, and a PARTIAL
+ *  index requires its predicate (`WHERE capture_id IS NOT NULL`) to be repeated
+ *  in the conflict target. When the index is absent (legacy dupes on live) or the
+ *  capture has no capture_id, emit no clause and rely on check-then-insert. */
+export function captureConflictClause(hasUniqueIndex: boolean, captureId: string | null): string {
+  return hasUniqueIndex && captureId != null
+    ? ' ON CONFLICT(capture_id) WHERE capture_id IS NOT NULL DO NOTHING'
+    : '';
 }
 
 function extFrom(filename: string | undefined, contentType: string | undefined): string {
@@ -331,7 +395,7 @@ alpr.post('/capture', operational, async (c) => {
   const locationText = strOrNull(params.location_label) ?? strOrNull(params.street_address);
   const attachToCall = callId != null || incidentId != null;
 
-  await ensureAlprSchema(db);
+  const hasCaptureUniqueIndex = await ensureAlprSchema(db);
 
   // Idempotent offline-replay: a repeated capture_id returns the prior row.
   const captureId = typeof params.capture_id === 'string' ? params.capture_id : null;
@@ -346,11 +410,19 @@ alpr.post('/capture', operational, async (c) => {
   const ext = extFrom((file as any).name, file.type);
   const imageKey = `${attachToCall ? FIELD_PHOTO_PREFIX : ALPR_PREFIX}${crypto.randomUUID()}.${ext}`;
   const contentType = file.type || 'image/jpeg';
-  await c.env.UPLOADS.put(imageKey, bytes, { httpMetadata: { contentType } });
+  // Best-effort R2 put: a storage failure must NOT 500 the whole capture. We still
+  // run the read + persist the row (image_url just resolves to a missing object).
+  let imageStored = true;
+  try {
+    await c.env.UPLOADS.put(imageKey, bytes, { httpMetadata: { contentType } });
+  } catch (err: any) {
+    imageStored = false;
+    console.error('[alpr] R2 image put failed:', err?.message);
+  }
 
   // Attach the photo to the call/incident via field_photos (best-effort).
   let fieldPhotoId: number | null = null;
-  if (attachToCall) {
+  if (attachToCall && imageStored) {
     try {
       const fp = await execute(db,
         `INSERT INTO field_photos (officer_id, call_id, incident_id, r2_key, content_type, size_bytes, latitude, longitude, notes)
@@ -393,7 +465,14 @@ alpr.post('/capture', operational, async (c) => {
 
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
   return c.json({
-    success: true,
+    success: finalized,
+    status: fin.status,
+    image_stored: imageStored,
+    field_photo_linked: fieldPhotoLinked,
+    warnings: [
+      ...(imageStored ? [] : ['Image upload failed — capture saved without a stored photo.']),
+      ...(fieldPhotoLinked ? [] : ['Photo could not be attached to the call gallery.']),
+    ],
     id: captureRowId,
     call_id: callId,
     incident_id: incidentId,
@@ -426,6 +505,20 @@ alpr.post('/capture', operational, async (c) => {
   });
 });
 
+// ── List vehicle_capture_photos packages (honest trust layer) ─
+// GET /packages?plate=&min_trust=  — newest-first, optional filters
+alpr.get('/packages', operational, async (c) => {
+  const db = getDb(c.env); await ensureAlprSchema(db);
+  const plate = c.req.query('plate');
+  const minTrust = c.req.query('min_trust');
+  const where: string[] = []; const args: unknown[] = [];
+  if (plate) { where.push('canonical_plate = ?'); args.push(plate); }
+  if (minTrust) { where.push('trust_score >= ?'); args.push(Number(minTrust)); }
+  const sql = `SELECT * FROM vehicle_capture_photos ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC LIMIT 200`;
+  const rows = await query(db, sql, ...args);
+  return c.json({ packages: rows });
+});
+
 // ── List recent captures ─────────────────────────────────────
 alpr.get('/captures', operational, async (c) => {
   const db = getDb(c.env);
@@ -434,17 +527,58 @@ alpr.get('/captures', operational, async (c) => {
   const caseId = c.req.query('case_id') || '';
   const callId = c.req.query('call_id') || '';
   const review = c.req.query('review');
-  const limit = Math.min(Number(c.req.query('limit')) || 25, 100);
+  // Gallery filters (compose into one WHERE):
+  const source = (c.req.query('source') || '').toLowerCase();   // dashcam | field | manual
+  const accepted = c.req.query('accepted');                      // '1' | '0'
+  const from = c.req.query('from');                              // ISO/SQL datetime lower bound
+  const to = c.req.query('to');                                  // upper bound
+  const gallery = c.req.query('gallery');                        // gallery mode → only rows with an image
+  const limit = Math.min(Number(c.req.query('limit')) || 25, 200);
   try {
     let rows;
     // Review queue = only rows still awaiting review. Keying on review_status
     // (not accepted=0) is essential: a REJECTED row is also accepted=0 and would
     // otherwise reappear in the queue forever.
     if (review) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE review_status = 'needs_review' ORDER BY created_at DESC LIMIT ?`, limit);
-    else if (plate) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE plate LIKE ? ORDER BY created_at DESC LIMIT ?`, `%${plate}%`, limit);
     else if (callId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE call_id = ? ORDER BY created_at DESC LIMIT ?`, Number(callId), limit);
     else if (caseId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE case_id = ? ORDER BY created_at DESC LIMIT ?`, caseId, limit);
-    else rows = await query<any>(db, `SELECT * FROM alpr_captures ORDER BY created_at DESC LIMIT ?`, limit);
+    else {
+      const where: string[] = []; const params: any[] = [];
+      if (plate) { where.push('plate LIKE ?'); params.push(`%${plate}%`); }
+      if (accepted === '1' || accepted === '0') { where.push('accepted = ?'); params.push(Number(accepted)); }
+      if (from) { where.push('created_at >= ?'); params.push(from); }
+      if (to) { where.push('created_at <= ?'); params.push(to); }
+      if (gallery) where.push("(image_key IS NOT NULL OR annotated_image_key IS NOT NULL)");
+      // source: dashcam captures carry a 'cpg_dashcam:' capture_id; field captures
+      // are call/field-photo linked; manual = everything else.
+      if (source === 'dashcam') where.push("capture_id LIKE 'cpg_dashcam:%'");
+      else if (source === 'field') where.push("(call_id IS NOT NULL OR field_photo_id IS NOT NULL) AND COALESCE(capture_id,'') NOT LIKE 'cpg_dashcam:%'");
+      else if (source === 'manual') where.push("call_id IS NULL AND field_photo_id IS NULL AND COALESCE(capture_id,'') NOT LIKE 'cpg_dashcam:%'");
+      // Left-join the most-recent vehicle_capture_photos package per capture so
+      // the gallery can render TrustBadge without losing event_type / alerted.
+      const baseWhere = where.length ? 'WHERE ' + where.join(' AND ') : '';
+      const sql = `
+        SELECT ac.*,
+               pkg.trust_score    AS pkg_trust_score,
+               pkg.trust_basis    AS pkg_trust_basis,
+               pkg.read_count     AS pkg_read_count,
+               pkg.canonical_plate AS pkg_canonical_plate,
+               pkg.asserted       AS pkg_asserted
+        FROM alpr_captures ac
+        LEFT JOIN (
+          SELECT vcp.*
+          FROM vehicle_capture_photos vcp
+          JOIN (
+            SELECT capture_id, MAX(created_at) AS mx
+            FROM vehicle_capture_photos
+            GROUP BY capture_id
+          ) latest ON vcp.capture_id = latest.capture_id AND vcp.created_at = latest.mx
+        ) pkg ON pkg.capture_id = ac.id
+        ${baseWhere}
+        ORDER BY ac.created_at DESC LIMIT ?`;
+      params.push(limit);
+      rows = await query<any>(db, sql, ...params);
+    }
     return c.json(rows.map(shapeCapture));
   } catch (err: any) {
     return c.json({ error: err?.message, hint: 'migration 0108/0109 may not have reached live D1' }, 500);
@@ -489,6 +623,7 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
   // original read's attributes belonged to the wrong plate — drop them; the new
   // plate's attributes will be re-enriched on its next clean scan.
   let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+  let persisted = true;
   if (plate) {
     try {
       const screen = await screenVehicle(db, { plate });
@@ -523,15 +658,23 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
         corrected ? null : (row.damage_observed ?? null),
         corrected ? null : (row.damage_summary ?? null),
         corrected ? null : (row.plate_confidence ?? null));
-    } catch (err: any) { console.error('[alpr] accept relink failed:', err?.message); }
+    } catch (err: any) {
+      console.error('[alpr] accept relink failed:', err?.message);
+      persisted = false;
+    }
   }
 
   await execute(db,
-    `UPDATE alpr_captures SET accepted=1, review_status='confirmed', plate=COALESCE(?, plate),
+    `UPDATE alpr_captures SET accepted=1, review_status=?, plate=COALESCE(?, plate),
        reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
-    corrected, userId, id);
+    confirmReviewStatus(persisted), corrected, userId, id);
+  if (!persisted) {
+    try {
+      await recordAudit(c, { action: 'ALPR_ACCEPT_UNLINKED', entityType: 'alpr_capture', entityId: id, details: 'authoritative write failed', actorId: userId });
+    } catch { /* best-effort */ }
+  }
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
-  return c.json({ success: true, hits, ...shapeCapture(updated) });
+  return c.json({ success: true, hits, ...(persisted ? {} : { warning: confirmWarning(false) }), ...shapeCapture(updated) });
 });
 
 // ── Review queue: reject a held capture (kept for audit) ─────
@@ -548,6 +691,181 @@ alpr.post('/capture/:id/reject', operational, async (c) => {
   return c.json({ success: true });
 });
 
+// ── Advanced review: edit + (re-)verify a capture ────────────
+// One endpoint for the full editor on BOTH surfaces (review queue + gallery).
+// Persists any supplied field edits, then applies the action:
+//   confirm → screen + (re)create authoritative record/link/sighting, accepted=1
+//   reject  → review_status='rejected', accepted=0
+//   save    → persist edits only, leave review_status untouched
+// Operates on ANY status (re-edit/re-verify). Editing a row that was already
+// confirmed/rejected requires `reason` and writes an audit_log entry.
+alpr.post('/capture/:id/verify', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const id = Number(c.req.param('id'));
+  const userId = Number(c.var.user?.id ?? 0);
+  const row = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
+  if (!row) return c.json({ error: 'Not found' }, 404);
+
+  let body: any = {};
+  try { body = await c.req.json(); } catch { /* empty body = no edits, default action */ }
+  const action: 'confirm' | 'reject' | 'save' =
+    body.action === 'reject' ? 'reject' : body.action === 'save' ? 'save' : 'confirm';
+
+  // Normalize + validate the supplied edits (only present keys are touched).
+  const maxYear = new Date().getFullYear() + 2;
+  const { values, errors } = normalizeCaptureEdit(body, { maxYear });
+  if (errors.length) return c.json({ error: errors[0].message, errors }, 400);
+
+  // Re-editing an already-decided row is an audited "change function".
+  const wasDecided = row.review_status === 'confirmed' || row.review_status === 'confirmed_unlinked' || row.review_status === 'rejected';
+  const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+  if (wasDecided && !reason) {
+    return c.json({ error: 'A reason is required to change an already-reviewed capture.' }, 400);
+  }
+
+  const plateChanged = values.plate != null && values.plate !== row.plate;
+
+  // Apply field edits to the capture row first (the editor's source of truth).
+  const sets: string[] = []; const params: any[] = [];
+  for (const [col, val] of Object.entries(values)) { sets.push(`${col} = ?`); params.push(val); }
+  if (sets.length) {
+    await execute(db, `UPDATE alpr_captures SET ${sets.join(', ')} WHERE id = ?`, ...params, id);
+  }
+
+  const plate: string | null = (values.plate ?? row.plate) ?? null;
+
+  let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+  let verifyWarning: string | undefined;
+
+  if (action === 'reject') {
+    await execute(db,
+      `UPDATE alpr_captures SET accepted=0, review_status='rejected', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+      userId, id);
+  } else if (action === 'confirm' && plate) {
+    // (Re)create the authoritative record + link + sighting using the EFFECTIVE
+    // (edited) attributes. A human-supplied attribute is trusted; on a plate
+    // change with NO replacement attribute we drop the stale OCR value (it
+    // belonged to the misread plate) — mirrors the original /accept rule.
+    let persisted = true;
+    try {
+      const keep = (col: string, key: keyof typeof values) =>
+        key in values ? (values as any)[key] : (plateChanged ? null : (row[col] ?? null));
+      const v: AlprVehicle = {
+        plate,
+        state: keep('state', 'state'),
+        make: keep('make', 'make'),
+        model: keep('model', 'model'),
+        color: keep('color', 'color'),
+        year: keep('year', 'year'),
+        vehicleType: keep('vehicle_type', 'vehicle_type'),
+        plateType: null, confidence: plateChanged ? null : (row.plate_confidence ?? null),
+        condition: keep('condition', 'condition'), damageObserved: null,
+        damageSummary: keep('damage_summary', 'damage_summary'), damageAreas: [],
+        aftermarket: null, confidences: {},
+      };
+      hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (verified)');
+    } catch (err: any) {
+      console.error('[alpr] verify relink failed:', err?.message);
+      persisted = false;
+    }
+    await execute(db,
+      `UPDATE alpr_captures SET accepted=1, review_status=?, reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+      confirmReviewStatus(persisted), userId, id);
+    if (!persisted) verifyWarning = confirmWarning(false);
+  } else if (action === 'save') {
+    await execute(db, `UPDATE alpr_captures SET reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`, userId, id);
+  }
+
+  // Audit EVERY verify so the per-capture history is a complete trail (the
+  // `wasDecided` rows are the audited "change function"). Best-effort.
+  try {
+    const diff = describeEdit(row, values);
+    const detail = [`${action}`, reason, diff].filter(Boolean).join(' — ');
+    await recordAudit(c, { action: 'ALPR_VERIFY', entityType: 'alpr_capture', entityId: id, details: detail.slice(0, 500), actorId: userId });
+  } catch (auditErr: any) { console.warn('[alpr] audit_log insert failed:', auditErr?.message); }
+
+  const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
+  return c.json({ success: true, hits, ...(verifyWarning ? { warning: verifyWarning } : {}), ...shapeCapture(updated) });
+});
+
+// ── Bulk confirm/reject the review queue ─────────────────────
+// Clears many low-confidence reads at once (no per-field edits — bulk accepts the
+// AI's read as-is). Confirm screens + records each; reject marks each rejected.
+// Returns per-id results + the union of critical hits so a STOLEN read in the
+// batch is never silently swept.
+alpr.post('/captures/bulk', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const userId = Number(c.var.user?.id ?? 0);
+  let body: any = {};
+  try { body = await c.req.json(); } catch { /* */ }
+  const action: 'confirm' | 'reject' = body.action === 'reject' ? 'reject' : 'confirm';
+  const ids: number[] = Array.isArray(body.ids)
+    ? body.ids.map((x: any) => Number(x)).filter((n: number) => Number.isInteger(n)).slice(0, 200)
+    : [];
+  if (!ids.length) return c.json({ error: 'No capture ids supplied.' }, 400);
+
+  const results: Array<{ id: number; ok: boolean; status: string }> = [];
+  const allHits: Array<{ kind: string; severity: string; detail: string; plate: string }> = [];
+  for (const id of ids) {
+    try {
+      const row = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
+      if (!row) { results.push({ id, ok: false, status: 'not_found' }); continue; }
+      if (action === 'reject') {
+        await execute(db,
+          `UPDATE alpr_captures SET accepted=0, review_status='rejected', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+          userId, id);
+        results.push({ id, ok: true, status: 'rejected' });
+      } else if (row.plate) {
+        const v: AlprVehicle = {
+          plate: row.plate, state: row.state ?? null, make: row.make ?? null, model: row.model ?? null,
+          color: row.color ?? null, year: row.year ?? null, vehicleType: row.vehicle_type ?? null,
+          plateType: null, confidence: row.plate_confidence ?? null,
+          condition: row.condition ?? null, damageObserved: null,
+          damageSummary: row.damage_summary ?? null, damageAreas: [], aftermarket: null, confidences: {},
+        };
+        let persisted = true;
+        let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+        try {
+          hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (bulk verified)');
+        } catch (persistErr: any) {
+          console.error('[alpr] bulk persist failed:', id, persistErr?.message);
+          persisted = false;
+        }
+        for (const h of hits.filter((x) => x.severity === 'critical')) allHits.push({ ...h, plate: row.plate });
+        await execute(db,
+          `UPDATE alpr_captures SET accepted=1, review_status=?, reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+          confirmReviewStatus(persisted), userId, id);
+        results.push({ id, ok: persisted, status: confirmReviewStatus(persisted) });
+      } else {
+        results.push({ id, ok: false, status: 'no_plate' });
+      }
+    } catch (err: any) {
+      console.error('[alpr] bulk item failed:', id, err?.message);
+      results.push({ id, ok: false, status: 'error' });
+    }
+  }
+  // One audit row for the batch.
+  try {
+    const okCount = results.filter((r) => r.ok).length;
+    await recordAudit(c, { action: 'ALPR_BULK_VERIFY', entityType: 'alpr_capture', entityId: 0, details: `${action} ${okCount}/${ids.length}`.slice(0, 500), actorId: userId });
+  } catch { /* best-effort */ }
+  return c.json({ success: true, action, results, hits: allHits });
+});
+
+// ── Per-capture verify/edit history (the audited "change function") ─
+alpr.get('/capture/:id/history', operational, async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const rows = await query<any>(db,
+    `SELECT al.id, al.user_id, al.action, al.details, al.created_at, u.full_name AS user_name
+       FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
+      WHERE al.entity_type = 'alpr_capture' AND al.entity_id = ?
+      ORDER BY al.created_at DESC LIMIT 100`, id);
+  return c.json(Array.isArray(rows) ? rows : []);
+});
+
 // ── Stream a stored image back from R2 (prefix-validated) ────
 alpr.get('/image/*', operational, async (c) => {
   const key = c.req.path.replace(/^.*\/image\//, '');
@@ -560,6 +878,184 @@ alpr.get('/image/*', operational, async (c) => {
       'Cache-Control': 'private, max-age=86400',
     },
   });
+});
+
+// ── Crop upload: attach vehicle/plate crop images to a package row ───────────
+// The capture handler returns photo_row_id per vehicle so the client can POST
+// the crops it extracted client-side (or a server crop job can POST later).
+alpr.post('/capture/:photoRowId/photos', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const id = Number(c.req.param('photoRowId'));
+  if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid photoRowId' }, 400);
+
+  let form: FormData;
+  try { form = await c.req.formData(); }
+  catch { return c.json({ error: 'Expected multipart/form-data' }, 400); }
+
+  const out: Record<string, string> = {};
+  for (const field of ['vehicle', 'plate'] as const) {
+    const entry = form.get(field);
+    const file = entry && typeof entry === 'object' && 'arrayBuffer' in (entry as object)
+      ? (entry as File) : null;
+    if (file) {
+      const key = `alpr/vehicles/${id}/${field}.jpg`;
+      await c.env.UPLOADS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
+      out[`${field}_r2_key`] = key;
+    }
+  }
+
+  if (Object.keys(out).length === 0) return c.json({ error: 'No crop files provided (fields: vehicle, plate)' }, 400);
+
+  await execute(db,
+    `UPDATE vehicle_capture_photos SET vehicle_r2_key=COALESCE(?,vehicle_r2_key), plate_r2_key=COALESCE(?,plate_r2_key) WHERE id=?`,
+    out.vehicle_r2_key ?? null, out.plate_r2_key ?? null, id);
+
+  return c.json({ success: true, ...out });
+});
+
+// ── Vehicle dossier: all photo packages for a canonical plate ─────────────────
+alpr.get('/vehicle/:plate/dossier', operational, async (c) => {
+  const db = getDb(c.env);
+  await ensureAlprSchema(db);
+  const plate = (c.req.param('plate') ?? '').toUpperCase().replace(/[\s-]/g, '');
+  if (!plate || plate.length < 2) return c.json({ error: 'Invalid plate' }, 400);
+  const rows = await query<Record<string, unknown>>(db,
+    `SELECT * FROM vehicle_capture_photos WHERE canonical_plate = ? ORDER BY created_at DESC`, plate);
+  return c.json({ plate, packages: rows });
+});
+
+// ── Edge device ingest: Jetson vision-LoRA structured ALPR record ────────────
+// Edge device (Jetson vision-LoRA) posts a structured ALPR record. HMAC-verified,
+// then routed through the same trust path as every other source (source_type='edge_lora').
+alpr.post('/edge', async (c) => {
+  const secret = c.env.ALPR_EDGE_SECRET;
+  if (!secret) return notConfigured(c, 'alpr_edge_secret_unset', { error: 'edge ingest not configured' });
+  const ts = Number(c.req.header('X-Edge-Timestamp'));
+  const sig = c.req.header('X-Edge-Signature') ?? '';
+  const body = await c.req.text();
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!ts || !(await verifyEdgeSignature({ secret, timestamp: ts, body, signature: sig, nowSec })))
+    return c.json({ error: 'bad signature' }, 401);
+
+  // Malformed body must 400, not throw an unhandled 500 — even post-HMAC.
+  let rec: {
+    plate?: string; state?: string; make?: string; model?: string; year?: string;
+    color?: string; type?: string; plate_confidence?: number; device_id?: string;
+    lat?: number; lng?: number; location_text?: string;
+  };
+  try {
+    rec = JSON.parse(body);
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400);
+  }
+  if (!rec.plate) return c.json({ error: 'no plate' }, 400);
+
+  const db = getDb(c.env); await ensureAlprSchema(db);
+  const trust = trustScore({ reads: [rec.plate], modelPct: rec.plate_confidence });
+  const PACKAGE_GATE = 0.80; const canonical = trust.canonical || rec.plate;
+
+  // Screen UNCONDITIONALLY (officer safety) and WIRE the result into the same
+  // hit/notification path the on-scene /capture flow uses — an edge read of a
+  // stolen/watchlisted plate must fire a critical-hit notification, not be dropped.
+  const screen = await screenVehicle(db, { plate: canonical });
+  const hits = screen.hits;
+  const critical = hits.filter((h) => h.severity === 'critical');
+  if (critical.length) {
+    try {
+      await execute(db,
+        `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
+         VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, NULL, 0, datetime('now'))`,
+        `EDGE PLATE HIT: ${canonical}`,
+        critical.map((h) => h.detail).join('; '), screen.vehicleId);
+    } catch (err: any) { console.error('[alpr] edge notify failed:', err?.message); }
+  }
+
+  // Record the edge read as a vehicle_sighting so it lands in the same history as
+  // every other source (no call_id on edge reads → no call_vehicles link).
+  let sightingId: number | null = null;
+  try {
+    const note = `ALPR (edge)${[rec.color, rec.make, rec.model, rec.year].filter(Boolean).length ? ': ' + [rec.color, rec.make, rec.model, rec.year].filter(Boolean).join(' ') : ''}`;
+    const sres = await execute(db,
+      `INSERT INTO vehicle_sightings (plate, state, vehicle_id, location_text, lat, lng, notes, sighted_by, confidence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+      canonical, rec.state ?? null, screen.vehicleId,
+      rec.location_text ?? null, num(rec.lat), num(rec.lng), note,
+      trust.trustScore);
+    sightingId = Number(sres.meta.last_row_id);
+  } catch (err: any) { console.error('[alpr] edge sighting failed:', err?.message); }
+
+  let photoRowId: number | null = null;
+  if (trust.trustScore >= PACKAGE_GATE) {
+    const r = await execute(db,
+      `INSERT INTO vehicle_capture_photos
+        (capture_id, canonical_plate, raw_reads_json, variants_json, read_count,
+         consensus_ratio, trust_score, trust_basis, source_type, asserted, created_at)
+       VALUES (NULL,?,?,?,?,?,?,?,?,?,datetime('now'))`,
+      canonical, JSON.stringify([rec.plate]), JSON.stringify(trust.variants), trust.readCount,
+      trust.consensusRatio, trust.trustScore, trust.basis, 'edge_lora', 0);
+    photoRowId = r.meta.last_row_id as number;
+  }
+  // Fan the edge read out to the analytics lakehouse (best-effort; no-op until
+  // the ANALYTICS pipeline is provisioned). Edge reads are unattended → userId null.
+  emitAnalytics(c, c.env.ANALYTICS, [alprReadEvent(
+    {
+      captureRowId: null, callId: null, incidentId: null,
+      lat: num(rec.lat), lng: num(rec.lng), locationText: rec.location_text ?? null,
+      userId: null, source: 'edge',
+    },
+    {
+      plate: rec.plate ?? null, canonical_plate: canonical, state: rec.state ?? null,
+      make: rec.make ?? null, model: rec.model ?? null, year: rec.year ?? null,
+      color: rec.color ?? null, vehicle_type: rec.type ?? null,
+      trust_score: trust.trustScore, vehicle_record_id: screen.vehicleId ?? null, hits,
+    },
+    new Date().toISOString(),
+  )]);
+
+  return c.json({ success: true, canonical_plate: canonical, trust_score: trust.trustScore,
+                  trust_basis: trust.basis, photo_row_id: photoRowId,
+                  sighting_id: sightingId, hits,
+                  alerted: critical.length > 0 });
+});
+
+// ── Model registry: trained-adapter provenance per ALPR target ───────────────
+const MODEL_REGISTRY_DDL = `CREATE TABLE IF NOT EXISTS model_registry (
+  target TEXT PRIMARY KEY,
+  adapter_version TEXT,
+  base_model TEXT,
+  holdout_metric REAL,
+  beats_baseline INTEGER DEFAULT 0,
+  promoted_at TEXT,
+  notes TEXT
+)`;
+
+alpr.get('/models', operational, async (c) => {
+  const db = getDb(c.env);
+  await execute(db, MODEL_REGISTRY_DDL);
+  const models = await query(db, `SELECT * FROM model_registry ORDER BY target`);
+  return c.json({ models });
+});
+
+alpr.put('/models/:target', operational, async (c) => {
+  const db = getDb(c.env);
+  const target = c.req.param('target');
+  let b: Record<string, unknown>;
+  try { b = await c.req.json() as Record<string, unknown>; }
+  catch { return c.json({ error: 'Invalid JSON body' }, 400); }
+  await execute(db, MODEL_REGISTRY_DDL);
+  await execute(db,
+    `INSERT INTO model_registry (target, adapter_version, base_model, holdout_metric, beats_baseline, promoted_at, notes)
+     VALUES (?,?,?,?,?,datetime('now'),?)
+     ON CONFLICT(target) DO UPDATE SET adapter_version=excluded.adapter_version, base_model=excluded.base_model,
+       holdout_metric=excluded.holdout_metric, beats_baseline=excluded.beats_baseline, promoted_at=excluded.promoted_at, notes=excluded.notes`,
+    target,
+    b.adapter_version ?? null,
+    b.base_model ?? null,
+    b.holdout_metric ?? null,
+    b.beats_baseline ? 1 : 0,
+    b.notes ?? null);
+  return c.json({ success: true });
 });
 
 // ── helpers ──────────────────────────────────────────────────
@@ -589,8 +1085,22 @@ function shapeCapture(row: any) {
   // capture-level damage isn't taken from an arbitrary secondary vehicle.
   const rawVehicles = Array.isArray(raw?.vehicles) ? raw.vehicles : [];
   const primaryRaw = rawVehicles.find((v: any) => v && v.plate && v.plate === row.plate) ?? rawVehicles[0] ?? null;
+  // Capture source for gallery filtering/badges.
+  const captureId: string = typeof row.capture_id === 'string' ? row.capture_id : '';
+  const source = raw?.source
+    || (captureId.startsWith('cpg_dashcam:') ? 'dashcam'
+      : (row.call_id != null || row.field_photo_id != null) ? 'field'
+      : 'manual');
+  // Detection geometry for the overlay (Roboflow path); empty for plate-only reads.
+  const detections = Array.isArray(raw?.detections) ? raw.detections
+    : Array.isArray(raw?.predictions) ? raw.predictions : [];
   return {
     ...row,
+    source,
+    engine: raw?.engine ?? null,
+    event_type: raw?.eventType ?? null,
+    device_name: raw?.deviceName ?? null,
+    detections,
     alerted: row.alerted === 1 || row.alerted === true,
     enrich_status: row.enrich_status ?? null,
     // Advanced scanner: condition/damage + the 0.85 acceptance gate.
@@ -627,6 +1137,12 @@ function shapeCapture(row: any) {
       : [],
     image_url: imageUrlFor(row.image_key),
     annotated_image_url: imageUrlFor(row.annotated_image_key),
+    // Trust fields from the most-recent vehicle_capture_photos package (may be
+    // null when no package exists yet — client renders UNVERIFIED badge).
+    trust_score: row.pkg_trust_score ?? null,
+    trust_basis: row.pkg_trust_basis ?? null,
+    read_count: row.pkg_read_count ?? null,
+    canonical_plate: row.pkg_canonical_plate ?? null,
   };
 }
 

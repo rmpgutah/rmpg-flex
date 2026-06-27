@@ -88,13 +88,13 @@ export default function CommandPalette({ editor, onClose }: Props) {
     >
       <div className="absolute inset-0 bg-black/60" />
       <div
-        className="relative w-[640px] max-w-[94vw] bg-[#0a0a0a] border border-[#d4a017]/60 shadow-2xl flex flex-col"
+        className="relative w-[640px] max-w-[94vw] bg-surface-sunken border border-[#d4a017]/60 shadow-2xl flex flex-col"
         style={{ borderRadius: 2 }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Tab strip */}
         <div
-          className="flex overflow-x-auto border-b border-[#2e2e2e] bg-[#050505]"
+          className="flex overflow-x-auto border-b border-rmpg-700 bg-surface-overlay"
           style={{ scrollbarWidth: 'thin' }}
         >
           {tabs.map((t) => {
@@ -104,10 +104,10 @@ export default function CommandPalette({ editor, onClose }: Props) {
                 key={t}
                 type="button"
                 onClick={() => setTab(t)}
-                className={`px-3 py-1.5 text-[11px] uppercase tracking-wider whitespace-nowrap border-r border-[#1a1a1a] flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 text-[11px] uppercase tracking-wider whitespace-nowrap border-r border-border-default flex items-center gap-1.5 ${
                   active
-                    ? 'bg-[#0a0a0a] text-[#d4a017] border-b-2 border-b-[#d4a017]'
-                    : 'text-rmpg-500 hover:text-rmpg-200 hover:bg-[#0a0a0a]'
+                    ? 'bg-surface-sunken text-[#d4a017] border-b-2 border-b-[#d4a017]'
+                    : 'text-rmpg-500 hover:text-rmpg-200 hover:bg-surface-sunken'
                 }`}
                 style={{ borderRadius: 0 }}
               >
@@ -143,7 +143,7 @@ export default function CommandPalette({ editor, onClose }: Props) {
             }
           }}
           placeholder={`Search ${tab === ALL ? 'all commands' : tab.toLowerCase()}…`}
-          className="w-full bg-transparent text-[13px] text-rmpg-100 px-3 py-2 outline-none border-b border-[#2e2e2e] placeholder:text-rmpg-600"
+          className="w-full bg-transparent text-[13px] text-rmpg-100 px-3 py-2 outline-none border-b border-rmpg-700 placeholder:text-rmpg-600"
         />
 
         {/* Result list */}
@@ -161,7 +161,7 @@ export default function CommandPalette({ editor, onClose }: Props) {
               onMouseEnter={() => setIdx(i)}
               onClick={() => run(a)}
               className={`w-full text-left px-3 py-1.5 text-[12px] flex items-center justify-between gap-3 ${
-                i === idx ? 'bg-[#d4a017]/15 text-rmpg-100' : 'text-rmpg-300 hover:bg-[#141414]'
+                i === idx ? 'bg-[#d4a017]/15 text-rmpg-100' : 'text-rmpg-300 hover:bg-surface-base'
               }`}
               style={{ borderRadius: 0 }}
             >
@@ -175,7 +175,7 @@ export default function CommandPalette({ editor, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-t border-[#2e2e2e] text-[9px] text-rmpg-600">
+        <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 text-[9px] text-rmpg-600">
           <span>↑↓ navigate • Tab switch group • Enter run • Esc close</span>
           <span>{filtered.length} shown</span>
         </div>

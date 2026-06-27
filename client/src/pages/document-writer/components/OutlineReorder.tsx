@@ -46,7 +46,7 @@ export default function OutlineReorder({
   };
 
   return (
-    <div className="w-44 sm:w-60 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto">
+    <div className="w-44 sm:w-60 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto">
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide flex items-center gap-1">
           <ListTree className="w-3 h-3" /> Reorder
@@ -64,13 +64,13 @@ export default function OutlineReorder({
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => onDrop(i)}
             className={`group flex items-center gap-1 rounded-[2px] px-1 py-1 border ${
-              dragIndex === i ? 'border-[#d4a017]/50 bg-[#d4a017]/10' : 'border-transparent hover:bg-[#141414]'
+              dragIndex === i ? 'border-[#d4a017]/50 bg-[#d4a017]/10' : 'border-transparent hover:bg-surface-base'
             }`}
             style={{ paddingLeft: 4 + (s.level - 1) * 10 }}
             title="Drag to reorder, or use the arrows"
           >
             <GripVertical className="w-3 h-3 text-rmpg-600 group-hover:text-rmpg-400 cursor-grab shrink-0" />
-            <span className="flex-1 text-[11px] text-rmpg-300 truncate">
+            <span className="min-w-0 flex-1 text-[11px] text-rmpg-300 truncate">
               {s.text || <span className="italic opacity-50">(empty heading)</span>}
             </span>
             <button type="button" onClick={() => move(i, 'up')} disabled={i === 0}

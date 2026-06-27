@@ -16,13 +16,10 @@ struct WatchlistView: View {
                     if loading && rows.isEmpty {
                         ProgressView().tint(Theme.gold).padding(.top, 30)
                     } else if rows.isEmpty {
-                        VStack(spacing: 6) {
-                            Image(systemName: "binoculars").font(.system(size: 26)).foregroundStyle(Theme.neutral)
-                            Text("Nothing on your watchlist.").font(.system(size: 12)).foregroundStyle(Theme.neutral)
-                            Text("Open a subject's record and tap Watch to get alerts on new activity.")
-                                .font(.system(size: 10)).foregroundStyle(Theme.neutral)
-                                .multilineTextAlignment(.center).padding(.horizontal, 24)
-                        }.padding(.top, 28)
+                        EmptyState(icon: "binoculars",
+                                   title: "Nothing on your watchlist.",
+                                   subtitle: "Open a subject's record and tap Watch to get alerts on new activity.")
+                            .padding(.top, 28)
                     } else {
                         ForEach(rows.indices, id: \.self) { i in row(rows[i]) }
                     }
@@ -48,9 +45,9 @@ struct WatchlistView: View {
 
         let inner = HStack(spacing: 10) {
             Image(systemName: type == "person" ? "person.fill" : "car.fill")
-                .font(.system(size: 14)).foregroundStyle(Theme.orange).frame(width: 22)
+                .font(Theme.Typography.body).foregroundStyle(Theme.orange).frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                Text(label).font(Theme.Typography.body).fontWeight(.semibold).foregroundStyle(.white).lineLimit(1)
                 Text(reason.isEmpty ? "Watching" : reason)
                     .font(.system(size: 10)).foregroundStyle(Theme.neutral).lineLimit(1)
                 if !lastAlert.isEmpty {
@@ -59,7 +56,7 @@ struct WatchlistView: View {
             }
             Spacer()
             Button { Task { await remove(type: type, id: entityId) } } label: {
-                Image(systemName: "bell.slash.fill").font(.system(size: 13)).foregroundStyle(Theme.red)
+                Image(systemName: "bell.slash.fill").font(Theme.Typography.body).foregroundStyle(Theme.red)
             }.disabled(working)
         }
         .themeCard()

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench,
 } from 'lucide-react';
+import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import { callPosture } from '../../utils/callThreat';
 import { applyFillBlanks, autofillFromClient, type ClientRecord } from '../../utils/clientAutofill';
@@ -31,7 +32,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../../utils/caseNumbers';
-import { formatPhoneInput } from '../../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -240,7 +241,7 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 
 function formatServiceType(val: string | undefined | null): string {
   if (!val) return '';
-  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return SERVICE_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 function formatCallDuration(ms: number): string {
@@ -257,7 +258,7 @@ function formatCallDuration(ms: number): string {
 
 function formatDocumentType(val: string | undefined | null): string {
   if (!val) return '';
-  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return DOCUMENT_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 export default function DispatchPage() {
@@ -288,6 +289,10 @@ export default function DispatchPage() {
       await openNoticeOfCommunication(failedCall, {
         officerName,
         officerBadge: (user as any)?.badge_number || '',
+        // RMPG Dispatch direct line. Embedded as a build-time constant
+        // for now (single agency, single phone); migrate to a Worker
+        // settings row when a second tenant ever shows up.
+        dispatchPhone: '(385) 436-3370',
         redispatchCallNumber: extra?.redispatchCallNumber,
         nextWindow: extra?.nextWindow,
       });
@@ -307,7 +312,26 @@ export default function DispatchPage() {
   // state — e.g. priority-escalation detection in the call_updated handler.
   const callsRef = useRef<CallForService[]>([]);
   useEffect(() => { callsRef.current = calls; }, [calls]);
-  const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
+  // Synchronous dedup for POST + WebSocket race (a dispatcher's own POST resolves
+  // around the same time the WS `call_created` echo arrives — without dedup the
+  // call appears twice). Cap at 500 entries via FIFO eviction so a long shift
+  // doesn't grow this Set unbounded. 500 is generous: the longest active call
+  // window the dedup needs to cover is the ~5-10s between POST resolve and the
+  // WS echo, so 500 IDs is more than a day of busy dispatch.
+  const RECENT_IDS_CAP = 500;
+  const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set());
+  const rememberRecentId = useCallback((id: string | number) => {
+    const set = recentlyCreatedIdsRef.current;
+    set.add(id);
+    if (set.size > RECENT_IDS_CAP) {
+      const overflow = set.size - RECENT_IDS_CAP;
+      let dropped = 0;
+      for (const v of set) {
+        if (dropped >= overflow) break;
+        set.delete(v); dropped++;
+      }
+    }
+  }, []);
   const [units, setUnits] = useState<Unit[]>([]);
   // Mirror `units` into a ref so the mount-only adaptive GPS-poll effect (deps
   // exclude `units` to avoid re-arming the interval on every position tick) can
@@ -318,6 +342,7 @@ export default function DispatchPage() {
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'queue' as FilterTab, ['queue', 'pending', 'active', 'hold', 'serve', 'cleared', 'archived'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
+  const [reportingIssue, setReportingIssue] = useState(false);
   // Status-bar clock is rendered via the self-ticking <LiveClock/> component
   // (bottom bar, below). It owns its own 1s interval so the per-second tick no
   // longer re-renders this entire 6,300-line page — only the clock span.
@@ -384,11 +409,22 @@ export default function DispatchPage() {
   const [showAiSidebar, setShowAiSidebar] = useState(false);
   const [showCodePanel, setShowCodePanel] = useState(false);
 
-  // Queue sort mode. The /user/preferences backend is currently a stub that
-  // doesn't persist dispatch_sort, so we keep the selection in localStorage
-  // (best-effort PUT to the API too, for when it becomes real). This makes the
-  // SORT toggle actually stick across reloads — it previously reverted every time.
+  // Queue sort mode. Persisted via two layers:
+  //   1. localStorage (fast first-render hint — used while the /user/preferences
+  //      fetch is in flight, and on cold-start before any prefs hydrate).
+  //   2. /api/user/preferences — `dispatch_sort` is in PREF_COLUMNS (see
+  //      src/routes/stubs.ts) so server-side is the source of truth across
+  //      devices. The reconcile effect below replaces localStorage with the
+  //      server value once prefs load, so a different workstation's saved
+  //      sort wins over this device's stale localStorage.
   const [localSort, setLocalSort] = useState<string>(() => localStorage.getItem('rmpg_dispatch_sort') || '');
+  useEffect(() => {
+    const serverSort = (userPrefs as any)?.dispatch_sort;
+    if (typeof serverSort === 'string' && serverSort && serverSort !== localSort) {
+      setLocalSort(serverSort);
+      try { localStorage.setItem('rmpg_dispatch_sort', serverSort); } catch { /* storage unavailable */ }
+    }
+  }, [userPrefs, localSort]);
 
   // ── Feature 1: Call priority sound alerts ──
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
@@ -919,6 +955,66 @@ export default function DispatchPage() {
       .catch((err) => { console.warn('[DispatchPage] fetch properties list failed:', err); });
   }, [fetchData]);
 
+  // ── Deep-link auto-select: /dispatch?call_id=<id> ──
+  // Honors the call_id URL param (used by Dashboard "Calls Near Me" deep-links,
+  // among others). Auto-selects the target call once the calls list hydrates,
+  // switching to the right filter tab if its status doesn't fit the default
+  // 'queue' tab (e.g. an already-cleared call lands the user on the Cleared
+  // tab so they actually see the row in the left rail). Falls through to the
+  // archived list and triggers its lazy fetch if the call isn't in the
+  // active set. Runs at most once per page load (pendingDeepLinkRef gates it),
+  // so manually clicking a different call after the auto-select never gets
+  // reverted on the next /calls poll.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingDeepLinkRef = useRef<string | null>(
+    searchParams.get('call_id') || searchParams.get('callId') || null,
+  );
+  useEffect(() => {
+    const targetId = pendingDeepLinkRef.current;
+    if (!targetId) return;
+    const tryFind = (list: CallForService[]) => list.find((c) => String(c.id) === String(targetId));
+    const fromActive = tryFind(calls);
+    if (fromActive) {
+      setSelectedCall(fromActive);
+      // Map status → tab so the call is visible in the left rail.
+      const statusToTab: Record<string, FilterTab> = {
+        pending: 'pending', dispatched: 'active', enroute: 'active',
+        onscene: 'active', active: 'active', hold: 'hold',
+        cleared: 'cleared', closed: 'cleared', archived: 'archived',
+      };
+      const desiredTab = statusToTab[String(fromActive.status)] ?? 'queue';
+      setFilterTab(desiredTab);
+      pendingDeepLinkRef.current = null;
+      // Strip the query so a refresh doesn't re-select after the user
+      // navigates away from this call.
+      const next = new URLSearchParams(searchParams);
+      next.delete('call_id'); next.delete('callId');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // Not in active list — try archived. Trigger its load if it hasn't yet.
+    if (!archivedLoaded) {
+      fetchArchivedCalls();
+      return; // wait for the next effect run
+    }
+    const fromArchive = tryFind(archivedCalls);
+    if (fromArchive) {
+      setSelectedCall(fromArchive);
+      setFilterTab('archived');
+      pendingDeepLinkRef.current = null;
+      const next = new URLSearchParams(searchParams);
+      next.delete('call_id'); next.delete('callId');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // Both lists hydrated, no match — surface once + give up.
+    addToast(`Call ${targetId} not found`, 'warning');
+    pendingDeepLinkRef.current = null;
+    const next = new URLSearchParams(searchParams);
+    next.delete('call_id'); next.delete('callId');
+    setSearchParams(next, { replace: true });
+  }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, searchParams, setSearchParams, addToast]);
+
   // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI).
   // Each refresh refetches the active call list + units, so on a busy shift a
   // burst of status changes from many units would otherwise fire a full refetch
@@ -1210,7 +1306,12 @@ export default function DispatchPage() {
         const callId = selectedCallRef.current!.id;
         apiFetch(`/dispatch/calls/${callId}/serve-link`).then((res: any) => {
           if (res) setServeLink(res);
-        }).catch(() => {});
+        }).catch((err: any) => {
+          // Audit caught: silent .catch here left serve-queue panel stale
+          // after a serve attempt → dispatcher could re-dispatch the same
+          // officer to the same call thinking it was still pending.
+          addToast(err?.message || 'Serve link out of sync — refresh the call', 'error');
+        });
       }
       // Voice alert: announce serve completion
       if (data?.result && data?.served_to && data?.call_number) {
@@ -1333,8 +1434,16 @@ export default function DispatchPage() {
         setLinkedIncidents(Array.isArray(incidents) ? incidents : []);
         const activity = res?.activity ?? [];
         setActivityEntries(Array.isArray(activity) ? activity : []);
-      } catch {
-        if (!cancelled) { setLinkedIncidents([]); setActivityEntries([]); }
+      } catch (err: any) {
+        // Audit caught (2026-06-21): silent failure here showed the operator
+        // the LIST-version of selectedCall (no _ext columns), so PSO fields
+        // read "No PSO details entered" even when they existed on disk. The
+        // operator could re-enter and double-write. Surface the failure now.
+        if (!cancelled) {
+          setLinkedIncidents([]);
+          setActivityEntries([]);
+          addToast(err?.message || 'Could not load full call details — showing partial data', 'error');
+        }
       }
       try {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
@@ -1356,6 +1465,14 @@ export default function DispatchPage() {
 
   // PSO incident types — must be declared before filteredCalls which references it
   const PSO_INCIDENT_TYPES = ['pso_client_request'];
+
+  // When the admin-config disposition list is empty (production default),
+  // derive the correct fallback codes from the incident type so PSO calls
+  // see PS codes in the clear prompt and general calls see general codes.
+  const effectiveDispositionCodes = useMemo(() => {
+    if (dispositionCodes.length > 0) return dispositionCodes;
+    return dispositionGroupsForIncident(selectedCall?.incident_type).flatMap((g) => g.codes);
+  }, [dispositionCodes, selectedCall?.incident_type]);
 
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
@@ -1738,7 +1855,7 @@ export default function DispatchPage() {
       const result = await apiFetch<any>('/dispatch/calls', { method: 'POST', body: JSON.stringify(body) });
       const newCall = mapDbCall(result);
       // Mark as recently-created so WebSocket handler skips the duplicate
-      recentlyCreatedIdsRef.current.add(newCall.id);
+      rememberRecentId(newCall.id);
       setTimeout(() => recentlyCreatedIdsRef.current.delete(newCall.id), 5000); // cleanup after 5s
       setCalls((prev) => [newCall, ...prev]);
       setSelectedCall(newCall);
@@ -1869,6 +1986,8 @@ export default function DispatchPage() {
       process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
       process_served_at: ed.process_served_at || null,
       process_service_result: ed.process_service_result || null,
+      court_name: ed.court_name || null,
+      case_number: ed.case_number || null,
     };
   };
 
@@ -1948,6 +2067,8 @@ export default function DispatchPage() {
       process_attempts: selectedCallForEdit.process_attempts ?? 0,
       process_served_at: selectedCallForEdit.process_served_at || '',
       process_service_result: selectedCallForEdit.process_service_result || '',
+      court_name: selectedCallForEdit.court_name || '',
+      case_number: selectedCallForEdit.case_number || '',
     });
     setIsEditing(true);
   };
@@ -2181,12 +2302,12 @@ export default function DispatchPage() {
       <div className="flex items-center justify-center h-full" style={{ background: 'var(--surface-base)' }}>
         <div className="flex flex-col items-center gap-4">
           <div className="relative w-10 h-10 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-[#888888] animate-spin" />
-            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(212,160,23,0.25)' }} />
+            <Loader2 className="w-8 h-8 text-[var(--spm-text-muted)] animate-spin" />
+            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgb(var(--brand-gold-rgb) / 0.25)' }} />
           </div>
           <div className="flex flex-col items-center gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#888888] animate-pulse">Loading Dispatch Console</span>
-            <span className="text-[8px] font-mono text-[#545454]">Connecting to dispatch services...</span>
+            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[var(--spm-text-muted)] animate-pulse">Loading Dispatch Console</span>
+            <span className="text-[8px] font-mono text-[var(--spm-text-muted)]">Connecting to dispatch services...</span>
           </div>
         </div>
       </div>
@@ -2259,7 +2380,7 @@ export default function DispatchPage() {
               {/* Location */}
               <div className="flex items-center gap-2 text-sm text-rmpg-300 mb-2">
                 <MapPin className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">{call.location || 'Unknown'}</span>
+                <span className="min-w-0 truncate">{call.location || 'Unknown'}</span>
               </div>
               {/* Footer */}
               <div className="flex items-center justify-between text-sm text-rmpg-400">
@@ -2317,7 +2438,7 @@ export default function DispatchPage() {
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">Response:</span>
-                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                     </div>
                   );
                 })()}
@@ -2328,7 +2449,7 @@ export default function DispatchPage() {
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">On-Scene:</span>
-                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                     </div>
                   );
                 })()}
@@ -2337,16 +2458,16 @@ export default function DispatchPage() {
               {/* Safety Flag Badges — mobile */}
               {(() => {
                 const flags: Array<{ label: string; color: string }> = [];
-                if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: '#fca5a5' });
-                if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: '#fde047' });
-                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: '#c084fc' });
-                if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: '#ef4444' });
-                if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: '#fb923c' });
+                if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: 'var(--sev-critical-soft)' });
+                if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: 'var(--sev-caution)' });
+                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: 'var(--sev-special-soft)' });
+                if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: 'var(--sev-critical)' });
+                if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: 'var(--sev-high)' });
                 if (flags.length === 0) return null;
                 return (
                   <div className="flex flex-wrap gap-1">
                     {flags.map(f => (
-                      <span key={f.label} className="text-[9px] font-bold font-mono px-1.5 py-0.5" style={{ color: f.color, background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                      <span key={f.label} className="text-[9px] font-bold font-mono px-1.5 py-0.5" style={{ color: f.color, background: 'rgb(var(--sev-critical-rgb) / 0.1)', border: '1px solid rgb(var(--sev-critical-rgb) / 0.25)' }}>
                         {f.label}
                       </span>
                     ))}
@@ -2359,8 +2480,8 @@ export default function DispatchPage() {
                 {selectedCall.status === 'pending' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
                   </button>
@@ -2368,8 +2489,8 @@ export default function DispatchPage() {
                 {selectedCall.status === 'dispatched' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
                   </button>
@@ -2377,8 +2498,8 @@ export default function DispatchPage() {
                 {selectedCall.status === 'enroute' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
                   </button>
@@ -2388,21 +2509,21 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleClearWithDisposition(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#16a34a20', border: '1px solid #16a34a50', color: '#4ade80', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-ok) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-ok) 31%, transparent)', color: 'var(--sev-ok)', touchAction: 'manipulation' }}
                     >
                       <CheckCircle style={{ width: 16, height: 16 }} /> Clear
                     </button>
                     <button type="button"
                       onClick={() => handleHoldCall(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)', touchAction: 'manipulation' }}
                     >
                       ⏸ Hold
                     </button>
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#ef444420', border: '1px solid #ef444450', color: '#f87171', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)', touchAction: 'manipulation' }}
                     >
                       <XCircle style={{ width: 16, height: 16 }} /> Cancel
                     </button>
@@ -2412,7 +2533,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleResumeCall(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b', color: '#000', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--sev-warn)', color: '#000', touchAction: 'manipulation' }}
                   >
                     ▶ Resume
                   </button>
@@ -2422,15 +2543,15 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#444444', border: '1px solid #545454', color: '#cccccc', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-border)', border: '1px solid var(--spm-text-muted)', color: 'var(--spm-text)', touchAction: 'manipulation' }}
                     >
                       Close
                     </button>
                     <button type="button"
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                      style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                       Report
@@ -2441,8 +2562,8 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                     Report
@@ -2452,7 +2573,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleRevertStatus(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)', touchAction: 'manipulation' }}
                   >
                     <Undo2 style={{ width: 16, height: 16 }} /> Back
                   </button>
@@ -2461,7 +2582,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleArchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#40404020', border: '1px solid #54545450', color: '#999999', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Archive style={{ width: 16, height: 16 }} /> Archive
                   </button>
@@ -2470,7 +2591,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleUnarchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#40404020', border: '1px solid #54545450', color: '#999999', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <RotateCcw style={{ width: 16, height: 16 }} /> Restore
                   </button>
@@ -2482,7 +2603,7 @@ export default function DispatchPage() {
                 <div className="px-2">
                   <DispositionPrompt
                     callNumber={selectedCall.call_number}
-                    dispositionCodes={dispositionCodes}
+                    dispositionCodes={effectiveDispositionCodes}
                     onConfirm={handleConfirmClear}
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
@@ -2591,12 +2712,12 @@ export default function DispatchPage() {
                   </div>
                   <div className="space-y-1.5 text-xs">
                     {([
-                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#999999' },
-                      { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
-                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
-                      { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
-                      { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
-                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#666666' },
+                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: 'var(--spm-text-muted)' },
+                      { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: 'var(--sev-warn)' },
+                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
+                      { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
+                      { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
+                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: 'var(--spm-text-muted)' },
                     ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
                       <div key={ts.field} className="flex justify-between items-center group">
                         <span className="text-rmpg-400 flex items-center gap-1.5">
@@ -2629,7 +2750,7 @@ export default function DispatchPage() {
                         ) : (
                           <span className="flex items-center gap-1.5">
                             <span
-                              className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                              className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[var(--brand-gold)] group-hover:underline transition-colors' : ''}`}
                               onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
                               title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
                             >
@@ -2667,7 +2788,7 @@ export default function DispatchPage() {
                       return (
                         <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                           <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                          <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                          <span className="text-rmpg-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                         </div>
                       );
                     })()}
@@ -2725,8 +2846,8 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
-                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded-sm"
-                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#444444' : '#888888', border: '1px solid #5a5a5a' }}
+                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? 'var(--spm-border)' : 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                     >
                       <Send style={{ width: 16, height: 16 }} />
                     </button>
@@ -2742,7 +2863,7 @@ export default function DispatchPage() {
                         isAdminOrManager ? (
                           <select
                             className="px-1 py-0 text-[9px] font-bold rounded-sm cursor-pointer"
-                            style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto' }}
+                            style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)', appearance: 'auto' }}
                             value={selectedCall.pso_attempt_number || 1}
                             onChange={async (e) => {
                               const val = parseInt(e.target.value, 10);
@@ -2757,7 +2878,7 @@ export default function DispatchPage() {
                             {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>VISIT #{n}</option>)}
                           </select>
                         ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
-                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)' }}>
                             VISIT #{selectedCall.pso_attempt_number}
                           </span>
                         ) : null
@@ -2779,8 +2900,8 @@ export default function DispatchPage() {
                           <div
                             className="rounded-[2px] p-2 space-y-1.5"
                             style={{
-                              border: '1px solid #d4a017',
-                              background: '#d4a01708',
+                              border: '1px solid var(--brand-gold)',
+                              background: 'rgb(var(--brand-gold-rgb) / 0.03)',
                             }}
                             role="status"
                             aria-label={`Serve status: ${serveLink.status}`}
@@ -2790,23 +2911,23 @@ export default function DispatchPage() {
                               <span
                                 className="w-2 h-2 rounded-full flex-shrink-0"
                                 style={{
-                                  background: serveLink.status === 'served' ? '#22c55e'
-                                    : serveLink.status === 'failed' ? '#ef4444'
-                                    : serveLink.status === 'in_progress' ? '#eab308'
-                                    : '#f59e0b',
+                                  background: serveLink.status === 'served' ? 'var(--sev-ok)'
+                                    : serveLink.status === 'failed' ? 'var(--sev-critical)'
+                                    : serveLink.status === 'in_progress' ? 'var(--sev-caution)'
+                                    : 'var(--sev-warn)',
                                   boxShadow: `0 0 4px ${
-                                    serveLink.status === 'served' ? '#22c55e'
-                                    : serveLink.status === 'failed' ? '#ef4444'
-                                    : serveLink.status === 'in_progress' ? '#eab308'
-                                    : '#f59e0b'
+                                    serveLink.status === 'served' ? 'var(--sev-ok)'
+                                    : serveLink.status === 'failed' ? 'var(--sev-critical)'
+                                    : serveLink.status === 'in_progress' ? 'var(--sev-caution)'
+                                    : 'var(--sev-warn)'
                                   }`,
                                 }}
                               />
-                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--brand-gold)' }}>
                                 Serve Queue
                               </span>
                               {serveLink.auto_sent && (
-                                <span className="text-[9px] font-bold px-1 py-0.5 rounded-sm" style={{ background: '#d4a01720', border: '1px solid #d4a01740', color: '#d4a017' }}>
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded-sm" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}>
                                   AUTO-SENT
                                 </span>
                               )}
@@ -2816,36 +2937,36 @@ export default function DispatchPage() {
                               <span
                                 className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-[2px] uppercase"
                                 style={{
-                                  background: serveLink.status === 'served' ? '#22c55e20'
-                                    : serveLink.status === 'failed' ? '#ef444420'
-                                    : serveLink.status === 'in_progress' ? '#eab30820'
-                                    : '#f59e0b20',
-                                  color: serveLink.status === 'served' ? '#4ade80'
-                                    : serveLink.status === 'failed' ? '#f87171'
-                                    : serveLink.status === 'in_progress' ? '#facc15'
-                                    : '#fbbf24',
+                                  background: serveLink.status === 'served' ? 'color-mix(in srgb, var(--sev-ok) 13%, transparent)'
+                                    : serveLink.status === 'failed' ? 'color-mix(in srgb, var(--sev-critical) 13%, transparent)'
+                                    : serveLink.status === 'in_progress' ? 'color-mix(in srgb, var(--sev-caution) 13%, transparent)'
+                                    : 'color-mix(in srgb, var(--sev-warn) 13%, transparent)',
+                                  color: serveLink.status === 'served' ? 'var(--sev-ok)'
+                                    : serveLink.status === 'failed' ? 'var(--sev-critical)'
+                                    : serveLink.status === 'in_progress' ? 'var(--sev-caution)'
+                                    : 'var(--sev-warn-soft)',
                                   border: `1px solid ${
-                                    serveLink.status === 'served' ? '#22c55e40'
-                                    : serveLink.status === 'failed' ? '#ef444440'
-                                    : serveLink.status === 'in_progress' ? '#eab30840'
-                                    : '#f59e0b40'
+                                    serveLink.status === 'served' ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)'
+                                    : serveLink.status === 'failed' ? 'color-mix(in srgb, var(--sev-critical) 25%, transparent)'
+                                    : serveLink.status === 'in_progress' ? 'color-mix(in srgb, var(--sev-caution) 25%, transparent)'
+                                    : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'
                                   }`,
                                 }}
                               >
                                 {serveLink.status === 'in_progress' ? 'IN PROGRESS' : serveLink.status?.toUpperCase()}
                               </span>
                               {/* Attempt counter */}
-                              <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>
+                              <span className="text-[10px] font-mono tabular-nums" style={{ color: 'var(--brand-gold)' }}>
                                 Attempts: {serveLink.attempt_count}/{serveLink.max_attempts}
                               </span>
                             </div>
                             {/* View in Process Server link */}
                             <button type="button"
-                              className="flex items-center gap-1 text-[10px] font-medium rounded-[2px] px-2 py-1 transition-all duration-150 hover:shadow-[0_0_6px_rgba(212,160,23,0.2)]"
+                              className="flex items-center gap-1 text-[10px] font-medium rounded-[2px] px-2 py-1 transition-all duration-150 hover:shadow-[0_0_6px_rgb(var(--brand-gold-rgb)_/_0.2)]"
                               style={{
-                                background: '#d4a01715',
-                                border: '1px solid #d4a01740',
-                                color: '#d4a017',
+                                background: 'rgb(var(--brand-gold-rgb) / 0.08)',
+                                border: '1px solid rgb(var(--brand-gold-rgb) / 0.25)',
+                                color: 'var(--brand-gold)',
                               }}
                               onClick={() => navigate('/serve')}
                               aria-label="View in Process Server"
@@ -2858,9 +2979,9 @@ export default function DispatchPage() {
                           <button type="button"
                             className="w-full py-2 px-3 text-xs font-semibold rounded-[2px] flex items-center justify-center gap-2 transition-colors"
                             style={{
-                              background: sendingToServe ? '#444444' : '#a855f720',
-                              border: '1px solid #a855f750',
-                              color: sendingToServe ? '#999999' : '#c084fc',
+                              background: sendingToServe ? 'var(--spm-border)' : 'color-mix(in srgb, var(--sev-special) 13%, transparent)',
+                              border: '1px solid color-mix(in srgb, var(--sev-special) 31%, transparent)',
+                              color: sendingToServe ? 'var(--spm-text-muted)' : 'var(--sev-special-soft)',
                             }}
                             disabled={sendingToServe}
                             onClick={async () => {
@@ -2900,7 +3021,7 @@ export default function DispatchPage() {
                                 <span className="font-bold text-amber-300">VISIT #{visit.visit_number}</span>
                                 <span className="text-rmpg-300">{(visit.status || '').toUpperCase()}</span>
                                 {visit.time_window && (
-                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: '#88888820', border: '1px solid #88888840', color: '#888888' }}>
+                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: 'color-mix(in srgb, var(--spm-text-muted) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 25%, transparent)', color: 'var(--spm-text-muted)' }}>
                                     {visit.time_window === 'early_morning' ? '6-9AM' : visit.time_window === 'daytime' ? '9AM-6PM' : '6-9PM'}
                                     {visit.is_weekend ? ' (wknd)' : ''}
                                   </span>
@@ -2932,9 +3053,9 @@ export default function DispatchPage() {
                           <div className="field-label mb-1.5 flex items-center gap-2">
                             Service Windows
                             <span className="text-[9px] font-mono px-1 rounded-sm" style={{
-                              background: allMet ? '#22c55e20' : '#f59e0b20',
-                              border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
-                              color: allMet ? '#4ade80' : '#fbbf24',
+                              background: allMet ? 'color-mix(in srgb, var(--sev-ok) 13%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 13%, transparent)',
+                              border: `1px solid ${allMet ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'}`,
+                              color: allMet ? 'var(--sev-ok)' : 'var(--sev-warn-soft)',
                             }}>
                               {metCount}/4
                             </span>
@@ -2947,16 +3068,16 @@ export default function DispatchPage() {
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
                               <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
-                                background: met ? '#22c55e10' : '#ef444410',
-                                border: `1px solid ${met ? '#22c55e30' : '#ef444430'}`,
+                                background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
+                                border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
                               }}>
-                                <span style={{ color: met ? '#4ade80' : '#ef4444' }}>{met ? '✓' : '✗'}</span>
-                                <span style={{ color: met ? '#86efac' : '#fca5a5' }}>{label}</span>
+                                <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>{met ? '✓' : '✗'}</span>
+                                <span style={{ color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)' }}>{label}</span>
                               </div>
                             ))}
                           </div>
                           {allMet && (
-                            <div className="mt-1.5 text-[9px] text-center font-bold uppercase tracking-wider" style={{ color: '#4ade80' }}>
+                            <div className="mt-1.5 text-[9px] text-center font-bold uppercase tracking-wider" style={{ color: 'var(--sev-ok)' }}>
                               Due Diligence Complete
                             </div>
                           )}
@@ -2972,14 +3093,14 @@ export default function DispatchPage() {
                       const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                       if (elapsed >= 72 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: '#ef444430', border: '1px solid #ef444450', color: '#f87171' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}>
                             72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
                           </div>
                         );
                       }
                       if (elapsed >= 48 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
                             {Math.floor(hoursLeft)} HOURS UNTIL 72-HR DEADLINE
                           </div>
                         );
@@ -2991,7 +3112,7 @@ export default function DispatchPage() {
                     {['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded-sm"
-                        style={{ background: '#d4a01730', border: '1px solid #d4a01760', color: '#d4a017' }}
+                        style={{ background: 'rgb(var(--brand-gold-rgb) / 0.19)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.38)', color: 'var(--brand-gold)' }}
                         onClick={async () => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                           const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
@@ -3019,7 +3140,7 @@ export default function DispatchPage() {
                     {selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="w-full mt-2 py-2.5 px-4 text-sm font-semibold rounded-sm"
-                        style={{ background: '#3b82f625', border: '1px solid #3b82f650', color: '#60a5fa' }}
+                        style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
                         onClick={() => openPsoNotice(selectedCall)}
                       >
                         <FileText style={{ width: 14, height: 14, display: 'inline', marginRight: 6 }} />
@@ -3031,7 +3152,7 @@ export default function DispatchPage() {
                     {(selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
                         className="w-full mt-2 py-2 px-4 text-xs font-semibold rounded-sm"
-                        style={{ background: '#ef444420', border: '1px solid #ef444450', color: '#ef4444' }}
+                        style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
                         onClick={async () => {
                           if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
                           try {
@@ -3070,8 +3191,8 @@ export default function DispatchPage() {
           aria-label="Quick PSO"
           style={{
             right: '80px',
-            background: 'linear-gradient(180deg, #a855f7 0%, #6b21a8 100%)',
-            borderColor: '#a855f7',
+            background: 'linear-gradient(180deg, var(--sev-special) 0%, var(--sev-special) 100%)',
+            borderColor: 'var(--sev-special)',
           }}
         >
           <Shield style={{ width: 20, height: 20 }} />
@@ -3106,12 +3227,12 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
-      <div className="w-[35%] min-w-[320px] border-r border-[#2b2b2b] flex flex-col" style={{ background: 'var(--surface-base)' }}>
+      <div className="w-[35%] min-w-[320px] border-r border-[var(--spm-border)] flex flex-col" style={{ background: 'var(--surface-base)' }}>
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           {/* Enhancement 27: Live sync indicator */}
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-green-400 bg-green-900/30 border border-green-700/40" title="Real-time updates active">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" style={{ boxShadow: '0 0 4px #22c55e' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" style={{ boxShadow: '0 0 4px var(--sev-ok)' }} />
             LIVE
           </span>
           <RmpgLogo height={16} iconOnly />
@@ -3144,6 +3265,31 @@ export default function DispatchPage() {
           </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
+          {/* Cleared-tab supervisor: one-click end-of-shift PDF summary.
+              Filters the live calls list to status='cleared'|'closed' inside
+              today's Mountain-Time window (00:00 MT → now) and renders a
+              single-PDF table with disposition / units / duration so a
+              closing supervisor doesn't have to print per-call. Visible only
+              on the Cleared tab where the artifact is actually wanted. */}
+          {filterTab === 'cleared' && (
+            <button type="button"
+              onClick={() => {
+                const win = todayMtWindow();
+                const inWindow = filterClearedInWindow(calls, win);
+                openClearedSummaryPdf({
+                  calls: inWindow,
+                  windowStart: win.start,
+                  windowEnd: win.end,
+                  dispatcherName: user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username : undefined,
+                });
+              }}
+              className="toolbar-btn"
+              title="Print today's cleared calls (single PDF, MT window)"
+            >
+              <Printer style={{ width: 10, height: 10 }} />
+              Print Cleared
+            </button>
+          )}
           {tabCounts.cleared > 0 && (
             <button type="button"
               onClick={handleBulkArchive}
@@ -3156,7 +3302,7 @@ export default function DispatchPage() {
             </button>
           )}
           <div className="relative flex items-center" style={{ minWidth: '100px', maxWidth: '170px' }}>
-            <Search className="absolute left-2 w-3 h-3 text-[#545454] pointer-events-none" />
+            <Search className="absolute left-2 w-3 h-3 text-[var(--spm-text-muted)] pointer-events-none" />
             <input
               type="text"
               placeholder="Search calls, address, district (SL1, Herriman)…"
@@ -3167,7 +3313,7 @@ export default function DispatchPage() {
             {searchQuery && (
               <button type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[#888888] hover:text-white transition-colors"
+                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-rmpg-100 transition-colors"
                 title="Clear search"
               >
                 <X style={{ width: 10, height: 10 }} />
@@ -3201,8 +3347,8 @@ export default function DispatchPage() {
                   minWidth: '220px',
                   maxHeight: '280px',
                   overflowY: 'auto',
-                  background: '#141414',
-                  border: '1px solid #2a2a2a',
+                  background: 'var(--surface-raised)',
+                  border: '1px solid var(--spm-border)',
                   borderRadius: '2px',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                 }}
@@ -3228,11 +3374,11 @@ export default function DispatchPage() {
                         setShowTemplateDropdown(false);
                       }}
                       className="w-full flex flex-col items-start px-3 py-2 text-left transition-colors"
-                      style={{ fontSize: '11px', color: '#aaaaaa', background: 'transparent', border: 'none', borderRadius: 0 }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2e2e2e'; }}
+                      style={{ fontSize: '11px', color: 'var(--spm-text)', background: 'transparent', border: 'none', borderRadius: 0 }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
-                      <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
+                      <span className="font-bold text-rmpg-100" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
                       {tpl.description && <span className="text-rmpg-400 truncate w-full" style={{ fontSize: '10px' }}>{tpl.description}</span>}
                     </button>
                   ))
@@ -3245,11 +3391,11 @@ export default function DispatchPage() {
             className="toolbar-btn"
             title="Quick PSO Client Request (P)"
             style={{
-              background: 'linear-gradient(180deg, #a855f7 0%, #6b21a8 100%)',
-              borderColor: '#a855f7',
-              borderBottomColor: '#212121',
-              borderRightColor: '#212121',
-              color: '#ffffff',
+              background: 'linear-gradient(180deg, var(--sev-special) 0%, var(--sev-special) 100%)',
+              borderColor: 'var(--sev-special)',
+              borderBottomColor: 'var(--spm-border)',
+              borderRightColor: 'var(--spm-border)',
+              color: '#fff',
             }}
           >
             <Shield style={{ width: 10, height: 10 }} />
@@ -3272,7 +3418,7 @@ export default function DispatchPage() {
         />
 
         {/* Operational Status Strip — consolidated single row */}
-        <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#050505' }}>
+        <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: 'var(--surface-deep)' }}>
           {(() => {
             const workingCalls = calls.filter(c => !['cleared', 'closed', 'cancelled'].includes(c.status));
             const p1Count = workingCalls.filter(c => c.priority === 'P1').length;
@@ -3309,23 +3455,23 @@ export default function DispatchPage() {
               <>
                 {/* P1 alert — pulsing red */}
                 {p1Count > 0 && (
-                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold animate-pulse" style={{ background: 'rgba(220,38,38,0.2)', border: '1px solid rgba(220,38,38,0.4)', color: '#f87171', boxShadow: '0 0 6px rgba(220,38,38,0.3)' }}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" style={{ boxShadow: '0 0 4px #ef4444' }} />
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold animate-pulse" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.2)', border: '1px solid rgb(var(--sev-critical-rgb) / 0.4)', color: 'var(--sev-critical)', boxShadow: '0 0 6px rgb(var(--sev-critical-rgb) / 0.3)' }}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" style={{ boxShadow: '0 0 4px var(--sev-critical)' }} />
                     P1: {p1Count}
                   </span>
                 )}
                 {p2Count > 0 && <span className="text-amber-400 font-bold">P2: {p2Count}</span>}
                 {/* Unit availability */}
-                <span className="flex items-center gap-1.5 text-[#888888]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} OOS`}>
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? '#22c55e' : '#ef4444', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? '#22c55e80' : '#ef444480'}` }} />
-                  <span style={{ color: unitAvailability.available > 0 ? '#4ade80' : '#f87171' }}><strong>{unitAvailability.available}</strong> AVAIL</span>
+                <span className="flex items-center gap-1.5 text-[var(--spm-text-muted)]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} OOS`}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? 'var(--sev-ok)' : 'var(--sev-critical)', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? 'color-mix(in srgb, var(--sev-ok) 50%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 50%, transparent)'}` }} />
+                  <span style={{ color: unitAvailability.available > 0 ? 'var(--sev-ok)' : 'var(--sev-critical)' }}><strong>{unitAvailability.available}</strong> AVAIL</span>
                   {unitAvailability.enroute > 0 && <span className="text-amber-400"><strong>{unitAvailability.enroute}</strong> ENR</span>}
                   {unitAvailability.onscene > 0 && <span className="text-purple-400"><strong>{unitAvailability.onscene}</strong> OS</span>}
                   {unitAvailability.oos > 0 && <span className="text-rmpg-500"><strong>{unitAvailability.oos}</strong> OOS</span>}
                 </span>
                 {/* Stacked calls */}
                 {stacked.length > 0 && (
-                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px]" style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }} title={`${stacked.length} location(s) with multiple active calls`}>
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px]" style={{ background: 'rgb(var(--sev-special-rgb) / 0.15)', color: 'var(--sev-special-soft)', border: '1px solid rgb(var(--sev-special-rgb) / 0.3)' }} title={`${stacked.length} location(s) with multiple active calls`}>
                     <Link className="w-2.5 h-2.5" /> STACKED: {stacked.length}
                   </span>
                 )}
@@ -3336,7 +3482,7 @@ export default function DispatchPage() {
                   return (
                     <button type="button" onClick={() => setSearchQuery(isFiltered ? '' : topSection)}
                       className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] hover:brightness-125 transition-all"
-                      style={{ background: isFiltered ? 'rgba(212,160,23,0.3)' : 'rgba(212,160,23,0.12)', color: '#d4a017', border: '1px solid rgba(212,160,23,0.3)' }}
+                      style={{ background: isFiltered ? 'rgb(var(--brand-gold-rgb) / 0.3)' : 'rgb(var(--brand-gold-rgb) / 0.12)', color: 'var(--brand-gold)', border: '1px solid rgba(212,160,23,0.3)' }}
                       title={`Active calls by district — ${districtLoad.map(([k, n]) => `${k}: ${n}`).join(' · ')}`}
                     >
                       <MapPin className="w-2.5 h-2.5" /> {topSection}: {districtLoad[0][1]}
@@ -3371,7 +3517,7 @@ export default function DispatchPage() {
                           .then(() => reloadPrefs()).catch(() => {});
                       }}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border border-rmpg-700/50 hover:brightness-125 transition-all"
-                      style={{ background: '#0d0d0d', color: '#d4a017' }}
+                      style={{ background: 'var(--surface-sunken)', color: 'var(--brand-gold)' }}
                     >
                       SORT: {labels[current]}
                     </button>
@@ -3380,7 +3526,7 @@ export default function DispatchPage() {
                 {/* Right: today + priority filters + call count */}
                 <div className="ml-auto flex items-center gap-1.5">
                   <span className="text-rmpg-400">
-                    <span className="text-[8px] text-rmpg-600">TODAY</span> <strong className="text-white">{todayCalls.length}</strong>/<strong className="text-green-400">{clearedToday}</strong>
+                    <span className="text-[8px] text-rmpg-600">TODAY</span> <strong className="text-rmpg-100">{todayCalls.length}</strong>/<strong className="text-green-400">{clearedToday}</strong>
                   </span>
                   <span className="text-rmpg-700">|</span>
                   {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
@@ -3389,7 +3535,7 @@ export default function DispatchPage() {
                     const colors: Record<string, string> = {
                       P1: `bg-red-900/${active ? '60' : '40'} text-red-400 border-red-700/${active ? '60' : '50'}`,
                       P2: `bg-amber-900/${active ? '60' : '40'} text-amber-400 border-amber-700/${active ? '60' : '50'}`,
-                      P3: `bg-gray-900/${active ? '60' : '40'} text-gray-400 border-gray-700/${active ? '60' : '50'}`,
+                      P3: `bg-surface-sunken/${active ? '60' : '40'} text-rmpg-400 border-border-default/${active ? '60' : '50'}`,
                       P4: `bg-green-900/${active ? '60' : '40'} text-green-400 border-green-700/${active ? '60' : '50'}`,
                     };
                     return (
@@ -3425,7 +3571,7 @@ export default function DispatchPage() {
 
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
-          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-shrink-0" style={{ background: '#0c0c0c80' }}>
+          <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2 flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
             {callTypeStats.map(({ type, count }) => {
               const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
               const pct = total > 0 ? (count / total * 100) : 0;
@@ -3453,7 +3599,7 @@ export default function DispatchPage() {
 
         {/* Feature 14: Disposition Statistics (collapsed by default) */}
         {dispositionStats.length > 0 && filterTab === 'cleared' && (
-          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: '#0c0c0c80' }}>
+          <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
             <span className="text-rmpg-500 font-bold">DISPS:</span>
             {dispositionStats.slice(0, 5).map(d => (
               <span key={d.disposition} className="text-rmpg-400">
@@ -3465,26 +3611,26 @@ export default function DispatchPage() {
 
         {/* Active filter tags */}
         {(priorityFilter || typeFilter || signalFilter) && (
-          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-1.5 flex-shrink-0" style={{ background: '#0a0a0a' }}>
+          <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-1.5 flex-shrink-0" style={{ background: 'var(--surface-base)' }}>
             <span className="text-[8px] text-rmpg-500 font-semibold uppercase tracking-wider mr-0.5">Filters:</span>
             {priorityFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm"
-                style={{ background: priorityFilter === 'P1' ? 'rgba(239,68,68,0.25)' : priorityFilter === 'P2' ? 'rgba(217,119,6,0.25)' : priorityFilter === 'P3' ? 'rgba(107,114,128,0.25)' : 'rgba(34,197,94,0.25)', borderColor: priorityFilter === 'P1' ? '#ef444480' : priorityFilter === 'P2' ? '#d9770680' : priorityFilter === 'P3' ? '#6b728080' : '#22c55e80', color: priorityFilter === 'P1' ? '#ef4444' : priorityFilter === 'P2' ? '#d97706' : priorityFilter === 'P3' ? '#9ca3af' : '#22c55e' }}
+                style={{ background: priorityFilter === 'P1' ? 'rgb(var(--sev-critical-rgb) / 0.25)' : priorityFilter === 'P2' ? 'rgb(var(--sev-warn-rgb) / 0.25)' : priorityFilter === 'P3' ? 'rgb(var(--spm-text-muted-rgb) / 0.25)' : 'rgb(var(--sev-ok-rgb) / 0.25)', borderColor: priorityFilter === 'P1' ? 'color-mix(in srgb, var(--sev-critical) 50%, transparent)' : priorityFilter === 'P2' ? 'color-mix(in srgb, var(--sev-warn) 50%, transparent)' : priorityFilter === 'P3' ? 'color-mix(in srgb, var(--spm-text-muted) 50%, transparent)' : 'color-mix(in srgb, var(--sev-ok) 50%, transparent)', color: priorityFilter === 'P1' ? 'var(--sev-critical)' : priorityFilter === 'P2' ? 'var(--sev-warn)' : priorityFilter === 'P3' ? 'var(--spm-text-muted)' : 'var(--sev-ok)' }}
               >
                 Priority: {priorityFilter}
-                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
               </span>
             )}
             {typeFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-brand-300 border-brand-700/50 bg-brand-900/20">
                 Type: {formatIncidentType(typeFilter)}
-                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
               </span>
             )}
             {signalFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-purple-300 border-purple-700/50 bg-purple-900/20">
                 Signal: {signalFilter === 'signaled' ? 'Has code' : 'No code'}
-                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
               </span>
             )}
             <button
@@ -3498,16 +3644,16 @@ export default function DispatchPage() {
         )}
 
         {/* Call List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
+        <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-[#888888]">
-              <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0c0c0c50', border: '1px solid #2b2b2b30' }}>
+            <div className="flex flex-col items-center justify-center py-16 text-[var(--spm-text-muted)]">
+              <div className="p-3.5 rounded-sm mb-3" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 31%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 19%, transparent)' }}>
                 <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
               <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">
                 {(priorityFilter || typeFilter || signalFilter) ? 'No calls match active filters' : 'No calls in this category'}
               </p>
-              <p className="text-[10px] text-[#545454] max-w-[240px] text-center leading-relaxed">
+              <p className="text-[10px] text-[var(--spm-text-muted)] max-w-[240px] text-center leading-relaxed">
                 {(priorityFilter || typeFilter || signalFilter) ? (
                   <button type="button" onClick={() => { setPriorityFilter(null); setTypeFilter(null); setSignalFilter(null); }} className="underline hover:text-rmpg-300 transition-colors">Clear filters</button>
                 ) : filterTab === 'pending' ? 'All pending calls have been dispatched' :
@@ -3540,7 +3686,7 @@ export default function DispatchPage() {
               return (
                 <React.Fragment key={call.id}>
                   {showSectionDivider && (
-                    <div className="sticky top-0 z-10 flex items-center gap-1.5 px-2 py-0.5 bg-[#0d0d0d] border-y border-amber-900/30 text-[9px] font-bold uppercase tracking-wider text-amber-400/90">
+                    <div className="sticky top-0 z-10 flex items-center gap-1.5 px-2 py-0.5 bg-[var(--surface-sunken)] border-y border-amber-900/30 text-[9px] font-bold uppercase tracking-wider text-amber-400/90">
                       <MapPin className="w-3 h-3" />
                       {sectionCode ? `${sectionCode} · ${sectionLabel}` : sectionLabel}
                     </div>
@@ -3572,21 +3718,21 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         {/* TOP - Call Detail (left) + Map (right) — ~65% height */}
         {/* ------------------------------------------------------------ */}
-        <div className="flex-1 flex border-b border-[#2b2b2b] min-h-0">
+        <div className="flex-1 flex border-b border-[var(--spm-border)] min-h-0">
           {/* Call Detail Panel */}
-          <div ref={callDetailRef} className={`flex-1 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
+          <div ref={callDetailRef} className={`flex-1 min-h-0 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
           {selectedCall ? (
             <>
               {/* Detail Header — PanelTitleBar style */}
-              <div className="flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #888888' }}>
+              <div className="flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid var(--sev-critical)', background: 'linear-gradient(90deg, rgb(var(--sev-critical-rgb) / 0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid var(--sev-warn)' } : { borderLeft: '3px solid var(--spm-text-muted)' }}>
                 {/* Row 1: Call identification */}
                 <div className="panel-title-bar flex items-center gap-2" style={{ borderBottom: 'none' }}>
                   {selectedCall.priority === 'P1' && (
-                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
+                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgb(var(--sev-critical-rgb) / 0.5))' }} />
                   )}
                   <span
                     className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap cursor-pointer hover:text-green-300 transition-colors"
-                    style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}
+                    style={{ textShadow: '0 0 8px rgb(var(--sev-ok-rgb) / 0.2)' }}
                     title="Click to copy"
                     onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(selectedCall.call_number || ''); addToast(`Copied ${selectedCall.call_number}`, 'success'); }}
                   >{selectedCall.call_number}</span>
@@ -3609,7 +3755,9 @@ export default function DispatchPage() {
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Case number set to ${val}` : 'Case number cleared', 'success');
-                            } catch { addToast('Failed to update case number', 'error'); }
+                            } catch (err: any) {
+                              addToast(err?.message || 'Failed to update case number', 'error');
+                            }
                             setEditingTimestamp(null);
                           }
                           if (e.key === 'Escape') setEditingTimestamp(null);
@@ -3623,7 +3771,13 @@ export default function DispatchPage() {
                               const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
-                            } catch { /* silent on blur */ }
+                            } catch (err: any) {
+                              // Was deliberately /* silent on blur */ but an
+                              // unreported failure on a documented audit-trail
+                              // field meant the operator believed the value
+                              // persisted when in fact it didn't.
+                              addToast(err?.message || 'Failed to update case number — change not persisted', 'error');
+                            }
                           }
                           setEditingTimestamp(null);
                         }}
@@ -3651,12 +3805,21 @@ export default function DispatchPage() {
                           if (e.key === 'Enter') {
                             const val = (e.target as HTMLInputElement).value.trim();
                             try {
-                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              // BUG FIX (2026-06-21 audit): this editor is the
+                              // incident_number field but the body used to send
+                              // { case_number: val }. The server overwrote
+                              // case_number with the incident value, the displayed
+                              // incident_number never updated, and the operator
+                              // saw a green "Linked to incident X" toast for an
+                              // action that silently corrupted the CAD-RMS link.
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ incident_number: val || null }) });
                               const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
-                            } catch { addToast('Failed to update incident link', 'error'); }
+                            } catch (err: any) {
+                              addToast(err?.message || 'Failed to update incident link', 'error');
+                            }
                             setEditingTimestamp(null);
                           }
                           if (e.key === 'Escape') setEditingTimestamp(null);
@@ -3665,19 +3828,25 @@ export default function DispatchPage() {
                           const val = e.target.value.trim();
                           if (val !== ((selectedCall as any).incident_number || '')) {
                             try {
-                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ incident_number: val || null }) });
                               const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
-                            } catch { /* silent on blur */ }
+                            } catch (err: any) {
+                              // Was deliberately /* silent on blur */ — but a
+                              // silent failure on a documented audit-trail
+                              // field meant the operator tabbed away thinking
+                              // the value persisted. Audit caught this.
+                              addToast(err?.message || 'Failed to update incident link — change not persisted', 'error');
+                            }
                           }
                           setEditingTimestamp(null);
                         }}
                       />
                     ) : selectedCall.incident_number ? (
                       <span
-                        className={`text-[10px] font-bold font-mono text-gray-300 bg-gray-900/30 border border-gray-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-gray-200 transition-colors`}
+                        className={`text-[10px] font-bold font-mono text-rmpg-300 bg-surface-sunken/30 border border-border-default/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-rmpg-200 transition-colors`}
                         onClick={(e) => {
                           if (isAdminOrManager && e.shiftKey) {
                             setEditingTimestamp('incident_number');
@@ -3725,7 +3894,7 @@ export default function DispatchPage() {
                   )}
                 </div>
                 {/* Row 2: Action buttons — separate row to prevent cramping */}
-                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#2b2b2b] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#050505' }}>
+                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: 'var(--surface-deep)' }}>
                   {isEditing ? (
                     // While editing, the in-form values aren't yet on selectedCall,
                     // so a print right now would generate a PDF missing whatever
@@ -3818,7 +3987,7 @@ export default function DispatchPage() {
                         onClick={() => setShowNcicPanel(true)}
                         className="toolbar-btn"
                         title="NCIC / NLETS Query Terminal"
-                        style={{ color: '#4ade80' }}
+                        style={{ color: 'var(--sev-ok)' }}
                       >
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
                       </button>
@@ -3827,7 +3996,7 @@ export default function DispatchPage() {
                     {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
-                        style={{ background: '#d4a01725', borderColor: '#d4a01750', color: '#d4a017' }}
+                        style={{ background: 'rgb(var(--brand-gold-rgb) / 0.15)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.31)', color: 'var(--brand-gold)' }}
                         onClick={async () => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                           const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
@@ -3856,7 +4025,7 @@ export default function DispatchPage() {
                     {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
-                        style={{ background: '#3b82f625', borderColor: '#3b82f650', color: '#60a5fa' }}
+                        style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
                         onClick={() => openPsoNotice(selectedCall)}
                         title="Generate an autofilled Notice of Communication for the client (unsuccessful attempt → re-dispatch)"
                       >
@@ -3867,7 +4036,7 @@ export default function DispatchPage() {
                     {!isEditing && (selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
                         className="toolbar-btn"
-                        style={{ background: '#ef444420', borderColor: '#ef444450', color: '#ef4444' }}
+                        style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
                         onClick={async () => {
                           if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
                           try {
@@ -3889,7 +4058,7 @@ export default function DispatchPage() {
                     {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
                       <button type="button"
                         className="toolbar-btn"
-                        style={{ background: '#a855f720', borderColor: '#a855f750', color: '#c084fc' }}
+                        style={{ background: 'color-mix(in srgb, var(--sev-special) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', color: 'var(--sev-special-soft)' }}
                         disabled={sendingToServe}
                         onClick={async () => {
                           setSendingToServe(true);
@@ -3913,13 +4082,43 @@ export default function DispatchPage() {
                         <Briefcase style={{ width: 10, height: 10 }} /> {sendingToServe ? 'Sending...' : 'Serve Queue'}
                       </button>
                     )}
+                    {/* Report Issue — create a work order from this call */}
+                    {!isEditing && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)' }}
+                        disabled={reportingIssue}
+                        onClick={async () => {
+                          if (!window.confirm(`Report a mechanical issue from Call ${selectedCall.call_number}? This will create a work order.`)) return;
+                          setReportingIssue(true);
+                          try {
+                            const result = await apiFetch<{ data: { id: number } }>(`/dispatch/calls/${selectedCall.id}/report-issue`, {
+                              method: 'POST',
+                              body: JSON.stringify({
+                                summary: `Mechanical issue reported from Call #${selectedCall.call_number}`,
+                              }),
+                            });
+                            if (result) {
+                              addToast(`Work order #${result.data?.id ?? ''} created`, 'success');
+                            }
+                          } catch (err: any) {
+                            addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                          } finally {
+                            setReportingIssue(false);
+                          }
+                        }}
+                        title="Create a work order from this call"
+                      >
+                        <Wrench style={{ width: 10, height: 10 }} /> {reportingIssue ? 'Creating...' : 'Report Issue'}
+                      </button>
+                    )}
                     {/* Revert status button — go back one step */}
                     {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
                       <button type="button"
                         onClick={() => handleRevertStatus(selectedCall.id)}
                         className="toolbar-btn"
                         title={`Revert to previous status`}
-                        style={{ color: '#f59e0b' }}
+                        style={{ color: 'var(--sev-warn)' }}
                       >
                         <Undo2 style={{ width: 10, height: 10 }} /> Back
                       </button>
@@ -3945,16 +4144,16 @@ export default function DispatchPage() {
                         <button type="button" onClick={() => handleClearWithDisposition(selectedCall.id)} className="toolbar-btn">
                           <CheckCircle style={{ width: 10, height: 10 }} /> Clear
                         </button>
-                        <button type="button" onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                        <button type="button" onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: 'var(--sev-warn)' }}>
                           ⏸ Hold
                         </button>
-                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#f87171' }}>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: 'var(--sev-critical)' }}>
                           <XCircle style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'on_hold' && (
-                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: '#f59e0b', color: '#000' }}>
+                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: 'var(--sev-warn)', color: '#000' }}>
                         ▶ Resume
                       </button>
                     )}
@@ -3977,13 +4176,13 @@ export default function DispatchPage() {
                     )}
                     {/* LE Notification */}
                     {!isEditing && !selectedCall.le_notified && selectedCall.status !== 'archived' && (
-                      <button type="button" onClick={() => handleLeNotify(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                      <button type="button" onClick={() => handleLeNotify(selectedCall.id)} className="toolbar-btn" style={{ color: 'var(--sev-warn)' }}>
                         <Radio style={{ width: 10, height: 10 }} /> Notify LE
                       </button>
                     )}
                     {selectedCall.le_notified && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)', boxShadow: '0 0 4px rgba(34,197,94,0.1)' }}>
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e80' }} />
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm" style={{ background: 'rgb(var(--sev-ok-rgb) / 0.15)', color: 'var(--sev-ok)', border: '1px solid rgb(var(--sev-ok-rgb) / 0.3)', boxShadow: '0 0 4px rgb(var(--sev-ok-rgb) / 0.1)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-ok)', boxShadow: '0 0 3px color-mix(in srgb, var(--sev-ok) 50%, transparent)' }} />
                         LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
                       </span>
                     )}
@@ -4009,9 +4208,9 @@ export default function DispatchPage() {
 
               {/* Warning Tags / Caution Alerts — always visible above tabs */}
               {callWarnings.length > 0 && (
-                <div className="px-4 pt-2 pb-1.5 flex-shrink-0" style={{ background: 'rgba(220,38,38,0.05)', borderBottom: '1px solid rgba(220,38,38,0.15)' }}>
+                <div className="px-4 pt-2 pb-1.5 flex-shrink-0" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.05)', borderBottom: '1px solid rgb(var(--sev-critical-rgb) / 0.15)' }}>
                   <label className="text-[9px] font-bold text-red-400 uppercase tracking-[0.1em] flex items-center gap-1.5 mb-1.5">
-                    <AlertTriangle style={{ width: 10, height: 10, filter: 'drop-shadow(0 0 3px rgba(239,68,68,0.4))' }} /> CAUTION / WARNINGS
+                    <AlertTriangle style={{ width: 10, height: 10, filter: 'drop-shadow(0 0 3px rgb(var(--sev-critical-rgb) / 0.4))' }} /> CAUTION / WARNINGS
                   </label>
                   <WarningTags warnings={callWarnings} />
                 </div>
@@ -4019,7 +4218,7 @@ export default function DispatchPage() {
 
               {/* Call Duration + Response Time + Safety Summary — always visible above tabs */}
               {!isEditing && (
-                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
+                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: 'var(--surface-deep)', borderBottom: '1px solid var(--spm-border)' }}>
                   {/* Call duration — running timer */}
                   <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
                     <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
@@ -4038,9 +4237,9 @@ export default function DispatchPage() {
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Navigation style={{ width: 10, height: 10 }} className="text-gray-500" />
+                        <Navigation style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                         <span className="text-rmpg-400">Response:</span>
-                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                       </div>
                     );
                   })()}
@@ -4051,9 +4250,9 @@ export default function DispatchPage() {
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Clock style={{ width: 10, height: 10 }} className="text-gray-500" />
+                        <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                         <span className="text-rmpg-400">On-Scene:</span>
-                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                       </div>
                     );
                   })()}
@@ -4073,7 +4272,7 @@ export default function DispatchPage() {
                       <div className="flex items-center gap-1 ml-auto">
                         <AlertTriangle style={{ width: 10, height: 10 }} className="text-red-400" />
                         {flags.map(f => (
-                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c084fc' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#aaaaaa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? 'var(--sev-critical-soft)' : f === 'DV' ? 'var(--sev-caution)' : f === 'MH' ? 'var(--sev-special-soft)' : f === 'PURSUIT' ? 'var(--sev-high)' : f === 'SAFETY' ? 'var(--sev-critical)' : 'var(--spm-text)', background: 'rgb(var(--sev-critical-rgb) / 0.1)', border: '1px solid rgb(var(--sev-critical-rgb) / 0.25)' }}>
                             {f}
                           </span>
                         ))}
@@ -4084,7 +4283,7 @@ export default function DispatchPage() {
               )}
 
               {/* Detail Tabs */}
-              <div className="flex border-b border-[#2b2b2b] flex-shrink-0" style={{ background: '#050505' }}>
+              <div className="flex border-b border-[var(--spm-border)] flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
                 {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
                   const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                   const icons: Record<string, React.ReactNode> = {
@@ -4111,17 +4310,17 @@ export default function DispatchPage() {
                       onClick={() => setDetailTab(tab)}
                       className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
                       style={{
-                        color: isActive ? '#999999' : '#666666',
-                        background: isActive ? 'rgba(42,42,42,0.6)' : 'transparent',
-                        borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
+                        color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)',
+                        background: isActive ? 'color-mix(in srgb, var(--surface-sunken) 60%, transparent)' : 'transparent',
+                        borderBottom: isActive ? '2px solid var(--brand-gold)' : '2px solid transparent',
                       }}
-                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#999999'; (e.currentTarget as HTMLElement).style.background = 'rgba(42,42,42,0.4)'; } }}
-                      onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#666666'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
+                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 40%, transparent)'; } }}
+                      onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                     >
                       <span className="flex items-center gap-1.5">
                         {icons[tab]}
                         {labels[tab]}
-                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#2b2b2b30', color: isActive ? '#999999' : '#666666' }}>{count}</span> : ''}
+                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--spm-text-muted) 15%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
                       </span>
                     </button>
                   );
@@ -4129,7 +4328,7 @@ export default function DispatchPage() {
               </div>
 
               {/* Detail Body — Scrollable, tab-controlled */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 {/* ── CALL INFO SECTION (Info + Persons tab) ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 flex-shrink-0" style={{ display: detailTab === 'info' || detailTab === 'persons' ? undefined : 'none' }}>
                   {/* Left Column: Core Info */}
@@ -4178,7 +4377,7 @@ export default function DispatchPage() {
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-rmpg-300" />
-                          <p className="text-sm text-white">{formatAddressDisplay(selectedCall.location)}</p>
+                          <p className="text-sm text-rmpg-100">{formatAddressDisplay(selectedCall.location)}</p>
                         </div>
                       )}
                       {!isEditing && selectedCall.property_name && (
@@ -4336,7 +4535,7 @@ export default function DispatchPage() {
                             <>
                               <div className="flex items-center gap-1.5">
                                 <User className="w-3.5 h-3.5 text-rmpg-300" />
-                                <p className="text-sm text-white">{selectedCall.caller_name || 'Unknown'}</p>
+                                <p className="text-sm text-rmpg-100">{selectedCall.caller_name || 'Unknown'}</p>
                                 {selectedCall.caller_relationship && <span className="text-[9px] text-rmpg-400">({selectedCall.caller_relationship})</span>}
                               </div>
                               {selectedCall.caller_phone && (
@@ -4357,19 +4556,19 @@ export default function DispatchPage() {
                         <label className="field-label">Timeline:</label>
                         {isAdminOrManager && <span className="text-[7px] text-rmpg-500 font-mono tracking-wider">ADMIN EDIT</span>}
                       </div>
-                      <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #2b2b2b' }}>
+                      <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid var(--spm-border)' }}>
                         {([
-                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#666666', showElapsed: true },
-                          { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
-                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
-                          { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
-                          { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
-                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#666666' },
-                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#666666' },
+                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: 'var(--spm-text-muted)', showElapsed: true },
+                          { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: 'var(--sev-warn)' },
+                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
+                          { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
+                          { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
+                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: 'var(--spm-text-muted)' },
+                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: 'var(--spm-text-muted)' },
                         ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#222222', border: '2px solid #0c0c0c', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : 'var(--spm-border)', border: '2px solid var(--surface-sunken)', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
+                            <span className="text-rmpg-500 text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
                             {editingTimestamp === ts.field ? (
                               <div className="flex items-center gap-1">
                                 <input
@@ -4395,7 +4594,7 @@ export default function DispatchPage() {
                               </div>
                             ) : (
                               <span
-                                className={`text-white font-mono text-[10px] tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                                className={`text-rmpg-100 font-mono text-[10px] tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[var(--brand-gold)] group-hover:underline transition-colors' : ''}`}
                                 onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
                                 title={isAdminOrManager ? 'Click to edit' : undefined}
                               >
@@ -4404,7 +4603,7 @@ export default function DispatchPage() {
                             )}
                             {ts.showElapsed && ts.value && !editingTimestamp && (() => {
                               const ageMin = Math.floor((Date.now() - parseTimestamp(ts.value).getTime()) / 60000);
-                              const ageColor = ageMin > 120 ? '#ef4444' : ageMin > 60 ? '#f97316' : ageMin > 30 ? '#eab308' : '#22c55e';
+                              const ageColor = ageMin > 120 ? 'var(--sev-critical)' : ageMin > 60 ? 'var(--sev-high)' : ageMin > 30 ? 'var(--sev-caution)' : 'var(--sev-ok)';
                               return <span className="text-[9px] font-mono tabular-nums font-bold" style={{ color: ageColor }}>({formatElapsed(ts.value)})</span>;
                             })()}
                           </div>
@@ -4418,7 +4617,7 @@ export default function DispatchPage() {
                           return (
                             <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                               <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                              <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                              <span className="text-rmpg-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                             </div>
                           );
                         })()}
@@ -4523,11 +4722,11 @@ export default function DispatchPage() {
                             const unitObj = units.find((u) => String(u.id) === String(unitIdStr));
                             const displayName = unitObj ? unitObj.call_sign : unitIdStr;
                             const statusColor = unitObj ? (
-                              unitObj.status === 'onscene' ? '#a855f7' :
-                              unitObj.status === 'enroute' ? '#888888' :
-                              unitObj.status === 'dispatched' ? '#f59e0b' :
-                              '#22c55e'
-                            ) : '#666666';
+                              unitObj.status === 'onscene' ? 'var(--sev-special)' :
+                              unitObj.status === 'enroute' ? 'var(--spm-text-muted)' :
+                              unitObj.status === 'dispatched' ? 'var(--sev-warn)' :
+                              'var(--sev-ok)'
+                            ) : 'var(--spm-text-muted)';
                             const statusLabel = unitObj ? (
                               unitObj.status === 'onscene' ? 'OS' :
                               unitObj.status === 'enroute' ? 'ER' :
@@ -4564,13 +4763,13 @@ export default function DispatchPage() {
                       )}
                       {/* Inline ETA from route */}
                       {routeInfo && (
-                        <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(136, 136, 136,0.08)', border: '1px solid rgba(136, 136, 136,0.2)', boxShadow: '0 0 8px rgba(136, 136, 136,0.06)' }}>
-                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-gray-400">
+                        <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgb(var(--spm-text-muted-rgb) / 0.08)', border: '1px solid rgb(var(--spm-text-muted-rgb) / 0.2)', boxShadow: '0 0 8px rgb(var(--spm-text-muted-rgb) / 0.06)' }}>
+                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-rmpg-400">
                             <Navigation style={{ width: 9, height: 9 }} /> ETA
                           </span>
-                          <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
-                          <span className="text-[9px] font-mono text-[#888888] tabular-nums">{routeInfo.distance}</span>
-                          <span className="text-[8px] font-mono text-[#545454] ml-auto">{routeInfo.unitCallSign}</span>
+                          <span className="text-[11px] font-mono font-bold text-rmpg-100 tabular-nums">{routeInfo.eta}</span>
+                          <span className="text-[9px] font-mono text-[var(--spm-text-muted)] tabular-nums">{routeInfo.distance}</span>
+                          <span className="text-[8px] font-mono text-[var(--spm-text-muted)] ml-auto">{routeInfo.unitCallSign}</span>
                         </div>
                       )}
                     </div>
@@ -4580,8 +4779,8 @@ export default function DispatchPage() {
                 {/* ── MILEAGE (primary unit) — Info tab ─── */}
                 {/* Boolean() — numeric mileage 0 would otherwise render "0". */}
                 {detailTab === 'info' && Boolean(isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Primary Unit Mileage
                     </label>
                     {isEditing ? (
@@ -4641,8 +4840,8 @@ export default function DispatchPage() {
 
                 {/* ── EXTENDED DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.sector_id || selectedCall.zone_id || selectedCall.beat_id || selectedCall.latitude || selectedCall.dispatch_code) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Location Details
                     </label>
                     {isEditing ? (() => {
@@ -4778,8 +4977,8 @@ export default function DispatchPage() {
                 {/* ── SUBJECT/THREAT INFO — Persons tab ─── */}
                 {/* Boolean() — num_subjects/num_victims 0 would otherwise leak as "0". */}
                 {(detailTab === 'info' || detailTab === 'persons') && Boolean(isEditing || (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') || selectedCall.injuries_reported || selectedCall.num_subjects || selectedCall.subject_description || selectedCall.vehicle_description || selectedCall.direction_of_travel || callPersons.length > 0 || callVehicles.length > 0) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Subject / Threat Info
                     </label>
                     {/* Aggregate threat posture — rolls the call's own flags +
@@ -4854,7 +5053,7 @@ export default function DispatchPage() {
                                     updateEditField('subject_description', desc);
                                     setShowPersonDropdown(false);
                                   }}>
-                                    <span className="font-semibold text-white">{p.last_name}, {p.first_name}</span>
+                                    <span className="font-semibold text-rmpg-100">{p.last_name}, {p.first_name}</span>
                                     {p.dob && <span className="text-rmpg-400 ml-1">DOB: {p.dob}</span>}
                                     {p.address && <span className="text-rmpg-500 ml-1 text-[9px]">— {p.address}</span>}
                                   </button>
@@ -4901,7 +5100,7 @@ export default function DispatchPage() {
                                     updateEditField('vehicle_description', desc);
                                     setShowVehicleDropdown(false);
                                   }}>
-                                    <span className="font-semibold text-white">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
+                                    <span className="font-semibold text-rmpg-100">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
                                     {v.plate_number && <span className="text-brand-400 ml-1">PLT: {v.plate_number}{v.plate_state ? `/${v.plate_state}` : ''}</span>}
                                     {v.owner_first_name && <span className="text-rmpg-400 ml-1 text-[9px]">Owner: {v.owner_last_name}, {v.owner_first_name}</span>}
                                   </button>
@@ -4946,7 +5145,7 @@ export default function DispatchPage() {
                                     linkBusinessToCall(selectedCall.id, b.id, linkBusinessRole);
                                     setBusinessQuery(''); setShowBusinessDropdown(false);
                                   }}>
-                                    <span className="font-semibold text-white">{b.name}</span>
+                                    <span className="font-semibold text-rmpg-100">{b.name}</span>
                                     {b.address && <span className="text-rmpg-500 ml-1 text-[9px]">— {b.address}</span>}
                                   </button>
                                 ))}
@@ -4991,7 +5190,7 @@ export default function DispatchPage() {
                             {callPersons.map((cp: any) => (
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cp.role || '').replace(/_/g, ' ')}</span>
-                                <span className="text-white font-semibold">{cp.last_name}, {cp.first_name}</span>
+                                <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
                                 <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{cp.race}</span>}
@@ -5007,7 +5206,7 @@ export default function DispatchPage() {
                             {callVehicles.map((cv: any) => (
                               <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cv.role || '').replace(/_/g, ' ')}</span>
-                                <span className="text-white font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
+                                <span className="text-rmpg-100 font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
                                 {cv.plate_number && <span className="text-brand-400">PLT: {cv.plate_number}{cv.plate_state ? `/${cv.plate_state}` : ''}</span>}
                                 {cv.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(cv.stolen_status.toLowerCase()) && <span className="text-red-400 font-bold uppercase">{cv.stolen_status.replace(/_/g, ' ')}</span>}
                               </div>
@@ -5021,8 +5220,8 @@ export default function DispatchPage() {
 
                 {/* ── SCENE DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Thermometer className="w-3 h-3" /> Scene / Additional
                     </label>
                     {isEditing ? (() => {
@@ -5109,7 +5308,7 @@ export default function DispatchPage() {
 
                 {/* ── PSO CLIENT REQUEST DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.pso_requestor_name || selectedCall.pso_service_type || selectedCall.pso_billing_code || selectedCall.pso_authorization || selectedCall.incident_type === 'pso_client_request') && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
@@ -5117,7 +5316,7 @@ export default function DispatchPage() {
                           isAdminOrManager && !isEditing ? (
                             <select
                               className="ml-1.5 px-1 py-0 text-[8px] font-bold rounded-sm cursor-pointer"
-                              style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto', minWidth: '90px' }}
+                              style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)', appearance: 'auto', minWidth: '90px' }}
                               value={selectedCall.pso_attempt_number || 1}
                               onChange={async (e) => {
                                 const newAttempt = parseInt(e.target.value, 10);
@@ -5139,7 +5338,7 @@ export default function DispatchPage() {
                               ))}
                             </select>
                           ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
-                            <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                            <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)' }}>
                               {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
                             </span>
                           ) : null
@@ -5153,14 +5352,14 @@ export default function DispatchPage() {
                         const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
                         if (elapsed >= 72 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: '#ef444440', border: '1px solid #ef444460', color: '#f87171' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 38%, transparent)', color: 'var(--sev-critical)' }}>
                               72HR OVERDUE — RE-DISPATCH REQUIRED
                             </span>
                           );
                         }
                         if (elapsed >= 48 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
                               {Math.floor(hoursLeft)}HR UNTIL DEADLINE
                             </span>
                           );
@@ -5170,7 +5369,7 @@ export default function DispatchPage() {
                       {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                         <button type="button"
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
-                          style={{ background: '#d4a01720', borderColor: '#d4a01740', color: '#d4a017' }}
+                          style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}
                           onClick={async () => {
                             const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                             const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
@@ -5204,7 +5403,7 @@ export default function DispatchPage() {
                       return (
                         <div className="mb-2 inline-flex flex-wrap items-center gap-2 px-2 py-1 bg-brand-900/20 border border-brand-700/40 rounded-sm text-[10px]">
                           <span className="text-brand-gold-500 uppercase font-black text-[8px] tracking-wide">Client</span>
-                          <span className="text-white font-semibold">{cli?.name || `#${cid}`}</span>
+                          <span className="text-rmpg-100 font-semibold">{cli?.name || `#${cid}`}</span>
                           {contractId && <span className="text-rmpg-300">Contract: {contractId}</span>}
                           {billing && <span className="text-rmpg-300">Billing: {billing}</span>}
                           {auth && <span className="text-rmpg-300">Auth: {auth}</span>}
@@ -5283,22 +5482,22 @@ export default function DispatchPage() {
                         {/* Prominent client/requestor badges */}
                         <div className="flex flex-wrap gap-1.5">
                           {selectedCall.pso_requestor_name && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-sm" style={{ background: '#d4a01718', border: '1px solid #d4a01740', color: '#fbbf24' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-sm" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.09)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--sev-warn-soft)' }}>
                               <Building2 style={{ width: 10, height: 10 }} /> {selectedCall.pso_requestor_name}
                             </span>
                           )}
                           {selectedCall.pso_billing_code && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#22c55e15', border: '1px solid #22c55e35', color: '#86efac' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-ok) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-ok) 21%, transparent)', color: 'var(--sev-ok-soft)' }}>
                               {selectedCall.pso_billing_code}
                             </span>
                           )}
                           {selectedCall.pso_authorization && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#88888815', border: '1px solid #88888835', color: '#cccccc' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--spm-text-muted) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 21%, transparent)', color: 'var(--spm-text)' }}>
                               AUTH: {selectedCall.pso_authorization}
                             </span>
                           )}
                           {selectedCall.contract_id && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: '#a855f715', border: '1px solid #a855f735', color: '#c084fc' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-special) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-special) 21%, transparent)', color: 'var(--sev-special-soft)' }}>
                               Contract: {selectedCall.contract_id}
                             </span>
                           )}
@@ -5314,14 +5513,14 @@ export default function DispatchPage() {
                           const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
                           const remaining = deadline.getTime() - Date.now();
                           if (remaining <= 0) return (
-                            <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: '#f87171' }}>
+                            <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: 'var(--sev-critical)' }}>
                               72HR DEADLINE PASSED
                             </div>
                           );
                           const hrs = Math.floor(remaining / 3600000);
                           const mins = Math.floor((remaining % 3600000) / 60000);
                           return (
-                            <div className="text-[10px] font-mono" style={{ color: hrs < 12 ? '#f87171' : hrs < 24 ? '#fbbf24' : '#4ade80' }}>
+                            <div className="text-[10px] font-mono" style={{ color: hrs < 12 ? 'var(--sev-critical)' : hrs < 24 ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>
                               {hrs}h {mins}m until 72hr deadline
                             </div>
                           );
@@ -5347,13 +5546,13 @@ export default function DispatchPage() {
                           <div className="flex items-center gap-2 mb-1.5">
                             <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400">Service Windows</span>
                             <span className="text-[8px] font-mono px-1 rounded-sm" style={{
-                              background: allMet ? '#22c55e20' : '#f59e0b20',
-                              border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
-                              color: allMet ? '#4ade80' : '#fbbf24',
+                              background: allMet ? 'color-mix(in srgb, var(--sev-ok) 13%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 13%, transparent)',
+                              border: `1px solid ${allMet ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'}`,
+                              color: allMet ? 'var(--sev-ok)' : 'var(--sev-warn-soft)',
                             }}>
                               {metCount}/4
                             </span>
-                            {allMet && <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: '#4ade80' }}>✓ Due Diligence Complete</span>}
+                            {allMet && <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: 'var(--sev-ok)' }}>✓ Due Diligence Complete</span>}
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {([
@@ -5363,11 +5562,11 @@ export default function DispatchPage() {
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
                               <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
-                                background: met ? '#22c55e10' : '#ef444410',
-                                border: `1px solid ${met ? '#22c55e30' : '#ef444430'}`,
-                                color: met ? '#86efac' : '#fca5a5',
+                                background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
+                                border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
+                                color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)',
                               }}>
-                                <span style={{ color: met ? '#4ade80' : '#ef4444', fontSize: '8px' }}>{met ? '●' : '○'}</span>
+                                <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)', fontSize: '8px' }}>{met ? '●' : '○'}</span>
                                 {label}
                               </span>
                             ))}
@@ -5386,8 +5585,8 @@ export default function DispatchPage() {
                   ? ['pso_client_request', 'process_service'].includes(editData.incident_type || selectedCall.incident_type)
                   : (['pso_client_request', 'process_service'].includes(selectedCall.incident_type) || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
                 ) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <FileText className="w-3 h-3" /> Process Service Details
                       {!isEditing && selectedCall.process_service_result && (
                         <span className={`ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm ${
@@ -5518,6 +5717,28 @@ export default function DispatchPage() {
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="sm:col-span-2">
+                            <label className="text-[9px] text-amber-400">Court</label>
+                            <input
+                              type="text"
+                              className="input-dark text-xs w-full"
+                              placeholder="e.g., Third District Court — Salt Lake County"
+                              value={editData.court_name || ''}
+                              onChange={(e) => updateEditField('court_name', e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-amber-400">Case #</label>
+                            <input
+                              type="text"
+                              className="input-dark text-xs w-full"
+                              placeholder="Court case number"
+                              value={editData.case_number || ''}
+                              onChange={(e) => updateEditField('case_number', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div className="sm:col-span-1">
                             <label className="text-[9px] text-amber-400">Service Address</label>
                             <input type="text" className="input-dark text-xs w-full" placeholder="Address for service" value={editData.process_served_address || ''} onChange={(e) => updateEditField('process_served_address', e.target.value)} />
@@ -5602,10 +5823,10 @@ export default function DispatchPage() {
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
                 {detailTab === 'info' && !isEditing && ['pso_client_request', 'process_service'].includes(String(selectedCall.incident_type)) && Array.isArray(selectedCall.visit_history) && selectedCall.visit_history.length > 0 && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History
-                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#88888820', border: '1px solid #88888840', color: '#aaaaaa' }}>
+                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--spm-text-muted) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 25%, transparent)', color: 'var(--spm-text)' }}>
                         {selectedCall.visit_history.length} PRIOR {selectedCall.visit_history.length === 1 ? 'VISIT' : 'VISITS'}
                       </span>
                     </label>
@@ -5630,7 +5851,7 @@ export default function DispatchPage() {
                                 </span>
                                 <span className={`text-[8px] font-bold px-1 py-0 rounded-sm ${
                                   visit.status === 'cleared' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
-                                  : visit.status === 'closed' ? 'bg-gray-900/40 border border-gray-700/50 text-gray-400'
+                                  : visit.status === 'closed' ? 'bg-surface-sunken border border-border-default text-rmpg-400'
                                   : visit.status === 'cancelled' ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                                   : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
                                 }`}>
@@ -5668,33 +5889,33 @@ export default function DispatchPage() {
 
                 {/* ── QUICK-TOGGLE FLAGS — Flags tab ─── */}
                 {detailTab === 'flags' && !isEditing && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Quick Flags
                     </label>
                     <div className="flex flex-wrap gap-1.5">
                       {([
-                        { field: 'alcohol_involved', label: 'Alcohol', onBg: '#f59e0b30', onBorder: '#f59e0b50', onText: '#fbbf24' },
-                        { field: 'drugs_involved', label: 'Drugs', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'domestic_violence', label: 'DV', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'injuries_reported', label: 'Injuries', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'supervisor_notified', label: 'Supervisor', onBg: '#88888830', onBorder: '#88888850', onText: '#aaaaaa' },
-                        { field: 'le_notified', label: 'LE Notified', onBg: '#88888830', onBorder: '#88888850', onText: '#aaaaaa' },
-                        { field: 'mental_health_crisis', label: 'Mental Health', onBg: '#a855f730', onBorder: '#a855f750', onText: '#c084fc' },
-                        { field: 'juvenile_involved', label: 'Juvenile', onBg: '#f9731630', onBorder: '#f9731650', onText: '#fb923c' },
-                        { field: 'felony_in_progress', label: 'Felony', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'officer_safety_caution', label: 'Officer Safety', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'gang_related', label: 'Gang', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'body_camera_active', label: 'Body Cam', onBg: '#22c55e30', onBorder: '#22c55e50', onText: '#4ade80' },
-                        { field: 'k9_requested', label: 'K9', onBg: '#88888830', onBorder: '#88888850', onText: '#22c55e' },
-                        { field: 'ems_requested', label: 'EMS', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'fire_requested', label: 'Fire', onBg: '#f9731630', onBorder: '#f9731650', onText: '#fb923c' },
-                        { field: 'hazmat', label: 'HazMat', onBg: '#eab30830', onBorder: '#eab30850', onText: '#fbbf24' },
-                        { field: 'evidence_collected', label: 'Evidence', onBg: '#10b98130', onBorder: '#10b98150', onText: '#34d399' },
-                        { field: 'photos_taken', label: 'Photos', onBg: '#88888830', onBorder: '#88888850', onText: '#aaaaaa' },
-                        { field: 'trespass_issued', label: 'Trespass', onBg: '#f59e0b30', onBorder: '#f59e0b50', onText: '#fbbf24' },
-                        { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
+                        { field: 'alcohol_involved', label: 'Alcohol', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
+                        { field: 'drugs_involved', label: 'Drugs', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'domestic_violence', label: 'DV', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'injuries_reported', label: 'Injuries', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'supervisor_notified', label: 'Supervisor', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
+                        { field: 'le_notified', label: 'LE Notified', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
+                        { field: 'mental_health_crisis', label: 'Mental Health', onBg: 'color-mix(in srgb, var(--sev-special) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', onText: 'var(--sev-special-soft)' },
+                        { field: 'juvenile_involved', label: 'Juvenile', onBg: 'color-mix(in srgb, var(--sev-high) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-high) 31%, transparent)', onText: 'var(--sev-high)' },
+                        { field: 'felony_in_progress', label: 'Felony', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'officer_safety_caution', label: 'Officer Safety', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'gang_related', label: 'Gang', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'body_camera_active', label: 'Body Cam', onBg: 'color-mix(in srgb, var(--sev-ok) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', onText: 'var(--sev-ok)' },
+                        { field: 'k9_requested', label: 'K9', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--sev-ok)' },
+                        { field: 'ems_requested', label: 'EMS', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'fire_requested', label: 'Fire', onBg: 'color-mix(in srgb, var(--sev-high) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-high) 31%, transparent)', onText: 'var(--sev-high)' },
+                        { field: 'hazmat', label: 'HazMat', onBg: 'color-mix(in srgb, var(--sev-caution) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-caution) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
+                        { field: 'evidence_collected', label: 'Evidence', onBg: 'color-mix(in srgb, var(--sev-ok) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', onText: 'var(--sev-ok-soft)' },
+                        { field: 'photos_taken', label: 'Photos', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
+                        { field: 'trespass_issued', label: 'Trespass', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
+                        { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
                       ] as const).map(({ field, label, onBg, onBorder, onText }) => {
                         const isOn = !!(selectedCall as any)[field];
                         return (
@@ -5703,7 +5924,14 @@ export default function DispatchPage() {
                             className="px-2 py-0.5 text-[9px] font-semibold rounded-sm transition-colors border"
                             style={isOn
                               ? { background: onBg, borderColor: onBorder, color: onText }
-                              : { background: 'var(--color-rmpg-700, #1c1c1c)', borderColor: 'var(--color-rmpg-600, #2c2c2c)', color: 'var(--color-rmpg-400, #888)' }
+                              // Off-state for Quick Flags chips. The previous
+                              // var(--color-rmpg-*) tokens DON'T EXIST (the
+                              // canonical names are --rmpg-*-rgb for Tailwind
+                              // opacity; --color-rmpg-* was never defined), so
+                              // every chip was silently falling back to the
+                              // off-palette '#888' default. Routed through the
+                              // real spillman muted token now.
+                              : { background: 'var(--spm-border)', borderColor: 'var(--spm-border)', color: 'var(--spm-text-muted)' }
                             }
                             onClick={async () => {
                               const newVal = !isOn;
@@ -5737,9 +5965,9 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── ACTIVITY LOG / TIMELINE — Timeline tab ─── */}
-                <div className="border-t border-[#2b2b2b] pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
+                <div className="border-t border-[var(--spm-border)] pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="field-label !flex items-center gap-1.5" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                    <label className="field-label !flex items-center gap-1.5" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Activity Log
                     </label>
                     <button type="button" onClick={() => setShowAddTimeline(!showAddTimeline)} className="toolbar-btn" style={{ padding: '1px 6px', fontSize: '9px' }}>
@@ -5758,17 +5986,17 @@ export default function DispatchPage() {
                   {activityEntries.length > 0 ? (
                     <div className="space-y-1.5 max-h-60 overflow-y-auto">
                       {activityEntries.map((entry: any, idx: number) => {
-                        const actionColor = (entry.action || '').includes('dispatch') ? '#f59e0b' :
-                          (entry.action || '').includes('enroute') ? '#888888' :
-                          (entry.action || '').includes('onscene') || (entry.action || '').includes('on_scene') ? '#a855f7' :
-                          (entry.action || '').includes('clear') ? '#22c55e' :
-                          (entry.action || '').includes('note') ? '#666666' :
-                          '#888888';
+                        const actionColor = (entry.action || '').includes('dispatch') ? 'var(--sev-warn)' :
+                          (entry.action || '').includes('enroute') ? 'var(--spm-text-muted)' :
+                          (entry.action || '').includes('onscene') || (entry.action || '').includes('on_scene') ? 'var(--sev-special)' :
+                          (entry.action || '').includes('clear') ? 'var(--sev-ok)' :
+                          (entry.action || '').includes('note') ? 'var(--spm-text-muted)' :
+                          'var(--spm-text-muted)';
                         return (
-                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#18181820] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #2b2b2b' }}>
+                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[color-mix(in_srgb,var(--surface-sunken)_13%,transparent)] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid var(--border-default)' }}>
                           {/* Step connector dot */}
-                          <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0c0c0c' }} />
-                          <span className="text-[#888888] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
+                          <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid var(--surface-sunken)' }} />
+                          <span className="text-[var(--spm-text-muted)] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
                             {entry.created_at ? `${formatTime(entry.created_at)} (${timeAgo(entry.created_at)})` : '--'}
                           </span>
                           {editingTimelineId === String(entry.id) ? (
@@ -5787,12 +6015,12 @@ export default function DispatchPage() {
                             </div>
                           ) : (
                             <>
-                              <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
-                              <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#d4a017] text-[#888888] transition-colors" title="Edit">
+                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
+                              <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 flex items-center gap-0.5 transition-opacity">
+                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[var(--brand-gold)] text-[var(--spm-text-muted)] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
-                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[#888888] transition-colors" title="Delete">
+                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[var(--spm-text-muted)] transition-colors" title="Delete">
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
@@ -5803,35 +6031,35 @@ export default function DispatchPage() {
                       })}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center py-8 text-[#545454]">
-                      <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0c0c0c40', border: '1px solid #2b2b2b30' }}>
+                    <div className="flex flex-col items-center py-8 text-[var(--spm-text-muted)]">
+                      <div className="p-2.5 rounded-sm mb-2.5" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 19%, transparent)' }}>
                         <Clock className="w-5 h-5" style={{ opacity: 0.3 }} />
                       </div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Activity Recorded</p>
-                      <p className="text-[9px] text-[#404040]">Click "Add Entry" to start the activity log</p>
+                      <p className="text-[9px] text-[var(--spm-border)]">Click "Add Entry" to start the activity log</p>
                     </div>
                   )}
                 </div>
 
                 {/* Notes — fills remaining vertical space — Notes tab */}
-                <div className="border-t border-[#2b2b2b] pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
-                  <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                <div className="border-t border-[var(--spm-border)] pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
+                  <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                     <MessageSquare className="w-3 h-3" /> Notes
                   </label>
-                  <div className="space-y-1 mb-3 flex-1 overflow-y-auto">
+                  <div className="space-y-1 mb-3 flex-1 min-h-0 overflow-y-auto">
                     {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).length === 0 ? (
-                      <div className="flex flex-col items-center py-8 text-[#545454]">
-                        <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0c0c0c40', border: '1px solid #2b2b2b30' }}>
+                      <div className="flex flex-col items-center py-8 text-[var(--spm-text-muted)]">
+                        <div className="p-2.5 rounded-sm mb-2.5" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 19%, transparent)' }}>
                           <MessageSquare className="w-5 h-5" style={{ opacity: 0.3 }} />
                         </div>
                         <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Notes Yet</p>
-                        <p className="text-[9px] text-[#404040]">Add a note below to get started</p>
+                        <p className="text-[9px] text-[var(--spm-border)]">Add a note below to get started</p>
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#18181820]" style={{ borderLeft: '2px solid #88888840' }}>
-                        <span className="text-[#888888] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
-                        <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
+                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[color-mix(in_srgb,var(--surface-sunken)_13%,transparent)]" style={{ borderLeft: '2px solid var(--border-default)' }}>
+                        <span className="text-[var(--spm-text-muted)] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
+                        <span className="text-[var(--brand-gold)] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
                             <NoteComposer
@@ -5847,14 +6075,14 @@ export default function DispatchPage() {
                           </div>
                         ) : (
                           <>
-                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
+                            <span className="text-rmpg-200 leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[var(--spm-text-muted)] text-[8px] ml-1">(edited)</span>}</span>
                             {(canEditNote(note) || isAdminOrManager) && (
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
+                              <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex gap-0.5 shrink-0">
                                 {canEditNote(note) && (
-                                  <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                  <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-[var(--spm-text)] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
                                 )}
                                 {isAdminOrManager && (
-                                  <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                  <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-[var(--sev-critical)] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
                                 )}
                               </div>
                             )}
@@ -5891,7 +6119,7 @@ export default function DispatchPage() {
                           onClick={handleBroadcastNote}
                           className="toolbar-btn self-end"
                           disabled={!broadcastNoteText.trim()}
-                          style={{ background: '#a855f720', borderColor: '#a855f750', color: '#c084fc', padding: '2px 8px', fontSize: '9px' }}
+                          style={{ background: 'color-mix(in srgb, var(--sev-special) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', color: 'var(--sev-special-soft)', padding: '2px 8px', fontSize: '9px' }}
                           title="Send note to all assigned unit officers"
                         >
                           <Radio style={{ width: 9, height: 9 }} /> Broadcast
@@ -5903,8 +6131,8 @@ export default function DispatchPage() {
 
                 {/* Linked Incidents — Notes tab */}
                 {detailTab === 'notes' && linkedIncidents.length > 0 && (
-                  <div className="border-t border-[#2b2b2b] pt-3 flex-shrink-0">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 flex-shrink-0">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Link className="w-3 h-3" /> Linked Incidents
                     </label>
                     <div className="space-y-1 mt-1">
@@ -5914,11 +6142,11 @@ export default function DispatchPage() {
                           className="flex items-center gap-3 px-2.5 py-1.5 cursor-pointer transition-all duration-100 rounded-sm"
                           style={{ border: '1px solid transparent' }}
                           onClick={() => navigate(`/incidents/${inc.id}`)}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#18181830'; (e.currentTarget as HTMLElement).style.borderColor = '#2b2b2b40'; }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 19%, transparent)'; (e.currentTarget as HTMLElement).style.borderColor = 'color-mix(in srgb, var(--spm-border) 25%, transparent)'; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}
                         >
-                          <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgba(74,222,128,0.15)' }}>{inc.incident_number}</span>
-                          <span className="text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
+                          <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgb(var(--sev-ok-rgb) / 0.15)' }}>{inc.incident_number}</span>
+                          <span className="min-w-0 text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
                           <span className="text-xs text-rmpg-400 uppercase font-semibold">{(inc.status || '--').replace(/_/g, ' ')}</span>
                           {inc.officer_name && (
                             <span className="text-xs text-rmpg-300 ml-auto flex items-center gap-1">
@@ -5956,10 +6184,10 @@ export default function DispatchPage() {
                     ) : (
                       <div className="space-y-1">
                         {auditTrail.map((ev: any) => (
-                          <div key={ev.id} className="flex items-start gap-2 text-[10px] font-mono py-1 border-b border-[#1a1a1a]">
+                          <div key={ev.id} className="flex items-start gap-2 text-[10px] font-mono py-1 border-b border-[var(--spm-border)]">
                             <span className="text-rmpg-500 tabular-nums whitespace-nowrap">{(ev.created_at || '').slice(5, 16).replace('T', ' ')}</span>
                             <span className="text-amber-300 font-bold uppercase whitespace-nowrap">{ev.action}</span>
-                            <span className="text-rmpg-300 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
+                            <span className="text-rmpg-300 min-w-0 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
                             <span className="text-rmpg-400 whitespace-nowrap">{ev.user_name || ev.username || `#${ev.user_id ?? '?'}`}</span>
                           </div>
                         ))}
@@ -5974,7 +6202,7 @@ export default function DispatchPage() {
                 <div className="px-3">
                   <DispositionPrompt
                     callNumber={selectedCall.call_number}
-                    dispositionCodes={dispositionCodes}
+                    dispositionCodes={effectiveDispositionCodes}
                     onConfirm={handleConfirmClear}
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
@@ -5994,24 +6222,24 @@ export default function DispatchPage() {
 
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-[#888888]">
+            <div className="flex-1 flex items-center justify-center text-[var(--spm-text-muted)]">
               <div className="text-center">
-                <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0c0c0c60', border: '1px solid #2b2b2b40' }}>
+                <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 38%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 25%, transparent)' }}>
                   <Radio className="w-7 h-7" style={{ opacity: 0.3 }} />
                 </div>
                 <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">Select a call to view details</p>
-                <p className="text-[10px] text-[#545454] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
-                <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[#545454]">
+                <p className="text-[10px] text-[var(--spm-text-muted)] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
+                <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[var(--spm-text-muted)]">
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">N</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[var(--spm-border)] rounded-sm bg-[color-mix(in_srgb,var(--surface-sunken)_25%,transparent)] text-[var(--spm-text-muted)]">N</kbd>
                     <span>New Call</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">P</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[var(--spm-border)] rounded-sm bg-[color-mix(in_srgb,var(--surface-sunken)_25%,transparent)] text-[var(--spm-text-muted)]">P</kbd>
                     <span>Quick PSO</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">R</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[var(--spm-border)] rounded-sm bg-[color-mix(in_srgb,var(--surface-sunken)_25%,transparent)] text-[var(--spm-text-muted)]">R</kbd>
                     <span>Refresh</span>
                   </div>
                 </div>
@@ -6050,7 +6278,7 @@ export default function DispatchPage() {
           )}
 
           {/* Dispatch Map Panel (right side, always visible) */}
-          <div className="w-[35%] border-l border-[#2b2b2b] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
+          <div className="w-[35%] border-l border-[var(--spm-border)] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
             {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
               <DispatchMiniMap
                 call={selectedCall}
@@ -6059,13 +6287,13 @@ export default function DispatchPage() {
                 onRouteUpdate={setRouteInfo}
               />
             ) : (
-              <div className="flex-1 flex items-center justify-center text-[#545454]">
+              <div className="flex-1 flex items-center justify-center text-[var(--spm-text-muted)]">
                 <div className="text-center">
-                  <div className="mx-auto mb-3 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0c0c0c50', border: '1px dashed #2b2b2b40' }}>
+                  <div className="mx-auto mb-3 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 31%, transparent)', border: '1px dashed color-mix(in srgb, var(--spm-border) 25%, transparent)' }}>
                     <MapPin className="w-6 h-6" style={{ opacity: 0.25 }} />
                   </div>
                   <p className="text-[10px] font-mono font-bold uppercase tracking-widest mb-1">No Location Data</p>
-                  <p className="text-[8px] text-[#404040] leading-relaxed max-w-[160px] mx-auto">Select a geolocated call to display the dispatch map</p>
+                  <p className="text-[8px] text-[var(--spm-border)] leading-relaxed max-w-[160px] mx-auto">Select a geolocated call to display the dispatch map</p>
                 </div>
               </div>
             )}
@@ -6077,12 +6305,12 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         <div className="h-[35%] flex flex-col overflow-hidden flex-shrink-0">
           <PanelTitleBar title="UNIT STATUS BOARD" icon={Radio}>
-            <span className="flex items-center gap-1 text-[9px] font-mono font-bold tabular-nums" style={{ color: '#4ade80' }}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
+            <span className="flex items-center gap-1 text-[9px] font-mono font-bold tabular-nums" style={{ color: 'var(--sev-ok)' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-ok)', boxShadow: '0 0 4px color-mix(in srgb, var(--sev-ok) 50%, transparent)' }} />
               {units.filter((u) => u.status === 'available').length} AVAIL
             </span>
             <span className="toolbar-separator" />
-            <span className="text-[9px] font-mono tabular-nums" style={{ color: '#666666' }}>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--spm-text-muted)' }}>
               {units.filter((u) => u.status !== 'off_duty').length} ON DUTY
             </span>
             <span className="toolbar-separator" />
@@ -6117,14 +6345,14 @@ export default function DispatchPage() {
           onClick={() => setShowShortcutHelp(false)}
         >
           <div
-            className="bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm max-w-2xl w-[92%] max-h-[85vh] overflow-auto scrollbar-dark"
+            className="bg-surface-base border border-[var(--spm-border)] rounded-sm max-w-2xl w-[92%] max-h-[85vh] overflow-auto scrollbar-dark"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e2e] sticky top-0 bg-[#0a0a0a]">
-              <div className="flex items-center gap-2 text-[#d4a017] text-xs font-bold uppercase tracking-wider">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--spm-border)] sticky top-0 bg-surface-base">
+              <div className="flex items-center gap-2 text-[var(--brand-gold)] text-xs font-bold uppercase tracking-wider">
                 <Terminal className="w-3.5 h-3.5" /> Keyboard Shortcuts
               </div>
-              <button type="button" aria-label="Close" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-400 hover:text-white">
+              <button type="button" aria-label="Close" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -6171,7 +6399,7 @@ export default function DispatchPage() {
         >
           <div
             className="py-1 min-w-[190px] rounded-sm"
-            style={{ background: '#141414', border: '1px solid #2a2a2a', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--spm-border)', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
@@ -6219,7 +6447,7 @@ export default function DispatchPage() {
               {(['P1', 'P2', 'P3', 'P4'] as const).map(pri => (
                 <button key={pri} type="button" onClick={() => { handlePriorityChange(contextMenu.call.id, pri); setContextMenu(null); }}
                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${contextMenu.call.priority === pri ? 'ring-1 ring-white' : 'opacity-60 hover:opacity-100'}`}
-                  style={{ background: pri === 'P1' ? '#ef4444' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#888888' : '#555555', color: '#fff' }}>
+                  style={{ background: pri === 'P1' ? 'var(--sev-critical)' : pri === 'P2' ? 'var(--sev-warn)' : pri === 'P3' ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)', color: '#fff' }}>
                   {pri}
                 </button>
               ))}
@@ -6264,7 +6492,7 @@ export default function DispatchPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
             className="panel-beveled bg-surface-raised animate-in rounded-sm"
-            style={{ width: '440px', border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
+            style={{ width: '440px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (!quickTemplateAddress.trim() || quickTemplateSubmitting) return;
@@ -6289,23 +6517,23 @@ export default function DispatchPage() {
             <div className="panel-title-bar flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Send className="w-3.5 h-3.5 text-brand-400" />
-                <span className="text-xs font-bold text-white uppercase tracking-wider">Quick Dispatch</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Quick Dispatch</span>
               </div>
-              <button type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="p-4 space-y-4">
               {/* Template banner */}
-              <div className="flex items-center gap-3 p-2 border border-rmpg-600" style={{ background: '#050505' }}>
+              <div className="flex items-center gap-3 p-2 border border-rmpg-600" style={{ background: 'var(--surface-sunken)' }}>
                 <span className={`text-xs font-bold px-2 py-0.5 border ${
                   quickTemplateData.priority === 'P1' ? 'border-red-500 text-red-400 bg-red-900/30' :
                   quickTemplateData.priority === 'P2' ? 'border-amber-500 text-amber-400 bg-amber-900/30' :
                   quickTemplateData.priority === 'P4' ? 'border-rmpg-500 text-rmpg-300 bg-rmpg-700/30' :
                   'border-brand-500 text-brand-400 bg-brand-900/30'
                 }`}>{quickTemplateData.priority}</span>
-                <span className="text-xs font-bold text-white">{quickTemplateData.name}</span>
+                <span className="text-xs font-bold text-rmpg-100">{quickTemplateData.name}</span>
                 <span className="text-[10px] text-rmpg-400 ml-auto">{formatIncidentType(quickTemplateData.incident_type)}</span>
               </div>
 
@@ -6393,11 +6621,11 @@ export default function DispatchPage() {
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
-          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
+          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
-                <span id={unitModalTitleId} className="text-sm font-bold text-white tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
+                <span id={unitModalTitleId} className="text-sm font-bold text-rmpg-100 tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
               <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
                 <X style={{ width: 12, height: 12 }} />
@@ -6863,13 +7091,13 @@ export default function DispatchPage() {
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
-          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: '#050505' }}>
+          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: 'var(--surface-deep)' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />
-                <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
+                <h3 className="text-sm font-bold text-rmpg-100">Shift Handoff Notes</h3>
               </div>
-              <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-rmpg-100 transition-colors"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-3 flex-1 overflow-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
               {handoffMeta.updated_by && (
@@ -6900,27 +7128,27 @@ export default function DispatchPage() {
       {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[40]"
-        style={{ background: '#050505', borderColor: '#141414', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
+        style={{ background: 'var(--surface-deep)', borderColor: 'var(--surface-raised)', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
         {/* Left: Call metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
           <span className="text-rmpg-500 uppercase tracking-wider font-bold">CAD</span>
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ef4444', boxShadow: calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length > 0 ? '0 0 6px #ef4444' : 'none' }} />
-            <span style={{ color: '#fca5a5' }}>P1: {calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-critical)', boxShadow: calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length > 0 ? '0 0 6px var(--sev-critical)' : 'none' }} />
+            <span style={{ color: 'var(--sev-critical-soft)' }}>P1: {calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span style={{ color: '#fcd34d' }}>P2: {calls.filter(c => c.priority === 'P2' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+            <span style={{ color: 'var(--sev-caution)' }}>P2: {calls.filter(c => c.priority === 'P2' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
           </span>
-          <span style={{ color: '#666666' }}>|</span>
-          <span style={{ color: '#999999' }}>
-            PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? '#fbbf24' : '#4ade80' }}>{calls.filter(c => c.status === 'pending').length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>|</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>
+            PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>{calls.filter(c => c.status === 'pending').length}</span>
           </span>
-          <span style={{ color: '#999999' }}>
-            ACTIVE: <span style={{ color: '#aaaaaa' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>
+            ACTIVE: <span style={{ color: 'var(--spm-text)' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
           </span>
-          <span style={{ color: '#999999' }}>
-            HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? '#f97316' : '#555555' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>
+            HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? 'var(--sev-high)' : 'var(--spm-text-muted)' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
           </span>
           {(() => {
             const stacked = new Map<string, number>();
@@ -6930,7 +7158,7 @@ export default function DispatchPage() {
             });
             const stackedCount = Array.from(stacked.values()).filter(v => v > 1).length;
             return stackedCount > 0 ? (
-              <span style={{ color: '#f97316' }}>STACKED: {stackedCount}</span>
+              <span style={{ color: 'var(--sev-high)' }}>STACKED: {stackedCount}</span>
             ) : null;
           })()}
         </div>
@@ -6938,30 +7166,30 @@ export default function DispatchPage() {
         {/* Center: Unit metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
-            <span style={{ color: '#86efac' }}>AVAIL: {units.filter(u => u.status === 'available').length}</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-ok)', boxShadow: '0 0 4px color-mix(in srgb, var(--sev-ok) 50%, transparent)' }} />
+            <span style={{ color: 'var(--sev-ok-soft)' }}>AVAIL: {units.filter(u => u.status === 'available').length}</span>
           </span>
-          <span style={{ color: '#aaaaaa' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
-          <span style={{ color: '#c084fc' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
-          <span style={{ color: '#c084fc' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
-          <span style={{ color: '#666666' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
-          <span style={{ color: '#666666' }}>|</span>
-          <span style={{ color: '#999999' }}>
-            TOTAL: <span style={{ color: '#cccccc' }}>{units.length}</span>
+          <span style={{ color: 'var(--spm-text)' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
+          <span style={{ color: 'var(--sev-special-soft)' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
+          <span style={{ color: 'var(--sev-special-soft)' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>|</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>
+            TOTAL: <span style={{ color: 'var(--spm-text)' }}>{units.length}</span>
           </span>
         </div>
 
         {/* Right: F-key hints + clock */}
         <div className="flex items-center gap-2 text-[8px] tabular-nums">
-          <span style={{ color: '#555555' }}>F2:New</span>
-          <span style={{ color: '#555555' }}>F3:Disp</span>
-          <span style={{ color: '#555555' }}>F5:EnR</span>
-          <span style={{ color: '#555555' }}>F6:OnS</span>
-          <span style={{ color: '#555555' }}>F7:Clr</span>
-          <span style={{ color: '#555555' }}>F8:CMD</span>
-          <span style={{ color: '#555555' }}>F12:NCIC</span>
-          <span style={{ color: '#444444' }}>|</span>
-          <LiveClock style={{ color: '#999999' }} />
+          <span style={{ color: 'var(--spm-text-muted)' }}>F2:New</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F3:Disp</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F5:EnR</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F6:OnS</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F7:Clr</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F8:CMD</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F12:NCIC</span>
+          <span style={{ color: 'var(--spm-border)' }}>|</span>
+          <LiveClock style={{ color: 'var(--spm-text-muted)' }} />
         </div>
       </div>
     </div>

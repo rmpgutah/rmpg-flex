@@ -26,6 +26,8 @@ import { runJailScan } from '../utils/jailSources/runScan';
 import { chunkKey, parseSeq } from '../utils/intelRecording';
 import { intelReports, intelSources } from './intel/development';
 import { buildOverview } from '../utils/intelOverview';
+import { daysCutoffISO, finiteCoord, geoFeature, type GeoFeature } from '../utils/intelGeo';
+import { geocodeAddress } from './geocode';
 
 const intel = new Hono<Env>();
 
@@ -214,6 +216,91 @@ intel.get('/overview', operational, async (c) => {
   return c.json(await buildOverview(getDb(c.env)));
 });
 
+// GET /geo?days=30 — map-able intel as typed feature arrays for the Geospatial
+// Intel Map. Coordinate-bearing sources return directly; address-only sources
+// (warrants via subject person, trespass via property address) geocode
+// cache-first with a small inline cap (Nominatim is 1 req/s) and report how many
+// remain pending so the KV cache warms over visits. Every block is try/catch-
+// isolated — a wrong column yields [] for that layer, never a 500.
+intel.get('/geo', operational, async (c) => {
+  const db = getDb(c.env);
+  const days = Math.min(Math.max(parseInt(c.req.query('days') || '30', 10) || 30, 1), 90);
+  const cutoff = daysCutoffISO(days, new Date());
+  const cap = 250;
+  const layers: Record<string, GeoFeature[]> = {
+    sightings: [], calls: [], incidents: [], field_interviews: [], warrants: [], trespass: [],
+  };
+
+  const coordQuery = async (key: string, sql: string, args: unknown[], map: (r: any) => GeoFeature | null) => {
+    try {
+      for (const r of await query<any>(db, sql, ...args)) {
+        const f = map(r);
+        if (f && finiteCoord(f.lat, f.lng)) layers[key].push(f);
+      }
+    } catch (e: any) { console.error(`[geo] ${key}:`, e?.message); }
+  };
+
+  await coordQuery('sightings',
+    `SELECT id, plate, vehicle_id, lat, lng, location_text, created_at FROM vehicle_sightings
+      WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?`, [cutoff, cap],
+    (r) => geoFeature('vehicle', r.vehicle_id || r.id, r.lat, r.lng, r.plate || r.location_text || `Sighting #${r.id}`, { when: r.created_at }));
+
+  await coordQuery('calls',
+    `SELECT id, call_number, incident_type, latitude, longitude, created_at FROM calls_for_service
+      WHERE created_at >= ? AND latitude IS NOT NULL ORDER BY created_at DESC LIMIT ?`, [cutoff, cap],
+    (r) => geoFeature('call', r.id, r.latitude, r.longitude, [r.call_number, r.incident_type].filter(Boolean).join(' · ') || `CFS-${r.id}`, { when: r.created_at }));
+
+  await coordQuery('incidents',
+    `SELECT id, incident_number, incident_type, latitude, longitude, created_at FROM incidents
+      WHERE created_at >= ? AND latitude IS NOT NULL ORDER BY created_at DESC LIMIT ?`, [cutoff, cap],
+    (r) => geoFeature('incident', r.id, r.latitude, r.longitude, [r.incident_number, r.incident_type].filter(Boolean).join(' · ') || `INC-${r.id}`, { when: r.created_at }));
+
+  await coordQuery('field_interviews',
+    `SELECT id, fi_number, latitude, longitude, created_at FROM field_interviews
+      WHERE created_at >= ? AND latitude IS NOT NULL ORDER BY created_at DESC LIMIT ?`, [cutoff, cap],
+    (r) => geoFeature('field_interview', r.id, r.latitude, r.longitude, r.fi_number || `FI-${r.id}`, { when: r.created_at }));
+
+  // --- Address-only sources: geocode cache-first, capped inline ---
+  let geocodeBudget = 12; // uncached geocodes allowed THIS request
+  let pending = 0;
+  const geo = async (addr: string | null | undefined): Promise<{ lat: number; lng: number } | null> => {
+    const a = (addr || '').trim();
+    if (a.length < 4) return null;
+    const cacheKey = `geocode:fwd:${a.toLowerCase()}`;
+    const cached = (await c.env.KV.get(cacheKey, 'json').catch(() => null)) as { lat: number; lng: number } | null;
+    if (cached && finiteCoord(cached.lat, cached.lng)) return cached;
+    if (geocodeBudget <= 0) { pending++; return null; }
+    geocodeBudget--;
+    const res = await geocodeAddress(c.env, a); // best-effort; writes KV on success
+    if (!res) { pending++; return null; }
+    return res;
+  };
+
+  const addrLayer = async (key: string, sql: string, addrOf: (r: any) => string | null, mk: (r: any, lat: number, lng: number) => GeoFeature) => {
+    try {
+      for (const r of await query<any>(db, sql, cap)) {
+        const coords = await geo(addrOf(r));
+        if (coords && finiteCoord(coords.lat, coords.lng)) layers[key].push(mk(r, coords.lat, coords.lng));
+      }
+    } catch (e: any) { console.error(`[geo] ${key}:`, e?.message); }
+  };
+
+  await addrLayer('warrants',
+    `SELECT w.id, w.warrant_number, p.address, p.city FROM warrants w
+       LEFT JOIN persons p ON p.id = w.person_id
+      WHERE w.status = 'active' LIMIT ?`,
+    (r) => [r.address, r.city].filter(Boolean).join(', '),
+    (r, lat, lng) => geoFeature('warrant', r.id, lat, lng, r.warrant_number || `WAR-${r.id}`, { geocoded: true }));
+
+  await addrLayer('trespass',
+    `SELECT id, order_number, location, property_address FROM trespass_orders
+      WHERE status = 'active' OR status IS NULL LIMIT ?`,
+    (r) => r.property_address || r.location,
+    (r, lat, lng) => geoFeature('trespass_order', r.id, lat, lng, r.order_number || `TRES-${r.id}`, { geocoded: true }));
+
+  return c.json({ layers, geocoding: { pending } });
+});
+
 // POST /reindex — full rebuild (admin only)
 intel.post('/reindex', requireRole('admin'), async (c) => {
   const db = getDb(c.env);
@@ -307,6 +394,21 @@ intel.post('/screen', operational, async (c) => {
     } catch (err: any) { console.error('[screen] notify failed:', err?.message); }
   }
   return c.json({ entity_type: entityType, entity_id: resolvedId, hits });
+});
+
+// Lightweight READ-ONLY plate screen for the forensic player's live hotlist
+// check — no notification side-effects (the POST /screen path spams on every
+// read). Returns stolen/watchlist/BOLO/owner-warrant hits for a plate.
+intel.get('/screen-plate', operational, async (c) => {
+  const db = getDb(c.env);
+  const plate = (c.req.query('plate') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^[A-Z0-9]{2,8}$/.test(plate)) return c.json({ plate, hits: [] });
+  try {
+    const { vehicleId, hits } = await screenVehicle(db, { plate });
+    return c.json({ plate, vehicle_id: vehicleId, hits });
+  } catch (err: any) {
+    return c.json({ plate, hits: [], error: err?.message }, 200);
+  }
 });
 
 // ─── Narrative link suggestions (Wave 1) ─────────────────────
@@ -467,20 +569,32 @@ intel.post('/quick-capture', operational, async (c) => {
     } catch (err: any) { console.error('[quick-capture] vehicle failed:', err?.message); }
   }
 
+  // Linked dispatch call / incident — when the client launches the page
+  // with ?call_id=… / ?incident_id=… (page 56 audit), stamp the FI so
+  // the call's / incident's timeline picks it up. Schema columns
+  // (associated_call_id / associated_incident_id) already exist on
+  // field_interviews (see migrations/baseline/schema.sql). Coerce
+  // through Number() so a stray string doesn't trip D1's strict types.
+  const linkedCallId = Number.isFinite(Number(b?.call_id)) ? Number(b.call_id) : null;
+  const linkedIncidentId = Number.isFinite(Number(b?.incident_id)) ? Number(b.incident_id) : null;
+
   let fiId: number | null = null;
   try {
     const r = await execute(db,
       `INSERT INTO field_interviews
          (person_id, vehicle_id, officer_id, location, latitude, longitude,
           contact_reason, narrative, subject_first_name, subject_last_name,
-          subject_dob, subject_description, vehicle_plate, status, created_at, interview_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted', datetime('now'), datetime('now'))`,
+          subject_dob, subject_description, vehicle_plate,
+          associated_call_id, associated_incident_id,
+          status, created_at, interview_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted', datetime('now'), datetime('now'))`,
       personId, vehicleId, userId, b?.location || null,
       Number.isFinite(Number(b?.lat)) ? Number(b.lat) : null,
       Number.isFinite(Number(b?.lng)) ? Number(b.lng) : null,
       b?.contact_reason || 'field contact', b?.narrative || null,
       first || null, last || null, b?.dob || null, b?.subject_description || null,
-      plate || null);
+      plate || null,
+      linkedCallId, linkedIncidentId);
     fiId = r.meta.last_row_id as number;
     await execute(db,
       `UPDATE field_interviews SET fi_number = 'FI-' || strftime('%Y%m%d', 'now') || '-' || id WHERE id = ? AND (fi_number IS NULL OR fi_number = '')`,
@@ -502,7 +616,16 @@ intel.post('/quick-capture', operational, async (c) => {
     } catch (err: any) { console.error('[quick-capture] notify failed:', err?.message); }
   }
 
-  return c.json({ success: true, person_id: personId, person_reused: personReused, vehicle_id: vehicleId, fi_id: fiId, hits });
+  return c.json({
+    success: true,
+    person_id: personId,
+    person_reused: personReused,
+    vehicle_id: vehicleId,
+    fi_id: fiId,
+    associated_call_id: linkedCallId,
+    associated_incident_id: linkedIncidentId,
+    hits,
+  });
 });
 
 // ─── Interaction audio recording (Wave 3b) ───────────────────

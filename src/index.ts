@@ -17,12 +17,14 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { handleWebSocket } from './routes/ws';
 import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { DeepResearchDO } from './durable-objects/DeepResearchDO';
+import { FlexCamRemuxDO } from './durable-objects/FlexCamRemuxDO';
+import { PersonIntelDO } from './durable-objects/PersonIntelDO';
 import { doCallbackToken, timingSafeEqual } from './utils/signedAccess';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
@@ -35,14 +37,16 @@ import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
 import { processScheduledEmails, applyRulesToRecent } from './utils/emailProcessor';
 import { sweepTrips } from './utils/tripStore';
+import { processBackfillTick } from './utils/sl-assessor/backfill';
 import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
+import { traceMiddleware, requestLogMiddleware, log, logErrorToDb } from './utils/logger';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer, DeepResearchDO, FlexCamRemuxDO, PersonIntelDO };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
@@ -82,15 +86,16 @@ app.get('/updates/latest.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'w
 app.get('/updates/latest-mac.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
 
 // ─── Global middleware ───────────────────────────────────────
-app.use('*', logger());
+app.use('*', traceMiddleware());
+app.use('*', requestLogMiddleware());
 app.use('*', secureHeaders({
   contentSecurityPolicy: {
     defaultSrc: ["'self'"],
-    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'blob:', 'https://api.mapbox.com', 'https://js.arcgis.com', 'https://*.arcgis.com', 'https://static.cloudflareinsights.com'],
+    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'blob:', 'https://api.mapbox.com', 'https://js.arcgis.com', 'https://*.arcgis.com', 'https://static.cloudflareinsights.com', 'https://esm.sh', 'https://cdn.esm.sh', 'https://unpkg.com'],
     styleSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://api.mapbox.com', 'https://js.arcgis.com', 'https://*.arcgis.com'],
     imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
     fontSrc: ["'self'", 'data:', 'https://*.gstatic.com', 'https://js.arcgis.com', 'https://*.arcgis.com'],
-    connectSrc: ["'self'", 'ws:', 'wss:', 'https://api.rmpgutah.us', 'https://*.rmpgutah.us', 'https://api.mapbox.com', 'https://events.mapbox.com', 'https://*.arcgis.com', 'https://*.arcgisonline.com', 'https://api.open-meteo.com', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'https://*.cartocdn.com', 'https://nominatim.openstreetmap.org', 'https://api.fbi.gov', 'https://photon.komoot.io', 'https://static.cloudflareinsights.com'],
+    connectSrc: ["'self'", 'ws:', 'wss:', 'https://api.rmpgutah.us', 'https://*.rmpgutah.us', 'https://api.mapbox.com', 'https://events.mapbox.com', 'https://*.arcgis.com', 'https://*.arcgisonline.com', 'https://api.open-meteo.com', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'https://*.cartocdn.com', 'https://nominatim.openstreetmap.org', 'https://api.fbi.gov', 'https://photon.komoot.io', 'https://static.cloudflareinsights.com', 'https://esm.sh', 'https://cdn.esm.sh', 'https://storage.googleapis.com', 'https://unpkg.com'],
     frameSrc: ["'self'", 'blob:', 'https://*.arcgis.com'],
     mediaSrc: ["'self'", 'blob:', 'data:'],
     workerSrc: ["'self'", 'blob:'],
@@ -171,7 +176,21 @@ app.onError((err, c) => {
   const route = `${method} ${path}`;
   const detail = err instanceof Error ? err.message : String(err);
   const userId = c.get('userId') as number | undefined;
-  console.error(`Unhandled in ${route} (userId=${userId}):`, err);
+  const traceId = c.get('traceId') as string | undefined;
+  log.error(`Unhandled in ${route}`, { userId, traceId, route }, err);
+
+  // Persist to error_log table (fire-and-forget)
+  logErrorToDb(c.env.DB, {
+    severity: 'error',
+    category: 'route',
+    message: detail,
+    details: err instanceof Error ? { name: err.name, stack: err.stack?.split('\n').slice(0, 6).join('\n'), route } : { route },
+    traceId,
+    userId,
+    source: route,
+    statusCode: 500,
+  }, c.executionCtx);
+
   return c.json({
     error: 'Internal server error',
     code: 'UNHANDLED',
@@ -220,6 +239,14 @@ for (const m of ROUTE_REGISTRY) {
 // itself — compared constant-time. Lives outside ROUTE_REGISTRY because
 // it's an internal callback, not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
+  // Surface a missing JWT_SECRET as a loud 500 instead of a silent 403:
+  // a misconfigured secret would otherwise look identical to a forged
+  // request, and ops would never realize escalations were being dropped.
+  // The 500 + log gets noticed in deploy verification + dashboards.
+  if (!c.env.JWT_SECRET) {
+    console.error('[__welfare-fire] JWT_SECRET unset — DO callbacks cannot authenticate; escalations will be lost');
+    return c.json({ error: 'misconfigured: JWT_SECRET unset' }, 500);
+  }
   const provided = c.req.header('X-DO-Secret') || '';
   const expected = await doCallbackToken(c.env.JWT_SECRET);
   if (!timingSafeEqual(provided, expected)) {
@@ -324,6 +351,20 @@ export default {
   // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     if (event.cron === '* * * * *') {
+      // Quick D1 connectivity check before launching all concurrent sweeps.
+      // When D1 has a transient network blip every sweep fails at the same
+      // instant — this collapses 9 individual errors into one quiet warning
+      // and lets the next tick attempt cleanly rather than thundering in.
+      try {
+        await env.DB.prepare('SELECT 1').first();
+      } catch (e) {
+        const msg = (e as Error)?.message ?? '';
+        if (msg.includes('Network connection lost') || msg.includes('D1_ERROR')) {
+          console.warn('[cron] D1 connectivity check failed — skipping this tick:', msg);
+          return;
+        }
+        // Unknown error — still attempt sweeps; individual handlers will surface it.
+      }
       // Per-minute trip idle/stale sweep — backstop for units that go dark while
       // stationary (lazy-on-gps-write handles the common case).
       ctx.waitUntil(
@@ -338,6 +379,13 @@ export default {
           .then(({ sweepWatchlist }) => sweepWatchlist(env.DB))
           .then((n) => { if (n) console.log(`[watchlist] ${n} alert(s) raised`); })
           .catch((err) => console.error('[watchlist] sweep failed:', err)),
+      );
+      // Deep Research monitors — re-run jobs whose monitor interval is due.
+      ctx.waitUntil(
+        import('./utils/deepResearchMonitor')
+          .then(({ sweepDeepResearchMonitors }) => sweepDeepResearchMonitors(env))
+          .then((n) => { if (n) console.log(`[deep-research] re-ran ${n} monitor(s)`); })
+          .catch((err) => console.error('[deep-research] monitor sweep failed:', err)),
       );
       // Intel cross-hit coverage sweep — screens persons/vehicles
       // created in the last 2 minutes regardless of entry path; critical
@@ -397,6 +445,15 @@ export default {
         console.error('Multi-source warrant scheduled scan failed:', err);
       }),
     );
+    // Jail roster scrape — picks the single most-overdue enabled county and
+    // scrapes its public roster into arrest_records. No-op until a county is
+    // enabled in jail_roster_config (Admin > Jail Roster).
+    ctx.waitUntil(
+      import('./utils/jailRoster/scraper')
+        .then(({ runDueScrapes }) => runDueScrapes(env.DB))
+        .then((r) => { if (r.ran) console.log(`[jail-roster] scraped ${r.ran}`); })
+        .catch((err) => console.error('[jail-roster] scrape failed:', err)),
+    );
     // Utah Sex Offender Registry poll — pulls from an agency-authorized
     // feed (system_config sor_feed_url/key) into utah_sex_offenders.
     // No-op until a feed is provisioned; never scrapes the public site.
@@ -404,6 +461,25 @@ export default {
       runUtahSorPoll(env.DB)
         .then((r) => { if (r.configured) console.log(`[sor] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
         .catch((err) => console.error('[sor] poll failed:', err)),
+    );
+    // iCrimeWatch statewide SOR scrape (agency 54438) via Firecrawl into
+    // utah_sex_offenders. Cadence-gated (KV, default 7d) so the 4-hourly cron
+    // doesn't hit the billable Firecrawl API every tick; no-op when not due or
+    // when FIRECRAWL_API_KEY is unset. The admin "Run SOR import" route forces.
+    ctx.waitUntil(
+      import('./utils/sorSources/icrimewatch')
+        .then(({ maybeRunIcrimewatchScanScheduled }) => maybeRunIcrimewatchScanScheduled(env, Date.now()))
+        .then((r) => { if (r.configured && !r.skipped) console.log(`[icw] seen=${r.seen} upserted=${r.upserted}${r.error ? ` err=${r.error}` : ''}`); })
+        .catch((err) => console.error('[icw] cron failed:', err)),
+    );
+    // FlexCam footage retention — purge non-evidence footage past the configured
+    // window (default 120 days / 4 months). Evidence-locked footage is never
+    // touched. Best-effort; cannot abort the other 4-hourly scans or crash the cron.
+    ctx.waitUntil(
+      import('./utils/footage/captureOrchestrator')
+        .then(({ purgeExpiredFootage }) => purgeExpiredFootage(env))
+        .then((r) => { if (r.purged) console.log(`[flexcam-retention] purged ${r.purged} request(s), ${r.objects} object(s)`); })
+        .catch((err) => console.error('[flexcam-retention] purge failed:', (err as Error)?.message)),
     );
     // Person-screening framework (INTERPOL / OFAC / Utah SOR). Watch-listed
     // persons only; OFAC dataset is bulk-refreshed inside the orchestrator.
@@ -486,6 +562,16 @@ export default {
       ).run()
         .then((r) => { const n = r?.meta?.changes ?? 0; if (n) console.log(`[sessions] purged ${n} dead session row(s)`); })
         .catch((err) => console.error('Sessions purge failed:', err)),
+    );
+    // Auto skip-trace weekly sweep — retries stale jobs whose prior
+    // auto skip-trace found no results (at least 7 days between retries).
+    // Must run before the serve-nudge sweep to avoid a stale nudge from
+    // this cycle landing on the same job.
+    ctx.waitUntil(
+      import('./utils/autoSkipTraceSweep')
+        .then(({ sweepAutoSkipTraces }) => sweepAutoSkipTraces(env.DB, env))
+        .then((n) => { if (n) console.log(`[auto-skip-trace] ${n} skip-trace(s) triggered`); })
+        .catch((err) => console.error('[auto-skip-trace] sweep failed:', err)),
     );
     // Process-serve needs-attention sweep — raises notifications + supervisor
     // email digest for overdue/approaching/diligence-gap/unassigned jobs.

@@ -29,7 +29,7 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; text: string
   medium: {
     bg: 'rgba(136, 136, 136, 0.15)',
     border: '#888888',
-    text: '#cccccc',
+    text: 'var(--rmpg-300)',
     glow: 'none',
   },
 };
@@ -103,7 +103,7 @@ function WarningTags({ warnings, compact = false }: WarningTagsProps) {
             }}
           >
             <Icon style={{ width: 11, height: 11, flexShrink: 0 }} />
-            <span className="flex-1 truncate">{w.label}</span>
+            <span className="flex-1 min-w-0 truncate">{w.label}</span>
             <span className="text-[8px] opacity-60 normal-case">{w.source}</span>
           </div>
         );

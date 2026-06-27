@@ -273,7 +273,10 @@ export class VoiceHubDO {
       const finished = this.activeTx;
       this.activeTx = null;
       this.broadcast({ type: 'radio_transmit_end', user_id: finished.userId });
-      this.state.waitUntil(this.persist(finished, null).catch(() => {}));
+      this.state.waitUntil(
+        this.persist(finished, null)
+          .catch((err) => console.error('[VoiceHubDO] persist (drop)', err)),
+      );
     }
     if (meta?.authenticated) this.broadcast({ type: 'voice_presence', members: this.presenceCount() });
   }

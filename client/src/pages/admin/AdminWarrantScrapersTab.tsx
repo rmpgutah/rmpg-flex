@@ -241,13 +241,13 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
 
       {/* Dense table */}
       <div className="panel-raised max-h-[600px] overflow-y-auto scrollbar-dark">
-        <table className="w-full text-[10px] font-mono">
+        <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
           <thead className="bg-rmpg-900 sticky top-0 z-10">
             <tr className="border-b border-rmpg-700">
               <th className="p-2 text-left w-8">
                 <button
                   onClick={toggleAll}
-                  className="text-rmpg-400 hover:text-white"
+                  className="text-rmpg-400 hover:text-rmpg-100"
                   title="Select all (filtered)"
                 >
                   {selected.size === filtered.length && filtered.length > 0 ? (
@@ -287,12 +287,12 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
                     <td className="p-2">
                       <button
                         onClick={() => toggleOne(s.source_key)}
-                        className="text-rmpg-400 hover:text-white"
+                        className="text-rmpg-400 hover:text-rmpg-100"
                       >
                         {isSelected ? <CheckSquare size={12} /> : <Square size={12} />}
                       </button>
                     </td>
-                    <td className="p-2 text-white truncate max-w-[260px]" title={s.display_name}>
+                    <td className="p-2 text-rmpg-100 truncate max-w-[260px]" title={s.display_name}>
                       {s.source_key}
                     </td>
                     <td className="p-2 text-rmpg-400">{s.state}</td>
@@ -326,7 +326,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
               })
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <div className="text-[10px] text-rmpg-600">

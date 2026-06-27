@@ -117,7 +117,7 @@ struct CommandSearchView: View {
                 .foregroundStyle(hit.hasFlags ? Theme.red : Theme.gold).frame(width: 26)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(hit.label).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                    Text(hit.label).font(Theme.Typography.body).fontWeight(.semibold).foregroundStyle(.white).lineLimit(1)
                     if let flag = hit.flags.first {
                         Text(flag.uppercased()).font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 5).padding(.vertical, 1).background(Theme.red).clipShape(Capsule())
@@ -168,7 +168,7 @@ struct CommandSearchView: View {
                     Button { query = r; runSearch(r) } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "clock.arrow.circlepath").font(.system(size: 12)).foregroundStyle(Theme.neutral)
-                            Text(r).font(.system(size: 12)).foregroundStyle(.white)
+                            Text(r).font(Theme.Typography.caption).foregroundStyle(.white)
                             Spacer()
                             Image(systemName: "arrow.up.left").font(.system(size: 10)).foregroundStyle(Theme.neutral)
                         }.themeCard()

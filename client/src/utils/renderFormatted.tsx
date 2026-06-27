@@ -29,7 +29,7 @@ export function renderFormattedText(text: string): React.ReactNode {
       {lines.map((l, idx) => (
         <span key={idx} className="flex items-start" style={{ paddingLeft: `${l.depth * 1.1}em` }}>
           {l.kind !== 'plain' && (
-            <span className="inline-block shrink-0 text-[#9ca3af] mr-1" style={{ minWidth: '1.4em' }}>
+            <span className="inline-block shrink-0 text-rmpg-400 mr-1" style={{ minWidth: '1.4em' }}>
               {l.kind === 'ordered' ? `${l.marker}.` : '•'}
             </span>
           )}

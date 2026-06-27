@@ -59,7 +59,7 @@ struct IDScanView: View {
 
                 ForEach(alerts, id: \.self) { alert in
                     Text("⚠ \(alert)")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(Theme.Typography.caption).fontWeight(.bold)
                         .foregroundStyle(.black)
                         .frame(maxWidth: .infinity).padding(.vertical, 6)
                         .background(Theme.orange)
@@ -71,7 +71,7 @@ struct IDScanView: View {
                 }
                 if let recordCheck {
                     Text(recordCheck)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(Theme.Typography.caption).fontWeight(.bold)
                         .foregroundStyle(recordCheck.hasPrefix("⚠") ? .black : Theme.gold)
                         .frame(maxWidth: .infinity).padding(.vertical, 6)
                         .background(recordCheck.hasPrefix("⚠") ? Theme.red : Theme.raised)
@@ -102,27 +102,27 @@ struct IDScanView: View {
                         PlateCheckSection(scanFields: result.fields)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(result.displayName)
-                                .font(.system(size: 16, weight: .bold))
+                                .font(Theme.Typography.headline).fontWeight(.bold)
                                 .foregroundStyle(.white)
                             ForEach(rows(result), id: \.0) { label, value in
                                 HStack(alignment: .top) {
                                     Text(label).font(.system(size: 10, weight: .semibold))
                                         .foregroundStyle(Theme.gold)
                                         .frame(width: 90, alignment: .leading)
-                                    Text(value).font(.system(size: 12, design: .monospaced))
+                                    Text(value).font(Theme.Typography.mono)
                                         .foregroundStyle(.white)
                                 }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
+                        .padding(Theme.Spacing.lg)
                         .background(Theme.raised)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                     }
                 }
                 Spacer(minLength: 0)
             }
-            .padding(12)
+            .padding(Theme.Spacing.lg)
             .background(Theme.base)
             .navigationTitle("ID SCAN → MDT")
             .navigationBarTitleDisplayMode(.inline)
@@ -159,13 +159,13 @@ struct IDScanView: View {
     private var wirelessSection: some View {
         VStack(spacing: 8) {
             Text("Verify a Wallet-stored mobile ID (mDL / state ID): the subject holds their iPhone or Apple Watch to the top of this phone and approves sharing. iOS shows the verified name + age in a system sheet — identity data never enters this app.")
-                .font(.system(size: 11))
+                .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.neutral)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(wireless.busy ? "READING…" : "TAP TO VERIFY WALLET ID") {
                 Task { await wireless.verify() }
             }
-            .font(.system(size: 12, weight: .semibold))
+            .font(Theme.Typography.caption).fontWeight(.semibold)
             .frame(maxWidth: .infinity).padding(.vertical, 10)
             .background(WirelessIDVerifier.isSupported ? Theme.gold : Theme.raised)
             .foregroundStyle(WirelessIDVerifier.isSupported ? .black : Theme.neutral)
@@ -179,7 +179,7 @@ struct IDScanView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(10)
+        .padding(Theme.Spacing.lg)
         .background(Theme.raised)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
     }

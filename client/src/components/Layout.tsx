@@ -121,7 +121,7 @@ import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
-import { applyThemePreference } from '../utils/theme';
+import { applyThemePreference, writeThemeOverride } from '../utils/theme';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -154,8 +154,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/code-enforcement': 'Code Enforcement',
   '/court': 'Court Tracker',
   '/dar': 'Daily Activity Reports',
-  '/offender-registry': 'Offender Registry',
-  '/sex-offender-registry': 'Sex Offender Registry',
+  // NSOPW is the canonical SOR surface; old paths redirect (see App.tsx).
+  '/nsopw': 'Sex Offender Registry',
   '/reports': 'Reports',
   '/forensic-lab': 'Forensic Lab',
   '/audit': 'Audit Log',
@@ -251,7 +251,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
     { path: '/colorado-doc', icon: UserCheck, label: 'Colorado DOC Search' },
-    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
   ]},
   { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
@@ -281,8 +281,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/court-records', icon: Gavel, label: 'Court Records' },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
     { path: '/serve', icon: FileSignature, label: 'Process Server' },
     { path: '/serve-intake', icon: FileText, label: 'Serve Intake' },
     { path: '/use-of-force', icon: Shield, label: 'Use of Force' },
@@ -906,7 +905,7 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col text-white overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
+    <div className="flex flex-col text-rmpg-100 overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
@@ -927,8 +926,8 @@ export default function Layout() {
           <div
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
-              background: '#0a0a0a',
-              border: '1px solid #2b2b2b',
+              background: 'var(--surface-raised)',
+              border: '1px solid var(--border-default)',
               borderTop: '3px solid #888888',
               boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
               WebkitAppRegion: 'no-drag',
@@ -936,7 +935,7 @@ export default function Layout() {
           >
             <div className="text-center space-y-1">
               <Shield className="w-8 h-8 text-brand-400 mx-auto mb-2" />
-              <div className="text-lg font-bold text-white">Operator Identification Required</div>
+              <div className="text-lg font-bold text-rmpg-100">Operator Identification Required</div>
               <div className="text-xs text-rmpg-400">
                 Enter your name to continue. This will appear in the OPR system and all reports.
               </div>
@@ -944,7 +943,7 @@ export default function Layout() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">First Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-0" className="field-label">First Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-0"
                   type="text"
                   value={setupFirstName}
@@ -955,7 +954,7 @@ export default function Layout() {
                 />
               </div>
               <div>
-                <label className="field-label">Last Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-1" className="field-label">Last Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-1"
                   type="text"
                   value={setupLastName}
@@ -975,7 +974,7 @@ export default function Layout() {
             <button type="button"
               onClick={handleNameSetupSave}
               disabled={setupSaving || !setupFirstName.trim() || !setupLastName.trim()}
-              className="btn-primary w-full justify-center transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+              className="btn-primary w-full justify-center transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
             >
               {setupSaving ? 'Saving...' : 'Continue'}
             </button>
@@ -1052,11 +1051,11 @@ export default function Layout() {
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
+            <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
               <RmpgLogo height={44} />
               {/* 2: Tighter line-height on app name for compact branding */}
               <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
-                <span className="text-[14px] font-bold tracking-wider text-white leading-none">RMPG</span>
+                <span className="text-[14px] font-bold tracking-wider text-rmpg-100 leading-none">RMPG</span>
                 <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: 'var(--desktop-shell-subtle-text)' }}>FLEX</span>
               </div>
             </div>
@@ -1071,7 +1070,7 @@ export default function Layout() {
               {POPOUT_PAGES[location.pathname] && (
                 <button type="button"
                   onClick={() => openPageWindow(location.pathname)}
-                  className="toolbar-btn ml-1 transition-colors duration-150 hover:text-brand-400 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97]"
+                  className="toolbar-btn ml-1 transition-colors duration-150 hover:text-brand-400 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none active:scale-[0.97]"
                   title="Open in new window"
                   aria-label="Open current page in new window"
                   style={{ padding: '2px 4px' }}
@@ -1089,19 +1088,19 @@ export default function Layout() {
               {/* 4: Active Calls indicator with count highlight on non-zero */}
               <button type="button"
                 onClick={() => navigate('/dispatch')}
-                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                 aria-label={`Active calls: ${activeCallCount}. Click to open dispatch.`}
               >
                 <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-rmpg-500'} />
                 <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
-                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-white'}`}>{activeCallCount}</span>
+                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-rmpg-100'}`}>{activeCallCount}</span>
               </button>
 
               {/* 5: BOLO Indicator with improved glow effect */}
               {activeBOLOs > 0 && (
                 <button type="button"
                   onClick={() => navigate('/communications')}
-                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                   style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b', boxShadow: '0 0 8px rgba(220, 38, 38, 0.2)' }}
                   aria-label={`${activeBOLOs} active BOLOs. Click to open communications.`}
                 >
@@ -1115,10 +1114,10 @@ export default function Layout() {
               {/* GPS */}
               <div
                 className="flex items-center gap-1 px-1.5 py-0.5 panel-inset"
-                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#050505' }}
+                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : 'var(--surface-overlay)' }}
                 title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || (gps.hasTakeHome ? 'Take-Home Vehicle' : 'no unit')}` : 'GPS acquiring...'}
               >
-                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#666666', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
+                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : 'var(--rmpg-500)', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
                 {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}
               </div>
 
@@ -1160,9 +1159,11 @@ export default function Layout() {
                 onClick={() => {
                   const html = document.documentElement;
                   const isLight = html.classList.contains('theme-light');
-                  applyThemePreference(isLight ? 'dark' : 'light');
-                  // Persist via API
-                  apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }).catch(() => {});
+                  const next = isLight ? 'dark' : 'light';
+                  writeThemeOverride({ theme: next, active: true });
+                  applyThemePreference(next, { persist: false });
+                  // Persist via API (best-effort mirror)
+                  apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: next }) }).catch(() => {});
                 }}
                 className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97]"
                 title="Toggle Light/Dark Theme"
@@ -1177,8 +1178,8 @@ export default function Layout() {
 
               {/* Search */}
               <button type="button"
-                onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-                className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                onClick={() => setShowCommandPalette(true)}
+                className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                 title="Search (Ctrl+K)"
                 aria-label="Global search"
                 style={{ padding: '2px 6px' }}
@@ -1188,19 +1189,19 @@ export default function Layout() {
             </div>
 
             {/* Separator */}
-            <div className="hidden lg:block w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="hidden lg:block w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* PANIC Button */}
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
               <button type="button"
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                className={`flex items-center gap-2 px-2 py-1 transition-all duration-150 border focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97] ${
+                className={`flex items-center gap-2 px-2 py-1 transition-all duration-150 border focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none active:scale-[0.97] ${
                   profileDropdownOpen
                     ? 'bg-rmpg-700 border-rmpg-600'
                     : 'bg-transparent border-transparent hover:bg-rmpg-800 hover:border-rmpg-700'
@@ -1216,7 +1217,7 @@ export default function Layout() {
                     src={authedImageUrl(user.profile_image)}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover transition-shadow duration-150"
-                    style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
+                    style={{ border: '2px solid var(--border-strong)', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
                   />
                 ) : (
                   <div
@@ -1224,7 +1225,7 @@ export default function Layout() {
                     style={{
                       background: 'linear-gradient(135deg, #333333, #888888)',
                       color: '#fff',
-                      border: '2px solid #aaaaaa',
+                      border: '2px solid var(--rmpg-400)',
                       borderRadius: '50%',
                       boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none',
                     }}
@@ -1237,7 +1238,7 @@ export default function Layout() {
                   style={{
                     width: 10,
                     height: 10,
-                    color: '#666666',
+                    color: 'var(--rmpg-500)',
                     transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
                     transition: 'transform 0.15s',
                   }}
@@ -1253,8 +1254,8 @@ export default function Layout() {
                   style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)' }}
                 >
                   {/* User info header */}
-                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(10,10,10, 0.5)' }}>
-                    <div className="text-xs font-bold text-white">
+                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'var(--surface-sunken)' }}>
+                    <div className="text-xs font-bold text-rmpg-100">
                       {user?.first_name} {user?.last_name}
                     </div>
                     <div className="text-[9px] font-mono text-rmpg-500 mt-0.5">
@@ -1273,20 +1274,20 @@ export default function Layout() {
                   </div>
 
                   {/* Menu items */}
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('profile')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={() => openProfileModal('profile')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><User style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Edit Profile</span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('password')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={() => openProfileModal('password')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><Lock style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Change Password</span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('sessions')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={() => openProfileModal('sessions')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><Shield style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Active Sessions</span>
                   </button>
                   {isAdmin && (
-                    <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                    <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                       <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
                       <span className="menu-item-label">System Settings</span>
                     </button>
@@ -1295,7 +1296,7 @@ export default function Layout() {
                   <div className="menu-separator" />
 
                   {/* 9: Sign Out button with red hover bg for destructive emphasis */}
-                  <button type="button" role="menuitem" onClick={handleSignOutClick} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={handleSignOutClick} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
                     <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
                   </button>
@@ -1344,8 +1345,8 @@ export default function Layout() {
           isConnected={isConnected}
           onlineCount={presence.count}
           onLogout={logout}
-          onSearch={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-          onShowShortcuts={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}
+          onSearch={() => setShowCommandPalette(true)}
+          onShowShortcuts={() => setShowShortcutHelp(true)}
           onRefreshData={fetchHeaderStats}
         />
 
@@ -1398,7 +1399,7 @@ export default function Layout() {
         </button>
         <div
           className="self-stretch mx-0.5"
-          style={{ width: 1, background: '#222222', margin: '6px 2px' }}
+          style={{ width: 1, background: 'var(--border-subtle)', margin: '6px 2px' }}
         />
 
         {(() => {
@@ -1447,7 +1448,7 @@ export default function Layout() {
                 {showSep && (
                   <div
                     className="self-stretch mx-0.5"
-                    style={{ width: 1, background: '#222222', margin: '6px 2px' }}
+                    style={{ width: 1, background: 'var(--border-subtle)', margin: '6px 2px' }}
                   />
                 )}
                 <div className="relative">
@@ -1496,7 +1497,7 @@ export default function Layout() {
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #141414',
+                          borderRadius: 2, border: '1px solid var(--border-subtle)',
                           boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
                       >
@@ -1516,7 +1517,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                         }}
                       >
                         {item.shortcut}
@@ -1530,7 +1531,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1585,7 +1586,7 @@ export default function Layout() {
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#aaaaaa' : '#666666', flexShrink: 0 }} />
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--rmpg-400)' : 'var(--rmpg-500)', flexShrink: 0 }} />
                             <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );
@@ -1617,9 +1618,9 @@ export default function Layout() {
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main
           id="main-content"
-          className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
+          className="spm-page flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
           key={location.pathname}
-          style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
+          style={{ background: 'var(--surface-sunken)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
           // Persist scroll per-path so SW-update reloads (and any other full
           // page reload) put the operator back where they were instead of
           // snapping to the top — the 2026-06-11 "can't scroll" reload loop
@@ -1718,10 +1719,10 @@ export default function Layout() {
       {showShortcutHelp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
           {/* 14: Keyboard shortcuts modal with blue top accent */}
-          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
-              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
+          <div className="bg-surface-base border border-border-default rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default bg-surface-overlay">
+              <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
+              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-rmpg-100 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
               <div className="space-y-1.5">
@@ -1729,11 +1730,11 @@ export default function Layout() {
                 {TOOLBAR_NAV.filter(i => i.shortcut).map(item => (
                   <div key={item.shortcut} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{item.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{item.shortcut}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-surface-overlay border border-border-default text-brand-400 rounded-sm">{item.shortcut}</kbd>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-[#2b2b2b] pt-3 space-y-1.5">
+              <div className="border-t border-border-default pt-3 space-y-1.5">
                 <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Global</div>
                 {[
                   { label: 'Command Palette', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
@@ -1745,7 +1746,7 @@ export default function Layout() {
                 ].map(s => (
                   <div key={s.label} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{s.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{s.keys}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-surface-overlay border border-border-default text-brand-400 rounded-sm">{s.keys}</kbd>
                   </div>
                 ))}
               </div>

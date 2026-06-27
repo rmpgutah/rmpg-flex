@@ -7,8 +7,8 @@
 // ============================================================
 
 import {useState, useCallback, useEffect, useRef} from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Camera, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Loader2, X, Eye, ScanLine, UserCheck, Upload, History } from 'lucide-react';
 import { apiFetch, apiUploadFilesWithProgress } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import type { ReadoutRow, ScanAlert, LeField } from '../utils/aamvaParser';
@@ -20,6 +20,7 @@ import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 // QR code that opens this scanner page on the officer's phone —
 // scans made there relay to this desktop session automatically.
@@ -33,8 +34,8 @@ function ImgThumb({ blob, label }: { blob: Blob; label: string }) {
   }, [blob]);
   return (
     <div className="relative flex-shrink-0">
-      {url && <img src={url} alt={`ID ${label}`} className="w-16 h-10 object-cover border border-[#2e2e2e] rounded-sm bg-black" />}
-      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[7px] font-bold text-[#d4a017] text-center uppercase">{label}</span>
+      {url && <img src={url} alt={`ID ${label}`} className="w-16 h-10 object-cover border border-rmpg-700 rounded-sm bg-black" />}
+      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[7px] font-bold text-brand-gold-500 text-center uppercase">{label}</span>
     </div>
   );
 }
@@ -117,12 +118,18 @@ export default function DlSearchPage() {
   const [state, setState] = useState('');
   const [dob, setDob] = useState('');
   const [results, setResults] = useState<DlSubject[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState<DlSubject | null>(null);
   const [source, setSource] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
+  // Ref for the first search field — used by the N shortcut to focus it
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+  // Set to true when an auto-search is triggered by a deep-link so that
+  // handleSearch can fire a toast when the query returns no results.
+  const fromDeepLinkRef = useRef(false);
 
   // ── DL Scanner (PDF417 barcode-first, OCR fallback) ──
   const navigate = useNavigate();
@@ -187,6 +194,8 @@ export default function DlSearchPage() {
   const [clToken, setClToken] = useState('');
   const [sorImportText, setSorImportText] = useState('');
   const [sorImporting, setSorImporting] = useState(false);
+  // Confirm before bulk-importing SOR records (hard-to-undo write op)
+  const [confirmSorImport, setConfirmSorImport] = useState(false);
 
   const loadSources = useCallback(() => {
     apiFetch<any>('/dl-records/sources-config')
@@ -259,9 +268,26 @@ export default function DlSearchPage() {
       .catch(() => setScanHistory([]))
       .finally(() => setScanHistoryLoading(false));
   }, []);
-  const [recentScans, setRecentScans] = useState<any[]>(() => {
-    try { return JSON.parse(localStorage.getItem('rmpg-dl-recent-scans') || '[]'); } catch { return []; }
-  });
+  // Recent-scans memory is now USER-SCOPED. Previously the key
+  // 'rmpg-dl-recent-scans' was global — two officers sharing a workstation
+  // saw each other's last DL scans (names + DL numbers visible). Bumped to
+  // a per-user storage key + hydrated by an effect once user.id is known.
+  // useState starts empty; the hydration effect runs after auth resolves.
+  const recentScansKey = user?.id ? `rmpg-dl-recent-scans:${user.id}` : null;
+  const [recentScans, setRecentScans] = useState<any[]>([]);
+  useEffect(() => {
+    if (!recentScansKey) return;
+    try {
+      const raw = localStorage.getItem(recentScansKey);
+      setRecentScans(raw ? JSON.parse(raw) : []);
+    } catch {
+      setRecentScans([]);
+    }
+    // One-time cleanup of the legacy global key — purges any pre-2026-06-22
+    // entries left from before this PR. Safe to run on every user switch
+    // since the legacy key was never per-user.
+    try { localStorage.removeItem('rmpg-dl-recent-scans'); } catch { /* storage unavailable */ }
+  }, [recentScansKey]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Always-fresh handle for the shared barcode pipeline — the relay-poll
   // effect runs on a stable interval and must not capture a stale closure.
@@ -273,10 +299,14 @@ export default function DlSearchPage() {
         { ...entry, ts: Date.now() },
         ...prev.filter((s: any) => !(s.dl_number === entry.dl_number && s.dl_state === entry.dl_state)),
       ].slice(0, 10);
-      try { localStorage.setItem('rmpg-dl-recent-scans', JSON.stringify(next)); } catch { /* storage full */ }
+      // Write to the user-scoped key if available; skip on guest/uninitialized
+      // auth rather than fall back to the legacy global key.
+      if (recentScansKey) {
+        try { localStorage.setItem(recentScansKey, JSON.stringify(next)); } catch { /* storage full */ }
+      }
       return next;
     });
-  }, []);
+  }, [recentScansKey]);
 
   // ── Phone → desktop relay ──
   // Phone: push every successful scan to the relay so the officer's
@@ -484,9 +514,33 @@ export default function DlSearchPage() {
     } catch (err: any) { addToast(err?.message || 'Stolen check failed', 'error'); }
   };
 
+  // ── ?dl= / ?dl_number= / ?last= / ?person_id= URL deep-link ──
+  // Supports: ?dl=<number>&state=<XX> (legacy short form), ?dl_number=<number>&state=<XX>
+  // (canonical form used by scan-history links + NCIC QD popouts),
+  // ?last=&first=&dob= (name-based pre-fills), and ?person_id=<id>
+  // (navigates directly to the person record in /records).
+  // Pre-fills inputs + auto-runs the search; params are stripped after
+  // applying so a refresh doesn't loop.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingDeepLinkRef = useRef<{
+    dl: string | null; state: string | null;
+    last: string | null; first: string | null; dob: string | null;
+    person_id: string | null;
+  } | null>((() => {
+    const dl = searchParams.get('dl_number') || searchParams.get('dl');
+    const state = searchParams.get('state');
+    const last = searchParams.get('last');
+    const first = searchParams.get('first');
+    const dob = searchParams.get('dob');
+    const person_id = searchParams.get('person_id');
+    if (!dl && !last && !first && !dob && !person_id) return null;
+    return { dl, state, last, first, dob, person_id };
+  })());
+
   const handleSearch = useCallback(async () => {
     if (!lastName.trim() && !dlNumber.trim()) return;
     setLoading(true);
+    setHasSearched(true);
     setSelected(null);
     setFetchError('');
     try {
@@ -506,15 +560,46 @@ export default function DlSearchPage() {
         (!st || r.dl_state === st));
       setResults(rows);
       setSource('LOCAL');
+      if (rows.length === 0 && fromDeepLinkRef.current) {
+        addToast('No DL records found for the linked query', 'warning');
+      }
+      fromDeepLinkRef.current = false;
     } catch (err: any) {
       console.error('DL search error:', err);
       setFetchError(err?.message || 'Failed to load data');
       addToast('Failed to search driver\'s license records', 'error');
       setResults([]);
       setSource('ERROR');
+      fromDeepLinkRef.current = false;
     }
     setLoading(false);
-  }, [firstName, lastName, dlNumber, state, dob]);
+  }, [firstName, lastName, dlNumber, state, dob, addToast]);
+
+  // Apply pending deep-link once handleSearch is stable. One-shot — clears
+  // the ref after first run so subsequent input edits don't get clobbered.
+  useEffect(() => {
+    const pending = pendingDeepLinkRef.current;
+    if (!pending) return;
+    pendingDeepLinkRef.current = null;
+    // Strip the query so a refresh doesn't re-apply.
+    const next = new URLSearchParams(searchParams);
+    ['dl', 'dl_number', 'state', 'last', 'first', 'dob', 'person_id'].forEach((k) => next.delete(k));
+    setSearchParams(next, { replace: true });
+    // ?person_id= — navigate directly to the person record without running a search.
+    if (pending.person_id) {
+      navigate(`/records?tab=persons&personId=${pending.person_id}`);
+      return;
+    }
+    if (pending.dl) setDlNumber(pending.dl);
+    if (pending.state) setState(pending.state);
+    if (pending.last) setLastName(pending.last);
+    if (pending.first) setFirstName(pending.first);
+    if (pending.dob) setDob(pending.dob);
+    // Auto-run the search next tick once state has flushed.
+    fromDeepLinkRef.current = true;
+    setTimeout(() => { handleSearch(); }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleSearch]);
 
   const handleManualSubmit = useCallback(async (data: ManualDlFormData) => {
     setIsManualSubmitting(true);
@@ -740,7 +825,7 @@ export default function DlSearchPage() {
   }, [ocrResult, addToast, fileCardImagesTo]);
 
   const sourceBadge = (_src: string) => (
-    <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-gray-900/50 text-gray-400 border border-gray-700/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>
+    <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 inline-flex items-center gap-0.5"><Database className="w-2.5 h-2.5" />LOCAL</span>
   );
 
   const statusBadge = (status: string) => {
@@ -777,7 +862,7 @@ export default function DlSearchPage() {
   // Desktop search bar
   const searchControls = (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <input id="ff-dlsearchpage-0" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
+      <input id="ff-dlsearchpage-0" ref={firstFieldRef} className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
         onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <input id="ff-dlsearchpage-1" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="First Name" value={firstName}
         onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
@@ -813,8 +898,42 @@ export default function DlSearchPage() {
   // Set document title
   useEffect(() => { document.title = 'DL Search \u2014 RMPG Flex'; }, []);
 
+  // \u2500\u2500 N shortcut \u2014 focus the first search field \u2500\u2500
+  // \u2500\u2500 Esc cascade \u2014 clear results \u2192 deselect \u2192 close scanner preview \u2500\u2500
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // N \u2014 focus search when not already in an input/textarea/select
+      if (e.key === 'n' || e.key === 'N') {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        firstFieldRef.current?.focus();
+        return;
+      }
+      // Esc cascade: scanner modal \u2192 scan history \u2192 sources \u2192 detail panel \u2192 results
+      if (e.key === 'Escape') {
+        if (showOcrPreview) { e.stopPropagation(); setShowOcrPreview(false); return; }
+        if (showScanHistory) { e.stopPropagation(); setShowScanHistory(false); return; }
+        if (showSources) { e.stopPropagation(); setShowSources(false); return; }
+        if (showManualEntry) { e.stopPropagation(); setShowManualEntry(false); return; }
+        if (showLiveScanner) { e.stopPropagation(); setShowLiveScanner(false); return; }
+        if (selected) { e.stopPropagation(); setSelected(null); return; }
+        if (results.length > 0) {
+          e.stopPropagation();
+          setResults([]);
+          setHasSearched(false);
+          setFetchError('');
+          setSource('');
+          return;
+        }
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [showOcrPreview, showScanHistory, showSources, showManualEntry, showLiveScanner, selected, results.length]);
+
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
       {/* Hidden file input for DL OCR — always in DOM so toolbar button works */}
       <input id="ff-dlsearchpage-5"
         ref={fileInputRef}
@@ -845,7 +964,7 @@ export default function DlSearchPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
+        <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0 bg-surface-deep border-b border-rmpg-700">
           <div className="flex items-center gap-1.5">
             <input id="ff-dlsearchpage-6" className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
               onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
@@ -869,7 +988,14 @@ export default function DlSearchPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Results List */}
         <div className={`${isMobile ? (selected ? 'hidden' : 'w-full') : 'w-1/3'} border-r border-rmpg-700/50 overflow-auto`}>
-          {results.length === 0 && !loading && (
+          {results.length === 0 && !loading && hasSearched && (
+            <div className="flex flex-col items-center justify-center h-full text-rmpg-500 text-[10px] p-4 gap-3">
+              <Search className="w-8 h-8 text-rmpg-600" />
+              <p className="font-semibold text-rmpg-400">No records found</p>
+              <p className="text-[9px] text-rmpg-600 text-center">No DL records match your search. Try a different name, DL number, or state.</p>
+            </div>
+          )}
+          {results.length === 0 && !loading && !hasSearched && (
             <div className="flex flex-col items-center justify-center h-full text-rmpg-500 text-[10px] p-4 gap-4">
               <div className="text-center">
                 <CreditCard className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
@@ -877,19 +1003,19 @@ export default function DlSearchPage() {
                 <p className="text-[9px] text-rmpg-600 mt-1">Searches the department's local DL records</p>
               </div>
               {/* ── Driver's License Scanner ── */}
-              <div className="border border-[#2e2e2e] rounded-sm bg-[#0c0c0c] w-full max-w-sm">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a1a1a] bg-[#050505]">
-                  <ScanLine size={14} className="text-[#d4a017]" />
-                  <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest">Driver's License Scanner</span>
+              <div className="border border-rmpg-700 rounded-sm bg-surface-sunken w-full max-w-sm">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle bg-surface-deep">
+                  <ScanLine size={14} className="text-brand-gold-500" />
+                  <span className="text-[10px] font-bold text-brand-gold-500 uppercase tracking-widest">Driver's License Scanner</span>
                 </div>
                 <div className="p-3 space-y-3">
-                  <div className="border border-dashed border-[#2e2e2e] rounded-sm py-5 flex flex-col items-center gap-2 bg-[#080808]">
-                    <CreditCard size={28} className="text-[#333333]" />
+                  <div className="border border-dashed border-rmpg-700 rounded-sm py-5 flex flex-col items-center gap-2 bg-surface-deep">
+                    <CreditCard size={28} className="text-rmpg-700" />
                     <button
                       type="button"
                       onClick={() => setShowLiveScanner(true)}
                       disabled={ocrLoading}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[12px] font-bold text-black transition-colors uppercase tracking-wider"
+                      className="flex items-center gap-2 px-5 py-2.5 bg-brand-gold-500 hover:bg-brand-gold-700 disabled:opacity-40 rounded-sm text-[12px] font-bold text-black transition-colors uppercase tracking-wider"
                     >
                       {ocrLoading ? <Loader2 size={15} className="animate-spin" /> : <ScanLine size={15} />}
                       {ocrLoading ? 'Reading Barcode...' : 'Scan License'}
@@ -898,16 +1024,16 @@ export default function DlSearchPage() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={ocrLoading}
-                      className="flex items-center gap-1.5 text-[9px] text-[#8899aa] hover:text-white"
+                      className="flex items-center gap-1.5 text-[9px] text-rmpg-400 hover:text-rmpg-100"
                     >
                       <Upload size={11} /> or upload a photo
                     </button>
-                    <span className="text-[9px] text-[#556677]">Live camera — reads automatically, no shutter</span>
+                    <span className="text-[9px] text-rmpg-500">Live camera — reads automatically, no shutter</span>
                   </div>
 
                   {recentScans.length > 0 && (
-                    <div className="border border-[#1a1a1a] rounded-sm bg-[#080808]">
-                      <div className="px-2 py-1 text-[8px] font-bold text-[#556677] uppercase tracking-wider border-b border-[#141414]">Recent Scans</div>
+                    <div className="border border-border-subtle rounded-sm bg-surface-deep">
+                      <div className="px-2 py-1 text-[8px] font-bold text-rmpg-500 uppercase tracking-wider border-b border-border-subtle">Recent Scans</div>
                       <div className="max-h-32 overflow-y-auto">
                         {recentScans.map((s: any) => (
                           <button
@@ -916,29 +1042,30 @@ export default function DlSearchPage() {
                             onClick={() => {
                               if (s.aamva_raw) { processBarcodeText(s.aamva_raw, { silent: true, skipRelay: true }); }
                             }}
-                            className="w-full flex items-center justify-between gap-2 px-2 py-1 text-left hover:bg-[#141414] border-b border-[#101010]"
+                            className="w-full flex items-center justify-between gap-2 px-2 py-1 text-left hover:bg-surface-raised border-b border-border-subtle"
                           >
-                            <span className="text-[10px] text-[#c0ccdd] truncate">{s.name || 'UNKNOWN'}</span>
-                            <span className="text-[8px] font-mono text-[#556677] flex-shrink-0">{s.dl_state} {s.dl_number} · {new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{/* new-date-ok: s.ts is an epoch-ms number (Date.now()), not a server string */}</span>
+                            <span className="text-[10px] text-rmpg-300 truncate">{s.name || 'UNKNOWN'}</span>
+                            <span className="text-[8px] font-mono text-rmpg-500 flex-shrink-0">{s.dl_state} {s.dl_number} · {new Date(s.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{/* new-date-ok: s.ts is an epoch-ms number (Date.now()), not a server string */}</span>
                           </button>
                         ))}
                       </div>
                     </div>
                   )}
-                  <div className="space-y-1 text-[9px] text-[#556677] leading-relaxed">
-                    <p><span className="text-[#c0ccdd] font-semibold">→ Scan the BACK of the card</span> — the PDF417 barcode gives an exact, DMV-encoded read of every field (full English readout).</p>
-                    <p>→ Existing person records are <span className="text-[#c0ccdd] font-semibold">pulled automatically</span> on a DL-number or name+DOB match.</p>
-                    <p>→ No record? <span className="text-[#c0ccdd] font-semibold">Upload to Records</span> creates the person + DL record in one tap.</p>
+                  <div className="space-y-1 text-[9px] text-rmpg-500 leading-relaxed">
+                    <p><span className="text-rmpg-300 font-semibold">→ Scan the BACK of the card</span> — the PDF417 barcode gives an exact, DMV-encoded read of every field (full English readout).</p>
+                    <p>→ Existing person records are <span className="text-rmpg-300 font-semibold">pulled automatically</span> on a DL-number or name+DOB match.</p>
+                    <p>→ No record? <span className="text-rmpg-300 font-semibold">Upload to Records</span> creates the person + DL record in one tap.</p>
                     <p>→ Front-of-card photos fall back to OCR extraction.</p>
                   </div>
                   {!isMobile && (
-                    <div className="flex items-center gap-3 border-t border-[#1a1a1a] pt-3">
-                      <div className="bg-white p-1 rounded-sm flex-shrink-0">
+                    <div className="flex items-center gap-3 border-t border-border-subtle pt-3">
+                      {/* theme-ok: QR requires white bg */}
+                    <div className="bg-white p-1 rounded-sm flex-shrink-0">
                         <PhoneScanQr />
                       </div>
-                      <div className="text-[9px] text-[#556677] leading-relaxed">
-                        <p className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider mb-0.5">Use your phone as the scanner</p>
-                        <p>Scan this QR with your phone, sign in, and scan the license there — the results <span className="text-[#c0ccdd] font-semibold">appear on this screen automatically</span> (same login, within seconds).</p>
+                      <div className="text-[9px] text-rmpg-500 leading-relaxed">
+                        <p className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-0.5">Use your phone as the scanner</p>
+                        <p>Scan this QR with your phone, sign in, and scan the license there — the results <span className="text-rmpg-300 font-semibold">appear on this screen automatically</span> (same login, within seconds).</p>
                       </div>
                     </div>
                   )}
@@ -964,7 +1091,7 @@ export default function DlSearchPage() {
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-white">
+                <span className="text-[11px] font-bold text-rmpg-100">
                   {r.last_name}, {r.first_name} {r.middle_name || ''}
                 </span>
                 <ChevronRight className="w-3 h-3 text-rmpg-500" />
@@ -994,7 +1121,7 @@ export default function DlSearchPage() {
               {/* Mobile back button */}
               {isMobile && (
                 <button type="button" onClick={() => setSelected(null)}
-                  className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
                   <ChevronRight className="w-3 h-3 rotate-180" /> Back to Results
                 </button>
               )}
@@ -1003,7 +1130,7 @@ export default function DlSearchPage() {
               <div className="panel-surface p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-black text-white`}>
+                    <h2 className={`${isMobile ? 'text-base' : 'text-lg'} font-black text-rmpg-100`}>
                       {selected.last_name}, {selected.first_name} {selected.middle_name || ''} {selected.suffix || ''}
                     </h2>
                     <div className="flex items-center gap-2 mt-1">
@@ -1044,30 +1171,30 @@ export default function DlSearchPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 p-3 bg-rmpg-800/20 border border-rmpg-700/30">
                   <div>
                     <span className="field-label">Class</span>
-                    <p className="text-[11px] font-bold text-white">{selected.dl_class || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.dl_class || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Status</span>
-                    <p className="text-[11px] font-bold text-white">{selected.dl_status || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.dl_status || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Expiration</span>
-                    <p className="text-[11px] font-bold text-white">{formatDate(selected.dl_expiration)}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{formatDate(selected.dl_expiration)}</p>
                   </div>
                   <div>
                     <span className="field-label">Issue Date</span>
-                    <p className="text-[11px] font-bold text-white">{formatDate(selected.dl_issue_date)}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{formatDate(selected.dl_issue_date)}</p>
                   </div>
                   {selected.dl_restrictions && (
                     <div className="col-span-2">
                       <span className="field-label">Restrictions</span>
-                      <p className="text-[11px] font-bold text-white">{selected.dl_restrictions}</p>
+                      <p className="text-[11px] font-bold text-rmpg-100">{selected.dl_restrictions}</p>
                     </div>
                   )}
                   {selected.dl_endorsements && (
                     <div className="col-span-2">
                       <span className="field-label">Endorsements</span>
-                      <p className="text-[11px] font-bold text-white">{selected.dl_endorsements}</p>
+                      <p className="text-[11px] font-bold text-rmpg-100">{selected.dl_endorsements}</p>
                     </div>
                   )}
                 </div>
@@ -1081,33 +1208,33 @@ export default function DlSearchPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
                     <span className="field-label">Date of Birth</span>
-                    <p className="text-[11px] font-bold text-white flex items-center gap-1">
+                    <p className="text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
                       <Calendar className="w-3 h-3 text-rmpg-400" /> {formatDate(selected.date_of_birth)}
                     </p>
                   </div>
                   <div>
                     <span className="field-label">Gender</span>
-                    <p className="text-[11px] font-bold text-white">{selected.gender || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.gender || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Height</span>
-                    <p className="text-[11px] font-bold text-white">{selected.height || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.height || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Weight</span>
-                    <p className="text-[11px] font-bold text-white">{selected.weight || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.weight || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Eye Color</span>
-                    <p className="text-[11px] font-bold text-white">{selected.eye_color || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.eye_color || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Hair Color</span>
-                    <p className="text-[11px] font-bold text-white">{selected.hair_color || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.hair_color || '—'}</p>
                   </div>
                   <div>
                     <span className="field-label">Race</span>
-                    <p className="text-[11px] font-bold text-white">{selected.race || '—'}</p>
+                    <p className="text-[11px] font-bold text-rmpg-100">{selected.race || '—'}</p>
                   </div>
                   {selected.fetched_at && (
                     <div>
@@ -1127,7 +1254,7 @@ export default function DlSearchPage() {
                   <div className="space-y-2">
                     {selected.addresses.map((addr, i) => (
                       <div key={i} className="p-2 bg-rmpg-800/20 border border-rmpg-700/30">
-                        <p className="text-[11px] text-white font-bold">{addr.address || '—'}</p>
+                        <p className="text-[11px] text-rmpg-100 font-bold">{addr.address || '—'}</p>
                         {addr.address2 && <p className="text-[10px] text-rmpg-300">{addr.address2}</p>}
                         <p className="text-[10px] text-rmpg-300">
                           {[addr.city, addr.state, addr.postal_code].filter(Boolean).join(', ')}
@@ -1152,41 +1279,41 @@ export default function DlSearchPage() {
 
       {showSources && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-lg w-full max-h-[88vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] bg-[#0c0c0c]">
+          <div className="bg-surface-raised border border-border-subtle rounded-sm max-w-lg w-full max-h-[88vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
-                <Database size={14} className="text-[#d4a017]" />
-                <span className="text-[12px] font-bold text-white uppercase tracking-wider">Data Sources</span>
-                <span className="text-[8px] text-[#556677] uppercase">admin</span>
+                <Database size={14} className="text-brand-gold-500" />
+                <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">Data Sources</span>
+                <span className="text-[8px] text-rmpg-500 uppercase">admin</span>
               </div>
-              <button type="button" onClick={() => setShowSources(false)} className="text-[#556677] hover:text-white"><X size={16} /></button>
+              <button type="button" onClick={() => setShowSources(false)} className="text-rmpg-500 hover:text-rmpg-100"><X size={16} /></button>
             </div>
             <div className="p-4 space-y-4">
               {/* Utah SOR feed */}
-              <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
-                <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Utah Sex Offender Registry Feed</span>
-                  <span className="text-[8px] text-[#556677]">{sourcesCfg?.sor_records ?? 0} records</span>
+              <div className="border border-border-subtle rounded-sm bg-surface-sunken">
+                <div className="px-3 py-1.5 border-b border-border-subtle flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Utah Sex Offender Registry Feed</span>
+                  <span className="text-[8px] text-rmpg-500">{sourcesCfg?.sor_records ?? 0} records</span>
                 </div>
                 <div className="p-3 space-y-2">
-                  <p className="text-[9px] text-[#556677] leading-relaxed">Agency-authorized feed (OffenderWatch LE API / Utah BCI). Leave blank if you don't have one — never scrape the public site.</p>
+                  <p className="text-[9px] text-rmpg-500 leading-relaxed">Agency-authorized feed (OffenderWatch LE API / Utah BCI). Leave blank if you don't have one — never scrape the public site.</p>
                   <div>
-                    <label className="text-[8px] text-[#556677] uppercase font-mono">Feed URL (HTTPS)</label>
+                    <label className="text-[8px] text-rmpg-500 uppercase font-mono">Feed URL (HTTPS)</label>
                     <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" placeholder="https://..." value={sorUrl} onChange={e => setSorUrl(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-[8px] text-[#556677] uppercase font-mono">API Key {sourcesCfg?.sor_feed_key_set && <span className="text-[#7fb069]">· set ({sourcesCfg.sor_feed_key_mask})</span>}</label>
+                    <label className="text-[8px] text-rmpg-500 uppercase font-mono">API Key {sourcesCfg?.sor_feed_key_set && <span className="text-[var(--sev-ok-soft)]">· set ({sourcesCfg.sor_feed_key_mask})</span>}</label>
                     <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={sourcesCfg?.sor_feed_key_set ? 'leave blank to keep current' : 'bearer token'} value={sorKey} onChange={e => setSorKey(e.target.value)} />
                   </div>
                   {sourcesCfg?.sor_last_run && (
-                    <p className="text-[8px] text-[#556677]">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString()}</p>
+                    <p className="text-[8px] text-rmpg-500">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString()}</p>
                   )}
-                  <button type="button" onClick={runSorPoll} className="px-2.5 py-1 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white">Run poll now</button>
+                  <button type="button" onClick={runSorPoll} className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100">Run poll now</button>
 
                   {/* Bulk import — for agencies with no live feed: paste the
                       data you lawfully hold (BCI export, OffenderWatch dump). */}
-                  <div className="pt-2 mt-1 border-t border-[#1a1a1a] space-y-1.5">
-                    <label className="text-[8px] text-[#556677] uppercase font-mono">Bulk import (JSON array or CSV with header row)</label>
+                  <div className="pt-2 mt-1 border-t border-border-subtle space-y-1.5">
+                    <label className="text-[8px] text-rmpg-500 uppercase font-mono">Bulk import (JSON array or CSV with header row)</label>
                     <textarea
                       className="input-dark text-[9px] w-full font-mono leading-snug"
                       rows={4}
@@ -1196,36 +1323,36 @@ export default function DlSearchPage() {
                     />
                     <button
                       type="button"
-                      onClick={importSor}
+                      onClick={() => setConfirmSorImport(true)}
                       disabled={sorImporting || !sorImportText.trim()}
-                      className="px-2.5 py-1 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white disabled:opacity-40"
+                      className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100 disabled:opacity-40"
                     >{sorImporting ? 'Importing…' : 'Import records'}</button>
                   </div>
                 </div>
               </div>
 
               {/* CourtListener */}
-              <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
-                <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">CourtListener / PACER</span>
-                  <span className="text-[8px] text-[#556677]">{sourcesCfg?.court_cache ?? 0} cached</span>
+              <div className="border border-border-subtle rounded-sm bg-surface-sunken">
+                <div className="px-3 py-1.5 border-b border-border-subtle flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">CourtListener / PACER</span>
+                  <span className="text-[8px] text-rmpg-500">{sourcesCfg?.court_cache ?? 0} cached</span>
                 </div>
                 <div className="p-3 space-y-2">
-                  <p className="text-[9px] text-[#556677] leading-relaxed">Optional token raises the rate limit — federal court lookups work anonymously without one. Get a free token at courtlistener.com.</p>
+                  <p className="text-[9px] text-rmpg-500 leading-relaxed">Optional token raises the rate limit — federal court lookups work anonymously without one. Get a free token at courtlistener.com.</p>
                   <div>
-                    <label className="text-[8px] text-[#556677] uppercase font-mono">API Token {sourcesCfg?.courtlistener_token_set && <span className="text-[#7fb069]">· set ({sourcesCfg.courtlistener_token_mask})</span>}</label>
+                    <label className="text-[8px] text-rmpg-500 uppercase font-mono">API Token {sourcesCfg?.courtlistener_token_set && <span className="text-[var(--sev-ok-soft)]">· set ({sourcesCfg.courtlistener_token_mask})</span>}</label>
                     <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={sourcesCfg?.courtlistener_token_set ? 'leave blank to keep current' : 'optional token'} value={clToken} onChange={e => setClToken(e.target.value)} />
                   </div>
                 </div>
               </div>
 
-              <p className="text-[8px] text-[#556677] leading-relaxed">DMV/MVR (MicroBilt) and RapidAPI DL require a licensed broker contract and are configured separately under Admin → Integrations. Utah UCJIS/BCI requires a credentialed terminal connection.</p>
+              <p className="text-[8px] text-rmpg-500 leading-relaxed">DMV/MVR (MicroBilt) and RapidAPI DL require a licensed broker contract and are configured separately under Admin → Integrations. Utah UCJIS/BCI requires a credentialed terminal connection.</p>
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1a1a1a] bg-[#0c0c0c]">
-              <button type="button" onClick={saveSources} disabled={sourcesSaving} className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-border-subtle bg-surface-sunken">
+              <button type="button" onClick={saveSources} disabled={sourcesSaving} className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-700 disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
                 {sourcesSaving ? <Loader2 size={13} className="animate-spin" /> : null} Save
               </button>
-              <button type="button" onClick={() => setShowSources(false)} className="px-4 py-2 bg-[#181818] hover:bg-[#1a1a1a] border border-[#1a1a1a] rounded-sm text-[11px] text-[#8899aa] hover:text-white">Close</button>
+              <button type="button" onClick={() => setShowSources(false)} className="px-4 py-2 bg-surface-raised hover:bg-surface-overlay border border-border-subtle rounded-sm text-[11px] text-rmpg-400 hover:text-rmpg-100">Close</button>
             </div>
           </div>
         </div>
@@ -1233,36 +1360,36 @@ export default function DlSearchPage() {
 
       {showScanHistory && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-2xl w-full max-h-[88vh] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] bg-[#0c0c0c]">
+          <div className="bg-surface-raised border border-border-subtle rounded-sm max-w-2xl w-full max-h-[88vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
-                <History size={14} className="text-[#d4a017]" />
-                <span className="text-[12px] font-bold text-white uppercase tracking-wider">Scan History</span>
-                <span className="text-[8px] text-[#556677] uppercase">audit log</span>
+                <History size={14} className="text-brand-gold-500" />
+                <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">Scan History</span>
+                <span className="text-[8px] text-rmpg-500 uppercase">audit log</span>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => { const n = !scanHistoryMine; setScanHistoryMine(n); loadScanHistory(n); }}
-                  className={`px-2 py-1 rounded-sm text-[9px] font-bold border ${scanHistoryMine ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'bg-[#141414] text-[#c0ccdd] border-[#2e2e2e] hover:text-white'}`}
+                  className={`px-2 py-1 rounded-sm text-[9px] font-bold border ${scanHistoryMine ? 'bg-brand-gold-500 text-black border-brand-gold-500' : 'bg-surface-raised text-rmpg-300 border-rmpg-700 hover:text-rmpg-100'}`}
                 >
                   {scanHistoryMine ? 'My Scans' : 'All Scans'}
                 </button>
-                <button type="button" onClick={() => setShowScanHistory(false)} className="text-[#556677] hover:text-white"><X size={16} /></button>
+                <button type="button" onClick={() => setShowScanHistory(false)} className="text-rmpg-500 hover:text-rmpg-100"><X size={16} /></button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {scanHistoryLoading ? (
-                <div className="flex items-center justify-center py-10 text-[11px] text-[#8899aa] gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</div>
+                <div className="flex items-center justify-center py-10 text-[11px] text-rmpg-400 gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</div>
               ) : !scanHistory || scanHistory.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 text-[11px] text-[#556677] gap-2">
-                  <History size={22} className="text-[#333333]" />
+                <div className="flex flex-col items-center justify-center py-10 text-[11px] text-rmpg-500 gap-2">
+                  <History size={22} className="text-rmpg-700" />
                   No scans logged yet — every ID scan will appear here.
                 </div>
               ) : (
-                <table className="w-full text-left">
-                  <thead className="sticky top-0 bg-[#0c0c0c]">
-                    <tr className="text-[8px] text-[#556677] uppercase font-semibold">
+                <div className="overflow-x-auto"><table className="w-full text-left">
+                  <thead className="sticky top-0 bg-surface-sunken">
+                    <tr className="text-[8px] text-rmpg-500 uppercase font-semibold">
                       <th className="px-3 py-[3px]">When</th>
                       <th className="px-3 py-[3px]">Subject</th>
                       <th className="px-3 py-[3px]">License</th>
@@ -1277,29 +1404,29 @@ export default function DlSearchPage() {
                       const pf = f.profile_flags || {};
                       const flagged = !!(pf.sex_offender || pf.watchlist || pf.supervision) || dangerSrcs.length > 0;
                       return (
-                        <tr key={s.id} className={`border-t border-[#141414] text-[10px] ${flagged ? 'bg-red-900/10' : ''}`}>
-                          <td className="px-3 py-[3px] text-[#8899aa] whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                          <td className="px-3 py-[3px] text-white">
+                        <tr key={s.id} className={`border-t border-border-subtle text-[10px] ${flagged ? 'bg-red-900/10' : ''}`}>
+                          <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="px-3 py-[3px] text-rmpg-100">
                             {s.person_id
-                              ? <button type="button" className="hover:text-[#d4a017] hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>
+                              ? <button type="button" className="hover:text-brand-gold-500 hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>
                               : (s.subject_name || 'unknown')}
                           </td>
-                          <td className="px-3 py-[3px] text-[#8899aa] font-mono">{s.dl_number ? `${s.dl_number} ${s.dl_state || ''}` : '—'}</td>
-                          <td className="px-3 py-[3px] text-[#8899aa]">{s.officer}</td>
+                          <td className="px-3 py-[3px] text-rmpg-400 font-mono">{s.dl_number ? `${s.dl_number} ${s.dl_state || ''}` : '—'}</td>
+                          <td className="px-3 py-[3px] text-rmpg-400">{s.officer}</td>
                           <td className="px-3 py-[3px]">
                             {flagged ? (
                               <span className="text-[8px] font-bold uppercase px-1 py-px bg-red-900/50 text-red-300 border border-red-600/70 inline-flex items-center gap-1">
                                 <AlertTriangle size={9} /> {[pf.sex_offender && 'SOR', pf.watchlist && 'WATCH', pf.supervision && 'SUPV', ...dangerSrcs.map((x: any) => x.key?.toUpperCase())].filter(Boolean).slice(0, 3).join(' ')}
                               </span>
                             ) : (
-                              <span className="text-[8px] text-[#556677] uppercase">{typeof f.sweep_total === 'number' ? `${f.sweep_total} hits` : 'clear'}</span>
+                              <span className="text-[8px] text-rmpg-500 uppercase">{typeof f.sweep_total === 'number' ? `${f.sweep_total} hits` : 'clear'}</span>
                             )}
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
           </div>
@@ -1309,7 +1436,6 @@ export default function DlSearchPage() {
       {showLiveScanner && (
         <LiveDlScanner
           onComplete={async ({ barcodeText, frontImage, backImage }) => {
-            setShowLiveScanner(false);
             // Retain both card images for filing under the person record.
             setCardImages({ front: frontImage, back: backImage });
             setCardSavedTo(null);
@@ -1317,13 +1443,27 @@ export default function DlSearchPage() {
               const ok = await processBarcodeText(barcodeText);
               if (!ok) addToast('Barcode read but not a driver license payload', 'warning');
             } else if (frontImage || backImage) {
-              // No barcode — fall back to OCR on the captured front image.
+              // Try re-decoding the back image still with the thorough
+              // decoder (tryHarder + multi-scale + contrast boost) before
+              // falling back to OCR on the front image.
+              if (backImage) {
+                try {
+                  const { decodePdf417 } = await import('../utils/pdf417Decoder');
+                  const decoded = await decodePdf417(new File([backImage], 'id-back.jpg', { type: 'image/jpeg' }));
+                  if (decoded && await processBarcodeText(decoded.text)) {
+                    setShowLiveScanner(false);
+                    return;
+                  }
+                } catch { /* fall through to OCR */ }
+              }
+              // Fall back to OCR on the captured front image.
               if (frontImage) {
                 await handleOcrUpload(new File([frontImage], 'id-front.jpg', { type: 'image/jpeg' }));
               } else {
                 addToast('Captured images — no barcode read; review and upload', 'warning');
               }
             }
+            setShowLiveScanner(false);
           }}
           onClose={() => setShowLiveScanner(false)}
           onUploadInstead={() => { setShowLiveScanner(false); fileInputRef.current?.click(); }}
@@ -1340,18 +1480,18 @@ export default function DlSearchPage() {
       {/* DL Scanner Results Modal */}
       {showOcrPreview && ocrResult && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#141414] border border-[#1a1a1a] rounded-sm max-w-xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a] bg-[#0c0c0c]">
+          <div className="bg-surface-raised border border-border-subtle rounded-sm max-w-xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
-                <ScanLine size={14} className="text-[#d4a017]" />
-                <span className="text-[12px] font-bold text-white uppercase tracking-wider">
+                <ScanLine size={14} className="text-brand-gold-500" />
+                <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">
                   {scanReadout ? 'DL Scanner — PDF417 Read' : 'DL Scanner — OCR Read'}
                 </span>
                 {scanReadout && (
                   <span className="text-[8px] font-bold uppercase px-1 py-0.5 bg-green-900/50 text-green-400 border border-green-700/50">DMV-Encoded</span>
                 )}
               </div>
-              <button type="button" onClick={() => setShowOcrPreview(false)} className="text-[#556677] hover:text-white">
+              <button type="button" onClick={() => setShowOcrPreview(false)} className="text-rmpg-500 hover:text-rmpg-100">
                 <X size={16} />
               </button>
             </div>
@@ -1397,7 +1537,7 @@ export default function DlSearchPage() {
                       className={`flex items-center gap-2 px-3 py-1.5 border text-[10px] font-bold uppercase tracking-wide ${
                         a.level === 'danger' ? 'bg-red-900/30 border-red-700/50 text-red-400'
                         : a.level === 'warning' ? 'bg-amber-900/30 border-amber-700/50 text-amber-400'
-                        : 'bg-[#141414] border-[#2e2e2e] text-[#8899aa]'
+                        : 'bg-surface-raised border-rmpg-700 text-rmpg-400'
                       }`}
                     >
                       <AlertTriangle size={12} className="flex-shrink-0" />
@@ -1409,19 +1549,19 @@ export default function DlSearchPage() {
 
               {/* ── Captured ID card images ── */}
               {(cardImages.front || cardImages.back) && (
-                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c] flex items-center gap-3 p-2">
+                <div className="border border-border-subtle rounded-sm bg-surface-sunken flex items-center gap-3 p-2">
                   {cardImages.front && <ImgThumb blob={cardImages.front} label="FRONT" />}
                   {cardImages.back && <ImgThumb blob={cardImages.back} label="BACK" />}
-                  <span className="text-[9px] text-[#8899aa] leading-snug">
+                  <span className="text-[9px] text-rmpg-400 leading-snug">
                     ID card image{cardImages.front && cardImages.back ? 's' : ''} captured —
-                    {cardSavedTo ? <span className="text-[#7fb069]"> filed to record #{cardSavedTo}</span> : ' will be filed to the person record on create / pull.'}
+                    {cardSavedTo ? <span className="text-[var(--sev-ok-soft)]"> filed to record #{cardSavedTo}</span> : ' will be filed to the person record on create / pull.'}
                   </span>
                 </div>
               )}
 
               {/* ── Records-system match ── */}
-              <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
-                <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+              <div className="border border-border-subtle rounded-sm bg-surface-sunken">
+                <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Database size={11} /> Records System
                 </div>
                 <div className="p-2 space-y-1.5">
@@ -1433,36 +1573,36 @@ export default function DlSearchPage() {
                       <button
                         type="button"
                         onClick={() => { setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${uploadedRecord}`); }}
-                        className="px-2.5 py-1 bg-green-600 hover:bg-green-500 rounded-sm text-[10px] font-bold text-white"
+                        className="px-2.5 py-1 bg-green-600 hover:bg-green-500 rounded-sm text-[10px] font-bold text-rmpg-100"
                       >
                         Open Record
                       </button>
                     </div>
                   ) : matchLoading ? (
-                    <div className="flex items-center gap-2 text-[10px] text-[#8899aa] px-2 py-1.5">
+                    <div className="flex items-center gap-2 text-[10px] text-rmpg-400 px-2 py-1.5">
                       <Loader2 size={12} className="animate-spin" /> Searching records for this subject...
                     </div>
                   ) : scanMatches && scanMatches.length > 0 ? (
                     scanMatches.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between gap-2 px-2 py-1.5 bg-[#141414] border border-[#222222]">
+                      <div key={p.id} className="flex items-center justify-between gap-2 px-2 py-1.5 bg-surface-raised border border-rmpg-700">
                         <div className="min-w-0">
-                          <div className="text-[11px] text-white font-bold truncate">
-                            {p.last_name}, {p.first_name} <span className="text-[#556677] font-normal">#{p.id}</span>
+                          <div className="text-[11px] text-rmpg-100 font-bold truncate">
+                            {p.last_name}, {p.first_name} <span className="text-rmpg-500 font-normal">#{p.id}</span>
                           </div>
-                          <div className="text-[8px] text-[#d4a017] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          <div className="text-[8px] text-brand-gold-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
                             {p.match_type}{p.dob ? ` · DOB ${String(p.dob).slice(0, 10)}` : ''}
                             {p.active_warrants > 0 && (
                               <span className="px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 font-bold">{p.active_warrants} ACTIVE WARRANT{p.active_warrants > 1 ? 'S' : ''}</span>
                             )}
                             {p.active_warrants === 0 && p.total_warrants > 0 && (
-                              <span className="px-1 py-px bg-[#141414] text-[#8899aa] border border-[#2e2e2e]">{p.total_warrants} prior warrant{p.total_warrants > 1 ? 's' : ''}</span>
+                              <span className="px-1 py-px bg-surface-raised text-rmpg-400 border border-rmpg-700">{p.total_warrants} prior warrant{p.total_warrants > 1 ? 's' : ''}</span>
                             )}
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={async () => { await fileCardImagesTo(p.id); setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${p.id}`); }}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[10px] font-bold text-black flex-shrink-0"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[10px] font-bold text-black flex-shrink-0"
                           title="Open the matched record and file the captured ID images to it"
                         >
                           <UserCheck size={12} /> Pull Record
@@ -1470,7 +1610,7 @@ export default function DlSearchPage() {
                       </div>
                     ))
                   ) : (
-                    <div className="text-[10px] text-[#8899aa] px-2 py-1.5 flex items-center gap-1.5">
+                    <div className="text-[10px] text-rmpg-400 px-2 py-1.5 flex items-center gap-1.5">
                       <AlertTriangle size={11} className="text-amber-500" /> No existing record found — upload below to create one.
                     </div>
                   )}
@@ -1479,34 +1619,34 @@ export default function DlSearchPage() {
 
               {/* ── Deep records sweep (hard-to-find LE sources) ── */}
               {(deepSweepLoading || (deepSweep && deepSweep.total > 0)) && (
-                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
-                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                <div className="border border-border-subtle rounded-sm bg-surface-sunken">
+                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Search size={11} /> Deep Records Sweep
                     {deepSweepLoading
                       ? <Loader2 size={10} className="animate-spin" />
-                      : <span className="text-[#d4a017]">{deepSweep!.total} hit{deepSweep!.total === 1 ? '' : 's'} across {deepSweep!.sources.length} source{deepSweep!.sources.length === 1 ? '' : 's'}</span>}
+                      : <span className="text-brand-gold-500">{deepSweep!.total} hit{deepSweep!.total === 1 ? '' : 's'} across {deepSweep!.sources.length} source{deepSweep!.sources.length === 1 ? '' : 's'}</span>}
                   </div>
                   {deepSweep && deepSweep.sources.map((src: any) => (
-                    <div key={src.key} className="border-b border-[#141414] last:border-b-0">
-                      <div className={`px-3 py-1 text-[8px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${src.danger ? 'text-red-400' : 'text-[#8899aa]'}`}>
+                    <div key={src.key} className="border-b border-border-subtle last:border-b-0">
+                      <div className={`px-3 py-1 text-[8px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${src.danger ? 'text-red-400' : 'text-rmpg-400'}`}>
                         {src.danger && <AlertTriangle size={10} />}
                         {src.label} ({src.rows.length})
                         {src.key === 'utah_sor' && (
                           <a
                             href="https://www.communitynotification.com/cap_main.php?office=54438"
                             target="_blank" rel="noopener noreferrer"
-                            className="ml-auto text-[8px] font-bold text-[#d4a017] hover:underline normal-case tracking-normal"
+                            className="ml-auto text-[8px] font-bold text-brand-gold-500 hover:underline normal-case tracking-normal"
                           >Open official registry ↗</a>
                         )}
                       </div>
                       {src.rows.map((row: any) => (
-                        <div key={`${src.key}-${row.id}`} className={`px-3 py-1 text-[10px] border-t border-[#101010] flex items-start gap-1.5 ${row.danger ? 'text-red-300 bg-red-900/10' : 'text-[#c0ccdd]'}`}>
+                        <div key={`${src.key}-${row.id}`} className={`px-3 py-1 text-[10px] border-t border-border-subtle flex items-start gap-1.5 ${row.danger ? 'text-red-300 bg-red-900/10' : 'text-rmpg-300'}`}>
                           {row.image && (
-                            <img src={row.image} alt="Booking photo" className="w-9 h-11 object-cover border border-[#2e2e2e] bg-black flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            <img src={row.image} alt="Booking photo" className="w-9 h-11 object-cover border border-rmpg-700 bg-black flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                           )}
                           <span className="flex-1 leading-snug">{row.summary}</span>
                           {row.dob_match === true && <span className="text-[7px] font-bold px-1 py-px bg-green-900/50 text-green-400 border border-green-700/50 flex-shrink-0 uppercase">DOB ✓</span>}
-                          {row.dob_match === false && <span className="text-[7px] font-bold px-1 py-px bg-[#141414] text-[#888888] border border-[#2e2e2e] flex-shrink-0 uppercase">DOB differs</span>}
+                          {row.dob_match === false && <span className="text-[7px] font-bold px-1 py-px bg-surface-raised text-[var(--spm-text-muted)] border border-rmpg-700 flex-shrink-0 uppercase">DOB differs</span>}
                         </div>
                       ))}
                     </div>
@@ -1549,32 +1689,32 @@ export default function DlSearchPage() {
                 ].filter(l => l.rows.length > 0);
                 if (chips.length === 0 && lists.length === 0) return null;
                 return (
-                  <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
-                    <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
+                  <div className="border border-border-subtle rounded-sm bg-surface-sunken">
+                    <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-brand-gold-500 uppercase tracking-wider flex items-center gap-1.5">
                       <User size={11} /> Subject Profile — Full Detail (#{p.id} {p.last_name}, {p.first_name})
                     </div>
                     {(p.photo_url || p.photo || p.id_image_url) && (
-                      <div className="p-2 flex items-start gap-2 border-b border-[#141414]">
+                      <div className="p-2 flex items-start gap-2 border-b border-border-subtle">
                         {[p.photo_url || p.photo, p.id_image_url].filter(Boolean).slice(0, 2).map((src: string, i: number) => (
-                          <img key={i} src={src} alt={i === 0 ? 'Subject photo' : 'ID image'} className="w-20 h-24 object-cover border border-[#2e2e2e] bg-black" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          <img key={i} src={src} alt={i === 0 ? 'Subject photo' : 'ID image'} className="w-20 h-24 object-cover border border-rmpg-700 bg-black" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                         ))}
-                        <span className="text-[8px] text-[#556677] uppercase">Photos on file</span>
+                        <span className="text-[8px] text-rmpg-500 uppercase">Photos on file</span>
                       </div>
                     )}
                     {chips.length > 0 && (
                       <div className="p-2 flex flex-wrap gap-1">
                         {chips.map((ch) => (
-                          <span key={ch.label} className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${ch.danger ? 'bg-red-900/40 text-red-300 border-red-600/70' : 'bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]'}`}>
+                          <span key={ch.label} className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${ch.danger ? 'bg-red-900/40 text-red-300 border-red-600/70' : 'bg-surface-raised text-rmpg-300 border-rmpg-700'}`}>
                             {ch.label}
                           </span>
                         ))}
                       </div>
                     )}
                     {lists.map((l) => (
-                      <div key={l.title} className="border-t border-[#141414]">
-                        <div className="px-3 py-1 text-[8px] font-bold text-[#8899aa] uppercase tracking-wider">{l.title}</div>
+                      <div key={l.title} className="border-t border-border-subtle">
+                        <div className="px-3 py-1 text-[8px] font-bold text-rmpg-400 uppercase tracking-wider">{l.title}</div>
                         {l.rows.map((r, i) => (
-                          <div key={i} className="px-3 py-[3px] text-[10px] text-[#c0ccdd] border-t border-[#101010] leading-snug">{r}</div>
+                          <div key={i} className="px-3 py-[3px] text-[10px] text-rmpg-300 border-t border-border-subtle leading-snug">{r}</div>
                         ))}
                       </div>
                     ))}
@@ -1584,29 +1724,29 @@ export default function DlSearchPage() {
 
               {/* ── FBI Wanted (official public API) ── */}
               {(fbiLoading || (fbiRecords && fbiRecords.length > 0)) && (
-                <div className="border border-red-700/40 rounded-sm bg-[#0c0c0c]">
-                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-red-400">
+                <div className="border border-red-700/40 rounded-sm bg-surface-sunken">
+                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-red-400">
                     <Shield size={11} /> FBI Wanted
                     {fbiLoading
                       ? <Loader2 size={10} className="animate-spin" />
                       : <span>{fbiRecords!.length} bulletin{fbiRecords!.length === 1 ? '' : 's'}</span>}
                   </div>
                   {fbiRecords && fbiRecords.length > 0 && (
-                    <div className="px-3 py-1 text-[8px] text-[#7a6a3a] bg-[#15120a] border-b border-[#1a1a1a]">
+                    <div className="px-3 py-1 text-[8px] text-amber-500 bg-amber-950/30 border-b border-amber-900/40">
                       ⚠ Name match against FBI bulletins — verify identity (DOB/photo) before acting.
                     </div>
                   )}
                   {fbiRecords && fbiRecords.map((r: any, i: number) => (
-                    <div key={i} className="px-3 py-1.5 text-[10px] border-t border-[#101010] flex items-start gap-2 bg-red-900/10">
-                      {r.image && <img src={r.image} alt="FBI bulletin" className="w-10 h-12 object-cover border border-[#2e2e2e] bg-black flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+                    <div key={i} className="px-3 py-1.5 text-[10px] border-t border-border-subtle flex items-start gap-2 bg-red-900/10">
+                      {r.image && <img src={r.image} alt="FBI bulletin" className="w-10 h-12 object-cover border border-rmpg-700 bg-black flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-white font-bold">{r.title}</span>
+                          <span className="text-rmpg-100 font-bold">{r.title}</span>
                           {r.warning && <span className="text-[7px] font-bold px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 uppercase">{r.warning}</span>}
                         </div>
-                        <div className="text-[#8899aa] mt-0.5">{[r.subjects, r.sex, r.race, r.dob && `DOB ${r.dob}`].filter(Boolean).join(' · ')}</div>
-                        {r.caution && <div className="text-[#a89878] mt-0.5 leading-snug">{r.caution.slice(0, 180)}{r.caution.length > 180 ? '…' : ''}</div>}
-                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] hover:underline">FBI bulletin ↗</a>}
+                        <div className="text-rmpg-400 mt-0.5">{[r.subjects, r.sex, r.race, r.dob && `DOB ${r.dob}`].filter(Boolean).join(' · ')}</div>
+                        {r.caution && <div className="text-[var(--spm-text-muted)] mt-0.5 leading-snug">{r.caution.slice(0, 180)}{r.caution.length > 180 ? '…' : ''}</div>}
+                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-brand-gold-500 hover:underline">FBI bulletin ↗</a>}
                       </div>
                     </div>
                   ))}
@@ -1615,27 +1755,27 @@ export default function DlSearchPage() {
 
               {/* ── Open-source federal court records (CourtListener) ── */}
               {(courtLoading || (courtRecords && courtRecords.length > 0)) && (
-                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
-                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                <div className="border border-border-subtle rounded-sm bg-surface-sunken">
+                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Database size={11} /> Federal Court Records
                     {courtLoading
                       ? <Loader2 size={10} className="animate-spin" />
-                      : <span className="text-[#d4a017]">{courtRecords!.length} case{courtRecords!.length === 1 ? '' : 's'} · CourtListener/PACER</span>}
+                      : <span className="text-brand-gold-500">{courtRecords!.length} case{courtRecords!.length === 1 ? '' : 's'} · CourtListener/PACER</span>}
                   </div>
                   {courtRecords && courtRecords.length > 0 && (
-                    <div className="px-3 py-1 text-[8px] text-[#7a6a3a] bg-[#15120a] border-b border-[#1a1a1a]">
+                    <div className="px-3 py-1 text-[8px] text-amber-500 bg-amber-950/30 border-b border-amber-900/40">
                       ⚠ Name match only — verify identity (DOB/identifiers) before relying on these. Not confirmed to be this subject.
                     </div>
                   )}
                   {courtRecords && courtRecords.map((r: any, i: number) => (
-                    <div key={i} className={`px-3 py-1 text-[10px] border-t border-[#101010] ${r.is_criminal ? 'bg-red-900/10' : ''}`}>
+                    <div key={i} className={`px-3 py-1 text-[10px] border-t border-border-subtle ${r.is_criminal ? 'bg-red-900/10' : ''}`}>
                       <div className="flex items-center gap-1.5">
                         {r.is_criminal && <span className="text-[7px] font-bold px-1 py-px bg-red-900/50 text-red-300 border border-red-600/70 uppercase">Criminal</span>}
-                        <span className="text-white font-medium">{r.case_name}</span>
+                        <span className="text-rmpg-100 font-medium">{r.case_name}</span>
                       </div>
-                      <div className="text-[#8899aa] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <div className="text-rmpg-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
                         {[r.court, r.docket_number, r.date_filed].filter(Boolean).join(' · ')}
-                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] hover:underline">view ↗</a>}
+                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-brand-gold-500 hover:underline">view ↗</a>}
                       </div>
                     </div>
                   ))}
@@ -1644,48 +1784,48 @@ export default function DlSearchPage() {
 
               {/* ── DL Analysis (shared dlFunctions library / iOS bridge) ── */}
               {scanEval && (
-                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c]">
-                  <div className="px-3 py-1.5 border-b border-[#1a1a1a] text-[9px] font-bold text-[#8899aa] uppercase tracking-wider flex items-center gap-1.5">
+                <div className="border border-border-subtle rounded-sm bg-surface-sunken">
+                  <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-rmpg-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Shield size={11} /> DL Analysis
-                    <span className="text-[#556677] normal-case tracking-normal">scan quality {scanEval.quality}%{scanEval.usable ? '' : ' · review'}</span>
+                    <span className="text-rmpg-500 normal-case tracking-normal">scan quality {scanEval.quality}%{scanEval.usable ? '' : ' · review'}</span>
                   </div>
                   <div className="p-2 flex flex-wrap gap-1">
-                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.dlValid ? 'bg-[#141414] text-[#7fb069] border-[#2e2e2e]' : 'bg-amber-900/30 text-amber-400 border-amber-700/50'}`}>
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.dlValid ? 'bg-surface-raised text-[var(--sev-ok-soft)] border-rmpg-700' : 'bg-amber-900/30 text-amber-400 border-amber-700/50'}`}>
                       DL# {scanEval.dlValid ? 'valid format' : 'format mismatch'}
                     </span>
                     {scanEval.jurisdictionName && (
-                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]">{scanEval.jurisdictionName} ({scanEval.country})</span>
+                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-rmpg-300 border-rmpg-700">{scanEval.jurisdictionName} ({scanEval.country})</span>
                     )}
                     {scanEval.age !== null && (
-                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]">Age {scanEval.age} · {scanEval.ageBracket}</span>
+                      <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-rmpg-300 border-rmpg-700">Age {scanEval.age} · {scanEval.ageBracket}</span>
                     )}
                     {scanEval.eligibility.minor && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-red-900/40 text-red-300 border-red-600/70">MINOR</span>}
                     {!scanEval.eligibility.minor && scanEval.eligibility.under21 && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-amber-900/30 text-amber-400 border-amber-700/50">UNDER 21</span>}
-                    {scanEval.eligibility.drinking && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#7fb069] border-[#2e2e2e]">21+</span>}
-                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.expiry === 'expired' ? 'bg-red-900/40 text-red-300 border-red-600/70' : scanEval.expiry === 'expiring' ? 'bg-amber-900/30 text-amber-400 border-amber-700/50' : 'bg-[#141414] text-[#7fb069] border-[#2e2e2e]'}`}>
+                    {scanEval.eligibility.drinking && <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-[var(--sev-ok-soft)] border-rmpg-700">21+</span>}
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${scanEval.expiry === 'expired' ? 'bg-red-900/40 text-red-300 border-red-600/70' : scanEval.expiry === 'expiring' ? 'bg-amber-900/30 text-amber-400 border-amber-700/50' : 'bg-surface-raised text-[var(--sev-ok-soft)] border-rmpg-700'}`}>
                       License {scanEval.expiry}
                     </span>
                     {scanEval.badges.map((b: string) => (
-                      <span key={b} className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-[#141414] text-[#c0ccdd] border-[#2e2e2e]">{b}</span>
+                      <span key={b} className="text-[8px] font-bold uppercase px-1.5 py-0.5 border bg-surface-raised text-rmpg-300 border-rmpg-700">{b}</span>
                     ))}
                   </div>
                   {(scanEval.endorsements.length > 0 || scanEval.restrictions.length > 0) && (
-                    <div className="px-3 py-1 border-t border-[#141414] text-[9px] text-[#8899aa] space-y-0.5">
-                      {scanEval.endorsements.length > 0 && <div><span className="text-[#556677] uppercase">Endorsements:</span> {scanEval.endorsements.join(', ')}</div>}
-                      {scanEval.restrictions.length > 0 && <div><span className="text-[#556677] uppercase">Restrictions:</span> {scanEval.restrictions.join(', ')}</div>}
+                    <div className="px-3 py-1 border-t border-border-subtle text-[9px] text-rmpg-400 space-y-0.5">
+                      {scanEval.endorsements.length > 0 && <div><span className="text-rmpg-500 uppercase">Endorsements:</span> {scanEval.endorsements.join(', ')}</div>}
+                      {scanEval.restrictions.length > 0 && <div><span className="text-rmpg-500 uppercase">Restrictions:</span> {scanEval.restrictions.join(', ')}</div>}
                     </div>
                   )}
                   {scanEval.missing.length > 0 && (
-                    <div className="px-3 py-1 border-t border-[#141414] text-[9px] text-amber-400">Missing: {scanEval.missing.join(', ')}</div>
+                    <div className="px-3 py-1 border-t border-border-subtle text-[9px] text-amber-400">Missing: {scanEval.missing.join(', ')}</div>
                   )}
                 </div>
               )}
 
               {/* ── Law-enforcement format (NCIC/NLETS fielded) ── */}
               {leFields && leFields.length > 0 && (
-                <div className="border border-[#1a1a1a] rounded-sm bg-[#050505]">
-                  <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a]">
-                    <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5">
+                <div className="border border-border-subtle rounded-sm bg-surface-deep">
+                  <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle">
+                    <span className="text-[9px] font-bold text-brand-gold-500 uppercase tracking-wider flex items-center gap-1.5">
                       <Shield size={11} /> Law Enforcement Format — NCIC/NLETS
                     </span>
                     <div className="flex items-center gap-1.5">
@@ -1697,7 +1837,7 @@ export default function DlSearchPage() {
                             () => addToast('Copy failed', 'error'),
                           );
                         }}
-                        className="px-2 py-1 bg-[#141414] border border-[#2e2e2e] rounded-sm text-[9px] font-bold text-[#c0ccdd] hover:text-white"
+                        className="px-2 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100"
                       >
                         Copy Block
                       </button>
@@ -1708,7 +1848,7 @@ export default function DlSearchPage() {
                           setShowOcrPreview(false);
                           navigate(`/ncic?q=${encodeURIComponent(nam.split(' ')[0] || nam)}&type=xref`);
                         }}
-                        className="px-2 py-1 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[9px] font-bold text-black"
+                        className="px-2 py-1 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[9px] font-bold text-black"
                       >
                         Run NCIC QX
                       </button>
@@ -1717,15 +1857,15 @@ export default function DlSearchPage() {
                   <div className="p-2 grid grid-cols-2 gap-x-4 gap-y-px font-mono">
                     {leFields.map((f) => (
                       <div key={f.tag} className="flex items-baseline gap-1.5 text-[10px]" title={f.label}>
-                        <span className="text-[#7fb069] w-9 flex-shrink-0 font-bold">{f.tag}/</span>
-                        <span className="text-[#e8e8e8] break-all">{f.value}</span>
+                        <span className="text-[var(--sev-ok-soft)] w-9 flex-shrink-0 font-bold">{f.tag}/</span>
+                        <span className="text-rmpg-200 break-all">{f.value}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div className="text-[9px] font-bold text-[#8899aa] uppercase tracking-wider mb-2">Extracted Information — Review Before Saving</div>
+              <div className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">Extracted Information — Review Before Saving</div>
               {([
                 ['First Name', ocrResult.first_name],
                 ['Middle Name', ocrResult.middle_name],
@@ -1749,17 +1889,17 @@ export default function DlSearchPage() {
                 ['Endorsements', ocrResult.dl_endorsements],
               ] as [string, string][]).filter(([_, val]) => val).map(([label, val]) => (
                 <div key={label} className="flex items-center gap-2 text-[11px]">
-                  <span className="text-[#556677] w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
-                  <span className="text-white font-mono">{val}</span>
+                  <span className="text-rmpg-500 w-28 flex-shrink-0 font-mono uppercase text-[9px]">{label}</span>
+                  <span className="text-rmpg-100 font-mono">{val}</span>
                 </div>
               ))}
               {!scanReadout && Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).length > 0 && (
-                <div className="border-t border-[#1a1a1a] pt-2 mt-2">
-                  <div className="text-[8px] text-[#556677] uppercase tracking-wider mb-1">Additional Fields</div>
+                <div className="border-t border-border-subtle pt-2 mt-2">
+                  <div className="text-[8px] text-rmpg-500 uppercase tracking-wider mb-1">Additional Fields</div>
                   {Object.entries(ocrResult).filter(([k, v]) => v && !['first_name','middle_name','last_name','date_of_birth','gender','height','weight','eye_color','hair_color','address','city','state','zip','dl_number','dl_state','dl_class','dl_expiry','dl_issue_date','dl_restrictions','dl_endorsements','full_name','source','raw_ocr'].includes(k)).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-2 text-[10px]">
-                      <span className="text-[#556677] w-28 flex-shrink-0 font-mono uppercase text-[8px]">{k}</span>
-                      <span className="text-[#8899aa] font-mono">{String(v)}</span>
+                      <span className="text-rmpg-500 w-28 flex-shrink-0 font-mono uppercase text-[8px]">{k}</span>
+                      <span className="text-rmpg-400 font-mono">{String(v)}</span>
                     </div>
                   ))}
                 </div>
@@ -1767,20 +1907,20 @@ export default function DlSearchPage() {
 
               {/* ── Full English barcode readout (every AAMVA element) ── */}
               {scanReadout && (
-                <div className="border border-[#1a1a1a] rounded-sm bg-[#0c0c0c] mt-2">
+                <div className="border border-border-subtle rounded-sm bg-surface-sunken mt-2">
                   <button
                     type="button"
                     onClick={() => setShowFullReadout(v => !v)}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] font-bold text-[#8899aa] uppercase tracking-wider hover:text-white"
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-[9px] font-bold text-rmpg-400 uppercase tracking-wider hover:text-rmpg-100"
                   >
                     <span className="flex items-center gap-1.5"><ScanLine size={11} /> Full Barcode Readout — {scanReadout.length} fields decoded</span>
                     <ChevronRight size={12} className={`transition-transform ${showFullReadout ? 'rotate-90' : ''}`} />
                   </button>
                   {showFullReadout && (
-                    <div className="border-t border-[#1a1a1a] max-h-72 overflow-y-auto">
-                      <table className="w-full text-left">
+                    <div className="border-t border-border-subtle max-h-72 overflow-y-auto">
+                      <div className="overflow-x-auto"><table className="w-full text-left">
                         <thead>
-                          <tr className="text-[8px] text-[#556677] uppercase font-semibold">
+                          <tr className="text-[8px] text-rmpg-500 uppercase font-semibold">
                             <th className="px-2 py-[3px] w-10">Code</th>
                             <th className="px-2 py-[3px] w-36">Field</th>
                             <th className="px-2 py-[3px]">English</th>
@@ -1788,30 +1928,30 @@ export default function DlSearchPage() {
                         </thead>
                         <tbody>
                           {scanReadout.map((row) => (
-                            <tr key={row.code} className="border-t border-[#141414] text-[10px] align-top">
-                              <td className="px-2 py-[2px] font-mono text-[#d4a017] text-[9px]">{row.code}</td>
-                              <td className="px-2 py-[2px] text-[#8899aa]">{row.label}</td>
-                              <td className="px-2 py-[2px] text-white">
+                            <tr key={row.code} className="border-t border-border-subtle text-[10px] align-top">
+                              <td className="px-2 py-[2px] font-mono text-brand-gold-500 text-[9px]">{row.code}</td>
+                              <td className="px-2 py-[2px] text-rmpg-400">{row.label}</td>
+                              <td className="px-2 py-[2px] text-rmpg-100">
                                 {row.english}
                                 {row.english !== row.value && row.value && (
-                                  <span className="text-[#556677] font-mono text-[8px] ml-1.5">[{row.value}]</span>
+                                  <span className="text-rmpg-500 font-mono text-[8px] ml-1.5">[{row.value}]</span>
                                 )}
                               </td>
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </table></div>
                     </div>
                   )}
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[#1a1a1a] bg-[#0c0c0c]">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-border-subtle bg-surface-sunken">
               {!uploadedRecord && (
                 <button
                   type="button"
                   onClick={handleCreatePersonFromOcr}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-sm text-[11px] font-bold text-white transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-sm text-[11px] font-bold text-rmpg-100 transition-colors"
                 >
                   <Upload size={14} />
                   {scanMatches && scanMatches.length > 0 ? 'Upload as New Record' : 'Upload to Records'}
@@ -1824,12 +1964,12 @@ export default function DlSearchPage() {
                     value={linkPlate}
                     onChange={(e) => setLinkPlate(e.target.value)}
                     placeholder="Plate (optional)"
-                    className="w-28 px-2 py-2 bg-[#141414] border border-[#222222] text-[11px] text-white font-mono uppercase placeholder-gray-600"
+                    className="w-28 px-2 py-2 bg-surface-raised border border-rmpg-700 text-[11px] text-rmpg-100 font-mono uppercase placeholder-rmpg-500"
                   />
                   <button
                     type="button"
                     onClick={handleCreateLinkedFromOcr}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#e0ac1d] rounded-sm text-[11px] font-bold text-black transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-400 rounded-sm text-[11px] font-bold text-black transition-colors"
                   >
                     <Database size={14} />
                     Create &amp; Link Person + Vehicle + Property
@@ -1851,14 +1991,14 @@ export default function DlSearchPage() {
                     addToast(err?.message || 'Failed to generate safety sheet', 'error');
                   }
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[11px] font-bold text-black transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[11px] font-bold text-black transition-colors"
               >
                 <Shield size={14} /> Safety Sheet
               </button>
               <button
                 type="button"
                 onClick={() => setShowOcrPreview(false)}
-                className="px-4 py-2 bg-[#181818] hover:bg-[#1a1a1a] border border-[#1a1a1a] rounded-sm text-[11px] text-[#8899aa] hover:text-white transition-colors"
+                className="px-4 py-2 bg-surface-raised hover:bg-surface-overlay border border-border-subtle rounded-sm text-[11px] text-rmpg-400 hover:text-rmpg-100 transition-colors"
               >
                 Close
               </button>
@@ -1866,6 +2006,17 @@ export default function DlSearchPage() {
           </div>
         </div>
       )}
+
+      {/* SOR bulk-import confirmation */}
+      <ConfirmDialog
+        isOpen={confirmSorImport}
+        onClose={() => setConfirmSorImport(false)}
+        onConfirm={() => { setConfirmSorImport(false); importSor(); }}
+        title="Import SOR Records"
+        message="This will bulk-import the pasted offender records into the local DL database. Existing records are deduped by registry_id. This action cannot be easily undone."
+        confirmLabel="Import records"
+        confirmVariant="warning"
+      />
     </div>
   );
 }

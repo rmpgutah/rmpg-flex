@@ -31,6 +31,9 @@ const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
 reports.use('*', async (c, next) => {
   if (c.req.path.includes('/shift-activity/')) return next();
   if (c.req.path.endsWith('/dashboard')) return next();
+  // /calls-near is the patrol-view geo filter — every officer hits it from
+  // the dashboard, not just analytics roles.
+  if (c.req.path.endsWith('/calls-near')) return next();
   return requireRole(...ANALYTICS_ROLES)(c, next);
 });
 
@@ -120,7 +123,53 @@ reports.get('/crime-trends', async (c) => {
     since
   );
 
-  return c.json({ days, trends, top_categories });
+  // Build a month-over-month comparison table for the CrimeTrendCard:
+  // each row = { type, current(this month), previous(prev month), momChange%,
+  //              lastYear(same month prev year), yoyChange% }.
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prevMonth = (() => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  })();
+  const sameMonthLastYear = `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const byTypeMonth = await query<{ type: string; month: string; count: number }>(
+    db,
+    `SELECT incident_type AS type, strftime('%Y-%m', created_at) AS month, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', '-${Math.max(days, 365)} days')
+      GROUP BY incident_type, strftime('%Y-%m', created_at)`,
+  );
+  // Pivot: type -> month -> count
+  const pivot: Record<string, Record<string, number>> = {};
+  for (const r of byTypeMonth) {
+    if (!pivot[r.type]) pivot[r.type] = {};
+    pivot[r.type][r.month] = r.count;
+  }
+  const trendRows = Object.entries(pivot)
+    .map(([type, months]) => {
+      const current = months[thisMonth] ?? 0;
+      const previous = months[prevMonth] ?? 0;
+      const lastYear = months[sameMonthLastYear] ?? 0;
+      const momChange = previous > 0 ? Math.round(((current - previous) / previous) * 100) : (current > 0 ? 100 : 0);
+      const yoyChange = lastYear > 0 ? Math.round(((current - lastYear) / lastYear) * 100) : (current > 0 ? 100 : 0);
+      return { type, current, previous, momChange, lastYear, yoyChange };
+    })
+    .filter(r => r.current > 0 || r.previous > 0)
+    .sort((a, b) => b.current - a.current)
+    .slice(0, 15);
+
+  // monthlyTrend: aggregate all types per month for the area chart
+  const monthlyMap: Record<string, number> = {};
+  for (const r of byTypeMonth) {
+    monthlyMap[r.month] = (monthlyMap[r.month] ?? 0) + r.count;
+  }
+  const monthlyTrend = Object.entries(monthlyMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, count]) => ({ month, count }));
+
+  return c.json({ days, trends: trendRows, monthlyTrend, top_categories });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
@@ -230,12 +279,32 @@ reports.get('/citation-revenue', async (c) => {
     since
   );
 
+  // Return the shape the CitationRevenueCard client reads:
+  // summary.{total_fines, collected, outstanding, dismissed} + monthlyRevenue[].
+  // The citation_payments table tracks individual payments; citations.status
+  // tells us whether a fine was dismissed.  "Collected" = payments received,
+  // "Outstanding" = unpaid non-dismissed citations, "Dismissed" = waived.
+  const totalFines = await queryFirst<{ n: number }>(
+    db, `SELECT COALESCE(SUM(COALESCE(fine_amount,0)),0) AS n FROM citations WHERE created_at >= datetime('now', ?)`, since
+  );
+  const outstanding = await queryFirst<{ n: number }>(
+    db, `SELECT COALESCE(SUM(COALESCE(fine_amount,0)),0) AS n FROM citations WHERE status NOT IN ('dismissed','paid','waived') AND created_at >= datetime('now', ?)`, since
+  );
+  const dismissed = await queryFirst<{ n: number }>(
+    db, `SELECT COALESCE(SUM(COALESCE(fine_amount,0)),0) AS n FROM citations WHERE status IN ('dismissed','waived') AND created_at >= datetime('now', ?)`, since
+  );
+
   return c.json({
     days,
-    total_revenue: total?.total_revenue ?? 0,
-    payment_count: total?.payment_count ?? 0,
+    summary: {
+      total_fines: totalFines?.n ?? 0,
+      collected: total?.total_revenue ?? 0,
+      outstanding: outstanding?.n ?? 0,
+      dismissed: dismissed?.n ?? 0,
+    },
+    monthlyRevenue: by_month.map(r => ({ month: r.month, collected: r.revenue, outstanding: 0 })),
     by_violation,
-    by_month,
+    payment_count: total?.payment_count ?? 0,
   });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
@@ -321,11 +390,76 @@ reports.get('/statute-analytics', async (c) => {
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
-// GET /api/reports/response-times
-// Moved verbatim from src/routes/stubs.ts. Real dispatch-time math
-// (arrived_at - dispatched_at) is a Phase 2 port — see the
-// calls_for_service status-timestamp columns. Return [] until then.
-reports.get('/response-times', (c) => c.json([]));
+// GET /api/reports/response-times?days=N
+// Computes avg/min/max response minutes from calls_for_service using
+// COALESCE(response_time_seconds/60, onscene_at-created_at) with ?days=N
+// window (default 30). Returns the ResponseTimesData shape the client reads.
+reports.get('/response-times', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = clampDays(c.req.query('days'), 30);
+    const since = `-${days} days`;
+    const RESP = `COALESCE(response_time_seconds / 60.0, (julianday(onscene_at) - julianday(created_at)) * 1440)`;
+
+    const overall = await queryFirst<{
+      avgDispatch: number | null;
+      avgTotal: number | null;
+      minResp: number | null;
+      maxResp: number | null;
+      total: number;
+    }>(db, `
+      SELECT
+        ROUND(AVG(${RESP}), 1) AS avgTotal,
+        ROUND(MIN(${RESP}), 1) AS minResp,
+        ROUND(MAX(${RESP}), 1) AS maxResp,
+        COUNT(*) AS total
+      FROM calls_for_service
+      WHERE created_at >= datetime('now', ?)
+        AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)
+    `, since);
+
+    const byPriority = await query<{ priority: string; avg_response_minutes: number; count: number }>(
+      db,
+      `SELECT priority,
+              ROUND(AVG(${RESP}), 1) AS avg_response_minutes,
+              COUNT(*) AS count
+         FROM calls_for_service
+        WHERE created_at >= datetime('now', ?)
+          AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)
+          AND priority IS NOT NULL
+        GROUP BY priority
+        ORDER BY priority`,
+      since,
+    );
+
+    const dailyTrend = await query<{ date: string; avg_response_minutes: number; count: number }>(
+      db,
+      `SELECT date(created_at) AS date,
+              ROUND(AVG(${RESP}), 1) AS avg_response_minutes,
+              COUNT(*) AS count
+         FROM calls_for_service
+        WHERE created_at >= datetime('now', ?)
+          AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)
+        GROUP BY date(created_at)
+        ORDER BY date ASC`,
+      since,
+    );
+
+    return c.json({
+      overall: {
+        avgDispatchMinutes: overall?.avgTotal ?? 0,
+        avgTotalResponseMinutes: overall?.avgTotal ?? 0,
+        minResponseMinutes: overall?.minResp ?? 0,
+        maxResponseMinutes: overall?.maxResp ?? 0,
+        totalCalls: overall?.total ?? 0,
+      },
+      byPriority,
+      dailyTrend,
+    });
+  } catch {
+    return c.json({ overall: { avgDispatchMinutes: 0, avgTotalResponseMinutes: 0, minResponseMinutes: 0, maxResponseMinutes: 0, totalCalls: 0 }, byPriority: [], dailyTrend: [] });
+  }
+});
 
 reports.get('/officer-activity', async (c) => {
   const db = getDb(c.env);
@@ -486,6 +620,19 @@ reports.get('/dashboard', async (c) => {
       query<Record<string, unknown>>(db, "SELECT u.id, usr.full_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.status NOT IN ('off_duty','out_of_service')"),
     ]);
     const todayCalls = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now','start of day')");
+    // Secondary stat-card metrics (added 2026-06-21 — the DashboardPage Status
+    // Summary row reads these but they were never returned, so 3 of 4 cards
+    // permanently showed 0). Tolerant of missing tables/cols on dev/empty
+    // databases so a single missing schema element can't blank the whole tile.
+    const safeCount = async (sql: string): Promise<number> => {
+      try { return (await queryFirst<{ n: number }>(db, sql))?.n ?? 0; } catch { return 0; }
+    };
+    const [activeWarrants, pendingServe, openCases, totalPersons] = await Promise.all([
+      safeCount("SELECT COUNT(*) AS n FROM warrants WHERE status='active' AND archived_at IS NULL"),
+      safeCount("SELECT COUNT(*) AS n FROM serve_queue WHERE status='pending'"),
+      safeCount("SELECT COUNT(*) AS n FROM cases WHERE status NOT LIKE 'closed%' AND archived_at IS NULL"),
+      safeCount('SELECT COUNT(*) AS n FROM persons'),
+    ]);
     return c.json({
       activeCalls: calls?.n ?? 0,
       todayCalls: todayCalls?.n ?? 0,
@@ -500,10 +647,77 @@ reports.get('/dashboard', async (c) => {
       recentActivity: [],
       officersOnDuty: officers,
       callsByHour: byHour,
+      activeWarrants,
+      pendingServe,
+      openCases,
+      totalPersons,
     });
   } catch (err) {
     console.error('[reports] GET /dashboard failed:', err);
-    return c.json({ activeCalls: 0, todayCalls: 0, unitsOnDuty: 0, totalUnits: 0, pendingReports: 0, activeBolos: 0, unreadMessages: 0, avgResponseMinutes: null, callsByPriority: [], callsByStatus: [], recentActivity: [], officersOnDuty: [], callsByHour: [] });
+    return c.json({ activeCalls: 0, todayCalls: 0, unitsOnDuty: 0, totalUnits: 0, pendingReports: 0, activeBolos: 0, unreadMessages: 0, avgResponseMinutes: null, callsByPriority: [], callsByStatus: [], recentActivity: [], officersOnDuty: [], callsByHour: [], activeWarrants: 0, pendingServe: 0, openCases: 0, totalPersons: 0 });
+  }
+});
+
+// GET /api/reports/calls-near — patrol-view geo filter for the dashboard's
+// "Calls Near Me" panel. Returns currently-active calls within `radius_mi`
+// of the supplied coordinates, ordered by distance.
+//
+// Haversine in SQLite: cheap enough for our call volume (~hundreds of open
+// rows max). Filters callers without lat/lng out (they can't be "near"
+// anything geographically). Default radius is 5 miles — enough to cover an
+// urban beat without flooding the panel.
+reports.get('/calls-near', async (c) => {
+  const latRaw = c.req.query('lat');
+  const lngRaw = c.req.query('lng');
+  const radiusRaw = c.req.query('radius_mi');
+  const lat = latRaw != null ? Number(latRaw) : NaN;
+  const lng = lngRaw != null ? Number(lngRaw) : NaN;
+  const radius = Math.max(0.25, Math.min(50, radiusRaw != null ? Number(radiusRaw) || 5 : 5));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return c.json({ error: 'lat and lng query params are required' }, 400);
+  }
+  try {
+    const db = getDb(c.env);
+    // Pre-filter in SQL with a cheap bounding box, then refine with exact
+    // haversine in JS. Avoids relying on D1's math functions (SIN/RADIANS),
+    // which aren't universally guaranteed across SQLite builds. The box
+    // overscan is tiny — N candidate rows × tiny math = negligible work.
+    const latDeg = radius / 69; // 1° latitude ≈ 69 mi
+    const cosLat = Math.cos((lat * Math.PI) / 180);
+    const lngDeg = radius / (69 * Math.max(0.0001, Math.abs(cosLat)));
+    const latMin = lat - latDeg, latMax = lat + latDeg;
+    const lngMin = lng - lngDeg, lngMax = lng + lngDeg;
+    const candidates = await query<{
+      id: number; call_number: string; priority: string; status: string;
+      location_address: string | null; description: string | null;
+      latitude: number; longitude: number; created_at: string;
+    }>(db, `
+      SELECT id, call_number, priority, status, location_address, description,
+             latitude, longitude, created_at
+      FROM calls_for_service
+      WHERE status NOT IN ('cleared','closed','cancelled')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND latitude BETWEEN ? AND ?
+        AND longitude BETWEEN ? AND ?
+      LIMIT 200
+    `, latMin, latMax, lngMin, lngMax);
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const haversineMi = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 3959;
+      const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.asin(Math.sqrt(a));
+    };
+    const calls = candidates
+      .map((r) => ({ ...r, distance_mi: haversineMi(lat, lng, r.latitude, r.longitude) }))
+      .filter((r) => r.distance_mi <= radius)
+      .sort((a, b) => a.distance_mi - b.distance_mi)
+      .slice(0, 25);
+    return c.json({ calls, origin: { lat, lng }, radius_mi: radius });
+  } catch (err) {
+    console.error('[reports] GET /calls-near failed:', err);
+    return c.json({ calls: [], origin: { lat, lng }, radius_mi: radius }, 200);
   }
 });
 
@@ -691,6 +905,313 @@ reports.get('/crime-analysis/export', async (c) => {
   } catch (err) {
     console.error('[reports] GET /crime-analysis/export failed:', err);
     return c.json({ error: 'Failed to export crime analysis', code: 'CRIME_ANALYSIS_EXPORT_ERROR' }, 500);
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/reports/comparison?period=week
+// Week-over-week (or month-over-month) comparison of calls, incidents,
+// citations, and avg response time. The ReportsPage comparison panel
+// reads: { calls:{current,previous,change}, incidents:{…}, citations:{…},
+// responseTime:{current,previous,change} }.
+// ────────────────────────────────────────────────────────────
+reports.get('/comparison', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const period = c.req.query('period') ?? 'week';
+    const days = period === 'month' ? 30 : 7;
+    const currentSince = `-${days} days`;
+    const previousSince = `-${days * 2} days`;
+    const RESP = `COALESCE(response_time_seconds / 60.0, (julianday(onscene_at) - julianday(created_at)) * 1440)`;
+
+    const safe1 = async (sql: string, ...p: string[]): Promise<number> => {
+      try { return (await queryFirst<{ n: number }>(db, sql, ...p))?.n ?? 0; } catch { return 0; }
+    };
+    const safeAvg = async (sql: string, ...p: string[]): Promise<number | null> => {
+      try { return (await queryFirst<{ v: number | null }>(db, sql, ...p))?.v ?? null; } catch { return null; }
+    };
+
+    const [callsCur, callsPrev, incCur, incPrev, citCur, citPrev] = await Promise.all([
+      safe1(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now',?)`, currentSince),
+      safe1(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now',?) AND created_at < datetime('now',?)`, previousSince, currentSince),
+      safe1(`SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now',?)`, currentSince),
+      safe1(`SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now',?) AND created_at < datetime('now',?)`, previousSince, currentSince),
+      safe1(`SELECT COUNT(*) AS n FROM citations WHERE created_at >= datetime('now',?)`, currentSince),
+      safe1(`SELECT COUNT(*) AS n FROM citations WHERE created_at >= datetime('now',?) AND created_at < datetime('now',?)`, previousSince, currentSince),
+    ]);
+    const [rtCur, rtPrev] = await Promise.all([
+      safeAvg(`SELECT ROUND(AVG(${RESP}),1) AS v FROM calls_for_service WHERE created_at >= datetime('now',?) AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)`, currentSince),
+      safeAvg(`SELECT ROUND(AVG(${RESP}),1) AS v FROM calls_for_service WHERE created_at >= datetime('now',?) AND created_at < datetime('now',?) AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)`, previousSince, currentSince),
+    ]);
+
+    const pct = (cur: number, prev: number) =>
+      prev > 0 ? Math.round(((cur - prev) / prev) * 100) : (cur > 0 ? 100 : 0);
+    const pctNull = (cur: number | null, prev: number | null) =>
+      cur != null && prev != null && prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null;
+
+    return c.json({
+      period,
+      calls: { current: callsCur, previous: callsPrev, change: pct(callsCur, callsPrev) },
+      incidents: { current: incCur, previous: incPrev, change: pct(incCur, incPrev) },
+      citations: { current: citCur, previous: citPrev, change: pct(citCur, citPrev) },
+      responseTime: { current: rtCur, previous: rtPrev, change: pctNull(rtCur, rtPrev) },
+    });
+  } catch (err) {
+    console.error('[reports] GET /comparison failed:', err);
+    return c.json({ error: 'Failed' }, 500);
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/reports/daily-briefing
+// Shift-start summary: previous-day stats, active BOLOs, active warrants,
+// trending incident types, and currently on-duty personnel.
+// ────────────────────────────────────────────────────────────
+reports.get('/daily-briefing', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const safe1 = async (sql: string, ...p: unknown[]): Promise<Record<string, unknown>> => {
+      try { return (await queryFirst<Record<string, unknown>>(db, sql, ...p)) ?? {}; } catch { return {}; }
+    };
+    const safeList = async <T = Record<string, unknown>>(sql: string, ...p: unknown[]): Promise<T[]> => {
+      try { return (await query<T>(db, sql, ...p)) ?? []; } catch { return []; }
+    };
+
+    const [prevDayStats, activeBolos, activeWarrants, trendingIncidents, personnelOnDuty] = await Promise.all([
+      safe1(`SELECT COUNT(*) AS total_calls,
+               SUM(CASE WHEN priority='P1' THEN 1 ELSE 0 END) AS p1_calls,
+               SUM(CASE WHEN priority='P2' THEN 1 ELSE 0 END) AS p2_calls,
+               ROUND(AVG(COALESCE(response_time_seconds/60.0,(julianday(onscene_at)-julianday(created_at))*1440)),1) AS avg_response
+             FROM calls_for_service WHERE date(created_at)=date('now','localtime','-1 day')`),
+      safeList(`SELECT id, bolo_number, title, priority, category FROM bolos WHERE status='active' ORDER BY priority ASC, created_at DESC LIMIT 10`),
+      safeList(`SELECT id, warrant_number, charge_description, status FROM warrants WHERE status='active' AND archived_at IS NULL ORDER BY date_issued DESC LIMIT 10`),
+      safeList(`SELECT incident_type, COUNT(*) AS count FROM incidents WHERE created_at >= datetime('now','-7 days') GROUP BY incident_type ORDER BY count DESC LIMIT 5`),
+      safeList(`SELECT u.call_sign, usr.full_name FROM units u LEFT JOIN users usr ON usr.id=u.officer_id WHERE u.status NOT IN ('off_duty','out_of_service') ORDER BY u.call_sign LIMIT 30`),
+    ]);
+
+    return c.json({ prevDayStats, activeBolos, activeWarrants, trendingIncidents, personnelOnDuty });
+  } catch (err) {
+    console.error('[reports] GET /daily-briefing failed:', err);
+    return c.json({ error: 'Failed' }, 500);
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/reports/weekly-digest
+// 7-day summary with by-day call volume and top incident types.
+// ────────────────────────────────────────────────────────────
+reports.get('/weekly-digest', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const safeList = async <T = Record<string, unknown>>(sql: string, ...p: unknown[]): Promise<T[]> => {
+      try { return (await query<T>(db, sql, ...p)) ?? []; } catch { return []; }
+    };
+    const safe1 = async (sql: string, ...p: unknown[]): Promise<number> => {
+      try { return (await queryFirst<{ n: number }>(db, sql, ...p))?.n ?? 0; } catch { return 0; }
+    };
+
+    const since7 = '-7 days';
+    const [totalCalls, totalIncidents, totalCitations, totalArrests, avgResp, byDay, topIncidentTypes] = await Promise.all([
+      safe1(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now',?)`, since7),
+      safe1(`SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now',?)`, since7),
+      safe1(`SELECT COUNT(*) AS n FROM citations WHERE created_at >= datetime('now',?)`, since7),
+      safe1(`SELECT COUNT(*) AS n FROM arrests WHERE created_at >= datetime('now',?)`, since7),
+      (async () => {
+        try {
+          const r = await queryFirst<{ v: number | null }>(db, `SELECT ROUND(AVG(COALESCE(response_time_seconds/60.0,(julianday(onscene_at)-julianday(created_at))*1440)),1) AS v FROM calls_for_service WHERE created_at >= datetime('now',?) AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)`, since7);
+          return r?.v ?? null;
+        } catch { return null; }
+      })(),
+      safeList(`SELECT date(created_at) AS day, COUNT(*) AS count FROM calls_for_service WHERE created_at >= datetime('now',?) GROUP BY day ORDER BY day`, since7),
+      safeList(`SELECT incident_type, COUNT(*) AS count FROM incidents WHERE created_at >= datetime('now',?) GROUP BY incident_type ORDER BY count DESC LIMIT 10`, since7),
+    ]);
+
+    return c.json({
+      summary: { totalCalls, totalIncidents, totalCitations, totalArrests, avgResponseMinutes: avgResp },
+      byDay,
+      topIncidentTypes,
+    });
+  } catch (err) {
+    console.error('[reports] GET /weekly-digest failed:', err);
+    return c.json({ error: 'Failed' }, 500);
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/reports/patrol-tracking
+// GPS breadcrumb trail for one or all units over the requested window.
+// Returns { trails[], total_units, total_points } for PDF generation.
+// ────────────────────────────────────────────────────────────
+reports.get('/patrol-tracking', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const hoursParam = c.req.query('hours');
+    const startDate = c.req.query('startDate');
+    const endDate = c.req.query('endDate');
+    const unitId = c.req.query('unitId');
+    const geocode = c.req.query('geocode') === 'true';
+
+    let since: string;
+    let until: string | undefined;
+    if (startDate && endDate) {
+      since = startDate;
+      until = endDate;
+    } else {
+      const hours = Math.max(1, Math.min(72, Number(hoursParam) || 8));
+      since = new Date(Date.now() - hours * 3600_000).toISOString();
+    }
+
+    const unitFilter = unitId ? 'AND g.unit_id = ?' : '';
+    const untilFilter = until ? 'AND g.recorded_at <= ?' : '';
+    const binds: (string | number)[] = [since];
+    if (until) binds.push(until);
+    if (unitId) binds.push(Number(unitId));
+
+    const points = await query<{
+      unit_id: number; call_sign: string | null;
+      latitude: number; longitude: number;
+      speed_mph: number | null; heading: number | null;
+      recorded_at: string; location_address: string | null;
+    }>(db, `
+      SELECT g.unit_id, u.call_sign, g.latitude, g.longitude,
+             g.speed_mph, g.heading, g.recorded_at,
+             ${geocode ? 'g.location_address' : 'NULL AS location_address'}
+        FROM gps_breadcrumbs g
+        LEFT JOIN units u ON u.id = g.unit_id
+       WHERE g.recorded_at >= ? ${untilFilter} ${unitFilter}
+       ORDER BY g.unit_id ASC, g.recorded_at ASC
+       LIMIT 10000
+    `, ...binds);
+
+    // Group by unit
+    const unitMap = new Map<number, typeof points>();
+    for (const pt of points) {
+      if (!unitMap.has(pt.unit_id)) unitMap.set(pt.unit_id, []);
+      unitMap.get(pt.unit_id)!.push(pt);
+    }
+
+    const trails = Array.from(unitMap.entries()).map(([unitId, pts]) => {
+      const firstPt = pts[0];
+      const lastPt = pts[pts.length - 1];
+      const start = new Date(firstPt.recorded_at).getTime();
+      const end = new Date(lastPt.recorded_at).getTime();
+      const durationMinutes = Math.round((end - start) / 60_000);
+
+      // Rough distance in miles (sum of haversine between consecutive points)
+      let totalDistanceMiles = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const p1 = pts[i - 1], p2 = pts[i];
+        const R = 3959;
+        const dLat = ((p2.latitude - p1.latitude) * Math.PI) / 180;
+        const dLng = ((p2.longitude - p1.longitude) * Math.PI) / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos((p1.latitude * Math.PI) / 180) * Math.cos((p2.latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+        totalDistanceMiles += R * 2 * Math.asin(Math.sqrt(a));
+      }
+
+      return {
+        unit_id: unitId,
+        call_sign: firstPt.call_sign ?? `Unit ${unitId}`,
+        points: pts,
+        stats: {
+          total_points: pts.length,
+          total_distance_miles: Math.round(totalDistanceMiles * 100) / 100,
+          duration_minutes: durationMinutes,
+          avg_speed_mph: pts.reduce((s, p) => s + (p.speed_mph ?? 0), 0) / pts.length || 0,
+          start_time: firstPt.recorded_at,
+          end_time: lastPt.recorded_at,
+        },
+      };
+    });
+
+    return c.json({
+      trails,
+      total_units: trails.length,
+      total_points: points.length,
+      generated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[reports] GET /patrol-tracking failed:', err);
+    return c.json({ error: 'Failed to fetch patrol tracking data', code: 'PATROL_TRACKING_ERROR' }, 500);
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// POST /api/reports/custom
+// Ad-hoc query builder endpoint. Accepts { source, columns[], filters[],
+// sortBy?, sortDir?, limit? } and returns { data:[], columns:[], count }.
+// Allowlist of tables + columns prevents SQL injection.
+// ────────────────────────────────────────────────────────────
+
+const ALLOWED_SOURCES: Record<string, string[]> = {
+  calls_for_service: ['id','call_number','incident_type','priority','status','caller_name','location_address','zone_beat','beat_id','zone_id','sector_id','disposition','created_at','dispatched_at','onscene_at','cleared_at'],
+  incidents: ['id','incident_number','incident_type','priority','status','location_address','narrative','officer_id','created_at','occurred_date','zone_beat','beat_id','zone_id','disposition','domestic_violence','weapons_involved'],
+  citations: ['id','citation_number','type','violation_description','statute_citation','offense_level','location','status','fine_amount','officer_id','violation_date','created_at'],
+  warrants: ['id','warrant_number','type','status','offense_level','charge_description','statute_citation','court_name','bail_amount','date_issued','expires_at','served_at','created_at'],
+  bolos: ['id','subject_name','description','priority','status','category','vehicle_info','location_last_seen','issued_by','created_at','expires_at'],
+  evidence: ['id','evidence_number','incident_id','description','category','storage_location','chain_of_custody','collected_by','collected_at','created_at'],
+  time_entries: ['id','officer_id','shift_date','clock_in','clock_out','hours_worked','overtime_hours','status','notes','approved_by'],
+  training_records: ['id','officer_id','title','category','status','hours','completed_date','expiry_date','instructor','score'],
+  field_interviews: ['id','subject_name','location','reason','officer_id','created_at'],
+  patrol_scans: ['id','checkpoint_id','officer_id','scanned_at','gps_latitude','gps_longitude'],
+};
+
+const ALLOWED_OPS = new Set(['eq', 'contains', 'gte', 'lte']);
+
+reports.post('/custom', async (c) => {
+  try {
+    const body = await c.req.json() as {
+      source?: string;
+      columns?: string[];
+      filters?: Array<{ column: string; operator: string; value: string }>;
+      sortBy?: string;
+      sortDir?: 'asc' | 'desc';
+      limit?: number;
+    };
+    const { source, columns = [], filters = [], sortBy, sortDir = 'desc', limit = 200 } = body;
+
+    if (!source || !ALLOWED_SOURCES[source]) {
+      return c.json({ error: 'Invalid source', code: 'INVALID_SOURCE' }, 400);
+    }
+    const allowedCols = ALLOWED_SOURCES[source];
+
+    // Sanitize column selection — only keep explicitly allowed column names.
+    const safeCols = columns.filter(col => allowedCols.includes(col));
+    if (safeCols.length === 0) {
+      return c.json({ error: 'No valid columns selected', code: 'NO_COLUMNS' }, 400);
+    }
+
+    // Build WHERE clause from filters.
+    const whereParts: string[] = [];
+    const binds: (string | number)[] = [];
+    for (const f of filters) {
+      if (!allowedCols.includes(f.column)) continue;
+      if (!ALLOWED_OPS.has(f.operator)) continue;
+      if (!f.value) continue;
+      switch (f.operator) {
+        case 'eq':       whereParts.push(`${f.column} = ?`);           binds.push(f.value); break;
+        case 'contains': whereParts.push(`${f.column} LIKE ?`);         binds.push(`%${f.value}%`); break;
+        case 'gte':      whereParts.push(`${f.column} >= ?`);           binds.push(f.value); break;
+        case 'lte':      whereParts.push(`${f.column} <= ?`);           binds.push(f.value); break;
+      }
+    }
+
+    const where = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+    const order = sortBy && allowedCols.includes(sortBy)
+      ? `ORDER BY ${sortBy} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`
+      : '';
+    const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 200));
+
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT ${safeCols.join(', ')} FROM ${source} ${where} ${order} LIMIT ${safeLimit}`,
+      ...binds,
+    );
+
+    return c.json({ data: rows, columns: safeCols, count: rows.length });
+  } catch (err) {
+    console.error('[reports] POST /custom failed:', err);
+    return c.json({ error: 'Query failed', code: 'QUERY_ERROR' }, 500);
   }
 });
 

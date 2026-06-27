@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useCallback, useEffect } from 'react';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
 import {
   X,
   Download,
@@ -44,14 +45,14 @@ export default function DocumentViewer({
   useEffect(() => {
     if (isOpen) {
       const scrollY = window.scrollY;
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
       document.body.style.top = `-${scrollY}px`;
     }
     return () => {
       const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       document.body.style.position = '';
       document.body.style.width = '';
       document.body.style.top = '';
@@ -150,9 +151,9 @@ export default function DocumentViewer({
           {detectedType === 'pdf' ? (
             <FileText className="w-4 h-4 text-red-400" />
           ) : (
-            <ImageIcon className="w-4 h-4 text-gray-400" />
+            <ImageIcon className="w-4 h-4 text-rmpg-400" />
           )}
-          <span className="text-sm font-bold text-white truncate max-w-[300px]">{title}</span>
+          <span className="text-sm font-bold text-rmpg-100 truncate max-w-[300px]">{title}</span>
           <span className="text-[10px] text-rmpg-400 uppercase font-mono">
             {detectedType.toUpperCase()}
           </span>
@@ -242,7 +243,7 @@ export default function DocumentViewer({
           {/* Close — bright red, always visible, high z-index */}
           <button type="button"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
-            className="relative z-20 ml-2 px-3 py-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center gap-1 bg-red-700 hover:bg-red-600 text-white font-bold text-xs rounded-sm cursor-pointer"
+            className="relative z-20 ml-2 px-3 py-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center gap-1 bg-red-700 hover:bg-red-600 text-rmpg-100 font-bold text-xs rounded-sm cursor-pointer"
             style={{ touchAction: 'manipulation' }}
             title="Close viewer"
             aria-label="Close"

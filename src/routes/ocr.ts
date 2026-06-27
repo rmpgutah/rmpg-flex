@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import {
   extractFromText,
+  extractFromTextClaude,
   extractFromImage,
   extractTextFromPdf,
 } from '../utils/serveIntakeExtract';
@@ -198,7 +199,12 @@ ocr.post('/scan-document', async (c) => {
         }, 422);
       }
 
-      const r = await withTimeout(extractFromText(c.env.AI, text, c.env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out');
+      const claudeR = await withTimeout(
+        extractFromTextClaude(c.env, text), AI_TIMEOUT_MS, 'Claude text timed out',
+      ).catch(() => null);
+      const r = claudeR ?? await withTimeout(
+        extractFromText(c.env.AI, text, c.env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out',
+      );
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,

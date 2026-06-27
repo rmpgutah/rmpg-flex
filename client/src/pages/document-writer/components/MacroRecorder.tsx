@@ -50,7 +50,7 @@ export default function MacroRecorder({
   const clearAll = () => { setSteps([]); clearSavedMacro(); flash('Macro cleared.'); };
 
   return (
-    <div className="w-56 sm:w-64 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto flex flex-col">
+    <div className="w-56 sm:w-64 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide">Macro</span>
         <button type="button" onClick={onClose} aria-label="Close macro recorder" className="text-rmpg-500 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
@@ -64,7 +64,7 @@ export default function MacroRecorder({
           </button>
         ) : (
           <button type="button" onClick={start}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+            className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-base border border-border-default text-rmpg-300 rounded-[2px] hover:bg-surface-raised">
             <Circle className="w-3 h-3 text-red-400" /> Record
           </button>
         )}
@@ -86,7 +86,7 @@ export default function MacroRecorder({
           : (
             <div className="flex flex-wrap gap-1">
               {steps.map((s, i) => (
-                <span key={`${s}-${i}`} className="inline-flex items-center gap-0.5 text-[9px] text-rmpg-200 bg-[#141414] border border-[#222] rounded-[2px] pl-1.5 pr-0.5 py-0.5">
+                <span key={`${s}-${i}`} className="inline-flex items-center gap-0.5 text-[9px] text-rmpg-200 bg-surface-base border border-border-default rounded-[2px] pl-1.5 pr-0.5 py-0.5">
                   {MACRO_STEP_LABELS[s]}
                   <button type="button" onClick={() => removeStep(i)} aria-label={`Remove ${MACRO_STEP_LABELS[s]}`}
                     className="text-rmpg-500 hover:text-red-400"><X className="w-2.5 h-2.5" /></button>
@@ -101,7 +101,7 @@ export default function MacroRecorder({
       <div className="grid grid-cols-2 gap-1">
         {PALETTE.map((s) => (
           <button key={s} type="button" onClick={() => addStep(s)}
-            className="flex items-center gap-1 px-1.5 py-1 text-[10px] text-left text-rmpg-200 bg-[#141414] border border-[#222] rounded-[2px] hover:bg-[#1a1a1a] hover:border-[#d4a017]/30">
+            className="flex items-center gap-1 px-1.5 py-1 text-[10px] text-left text-rmpg-200 bg-surface-base border border-border-default rounded-[2px] hover:bg-surface-raised hover:border-[#d4a017]/30">
             {recording && <Plus className="w-2.5 h-2.5 text-[#d4a017] shrink-0" />}
             <span className="truncate">{MACRO_STEP_LABELS[s]}</span>
           </button>

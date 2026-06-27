@@ -14,6 +14,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 import { codedLike } from '../utils/searchText';
 
 const uof = new Hono<Env>();
@@ -124,14 +125,90 @@ uof.post('/', async (c) => {
       b.body_camera_active === false ? 0 : 1, witnesses, b.narrative ?? null);
     // Audit trail — UoF is a compliance document; record the submission.
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-         VALUES (?, 'CREATE', 'use_of_force', ?, ?, datetime('now'))`,
-        userId, r.meta.last_row_id, `Use of force report submitted (${b.force_type})`);
+      await recordAudit(c, { action: 'CREATE', entityType: 'use_of_force', entityId: r.meta.last_row_id, details: `Use of force report submitted (${b.force_type})`, actorId: userId });
     } catch { /* non-fatal */ }
+    // ── FlexCam auto-preserve (best-effort, strictly additive). The officer's
+    // unit isn't in scope here, so resolve it from the submitter; never throws
+    // into the report flow — a preserve failure logs and is swallowed.
+    // Fire-and-forget via waitUntil: the preserve issues ~11 sequential ClearPath
+    // POSTs (7-min window) which must NOT delay the report response. waitUntil
+    // also keeps the work alive after the response returns. The unit lookup runs
+    // INSIDE _preserve; only the request-scoped ids are captured up front.
+    const uofId = Number(r.meta.last_row_id);
+    const preserveUserId = userId;
+    const _preserve = (async () => {
+      try {
+        const unit = preserveUserId ? await queryFirst<{ id: number; current_call_id: number | null }>(getDb(c.env), 'SELECT id, current_call_id FROM units WHERE officer_id=? LIMIT 1', preserveUserId).catch(() => null) : null;
+        const { preserveForEvent } = await import('../utils/footage/autoPreserve');
+        await preserveForEvent(c.env, { eventType: 'use_of_force', eventId: uofId, reason: 'use_of_force', unitId: unit?.id ?? null, officerUserId: preserveUserId, callId: unit?.current_call_id ?? null, eventTs: Date.now() }); // new-date-ok
+      } catch (e) { console.error('[flexcam-preserve] uof:', (e as Error)?.message); }
+    })();
+    try { c.executionCtx.waitUntil(_preserve); } catch { /* no execution ctx (e.g. tests) — let it float */ }
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to create report', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /api/use-of-force/:id — single-row fetch used by the page's deep-link
+// fallback. The list endpoint pages at 50; a `?uof_id=` link can target a
+// report that's not in the current page slice (or filtered out). This endpoint
+// returns the same joined shape the list does so the page can hydrate the
+// detail panel without re-paging.
+uof.get('/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id') ?? '', 10);
+    if (!Number.isFinite(id)) return c.json({ error: 'Invalid report id', code: 'INVALID_ID' }, 400);
+    const db = getDb(c.env);
+    const row = await queryFirst<Record<string, unknown>>(db, `${REPORT_SELECT} WHERE u.id = ?`, id);
+    if (!row) return c.json({ error: 'Report not found', code: 'NOT_FOUND' }, 404);
+    return c.json(row);
+  } catch (err) {
+    return c.json({ error: 'Failed to load report', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /api/use-of-force/:id/footage — linked body-cam + dashcam clips for
+// court-package context. Resolves footage_evidence_links rows where
+// entity_type='use_of_force' (populated by autoPreserve on submission) AND
+// any bodycam_videos with a matching incident_id. Both feeds are best-effort
+// — a UoF report can ship before/without footage, and the page must still
+// render. Schema-tolerant: footage_requests + bodycam_videos may be missing
+// columns on older D1 slices (we COALESCE / SELECT only known fields).
+uof.get('/:id/footage', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id') ?? '', 10);
+    if (!Number.isFinite(id)) return c.json({ error: 'Invalid report id', code: 'INVALID_ID' }, 400);
+    const db = getDb(c.env);
+    // Pull the UoF row to discover the linked incident_id (BWC linkage path).
+    const uofRow = await queryFirst<{ incident_id: number | null }>(db,
+      'SELECT incident_id FROM use_of_force WHERE id = ?', id).catch(() => null);
+    const incidentId = uofRow?.incident_id ?? null;
+
+    // FlexCam dashcam — preserved by autoPreserve at submission time.
+    const flexcam = await query<Record<string, unknown>>(db,
+      `SELECT fr.id, fr.title, fr.classification, fr.status, fr.evidence_locked,
+              fr.evidence_number, fr.from_ts, fr.to_ts, fr.reason, fr.created_at
+       FROM footage_evidence_links fel
+       JOIN footage_requests fr ON fr.id = fel.footage_request_id
+       WHERE fel.entity_type = 'use_of_force' AND fel.entity_id = ?
+       ORDER BY fr.id DESC`, id).catch(() => []);
+
+    // BWC clips — linked via incident_id where available. Older bodycam_videos
+    // rows may lack incident_id; the IS NOT NULL guard avoids the empty match.
+    let bodycam: Record<string, unknown>[] = [];
+    if (incidentId != null) {
+      bodycam = await query<Record<string, unknown>>(db,
+        `SELECT id, title, classification, retention_status, recorded_at,
+                duration_seconds, file_size, officer_name, case_number, created_at
+         FROM bodycam_videos
+         WHERE incident_id = ?
+         ORDER BY recorded_at DESC`, incidentId).catch(() => []);
+    }
+    return c.json({ flexcam: flexcam || [], bodycam: bodycam || [] });
+  } catch (err) {
+    // Soft-fail: page renders the rest even if footage join fails.
+    return c.json({ flexcam: [], bodycam: [] });
   }
 });
 
@@ -157,10 +234,7 @@ uof.put('/:id/review', async (c) => {
               review_notes = COALESCE(?, review_notes), updated_at = datetime('now','localtime')
        WHERE id = ?`, status, userId, b.notes ?? null, id);
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-         VALUES (?, 'REVIEW', 'use_of_force', ?, ?, datetime('now'))`,
-        userId, id, `Use of force report ${b.decision}`);
+      await recordAudit(c, { action: 'REVIEW', entityType: 'use_of_force', entityId: id, details: `Use of force report ${b.decision}`, actorId: userId });
     } catch { /* non-fatal */ }
     const updated = await queryFirst<Record<string, unknown>>(db, `${REPORT_SELECT} WHERE u.id = ?`, id);
     return c.json({ success: true, report: updated });

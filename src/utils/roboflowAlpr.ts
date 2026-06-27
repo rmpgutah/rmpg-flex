@@ -245,7 +245,8 @@ export interface AlprResult extends ParsedAlpr {
 // ── Request building (pure) ──────────────────────────────────
 
 export function alprRunUrl(opts?: { apiUrl?: string; workspaceName?: string; workflowId?: string }): string {
-  const base = (opts?.apiUrl || ROBOFLOW_SERVERLESS_BASE).replace(/\/+$/, '');
+  let base = opts?.apiUrl || ROBOFLOW_SERVERLESS_BASE;
+  while (base.endsWith('/')) base = base.slice(0, -1);
   const ws = opts?.workspaceName || ROBOFLOW_WORKSPACE;
   const wf = opts?.workflowId || ROBOFLOW_WORKFLOW_ID;
   return `${base}/${ws}/workflows/${wf}`;
@@ -421,7 +422,10 @@ const KEY = {
   plate: /plate|tag|registration|licen[cs]e|\blp\b|\bvrm\b/i,
   state: /state|region|province|jurisdiction|territory/i,
   color: /colou?r/i,
-  review: /review|status/i,
+  // Lane/disposition-specific: must NOT match unrelated review_notes /
+  // review_reason / generic *_status scalars (e.g. processing_status), which the
+  // broad /review|status/ previously grabbed as a bogus reviewStatus.
+  review: /review_lane|review_status|disposition/i,
 };
 
 export function cleanPlate(v: string): string {
@@ -444,9 +448,18 @@ export function unfenceJson(s: string): string {
   // array intact (slicing to `{…}` would corrupt a fenced `[…]`, e.g. the
   // per-crop vehicle_details list or damage_areas).
   if (!t.startsWith('{') && !t.startsWith('[')) {
-    const a = t.indexOf('{');
-    const b = t.lastIndexOf('}');
-    if (a !== -1 && b > a) t = t.slice(a, b + 1);
+    // Slice to whichever bracket type appears FIRST so a prose-wrapped array
+    // (e.g. "Result: [ {…} ]") isn't corrupted by always slicing to `{…}`,
+    // which would drop the array brackets and yield `[]` on parse.
+    const fb = t.indexOf('{');
+    const fa = t.indexOf('[');
+    if (fa !== -1 && (fb === -1 || fa < fb)) {
+      const lb = t.lastIndexOf(']');
+      if (lb > fa) t = t.slice(fa, lb + 1);
+    } else if (fb !== -1) {
+      const lb = t.lastIndexOf('}');
+      if (lb > fb) t = t.slice(fb, lb + 1);
+    }
   }
   return t;
 }
@@ -483,8 +496,91 @@ function asBool(v: unknown): boolean {
 }
 function yearFrom(v: unknown): number | null {
   const s = typeof v === 'number' ? String(v) : typeof v === 'string' ? v : '';
-  const m = /\b(?:19|20)\d{2}\b/.exec(s);
-  return m ? Number(m[0]) : null;
+  const all = s.match(/\b(?:19|20)\d{2}\b/g);
+  if (!all || !all.length) return null;
+  if (all.length === 1) return Number(all[0]);
+  // Range like "2018-2022" → midpoint (2020); more robust than earliest year.
+  const nums = all.map(Number);
+  return Math.round((Math.min(...nums) + Math.max(...nums)) / 2);
+}
+
+/** Canonical color vocabulary — normalize free-text Roboflow color values. */
+const COLOR_MAP: Record<string, string> = {
+  white: 'WHITE', pearl: 'WHITE', cream: 'WHITE', ivory: 'WHITE',
+  black: 'BLACK', charcoal: 'BLACK', 'jet black': 'BLACK',
+  silver: 'SILVER', metallic: 'SILVER',
+  gray: 'GRAY', grey: 'GRAY',
+  red: 'RED', crimson: 'RED', burgundy: 'MAROON',
+  blue: 'BLUE', navy: 'DARK BLUE', 'dark blue': 'DARK BLUE', 'navy blue': 'DARK BLUE',
+  green: 'GREEN', 'dark green': 'DARK GREEN', olive: 'DARK GREEN',
+  brown: 'BROWN', bronze: 'BROWN',
+  tan: 'TAN', beige: 'BEIGE', champagne: 'BEIGE',
+  gold: 'GOLD', yellow: 'YELLOW',
+  orange: 'ORANGE',
+  maroon: 'MAROON', wine: 'MAROON',
+  purple: 'PURPLE', violet: 'PURPLE',
+};
+
+// Sorted longest-key-first so multi-word entries ("navy blue") match before
+// single-word entries ("blue") when the input contains both.
+const COLOR_ENTRIES = Object.entries(COLOR_MAP).sort((a, b) => b[0].length - a[0].length);
+
+/** Normalize a free-text color value to the controlled vocabulary (uppercase
+ *  canonical word). Returns the input uppercased if no mapping found. */
+export function normalizeVehicleColor(raw: string | null): string | null {
+  if (!raw) return null;
+  const lower = raw.trim().toLowerCase();
+  if (!lower) return null;
+  for (const [key, canonical] of COLOR_ENTRIES) {
+    if (lower === key || lower.includes(key)) return canonical;
+  }
+  return raw.trim().toUpperCase();
+}
+
+/** Common make alias map — normalize Roboflow free-text make names. */
+const MAKE_MAP: Record<string, string> = {
+  toyota: 'TOYOTA', chevy: 'CHEVROLET', chevrolet: 'CHEVROLET',
+  ford: 'FORD', honda: 'HONDA', nissan: 'NISSAN',
+  dodge: 'DODGE', chrysler: 'CHRYSLER', jeep: 'JEEP', ram: 'RAM',
+  gmc: 'GMC', buick: 'BUICK', cadillac: 'CADILLAC',
+  hyundai: 'HYUNDAI', kia: 'KIA', subaru: 'SUBARU', mitsubishi: 'MITSUBISHI',
+  mazda: 'MAZDA', volkswagen: 'VOLKSWAGEN', vw: 'VOLKSWAGEN',
+  bmw: 'BMW', mercedes: 'MERCEDES-BENZ', 'mercedes-benz': 'MERCEDES-BENZ',
+  audi: 'AUDI', lexus: 'LEXUS', acura: 'ACURA', infiniti: 'INFINITI',
+  lincoln: 'LINCOLN', volvo: 'VOLVO', tesla: 'TESLA',
+  pontiac: 'PONTIAC', saturn: 'SATURN', oldsmobile: 'OLDSMOBILE',
+  mini: 'MINI', 'land rover': 'LAND ROVER', jaguar: 'JAGUAR',
+  porsche: 'PORSCHE', ferrari: 'FERRARI', lamborghini: 'LAMBORGHINI',
+  maserati: 'MASERATI', fiat: 'FIAT', alfa: 'ALFA ROMEO', 'alfa romeo': 'ALFA ROMEO',
+  genesis: 'GENESIS', rivian: 'RIVIAN', lucid: 'LUCID',
+};
+
+/** Normalize a free-text make value to the canonical brand name.
+ *  Returns uppercased original if no alias matches. */
+export function normalizeVehicleMake(raw: string | null): string | null {
+  if (!raw) return null;
+  const lower = raw.trim().toLowerCase();
+  if (!lower) return null;
+  for (const [key, canonical] of Object.entries(MAKE_MAP)) {
+    if (lower === key || lower.startsWith(key + ' ') || lower.startsWith(key + '-')) return canonical;
+  }
+  return raw.trim().toUpperCase();
+}
+/**
+ * Normalize a per-field confidence to the [0,1] band the trust/0.85 gate
+ * expects. The workflow is LLM-driven and ships sibling scores on a 0–100 scale
+ * (e.g. `risk_score:12`, `data_quality_score:88`), so `field_confidence.plate`
+ * could plausibly arrive as a percentage (e.g. 93). A raw 93 would defeat the
+ * `>= 0.85` gate (accepting everything) and get persisted where 0–1 is assumed.
+ * Treat any value > 1 as a percentage, then clamp into [0,1]. (The live scale
+ * was never captured — only the declared 0–1 shape is fixtured — so this is a
+ * defensive guard, not a confirmed conversion.)
+ */
+function normalizeConfidence(v: unknown): number | null {
+  const n = asNum(v);
+  if (n == null) return null;
+  const scaled = n > 1 ? n / 100 : n;
+  return Math.max(0, Math.min(1, scaled));
 }
 
 /** Default acceptance threshold: a read is "accepted" only at ≥85% confidence
@@ -543,7 +639,7 @@ export function normalizeCapture(entry: Record<string, unknown>): AlprCapture {
   let confidence: number | null = null;
   if (firstVeh) {
     const fc = (firstVeh as { field_confidence?: unknown }).field_confidence;
-    if (fc && typeof fc === 'object') confidence = asNum((fc as Record<string, unknown>).plate);
+    if (fc && typeof fc === 'object') confidence = normalizeConfidence((fc as Record<string, unknown>).plate);
   }
 
   const plateRaw =
@@ -561,9 +657,9 @@ export function normalizeCapture(entry: Record<string, unknown>): AlprCapture {
   return {
     plate: plateRaw ? cleanPlate(plateRaw) : null,
     state: asStr(vd.license_plate_state_or_region) ?? firstStringByKey(entry, KEY.state),
-    make: asStr(vd.make),
-    model: asStr(vd.model),
-    color: asStr(vd.color_primary) ?? asStr(vd.color_secondary) ?? firstStringByKey(entry, KEY.color),
+    make: normalizeVehicleMake(asStr(vd.make)),
+    model: asStr(vd.model)?.toUpperCase() ?? null,
+    color: normalizeVehicleColor(asStr(vd.color_primary) ?? asStr(vd.color_secondary) ?? firstStringByKey(entry, KEY.color)),
     year: yearFrom(vd.year_range) ?? yearFrom(entry.year),
     vehicleType: asStr(vd.vehicle_type) ?? asStr(vd.plate_type),
     confidence,
@@ -581,13 +677,13 @@ export function normalizeCapture(entry: Record<string, unknown>): AlprCapture {
 function fieldConfidences(v: Record<string, unknown>): AlprFieldConfidence {
   const fc = asRecord(v.field_confidence) ?? {};
   return {
-    plate: asNum(fc.plate),
-    make: asNum(fc.make),
-    model: asNum(fc.model),
-    year: asNum(fc.year),
-    color: asNum(fc.color),
-    condition: asNum(fc.condition),
-    damage: asNum(fc.damage),
+    plate: normalizeConfidence(fc.plate),
+    make: normalizeConfidence(fc.make),
+    model: normalizeConfidence(fc.model),
+    year: normalizeConfidence(fc.year),
+    color: normalizeConfidence(fc.color),
+    condition: normalizeConfidence(fc.condition),
+    damage: normalizeConfidence(fc.damage),
   };
 }
 
@@ -632,9 +728,9 @@ function vehicleFromRecord(v: Record<string, unknown>): AlprVehicle {
   return {
     plate: plate ? cleanPlate(plate) : null,
     state: asStr(v.license_plate_state_or_region),
-    make: asStr(v.make),
-    model: asStr(v.model),
-    color: asStr(v.color_primary) ?? asStr(v.color_secondary),
+    make: normalizeVehicleMake(asStr(v.make)),
+    model: asStr(v.model)?.toUpperCase() ?? null,
+    color: normalizeVehicleColor(asStr(v.color_primary) ?? asStr(v.color_secondary)),
     year: yearFrom(v.year_range),
     vehicleType: asStr(v.vehicle_type),
     plateType: asStr(v.plate_type),
@@ -680,6 +776,20 @@ export function firstOcrString(v: unknown): string | null {
   return null;
 }
 
+/** Every non-empty string in a (possibly nested) OCR output. `license_plate_text`
+ *  is `license_predictions`-shaped — one nested entry per crop in a multi-vehicle
+ *  frame, e.g. `[["AAA111"],["BBB222"]]`. `firstOcrString` keeps only the first,
+ *  silently dropping later plates in the bare-OCR fallback; this collects all. */
+export function allOcrStrings(v: unknown): string[] {
+  const out: string[] = [];
+  const walk = (x: unknown): void => {
+    if (typeof x === 'string') { const s = asStr(x); if (s) out.push(s); }
+    else if (Array.isArray(x)) for (const el of x) walk(el);
+  };
+  walk(v);
+  return out;
+}
+
 /**
  * Extract every detected vehicle. Prefers the full-image
  * `enhanced_alpr_record.vehicles[]` (the LLM enumerates EVERY vehicle in the
@@ -702,8 +812,11 @@ export function parseVehicles(entry: Record<string, unknown>): AlprVehicle[] {
     if (vds.length) {
       raw = vds.map(vehicleFromRecord);
     } else {
-      const plate = firstOcrString(entry[ALPR_OUTPUT.plateText]);
-      if (plate) raw = [{ plate: cleanPlate(plate), state: null, make: null, model: null, color: null, year: null, vehicleType: null, plateType: null, confidence: null, condition: null, damageObserved: null, damageSummary: null, damageAreas: [], aftermarket: null, confidences: {} }];
+      // One plate-only vehicle per distinct OCR string — a multi-vehicle frame
+      // returns one OCR entry per crop, so reading only the first dropped the
+      // rest. Exact duplicates collapse in the dedupe-by-plate pass below.
+      const plates = allOcrStrings(entry[ALPR_OUTPUT.plateText]);
+      raw = plates.map((p) => ({ plate: cleanPlate(p), state: null, make: null, model: null, color: null, year: null, vehicleType: null, plateType: null, confidence: null, condition: null, damageObserved: null, damageSummary: null, damageAreas: [], aftermarket: null, confidences: {} }));
     }
   }
   // Drop empty entries (no plate AND no descriptive attributes).

@@ -27,19 +27,46 @@ screening.get('/sources', requireRole(...READ_ROLES), async (c) => {
 });
 
 // GET /api/screening/search?source=&name=&forename=&nationality=&ageMin=&ageMax=&sexId=&page=
+// `source=all` fans out across every searchable registry (manual entry).
 screening.get('/search', requireRole(...READ_ROLES), async (c) => {
   const sourceKey = c.req.query('source') ?? '';
+  const num = (v: string | undefined) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
+  const params = {
+    name: c.req.query('name'), forename: c.req.query('forename'),
+    nationality: c.req.query('nationality'), sexId: c.req.query('sexId'),
+    ageMin: num(c.req.query('ageMin')), ageMax: num(c.req.query('ageMax')),
+    page: num(c.req.query('page')),
+  };
+
+  // All-sources fan-out. Each adapter is isolated: one failing/empty registry
+  // never sinks the others. Per-source coverage warnings are preserved so an
+  // empty registry in the set can never read as a clearance (false-clear guard).
+  if (sourceKey === 'all') {
+    const adapters = getAdapters().filter((a) => a.supportsSearch);
+    const settled = await Promise.all(adapters.map(async (a) => {
+      const results = await a.searchAdHoc(c.env, params).catch((err) => {
+        console.error(`[screening/search:all] ${a.sourceKey}`, err); return [];
+      });
+      const cov = a.coverage ? await a.coverage(c.env).catch(() => undefined) : undefined;
+      return { a, results, cov };
+    }));
+    const data = settled.flatMap((s) => s.results);
+    const coverages = settled
+      .filter((s) => s.cov && !s.cov.available)
+      .map((s) => ({ sourceKey: s.a.sourceKey, label: s.a.label, ...s.cov! }));
+    return c.json({ data, coverages });
+  }
+
   const adapter = getAdapter(sourceKey);
   if (!adapter || !adapter.supportsSearch) return c.json({ data: [], error: 'unknown or non-searchable source' }, 400);
   try {
-    const num = (v: string | undefined) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
-    const results = await adapter.searchAdHoc(c.env, {
-      name: c.req.query('name'), forename: c.req.query('forename'),
-      nationality: c.req.query('nationality'), sexId: c.req.query('sexId'),
-      ageMin: num(c.req.query('ageMin')), ageMax: num(c.req.query('ageMax')),
-      page: num(c.req.query('page')),
-    });
-    return c.json({ data: results });
+    const results = await adapter.searchAdHoc(c.env, params);
+    // Coverage tells the client WHY a result set is empty so a blank
+    // registry can never read as a clearance (false-clear guard).
+    const coverage = adapter.coverage
+      ? await adapter.coverage(c.env).catch(() => undefined)
+      : undefined;
+    return c.json({ data: results, coverage });
   } catch (err) { console.error('[screening/search]', err); return c.json({ data: [], error: 'search failed' }, 500); }
 });
 
@@ -129,10 +156,43 @@ screening.delete('/watchlist/:id', requireRole(...SCAN_ROLES), async (c) => {
   } catch (err) { console.error('[screening/watchlist-del]', err); return c.json({ success: false, error: 'failed' }, 500); }
 });
 
-// POST /api/screening/scan — manual trigger (fire-and-forget)
+// POST /api/screening/scan?source= — manual trigger (fire-and-forget).
+// Manual triggers FORCE the scan, bypassing the per-source 6-month cadence;
+// pass ?source=<key> to scrape a single source ("Scrape now"), else all.
 screening.post('/scan', requireRole(...SCAN_ROLES), async (c) => {
-  c.executionCtx.waitUntil(runScreeningScans(c.env).catch((err) => console.error('[screening] manual scan failed:', err)));
-  return c.json({ success: true, started: true, message: 'Scan started; poll /hits and /status.' }, 202);
+  const sourceKey = c.req.query('source') || undefined;
+  if (sourceKey && !getAdapter(sourceKey)) return c.json({ success: false, error: 'unknown source' }, 400);
+  c.executionCtx.waitUntil(
+    runScreeningScans(c.env, { force: true, sourceKey })
+      .catch((err) => console.error('[screening] manual scan failed:', err)));
+  return c.json({ success: true, started: true, sourceKey: sourceKey ?? null, message: 'Scan started; poll /hits and /status.' }, 202);
+});
+
+// POST /api/screening/sources/:key/interval — set the per-source re-scan
+// cadence (days). A new source defaults to 180 (~6 months). Upserts state so
+// the next successful scrape stamps next_run_at off the new interval.
+screening.post('/sources/:key/interval', requireRole(...SCAN_ROLES), async (c) => {
+  const key = c.req.param('key') ?? '';
+  if (!getAdapter(key)) return c.json({ success: false, error: 'unknown source' }, 400);
+  const body = await c.req.json<{ days?: number }>().catch(() => ({} as { days?: number }));
+  const days = Number(body.days);
+  if (!Number.isFinite(days) || days < 1 || days > 3650) {
+    return c.json({ success: false, error: 'days must be 1–3650' }, 400);
+  }
+  try {
+    const db = getDb(c.env);
+    // Reconcile columns first (deploy migration is continue-on-error).
+    for (const ddl of [
+      'ALTER TABLE screening_source_state ADD COLUMN scan_interval_days INTEGER NOT NULL DEFAULT 180',
+      'ALTER TABLE screening_source_state ADD COLUMN next_run_at TEXT',
+    ]) await execute(db, ddl).catch(() => {});
+    await execute(db, `
+      INSERT INTO screening_source_state (source_key, enabled, scan_interval_days)
+      VALUES (?, 1, ?)
+      ON CONFLICT(source_key) DO UPDATE SET scan_interval_days = excluded.scan_interval_days`,
+      key, Math.round(days));
+    return c.json({ success: true, sourceKey: key, scanIntervalDays: Math.round(days) });
+  } catch (err) { console.error('[screening/interval]', err); return c.json({ success: false, error: 'failed' }, 500); }
 });
 
 // GET /api/screening/status — recent runs + state

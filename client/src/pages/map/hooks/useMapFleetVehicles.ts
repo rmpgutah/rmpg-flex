@@ -35,18 +35,18 @@ interface UseMapFleetVehiclesReturn {
 function getVehicleColor(status: string, gpsReportedAt: string | null): string {
   if (gpsReportedAt) {
     const reportedTime = parseTimestamp(gpsReportedAt).getTime();
-    if (isNaN(reportedTime)) return '#666666';
+    if (isNaN(reportedTime)) return 'var(--rmpg-500)';
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    if (reportedTime < oneHourAgo) return '#666666';
+    if (reportedTime < oneHourAgo) return 'var(--rmpg-500)';
   } else {
-    return '#666666';
+    return 'var(--rmpg-500)';
   }
 
   switch (status) {
     case 'in_service': return '#22c55e';
     case 'maintenance': return '#f59e0b';
     case 'out_of_service': return '#dc2626';
-    default: return '#666666';
+    default: return 'var(--rmpg-500)';
   }
 }
 
@@ -124,7 +124,7 @@ export function useMapFleetVehicles(
             ['==', ['get', 'status'], 'in_service'], '#22c55e',
             ['==', ['get', 'status'], 'maintenance'], '#f59e0b',
             ['==', ['get', 'status'], 'out_of_service'], '#dc2626',
-            '#666666',
+            'var(--rmpg-500)',
           ],
           'circle-radius': 12,
           'circle-stroke-color': '#fff',
