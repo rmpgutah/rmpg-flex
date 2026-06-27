@@ -13,6 +13,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { routeForEntity } from '../utils/notificationRouting';
 import { useAuth } from '../context/AuthContext';
+import { toDisplayLabel } from '../utils/formatters';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
@@ -445,7 +446,7 @@ export default function NotificationsPage() {
           <span className="text-rmpg-400">Snoozed: <strong className="text-amber-400">{stats.totalSnoozed}</strong></span>
           {stats.byPriority.map(p => (
             <span key={p.priority} className={`${p.priority === 'critical' ? 'text-red-400' : p.priority === 'high' ? 'text-amber-400' : 'text-rmpg-400'}`}>
-              {(p.priority || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}: {p.unread}/{p.total}
+              {toDisplayLabel(p.priority)}: {p.unread}/{p.total}
             </span>
           ))}
         </div>
@@ -517,7 +518,7 @@ export default function NotificationsPage() {
                       onChange={(e) => setPrefs(prev => prev ? { ...prev, [key]: e.target.checked } : prev)}
                       className="accent-brand-blue"
                     />
-                    {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    {toDisplayLabel(key)}
                   </label>
                 ))}
                 <div className="grid grid-cols-2 gap-3 mt-4">
@@ -605,7 +606,7 @@ export default function NotificationsPage() {
                     </div>
                     {n.body && <p className="text-[11px] text-rmpg-400 mt-0.5 line-clamp-2">{n.body}</p>}
                     <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
-                      <span>{(n.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span>{toDisplayLabel(n.type)}</span>
                       <span title={formatDateTime(n.created_at)}>{(() => {
                         const ms = Date.now() - parseTimestamp(n.created_at).getTime();
                         const mins = Math.floor(ms / 60000);
