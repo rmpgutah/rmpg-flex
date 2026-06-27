@@ -13,6 +13,7 @@
 // directly — we never pull the image (or the mp4) into the Worker.
 // ============================================================
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { queryFirst, execute, columnExists } from './db';
 import { screenVehicle } from './intelScreen';
@@ -119,7 +120,7 @@ async function upsertVehicleByPlate(db: DB, plate: string, attrs: PlateAttrs): P
        VALUES (?, ?, ?, ?, ?, ?, 'Observed via ClearPath dashcam ALPR (Workers AI)', datetime('now'))`,
       plate, attrs.state ?? null, attrs.make ?? null, attrs.model ?? null, attrs.color ?? null, attrs.year ?? null);
     return Number(r.meta.last_row_id);
-  } catch (err) { console.error('[cpg-alpr] vehicle upsert failed:', (err as Error)?.message); return null; }
+  } catch (err) { log.error('vehicle upsert failed', {}, err); return null; }
 }
 
 /** Reconcile the columns this background path writes, mirroring the alpr route's
@@ -184,10 +185,10 @@ export async function alprDashcamClip(
     const mediaType = resp.headers.get('content-type') || 'image/jpeg';
     imageKey = `alpr-captures/cpg/${args.mapping.cpg_device_id}/${args.event.eventTimestamp}.jpg`;
     try { await env.UPLOADS.put(imageKey, buf, { httpMetadata: { contentType: mediaType } }); }
-    catch (e) { console.error('[cpg-alpr] still R2 put failed:', (e as Error)?.message); imageKey = null; }
+    catch (e) { log.error('still R2 put failed', {}, e); imageKey = null; }
     read = await readPlateCloudflare(env, bytes, mediaType);
   } catch (err) {
-    console.error('[cpg-alpr] workers-ai read failed:', (err as Error)?.message);
+    log.error('workers-ai read failed', {}, err);
     await markVideo('failed');
     return;
   }
@@ -224,7 +225,7 @@ export async function alprDashcamClip(
         plate, vehicleId, locationText, lat, lng,
         `ClearPath dashcam ${deviceName}${args.event.address ? ` @ ${args.event.address}` : ''}${accepted ? '' : ' (unconfirmed <0.85)'}`,
         confidence);
-    } catch (err) { console.error('[cpg-alpr] sighting insert failed:', (err as Error)?.message); }
+    } catch (err) { log.error('sighting insert failed', {}, err); }
     // Screen (officer safety) — hits raise a notification.
     try {
       const screen = await screenVehicle(db, vehicleId ? { vehicleId } : { plate });
@@ -236,7 +237,7 @@ export async function alprDashcamClip(
            VALUES ('intel_screen', 'high', ?, ?, 'vehicle', ?, NULL, 0, datetime('now'))`,
           title, critical.map((h) => h.detail).join('; '), screen.vehicleId ?? vehicleId);
       }
-    } catch (err) { console.error('[cpg-alpr] screen failed:', (err as Error)?.message); }
+    } catch (err) { log.error('screen failed', {}, err); }
   }
 
   // Capture-level row (best-effort; columns reconciled above via ensureAlprWriteSchema).
@@ -263,7 +264,7 @@ export async function alprDashcamClip(
         // tiebreaker by trustScore) vs. the derived trust we actually persist.
         modelConfidence: ct.modelConfidence, derivedTrust: ct.plateConfidence,
       }));
-  } catch (err) { console.error('[cpg-alpr] capture insert failed:', (err as Error)?.message); }
+  } catch (err) { log.error('capture insert failed', {}, err); }
 
   await markVideo('done');
 }

@@ -9,6 +9,7 @@
 //
 // FAIL-OPEN: a KV outage must never lock the org out of login.
 // ============================================================
+import { log } from './logger';
 import type { KVNamespace } from '@cloudflare/workers-types';
 
 export async function rateLimitAllow(
@@ -30,7 +31,7 @@ export async function rateLimitAllow(
     });
     return true;
   } catch (err) {
-    console.error('[rateLimit] KV error (failing open):', err);
+    log.error('KV error (failing open)', {}, err);
     return true;
   }
 }

@@ -24,6 +24,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
@@ -333,7 +334,7 @@ export default function AlertsPage() {
         enableContextMenu
         rowContextMenu={(row: NotificationTemplate): ContextMenuItem[] => [
           m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
-          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          ...(canManage ? [m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> })] : []),
           m.separator(),
           m.copyId(row.id),
           m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> }),

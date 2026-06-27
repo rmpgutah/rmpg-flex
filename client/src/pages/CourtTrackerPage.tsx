@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
-import { formatPhoneInput, formatEnumValue} from '../utils/formatters';
+import { formatPhoneInput, formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import {
   Gavel, Search, Plus, Calendar, Clock, User, X, Save, Loader2, AlertTriangle,
   CheckCircle, FileText, Scale, ChevronLeft, ChevronRight, Shield, DollarSign,
@@ -87,6 +87,11 @@ export default function CourtTrackerPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
+
+  // Role gate — admin/manager can create and edit court events; all
+  // other roles (officer, dispatcher, etc.) are read-only on this page.
+  // Matches the pattern in DailyActivityReportsPage / Victim Services.
+  const canManage = ['admin', 'manager'].includes((user as any)?.role || '');
 
   const [activeView, setActiveView] = useState<'list' | 'upcoming' | 'calendar' | 'stats'>('upcoming');
   const [events, setEvents] = useState<CourtEvent[]>([]);
@@ -307,9 +312,13 @@ export default function CourtTrackerPage() {
     if (!opts?.silent) setLoading(true);
     setFetchError('');
     try {
+      // ?case_id= deep-link sets searchQuery to "case:<id>" so the param
+      // is visible in the filter bar (operator can clear it) and routes to
+      // the dedicated case_id= API filter rather than the text search.
+      const caseIdMatch = searchQuery.match(/^case:(\d+)$/);
       const params = new URLSearchParams({
         page: String(page), limit: '50',
-        ...(searchQuery ? { search: searchQuery } : {}),
+        ...(caseIdMatch ? { case_id: caseIdMatch[1] } : searchQuery ? { search: searchQuery } : {}),
         ...(filterType ? { event_type: filterType } : {}),
       });
       const res = await apiFetch<{ data: CourtEvent[]; pagination: any }>(`/court/events?${params}`);
@@ -538,16 +547,29 @@ export default function CourtTrackerPage() {
     }
   }, [selected, user, addToast]);
 
-  // \u2500\u2500 ?event_id=<id> URL deep-link auto-select \u2500\u2500
-  // 12th consecutive page-pass implementing this contract. From
-  // Cases / Dashboard / context-menu \u2192 "Open court event" lands here
-  // pre-selected. Fetches the single event + strips the param so a
-  // refresh doesn't re-fetch.
+  // \u2500\u2500 ?event_id= / ?case_id= URL deep-link \u2500\u2500
+  // ?event_id= (or ?court_event_id=) pre-selects a specific event.
+  // ?case_id= switches to List view filtered to that case's events so
+  // the operator arrives pre-scoped when navigating from Case Management.
+  // Both params are stripped after hydration so a refresh doesn't re-run.
   const [searchParams, setSearchParams] = useSearchParams();
   const pendingEventIdRef = useRef<string | null>(
-    searchParams.get('event_id') || searchParams.get('court_event_id')
+    searchParams.get('hearing_id') || searchParams.get('event_id') || searchParams.get('court_event_id')
   );
+  const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
   useEffect(() => {
+    const caseTarget = pendingCaseIdRef.current;
+    if (caseTarget) {
+      pendingCaseIdRef.current = null;
+      // Switch to list view with a case_id filter pre-applied so the
+      // operator immediately sees only that case's court events.
+      setActiveView('list');
+      setSearchQuery(`case:${caseTarget}`);
+      const next = new URLSearchParams(searchParams);
+      next.delete('case_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
     const target = pendingEventIdRef.current;
     if (!target) return;
     pendingEventIdRef.current = null;
@@ -564,6 +586,7 @@ export default function CourtTrackerPage() {
       } finally {
         if (!cancelled) {
           const next = new URLSearchParams(searchParams);
+          next.delete('hearing_id');
           next.delete('event_id');
           next.delete('court_event_id');
           setSearchParams(next, { replace: true });
@@ -581,16 +604,16 @@ export default function CourtTrackerPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (cloneEventId != null) { setCloneEventId(null); return; }
-      if (witnessOpen) { setWitnessOpen(false); return; }
-      if (feeOpen) { setFeeOpen(false); return; }
-      if (prosecutorOpen) { setProsecutorOpen(false); return; }
-      if (judgeNotesOpen) { setJudgeNotesOpen(false); return; }
-      if (bailOpen) { setBailOpen(false); return; }
-      if (continuanceOpen) { setContinuanceOpen(false); return; }
-      if (outcomeOpen) { setOutcomeOpen(false); return; }
-      if (citationSearchOpen) { setCitationSearchOpen(false); return; }
-      if (formOpen) { setFormOpen(false); return; }
+      if (cloneEventId != null) { e.stopPropagation(); setCloneEventId(null); return; }
+      if (witnessOpen) { e.stopPropagation(); setWitnessOpen(false); return; }
+      if (feeOpen) { e.stopPropagation(); setFeeOpen(false); return; }
+      if (prosecutorOpen) { e.stopPropagation(); setProsecutorOpen(false); return; }
+      if (judgeNotesOpen) { e.stopPropagation(); setJudgeNotesOpen(false); return; }
+      if (bailOpen) { e.stopPropagation(); setBailOpen(false); return; }
+      if (continuanceOpen) { e.stopPropagation(); setContinuanceOpen(false); return; }
+      if (outcomeOpen) { e.stopPropagation(); setOutcomeOpen(false); return; }
+      if (citationSearchOpen) { e.stopPropagation(); setCitationSearchOpen(false); return; }
+      if (formOpen) { e.stopPropagation(); setFormOpen(false); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -599,6 +622,7 @@ export default function CourtTrackerPage() {
   // "N" keyboard shortcut \u2192 opens the New Event modal, typing-suppressed
   // (skipped while focus is in any input/textarea/contenteditable). Same
   // contract used across MDT / Patrol / Field Interviews / Cases.
+  // Only fires for admin/manager roles \u2014 read-only roles can't create events.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'n' && e.key !== 'N') return;
@@ -611,6 +635,7 @@ export default function CourtTrackerPage() {
       // Don't open New on top of an already-open modal.
       if (formOpen || outcomeOpen || continuanceOpen || bailOpen || judgeNotesOpen ||
           prosecutorOpen || feeOpen || witnessOpen || citationSearchOpen || cloneEventId != null) return;
+      if (!canManage) return;
       e.preventDefault();
       clearAllErrors();
       setFormData({ ...EMPTY_FORM });
@@ -619,19 +644,23 @@ export default function CourtTrackerPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [formOpen, outcomeOpen, continuanceOpen, bailOpen, judgeNotesOpen, prosecutorOpen, feeOpen, witnessOpen, citationSearchOpen, cloneEventId, clearAllErrors, setFormData, snapshotForm]);
+  }, [formOpen, outcomeOpen, continuanceOpen, bailOpen, judgeNotesOpen, prosecutorOpen, feeOpen, witnessOpen, citationSearchOpen, cloneEventId, canManage, clearAllErrors, setFormData, snapshotForm]);
 
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* Left Panel */}
       <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
-          <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
-            <FileText style={{ width: 11, height: 11 }} /> From Citation
-          </button>
-          <button type="button" onClick={() => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); }} className="toolbar-btn toolbar-btn-primary print:hidden">
-            <Plus style={{ width: 11, height: 11 }} /> New
-          </button>
+          {canManage && (
+            <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
+              <FileText style={{ width: 11, height: 11 }} /> From Citation
+            </button>
+          )}
+          {canManage && (
+            <button type="button" onClick={() => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); }} className="toolbar-btn toolbar-btn-primary print:hidden">
+              <Plus style={{ width: 11, height: 11 }} /> New
+            </button>
+          )}
         </PanelTitleBar>
 
         {fetchError && (
@@ -736,7 +765,7 @@ export default function CourtTrackerPage() {
               <>
                 {/* Totals */}
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Overview (Last 12 Months)</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Overview (Last 12 Months)</div>
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       ['Total Events', stats.totals?.total || 0],
@@ -755,7 +784,7 @@ export default function CourtTrackerPage() {
 
                 {/* By Outcome */}
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Outcomes</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Outcomes</div>
                   {(stats.byOutcome || []).map((r: any) => (
                     <div key={r.outcome} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
                       <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ')}</span>
@@ -774,7 +803,7 @@ export default function CourtTrackerPage() {
 
                 {/* By Type */}
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">By Event Type</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">By Event Type</div>
                   {(stats.byType || []).map((r: any) => (
                     <div key={r.event_type} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
                       <span className={`text-[10px] px-1.5 py-0.5 border ${EVENT_TYPE_COLORS[r.event_type] || ''}`}>
@@ -820,7 +849,7 @@ export default function CourtTrackerPage() {
                       icon={Calendar}
                       title="No upcoming court dates"
                       description="No events scheduled in the next 30 days. New events with future dates land here automatically."
-                      action={{ label: 'New Event', onClick: () => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); } }}
+                      action={canManage ? { label: 'New Event', onClick: () => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); } } : undefined}
                     />
                   );
                 }
@@ -828,8 +857,8 @@ export default function CourtTrackerPage() {
                   <EmptyState
                     icon={Scale}
                     title="No court events"
-                    description="Create a new court event, or pull one from a citation, to get started."
-                    action={{ label: 'New Event', onClick: () => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); } }}
+                    description={canManage ? 'Create a new court event, or pull one from a citation, to get started.' : 'No court events on record.'}
+                    action={canManage ? { label: 'New Event', onClick: () => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); } } : undefined}
                   />
                 );
               })()
@@ -893,14 +922,14 @@ export default function CourtTrackerPage() {
                   <Check style={{ width: 11, height: 11 }} /> Confirm
                 </button>
               )}
-              {/* Feature 3: Continuance */}
-              {selected.status !== 'completed' && (
+              {/* Feature 3: Continuance — admin/manager only */}
+              {canManage && selected.status !== 'completed' && (
                 <button type="button" onClick={() => { setContinuanceData({ reason: '', new_date: '', new_time: '' }); setContinuanceOpen(true); }} className="toolbar-btn text-[10px]">
                   <RefreshCw style={{ width: 11, height: 11 }} /> Continuance
                 </button>
               )}
-              {/* Feature 4: Outcome */}
-              {selected.status !== 'completed' && (
+              {/* Feature 4: Outcome — admin/manager only */}
+              {canManage && selected.status !== 'completed' && (
                 <button type="button" onClick={() => { setOutcomeData({ outcome: '', sentence: '', fine_amount: '' }); setOutcomeOpen(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <CheckCircle style={{ width: 11, height: 11 }} /> Record Outcome
                 </button>
@@ -968,7 +997,7 @@ export default function CourtTrackerPage() {
                   ['Prosecutor', selected.prosecutor || '--'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">{label}</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '--'}</div>
                   </div>
                 ))}
@@ -977,17 +1006,19 @@ export default function CourtTrackerPage() {
               {/* Feature 6: Bail/Bond Info */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <DollarSign style={{ width: 10, height: 10 }} /> Bail / Bond
                   </div>
-                  <button type="button" onClick={() => {
-                    setBailData({
-                      bail_amount: (selected as any).bail_amount || '',
-                      bond_status: (selected as any).bond_status || '',
-                      surety_info: (selected as any).surety_info || '',
-                    });
-                    setBailOpen(true);
-                  }} className="toolbar-btn text-[9px]">Edit</button>
+                  {canManage && (
+                    <button type="button" onClick={() => {
+                      setBailData({
+                        bail_amount: (selected as any).bail_amount || '',
+                        bond_status: (selected as any).bond_status || '',
+                        surety_info: (selected as any).surety_info || '',
+                      });
+                      setBailOpen(true);
+                    }} className="toolbar-btn text-[9px]">Edit</button>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div><span className="text-[9px] text-rmpg-500">Amount:</span> <span className="text-xs text-rmpg-100">{(selected as any).bail_amount ? `$${Number((selected as any).bail_amount).toLocaleString()}` : '--'}</span></div>
@@ -1005,7 +1036,7 @@ export default function CourtTrackerPage() {
                 if (!Array.isArray(officers) || officers.length === 0) return null;
                 return (
                   <div className="panel-beveled p-3">
-                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2 flex items-center gap-1">
                       <Shield style={{ width: 10, height: 10 }} /> Officer Confirmations
                     </div>
                     {officers.map((oid: any) => {
@@ -1029,17 +1060,19 @@ export default function CourtTrackerPage() {
               {/* Feature 8: Judge notes */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <BookOpen style={{ width: 10, height: 10 }} /> Judge Preferences / Notes
                   </div>
-                  <button type="button" onClick={() => { setJudgeNotesText((selected as any).judge_notes || ''); setJudgeNotesOpen(true); }} className="toolbar-btn text-[9px]">Edit</button>
+                  {canManage && (
+                    <button type="button" onClick={() => { setJudgeNotesText((selected as any).judge_notes || ''); setJudgeNotesOpen(true); }} className="toolbar-btn text-[9px]">Edit</button>
+                  )}
                 </div>
                 <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{(selected as any).judge_notes || 'No notes recorded.'}</div>
               </div>
 
               {/* Feature 7: Court documents */}
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2 flex items-center gap-1">
+                <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2 flex items-center gap-1">
                   <FileText style={{ width: 10, height: 10 }} /> Court Documents
                 </div>
                 {(() => {
@@ -1059,14 +1092,16 @@ export default function CourtTrackerPage() {
               {/* Feature 7: Prosecutor Contact Info */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <User style={{ width: 10, height: 10 }} /> Prosecutor Contact
                   </div>
-                  <button type="button" onClick={() => {
-                    const parsed = (() => { try { return JSON.parse(selected.prosecutor || '{}'); } catch { return { name: selected.prosecutor || '' }; } })();
-                    setProsecutorData({ prosecutor_name: parsed.name || '', prosecutor_phone: parsed.phone || '', prosecutor_email: parsed.email || '' });
-                    setProsecutorOpen(true);
-                  }} className="toolbar-btn text-[9px]">Edit</button>
+                  {canManage && (
+                    <button type="button" onClick={() => {
+                      const parsed = (() => { try { return JSON.parse(selected.prosecutor || '{}'); } catch { return { name: selected.prosecutor || '' }; } })();
+                      setProsecutorData({ prosecutor_name: parsed.name || '', prosecutor_phone: parsed.phone || '', prosecutor_email: parsed.email || '' });
+                      setProsecutorOpen(true);
+                    }} className="toolbar-btn text-[9px]">Edit</button>
+                  )}
                 </div>
                 {(() => {
                   try {
@@ -1085,15 +1120,17 @@ export default function CourtTrackerPage() {
               {/* Feature 8b: Court Fee Tracking */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <DollarSign style={{ width: 10, height: 10 }} /> Court Fees
                   </div>
-                  <button type="button" onClick={() => {
-                    let fees: any = {};
-                    try { fees = JSON.parse((selected as any).court_fees || '{}'); } catch { /* invalid JSON */ }
-                    setFeeData({ filing_fee: fees.filing_fee || '', service_fee: fees.service_fee || '', other_fees: fees.other_fees || '', fee_notes: fees.fee_notes || '' });
-                    setFeeOpen(true);
-                  }} className="toolbar-btn text-[9px]">Edit</button>
+                  {canManage && (
+                    <button type="button" onClick={() => {
+                      let fees: any = {};
+                      try { fees = JSON.parse((selected as any).court_fees || '{}'); } catch { /* invalid JSON */ }
+                      setFeeData({ filing_fee: fees.filing_fee || '', service_fee: fees.service_fee || '', other_fees: fees.other_fees || '', fee_notes: fees.fee_notes || '' });
+                      setFeeOpen(true);
+                    }} className="toolbar-btn text-[9px]">Edit</button>
+                  )}
                 </div>
                 {(() => {
                   let fees: any = {};
@@ -1120,13 +1157,15 @@ export default function CourtTrackerPage() {
               {/* Feature 9: Witness List */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1">
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider flex items-center gap-1">
                     <Users style={{ width: 10, height: 10 }} /> Witnesses
                   </div>
-                  <button type="button" onClick={() => {
-                    try { setWitnesses(JSON.parse((selected as any).witnesses || '[]')); } catch { setWitnesses([]); }
-                    setWitnessOpen(true);
-                  }} className="toolbar-btn text-[9px]">Manage</button>
+                  {canManage && (
+                    <button type="button" onClick={() => {
+                      try { setWitnesses(JSON.parse((selected as any).witnesses || '[]')); } catch { setWitnesses([]); }
+                      setWitnessOpen(true);
+                    }} className="toolbar-btn text-[9px]">Manage</button>
+                  )}
                 </div>
                 {(() => {
                   let w: any[] = [];
@@ -1136,24 +1175,26 @@ export default function CourtTrackerPage() {
                     <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800 last:border-0">
                       <span className={`w-2 h-2 rounded-full ${wit.contact_status === 'confirmed' ? 'bg-green-500' : wit.contact_status === 'contacted' ? 'bg-amber-500' : 'bg-rmpg-600'}`} />
                       <span className="text-[10px] text-rmpg-100 flex-1">{wit.name}</span>
-                      <span className="text-[9px] text-rmpg-500">{(wit.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                      <span className="text-[9px] text-rmpg-600">{(wit.contact_status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className="text-[9px] text-rmpg-500">{toDisplayLabel(wit.role)}</span>
+                      <span className="text-[9px] text-rmpg-600">{toDisplayLabel(wit.contact_status)}</span>
                     </div>
                   ));
                 })()}
               </div>
 
-              {/* Feature 10b: Clone Event + Feature 6: Reminders */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {selected.status !== 'completed' && (
-                  <button type="button" onClick={() => handleCloneEvent(parseInt(String(selected.id)))} className="toolbar-btn text-[10px] px-2 py-1">
-                    <RefreshCw style={{ width: 10, height: 10 }} /> Clone for Continuance
+              {/* Feature 10b: Clone Event + Feature 6: Reminders — admin/manager only */}
+              {canManage && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {selected.status !== 'completed' && (
+                    <button type="button" onClick={() => handleCloneEvent(parseInt(String(selected.id)))} className="toolbar-btn text-[10px] px-2 py-1">
+                      <RefreshCw style={{ width: 10, height: 10 }} /> Clone for Continuance
+                    </button>
+                  )}
+                  <button type="button" onClick={handleGenerateReminders} className="toolbar-btn text-[10px] px-2 py-1">
+                    <Clock style={{ width: 10, height: 10 }} /> Generate 24h Reminders
                   </button>
-                )}
-                <button type="button" onClick={handleGenerateReminders} className="toolbar-btn text-[10px] px-2 py-1">
-                  <Clock style={{ width: 10, height: 10 }} /> Generate 24h Reminders
-                </button>
-              </div>
+                </div>
+              )}
 
               {/* Feature 3: Continuance log */}
               {(() => {
@@ -1162,7 +1203,7 @@ export default function CourtTrackerPage() {
                 if (log.length === 0) return null;
                 return (
                   <div className="panel-beveled p-3">
-                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Continuance History</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Continuance History</div>
                     {log.map((entry: any, i: number) => (
                       <div key={i} className="py-1 border-b border-rmpg-800 last:border-0">
                         <div className="text-[10px] text-amber-400 font-bold">#{i + 1}: {entry.reason}</div>
@@ -1178,7 +1219,7 @@ export default function CourtTrackerPage() {
               {/* Outcome section */}
               {selected.outcome && (
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Outcome</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Outcome</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-rmpg-100 font-bold">{selected.outcome.replace(/_/g, ' ')}</span></div>
                     {selected.sentence && <div><span className="text-[9px] text-rmpg-500">Sentence:</span> <span className="text-xs text-rmpg-100">{selected.sentence}</span></div>}
@@ -1189,7 +1230,7 @@ export default function CourtTrackerPage() {
 
               {selected.notes && (
                 <div className="panel-beveled p-3">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-1">Notes</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-1">Notes</div>
                   <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selected.notes}</div>
                 </div>
               )}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2, Search, Reply,
@@ -1924,7 +1925,9 @@ export default function EmailPage() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const uid = user?.id;
+  const canManage = user?.role === 'admin' || user?.role === 'manager';
   const { snackbar, show: showSnackbar, dismiss: dismissSnackbar } = useSnackbar();
 
   // Status
@@ -1946,13 +1949,13 @@ export default function EmailPage() {
   // operator on a deep-link AFTER OAuth (the auth bounce always cleared
   // ?message_id/?thread_id/?folder).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('enrolled') === '1') {
+    if (searchParams.get('enrolled') === '1') {
       setEnrolled(true);
-      params.delete('enrolled');
-      const qs = params.toString();
-      window.history.replaceState(null, '', qs ? `/email?${qs}` : '/email');
+      const next = new URLSearchParams(searchParams);
+      next.delete('enrolled');
+      setSearchParams(next, { replace: true });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── URL deep-link contract ──────────────────────────────────────────
@@ -1977,10 +1980,9 @@ export default function EmailPage() {
   const [pendingThreadId, setPendingThreadId] = useState<string | null>(null);
   const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
   useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
     let consumedAny = false;
 
-    const folderParam = sp.get('folder');
+    const folderParam = searchParams.get('folder');
     if (folderParam) {
       // Folder names are normalized lowercase via the well-known map. The
       // value is honored on first fetch (the initial fetchMessages reads
@@ -1995,17 +1997,16 @@ export default function EmailPage() {
       pendingFolderRef.current = map[folderParam.toLowerCase()] || folderParam;
       consumedAny = true;
     }
-    const threadId = sp.get('thread_id');
+    const threadId = searchParams.get('thread_id');
     if (threadId) { setPendingThreadId(threadId); consumedAny = true; }
-    const messageId = sp.get('message_id');
+    const messageId = searchParams.get('message_id');
     if (messageId) { setPendingMessageId(messageId); consumedAny = true; }
-    if (sp.get('compose') === '1') { pendingComposeRef.current = true; consumedAny = true; }
+    if (searchParams.get('compose') === '1') { pendingComposeRef.current = true; consumedAny = true; }
 
     if (consumedAny) {
-      const next = new URLSearchParams(window.location.search);
+      const next = new URLSearchParams(searchParams);
       ['folder', 'thread_id', 'message_id', 'compose'].forEach((k) => next.delete(k));
-      const qs = next.toString();
-      window.history.replaceState(null, '', qs ? `/email?${qs}` : '/email');
+      setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2989,9 +2990,11 @@ export default function EmailPage() {
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Edit3 className="w-3 h-3" /> Rename</button>
             <button type="button" onClick={() => { setShowNewFolder(true); setFolderContextMenu(null); }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><FolderPlus className="w-3 h-3" /> New Subfolder</button>
-            <div className="border-t border-border-subtle my-1" />
-            <button type="button" onClick={() => { setConfirmAction({ kind: 'delete-folder', folder: folderContextMenu.folder }); setFolderContextMenu(null); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Trash className="w-3 h-3" /> Delete</button>
+            {canManage && <>
+              <div className="border-t border-border-subtle my-1" />
+              <button type="button" onClick={() => { setConfirmAction({ kind: 'delete-folder', folder: folderContextMenu.folder }); setFolderContextMenu(null); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Trash className="w-3 h-3" /> Delete</button>
+            </>}
           </div>
         </div>
       )}
@@ -3041,7 +3044,7 @@ export default function EmailPage() {
             <button type="button" onClick={() => handleBatchAction('junk')} className="p-1 text-rmpg-400 hover:text-amber-400" title="Move to Junk"><AlertTriangle className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('markRead')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Mark read"><Eye className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('markUnread')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Mark unread"><EyeOff className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+            {canManage && <button type="button" onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>}
             <button type="button" onClick={() => setSelectedIds(new Set())} className="p-1 text-rmpg-500 hover:text-rmpg-100" title="Clear selection"><X className="w-3.5 h-3.5" /></button>
           </div>
         ) : (
@@ -3066,7 +3069,7 @@ export default function EmailPage() {
               {unreadCount > 0 && (
                 <IconButton onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm" title="Mark all as read" aria-label="Mark all as read"><Eye className="w-3.5 h-3.5" /></IconButton>
               )}
-              {(selectedFolder === 'deleteditems' || selectedFolder === 'junkemail') && messages.length > 0 && (
+              {canManage && (selectedFolder === 'deleteditems' || selectedFolder === 'junkemail') && messages.length > 0 && (
                 <IconButton onClick={handleEmptyFolder} className="p-1 text-rmpg-500 hover:text-red-400 rounded-sm" title="Empty folder" aria-label="Empty folder"><Trash className="w-3.5 h-3.5" /></IconButton>
               )}
               <IconButton onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm" title="Refresh" aria-label="Refresh">
@@ -3080,15 +3083,17 @@ export default function EmailPage() {
               >
                 <MessageSquare className="w-3.5 h-3.5" />
               </button>
-              {/* Feature 23: Auto-categorize */}
-              <button type="button"
-                onClick={handleAutoCategorize}
-                disabled={categorizing}
-                className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm"
-                title="Auto-categorize emails"
-              >
-                {categorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3.5 h-3.5" />}
-              </button>
+              {/* Feature 23: Auto-categorize (admin/manager only) */}
+              {canManage && (
+                <button type="button"
+                  onClick={handleAutoCategorize}
+                  disabled={categorizing}
+                  className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm"
+                  title="Auto-categorize emails"
+                >
+                  {categorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3.5 h-3.5" />}
+                </button>
+              )}
               <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded-sm md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
             </div>
             {/* Task 2.4: FTS search result count */}
@@ -3404,13 +3409,13 @@ export default function EmailPage() {
                       <button type="button" onClick={() => { setShowHeadersModal(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><FileText className="w-3 h-3" /> View internet headers</button>
                       <button type="button" onClick={() => { handleDownloadEml(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Download className="w-3 h-3" /> Download as .eml</button>
                       <div className="border-t border-border-subtle my-1" />
-                      <button type="button" onClick={() => { handleSweepSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Archive className="w-3 h-3" /> Sweep sender to Archive</button>
+                      {canManage && <button type="button" onClick={() => { handleSweepSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Archive className="w-3 h-3" /> Sweep sender to Archive</button>}
                       <button type="button" onClick={() => { handleToggleFocused(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Eye className="w-3 h-3" /> Move to Focused</button>
                       <button type="button" onClick={() => { handleToggleFocused(false); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><EyeOff className="w-3 h-3" /> Move to Other</button>
                       <div className="border-t border-border-subtle my-1" />
                       <button type="button" onClick={() => { handleReport('junk-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-amber-400 hover:bg-amber-500/10"><AlertTriangle className="w-3 h-3" /> Report junk</button>
                       <button type="button" onClick={() => { handleReport('phishing-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Shield className="w-3 h-3" /> Report phishing</button>
-                      <button type="button" onClick={() => { handleBlockSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><X className="w-3 h-3" /> Block sender</button>
+                      {canManage && <button type="button" onClick={() => { handleBlockSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><X className="w-3 h-3" /> Block sender</button>}
                     </div>
                   )}
                 </div>

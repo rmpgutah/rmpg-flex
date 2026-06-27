@@ -1,8 +1,6 @@
 import SwiftUI
-import CoreAPI
 import CoreAuth
 import DesignSystem
-import FeatureShell
 
 @main
 struct RMPGFlexConnectApp: App {

@@ -17,6 +17,7 @@ import { Shield, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import NsopwSearchPanel from '../components/NsopwSearchPanel';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { safeDateTimeStr } from '../utils/dateUtils';
 
 interface NsopwStatus {
   configured: boolean;
@@ -34,10 +35,12 @@ export default function NsopwLookupPage() {
   //   surname/forename/(dob)  → pre-fills the form + auto-runs the search.
   // We only read the params once on mount; the panel strips them after
   // applying so refresh doesn't re-fire.
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // ?name= is the canonical search param (matches the Worker's query('name')).
+  // ?surname= is accepted as an alias for back-compat with old deep-links.
   const deepLink = useMemo(() => ({
     offenderId: searchParams.get('offender_id') ?? '',
-    surname: searchParams.get('surname') ?? '',
+    surname: searchParams.get('surname') ?? searchParams.get('name') ?? '',
     forename: searchParams.get('forename') ?? '',
     dob: searchParams.get('dob') ?? '',
   // The hash is the source of truth on mount; subsequent param changes
@@ -45,6 +48,20 @@ export default function NsopwLookupPage() {
   // bar refresh if they want to).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
+
+  // Strip deep-link params after reading them on mount so refresh doesn't re-fire.
+  useEffect(() => {
+    const hasParams = searchParams.has('surname') || searchParams.has('name') ||
+      searchParams.has('forename') || searchParams.has('dob') || searchParams.has('offender_id');
+    if (hasParams) {
+      setSearchParams((p) => {
+        p.delete('surname'); p.delete('name'); p.delete('forename');
+        p.delete('dob'); p.delete('offender_id');
+        return p;
+      }, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     apiFetch<NsopwStatus>('/nsopw/status')
@@ -83,13 +100,16 @@ export default function NsopwLookupPage() {
         initialForename={deepLink.forename}
         initialDob={deepLink.dob}
         autoSearch={Boolean(deepLink.surname && deepLink.forename)}
+        onClearOffenderId={() =>
+          setSearchParams((p) => { p.delete('offender_id'); return p; }, { replace: true })
+        }
       />
 
       {status && (
         <div className="text-[10px] text-rmpg-400 border-t border-border-subtle pt-2">
           {status.offenderCount.toLocaleString()} offender record(s) cached locally.
           {status.lastRun &&
-            ` Last run: ${String(status.lastRun.ran_at)} (${String(status.lastRun.kind)}).`}
+            ` Last run: ${safeDateTimeStr(status.lastRun.ran_at as string)} (${String(status.lastRun.kind)}).`}
         </div>
       )}
     </div>
