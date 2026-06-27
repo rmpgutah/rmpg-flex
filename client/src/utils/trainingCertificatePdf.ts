@@ -416,7 +416,13 @@ export function generateTrainingCertificatePdf(input: TrainingCertificatePdfInpu
     doc.setFontSize(9);
     doc.setTextColor(TEXT_DARK);
     // Strip basic HTML tags that RichTextArea may have inserted
-    const plain = record.notes.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+    const plain = record.notes
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&')
+      .trim();
     const lines = doc.splitTextToSize(plain || '—', W - 2 * M);
     doc.text(lines, M, y);
     y += lines.length * 11 + 6;

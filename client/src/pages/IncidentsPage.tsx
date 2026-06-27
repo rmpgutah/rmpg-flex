@@ -54,6 +54,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { toDisplayLabel } from '../utils/formatters';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
@@ -1740,7 +1741,7 @@ export default function IncidentsPage() {
               {inc.process_service_type && (
                 <div>
                   <label className="field-label">Document Type:</label>
-                  <p className="text-xs text-rmpg-200">{(inc.process_service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</p>
+                  <p className="text-xs text-rmpg-200">{toDisplayLabel(inc.process_service_type || '')}</p>
                 </div>
               )}
               {inc.process_served_to && (
@@ -1777,7 +1778,7 @@ export default function IncidentsPage() {
                       ? 'bg-red-900/40 text-red-400 border-red-600/40'
                       : 'bg-amber-900/40 text-amber-400 border-amber-600/40'
                   }`}>
-                    {(inc.process_service_result || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                    {toDisplayLabel(inc.process_service_result || '')}
                   </span>
                 </div>
               )}

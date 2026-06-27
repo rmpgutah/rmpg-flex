@@ -26,6 +26,7 @@
 //     not "appeared this run for the first time ever." Improves once
 //     scraped_warrants is added.
 
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { execute, query, queryFirst } from './db';
 import { broadcastAll } from '../routes/ws';
