@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../../components/RichTextArea';
-import { formatPhoneInput } from '../../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import {
   Search, MapPin, Phone, Mail, Globe, Trash2, Pencil, X, Users, Briefcase,
   ArrowUpDown, Filter, Shield, FileText, Eye, Navigation,
@@ -326,7 +326,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
                   {b.status === 'active' && <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Active" />}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                  {b.business_type && <span>{b.business_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>}
+                  {b.business_type && <span>{toDisplayLabel(b.business_type)}</span>}
                   {b.industry && <span>{b.industry}</span>}
                   {b.phone && <span className="flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />{b.phone}</span>}
                 </div>
@@ -386,7 +386,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
           subtitle={
             <span className="flex flex-col gap-0.5">
               {b.dba_name && <span className="text-amber-400">DBA: {b.dba_name}</span>}
-              <span>{b.business_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} · {b.industry || 'N/A'}</span>
+              <span>{toDisplayLabel(b.business_type)} · {b.industry || 'N/A'}</span>
             </span>
           }
           flags={b.flags}
