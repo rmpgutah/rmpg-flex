@@ -127,6 +127,7 @@ export type Bindings = {
 export type Variables = {
   user: { id: number; username: string; role: string; full_name: string };
   userId: number;
+  traceId?: string;
 };
 
 export type Env = { Bindings: Bindings; Variables: Variables };
