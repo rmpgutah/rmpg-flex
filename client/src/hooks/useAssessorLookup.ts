@@ -48,7 +48,7 @@ export function useAssessorLookup() {
   const inFlight = useRef<AbortController | null>(null);
   const lastAddress = useRef<string | null>(null);
 
-  const lookup = useCallback(async (address: string) => {
+  const fetchParcels = useCallback(async (address: string, fresh = false) => {
     setError(null);
     const trimmed = address.trim();
     if (!trimmed || !DIGIT_RE.test(trimmed)) {
@@ -64,11 +64,9 @@ export function useAssessorLookup() {
     const ctl = new AbortController();
     inFlight.current = ctl;
     setLoading(true);
+    const qs = `/assessor/parcels?address=${encodeURIComponent(trimmed)}${fresh ? '&fresh=1' : ''}`;
     try {
-      const res = await apiFetch<LookupResponse>(
-        `/assessor/parcels?address=${encodeURIComponent(trimmed)}`,
-        { signal: ctl.signal },
-      );
+      const res = await apiFetch<LookupResponse>(qs, { signal: ctl.signal });
       if (ctl.signal.aborted) return;
       setParcels(res.parcels ?? []);
       setCached(res.cached);
@@ -89,6 +87,8 @@ export function useAssessorLookup() {
     }
   }, []);
 
+  const lookup = useCallback((address: string) => fetchParcels(address, false), [fetchParcels]);
+
   const dismiss = useCallback(() => {
     setParcels(null);
     setCode(null);
@@ -100,6 +100,10 @@ export function useAssessorLookup() {
   const retry = useCallback(() => {
     if (lastAddress.current) lookup(lastAddress.current);
   }, [lookup]);
+
+  const refresh = useCallback(() => {
+    if (lastAddress.current) fetchParcels(lastAddress.current, true);
+  }, [fetchParcels]);
 
   return {
     parcels,
@@ -113,5 +117,6 @@ export function useAssessorLookup() {
     lookup,
     dismiss,
     retry,
+    refresh,
   };
 }

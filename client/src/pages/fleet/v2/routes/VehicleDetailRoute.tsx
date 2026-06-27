@@ -12,6 +12,7 @@ import { RecallsTab } from '../vehicleDetail/RecallsTab';
 import { DamageTab } from '../vehicleDetail/DamageTab';
 import { TiresTab } from '../vehicleDetail/TiresTab';
 import { AssignmentsTab } from '../vehicleDetail/AssignmentsTab';
+import { WorkOrdersTab } from '../vehicleDetail/WorkOrdersTab';
 import { EmptyStateCard } from '../shell/EmptyStateCard';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 
@@ -62,6 +63,7 @@ export function VehicleDetailRoute() {
   const [searchParams, setSearchParams] = useSearchParams();
   useFleetV2View(`/fleet/v2/vehicles/${id ?? ''}`);
   const [vehicle, setVehicle] = useState<FleetVehicleDetail | null>(null);
+  const [loadError, setLoadError] = useState(false);
   // Tab is URL-driven so an operator can land directly on, say,
   // /fleet/v2/vehicles/42?tab=inspections from a deep-link in dispatch or
   // a court-prep email. Falls through to 'overview' if the param is
@@ -95,9 +97,23 @@ export function VehicleDetailRoute() {
 
   useEffect(() => {
     if (!id) return;
-    apiFetchV2<FleetVehicleDetail>(`/fleet/${id}`).then(setVehicle).catch(() => setVehicle(null));
+    setVehicle(null);
+    setLoadError(false);
+    apiFetchV2<FleetVehicleDetail>(`/fleet/${id}`)
+      .then(setVehicle)
+      .catch(() => setLoadError(true));
   }, [id]);
 
+  if (loadError) {
+    return (
+      <div className="p-4 text-rmpg-400 text-sm">
+        Vehicle #{id} could not be loaded. It may not exist or you may not have access.
+        <div className="mt-2">
+          <a href="/fleet/v2/vehicles" className="text-brand-400 hover:underline text-xs">Back to Vehicles</a>
+        </div>
+      </div>
+    );
+  }
   if (!vehicle) return <div className="p-4 text-rmpg-400 text-sm">Loading vehicle #{id}…</div>;
 
   return (
@@ -146,17 +162,16 @@ export function VehicleDetailRoute() {
          activeTab === 'recalls'     ? <RecallsTab vehicleId={vehicle.id} /> :
          activeTab === 'damage'      ? <DamageTab vehicleId={vehicle.id} /> :
          activeTab === 'tires'       ? <TiresTab vehicleId={vehicle.id} /> :
+         activeTab === 'work-orders' ? <WorkOrdersTab vehicleId={vehicle.id} /> :
          activeTab === 'assignments' ? <AssignmentsTab vehicleId={vehicle.id} /> : (
           <div className="p-4">
             <EmptyStateCard
               title={TABS.find((t) => t.id === activeTab)?.label ?? ''}
               plannedPr={
-                activeTab === 'work-orders' ? 'PR 5' :
                 activeTab === 'issues' ? 'PR 6' :
                 'Phase 2'
               }
               description="This tab will land in a future PR of the Fleet Manager UI program."
-              fleetioUrl={activeTab === 'work-orders' ? `https://secure.fleetio.com/vehicles/${vehicle.id}/work_orders` : undefined}
             />
           </div>
         )}

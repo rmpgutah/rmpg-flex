@@ -6,15 +6,17 @@
 // for 24 hours after initial lookup.
 // ============================================================
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Loader2, X, User, Building2, Calendar, Hash,
   AlertCircle, ChevronRight, Shield, FileText, Link2, Plus, UserCheck,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
-import { formatLabel } from '../utils/formatters';
+import { toDisplayLabel } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -36,6 +38,9 @@ interface CdocOffender {
   fetched_at: string;
 }
 
+// Role gate — admin/manager/supervisor may create local person records
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 // ── Status badge colors ──────────────────────────────────────
 
 function statusClass(status: string | null): string {
@@ -56,6 +61,13 @@ function statusClass(status: string | null): string {
 
 export default function ColoradoDocPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Role gate
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
   // Search state
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -94,6 +106,41 @@ export default function ColoradoDocPage() {
       .catch(() => setLocalMatch(null))
       .finally(() => setMatchLoading(false));
   }, [selected]);
+
+  // ── Deep-link: ?doc_number=<id> auto-runs a DOC lookup ──────────────────────────────
+  const docDeepLinkRef = useRef(false);
+  const docNumberParam = searchParams.get('doc_number');
+  useEffect(() => {
+    if (docDeepLinkRef.current || !docNumberParam) return;
+    docDeepLinkRef.current = true;
+    const num = docNumberParam.trim();
+    if (!num) {
+      addToast('No DOC number specified in link.', 'warning');
+    } else {
+      setSearchMode('doc');
+      setDocNumber(num);
+      setLoading(true);
+      setError('');
+      setSearched(true);
+      setResults([]);
+      apiFetch<CdocOffender>(`/colorado-doc/offender/${encodeURIComponent(num)}`)
+        .then(offender => {
+          setResults([offender]);
+          setSelected(offender);
+        })
+        .catch((err: any) => {
+          if (err.message?.includes('404') || err.message?.includes('not found')) {
+            addToast(`DOC #${num} not found.`, 'warning');
+          } else {
+            addToast(err.message || 'DOC lookup failed.', 'error');
+          }
+        })
+        .finally(() => setLoading(false));
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('doc_number');
+    setSearchParams(next, { replace: true });
+  }, [docNumberParam, searchParams, setSearchParams, addToast]);
 
   // ── Search by name ───────────────────────────────────────
   const searchByName = useCallback(async () => {
@@ -184,7 +231,43 @@ export default function ColoradoDocPage() {
   };
 
   // Set document title
-  useEffect(() => { document.title = 'Colorado DOC \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Colorado DOC — RMPG Flex'; }, []);
+
+  // ── N shortcut → focus the last-name input (name mode) or DOC input ─────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      const tag = t.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (t.isContentEditable) return;
+      e.preventDefault();
+      document.getElementById('cdoc-search-primary')?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // ── Esc cascade: close detail panel → clear search results ──────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (selected) {
+        e.stopPropagation();
+        setSelected(null);
+        return;
+      }
+      if (searched) {
+        e.stopPropagation();
+        clearSearch();
+        return;
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selected, searched]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">
@@ -212,7 +295,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('name')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'name'
-                    ? 'bg-[#888888]/30 text-rmpg-300 border border-[#888888]/50'
+                    ? 'bg-rmpg-400/30 text-rmpg-300 border border-rmpg-400/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -223,7 +306,7 @@ export default function ColoradoDocPage() {
                 onClick={() => setSearchMode('doc')}
                 className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
                   searchMode === 'doc'
-                    ? 'bg-[#888888]/30 text-rmpg-300 border border-[#888888]/50'
+                    ? 'bg-rmpg-400/30 text-rmpg-300 border border-rmpg-400/50'
                     : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
                 }`}
               >
@@ -233,12 +316,13 @@ export default function ColoradoDocPage() {
 
             {searchMode === 'name' ? (
               <div className="flex gap-2">
-                <input id="ff-coloradodocpage-0"
+                <input
+                  id="cdoc-search-primary"
                   type="text"
                   placeholder="Last Name *"
                   value={lastName}
                   onChange={e => setLastName(e.target.value)}
-                  className="flex-1 bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
+                  className="flex-1 bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-rmpg-400 focus:outline-none"
                   autoFocus
                 />
                 <input id="ff-coloradodocpage-1"
@@ -246,16 +330,17 @@ export default function ColoradoDocPage() {
                   placeholder="First Name"
                   value={firstName}
                   onChange={e => setFirstName(e.target.value)}
-                  className="flex-1 bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
+                  className="flex-1 bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-rmpg-400 focus:outline-none"
                 />
               </div>
             ) : (
-              <input id="ff-coloradodocpage-2"
+              <input
+                id="cdoc-search-primary"
                 type="text"
                 placeholder="DOC Number (e.g. 123456)"
                 value={docNumber}
                 onChange={e => setDocNumber(e.target.value)}
-                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none font-mono"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-rmpg-400 focus:outline-none font-mono"
                 autoFocus
               />
             )}
@@ -264,7 +349,7 @@ export default function ColoradoDocPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888]/20 border border-[#888888]/40 text-rmpg-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-[#888888]/30 transition-colors disabled:opacity-40"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rmpg-400/20 border border-rmpg-400/40 text-rmpg-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-rmpg-400/30 transition-colors disabled:opacity-40"
               >
                 {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
                 Search
@@ -298,7 +383,12 @@ export default function ColoradoDocPage() {
 
           {/* Results Table */}
           <div className="flex-1 overflow-auto mx-2 mb-2">
-            {results.length > 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center h-full text-rmpg-600">
+                <Loader2 size={28} className="animate-spin mb-2 opacity-40" />
+                <p className="text-xs">Searching…</p>
+              </div>
+            ) : results.length > 0 ? (
               <div className="overflow-x-auto"><table className="w-full text-xs">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-surface-base border-b border-rmpg-700">
@@ -317,7 +407,7 @@ export default function ColoradoDocPage() {
                       onClick={() => setSelected(r)}
                       className={`cursor-pointer border-b border-rmpg-700/50 transition-colors ${
                         selected?.doc_number === r.doc_number
-                          ? 'bg-[#888888]/15 text-rmpg-100'
+                          ? 'bg-rmpg-400/15 text-rmpg-100'
                           : 'hover:bg-surface-raised text-rmpg-300'
                       }`}
                     >
@@ -330,7 +420,7 @@ export default function ColoradoDocPage() {
                       <td className="px-2.5 py-1.5">
                         {r.status ? (
                           <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[9px] uppercase tracking-wider font-bold border ${statusClass(r.status)}`}>
-                            {(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                            {toDisplayLabel(r.status)}
                           </span>
                         ) : (
                           <span className="text-rmpg-600">--</span>
@@ -342,10 +432,11 @@ export default function ColoradoDocPage() {
                   ))}
                 </tbody>
               </table></div>
-            ) : searched && !loading && !error ? (
+            ) : searched && !error ? (
               <div className="flex flex-col items-center justify-center h-full text-rmpg-600">
                 <Search size={32} className="mb-2 opacity-30" />
                 <p className="text-xs">No results found</p>
+                <p className="text-[10px] mt-1 text-rmpg-700">Try a different name or DOC number</p>
               </div>
             ) : !searched ? (
               <div className="flex flex-col items-center justify-center h-full text-rmpg-600">
@@ -357,7 +448,7 @@ export default function ColoradoDocPage() {
           </div>
 
           {/* Footer */}
-          {results.length > 0 && (
+          {results.length > 0 && !loading && (
             <div className="mx-2 mb-2 px-2.5 py-1 bg-surface-base border border-rmpg-700 rounded-sm flex items-center justify-between text-[9px] text-rmpg-500">
               <span>{results.length} result{results.length !== 1 ? 's' : ''}</span>
               {results[0]?.source && (
@@ -413,7 +504,7 @@ export default function ColoradoDocPage() {
               {selected.status && (
                 <div className="flex justify-center">
                   <span className={`px-2.5 py-1 rounded-sm text-[10px] uppercase tracking-wider font-bold border ${statusClass(selected.status)}`}>
-                    {formatLabel(selected.status)}
+                    {toDisplayLabel(selected.status)}
                   </span>
                 </div>
               )}
@@ -459,7 +550,7 @@ export default function ColoradoDocPage() {
                 </div>
                 {matchLoading ? (
                   <div className="flex items-center gap-2 text-[10px] text-rmpg-400">
-                    <Loader2 size={12} className="animate-spin" /> Checking local records...
+                    <Loader2 size={12} className="animate-spin" /> Checking local records…
                   </div>
                 ) : localMatch ? (
                   <div className="px-2.5 py-2 bg-green-900/20 border border-green-700/40 rounded-sm">
@@ -483,12 +574,19 @@ export default function ColoradoDocPage() {
                       <AlertCircle size={14} className="text-rmpg-500 flex-shrink-0" />
                       <div className="text-[10px] text-rmpg-400">No local match found</div>
                     </div>
-                    <button type="button"
-                      onClick={() => navigate(`/records?action=new-person&first_name=${encodeURIComponent(selected.first_name)}&last_name=${encodeURIComponent(selected.last_name)}${selected.dob ? `&dob=${encodeURIComponent(selected.dob)}` : ''}`)}
-                      className="mt-2 w-full text-[10px] py-1.5 bg-brand-900/30 text-brand-400 border border-brand-700/50 hover:bg-brand-800/40 transition-colors text-center font-bold uppercase tracking-wider flex items-center justify-center gap-1"
-                    >
-                      <Plus size={10} /> Create Person Record
-                    </button>
+                    {canManage && (
+                      <button type="button"
+                        onClick={() => navigate(`/records?action=new-person&first_name=${encodeURIComponent(selected.first_name)}&last_name=${encodeURIComponent(selected.last_name)}${selected.dob ? `&dob=${encodeURIComponent(selected.dob)}` : ''}`)}
+                        className="mt-2 w-full text-[10px] py-1.5 bg-brand-900/30 text-brand-400 border border-brand-700/50 hover:bg-brand-800/40 transition-colors text-center font-bold uppercase tracking-wider flex items-center justify-center gap-1"
+                      >
+                        <Plus size={10} /> Create Person Record
+                      </button>
+                    )}
+                    {!canManage && (
+                      <div className="mt-2 text-[10px] text-rmpg-600 italic text-center">
+                        Supervisor or higher required to create person records.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
