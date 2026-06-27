@@ -1,13 +1,17 @@
 // client/src/pages/PersonIntelDossierPage.tsx
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, ArrowLeft, Loader2, AlertTriangle, CheckCircle2, Clock,
   Shield, MapPin, Phone, Mail, Car, User, Globe, Briefcase, Gavel,
-  Network, ChevronDown, ChevronRight, ExternalLink, Flag
+  Network, ChevronDown, ChevronRight, Flag, Trash2
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
+import { parseTimestamp } from '../utils/dateUtils';
 import PersonIntelGraphTab from './PersonIntelGraphTab';
 
 interface DataPoint {
@@ -102,12 +106,45 @@ function PhaseBar({ phase, status }: { phase: number; status: string }) {
 export default function PersonIntelDossierPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { addToast } = useToast();
+  const { user } = useAuth();
+
+  // Role gates — delete is admin/manager only; annotate available to all authed users
+  const canDelete = user?.role === 'admin' || user?.role === 'manager';
+
   const [dossier, setDossier] = useState<Dossier | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'data' | 'sources' | 'connections' | 'graph'>('data');
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  // ── ConfirmDialog state ─────────────────────────────────────────────────────
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // ── Deep-link: ?person_id=<id> — navigates directly to this dossier ─────────
+  // This page IS the dossier detail view (url already includes /person-intel/:id),
+  // so ?person_id= is an incoming cross-link from another page (e.g. DL Search)
+  // that pre-selects and highlights this dossier. We toast a confirmation and
+  // strip the param so a refresh doesn't re-toast.
+  const deepLinkConsumedRef = useRef(false);
+  useEffect(() => {
+    if (loading || deepLinkConsumedRef.current) return;
+    const personIdParam = searchParams.get('person_id');
+    if (!personIdParam) return;
+    deepLinkConsumedRef.current = true;
+    const linked = dossier?.linked_person_id;
+    if (linked && String(linked) === personIdParam) {
+      addToast(`Dossier linked to Person #${personIdParam}`, 'success');
+    } else if (personIdParam) {
+      addToast(`Viewing dossier for deep-linked person #${personIdParam}`, 'info');
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('person_id');
+    setSearchParams(next, { replace: true });
+  }, [loading, dossier, searchParams, setSearchParams, addToast]);
 
   const load = useCallback(async () => {
     try {
@@ -130,11 +167,51 @@ export default function PersonIntelDossierPage() {
     return () => clearInterval(pollRef.current);
   }, [load]);
 
+  // ── N shortcut — open "New Investigation" on parent page (navigate back) ────
+  // The primary action from the dossier view is "back to list to start new", so
+  // N navigates to /person-intel with the new-form flag.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (deleteConfirmOpen) { setDeleteConfirmOpen(false); return; }
+        // Escape with no modal open navigates back to the list
+        navigate('/person-intel');
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        // N navigates to the list page which hosts the "New Investigation" form
+        navigate('/person-intel?new=1');
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [deleteConfirmOpen, navigate]);
+
   const annotate = async (dpId: number, patch: Record<string, any>) => {
     await apiFetch(`/person-intel/${id}/data-point/${dpId}`, { method: 'PATCH', body: JSON.stringify(patch) });
     await load();
   };
 
+  const handleDelete = async () => {
+    if (!canDelete) return;
+    setDeleteLoading(true);
+    try {
+      await apiFetch(`/person-intel/${id}`, { method: 'DELETE' });
+      addToast('Dossier deleted', 'success');
+      navigate('/person-intel');
+    } catch (e: any) {
+      addToast(e.message ?? 'Failed to delete dossier', 'error');
+    } finally {
+      setDeleteLoading(false);
+      setDeleteConfirmOpen(false);
+    }
+  };
+
+  // ── Empty / loading / error states ─────────────────────────────────────────
   if (loading && !dossier) return (
     <div className="p-4 flex items-center gap-2 text-rmpg-400 text-sm">
       <Loader2 className="w-4 h-4 animate-spin" />Loading dossier…
@@ -145,7 +222,12 @@ export default function PersonIntelDossierPage() {
       <AlertTriangle className="w-4 h-4" />{error}
     </div>
   );
-  if (!dossier) return null;
+  if (!dossier) return (
+    <div className="p-8 text-center text-rmpg-500 text-sm">
+      <Shield className="w-8 h-8 mx-auto mb-2 text-rmpg-700" />
+      Dossier not found.
+    </div>
+  );
 
   const riskFlags: string[] = dossier.risk_flags ? JSON.parse(dossier.risk_flags) : [];
   const grouped = new Map<string, DataPoint[]>();
@@ -168,6 +250,15 @@ export default function PersonIntelDossierPage() {
           <ArrowLeft className="w-4 h-4" />
         </button>
         <PanelTitleBar title={`DOSSIER: ${dossier.subject_name.toUpperCase()}`} icon={Search} />
+        {canDelete && (
+          <button
+            title="Delete dossier"
+            className="ml-auto p-1.5 rounded text-rmpg-600 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+            onClick={() => setDeleteConfirmOpen(true)}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Status bar */}
@@ -208,7 +299,7 @@ export default function PersonIntelDossierPage() {
             </span>
           )}
           <span className="ml-auto flex items-center gap-1">
-            <Clock className="w-2.5 h-2.5" />{new Date(dossier.created_at).toLocaleString()}
+            <Clock className="w-2.5 h-2.5" />{parseTimestamp(dossier.created_at).toLocaleString()}
           </span>
         </div>
       </div>
@@ -231,13 +322,21 @@ export default function PersonIntelDossierPage() {
 
       {activeTab === 'data' && (
         <div className="space-y-2">
-          {grouped.size === 0 && dossier.status !== 'complete' ? (
+          {grouped.size === 0 && dossier.status === 'running' ? (
             <div className="text-center py-8 text-rmpg-500 text-xs">
               <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
               Gathering intelligence…
             </div>
+          ) : grouped.size === 0 && dossier.status === 'pending' ? (
+            <div className="text-center py-8 text-rmpg-500 text-xs">
+              <Clock className="w-5 h-5 mx-auto mb-2 text-rmpg-700" />
+              Investigation queued — data will appear shortly.
+            </div>
           ) : grouped.size === 0 ? (
-            <div className="text-center py-8 text-rmpg-500 text-xs">No data points found above confidence threshold</div>
+            <div className="text-center py-8 text-rmpg-500 text-xs">
+              <Search className="w-5 h-5 mx-auto mb-2 text-rmpg-700" />
+              No data points found above confidence threshold.
+            </div>
           ) : (
             Array.from(grouped.entries()).map(([cat, pts]) => {
               const Icon = CATEGORY_ICON[cat] ?? Globe;
@@ -303,16 +402,23 @@ export default function PersonIntelDossierPage() {
 
       {activeTab === 'sources' && (
         <div className="space-y-1">
-          {dossier.sources.map(s => (
-            <div key={s.id} className="bg-surface-raised rounded px-3 py-2 flex items-center gap-3">
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.status === 'success' ? 'bg-green-400' : s.status === 'not_configured' ? 'bg-rmpg-600' : s.status === 'skipped' ? 'bg-rmpg-600' : 'bg-red-400'}`} />
-              <span className="text-xs text-rmpg-200 flex-1">{s.source_name}</span>
-              <span className={`text-[10px] ${s.status === 'success' ? 'text-green-400' : s.status === 'not_configured' || s.status === 'skipped' ? 'text-rmpg-500' : 'text-red-400'}`}>{s.status}</span>
-              <span className="text-[10px] text-rmpg-600">{s.data_points_found} pts</span>
-              <span className="text-[10px] text-rmpg-600">{s.response_time_ms}ms</span>
-              <span className="text-[10px] text-rmpg-700">Ph{s.phase}</span>
+          {dossier.sources.length === 0 ? (
+            <div className="text-center py-8 text-rmpg-500 text-xs">
+              <Network className="w-5 h-5 mx-auto mb-2 text-rmpg-700" />
+              No source results yet — investigation may still be starting.
             </div>
-          ))}
+          ) : (
+            dossier.sources.map(s => (
+              <div key={s.id} className="bg-surface-raised rounded px-3 py-2 flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.status === 'success' ? 'bg-green-400' : s.status === 'not_configured' ? 'bg-rmpg-600' : s.status === 'skipped' ? 'bg-rmpg-600' : 'bg-red-400'}`} />
+                <span className="text-xs text-rmpg-200 flex-1">{s.source_name}</span>
+                <span className={`text-[10px] ${s.status === 'success' ? 'text-green-400' : s.status === 'not_configured' || s.status === 'skipped' ? 'text-rmpg-500' : 'text-red-400'}`}>{s.status}</span>
+                <span className="text-[10px] text-rmpg-600">{s.data_points_found} pts</span>
+                <span className="text-[10px] text-rmpg-600">{s.response_time_ms}ms</span>
+                <span className="text-[10px] text-rmpg-700">Ph{s.phase}</span>
+              </div>
+            ))
+          )}
         </div>
       )}
 
@@ -321,7 +427,7 @@ export default function PersonIntelDossierPage() {
           {dossier.connections.length === 0 ? (
             <div className="text-center py-8 text-rmpg-500 text-xs">
               <Network className="w-5 h-5 mx-auto mb-2" />
-              No connections found — graph will populate once OSINT sources respond
+              No connections found — graph will populate once OSINT sources respond.
             </div>
           ) : (
             dossier.connections.map(c => (
@@ -352,6 +458,19 @@ export default function PersonIntelDossierPage() {
           connections={dossier.connections}
         />
       )}
+
+      {/* ── Delete dossier confirm ─────────────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={handleDelete}
+        title="Delete Dossier"
+        message="Permanently delete this intelligence dossier? All data points, connections, and source results will be removed."
+        details={<span>{dossier.subject_name} — {dossier.data_points_found} data points</span>}
+        confirmLabel="Delete Dossier"
+        confirmVariant="danger"
+        isLoading={deleteLoading}
+      />
     </div>
   );
 }

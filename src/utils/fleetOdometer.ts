@@ -11,6 +11,7 @@
 // Both are best-effort: callers wrap in try/catch (or rely on the internal
 // guard) so an odometer sync can never break the write that triggered it.
 
+import { log } from './logger';
 type DB = D1Database;
 
 const MAX_ODOMETER = 999_999;
@@ -25,7 +26,7 @@ export async function setFleetOdometer(db: DB, vehicleId: number | null | undefi
       `UPDATE fleet_vehicles SET current_mileage = ?, updated_at = datetime('now') WHERE id = ?`,
     ).bind(Math.round(mi * 10) / 10, vehicleId).run();
   } catch (err) {
-    console.warn('[fleetOdometer] set failed (non-fatal):', err);
+    log.warn('set failed (non-fatal)', { err });
   }
 }
 
@@ -40,7 +41,7 @@ export async function vehicleOdometerForUnit(db: DB, unitId: number | null | und
     const mi = row?.current_mileage != null ? Number(row.current_mileage) : null;
     return mi != null && Number.isFinite(mi) && mi > 0 && mi <= MAX_ODOMETER ? mi : null;
   } catch (err) {
-    console.warn('[fleetOdometer] unit lookup failed (non-fatal):', err);
+    log.warn('unit lookup failed (non-fatal)', { err });
     return null;
   }
 }
@@ -58,6 +59,6 @@ export async function accrueFleetOdometer(db: DB, vehicleId: number | null | und
         WHERE id = ? AND COALESCE(current_mileage, 0) + ? <= ?`,
     ).bind(Math.round(miles * 10) / 10, vehicleId, miles, MAX_ODOMETER).run();
   } catch (err) {
-    console.warn('[fleetOdometer] accrue failed (non-fatal):', err);
+    log.warn('accrue failed (non-fatal)', { err });
   }
 }
