@@ -9,6 +9,7 @@
 // tests/intelExtract.test.ts.
 // ============================================================
 
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from './db';
 import { isRealValue, normalizePhone } from './intelMatch';
@@ -68,14 +69,14 @@ async function gatherSources(db: D1Database, sinceHours: number): Promise<Source
       const text = [r.description, r.notes, r.subject_description, r.vehicle_description].filter(isRealValue).join(' \n ');
       if (text.trim()) docs.push({ source_type: 'call', source_id: r.id, text });
     }
-  } catch (err: any) { console.error('[extract] calls failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-extract] calls failed', { error: err?.message }); }
   try {
     for (const r of await query<any>(db,
       `SELECT id, narrative FROM incidents
        WHERE COALESCE(updated_at, created_at) > datetime('now', ?) LIMIT 200`, `-${sinceHours} hours`)) {
       if (isRealValue(r.narrative)) docs.push({ source_type: 'incident', source_id: r.id, text: String(r.narrative) });
     }
-  } catch (err: any) { console.error('[extract] incidents failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-extract] incidents failed', { error: err?.message }); }
   return docs;
 }
 
@@ -104,7 +105,7 @@ async function suggest(
       doc.source_type, doc.source_id, entityType, entityId, extracted.slice(0, 200), basis);
     return !!r.meta?.changes;
   } catch (err: any) {
-    console.error('[extract] suggest failed:', err?.message);
+    log.error('[intel-extract] suggest failed', { error: err?.message });
     return false;
   }
 }
@@ -121,11 +122,11 @@ export async function runExtraction(db: D1Database, sinceHours = 6): Promise<num
     persons = await query<any>(db, 'SELECT id, first_name, last_name, phone FROM persons LIMIT 5000');
     for (const p of persons)
       if (isRealValue(p.phone)) personsByPhone.set(normalizePhone(String(p.phone)), p.id);
-  } catch (err: any) { console.error('[extract] persons load failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-extract] persons load failed', { error: err?.message }); }
   try {
     for (const v of await query<any>(db, 'SELECT id, plate_number FROM vehicles_records LIMIT 5000'))
       if (isRealValue(v.plate_number)) platesByToken.set(String(v.plate_number).toUpperCase().replace(/[\s-]/g, ''), v.id);
-  } catch (err: any) { console.error('[extract] vehicles load failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-extract] vehicles load failed', { error: err?.message }); }
 
   let created = 0;
   for (const doc of docs) {
@@ -141,7 +142,7 @@ export async function runExtraction(db: D1Database, sinceHours = 6): Promise<num
         if (pid && await suggest(db, doc, 'person', pid, phone, 'phone')) created++;
       }
     } catch (err: any) {
-      console.error(`[extract] doc ${doc.source_type}:${doc.source_id} failed:`, err?.message);
+      log.error('[intel-extract] doc failed', { source_type: doc.source_type, source_id: doc.source_id, error: err?.message });
     }
   }
   return created;

@@ -7,6 +7,7 @@ import { Video, Plus, Edit2, Trash2, Loader2, Camera, Play, Upload } from 'lucid
 import type { BodyCamera, BodyCamVideo } from '../../../types';
 import { CAMERA_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS, VIDEO_CLASSIFICATION_COLORS } from '../utils/personnelConstants';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   cameras: BodyCamera[];
@@ -63,7 +64,7 @@ export default function BodyCameraDetailTab({
   };
 
   const statusLabel = (status: string) => status.replace(/_/g, ' ').toUpperCase();
-  const classLabel = (cls: string) => cls.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const classLabel = (cls: string) => toDisplayLabel(cls);
 
   const topBorderColor = (status: string) => {
     switch (status) {
