@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, Download, FileText, RotateCcw, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Download, FileText, RotateCcw, Copy, Check, Trash2 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
@@ -36,34 +36,47 @@ export default function TextEditorPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
 
-  // Support both ?fileId= (Documents page navigation) and ?doc_id= (deep-link alias)
-  const fileId = searchParams.get('fileId') ?? searchParams.get('doc_id') ?? '';
+  // Support ?fileId= (Documents page navigation), ?doc_id= and ?document_id= (deep-link aliases)
+  const fileId = searchParams.get('fileId') ?? searchParams.get('doc_id') ?? searchParams.get('document_id') ?? '';
   const fileName = searchParams.get('name') ?? 'untitled.txt';
   const folderId = searchParams.get('folderId') ?? null;
   const mimeType = searchParams.get('mime') ?? 'text/plain';
 
-  // Role gates: supervisor+ can save/edit; all roles can view
-  const canEdit = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
+  // Role gates: supervisor+ can save/edit; admin|manager can create new docs or delete
+  const canEdit = useMemo(() => ['admin', 'manager', 'supervisor'].includes(user?.role ?? ''), [user?.role]);
+  const canCreate = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
+  const canDelete = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
 
   const [content, setContent] = useState('');
   const [originalContent, setOriginalContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
-  // ConfirmDialog state for revert — replaces window.confirm
+  // ConfirmDialog state
   const [revertOpen, setRevertOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  // Gate for N shortcut when there are unsaved changes — prompts before navigating
+  const [newDocPendingOpen, setNewDocPendingOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // useRef guard: prevent re-firing deep-link toast on re-render
+  const deepLinkApplied = useRef(false);
 
   const isDirty = content !== originalContent;
 
-  // Strip deep-link ?doc_id= param after mount so Back navigation doesn't re-apply it
+  // Strip deep-link ?doc_id= / ?document_id= params after mount so Back navigation
+  // doesn't re-apply them; toast on successful file identification.
   useEffect(() => {
-    const docId = searchParams.get('doc_id');
+    if (deepLinkApplied.current) return;
+    deepLinkApplied.current = true;
+    const docId = searchParams.get('doc_id') ?? searchParams.get('document_id');
     if (docId) {
       const next = new URLSearchParams(searchParams);
       next.delete('doc_id');
+      next.delete('document_id');
       if (!next.has('fileId')) next.set('fileId', docId);
       setSearchParams(next, { replace: true });
+      addToast(`Loading document ${docId}`, 'info');
     }
   // Run once on mount only
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -115,6 +128,38 @@ export default function TextEditorPage() {
     setRevertOpen(false);
   };
 
+  const handleDeleteConfirm = async () => {
+    if (!fileId || !canDelete) return;
+    setDeleting(true);
+    setDeleteOpen(false);
+    try {
+      const token = localStorage.getItem('rmpg_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`/api/uploads/${fileId}`, { method: 'DELETE', headers });
+      if (!res.ok) { const j = await res.json() as { error?: string }; throw new Error(j.error || `HTTP ${res.status}`); }
+      addToast('Document deleted', 'success');
+      navigate('/documents');
+    } catch (err: any) {
+      addToast(err.message || 'Delete failed', 'error');
+    }
+    setDeleting(false);
+  };
+
+  // N shortcut: navigate to Documents — prompt first if there are unsaved changes
+  const handleNewDoc = useCallback(() => {
+    if (isDirty) {
+      setNewDocPendingOpen(true);
+    } else {
+      navigate('/documents');
+    }
+  }, [isDirty, navigate]);
+
+  const handleNewDocConfirm = () => {
+    setNewDocPendingOpen(false);
+    navigate('/documents');
+  };
+
   const copyAll = async () => {
     await navigator.clipboard.writeText(content);
     setCopied(true);
@@ -136,24 +181,23 @@ export default function TextEditorPage() {
     const handler = (e: KeyboardEvent) => {
       const inEditor = document.activeElement === textareaRef.current;
 
-      // Esc cascade: close revert dialog first, stop propagation so textarea doesn't also handle it
+      // Esc cascade: close dialogs in priority order, stop propagation each time
       if (e.key === 'Escape') {
-        if (revertOpen) {
-          e.stopPropagation();
-          setRevertOpen(false);
-        }
+        if (newDocPendingOpen) { e.stopPropagation(); setNewDocPendingOpen(false); return; }
+        if (deleteOpen) { e.stopPropagation(); setDeleteOpen(false); return; }
+        if (revertOpen) { e.stopPropagation(); setRevertOpen(false); return; }
         return;
       }
 
-      // N shortcut: navigate to Documents when no file is loaded and focus is outside the editor
-      if ((e.key === 'n' || e.key === 'N') && !inEditor && !fileId && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // N shortcut: navigate to Documents to create a new doc — gated to canCreate (admin|manager)
+      if ((e.key === 'n' || e.key === 'N') && canCreate && !inEditor && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
-        navigate('/documents');
+        handleNewDoc();
       }
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [revertOpen, fileId, navigate]);
+  }, [revertOpen, deleteOpen, newDocPendingOpen, canCreate, handleNewDoc]);
 
   // Tab key inserts \t instead of focusing the next element
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -186,9 +230,11 @@ export default function TextEditorPage() {
           >
             Browse Documents
           </button>
-          <p className="text-[10px] text-rmpg-600">
-            Press <kbd className="px-1 border border-rmpg-600 rounded-sm">N</kbd> to open Documents
-          </p>
+          {canCreate && (
+            <p className="text-[10px] text-rmpg-600">
+              Press <kbd className="px-1 border border-rmpg-600 rounded-sm">N</kbd> to open Documents
+            </p>
+          )}
         </div>
       </div>
     );
@@ -218,6 +264,18 @@ export default function TextEditorPage() {
             <Download style={{ width: 10, height: 10 }} /> Download
           </a>
         )}
+        {canDelete && fileId && (
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            disabled={deleting}
+            title="Delete document"
+            className="toolbar-btn toolbar-btn-danger disabled:opacity-40"
+          >
+            {deleting ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Trash2 style={{ width: 10, height: 10 }} />}
+            Delete
+          </button>
+        )}
         {canEdit && (
           <button type="button" onClick={save} disabled={!isDirty || saving}
             className="toolbar-btn toolbar-btn-primary disabled:opacity-40">
@@ -229,7 +287,7 @@ export default function TextEditorPage() {
 
       {/* Sub-toolbar: breadcrumb + metadata */}
       <div className="px-4 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-3 text-[9px] text-rmpg-500">
-        <button type="button" onClick={() => navigate(folderId ? '/documents' : '/documents')}
+        <button type="button" onClick={() => navigate('/documents')}
           className="flex items-center gap-1 text-brand-400 hover:text-brand-300">
           <ArrowLeft className="w-3 h-3" /> Documents
         </button>
@@ -271,6 +329,28 @@ export default function TextEditorPage() {
         title="Discard Changes"
         message="Revert to the last saved version? All unsaved edits will be lost."
         confirmLabel="Discard"
+        confirmVariant="warning"
+      />
+
+      {/* Delete confirm — gated to admin|manager via canDelete */}
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Document"
+        message={`Permanently delete "${fileName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
+
+      {/* N shortcut unsaved-changes gate — prompts before discarding and navigating to Documents */}
+      <ConfirmDialog
+        isOpen={newDocPendingOpen}
+        onClose={() => setNewDocPendingOpen(false)}
+        onConfirm={handleNewDocConfirm}
+        title="Unsaved Changes"
+        message="You have unsaved changes. Leave and browse Documents anyway?"
+        confirmLabel="Leave"
         confirmVariant="warning"
       />
     </div>
