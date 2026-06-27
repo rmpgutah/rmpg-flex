@@ -10,10 +10,12 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import { formatDate } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openNationalWarrantPdf, type NationalWarrantHit } from '../utils/nationalWarrantPdf';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── US States List ──────────────────────────────────────────
 const US_STATES = [
@@ -225,6 +227,15 @@ function typeBadge(type: string) {
 export default function NationalWarrantSearchPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const { addToast } = useToast();
+
+  // ── Role gates ───────────────────────────────────────────
+  // canPrint: admin or manager may open court-ready PDFs.
+  // Any authenticated user may run searches (backend enforces READ_ROLES).
+  const canPrint = !!(user?.role === 'admin' || user?.role === 'manager');
+
+  // ── Ref: first name input (for N / `/` shortcut focus) ────
+  const firstNameRef = useRef<HTMLInputElement>(null);
 
   // ── Ref: first name input (for N / `/` shortcut focus) ────
   const firstNameRef = useRef<HTMLInputElement>(null);
@@ -299,10 +310,13 @@ export default function NationalWarrantSearchPage() {
   // Accepts an optional `override` so the deep-link `auto=1` effect can fire
   // a search with the URL-derived fields without waiting for React state to
   // settle (the prior version of this closure was racing).
+  // `fromDeepLink` = true triggers a warning toast when zero results are
+  // returned so the operator knows the auto-triggered search ran but found
+  // nothing — the page stays at "no results" rather than silently empty.
   const handleSearch = useCallback(async (e?: React.FormEvent, override?: Partial<{
     first_name: string; last_name: string; dob: string; state: string;
     offense_level: string; warrant_type: string; charge_keyword: string;
-  }>) => {
+  }>, fromDeepLink?: boolean) => {
     if (e) e.preventDefault();
     const body = {
       first_name: override?.first_name ?? firstName,
@@ -325,12 +339,15 @@ export default function NationalWarrantSearchPage() {
         body: JSON.stringify(body),
       });
       setResults(data);
+      if (fromDeepLink && (data?.total ?? 0) === 0) {
+        addToast('No national warrants found for the linked subject', 'warning');
+      }
     } catch {
       setResults({ total: 0, search_time_ms: 0, by_state: {}, local: [], error: 'Search failed — check server connection' });
     } finally {
       setSearching(false);
     }
-  }, [firstName, lastName, dob, stateFilter, offenseLevel, warrantType, chargeKeyword]);
+  }, [firstName, lastName, dob, stateFilter, offenseLevel, warrantType, chargeKeyword, addToast]);
 
   // ── Deep-link auto-search + URL strip ─────────────────────
   // On first mount only, if the URL carries enough to search AND ?auto=1
@@ -347,7 +364,7 @@ export default function NationalWarrantSearchPage() {
         offense_level: initial.offense_level,
         warrant_type: initial.warrant_type,
         charge_keyword: initial.charge_keyword,
-      });
+      }, /* fromDeepLink= */ true);
     }
     // Strip ALL deep-link params (incl. ?search= and ?warrant_id=)
     // unconditionally so the URL is copy-paste safe.
@@ -936,12 +953,12 @@ function WarrantRow({
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           {warrant.offense_level && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${severityBadge(warrant.offense_level)}`}>
-              {warrant.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+              {toDisplayLabel(warrant.offense_level)}
             </span>
           )}
           {warrant.warrant_type && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${typeBadge(warrant.warrant_type)}`}>
-              {warrant.warrant_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+              {toDisplayLabel(warrant.warrant_type)}
             </span>
           )}
           {warrant.court && (
@@ -976,20 +993,20 @@ function WarrantRow({
             Bond: ${Number(warrant.bond_amount).toLocaleString()}
           </span>
         )}
-        {/* Court-ready PDF for the result row — same path as the
-            right-click "Open court-ready PDF" menu item; pulling officer
-            on the signature line from useAuth. Pre-PR-1033 there was
-            no print path off this page (only "Copy charges"). */}
-        <button
-          type="button"
-          onClick={openPdf}
-          className="toolbar-btn text-rmpg-400 hover:text-brand-400 px-1.5 py-0.5 text-[10px] flex items-center gap-1"
-          title="Open a court-ready PDF for this warrant hit"
-          aria-label={`Open court-ready PDF for ${warrantName(warrant)}`}
-        >
-          <Printer className="w-3 h-3" />
-          PDF
-        </button>
+        {/* Court-ready PDF — gated to admin/manager (canPrint). Same path
+            as the right-click "Open court-ready PDF" context-menu item. */}
+        {canPrint && (
+          <button
+            type="button"
+            onClick={openPdf}
+            className="toolbar-btn text-rmpg-400 hover:text-brand-400 px-1.5 py-0.5 text-[10px] flex items-center gap-1"
+            title="Open a court-ready PDF for this warrant hit"
+            aria-label={`Open court-ready PDF for ${warrantName(warrant)}`}
+          >
+            <Printer className="w-3 h-3" />
+            PDF
+          </button>
+        )}
       </div>
     </div>
   );

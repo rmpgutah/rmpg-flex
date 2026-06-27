@@ -20,6 +20,7 @@ import {
   Eye,
   FileText,
   ShieldCheck,
+  ShieldOff,
   AlertTriangle,
   ExternalLink,
 } from 'lucide-react';
@@ -35,6 +36,11 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { getAuditEntityRoute } from '../utils/auditEntityRoute';
 import { openAuditLogPdf, type AuditLogEntryForPdf } from '../utils/auditLogPdf';
+
+// Roles that may access the audit log. AdminRoute at the router level already
+// gates to admin+manager, but we add a belt-and-suspenders in-page gate so
+// any future route restructuring doesn't silently expose raw audit data.
+const AUDIT_ROLES = new Set(['admin', 'manager']);
 
 interface AuditLogEntry {
   id: number;
@@ -87,8 +93,11 @@ const AuditLogPage: React.FC = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Role gate — belt-and-suspenders alongside AdminRoute in App.tsx.
+  const canView = AUDIT_ROLES.has(user?.role ?? '');
+
   // Set document title
-  useEffect(() => { document.title = 'Audit Log \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Audit Log — RMPG Flex'; }, []);
 
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [stats, setStats] = useState<AuditStats | null>(null);
@@ -100,20 +109,23 @@ const AuditLogPage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [limit] = useState(100);
 
-  // \u2500\u2500 URL deep-link contract \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // Ref for the search/details input — focused by the N shortcut.
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // ── URL deep-link contract ───────────────────────────────────────────
   // Accepted params on mount (all optional, all stripped after consumption):
   //   ?entry_id=<n>     Highlight + scroll a specific audit row (toast if absent
-  //                     from the current page of results \u2014 pagination-aware).
+  //                     from the current page of results — pagination-aware).
   //   ?action=<str>     Pre-fill the Action filter.
   //   ?entityType=<str> Pre-fill the Entity Type filter (legacy: entity_type).
   //   ?entityId=<str>   With entityType, narrows by id (legacy: entity_id).
-  //                     Server doesn't accept entity_id directly \u2014 emulated via
+  //                     Server doesn't accept entity_id directly — emulated via
   //                     `search` so the row containing this id surfaces.
   //   ?user_id=<n>      Pre-fill the User filter (legacy: userId).
   //   ?date_from=<d>    Pre-fill the Start Date filter (legacy: startDate).
   //   ?date_to=<d>      Pre-fill the End Date filter (legacy: endDate).
   //   ?search=<str>     Pre-fill the search box.
-  // Mirroring back into the URL is intentional only for entry_id \u2014 the
+  // Mirroring back into the URL is intentional only for entry_id — the
   // other filters can be heavy (full-table scans on prod D1) and we don't
   // want a stale browser-history entry to silently re-trigger them.
   const initialFilters = useMemo<Filters>(() => {
@@ -134,7 +146,7 @@ const AuditLogPage: React.FC = () => {
   const [highlightedEntryId, setHighlightedEntryId] = useState<number | null>(null);
   const entryRowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
 
-  // ═══ NEW: Compliance report + index stats ═══
+  // Compliance report + index stats
   const [complianceReport, setComplianceReport] = useState<any>(null);
   const [indexStats, setIndexStats] = useState<{ total_entries: number; estimated_size_mb: number } | null>(null);
 
@@ -219,7 +231,6 @@ const AuditLogPage: React.FC = () => {
   useEffect(() => {
     fetchLogs();
     fetchStats();
-    // Fetch new upgrade data
     apiFetch<any>('/audit/compliance-report?days=30').then(d => { if (d) setComplianceReport(d); }).catch(() => {});
     apiFetch<any>('/audit/index-stats').then(d => { if (d) setIndexStats({ total_entries: d.total_entries, estimated_size_mb: d.estimated_size_mb }); }).catch(() => {});
   }, [fetchLogs, fetchStats]);
@@ -295,27 +306,47 @@ const AuditLogPage: React.FC = () => {
     }
   }, [filters]);
 
-  // ── Keyboard: Esc smart-cascade ──
-  // Audit log is read-only — no modals to close. The smallest dismissable
-  // surface is the error banner (operator should see Esc clear it), then
-  // the row highlight from a deep-link, then the active filter set. We
-  // intentionally do NOT clear the page back to 1 on Esc — that's a Reset
-  // semantic, not a Cancel one.
+  // ── Keyboard shortcuts ──────────────────────────────────────────────
+  // N — focus the "Search Details" input to let the operator quickly narrow
+  //     by detail text without reaching for the mouse.
+  // Esc cascade — error banner → row highlight → active filters.
+  //   The audit log is read-only; no modals exist. We intentionally do NOT
+  //   reset the page number on Esc — that's a Reset semantic, not Cancel.
+  const hasActiveFilters = useMemo(() => Object.values(filters).some(val => val !== ''), [filters]);
+
+  // Stable ref so the keyboard handler doesn't recreate on every render.
+  const hasActiveFiltersRef = useRef(hasActiveFilters);
+  hasActiveFiltersRef.current = hasActiveFilters;
+  const errorRef = useRef(error);
+  errorRef.current = error;
+  const highlightedRef = useRef(highlightedEntryId);
+  highlightedRef.current = highlightedEntryId;
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Ignore Esc while a typing surface is focused (filter inputs); the
-      // browser already maps Esc → blur there.
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
-      if (error) { setError(null); return; }
-      if (highlightedEntryId != null) { setHighlightedEntryId(null); return; }
-      if (hasActiveFilters) { clearFilters(); return; }
+      const inTyping = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
+
+      // N: focus the search details input (ignore when already typing).
+      if ((e.key === 'n' || e.key === 'N') && !inTyping && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (e.key !== 'Escape') return;
+      // Esc while a typing surface is focused → browser blurs it; we stop here.
+      if (inTyping) return;
+      e.stopPropagation();
+      if (errorRef.current) { setError(null); return; }
+      if (highlightedRef.current != null) { setHighlightedEntryId(null); return; }
+      if (hasActiveFiltersRef.current) { clearFilters(); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+    // Stable refs mean this effect runs only on mount/unmount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [error, highlightedEntryId, filters]);
+  }, []);
 
   // Get action color — stable callback, no dependencies
   const getActionColor = useCallback((action: string): string => {
@@ -480,7 +511,18 @@ const AuditLogPage: React.FC = () => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  const hasActiveFilters = useMemo(() => Object.values(filters).some(val => val !== ''), [filters]);
+  // ── Role gate — in-page restricted state ────────────────────────────
+  if (!canView) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[40vh] gap-3 text-center">
+        <ShieldOff className="w-10 h-10 text-rmpg-600" />
+        <p className="text-sm font-semibold text-rmpg-300">Access Restricted</p>
+        <p className="text-xs text-rmpg-500">
+          The Audit Log is restricted to administrators and managers. Contact your admin if you need access.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 bg-surface-base min-h-screen text-rmpg-100">
@@ -556,7 +598,7 @@ const AuditLogPage: React.FC = () => {
               </div>
               <div className="text-2xl font-bold text-brand-400 font-mono">{stats.totalEntries.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: 'var(--surface-overlay)', borderLeft: stats.entriesToday > 0 ? '2px solid var(--green-500, #4ade80)' : undefined }}>
+            <div className="panel-beveled p-3" style={{ background: 'var(--surface-overlay)', borderLeft: stats.entriesToday > 0 ? '2px solid var(--green-500)' : undefined }}>
               <div className="flex items-center gap-2 mb-2">
                 <Calendar className="w-4 h-4 text-green-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Today</span>
@@ -610,7 +652,7 @@ const AuditLogPage: React.FC = () => {
             </div>
           </div>
 
-          {/* ═══ NEW: Compliance + Index Stats Row ═══ */}
+          {/* Compliance + Index Stats Row */}
           {(complianceReport || indexStats) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
               {complianceReport && (
@@ -651,13 +693,11 @@ const AuditLogPage: React.FC = () => {
             </div>
           )}
 
-          {/* Compliance gaps — was previously fetched (`/audit/compliance-report?days=30`)
-              but only the headline numbers were rendered; `gaps[]` was silently
-              dropped on the floor. Surfacing it inline tells the supervisor
-              which calendar days fell below the 1-entry/day daily-coverage
-              threshold so the gap can be investigated. */}
+          {/* Compliance gaps — surfaced so the supervisor can see which calendar
+              days fell below the 1-entry/day daily-coverage threshold and
+              investigate accordingly. */}
           {complianceReport && Array.isArray(complianceReport.gaps) && complianceReport.gaps.length > 0 && (
-            <div className="panel-beveled p-3 mt-3" style={{ background: 'var(--surface-overlay)', borderLeft: '2px solid var(--amber-500, #f59e0b)' }}>
+            <div className="panel-beveled p-3 mt-3" style={{ background: 'var(--surface-overlay)', borderLeft: '2px solid var(--amber-500)' }}>
               <div className="flex items-center gap-1.5 mb-1">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
                 <span className="text-[10px] text-amber-300 uppercase font-bold tracking-wider">Coverage Gaps (30d)</span>
@@ -774,15 +814,16 @@ const AuditLogPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Search */}
+          {/* Search — focused by the N shortcut */}
           <div>
             <label htmlFor="ff-auditlogpage-5" className="block text-xs text-rmpg-300 mb-1">Search Details:</label>
             <div className="relative">
               <input id="ff-auditlogpage-5"
+                ref={searchInputRef}
                 type="text"
                 value={filters.search}
                 onChange={(e) => handleFilterChange('search', e.target.value)}
-                placeholder="Search details..." aria-label="Search audit log details"
+                placeholder="Search details…" aria-label="Search audit log details"
                 autoComplete="off"
                 className="input-dark text-xs pl-8 min-h-[36px]"
               />
@@ -812,14 +853,12 @@ const AuditLogPage: React.FC = () => {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-2">
             <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading" />
-            <span className="text-[10px] text-rmpg-500">Loading audit entries...</span>
+            <span className="text-[10px] text-rmpg-500">Loading audit entries…</span>
           </div>
         ) : logs.length === 0 ? (
-          // Empty-state distinction (audit caught both messages reading the
-          // same and operators failing to notice an empty filter set vs an
-          // empty log). The audit log itself is virtually never empty —
-          // every login / dispatch action writes a row — so the bottom
-          // branch is the "you've selected a slice with nothing in it" case.
+          // Empty-state distinction: the audit log is virtually never empty —
+          // every login / dispatch action writes a row — so the bottom branch
+          // is the "your active filters returned nothing" case.
           <div className="flex flex-col items-center justify-center py-20 text-rmpg-400 gap-1">
             <ScrollText className="w-10 h-10 mb-2 text-rmpg-600" />
             {hasActiveFilters ? (

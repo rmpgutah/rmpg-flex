@@ -168,7 +168,14 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       ));
     };
 
+    // On phase reset (deps change = status/timestamps changed), snap bar to
+    // its new position instantly rather than animating backwards over 1 second.
+    // Disable transition → write → re-enable after the browser paints.
+    if (barRef.current) barRef.current.style.transition = 'none';
     update();
+    requestAnimationFrame(() => {
+      if (barRef.current) barRef.current.style.transition = '';
+    });
     // Update every second for active calls, every 30s for inactive
     const interval = setInterval(update, active ? 1000 : 30000);
     return () => clearInterval(interval);
@@ -269,7 +276,6 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             ref={barRef}
             className="timer-bar-fill"
             style={{
-              width: `${initState.progress * 100}%`,
               background: initState.color,
               opacity: initState.progress > 0 ? 1 : 0,
             }}
