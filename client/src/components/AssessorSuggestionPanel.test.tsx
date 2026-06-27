@@ -44,4 +44,50 @@ describe('AssessorSuggestionPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(onDismiss).toHaveBeenCalled();
   });
+
+  test('no-match panel shows manual search link when code=no_match', () => {
+    render(
+      <AssessorSuggestionPanel
+        parcels={[]}
+        code="no_match"
+        manualUrl="https://apps.saltlakecounty.gov/assessor/new/query.cfm?address=foo"
+        onApply={() => {}}
+        onDismiss={() => {}}
+      />,
+    );
+    expect(screen.getByText(/no matching parcels/i)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /search slco manually/i });
+    expect(link).toHaveAttribute('href', expect.stringContaining('saltlakecounty.gov'));
+  });
+
+  test('error state shows retry button when onRetry provided', () => {
+    const onRetry = vi.fn();
+    render(
+      <AssessorSuggestionPanel
+        parcels={[]}
+        code="upstream_error"
+        error="boom"
+        manualUrl="https://x.example"
+        onApply={() => {}}
+        onDismiss={() => {}}
+        onRetry={onRetry}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  test('degraded picker shows stale-data warning', () => {
+    render(
+      <AssessorSuggestionPanel
+        parcels={[sample[0]]}
+        source="stale_cache"
+        degraded={true}
+        manualUrl="https://x.example"
+        onApply={() => {}}
+        onDismiss={() => {}}
+      />,
+    );
+    expect(screen.getByText(/last-known data/i)).toBeInTheDocument();
+  });
 });

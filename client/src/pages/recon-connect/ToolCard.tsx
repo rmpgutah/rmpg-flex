@@ -223,7 +223,8 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
   const loadCases = async () => {
     if (cases !== null) return;
     try {
-      const rows = await apiFetch<any[]>('/cases?limit=100');
+      const res = await apiFetch<{ data: any[] }>('/cases?limit=100');
+      const rows = res.data ?? [];
       setCases(rows.map((r) => ({ id: r.id, case_number: r.case_number, title: r.title, status: r.status })));
     } catch {
       setCases([]);

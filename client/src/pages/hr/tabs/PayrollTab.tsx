@@ -610,7 +610,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{
                           backgroundColor: (STATUS_COLORS[period.status] || 'var(--rmpg-500)') + '20',
                           color: STATUS_COLORS[period.status] || 'var(--rmpg-500)'
-                        }}>{(period.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                        }}>{toDisplayLabel(period.status)}</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
                         {formatDate(period.start_date)} — {formatDate(period.end_date)} • Pay: {formatDate(period.pay_date)}
@@ -846,7 +846,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                           <span className="px-1.5 py-0.5 text-[9px] rounded-full font-medium" style={{
                             backgroundColor: (STATUS_COLORS[entry.status] || 'var(--rmpg-500)') + '20',
                             color: STATUS_COLORS[entry.status] || 'var(--rmpg-500)'
-                          }}>{(entry.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                          }}>{toDisplayLabel(entry.status)}</span>
                         </td>
                         <td className="px-2 py-2 text-center">
                           {isManager && entry.status !== 'approved' && (
@@ -961,7 +961,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                           ot.status === 'approved' ? 'bg-green-900/50 text-green-400' :
                           ot.status === 'denied' ? 'bg-red-900/50 text-red-400' :
                           'bg-amber-900/50 text-amber-400'
-                        }`}>{(ot.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                        }`}>{toDisplayLabel(ot.status)}</span>
                       </td>
                       {isManager && (
                         <td className="px-2 py-1.5">

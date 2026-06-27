@@ -349,3 +349,253 @@ html.theme-light .records-page .alert-banner-warning .text-white { color: #6b4e1
 .dashboard-page .spm-group-head.tone-red   { background: linear-gradient(#a23b3b, #6e1f1f); }
 .dashboard-page .spm-group-head.tone-gold  { background: linear-gradient(#c08a2e, #8a5e15); }
 .dashboard-page .spm-group-body { padding: 6px 7px; }
+
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  UNIVERSAL SPM-PAGE SKIN (.spm-page)                         ║
+   ║  Apply className="spm-page" to any page root to get the full ║
+   ║  Spillman Flex grey/steel-blue treatment (day/night aware).   ║
+   ║  Applied globally via the <main> wrapper in Layout.tsx so    ║
+   ║  every module inherits it without individual page changes.    ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+/* ── Base surface + text ─────────────────────────────────────── */
+.spm-page { background: var(--spm-form); color: var(--spm-text); }
+
+/* rmpg / surface / brand tokens → Spillman surfaces */
+.spm-page [class*="bg-rmpg-9"],
+.spm-page [class*="bg-surface-base"],
+.spm-page [class*="bg-surface-deep"],
+.spm-page [class*="bg-surface-sunken"]  { background-color: var(--spm-form)  !important; }
+.spm-page [class*="bg-rmpg-8"],
+.spm-page [class*="bg-rmpg-7"],
+.spm-page [class*="bg-surface-raised"],
+.spm-page [class*="bg-surface-overlay"] { background-color: var(--spm-field) !important; }
+.spm-page [class*="border-rmpg-"]       { border-color: var(--spm-border) !important; }
+
+/* Text recolor */
+.spm-page .text-white                    { color: var(--spm-text) !important; }
+.spm-page [class*="text-rmpg-3"],
+.spm-page [class*="text-rmpg-4"],
+.spm-page [class*="text-rmpg-5"]         { color: var(--spm-text-muted) !important; }
+.spm-page [class*="text-brand-4"],
+.spm-page [class*="text-brand-5"]        { color: var(--spm-accent) !important; }
+
+/* ── Panel title bar → steel-blue gradient ───────────────────── */
+.spm-page .panel-title-bar {
+  background: linear-gradient(#5a7ea6, #2e4a66) !important;
+  border-color: #2e4a66 !important;
+  color: #ffffff !important;
+  text-shadow: none !important;
+}
+.spm-page .panel-title-bar .title-icon { color: #ffffff !important; filter: none !important; }
+.spm-page .panel-title-bar span         { color: #ffffff !important; }
+
+/* ── Toolbar buttons → classic Spillman raised ───────────────── */
+.spm-page .toolbar-btn {
+  background: var(--spm-toolbar) !important;
+  border: 1px solid var(--spm-border) !important;
+  color: var(--spm-text) !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 11px !important;
+}
+.spm-page .toolbar-btn:hover:not(:disabled)  { background: var(--spm-toolbar-hover)   !important; color: var(--spm-text) !important; }
+.spm-page .toolbar-btn:active:not(:disabled) { background: var(--spm-toolbar-active)  !important; }
+.spm-page .toolbar-btn-primary {
+  background: var(--spm-toolbar-primary) !important;
+  border-color: var(--spm-border) !important;
+  color: var(--spm-text) !important;
+  font-weight: 600 !important;
+}
+.spm-page .toolbar-btn-danger  { background: linear-gradient(#a23b3b, #6e1f1f) !important; border-color: #7a2020 !important; color: #ffcccc !important; }
+.spm-page .toolbar-btn-success { background: linear-gradient(#2e6e3c, #1d4a28) !important; border-color: #1d6b38 !important; color: #ccffcc !important; }
+
+/* ── CollapsibleSection → Spillman group boxes ───────────────── */
+.spm-page .collapsible-section {
+  border: 1px solid var(--spm-border) !important;
+  background: var(--spm-field) !important;
+}
+.spm-page .collapsible-section-header {
+  background: var(--spm-group-head) !important;
+  border-bottom: 1px solid var(--spm-border) !important;
+  color: var(--spm-accent) !important;
+}
+.spm-page .collapsible-section-header * { color: var(--spm-accent) !important; }
+
+/* ── List rows → themed, steel-blue selection ────────────────── */
+.spm-page [role="listitem"] {
+  border-bottom: 1px solid var(--spm-border) !important;
+  color: var(--spm-text) !important;
+}
+.spm-page [role="listitem"]:nth-child(even)         { background: var(--spm-field) !important; }
+.spm-page [role="listitem"]:hover                   { background: var(--spm-field-border) !important; }
+.spm-page [role="listitem"][aria-selected="true"]   {
+  background: var(--spm-select) !important;
+  border-left-color: #1e3f6b !important;
+}
+.spm-page [role="listitem"][aria-selected="true"],
+.spm-page [role="listitem"][aria-selected="true"] * { color: #ffffff !important; }
+/* Badge legibility on steel-blue selected row */
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-red-"]    { background: #b91c1c !important; color: #fff !important; }
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-amber-"],
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-yellow-"] { background: #b45309 !important; color: #fff !important; }
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-green-"]  { background: #15803d !important; color: #fff !important; }
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-purple-"] { background: #7e22ce !important; color: #fff !important; }
+.spm-page [role="listitem"][aria-selected="true"] [class*="bg-rmpg-"]   { background: #1e3f6b !important; color: #fff !important; }
+
+/* ── Stats strip → Spillman chrome surface ───────────────────── */
+.spm-page .records-stats { background: var(--spm-chrome) !important; color: var(--spm-text) !important; }
+.spm-page .records-stats .text-white { color: var(--spm-text) !important; }
+
+/* Scrollbars */
+.spm-page .scrollbar-dark::-webkit-scrollbar-track { background: var(--spm-chrome) !important; }
+.spm-page .scrollbar-dark::-webkit-scrollbar-thumb { background: var(--spm-border) !important; }
+
+/* ── spm-page-shell: the SpillmanPage component chrome ──────── */
+.spm-page-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: linear-gradient(#5a7ea6, #2e4a66);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #2e4a66;
+  user-select: none;
+  flex-shrink: 0;
+}
+.spm-page-title-icon { display: flex; align-items: center; opacity: 0.9; }
+.spm-page-title      { flex: 0 0 auto; }
+.spm-page-screen     { flex: 1; text-align: center; font-weight: 400; font-size: 10px; letter-spacing: 0.1em; opacity: 0.7; }
+.spm-page-body       { background: var(--spm-form); }
+
+/* ── SpillmanModuleGroup component ───────────────────────────── */
+.spm-modgroup        { display: flex; flex-direction: column; min-height: 0; }
+.spm-modgroup-strip  {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--spm-chrome);
+  border-bottom: 1px solid var(--spm-border);
+  overflow-x: auto;
+}
+.spm-modgroup-group  { display: flex; flex-direction: column; gap: 1px; }
+.spm-modgroup-head   {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  color: #ffffff;
+  white-space: nowrap;
+}
+.spm-modgroup-head--steel   { background: linear-gradient(#5a7ea6, #2e4a66); }
+.spm-modgroup-head--red     { background: linear-gradient(#a23b3b, #6e1f1f); }
+.spm-modgroup-head--gold    { background: linear-gradient(#c08a2e, #8a5e15); }
+.spm-modgroup-head--green   { background: linear-gradient(#2e6e3c, #1d4a28); }
+.spm-modgroup-head--neutral { background: var(--spm-field-border); color: var(--spm-text); }
+
+.spm-modgroup-tabs   { display: flex; gap: 1px; }
+.spm-modgroup-tab    {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid var(--spm-border);
+  background: var(--spm-toolbar);
+  color: var(--spm-text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.spm-modgroup-tab:hover:not(.disabled) { background: var(--spm-toolbar-hover); }
+.spm-modgroup-tab.on {
+  background: var(--spm-select);
+  color: #ffffff;
+  font-weight: 600;
+  border-color: #1e3f6b;
+}
+.spm-modgroup-tab.disabled { opacity: 0.4; cursor: default; }
+.spm-modgroup-count  { font-size: 10px; color: var(--spm-text-muted); }
+.spm-modgroup-tab.on .spm-modgroup-count { color: rgba(255,255,255,0.7); }
+.spm-modgroup-body   { flex: 1; min-height: 0; background: var(--spm-form); }
+
+/* ── SpillmanTabPanel component ──────────────────────────────── */
+.spm-tabpanel        { display: flex; flex-direction: column; min-height: 0; }
+.spm-tabpanel-body   { flex: 1; min-height: 0; background: var(--spm-form); }
+
+/* ── Existing tab-bar / tab-bar-item → Spillman form-tab style ── */
+/* The `.tab-bar` / `.tab-bar-item` classes are used across many pages.
+   Inside .spm-page, restyle them to match the Spillman spm-form-tab chrome. */
+.spm-page .tab-bar {
+  background: var(--spm-chrome) !important;
+  border-bottom: 1px solid var(--spm-border) !important;
+  padding: 3px 4px 0 !important;
+  gap: 2px !important;
+}
+.spm-page .tab-bar-item {
+  padding: 4px 12px !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  color: var(--spm-text) !important;
+  border: 1px solid var(--spm-border) !important;
+  border-bottom: none !important;
+  background: var(--spm-chrome) !important;
+  border-radius: 3px 3px 0 0 !important;
+  position: relative !important;
+  top: 1px !important;
+}
+.spm-page .tab-bar-item:hover {
+  background: var(--spm-field-border) !important;
+  color: var(--spm-text) !important;
+}
+.spm-page .tab-bar-item.active {
+  background: var(--spm-form) !important;
+  font-weight: 600 !important;
+  color: var(--spm-accent) !important;
+  border-color: var(--spm-border) !important;
+  border-bottom: 2px solid var(--spm-accent) !important;
+}
+
+/* ── spillman-tab / spillman-tab-bar → Spillman form-tab style ── */
+.spm-page .spillman-tab-bar {
+  background: var(--spm-chrome) !important;
+  border-bottom: 1px solid var(--spm-border) !important;
+}
+.spm-page .spillman-tab {
+  color: var(--spm-text-muted) !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+.spm-page .spillman-tab:hover { color: var(--spm-text) !important; background: var(--spm-field-border) !important; }
+.spm-page .spillman-tab.active {
+  color: var(--spm-accent) !important;
+  border-bottom-color: var(--spm-accent) !important;
+  background: transparent !important;
+}
+.spm-page .spillman-tab.active::after { background: var(--spm-accent) !important; box-shadow: none !important; }
+
+/* ── tactical-dark reset: map / HUD tab bars keep their own look ─ */
+/* The .tactical-dark scope forces night vars but does NOT protect inner
+   tab-bar elements from the .spm-page override above (since !important wins
+   specificity). Explicitly restoring the defaults inside tactical-dark
+   prevents the map sidebar / overlay tabs from getting Spillman chrome. */
+.tactical-dark .tab-bar          { background: transparent !important; border-bottom-color: #222222 !important; padding: 0 4px !important; }
+.tactical-dark .tab-bar-item     { font-size: 10px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; color: #888888 !important; background: transparent !important; border: 1px solid transparent !important; border-radius: 0 !important; top: 2px !important; }
+.tactical-dark .tab-bar-item:hover  { color: #cccccc !important; background: rgba(136,136,136,0.1) !important; }
+.tactical-dark .tab-bar-item.active { color: #d4a017 !important; background: var(--surface-raised) !important; border-color: #222222 !important; border-bottom: 2px solid var(--surface-raised) !important; }
+
+/* ── Day-theme adjustments (spm-page + theme-light) ──────────── */
+/* Panel title bar gradient already reads well in day theme (same blue-grey),
+   but list row colours need a lighter hover since spm-field is near-white. */
+html.theme-light .spm-page [role="listitem"]:hover {
+  background: var(--spm-field-border) !important;
+}
