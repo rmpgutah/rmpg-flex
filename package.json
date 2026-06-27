@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7",
+    "@hono/zod-validator": "^0.8.0",
     "@simplewebauthn/server": "^13.3.1",
     "bcryptjs": "^3.0.3",
     "hono": "^4.12.26",

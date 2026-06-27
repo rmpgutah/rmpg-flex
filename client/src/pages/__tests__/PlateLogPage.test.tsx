@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import PlateLogPage from '../PlateLogPage';
+import { ToastProvider } from '../../components/ToastProvider';
 
 const apiFetch = vi.fn(async (path: string, init?: RequestInit) => {
   if (init?.method === 'POST') return {
@@ -35,7 +36,7 @@ describe('PlateLogPage', () => {
   });
 
   it('logs a plate and renders the critical hit banner + recent sightings', async () => {
-    render(<MemoryRouter><PlateLogPage /></MemoryRouter>);
+    render(<MemoryRouter><ToastProvider><PlateLogPage /></ToastProvider></MemoryRouter>);
     await waitFor(() => expect(screen.getByText('XYZ789')).toBeInTheDocument());
     fireEvent.change(screen.getByPlaceholderText('PLATE'), { target: { value: 'abc123' } });
     fireEvent.click(screen.getByText('LOG + CHECK'));
