@@ -22,6 +22,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -125,12 +126,6 @@ export function fmtDuration(seconds: number | null | undefined): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-/** snake_case → Title Case ("use_of_force" → "Use Of Force"). */
-export function prettyLabel(s: string | undefined | null): string {
-  if (!s) return '—';
-  return String(s).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 /** "Any injury reported?" — drives the red alert banner. Trims whitespace and
  *  treats "none"/"n/a"/"-" as no injury so the alert only fires when there's
  *  actually something to read. */
@@ -193,7 +188,7 @@ export function generateUseOfForceReportPdf(input: UofReportPdfInput): jsPDF {
   let y = 36;
 
   // Banner — RMPG gold strap with report id + force type.
-  const headerLabel = `UoF-${report.id ?? '?'} — ${prettyLabel(report.force_type).toUpperCase()}`;
+  const headerLabel = `UoF-${report.id ?? '?'} — ${toDisplayLabel(report.force_type).toUpperCase()}`;
   doc.setFillColor(RMPG_GOLD);
   doc.rect(M, y, W - 2 * M, 28, 'F');
   doc.setFont('Arial', 'bold');
@@ -272,7 +267,7 @@ export function generateUseOfForceReportPdf(input: UofReportPdfInput): jsPDF {
   sectionHeader('INCIDENT');
   twoColRow(
     'Report ID', `UoF-${report.id ?? '?'}`,
-    'Status', prettyLabel(report.status),
+    'Status', toDisplayLabel(report.status),
   );
   twoColRow(
     'Submitted', fmtDateTime(report.created_at),
@@ -280,7 +275,7 @@ export function generateUseOfForceReportPdf(input: UofReportPdfInput): jsPDF {
   );
   twoColRow(
     'Linked Incident', report.incident_number || '—',
-    'Incident Type', prettyLabel(report.incident_type),
+    'Incident Type', toDisplayLabel(report.incident_type),
   );
 
   // ── Reporting officer + subject demographics ──
@@ -299,7 +294,7 @@ export function generateUseOfForceReportPdf(input: UofReportPdfInput): jsPDF {
   newPageIfNeeded(80);
   sectionHeader('FORCE DETAILS');
   twoColRow(
-    'Force Type', prettyLabel(report.force_type),
+    'Force Type', toDisplayLabel(report.force_type),
     'Force Level', report.force_level || '—',
   );
   twoColRow(
@@ -412,7 +407,7 @@ export function generateUseOfForceReportPdf(input: UofReportPdfInput): jsPDF {
       doc.text(String(entry.id ?? '—'), cx, y + 9); cx += cols[1].width;
       doc.text(fmtDateTime(entry.recorded_at), cx, y + 9); cx += cols[2].width;
       doc.text(fmtDuration(entry.duration_seconds), cx, y + 9); cx += cols[3].width;
-      doc.text(ellipsize(prettyLabel(entry.classification), 14), cx, y + 9); cx += cols[4].width;
+      doc.text(ellipsize(toDisplayLabel(entry.classification), 14), cx, y + 9); cx += cols[4].width;
       const evLabel = entry.evidence_locked
         ? `LOCKED ${entry.evidence_number ? `(${entry.evidence_number})` : ''}`
         : '—';
