@@ -17,6 +17,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -86,9 +87,6 @@ function fmtTime(input: string | undefined): string {
     timeZone: MT_TZ, hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(d);
 }
-
-const PRETTY_TYPE = (s: string | undefined): string =>
-  (s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 /** Public for unit testing. Sum of every section's count for the cover stat. */
 export function totalActivityCount(s: ShiftReportSummary | undefined): number {
@@ -242,7 +240,7 @@ export function generateShiftReportPdf(input: ShiftReportInput): jsPDF {
     input.calls!.forEach((c, i) => {
       row(cols, {
         call_number: c.call_number ?? '—',
-        incident_type: ellipsize(PRETTY_TYPE(c.incident_type), 22),
+        incident_type: ellipsize(toDisplayLabel(c.incident_type), 22),
         priority: c.priority ?? '—',
         status: ellipsize(c.status ?? '—', 9),
         time: fmtTime(c.created_at),
@@ -265,7 +263,7 @@ export function generateShiftReportPdf(input: ShiftReportInput): jsPDF {
     input.incidents!.forEach((i, idx) => {
       row(cols, {
         incident_number: i.incident_number ?? '—',
-        incident_type: ellipsize(PRETTY_TYPE(i.incident_type), 26),
+        incident_type: ellipsize(toDisplayLabel(i.incident_type), 26),
         status: ellipsize((i.status ?? '—').replace(/_/g, ' '), 14),
         location: ellipsize(i.location_address ?? '—', 42),
       }, idx % 2 === 1);
