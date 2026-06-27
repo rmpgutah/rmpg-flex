@@ -14,6 +14,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -105,12 +106,6 @@ export function fmtFileSize(bytes: number | null | undefined): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-/** snake_case action → Title Case ("bodycam_video_viewed" → "Bodycam Video Viewed"). */
-export function prettyAction(action: string | undefined): string {
-  if (!action) return '—';
-  return action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 /** Pick a chain entry's actor — by_name preferred (resolved), `by` as fallback. */
 export function chainEntryActor(entry: BodycamCustodyEntry): string {
   return (entry.by_name && entry.by_name.trim()) || (entry.by && String(entry.by).trim()) || '—';
@@ -195,9 +190,9 @@ export function generateBodycamVideoCustodyPdf(input: BodycamVideoPdfInput): jsP
     ['Duration', fmtDuration(video.duration_seconds)],
     ['File Size', fmtFileSize(video.file_size)],
     ['Mime Type', video.mime_type || '—'],
-    ['Classification', prettyAction(video.classification)],
-    ['Retention', prettyAction(video.retention_status)],
-    ['Interaction Type', prettyAction(video.interaction_type ?? undefined)],
+    ['Classification', toDisplayLabel(video.classification)],
+    ['Retention', toDisplayLabel(video.retention_status)],
+    ['Interaction Type', toDisplayLabel(video.interaction_type ?? undefined)],
     ['Linked Case', video.case_number || '—'],
   ];
   const colW = (W - 2 * M) / 2;
@@ -274,7 +269,7 @@ export function generateBodycamVideoCustodyPdf(input: BodycamVideoPdfInput): jsP
       let x = M + 4;
       doc.text(fmtDateTime(entry.at), x, y + 9);
       x += cols[0].width;
-      doc.text(ellipsize(prettyAction(entry.action), 22), x, y + 9);
+      doc.text(ellipsize(toDisplayLabel(entry.action), 22), x, y + 9);
       x += cols[1].width;
       doc.text(ellipsize(chainEntryActor(entry), 20), x, y + 9);
       x += cols[2].width;
