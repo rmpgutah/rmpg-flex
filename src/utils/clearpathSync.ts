@@ -372,7 +372,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
 
   let cameras: CpgCamera[] | null = null;
   if (mappings.some((m) => !m.cpg_camera_id)) {
-    try { cameras = await listCameras(env, client); } catch (err) { log.warn('camera list failed', {}, err); }
+    try { cameras = await listCameras(env, client); } catch (err) { log.warn('camera list failed', { err }); }
   }
 
   const budget = { left: MAX_CLIPS_PER_RUN, errors: [] as string[] };

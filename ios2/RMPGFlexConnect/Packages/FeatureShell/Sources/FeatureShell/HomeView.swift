@@ -117,7 +117,7 @@ public struct HomeView: View {
                     Text(cfs.displayIncidentType).font(.caption)
                 }
                 Text(cfs.location_address).font(.subheadline)
-                if let note = cfs.dispatcher_note {
+                if let note = cfs.notes {
                     Text(note).font(.caption).foregroundColor(theme.colors.textSecondary)
                 }
                 HStack(spacing: 8) {

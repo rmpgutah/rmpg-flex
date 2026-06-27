@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Briefcase, UserCheck } from 'lucide-react';
+import { AlertTriangle, Briefcase, UserCheck, BarChart3, Clock, Calendar } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import PanelTitleBar from '../PanelTitleBar';
@@ -39,18 +39,21 @@ export default function ServeDashboardPerformance() {
   const [officers, setOfficers] = useState<OfficerRate[]>([]);
   const [deadlines, setDeadlines] = useState<DeadlineJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scheduleAnalytics, setScheduleAnalytics] = useState<{ summary: { total_attempts: number; success_rate: number }; by_day_of_week: Record<string, { total: number; served: number }>; by_hour: Record<string, { total: number; served: number }> } | null>(null);
 
   const refetch = useCallback(async () => {
     try {
       if (!summary) setLoading(true);
-      const [sum, rates, dl] = await Promise.all([
+      const [sum, rates, dl, analytics] = await Promise.all([
         apiFetch<ServeSummary>('/serve/stats/summary'),
         apiFetch<SuccessRatesResp>('/serve/success-rates'),
         apiFetch<DeadlineJob[]>('/serve/deadlines?days=7'),
+        apiFetch<any>('/serve/schedule-analytics?start_date=' + new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)),
       ]);
       setSummary(sum);
       setOfficers(rates.officers ?? []);
       setDeadlines(dl ?? []);
+      setScheduleAnalytics(analytics);
     } catch {
       // Silently fail — dashboard widget must never break the page
     } finally {
@@ -146,6 +149,39 @@ export default function ServeDashboardPerformance() {
 
           {!summary && officers.length === 0 && deadlines.length === 0 && (
             <div className="text-[11px] text-rmpg-400 text-center py-2">No serve data available</div>
+          )}
+
+          {/* Schedule Analytics */}
+          {scheduleAnalytics && (
+            <div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold mb-1 tracking-wider flex items-center gap-1">
+                <BarChart3 className="w-3 h-3" /> Schedule Performance (30d)
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div className="bg-surface-raised rounded px-2 py-1 text-center">
+                  <div className="text-[9px] text-rmpg-400 uppercase font-bold">Attempts</div>
+                  <div className="text-sm font-bold font-mono tabular-nums text-rmpg-100">{scheduleAnalytics.summary.total_attempts}</div>
+                </div>
+                <div className="bg-surface-raised rounded px-2 py-1 text-center">
+                  <div className="text-[9px] text-rmpg-400 uppercase font-bold">Success Rate</div>
+                  <div className="text-sm font-bold font-mono tabular-nums text-green-400">{scheduleAnalytics.summary.success_rate}%</div>
+                </div>
+              </div>
+              {/* Day-of-week mini bar */}
+              {Object.keys(scheduleAnalytics.by_day_of_week).length > 0 && (
+                <div className="text-[9px] text-rmpg-500 mb-1">By day of week</div>
+              )}
+              <div className="flex gap-1 mb-1 flex-wrap">
+                {Object.entries(scheduleAnalytics.by_day_of_week).map(([day, stats]) => (
+                  <div key={day} className="flex-1 min-w-[36px] text-center bg-surface-base rounded-sm px-1 py-0.5 border border-rmpg-700/50">
+                    <div className="text-[8px] text-rmpg-500 font-bold uppercase">{day.slice(0, 3)}</div>
+                    <div className={`text-[10px] font-bold font-mono ${stats.total > 0 ? (stats.served / stats.total) >= 0.7 ? 'text-green-400' : (stats.served / stats.total) >= 0.4 ? 'text-amber-400' : 'text-red-400' : 'text-rmpg-500'}`}>
+                      {stats.total > 0 ? `${Math.round((stats.served / stats.total) * 100)}%` : '—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

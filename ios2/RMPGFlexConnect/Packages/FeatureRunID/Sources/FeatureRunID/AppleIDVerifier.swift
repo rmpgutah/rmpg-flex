@@ -1,4 +1,6 @@
 import SwiftUI
+
+#if swift(>=6.2)
 import ProximityReader
 
 public struct AppleIDVerifierView: View {
@@ -60,3 +62,14 @@ public struct AppleIDVerifierView: View {
         isPresented = false
     }
 }
+#else
+public struct AppleIDVerifierView: View {
+    public init() {}
+    public var body: some View {
+        Text("Wireless ID verification not available (requires iOS 18+)")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .padding()
+    }
+}
+#endif

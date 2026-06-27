@@ -14,7 +14,7 @@ public actor OutboxDrainer {
 
     public func drainBatch(maxEntries: Int = 20) async -> DrainResult {
         let context = ModelContext(modelContainer)
-        let descriptor = FetchDescriptor<OutboxEntry>(
+        var descriptor = FetchDescriptor<OutboxEntry>(
             predicate: #Predicate { !$0.isFailed && $0.attemptCount < 10 },
             sortBy: [SortDescriptor(\.createdAt, order: .forward)]
         )

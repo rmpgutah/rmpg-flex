@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreAPI
 import DesignSystem
 import FeatureDuty
 import FeatureCFS
@@ -46,7 +47,7 @@ public struct QuickActionsSheetView: View {
             StartPatrolView(dutyState: dutyState)
         }
         .sheet(isPresented: $showNewCall) {
-            NewCallForm(api: CFSAPI(client: apiClient))
+            NewCallForm(vm: NewCallViewModel(api: CFSAPI(client: apiClient)))
         }
         .sheet(isPresented: $showFI) {
             FieldInterviewCardView()

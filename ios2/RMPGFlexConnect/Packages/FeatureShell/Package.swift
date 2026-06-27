@@ -10,8 +10,8 @@ let package = Package(
     dependencies: [
         .package(path: "../CoreAPI"),
         .package(path: "../CoreAuth"),
-        .package(path: "../CoreAudio"),
-        .package(path: "../CoreLocation"),
+        .package(path: "../CoreAudioService"),
+        .package(path: "../CoreLocationService"),
         .package(path: "../DesignSystem"),
         .package(path: "../FeatureDuty"),
         .package(path: "../FeatureCFS"),
@@ -25,10 +25,11 @@ let package = Package(
         .target(
             name: "FeatureShell",
             dependencies: [
-                "CoreAPI", "CoreAuth", "CoreAudio", "CoreLocation",
+                "CoreAPI", "CoreAuth", "CoreAudioService", "CoreLocationService",
                 "DesignSystem", "FeatureDuty", "FeatureCFS", "FeatureQuickActions",
                 "FeatureReports", "FeatureRunPlate", "FeatureRunID", "FeatureLiveActivity",
-            ]
+            ],
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "FeatureShellTests",

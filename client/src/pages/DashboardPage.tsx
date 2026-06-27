@@ -26,6 +26,8 @@ import { useToast } from '../components/ToastProvider';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import SpmGroup from './dashboard/SpmGroup';
 import DashboardViewSelector from './dashboard/DashboardViewSelector';
 import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
@@ -404,6 +406,11 @@ export default function DashboardPage() {
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
 
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const refreshAll = () => fetchDashboardData({ silent: false });
+
   // Role gates
   // canCreate: any operational role may create records (calls, incidents, citations)
   const canCreate = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'].includes(role);
@@ -757,7 +764,12 @@ export default function DashboardPage() {
           ? `Synced ${lastSyncedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
           : 'Awaiting first sync';
         return (
-          <div className="spm-screen-title">
+          <div className="spm-screen-title" onContextMenu={(e) => openMenu(e, [
+            m.action('Refresh dashboard', refreshAll, { icon: <RefreshCw size={12} /> }),
+            m.separator(),
+            m.action('New call', () => setShowNewCallModal(true), { icon: <Plus size={12} />, disabled: !canCreate }),
+            m.action('New incident', () => setShowIncidentModal(true), { icon: <FileText size={12} />, disabled: !canCreate }),
+          ])}>
             <span className={`led-dot ${ledClass}`} aria-hidden="true" />
             Command &amp; Control — {statusWord}
             <span className="ml-auto text-[10px] font-mono text-rmpg-500 tabular-nums" title={lastSyncedAt?.toLocaleString() ?? 'Never'}>
@@ -837,7 +849,10 @@ export default function DashboardPage() {
 
       {/* Stats Cards Row */}
       {hasPanel('activeCalls') && (
-      <div id="dashboard-panel-activeCalls">
+      <div id="dashboard-panel-activeCalls" onContextMenu={(e) => openMenu(e, [
+        m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+        m.go('Go to Dispatch', '/dispatch', <ArrowRight size={12} />),
+      ])}>
       <SpmGroup title="Active Calls — Priority & Volume">
       <div className="space-y-4">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`} role="region" aria-label="Key statistics">
@@ -884,7 +899,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls by priority">
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2`}" role="region" aria-label="Calls by priority" onContextMenu={(e) => { e.stopPropagation(); openMenu(e, [m.go('View all in Dispatch', '/dispatch', <ArrowRight size={12} />)]); }}>
         {[
           { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: 'var(--stat-accent-red)' },
           { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: 'var(--stat-accent-amber)' },
@@ -917,7 +932,7 @@ export default function DashboardPage() {
 
       {/* Secondary Stats Row — expanded to 5 cols 2026-05-24 to add Warrant Poll card */}
       {hasPanel('statusSummary') && (
-      <div id="dashboard-panel-statusSummary">
+      <div id="dashboard-panel-statusSummary" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
       <SpmGroup title="Status Summary">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2'}`} role="region" aria-label="Record statistics">
         <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants?status=active')}>
@@ -989,7 +1004,7 @@ export default function DashboardPage() {
       <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'}`}>
         {/* Shift Countdown Timer */}
         {hasPanel('shiftStatus') && (
-        <SpmGroup title="Shift Status">
+        <SpmGroup title="Shift Status" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
           <div className="p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -1043,7 +1058,7 @@ export default function DashboardPage() {
 
         {/* Weather Widget */}
         {hasPanel('weather') && (
-        <SpmGroup title="Weather — Salt Lake City">
+        <SpmGroup title="Weather — Salt Lake City" onContextMenu={(e) => openMenu(e, [m.action('Refresh weather', fetchWeather, { icon: <RefreshCw size={12} /> })])}>
           <div className="p-3">
             {weather ? (() => {
               const WeatherIcon = weather.icon;
@@ -1117,7 +1132,10 @@ export default function DashboardPage() {
 
       {/* BOLO Ticker */}
       {hasPanel('activeBolos') && (
-      <div id="dashboard-panel-activeBolos">
+      <div id="dashboard-panel-activeBolos" onContextMenu={(e) => openMenu(e, [
+        m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+        m.go('View all BOLOs', '/intel/bolos', <ArrowRight size={12} />),
+      ])}>
         <SpmGroup title="Active BOLOs" tone="red">
         {loading && bolos.length === 0 ? (
           <div className="flex items-center justify-center py-4 gap-2" role="status">
@@ -1165,7 +1183,10 @@ export default function DashboardPage() {
           filters by distance via /reports/calls-near. Falls back to a clear
           "GPS required" / "no calls in radius" empty state. */}
       {hasPanel('callsNearMe') && (
-        <SpmGroup title="Calls Near Me">
+        <SpmGroup title="Calls Near Me" onContextMenu={(e) => openMenu(e, [
+          m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+          m.go('Open Dispatch', '/dispatch', <ArrowRight size={12} />),
+        ])}>
           <div className="p-3 space-y-2">
             <div className="flex items-center gap-2 flex-wrap text-[10px] text-rmpg-400">
               {geoStatus === 'granted' && geoPosition ? (
@@ -1265,7 +1286,7 @@ export default function DashboardPage() {
 
       {/* ═══ NEW: Shift-Aware Stats + Court Dates + Expiring Certs Row ═══ */}
       {hasPanel('alertsReminders') && (shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
-        <SpmGroup title="Alerts & Reminders" tone="gold">
+        <SpmGroup title="Alerts & Reminders" tone="gold" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
         <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 sm:grid-cols-3 gap-3'}`}>
           {shiftStats && (
             <div className="panel-beveled bg-surface-base p-3">
@@ -1335,7 +1356,7 @@ export default function DashboardPage() {
 
       {/* Main Content Grid */}
       {hasPanel('callAnalytics') && (
-      <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
+      <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
           <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
@@ -1485,7 +1506,7 @@ export default function DashboardPage() {
 
       {/* Shift Summary Row */}
       {hasPanel('adminExtras') && (
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics">
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
         {[
           { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: 'var(--spm-text-muted)', path: '/dispatch' },
           { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: 'var(--stat-accent-green)', path: '/incidents' },
@@ -1878,7 +1899,10 @@ export default function DashboardPage() {
       <div id="dashboard-panel-recentActivity" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Activity Feed */}
         {hasPanel('recentActivity') && (
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2" onContextMenu={(e) => openMenu(e, [
+          m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+          m.go('View full audit log', '/audit', <Eye size={12} />),
+        ])}>
         <SpmGroup title="Recent Activity">
           <div className="p-3">
             <div className="flex justify-end mb-2">
@@ -1906,7 +1930,10 @@ export default function DashboardPage() {
 
         {/* Operational Summary */}
         {hasPanel('activeUnits') && (
-        <SpmGroup title="Active Units">
+        <SpmGroup title="Active Units" onContextMenu={(e) => openMenu(e, [
+          m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+          m.go('View personnel', '/personnel', <Users size={12} />),
+        ])}>
           <div className="p-3 space-y-2.5">
             {/* Active Warrant Alerts */}
             <div

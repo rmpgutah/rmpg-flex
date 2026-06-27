@@ -140,8 +140,8 @@ sv.post('/routes', async (c) => {
        start_lat, start_lng, end_lat, end_lng, notes
      ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?)`,
     officerId, body.route_date ?? null,
-    JSON.stringify(body.optimized_order ?? []),
-    JSON.stringify(body.waypoints ?? []),
+    body.optimized_order_json ?? body.optimized_order ?? null,
+    body.waypoints_json ?? body.waypoints ?? null,
     body.total_distance_miles ?? null, body.total_time_minutes ?? null,
     body.start_lat ?? null, body.start_lng ?? null,
     body.end_lat ?? null, body.end_lng ?? null,
@@ -297,52 +297,6 @@ sv.get('/assignments/board', async (c) => {
     })),
     unassigned, byOfficer,
   });
-});
-
-// POST /assignments/auto-assign-all — Auto-assign unassigned jobs to available officers
-sv.post('/assignments/auto-assign-all', async (c) => {
-  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
-  if (denied) return c.json({ error: denied }, 403);
-  const db = getDb(c.env);
-  const user = c.get('user') as { id: number } | undefined;
-
-  // Load open unassigned jobs
-  const unassigned = await query<any>(db,
-    `SELECT id, priority, deadline FROM serve_queue
-     WHERE officer_id IS NULL AND status NOT IN ('served','cancelled','failed')
-     ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'rush' THEN 2 ELSE 3 END,
-              deadline IS NULL, deadline ASC
-     LIMIT 1000`);
-
-  if (!unassigned.length) return c.json({ assigned: [], skipped: 0 });
-
-  // Load available officers (non-admin users)
-  const officers = await query<{ id: number; full_name: string }>(db,
-    `SELECT id, full_name FROM users WHERE role IN ('officer','supervisor','manager') ORDER BY full_name LIMIT 200`);
-
-  if (!officers.length) return c.json({ assigned: [], skipped: unassigned.length });
-
-  const assigned: number[] = [];
-  const assigned_to: Record<number, number> = {}; // job_id → officer_id
-  let officerIdx = 0;
-
-  for (const job of unassigned) {
-    // Round-robin assignment
-    const officer = officers[officerIdx % officers.length];
-    officerIdx++;
-
-    const newStatus = job.status === 'pending' ? 'assigned' : job.status;
-    await execute(db,
-      `UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
-      officer.id, newStatus, job.id);
-    await execute(db,
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'auto_assign', 'serve_assignment', ?, ?)`,
-      user?.id ?? null, job.id, JSON.stringify({ to_officer: officer.id, to_officer_name: officer.full_name }));
-    assigned.push(job.id);
-    assigned_to[job.id] = officer.id;
-  }
-
-  return c.json({ success: true, assigned, assigned_to, assigned_count: assigned.length });
 });
 
 sv.post('/assignments/assign', async (c) => {
@@ -1196,6 +1150,79 @@ sv.get('/folder-stats', async (c) => {
   const stats: Record<string, number> = {};
   for (const r of rows) stats[r.status] = r.cnt;
   return c.json({ date, stats });
+});
+
+// ── Schedule analytics ──────────────────────────────────────────────────────────
+// GET /serve/schedule-analytics?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+// Returns aggregated schedule performance metrics: attempt success rate by
+// officer, by day-of-week, by time-of-day, and schedule adherence.
+sv.get('/schedule-analytics', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const startDate = c.req.query('start_date') || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const endDate = c.req.query('end_date') || new Date().toISOString().slice(0, 10);
+
+  const attempts = await query<any>(
+    db,
+    `SELECT a.result, a.attempt_type, a.attempt_at, a.officer_id, u.full_name AS officer_name,
+            q.priority, q.deadline, q.document_type
+     FROM serve_attempts a
+     JOIN serve_queue q ON q.id = a.serve_queue_id
+     LEFT JOIN users u ON u.id = a.officer_id
+     WHERE DATE(a.attempt_at) BETWEEN ? AND ?
+     ORDER BY a.attempt_at`,
+    startDate, endDate,
+  );
+
+  const total = attempts.length;
+  const byResult: Record<string, number> = {};
+  const byOfficer: Record<string, { total: number; served: number; failed: number }> = {};
+  const byDow: Record<string, { total: number; served: number }> = {};
+  const byHour: Record<string, { total: number; served: number }> = {};
+  const byType: Record<string, number> = {};
+
+  for (const a of attempts) {
+    byResult[a.result || 'unknown'] = (byResult[a.result || 'unknown'] || 0) + 1;
+    byType[a.attempt_type || 'standard'] = (byType[a.attempt_type || 'standard'] || 0) + 1;
+
+    const officerKey = a.officer_name || `User #${a.officer_id}`;
+    if (!byOfficer[officerKey]) byOfficer[officerKey] = { total: 0, served: 0, failed: 0 };
+    byOfficer[officerKey].total++;
+    if (a.result === 'served' || a.result === 'sub_served') byOfficer[officerKey].served++;
+    else if (a.result === 'failed') byOfficer[officerKey].failed++;
+
+    if (a.attempt_at) {
+      const d = new Date(a.attempt_at);
+      const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] || 'Unknown';
+      if (!byDow[dow]) byDow[dow] = { total: 0, served: 0 };
+      byDow[dow].total++;
+      if (a.result === 'served' || a.result === 'sub_served') byDow[dow].served++;
+
+      const hour = String(d.getUTCHours()).padStart(2, '0');
+      const hourKey = `${hour}:00`;
+      if (!byHour[hourKey]) byHour[hourKey] = { total: 0, served: 0 };
+      byHour[hourKey].total++;
+      if (a.result === 'served' || a.result === 'sub_served') byHour[hourKey].served++;
+    }
+  }
+
+  return c.json({
+    period: { start: startDate, end: endDate },
+    summary: {
+      total_attempts: total,
+      success_rate: total ? Math.round(((byResult['served'] ?? 0) + (byResult['sub_served'] ?? 0)) / total * 10000) / 100 : 0,
+    },
+    by_result: byResult,
+    by_officer: Object.entries(byOfficer).map(([name, s]) => ({
+      officer_name: name, ...s,
+      success_pct: s.total ? Math.round((s.served / s.total) * 10000) / 100 : 0,
+    })),
+    by_day_of_week: byDow,
+    by_hour: byHour,
+    by_attempt_type: byType,
+    total,
+  });
 });
 
 export default sv;

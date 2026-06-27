@@ -403,7 +403,7 @@ export async function transcribeTransmission(
     if (text) return text;
     log.warn('turbo whisper returned empty — trying base whisper');
   } catch (err) {
-    log.warn('turbo whisper failed, trying base whisper', {}, err);
+    log.warn('turbo whisper failed, trying base whisper', { err });
   }
 
   // Fallback — base whisper (classic array-of-bytes input; no prompt support).
@@ -445,7 +445,7 @@ export async function ocrImage(ai: Ai, image: Uint8Array): Promise<string | null
     const text = String(out?.response ?? out?.description ?? '').trim();
     return text.length > 0 ? text : null;
   } catch (err) {
-    log.warn('OCR failed', {}, err);
+    log.warn('OCR failed', { err });
     return null;
   }
 }
@@ -543,7 +543,7 @@ export async function ocrExtractStructured(ai: Ai, image: Uint8Array): Promise<O
     }
     return { docType, rawText: rawText || raw, fields };
   } catch (err) {
-    log.warn('structured OCR failed', {}, err);
+    log.warn('structured OCR failed', { err });
     return null;
   }
 }
@@ -779,7 +779,7 @@ async function runLLM(
       if (res?.response != null && res.response !== '') return res.response;
       log.warn(`${model} returned empty — trying next`);
     } catch (err) {
-      log.warn(`${model} failed`, {}, err);
+      log.warn(`${model} failed`, { err });
     }
   }
   return null;

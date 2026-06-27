@@ -157,7 +157,7 @@ gps.post('/', async (c) => {
         actor_id: userId, entity_type: 'unit', entity_id: unitId,
         unit_id: callSign ?? unitId, lat: lastPt.latitude, lng: lastPt.longitude,
         value: lastPt.speed, category: 'avl',
-        payload: { points: points.length, heading: lastPt.heading ?? null, call_id: unit.current_call_id ?? null },
+        payload: { points: points.length, heading: lastPt.heading ?? null, call_id: unit?.current_call_id ?? null },
       })]);
     }
     // Mirror latest fix onto units row, including heading + speed so the

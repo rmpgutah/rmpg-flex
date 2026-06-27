@@ -119,7 +119,7 @@ premise.get('/address-occupants', async (c) => {
       let flags: string[] = [];
       try {
         const parsed = JSON.parse((p.flags as string) || '[]');
-        if (Array.isArray(parsed)) flags = parsed.map((x) => (typeof x === 'string' ? x : (x as { type?: string })?.type)).filter(Boolean);
+        if (Array.isArray(parsed)) flags = parsed.map((x) => (typeof x === 'string' ? x : (x as { type?: string })?.type)).filter((x): x is string => !!x);
       } catch { /* flags free-form/absent */ }
       const gangRaw = ((p.gang_affiliation as string) ?? '').toString().trim();
       const gang = SENTINEL.has(gangRaw.toLowerCase()) ? null : gangRaw;

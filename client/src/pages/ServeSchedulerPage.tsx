@@ -16,7 +16,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, RefreshCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, Navigation, RefreshCcw, Sparkles } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -379,6 +379,31 @@ export default function ServeSchedulerPage() {
           )}
         </div>
       </div>
+
+      {slots.length > 0 && (
+        <div className="flex items-center gap-3 px-2 py-1 mb-1 text-[10px] bg-surface-sunken/40 border border-rmpg-800/40 rounded-[2px]">
+          <span className="text-rmpg-400">
+            Total slots: <span className="text-rmpg-100 font-mono tabular-nums">{slots.length}</span>
+          </span>
+          <span className="text-rmpg-400">
+            Today: <span className="text-rmpg-100 font-mono tabular-nums">{slots.filter(s => s.scheduled_date === today).length}</span>
+          </span>
+          <span className="text-rmpg-400">
+            Critical: <span className={`font-mono tabular-nums ${slots.filter(s => (s as any).urgency_tier === 'critical').length > 0 ? 'text-red-300 animate-pulse' : 'text-rmpg-100'}`}>
+              {slots.filter(s => (s as any).urgency_tier === 'critical').length}
+            </span>
+          </span>
+          <span className="text-rmpg-400">
+            Unassigned: <span className="text-amber-400 font-mono tabular-nums">{slots.filter(s => s.officer_id == null).length}</span>
+          </span>
+          <a
+            href="/serve"
+            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase text-brand-200 border border-brand-500/40 rounded-[2px] hover:bg-brand-500/20"
+          >
+            Plan Route <Navigation size={9} className="inline" />
+          </a>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <UnassignedQueueSidebar onAssign={(_item, _officerId, _date) => { refetch(); }} />

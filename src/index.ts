@@ -302,11 +302,10 @@ async function maybeRunEmailPoll(env: Bindings, ctx: ExecutionContext): Promise<
     db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_poll_interval' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
   ]);
   if (enabled?.config_value !== 'true') return;
-  const parsedInterval = pollIntervalStr ? parseInt(pollIntervalStr.config_value, 10) : NaN;
-  const pollInterval = Number.isFinite(parsedInterval) && parsedInterval > 0 ? parsedInterval : 300;
+  const pollInterval = pollIntervalStr ? parseInt(pollIntervalStr.config_value, 10) : 300;
   if (lastSyncStr?.config_value) {
     const last = Date.parse(lastSyncStr.config_value);
-    if (Number.isFinite(last) && last > 0 && Date.now() - last < pollInterval * 1000) return;
+    if (Number.isFinite(last) && Date.now() - last < pollInterval * 1000) return;
   }
   const r = await runEmailPoll(env, ctx);
   if (r.error) console.error(`[email-poll] ${r.error}`);
@@ -352,18 +351,6 @@ export default {
   // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     if (event.cron === '* * * * *') {
-      // Initialize serve scheduler schema on first per-minute tick
-      ctx.waitUntil(
-        import('./utils/serveScheduleSchema')
-          .then(async (mod) => {
-            await Promise.all([
-              mod.ensureServeScheduleSchema(env.DB),
-              mod.ensureCronMetricsSchema(env.DB),
-            ]);
-          })
-          .catch((err) => console.warn('[schema-init] setup deferred:', (err as Error)?.message))
-      );
-
       // Quick D1 connectivity check before launching all concurrent sweeps.
       // When D1 has a transient network blip every sweep fails at the same
       // instant — this collapses 9 individual errors into one quiet warning
