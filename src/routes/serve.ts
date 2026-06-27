@@ -40,9 +40,14 @@
 //   - cost-estimate                  (config-driven pricing tables)
 // ============================================================
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { codeToLegacyResult, codeToQueueStatus, lookupPsoCode } from '../utils/processServiceCodes';
+import { generateServeCharges } from '../utils/serveChargeStore';
+import { syncServeCompletionToCfs } from '../utils/reversePsoSync';
+import { geocodeAddress } from './geocode';
+import { classifyServeJob, type ServeJobForAttention, type AttentionSettings } from '../utils/serveAttention';
 
 const sv = new Hono<Env>();
 
@@ -63,6 +68,9 @@ const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
 const READ = [...WRITE, 'dispatcher'];
 
 const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled']);
+// serve_queue.priority CHECK enum — coerce unknown values to 'normal' (a bad
+// value 500s the INSERT/UPDATE on the constraint).
+const PRIORITIES = new Set(['routine', 'normal', 'rush', 'urgent']);
 const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
@@ -132,8 +140,8 @@ sv.post('/routes', async (c) => {
        start_lat, start_lng, end_lat, end_lng, notes
      ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?)`,
     officerId, body.route_date ?? null,
-    JSON.stringify(body.optimized_order ?? []),
-    JSON.stringify(body.waypoints ?? []),
+    body.optimized_order_json ?? body.optimized_order ?? null,
+    body.waypoints_json ?? body.waypoints ?? null,
     body.total_distance_miles ?? null, body.total_time_minutes ?? null,
     body.start_lat ?? null, body.start_lng ?? null,
     body.end_lat ?? null, body.end_lng ?? null,
@@ -240,6 +248,136 @@ sv.get('/export/csv', async (c) => {
 // Core queue CRUD (overlaps with serveIntake — intentional)
 // ─────────────────────────────────────────────────────────────
 
+// ── Assignment console ─────────────────────────────────────
+async function loadNudgeSettings(db: ReturnType<typeof getDb>): Promise<AttentionSettings & { renotify_hours: number; notify_supervisor_email: number; digest_sender_user_id: number | null }> {
+  const row = await queryFirst<any>(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1').catch(() => null);
+  return {
+    approaching_hours: row?.approaching_hours ?? 48,
+    diligence_gap_days: row?.diligence_gap_days ?? 3,
+    unassigned_window_hours: row?.unassigned_window_hours ?? 72,
+    renotify_hours: row?.renotify_hours ?? 24,
+    notify_supervisor_email: row?.notify_supervisor_email ?? 1,
+    digest_sender_user_id: row?.digest_sender_user_id ?? null,
+  };
+}
+
+async function loadOpenJobsWithAttempts(db: ReturnType<typeof getDb>) {
+  return query<any>(db,
+    `SELECT q.id, q.status, q.officer_id, q.deadline, q.priority, q.sort_order,
+            q.defendant_name, q.recipient_name, q.recipient_address, q.case_number,
+            (SELECT MAX(a.attempt_at) FROM serve_attempts a WHERE a.serve_queue_id = q.id) AS last_attempt_at
+       FROM serve_queue q
+      WHERE q.status NOT IN ('served','cancelled','failed')
+      ORDER BY q.deadline IS NULL, q.deadline ASC, q.sort_order ASC, q.id ASC
+      LIMIT 1000`);
+}
+
+sv.get('/assignments/board', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const now = new Date().toISOString();
+  const settings = await loadNudgeSettings(db);
+  const jobs = await loadOpenJobsWithAttempts(db);
+  const officers = await query<any>(db, "SELECT id, full_name FROM users WHERE role IN ('officer','supervisor','manager','admin') ORDER BY full_name LIMIT 200");
+
+  const byOfficer: Record<string, any[]> = {};
+  const unassigned: any[] = [];
+  const counts: Record<string, number> = {};
+  for (const j of jobs) {
+    const jobForAttn: ServeJobForAttention = { id: j.id, status: j.status, officer_id: j.officer_id, deadline: j.deadline, last_attempt_at: j.last_attempt_at };
+    j.attention = classifyServeJob(jobForAttn, now, settings);
+    if (j.officer_id == null) { unassigned.push(j); }
+    else { (byOfficer[j.officer_id] ??= []).push(j); counts[j.officer_id] = (counts[j.officer_id] ?? 0) + 1; }
+  }
+  return c.json({
+    officers: officers.map((o) => ({
+      id: o.id, name: o.full_name, count: counts[o.id] ?? 0,
+      attention: (byOfficer[o.id] ?? []).reduce((acc: any, j: any) => { for (const cnd of j.attention) acc[cnd] = (acc[cnd] ?? 0) + 1; return acc; }, {}),
+    })),
+    unassigned, byOfficer,
+  });
+});
+
+sv.post('/assignments/assign', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const b = await c.req.json<any>();
+  const jobIds: number[] = Array.isArray(b.job_ids) ? b.job_ids.map((x: any) => parseInt(x, 10)).filter((n: number) => !isNaN(n)) : [];
+  if (!jobIds.length) return c.json({ error: 'job_ids required' }, 400);
+  let officerId: number | null = null;
+  if (b.officer_id != null) {
+    officerId = parseInt(b.officer_id, 10);
+    if (isNaN(officerId)) return c.json({ error: 'invalid officer_id' }, 400);
+    const ok = await queryFirst<any>(db, "SELECT id FROM users WHERE id = ? AND role IN ('officer','supervisor','manager','admin')", officerId);
+    if (!ok) return c.json({ error: 'officer_id is not an assignable user' }, 400);
+  }
+  const user = c.get('user') as { id: number } | undefined;
+
+  const assigned: number[] = [];
+  const skipped: number[] = [];
+  for (const id of jobIds) {
+    const job = await queryFirst<any>(db, 'SELECT id, status, officer_id FROM serve_queue WHERE id = ?', id);
+    if (!job) { skipped.push(id); continue; }
+    if (['served', 'cancelled', 'failed'].includes(job.status)) { skipped.push(id); continue; }
+    const newStatus = officerId == null ? 'pending' : (job.status === 'pending' ? 'assigned' : job.status);
+    await execute(db, "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?", officerId, newStatus, id);
+    await execute(db,
+      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'assign', 'serve_assignment', ?, ?)`,
+      user?.id ?? null, id, JSON.stringify({ from_officer: job.officer_id, to_officer: officerId, reason: b.reason ?? null }));
+    assigned.push(id);
+  }
+  return c.json({ success: true, assigned, skipped });
+});
+
+sv.get('/assignments/needs-attention', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const now = new Date().toISOString();
+  const settings = await loadNudgeSettings(db);
+  const jobs = await loadOpenJobsWithAttempts(db);
+  const flagged = jobs.map((j) => ({ ...j, attention: classifyServeJob({ id: j.id, status: j.status, officer_id: j.officer_id, deadline: j.deadline, last_attempt_at: j.last_attempt_at }, now, settings) }))
+    .filter((j) => j.attention.length > 0);
+  return c.json({ data: flagged });
+});
+
+sv.get('/assignments/settings', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const row = await queryFirst(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1');
+  return c.json({ data: row ?? { id: 1, approaching_hours: 48, diligence_gap_days: 3, unassigned_window_hours: 72, renotify_hours: 24, notify_supervisor_email: 1, digest_sender_user_id: null } });
+});
+
+sv.put('/assignments/settings', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const b = await c.req.json<any>();
+  const user = c.get('user') as { id: number } | undefined;
+  const cur = await queryFirst<any>(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1') ?? {};
+  await execute(db,
+    `INSERT INTO serve_nudge_settings (id, approaching_hours, diligence_gap_days, unassigned_window_hours, renotify_hours, notify_supervisor_email, digest_sender_user_id, updated_by)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       approaching_hours = excluded.approaching_hours, diligence_gap_days = excluded.diligence_gap_days,
+       unassigned_window_hours = excluded.unassigned_window_hours, renotify_hours = excluded.renotify_hours,
+       notify_supervisor_email = excluded.notify_supervisor_email, digest_sender_user_id = excluded.digest_sender_user_id,
+       updated_at = datetime('now','localtime'), updated_by = excluded.updated_by`,
+    b.approaching_hours ?? cur.approaching_hours ?? 48,
+    b.diligence_gap_days ?? cur.diligence_gap_days ?? 3,
+    b.unassigned_window_hours ?? cur.unassigned_window_hours ?? 72,
+    b.renotify_hours ?? cur.renotify_hours ?? 24,
+    b.notify_supervisor_email !== undefined ? (b.notify_supervisor_email ? 1 : 0) : (cur.notify_supervisor_email ?? 1),
+    b.digest_sender_user_id !== undefined ? b.digest_sender_user_id : (cur.digest_sender_user_id ?? null),
+    user?.id ?? null);
+  await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'update', 'serve_nudge_settings', 1, ?)`, user?.id ?? null, JSON.stringify(b));
+  const after = await queryFirst(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1');
+  return c.json({ data: after });
+});
+
 sv.get('/', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
@@ -258,14 +396,61 @@ sv.get('/', async (c) => {
     where.push('(recipient_name LIKE ? OR case_number LIKE ? OR recipient_address LIKE ?)');
     args.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
-  const sql = `SELECT q.*, u.full_name AS officer_name
-    FROM serve_queue q LEFT JOIN users u ON u.id = q.officer_id
+  // FK reference guards: CASE expressions are re-emitted AFTER q.* so
+  // they win on duplicate column names. serve_queue rows can reference
+  // hard-deleted records (pre-soft-delete era) or records purged during
+  // data cleanup — a dead FK produces a guaranteed downstream error.
+  const sql = `SELECT q.*, u.full_name AS officer_name,
+      CASE WHEN cfs.id IS NULL THEN NULL ELSE q.call_id END AS call_id,
+      CASE WHEN p.id IS NULL THEN NULL ELSE q.recipient_person_id END AS recipient_person_id,
+      CASE WHEN prop.id IS NULL THEN NULL ELSE q.property_id END AS property_id
+    FROM serve_queue q
+    LEFT JOIN users u ON u.id = q.officer_id
+    LEFT JOIN calls_for_service cfs ON cfs.id = q.call_id
+    LEFT JOIN persons p ON p.id = q.recipient_person_id
+    LEFT JOIN properties prop ON prop.id = q.property_id
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY
       CASE q.priority WHEN 'urgent' THEN 1 WHEN 'rush' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END,
       q.deadline IS NULL, q.deadline ASC, q.sort_order ASC, q.id DESC LIMIT ?`;
   args.push(limit);
-  return c.json(await query(db, sql, ...args));
+  const jobs = await query<any>(db, sql, ...args);
+
+  // ── Attach attempts per job ────────────────────────────────
+  // ServeJobCard renders a "Prior Attempts" timeline when job.attempts is
+  // non-empty, but the list endpoint historically only returned serve_queue
+  // columns — so the timeline never appeared in the queue view (only in
+  // the detail page that hits GET /:id). One follow-up query batches
+  // every attempt for the listed jobs and merges them in-process.
+  // disposition_code is schema-guarded — migration 0143 may not be live
+  // on every D1, in which case we still return the legacy `result` column.
+  if (jobs.length) {
+    const ids = jobs.map((j) => j.id).filter((n) => Number.isFinite(n));
+    if (ids.length) {
+      const placeholders = ids.map(() => '?').join(',');
+      const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
+      const attemptCols = hasDispositionCol
+        ? 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.disposition_code, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name'
+        : 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name';
+      const attempts = await query<any>(
+        db,
+        `SELECT ${attemptCols}
+           FROM serve_attempts a
+           LEFT JOIN users u ON u.id = a.officer_id
+          WHERE a.serve_queue_id IN (${placeholders})
+          ORDER BY a.attempt_at ASC, a.id ASC`,
+        ...ids,
+      );
+      const byQueue = new Map<number, any[]>();
+      for (const a of attempts) {
+        const bucket = byQueue.get(a.serve_queue_id) ?? [];
+        bucket.push(a);
+        byQueue.set(a.serve_queue_id, bucket);
+      }
+      for (const j of jobs) j.attempts = byQueue.get(j.id) ?? [];
+    }
+  }
+  return c.json(jobs);
 });
 
 sv.post('/', async (c) => {
@@ -275,24 +460,33 @@ sv.post('/', async (c) => {
   if (!body.recipient_name && !body.recipient_address) {
     return c.json({ error: 'recipient_name or recipient_address required' }, 400);
   }
-  const priority = body.priority ?? 'normal';
+  const priority = PRIORITIES.has(body.priority) ? body.priority : 'normal';
   const status = body.status && STATUSES.has(body.status) ? body.status : 'pending';
+
+  // Backfill geocode when recipient_address is provided but coords are not
+  let lat = body.recipient_lat != null ? body.recipient_lat : null;
+  let lng = body.recipient_lng != null ? body.recipient_lng : null;
+  if ((lat == null || lng == null) && typeof body.recipient_address === 'string' && body.recipient_address.trim().length >= 3) {
+    const coords = await geocodeAddress(c.env, body.recipient_address).catch(() => null);
+    if (coords) { lat = coords.lat; lng = coords.lng; }
+  }
+
   const r = await execute(
     getDb(c.env),
     `INSERT INTO serve_queue (
        call_id, sm_job_id, officer_id, serve_date,
-       recipient_name, recipient_person_id, recipient_address, recipient_city,
+       recipient_name, recipient_person_id, recipient_address, recipient_address_2, recipient_city,
        recipient_state, recipient_zip, recipient_lat, recipient_lng, property_id,
        document_type, case_number, court_name, jurisdiction,
        client_name, attorney_name, priority, time_window, deadline,
-       max_attempts, service_instructions, notes, status
-     ) VALUES (?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?)`,
+       max_attempts, service_instructions, notes, status, contract_id
+     ) VALUES (?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?,?)`,
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
-    body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_city ?? null,
-    body.recipient_state ?? null, body.recipient_zip ?? null, body.recipient_lat ?? null, body.recipient_lng ?? null, body.property_id ?? null,
+    body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_address_2 ?? null, body.recipient_city ?? null,
+    body.recipient_state ?? null, body.recipient_zip ?? null, lat, lng, body.property_id ?? null,
     body.document_type ?? null, body.case_number ?? null, body.court_name ?? null, body.jurisdiction ?? null,
     body.client_name ?? null, body.attorney_name ?? null, priority, body.time_window ?? null, body.deadline ?? null,
-    body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status,
+    body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status, body.contract_id ?? null,
   );
   return c.json({ success: true, id: r.meta.last_row_id }, 201);
 });
@@ -320,6 +514,30 @@ sv.get('/:id', async (c) => {
   return c.json({ ...row, attempts });
 });
 
+// ── Serve audit trail ──────────────────────────────────────────
+// GET /serve/:id/audit
+// Returns activity_log entries for this serve queue (assignments,
+// attempt deletions, renumbering events).
+sv.get('/:id/audit', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const queueIdStr = String(id);
+  const rows = await query<any>(
+    db,
+    `SELECT a.id, a.action, a.entity_type, a.entity_id, a.details, a.created_at, u.full_name AS user_name
+     FROM activity_log a LEFT JOIN users u ON a.user_id = u.id
+     WHERE (a.entity_type = 'serve_assignment' AND a.entity_id = ?)
+        OR (a.entity_type = 'serve_attempt' AND (a.details LIKE ? OR a.details LIKE ?))
+        OR (a.entity_type = 'serve_attempts' AND a.entity_id = ?)
+     ORDER BY a.id DESC LIMIT 500`,
+    id, `%"serve_queue_id":${queueIdStr},%`, `%"serve_queue_id":${queueIdStr}}%`, id,
+  );
+  return c.json(rows);
+});
+
 sv.put('/:id', async (c) => {
   const denied = requireRole(c, ...WRITE);
   if (denied) return c.json({ error: denied }, 403);
@@ -328,24 +546,53 @@ sv.put('/:id', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}));
   const allowed = [
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
-    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_city',
+    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
     'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
-    'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order',
+    'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
+    'next_attempt_note',
   ];
   const sets: string[] = [];
   const args: any[] = [];
+  // Schema-guard newly-added columns so the route doesn't 500 when callers
+  // post next_attempt_note before migration 0142 reaches live D1.
+  const hasNextAttemptCol = 'next_attempt_note' in body
+    ? await columnExists(getDb(c.env), 'serve_queue', 'next_attempt_note')
+    : true;
   for (const k of allowed) {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
+    if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
+    if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }
   if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
+
+  // Backfill geocode when recipient_address is updated but coords are not
+  if ('recipient_address' in body && body.recipient_lat === undefined && body.recipient_lng === undefined
+      && typeof body.recipient_address === 'string' && body.recipient_address.trim().length >= 3) {
+    const coords = await geocodeAddress(c.env, body.recipient_address).catch(() => null);
+    if (coords) {
+      sets.push('recipient_lat = ?', 'recipient_lng = ?');
+      args.push(coords.lat, coords.lng);
+    }
+  }
+
   sets.push("updated_at = datetime('now','localtime')");
+  // Stamp closed_at when an operator explicitly marks the job served —
+  // write-once: only set when transitioning to 'served' (not on every edit).
+  if (body.status === 'served') {
+    sets.push("closed_at = COALESCE(closed_at, datetime('now','localtime'))");
+  }
   args.push(id);
   await execute(getDb(c.env), `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  // Fire-and-forget: if status was explicitly set to a terminal outcome,
+  // sync back to the originating CFS call (if one exists).
+  if (body.status === 'served' || body.status === 'failed') {
+    syncServeCompletionToCfs(getDb(c.env), id).catch(() => {});
+  }
   return c.json({ success: true });
 });
 
@@ -353,8 +600,8 @@ sv.put('/:id', async (c) => {
 // Attempts — richer than the intake variant (gps + photo refs)
 // ─────────────────────────────────────────────────────────────
 
-async function logAttempt(c: any, defaultResult: string) {
-  const id = parseInt(c.req.param('id'), 10);
+async function logAttempt(c: Context<Env>, defaultResult: string) {
+  const id = parseInt(c.req.param('id') ?? '', 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const body = (await c.req.json().catch(() => ({}))) as any;
   const user = c.get('user') as { id: number } | undefined;
@@ -365,35 +612,94 @@ async function logAttempt(c: any, defaultResult: string) {
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
 
-  const result = ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult;
+  // Structured PS code (PS/15.05 etc.) is the new source of truth. When
+  // supplied, it derives both the legacy `result` enum (for the existing
+  // CHECK constraint) and the next queue status. When absent, fall back to
+  // whatever the caller passed in `result` (legacy path).
+  const psCode = typeof body.disposition_code === 'string' && lookupPsoCode(body.disposition_code)
+    ? body.disposition_code.trim().toUpperCase()
+    : null;
+  const result = psCode
+    ? codeToLegacyResult(psCode)
+    : (ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult);
   const nextNum = (queue.attempt_count ?? 0) + 1;
 
   // Live serve_attempts has no `status` column (migration 0030 drift —
   // never applied to 785de7ae). It's redundant with `result` + the
   // serve_queue.status update below, so omit it. See
   // [[feedback-verify-live-schema-before-insert]].
-  const ins = await execute(
-    db,
-    `INSERT INTO serve_attempts (
-       serve_queue_id, attempt_number, officer_id, result,
-       latitude, longitude, notes, attempt_type, photo_ids, signature_data
-     ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
-    id, nextNum, body.officer_id ?? user?.id ?? null, result,
-    body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
-    body.attempt_type ?? null,
-    JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
-  );
+  // Guard the disposition_code write — migration 0143 may not have reached
+  // live D1 when a new client deploys (deploy step is continue-on-error).
+  const hasDispositionCol = psCode
+    ? await columnExists(db, 'serve_attempts', 'disposition_code')
+    : false;
+  const ins = hasDispositionCol
+    ? await execute(
+        db,
+        `INSERT INTO serve_attempts (
+           serve_queue_id, attempt_number, officer_id, result, disposition_code,
+           latitude, longitude, notes, attempt_type, photo_ids, signature_data
+         ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?)`,
+        id, nextNum, body.officer_id ?? user?.id ?? null, result, psCode,
+        body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
+        body.attempt_type ?? null,
+        JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+      )
+    : await execute(
+        db,
+        `INSERT INTO serve_attempts (
+           serve_queue_id, attempt_number, officer_id, result,
+           latitude, longitude, notes, attempt_type, photo_ids, signature_data
+         ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
+        id, nextNum, body.officer_id ?? user?.id ?? null, result,
+        body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
+        body.attempt_type ?? null,
+        JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
+      );
 
+  // Queue status: structured code wins (codeToQueueStatus knows whether a
+  // posting counts as completion, whether a sub-service flips the queue,
+  // etc.); legacy heuristic keeps the existing behavior for non-coded paths.
   let newStatus = queue.status;
-  if (result === 'served' || result === 'sub_served') newStatus = 'served';
+  if (psCode) {
+    const codeStatus = codeToQueueStatus(psCode);
+    if (codeStatus === 'served' || codeStatus === 'failed') newStatus = codeStatus;
+    else if (codeStatus === 'pending') newStatus = 'pending';
+    else newStatus = nextNum >= (queue.max_attempts ?? 3) ? 'failed' : 'attempted';
+  } else if (result === 'served' || result === 'sub_served') newStatus = 'served';
   else if (nextNum >= (queue.max_attempts ?? 3)) newStatus = 'failed';
   else newStatus = 'attempted';
 
-  await execute(
-    db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
-    nextNum, newStatus, id,
-  );
+  // Operator-set next-attempt note lives on the parent queue row so it
+  // persists across attempts and survives until the Notice of Attempt PDF
+  // reads it. Guard the column write — migration 0142 may not be applied
+  // to live D1 yet when the new client deploys (deploy step is
+  // continue-on-error per CLAUDE.md).
+  const hasNextAttemptCol =
+    typeof body.next_attempt_note === 'string'
+      ? await columnExists(db, 'serve_queue', 'next_attempt_note')
+      : false;
+  const closedClause = newStatus === 'served' ? ", closed_at = datetime('now','localtime')" : '';
+  if (hasNextAttemptCol) {
+    await execute(
+      db,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, next_attempt_note = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
+      nextNum, newStatus, body.next_attempt_note || null, id,
+    );
+  } else {
+    await execute(
+      db,
+      `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
+      nextNum, newStatus, id,
+    );
+  }
+  // Best-effort: bill on completion (served or non-est/failed). Must never
+  // break the serve write, so failures are swallowed by generateServeCharges.
+  if (newStatus === 'served' || newStatus === 'failed') {
+    await generateServeCharges(db, id);
+    // Fire-and-forget: sync the terminal outcome back to the originating CFS
+    syncServeCompletionToCfs(db, id).catch(() => {});
+  }
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum, queue_status: newStatus });
 }
 
@@ -434,10 +740,340 @@ sv.post('/:id/substitute-service', async (c) => {
   );
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime') WHERE id = ?`,
     nextNum, id,
   );
+  await generateServeCharges(db, id);
+  syncServeCompletionToCfs(db, id).catch(() => {});
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Edit an existing attempt
+// ─────────────────────────────────────────────────────────────
+// PUT /:queueId/attempt/:attemptId
+//
+// Operator corrections to a previously-logged attempt: timestamp typos,
+// wrong attempt_type, wrong result/disposition_code picked, follow-up
+// notes. Photo/signature/officer_id stay immutable — those are evidence.
+//
+// Status side-effect: if the edit changes result or disposition_code,
+// re-derive serve_queue.status from the most-recent attempt (per the
+// 2026-06-22 product decision). Edits to notes/timestamp/type alone
+// don't touch parent state. Billing is NOT reversed — generateServeCharges
+// is one-way; a wrongly-billed completion needs a manual credit.
+sv.put('/:queueId/attempt/:attemptId', async (c) => {
+  const denied = requireRole(c, ...WRITE);
+  if (denied) return c.json({ error: denied }, 403);
+  const queueId = parseInt(c.req.param('queueId'), 10);
+  const attemptId = parseInt(c.req.param('attemptId'), 10);
+  if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<any>().catch(() => ({}));
+  const db = getDb(c.env);
+
+  // Ownership check: attempt must belong to this queue row. Prevents an
+  // operator with WRITE role from editing some other tenant's job's
+  // attempts via a guessed id.
+  const existing = await queryFirst<{
+    id: number; result: string | null; disposition_code: string | null;
+    attempt_number: number;
+  }>(db, 'SELECT id, result, attempt_number FROM serve_attempts WHERE id = ? AND serve_queue_id = ?',
+    attemptId, queueId);
+  if (!existing) return c.json({ error: 'Attempt not found for this job' }, 404);
+
+  // Whitelist + per-field validation. disposition_code is guarded —
+  // migration 0143 may not have reached live D1 on a fresh deploy.
+  const hasDispositionCol = 'disposition_code' in body
+    ? await columnExists(db, 'serve_attempts', 'disposition_code')
+    : true;
+  const sets: string[] = [];
+  const args: any[] = [];
+  let resultChanged = false;
+  let newResult: string | null = existing.result;
+
+  if ('attempt_at' in body && body.attempt_at !== undefined) {
+    sets.push('attempt_at = ?');
+    args.push(body.attempt_at || null);
+  }
+  if ('attempt_type' in body && body.attempt_type !== undefined) {
+    sets.push('attempt_type = ?');
+    args.push(body.attempt_type || null);
+  }
+  if ('notes' in body && body.notes !== undefined) {
+    sets.push('notes = ?');
+    args.push(body.notes || null);
+  }
+  if ('latitude' in body && body.latitude !== undefined) {
+    sets.push('latitude = ?');
+    args.push(body.latitude == null ? null : Number(body.latitude));
+  }
+  if ('longitude' in body && body.longitude !== undefined) {
+    sets.push('longitude = ?');
+    args.push(body.longitude == null ? null : Number(body.longitude));
+  }
+
+  // Structured PS code takes precedence — derive the legacy `result`
+  // and update both columns when supplied. Mirrors logAttempt.
+  if ('disposition_code' in body && body.disposition_code !== undefined && hasDispositionCol) {
+    const code = typeof body.disposition_code === 'string' && body.disposition_code.trim()
+      ? body.disposition_code.trim().toUpperCase()
+      : null;
+    if (code && !lookupPsoCode(code)) {
+      return c.json({ error: `Unknown disposition_code: ${code}` }, 400);
+    }
+    sets.push('disposition_code = ?');
+    args.push(code);
+    if (code) {
+      const derived = codeToLegacyResult(code);
+      sets.push('result = ?');
+      args.push(derived);
+      newResult = derived;
+      resultChanged = derived !== existing.result;
+    }
+  } else if ('result' in body && body.result !== undefined) {
+    if (!ATTEMPT_RESULTS.has(body.result)) {
+      return c.json({ error: `Unknown result: ${body.result}` }, 400);
+    }
+    sets.push('result = ?');
+    args.push(body.result);
+    newResult = body.result;
+    resultChanged = body.result !== existing.result;
+  }
+
+  if (!sets.length) return c.json({ error: 'No editable fields supplied' }, 400);
+  args.push(attemptId);
+  await execute(db, `UPDATE serve_attempts SET ${sets.join(', ')} WHERE id = ?`, ...args);
+
+  // ── Parent status recompute ───────────────────────────────
+  // Only fire when result/disposition actually changed. We re-derive
+  // status from the most recent attempt's result, not the edited one,
+  // because the edit may target an OLD attempt and the latest is what
+  // determines whether the job is currently served/failed/attempted.
+  let recomputed: { status: string } | null = null;
+  if (resultChanged) {
+    const queue = await queryFirst<{ attempt_count: number; max_attempts: number; status: string }>(
+      db, 'SELECT attempt_count, max_attempts, status FROM serve_queue WHERE id = ?', queueId);
+    const latest = await queryFirst<{ result: string | null; disposition_code: string | null }>(
+      db,
+      hasDispositionCol
+        ? 'SELECT result, disposition_code FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_at DESC, id DESC LIMIT 1'
+        : 'SELECT result FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_at DESC, id DESC LIMIT 1',
+      queueId,
+    );
+    if (queue && latest) {
+      let nextStatus = queue.status;
+      const psCode = latest.disposition_code;
+      if (psCode) {
+        const codeStatus = codeToQueueStatus(psCode);
+        if (codeStatus === 'served' || codeStatus === 'failed') nextStatus = codeStatus;
+        else if (codeStatus === 'pending') nextStatus = 'pending';
+        else nextStatus = queue.attempt_count >= (queue.max_attempts ?? 3) ? 'failed' : 'attempted';
+      } else if (latest.result === 'served' || latest.result === 'sub_served') {
+        nextStatus = 'served';
+      } else if (queue.attempt_count >= (queue.max_attempts ?? 3)) {
+        nextStatus = 'failed';
+      } else {
+        nextStatus = 'attempted';
+      }
+      if (nextStatus !== queue.status) {
+        await execute(db,
+          `UPDATE serve_queue SET status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+          nextStatus, queueId);
+        recomputed = { status: nextStatus };
+        if (nextStatus === 'served' || nextStatus === 'failed') {
+          syncServeCompletionToCfs(db, queueId).catch(() => {});
+        }
+      }
+    }
+  }
+
+  return c.json({
+    success: true,
+    attempt_id: attemptId,
+    fields_updated: sets.length,
+    result: newResult,
+    queue_status_recomputed: recomputed,
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Delete an attempt (admin/manager/supervisor only)
+// ─────────────────────────────────────────────────────────────
+// DELETE /:queueId/attempt/:attemptId
+//
+// Allows supervisors to remove an inaccurate entry (wrong recipient,
+// fat-fingered GPS, duplicate attempt, etc.) while preserving the
+// rest of the service log. Also recalculates the parent queue's
+// attempt_count and re-derives status from remaining attempts.
+//
+// Billing auto-reversal: when the last served attempt is deleted and
+// the queue status reverts from 'served', non-invoiced serve_charges
+// are auto-voided. Invoiced charges are left for manual credit.
+sv.delete('/:queueId/attempt/:attemptId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const queueId = parseInt(c.req.param('queueId'), 10);
+  const attemptId = parseInt(c.req.param('attemptId'), 10);
+  if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const user = c.get('user') as { id: number } | undefined;
+
+  // Snapshot pre-deletion queue status for billing reversal detection
+  const prevQueue = await queryFirst<{ status: string }>(
+    db, 'SELECT status FROM serve_queue WHERE id = ?', queueId,
+  );
+  if (!prevQueue) return c.json({ error: 'Queue entry not found' }, 404);
+
+  // Ownership check: attempt must belong to this queue row
+  const existing = await queryFirst<{ id: number; result: string | null; attempt_number: number }>(
+    db, 'SELECT id, result, attempt_number FROM serve_attempts WHERE id = ? AND serve_queue_id = ?',
+    attemptId, queueId,
+  );
+  if (!existing) return c.json({ error: 'Attempt not found for this job' }, 404);
+
+  await execute(db, 'DELETE FROM serve_attempts WHERE id = ?', attemptId);
+
+  // Recalculate attempt_count from remaining attempts
+  const remainingCount = await queryFirst<{ n: number }>(
+    db, 'SELECT COUNT(*) AS n FROM serve_attempts WHERE serve_queue_id = ?', queueId,
+  );
+  const newCount = remainingCount?.n ?? 0;
+
+  // Re-derive queue status from the most recent remaining attempt
+  let newStatus = 'pending';
+  if (newCount > 0) {
+    const latest = await queryFirst<{ result: string | null; disposition_code: string | null }>(
+      db, 'SELECT result, disposition_code FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_at DESC, id DESC LIMIT 1',
+      queueId,
+    );
+    if (latest) {
+      const psCode = latest.disposition_code;
+      if (psCode) {
+        const codeStatus = codeToQueueStatus(psCode);
+        if (codeStatus === 'served' || codeStatus === 'failed') newStatus = codeStatus;
+        else if (codeStatus === 'pending') newStatus = 'pending';
+        else newStatus = 'attempted';
+      } else if (latest.result === 'served' || latest.result === 'sub_served') {
+        newStatus = 'served';
+      } else {
+        newStatus = 'attempted';
+      }
+    }
+  }
+
+  const clearClosed = (newStatus !== 'served' && newStatus !== 'failed') ? ", closed_at = NULL" : "";
+  await execute(
+    db,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${clearClosed} WHERE id = ?`,
+    newCount, newStatus, queueId,
+  );
+
+  await execute(db,
+    `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'delete', 'serve_attempt', ?, ?)`,
+    user?.id ?? null, attemptId, JSON.stringify({
+      serve_queue_id: queueId,
+      deleted_attempt_number: existing.attempt_number,
+      deleted_result: existing.result,
+      new_queue_status: newStatus,
+      new_attempt_count: newCount,
+    }),
+  );
+
+  if (newStatus === 'served' || newStatus === 'failed') {
+    syncServeCompletionToCfs(db, queueId).catch(() => {});
+  }
+
+  // Auto-void charges when the last served attempt is deleted and the
+  // queue reverts from 'served'. Only non-invoiced charges are voided;
+  // invoiced charges require a manual credit note.
+  if (prevQueue.status === 'served' && newStatus !== 'served') {
+    await execute(db,
+      `UPDATE serve_charges SET status = 'void', notes = ? WHERE serve_queue_id = ? AND status NOT IN ('invoiced', 'void')`,
+      'Auto-voided: the served attempt was deleted', queueId,
+    ).catch(() => {});
+  }
+
+  return c.json({
+    success: true,
+    deleted_attempt_id: attemptId,
+    attempt_count: newCount,
+    queue_status: newStatus,
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Renumber attempts after deletion (admin/manager/supervisor only)
+// ─────────────────────────────────────────────────────────────
+// POST /:queueId/renumber-attempts
+//
+// After an admin deletes attempt #2 of 3, remaining attempts still
+// carry numbers 1 and 3 — gaps that can confuse notice-of-attempt
+// PDF generation and timeline displays. This endpoint re-sequences
+// all remaining attempts to contiguous numbers (1, 2, 3, …).
+//
+// Billing records are NOT affected — they reference attempt IDs,
+// not attempt numbers.
+sv.post('/:queueId/renumber-attempts', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const queueId = parseInt(c.req.param('queueId'), 10);
+  if (isNaN(queueId)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const user = c.get('user') as { id: number } | undefined;
+
+  const queue = await queryFirst<{ id: number }>(
+    db, 'SELECT id FROM serve_queue WHERE id = ?', queueId,
+  );
+  if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
+
+  const attempts = await query<{ id: number; attempt_number: number }>(
+    db,
+    'SELECT id, attempt_number FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC, id ASC',
+    queueId,
+  );
+
+  if (!attempts.length) {
+    return c.json({ success: true, renumbered: 0, message: 'No attempts to renumber' });
+  }
+
+  const updates: { id: number; old: number; new: number }[] = [];
+  const stmts: any[] = [];
+  for (let i = 0; i < attempts.length; i++) {
+    const newNum = i + 1;
+    if (attempts[i].attempt_number !== newNum) {
+      updates.push({ id: attempts[i].id, old: attempts[i].attempt_number, new: newNum });
+      stmts.push(
+        db.prepare('UPDATE serve_attempts SET attempt_number = ? WHERE id = ?')
+          .bind(newNum, attempts[i].id),
+      );
+    }
+  }
+
+  if (stmts.length > 0) {
+    await db.batch(stmts);
+    // Update attempt_count to reflect the actual count
+    await execute(db,
+      'UPDATE serve_queue SET attempt_count = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?',
+      attempts.length, queueId,
+    );
+  }
+
+  await execute(db,
+    `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'renumber', 'serve_attempts', ?, ?)`,
+    user?.id ?? null, queueId, JSON.stringify({
+      serve_queue_id: queueId,
+      total_attempts: attempts.length,
+      renumberings: updates,
+    }),
+  );
+
+  return c.json({
+    success: true,
+    queue_id: queueId,
+    attempt_count: attempts.length,
+    renumbered: updates.length,
+    changes: updates,
+  });
 });
 
 // GET /:id/gps-trail — attempts ordered chronologically, drop ones missing coords
@@ -456,6 +1092,136 @@ sv.get('/:id/gps-trail', async (c) => {
   return c.json({
     trail: rows,
     polyline: rows.map((r) => [r.longitude, r.latitude]),  // GeoJSON [lng,lat] order
+  });
+});
+
+// ── Bulk status update ────────────────────────────────────────────────────────
+// POST /serve/bulk-status { ids: number[], status: string }
+// Lets dispatchers batch-move selected jobs between folders (Queue → Archive, etc.)
+sv.put('/bulk-status', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const body = await c.req.json<{ ids?: number[]; status?: string }>();
+  const { ids, status } = body;
+  if (!Array.isArray(ids) || ids.length === 0) return c.json({ error: 'ids required' }, 400);
+  const VALID = ['pending', 'in_progress', 'served', 'failed', 'archived'] as const;
+  if (!status || !(VALID as readonly string[]).includes(status)) {
+    return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
+  }
+  const db = getDb(c.env);
+  const closedAt = (status === 'served' || status === 'failed')
+    ? `datetime('now','localtime')`
+    : 'NULL';
+  // D1 doesn't support array bindings — use a parameterized IN clause
+  const placeholders = ids.map(() => '?').join(',');
+  await db.prepare(
+    `UPDATE serve_queue SET status = ?, closed_at = ${closedAt}
+     WHERE id IN (${placeholders})`
+  ).bind(status, ...ids).run();
+
+  // Fire-and-forget: sync terminal outcomes back to their originating CFS rows
+  if (status === 'served' || status === 'failed') {
+    const affected = await query<{ id: number }>(
+      db, `SELECT id FROM serve_queue WHERE id IN (${placeholders}) AND call_id IS NOT NULL`,
+      ...ids,
+    );
+    for (const q of affected) {
+      syncServeCompletionToCfs(db, q.id).catch(() => {});
+    }
+  }
+
+  return c.json({ updated: ids.length, status });
+});
+
+// ── Folder stats ──────────────────────────────────────────────────────────────
+// GET /serve/folder-stats?date=YYYY-MM-DD
+sv.get('/folder-stats', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const date = c.req.query('date') ?? new Date().toISOString().slice(0, 10);
+  const db = getDb(c.env);
+  const rows = await query<{ status: string; cnt: number }>(
+    db,
+    `SELECT status, COUNT(*) AS cnt FROM serve_queue
+     WHERE DATE(created_at) = ? OR DATE(scheduled_date) = ?
+     GROUP BY status`,
+    date, date,
+  );
+  const stats: Record<string, number> = {};
+  for (const r of rows) stats[r.status] = r.cnt;
+  return c.json({ date, stats });
+});
+
+// ── Schedule analytics ──────────────────────────────────────────────────────────
+// GET /serve/schedule-analytics?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+// Returns aggregated schedule performance metrics: attempt success rate by
+// officer, by day-of-week, by time-of-day, and schedule adherence.
+sv.get('/schedule-analytics', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const startDate = c.req.query('start_date') || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const endDate = c.req.query('end_date') || new Date().toISOString().slice(0, 10);
+
+  const attempts = await query<any>(
+    db,
+    `SELECT a.result, a.attempt_type, a.attempt_at, a.officer_id, u.full_name AS officer_name,
+            q.priority, q.deadline, q.document_type
+     FROM serve_attempts a
+     JOIN serve_queue q ON q.id = a.serve_queue_id
+     LEFT JOIN users u ON u.id = a.officer_id
+     WHERE DATE(a.attempt_at) BETWEEN ? AND ?
+     ORDER BY a.attempt_at`,
+    startDate, endDate,
+  );
+
+  const total = attempts.length;
+  const byResult: Record<string, number> = {};
+  const byOfficer: Record<string, { total: number; served: number; failed: number }> = {};
+  const byDow: Record<string, { total: number; served: number }> = {};
+  const byHour: Record<string, { total: number; served: number }> = {};
+  const byType: Record<string, number> = {};
+
+  for (const a of attempts) {
+    byResult[a.result || 'unknown'] = (byResult[a.result || 'unknown'] || 0) + 1;
+    byType[a.attempt_type || 'standard'] = (byType[a.attempt_type || 'standard'] || 0) + 1;
+
+    const officerKey = a.officer_name || `User #${a.officer_id}`;
+    if (!byOfficer[officerKey]) byOfficer[officerKey] = { total: 0, served: 0, failed: 0 };
+    byOfficer[officerKey].total++;
+    if (a.result === 'served' || a.result === 'sub_served') byOfficer[officerKey].served++;
+    else if (a.result === 'failed') byOfficer[officerKey].failed++;
+
+    if (a.attempt_at) {
+      const d = new Date(a.attempt_at);
+      const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] || 'Unknown';
+      if (!byDow[dow]) byDow[dow] = { total: 0, served: 0 };
+      byDow[dow].total++;
+      if (a.result === 'served' || a.result === 'sub_served') byDow[dow].served++;
+
+      const hour = String(d.getUTCHours()).padStart(2, '0');
+      const hourKey = `${hour}:00`;
+      if (!byHour[hourKey]) byHour[hourKey] = { total: 0, served: 0 };
+      byHour[hourKey].total++;
+      if (a.result === 'served' || a.result === 'sub_served') byHour[hourKey].served++;
+    }
+  }
+
+  return c.json({
+    period: { start: startDate, end: endDate },
+    summary: {
+      total_attempts: total,
+      success_rate: total ? Math.round(((byResult['served'] ?? 0) + (byResult['sub_served'] ?? 0)) / total * 10000) / 100 : 0,
+    },
+    by_result: byResult,
+    by_officer: Object.entries(byOfficer).map(([name, s]) => ({
+      officer_name: name, ...s,
+      success_pct: s.total ? Math.round((s.served / s.total) * 10000) / 100 : 0,
+    })),
+    by_day_of_week: byDow,
+    by_hour: byHour,
+    by_attempt_type: byType,
+    total,
   });
 });
 

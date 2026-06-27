@@ -1,0 +1,718 @@
+// ============================================================
+// RMPG Flex — VoiceHubDO (Durable Object, radio/panic voice hub)
+// ============================================================
+// Cloudflare Workers run in many isolated V8 instances with no
+// shared memory, so the per-isolate WebSocket Map in routes/ws.ts
+// CANNOT fan voice out to every unit on a channel — two officers
+// can land on different isolates and never hear each other.
+//
+// A Durable Object is the fix: exactly ONE instance exists per
+// room name globally, so every socket for a channel attaches to
+// the same object and relay is trivial in-memory.
+//
+//   Room naming (set by the worker via idFromName):
+//     radio-<channelId>   — a radio channel room
+//     panic-<panicId>     — a single panic incident's audio room
+//
+// Half-duplex like a real radio: one transmitter at a time. The
+// DO also RECORDS the active transmitter's Opus/WebM chunks and,
+// on key-up, concatenates them, stores the clip in R2 (UPLOADS),
+// and writes the row that makes it replayable:
+//   • radio → radio_transmissions.audio_url
+//   • panic → panic_alerts.audio_file_id / audio_duration_seconds
+//     (wired in Stage 4; Stage 1 persists radio).
+//
+// Auth: message-based, mirroring routes/ws.ts. The socket connects
+// with no URL token (no JWT in logs/referrers — the 2026-04-15
+// policy) and sends an `authenticate` frame the DO verifies with
+// jose against env.JWT_SECRET. Only authenticated sockets relay.
+// ============================================================
+
+import { jwtVerify } from 'jose';
+import type { Bindings } from '../types';
+import { getDb, queryFirst, query, execute } from '../utils/db';
+import {
+  transcribeTransmission,
+  buildTranscriptionPrompt,
+  decideDispatcherReply,
+  phraseLookupReply,
+  synthesizeDispatcherVoice,
+  estimateSpeechSeconds,
+  isAddressedToDispatch,
+  fallbackAcknowledgement,
+  sayAgainReadback,
+  bytesToBase64,
+  type DispatcherTurn,
+} from '../utils/aiDispatcher';
+import { gatherAwareness, runLookup, runAction, checkPremiseHazards, VERBATIM_LOOKUPS, type RecordRef } from '../utils/dispatcherAwareness';
+import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
+import type { DispatcherOptions } from '../utils/aiDispatcher';
+
+interface VoiceEnv {
+  DB: D1Database;
+  UPLOADS: R2Bucket;
+  KV: KVNamespace;
+  JWT_SECRET: string;
+  // Workers AI — powers the AI dispatcher (Whisper transcription,
+  // Llama 4 Scout reasoning + data-entry + OCR, Aura-2 reply synthesis).
+  // See src/utils/aiDispatcher.ts.
+  AI: Ai;
+}
+
+// Synthetic call-sign for the AI dispatcher's own transmissions. Used
+// both as the TX label AND as the guard that keeps the dispatcher from
+// replying to itself (its replies are never fed back through the brain).
+const DISPATCH_CALLSIGN = 'DISPATCH';
+
+interface ConnMeta {
+  userId: number;
+  username: string;
+  fullName: string;
+  role: string;
+  unitLabel: string | null;
+  authenticated: boolean;
+}
+
+interface ActiveTx {
+  ws: WebSocket;
+  userId: number;
+  unitLabel: string | null;
+  chunks: Uint8Array[];
+  bytes: number;
+  startedAt: number;
+}
+
+// Don't persist sub-second key-fumbles or empty carriers; a real
+// transmission is at least this big once Opus-compressed.
+const MIN_CLIP_BYTES = 1024;
+
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export class VoiceHubDO {
+  state: DurableObjectState;
+  env: VoiceEnv;
+  conns = new Map<WebSocket, ConnMeta>();
+  activeTx: ActiveTx | null = null;
+  kind: 'radio' | 'panic' = 'radio';
+  refId = 0; // channel_id for radio, panic_id for panic
+  // A panic room keeps only the FIRST transmission — the officer's
+  // distress broadcast. Later talk-backs relay live but don't overwrite
+  // the archived clip.
+  panicRecorded = false;
+
+  constructor(state: DurableObjectState, env: VoiceEnv) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    // Room identity travels in the query the worker forwarded
+    // (?room=radio-5). It's not sensitive — it's just a channel id —
+    // so it's fine in the URL; identity (who you are) is the JWT frame.
+    const room = url.searchParams.get('room') || '';
+    const m = room.match(/^(radio|panic)-(\d+)$/);
+    if (!m) return new Response('Bad room', { status: 400 });
+    this.kind = m[1] as 'radio' | 'panic';
+    this.refId = Number(m[2]);
+
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+      return new Response('Expected WebSocket', { status: 426 });
+    }
+
+    const pair = new (globalThis as any).WebSocketPair();
+    const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+    (server as any).accept();
+    this.conns.set(server, {
+      userId: 0, username: '', fullName: '', role: '', unitLabel: null, authenticated: false,
+    });
+
+    // Sockets that never authenticate must not linger — without this, an
+    // attacker can hold unauthenticated connections open indefinitely.
+    setTimeout(() => {
+      const meta = this.conns.get(server);
+      if (meta && !meta.authenticated) {
+        try { (server as any).close(4001, 'Authentication timeout'); } catch { /* already closed */ }
+        this.onClose(server);
+      }
+    }, 10_000);
+
+    server.addEventListener('message', (ev: MessageEvent) => {
+      this.onMessage(server, ev).catch((err) => console.error('[VoiceHubDO] msg', err));
+    });
+    server.addEventListener('close', () => this.onClose(server));
+    server.addEventListener('error', () => this.onClose(server));
+
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private send(ws: WebSocket, obj: unknown): void {
+    try { if ((ws as any).readyState === 1) ws.send(JSON.stringify(obj)); } catch { /* in-flight */ }
+  }
+
+  // Relay to everyone in the room except the originator.
+  private relay(from: WebSocket, obj: unknown): void {
+    const msg = JSON.stringify(obj);
+    for (const [ws, meta] of this.conns) {
+      if (ws === from || !meta.authenticated) continue;
+      try { if ((ws as any).readyState === 1) ws.send(msg); } catch { /* ignore */ }
+    }
+  }
+
+  private broadcast(obj: unknown): void {
+    const msg = JSON.stringify(obj);
+    for (const [ws, meta] of this.conns) {
+      if (!meta.authenticated) continue;
+      try { if ((ws as any).readyState === 1) ws.send(msg); } catch { /* ignore */ }
+    }
+  }
+
+  private presenceCount(): number {
+    let n = 0;
+    for (const meta of this.conns.values()) if (meta.authenticated) n++;
+    return n;
+  }
+
+  private async onMessage(ws: WebSocket, ev: MessageEvent): Promise<void> {
+    let msg: any;
+    try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data as ArrayBuffer)); }
+    catch { return; }
+    const meta = this.conns.get(ws);
+    if (!meta) return;
+
+    // ── Authentication gate ──
+    if (msg.type === 'authenticate') {
+      if (meta.authenticated) return;
+      try {
+        const secret = new TextEncoder().encode(this.env.JWT_SECRET);
+        const { payload } = await jwtVerify(msg.token, secret);
+        const p = payload as unknown as { user_id?: number; userId?: number };
+        const claimed = p.user_id ?? p.userId; // accept both claim names ([[feedback-jwt-claim-naming-mismatch]])
+        if (claimed == null) { this.send(ws, { type: 'error', code: 'AUTH_FAILED' }); return; }
+
+        const db = getDb(this.env as any);
+        const user = await queryFirst<{ id: number; username: string; role: string; full_name: string; status: string }>(
+          db, 'SELECT id, username, role, full_name, status FROM users WHERE id = ? AND status = ?', claimed, 'active',
+        );
+        if (!user) { this.send(ws, { type: 'error', code: 'AUTH_FAILED' }); return; }
+
+        // Resolve the officer's unit call-sign once for transmit labels.
+        const unit = await queryFirst<{ call_sign: string }>(
+          db, 'SELECT call_sign FROM units WHERE officer_id = ? LIMIT 1', user.id,
+        );
+        meta.userId = user.id;
+        meta.username = user.username;
+        meta.fullName = user.full_name;
+        meta.role = user.role;
+        meta.unitLabel = unit?.call_sign ?? null;
+        meta.authenticated = true;
+
+        this.send(ws, { type: 'voice_ready', room: `${this.kind}-${this.refId}`, members: this.presenceCount() });
+        this.broadcast({ type: 'voice_presence', members: this.presenceCount() });
+      } catch {
+        this.send(ws, { type: 'error', code: 'AUTH_FAILED' });
+      }
+      return;
+    }
+
+    if (!meta.authenticated) { this.send(ws, { type: 'error', code: 'NOT_AUTHENTICATED' }); return; }
+
+    // ── PTT key-down ──
+    if (msg.type === 'transmit_start') {
+      if (this.activeTx && this.activeTx.ws !== ws) {
+        // Half-duplex: someone already holds the channel.
+        this.send(ws, { type: 'voice_busy', user_id: this.activeTx.userId });
+        return;
+      }
+      this.activeTx = { ws, userId: meta.userId, unitLabel: meta.unitLabel, chunks: [], bytes: 0, startedAt: Date.now() };
+      this.relay(ws, {
+        type: 'radio_transmit_start',
+        user_id: meta.userId, unit_label: meta.unitLabel, full_name: meta.fullName,
+        room: `${this.kind}-${this.refId}`,
+      });
+      return;
+    }
+
+    // ── Audio chunk (base64 webm/opus) ──
+    if (msg.type === 'audio') {
+      if (!this.activeTx || this.activeTx.ws !== ws || typeof msg.chunk !== 'string') return;
+      try {
+        const bytes = b64ToBytes(msg.chunk);
+        this.activeTx.chunks.push(bytes);
+        this.activeTx.bytes += bytes.length;
+      } catch { /* bad chunk — drop */ }
+      this.relay(ws, { type: 'radio_audio', user_id: meta.userId, chunk: msg.chunk });
+      return;
+    }
+
+    // ── PTT key-up ──
+    if (msg.type === 'transmit_end') {
+      if (!this.activeTx || this.activeTx.ws !== ws) return;
+      this.relay(ws, { type: 'radio_transmit_end', user_id: meta.userId });
+      const finished = this.activeTx;
+      this.activeTx = null;
+      // Persist in the background so the socket isn't blocked on R2/D1.
+      this.state.waitUntil(
+        this.persist(finished, typeof msg.transcript === 'string' ? msg.transcript : null)
+          .catch((err) => console.error('[VoiceHubDO] persist', err)),
+      );
+      return;
+    }
+  }
+
+  private onClose(ws: WebSocket): void {
+    const meta = this.conns.get(ws);
+    this.conns.delete(ws);
+    // If the talker dropped mid-transmission, salvage what we have.
+    if (this.activeTx && this.activeTx.ws === ws) {
+      const finished = this.activeTx;
+      this.activeTx = null;
+      this.broadcast({ type: 'radio_transmit_end', user_id: finished.userId });
+      this.state.waitUntil(
+        this.persist(finished, null)
+          .catch((err) => console.error('[VoiceHubDO] persist (drop)', err)),
+      );
+    }
+    if (meta?.authenticated) this.broadcast({ type: 'voice_presence', members: this.presenceCount() });
+  }
+
+  // Concatenate the buffered clip, store it in R2, and write the row
+  // that makes it replayable. Radio persists today; panic in Stage 4.
+  private async persist(tx: ActiveTx, transcript: string | null): Promise<void> {
+    if (tx.bytes < MIN_CLIP_BYTES) return; // glitch / empty carrier — skip
+    const durationSec = Math.max(0, Math.round((Date.now() - tx.startedAt) / 1000));
+
+    const blob = new Uint8Array(tx.bytes);
+    let off = 0;
+    for (const c of tx.chunks) { blob.set(c, off); off += c.length; }
+
+    const db = getDb(this.env as any);
+
+    if (this.kind === 'radio') {
+      // Org-wide radio settings — read once per transmission and reused for
+      // both the recording gate (auto_record) and the dispatcher pipeline, so
+      // an Admin → Radio change is live on the next transmission.
+      const settings = await getRadioSettings(db);
+
+      // INSERT first to mint the id, then key the R2 object by it so the
+      // serve route (GET /api/radio/transmissions/:id/audio) is a pure
+      // id→key map with no extra column needed.
+      const res = await execute(
+        db,
+        `INSERT INTO radio_transmissions (channel_id, user_id, unit_label, transmitted_at, duration_seconds, transcript)
+         VALUES (?, ?, ?, datetime('now'), ?, ?)`,
+        this.refId, tx.userId, tx.unitLabel, durationSec, transcript,
+      );
+      const id = Number(res.meta.last_row_id);
+
+      // Recording is gated by auto_record — when off, the transmission is still
+      // logged (audit trail) but no audio is kept and no play button appears.
+      if (settings.auto_record) {
+        const key = `radio-audio/${id}.webm`;
+        await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+        await execute(
+          db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
+          `/api/radio/transmissions/${id}/audio`, id,
+        );
+      }
+
+      // Tell the room a recording is ready so feeds can show a play button
+      // without waiting for the 5s poll.
+      const row = await queryFirst(
+        db,
+        `SELECT t.*, ch.name AS channel_name, u.full_name AS user_name
+         FROM radio_transmissions t
+         LEFT JOIN radio_channels ch ON ch.id = t.channel_id
+         LEFT JOIN users u ON u.id = t.user_id
+         WHERE t.id = ?`,
+        id,
+      );
+      this.broadcast({ type: 'radio_recorded', transmission: row });
+
+      // ── AI dispatcher: transcribe → reason → speak back ──
+      // Kicked off after the clip is saved so the live relay is never
+      // blocked on model latency. The dispatcher's own replies are written
+      // directly by runDispatcher (not through persist), so they never loop
+      // back through here. Gated by ai_dispatcher_enabled inside runDispatcher.
+      this.state.waitUntil(
+        this.runDispatcher(id, blob, transcript, settings).catch((err) =>
+          console.error('[VoiceHubDO] dispatcher', err)),
+      );
+      return;
+    }
+
+    // ── Panic: archive the officer's distress broadcast ──
+    // Keyed deterministically by panic id so the serve route
+    // (GET /api/dispatch/panic/:id/audio) is a pure id→key map. Only the
+    // first transmission is kept; audio_file_id = panic id doubles as a
+    // "recording present" flag for the dispatcher UI.
+    if (this.kind === 'panic') {
+      if (this.panicRecorded) return;
+      this.panicRecorded = true;
+      const key = `panic-audio/${this.refId}.webm`;
+      await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+      await execute(
+        db,
+        `UPDATE panic_alerts SET audio_file_id = ?, audio_duration_seconds = ? WHERE id = ?`,
+        this.refId, durationSec, this.refId,
+      );
+      this.broadcast({ type: 'panic_audio_recorded', panic_id: this.refId, duration_seconds: durationSec });
+    }
+  }
+
+  // ── AI Dispatcher pipeline ──────────────────────────────────
+  // Given a just-recorded radio transmission, transcribe it, decide a
+  // dispatcher reply, synthesize speech, persist it as a DISPATCH
+  // transmission, and broadcast it so the whole channel hears it live.
+  // Every stage is best-effort — a missing piece just means no reply this
+  // round, never a thrown error into the relay path.
+  private async runDispatcher(
+    sourceTxId: number,
+    audio: Uint8Array,
+    clientTranscript: string | null,
+    settings: RadioSettings,
+  ): Promise<void> {
+    // Master kill switch — when the AI dispatcher is disabled, the radio relay
+    // still records + broadcasts; it just never speaks back.
+    if (!settings.ai_dispatcher_enabled) return;
+
+    const db = getDb(this.env as any);
+
+    // Tunables applied to every model call this turn (operator-owned, live).
+    const opts: DispatcherOptions = {
+      persona: settings.ai_persona,
+      voice: settings.ai_voice,
+      temperature: settings.ai_temperature,
+      maxReplyChars: settings.ai_max_reply_chars,
+    };
+
+    // Recent traffic on this channel (oldest→newest). Gathered up-front because
+    // it does double duty: it primes the Whisper transcription below AND grounds
+    // the dispatcher's reasoning turn further down — so the read is paid once.
+    const recentRows = await query<{ unit_label: string | null; transcript: string | null }>(
+      db,
+      `SELECT unit_label, transcript FROM radio_transmissions
+       WHERE channel_id = ? AND id < ? AND transcript IS NOT NULL
+       ORDER BY id DESC LIMIT 5`,
+      this.refId, sourceTxId,
+    );
+    const recent = recentRows
+      .reverse()
+      .map((r) => ({ speaker: r.unit_label, text: (r.transcript as string) }));
+
+    // 1. Transcript — prefer the client's, else transcribe the clip (only when
+    //    auto_transcribe is on; otherwise an un-transcribed clip is skipped).
+    //    The clip is transcribed with a channel-aware vocabulary hint (domain
+    //    glossary + operator vocab + live call-signs + recent traffic) so
+    //    Whisper spells our call-signs, street names, and dispatch terms right
+    //    instead of guessing ("mileage", not "Maya list").
+    let transcript = (clientTranscript || '').trim();
+    if (!transcript) {
+      if (!settings.auto_transcribe) return;
+      const callSigns = [
+        ...recent.map((r) => r.speaker).filter((s): s is string => !!s),
+        ...(await this.activeCallSigns(db)),
+      ];
+      const initialPrompt = buildTranscriptionPrompt({
+        vocabulary: settings.stt_vocabulary,
+        callSigns,
+        recent: recent.map((r) => r.text),
+      });
+      const t = await transcribeTransmission(this.env.AI, audio, { initialPrompt });
+      if (!t) return; // unintelligible → nothing to answer
+      transcript = t;
+      // Backfill the source row so the operator's feed shows what was said.
+      await execute(db, 'UPDATE radio_transmissions SET transcript = ? WHERE id = ?', transcript, sourceTxId)
+        .catch(() => { /* best-effort */ });
+    }
+
+    // 2. Context — speaker call-sign, channel name. user_id is the requesting
+    // officer — carried on dispatch_speak so that officer's own device (not the
+    // whole channel) can auto-open the looked-up record. (recent gathered above.)
+    const speaker = await queryFirst<{ unit_label: string | null; user_id: number | null }>(
+      db, 'SELECT unit_label, user_id FROM radio_transmissions WHERE id = ?', sourceTxId,
+    );
+    const channel = await queryFirst<{ name: string }>(
+      db, 'SELECT name FROM radio_channels WHERE id = ?', this.refId,
+    );
+
+    // Advanced awareness — a live CAD board snapshot grounds every reply.
+    const awareness = await gatherAwareness(db, this.refId, speaker?.unit_label ?? null)
+      .catch(() => 'No active CAD activity on the board.');
+
+    const turn: DispatcherTurn = {
+      transcript,
+      speaker: speaker?.unit_label ?? null,
+      channelName: channel?.name ?? null,
+      recent,
+      awareness,
+    };
+
+    // 3. Decide the reply (intent routing + spoken text + optional lookup).
+    const decision = await decideDispatcherReply(this.env.AI, turn, opts);
+    const addressed = isAddressedToDispatch(transcript);
+
+    // 3-mode. Respond mode: in 'addressed' mode the dispatcher only speaks when
+    // a unit directs traffic at it (or explicitly asked for a lookup/write);
+    // it stays off undirected unit-to-unit chatter. 'all' answers everything.
+    const hasActionable = !!(decision?.lookup || decision?.action);
+    // OFFICER-SAFETY OVERRIDE: a duress / high-stress transmission must NEVER be
+    // dropped by respond-mode gating. In 'addressed' mode an undirected, non-
+    // actionable transmission would otherwise return here — before the stress/
+    // duress check below — so a unit under duress on unit-to-unit chatter would
+    // get no silent console alert. Assess escalation first and stay if present.
+    let safetyEscalated = false;
+    if (settings.stress_monitoring_enabled) {
+      const dc = settings.duress_code.trim().toLowerCase();
+      const codeHitEarly = dc.length > 0 && transcript.toLowerCase().includes(dc);
+      safetyEscalated = !!decision?.safety?.duress || codeHitEarly || decision?.safety?.stress === 'high';
+    }
+    if (settings.ai_respond_mode === 'addressed' && !addressed && !hasActionable && !safetyEscalated) return;
+
+    // 3-bis. 10-9 (say again) on LOW CONFIDENCE — if dispatch isn't sure what
+    // the unit said, never act on a guess. Suppress any lookup/CAD write the
+    // model proposed and replace the reply with a readback of what dispatch
+    // heard, asking the unit to confirm/repeat. Skipped on a safety escalation:
+    // a clear emergency is answered urgently, not re-queried.
+    if (decision && decision.confidence === 'low' && !safetyEscalated) {
+      decision.lookup = undefined;
+      decision.action = undefined;
+      if (!/\b(10-9|say again)\b/i.test(decision.reply)) {
+        decision.reply = sayAgainReadback(speaker?.unit_label ?? null, transcript);
+      }
+    }
+
+    // 3a. If the unit asked for a record check, run it for real and let the
+    // dispatcher read the result back instead of the holding "stand by".
+    let replyText = decision?.reply ?? '';
+    let actionIntent: string | null = null;
+    // A record pointer the lookup hit (plate/person), broadcast so the operator
+    // console can auto-open the file beside the live feed. Gated by the
+    // ai_auto_open_records setting; null otherwise.
+    let recordRef: RecordRef | null = null;
+    if (decision?.lookup) {
+      const result = await runLookup(
+        this.env as unknown as Bindings, db, decision.lookup,
+        { speaker: speaker?.unit_label ?? null, channelId: this.refId },
+      ).catch(() => null);
+      if (result) {
+        // These lookups already speak a complete radio line (or, for
+        // last_dispatch, ARE the verbatim re-read) — read them back as-is. The
+        // record checks (plate/person/warrant/vin) get re-phrased through the
+        // persona for radio brevity.
+        if (VERBATIM_LOOKUPS.has(decision.lookup.type)) {
+          replyText = result.text;
+        } else {
+          replyText = await phraseLookupReply(this.env.AI, turn, decision.lookup, result.text, opts);
+        }
+        if (result.record && settings.ai_auto_open_records) recordRef = result.record;
+      }
+    }
+
+    // 3a-bis. If the unit asked for a CAD WRITE (data entry) — log a status
+    // or start a call — execute it for real and read back the confirmation
+    // (which carries the new call number / canonical status) instead of the
+    // holding ack. A refused/failed write falls through to the verbal ack.
+    if (decision?.action) {
+      const written = await runAction(
+        this.env as unknown as Bindings, db, decision.action,
+        // The requesting officer is the BOLO issuer (bolos.issued_by FK).
+        { issuedBy: speaker?.user_id ?? null },
+      ).catch(() => null);
+      if (written) {
+        replyText = written.spoken;
+        actionIntent = written.summary;
+      } else {
+        // HONESTY GUARANTEE: the model asked for a write but it was refused
+        // (unknown call-sign / missing location) or failed. Do NOT speak the
+        // model's optimistic "copy, show you out" — that would acknowledge a
+        // change that never persisted ("saves then vanishes"). Replace it with
+        // an honest correction so the unit knows to identify / repeat.
+        replyText = decision.action.type === 'set_unit_status'
+          ? `${speaker?.unit_label || 'Unit calling'}, dispatch did not catch your call-sign — say again your unit and status.`
+          : decision.action.type === 'create_bolo'
+            ? `${speaker?.unit_label || 'Unit calling'}, unable to put that BOLO out — say again the details.`
+            : `${speaker?.unit_label || 'Unit calling'}, unable to start that call — say again the location and the nature.`;
+        actionIntent = `action_refused:${decision.action.type}`;
+      }
+    }
+
+    // 3a-ter. LIVE BOARD — a successful CAD write is broadcast to the room so
+    // the radio operator console reflects what the AI dispatcher just did
+    // (created/cleared a call, changed a unit status, dispatched backup) the
+    // instant it happens, instead of waiting for the board's periodic poll.
+    if (actionIntent && !actionIntent.startsWith('action_refused')) {
+      this.broadcast({
+        type: 'dispatch_action',
+        channel_id: this.refId,
+        source_tx_id: sourceTxId,
+        unit: speaker?.unit_label ?? null,
+        action: decision?.action?.type ?? null,
+        summary: actionIntent, // e.g. "call_created:CFS26-0042" / "unit_status:12-Adam=onscene"
+      });
+    }
+
+    // 3c. PROACTIVE OFFICER SAFETY — when a unit logs out at a location (or a
+    // new call is created), check premise_alerts for known hazards at that
+    // address and PREPEND an unprompted warning ("be advised — prior weapons
+    // call…"). The officer may not know to ask; dispatch warns anyway.
+    if (settings.safety_alerts_enabled && actionIntent && !actionIntent.startsWith('action_refused')) {
+      const loc = decision?.action?.location || decision?.action?.location_address || null;
+      if (loc) {
+        const warn = await checkPremiseHazards(db, loc).catch(() => null);
+        if (warn) replyText = `${warn} ${replyText}`.trim();
+      }
+    }
+
+    // 3d. OFFICER VOICE STRESS / DURESS CHECK (operator-tunable safety knob).
+    // The model rates stress/duress on every transmission; a configured duress
+    // code phrase is a deterministic override. On escalation we ALWAYS fire a
+    // silent console alert (dispatch_safety_alert). For an OVERT emergency we
+    // also answer urgently on-air; for a COVERT duress-code hit we keep the
+    // spoken reply normal so a nearby suspect isn't tipped off.
+    let safetyTag = '';
+    // SPOKEN urgency for voice delivery (shapeDelivery) — distinct from the
+    // internal alarm: a COVERT duress hit stays 'normal' so the voice is calm
+    // and never tips off a nearby suspect, even though the console is alerted.
+    let deliveryStress: 'normal' | 'elevated' | 'high' = 'normal';
+    if (settings.stress_monitoring_enabled) {
+      const safety = decision?.safety;
+      const code = settings.duress_code.trim().toLowerCase();
+      const codeHit = code.length > 0 && transcript.toLowerCase().includes(code);
+      const duress = !!safety?.duress || codeHit;
+      const high = safety?.stress === 'high' || duress;
+      const covert = codeHit && !safety?.duress; // signaled by code word, not overtly
+      if (duress) safetyTag = 'safety:duress';
+      else if (high) safetyTag = 'safety:high';
+      else if (safety?.stress === 'elevated') safetyTag = 'safety:elevated';
+      deliveryStress = (high || duress) && !covert ? 'high'
+        : safety?.stress === 'elevated' ? 'elevated'
+        : 'normal';
+
+      if (duress || high) {
+        if (!covert && !/\b(copy|hold|en\s?route|rolling|help|stand by|on the way)\b/i.test(replyText)) {
+          replyText = `${speaker?.unit_label || 'Unit'}, dispatch copies — help is rolling, all units hold your traffic. ${replyText}`.trim();
+        }
+        this.broadcast({
+          type: 'dispatch_safety_alert',
+          channel_id: this.refId,
+          source_tx_id: sourceTxId,
+          unit: speaker?.unit_label ?? null,
+          level: duress ? 'duress' : 'high',
+          covert,
+          reason: safety?.reason ?? (codeHit ? 'duress code spoken' : 'high stress in transmission'),
+        });
+      }
+    }
+
+    // 3b. GUARANTEE: a unit who addressed dispatch directly is never met with
+    // silence. If the model produced nothing usable, fall back to a
+    // deterministic acknowledgment. Undirected chatter the model declined to
+    // answer stays silent (no need to step on unit-to-unit traffic).
+    const intent = decision?.intent ?? (addressed ? 'forced_ack' : 'chatter');
+    if (!replyText.trim()) {
+      if (!addressed) return;
+      replyText = fallbackAcknowledgement(speaker?.unit_label ?? null);
+    }
+
+    // 4. Synthesize the dispatcher's voice (operator-selected Aura-2 speaker).
+    // Dynamic delivery shapes the prosody to the situation (calm → forceful)
+    // when enabled; covert duress was already coerced to 'normal' above.
+    const audioBytes = await synthesizeDispatcherVoice(this.env.AI, replyText, {
+      ...opts,
+      delivery: settings.voice_dynamics_enabled ? { stress: deliveryStress } : undefined,
+    });
+    if (!audioBytes) return;
+
+    // 5. Persist as a DISPATCH transmission — INSERT mints the id, then key
+    // the R2 object by it so the serve route stays a pure id→key map. MP3
+    // bytes under the .webm key replay fine (the client decodes by sniffing).
+    const durationSec = estimateSpeechSeconds(replyText);
+    // Persist (INSERT → R2 → audio_url UPDATE → re-read) is best-effort: if any
+    // step throws we MUST still broadcast the synthesized reply, or the channel
+    // hears silence — the one thing this function promises never to do. The
+    // inline `audio` field below plays regardless of the backing row, and the
+    // client's dispatch_speak handler already tolerates a null/rowless
+    // transmission (useVoiceChannel.ts: `if (msg.transmission)` + optional chaining).
+    let row: unknown = null;
+    try {
+      const res = await execute(
+        db,
+        `INSERT INTO radio_transmissions (channel_id, user_id, unit_label, transmitted_at, duration_seconds, transcript, tags)
+         VALUES (?, NULL, ?, datetime('now'), ?, ?, ?)`,
+        this.refId, settings.ai_dispatch_callsign || DISPATCH_CALLSIGN, durationSec, replyText,
+        `ai:${intent}${actionIntent ? `;${actionIntent}` : ''}${safetyTag ? `;${safetyTag}` : ''}`,
+      );
+      const dispId = Number(res.meta.last_row_id);
+      // D1 can omit last_row_id → NaN → an orphaned 'radio-audio/NaN.webm'. Treat
+      // it as a persist failure so we fall into the unpersisted-broadcast path.
+      if (!Number.isFinite(dispId)) throw new Error('dispatch transmission INSERT returned no last_row_id');
+      // Per-call .catch so a flaky R2 / UPDATE can't drop the broadcast once the
+      // row is minted — the live audio still plays even if replay-by-URL 404s.
+      await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {
+        httpMetadata: { contentType: 'audio/mpeg' },
+      }).catch((e) => console.warn('[VoiceHubDO] dispatch audio R2 put failed:', (e as Error)?.message));
+      await execute(
+        db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
+        `/api/radio/transmissions/${dispId}/audio`, dispId,
+      ).catch((e) => console.warn('[VoiceHubDO] dispatch audio_url UPDATE failed:', (e as Error)?.message));
+      row = await queryFirst(
+        db,
+        `SELECT t.*, ch.name AS channel_name, NULL AS user_name
+         FROM radio_transmissions t LEFT JOIN radio_channels ch ON ch.id = t.channel_id
+         WHERE t.id = ?`,
+        dispId,
+      );
+    } catch (err) {
+      console.error('[VoiceHubDO] dispatch persist failed; broadcasting unpersisted reply:', (err as Error)?.message);
+      // Synthetic rowless transmission — the feed still shows the line; the
+      // inline base64 audio in the broadcast is what actually plays.
+      row = {
+        id: null, channel_id: this.refId,
+        unit_label: settings.ai_dispatch_callsign || DISPATCH_CALLSIGN,
+        transmitted_at: new Date().toISOString(), duration_seconds: durationSec,
+        transcript: replyText, audio_url: null,
+        tags: `ai:${intent}`, channel_name: null, user_name: null,
+      };
+    }
+
+    // 6. Broadcast. dispatch_speak carries the inline reply audio so every
+    // listener plays it immediately through the P25 radio-haze chain; it
+    // also doubles as the feed-insert signal (handled like radio_recorded).
+    this.broadcast({
+      type: 'dispatch_speak',
+      transmission: row,
+      audio: bytesToBase64(audioBytes),
+      intent,
+      // Present only when a lookup hit a record AND auto-open is enabled — the
+      // operator console opens this file in its side panel; the requesting
+      // officer's own device (matched on source_user_id) opens it too.
+      record: recordRef ?? undefined,
+      source_user_id: recordRef ? (speaker?.user_id ?? null) : undefined,
+    });
+  }
+
+  // On-duty unit call-signs — fed into the Whisper prompt so live call-signs
+  // (D19, 12-Adam) are spelled correctly instead of phonetically guessed. All
+  // non-empty call-signs are returned (a unit can key up the moment it comes on
+  // duty); the prompt builder dedupes against recent speakers and caps the list.
+  // Best-effort: returns [] on any read error so transcription never blocks.
+  private async activeCallSigns(db: ReturnType<typeof getDb>): Promise<string[]> {
+    try {
+      const rows = await query<{ call_sign: string | null }>(
+        db,
+        `SELECT call_sign FROM units
+         WHERE call_sign IS NOT NULL AND TRIM(call_sign) <> ''
+         ORDER BY call_sign LIMIT 30`,
+      );
+      return rows.map((r) => (r.call_sign || '').trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+}

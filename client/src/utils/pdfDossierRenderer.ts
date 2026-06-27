@@ -183,9 +183,9 @@ function drawDossierCover(
   const bannerH = 10;
   const accentW = BORDER.ACCENT_SECTION;
   const bgColor: [number, number, number] = cfg.riskLevel === 'high'
-    ? [180, 25, 25]
+    ? [55, 55, 55]   // neutralized 2026-05-30 (was red)
     : cfg.riskLevel === 'elevated'
-      ? [200, 130, 20]
+      ? [80, 80, 80]  // neutralized (was amber)
       : [COLOR.BG_SECTION_HDR[0], COLOR.BG_SECTION_HDR[1], COLOR.BG_SECTION_HDR[2]];
 
   doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);

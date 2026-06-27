@@ -1,0 +1,45 @@
+name: ios2 tests (RMPG Flex Connect)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios2/**'
+      - '.github/workflows/ios2-tests.yml'
+  pull_request:
+    paths:
+      - 'ios2/**'
+      - '.github/workflows/ios2-tests.yml'
+
+# Least-privilege GITHUB_TOKEN (CWE-275). Swift test job needs only read access.
+permissions:
+  contents: read
+
+jobs:
+  swift-tests:
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [CoreAPI, CoreAuth, DesignSystem, FeatureShell]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode (pinned to the GitHub macos-14 default)
+        run: |
+          # macos-14 ships several Xcode versions. Prefer 15.4 if present.
+          if [ -d "/Applications/Xcode_15.4.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_15.4.app
+          else
+            sudo xcode-select -s /Applications/Xcode.app
+          fi
+          xcodebuild -version
+          swift --version
+
+      - name: Show swift package layout
+        working-directory: ios2/RMPGFlexConnect/Packages/${{ matrix.package }}
+        run: ls -la
+
+      - name: Test ${{ matrix.package }}
+        working-directory: ios2/RMPGFlexConnect/Packages/${{ matrix.package }}
+        run: swift test --enable-test-discovery

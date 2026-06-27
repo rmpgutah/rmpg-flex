@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { escapeHtml } from '../../../utils/sanitize';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 export interface PredictedHotspot {
   latitude: number;
@@ -60,8 +61,8 @@ export function useMapPredictions(
   useEffect(() => {
     if (!map) return;
 
-    if (map.getLayer(sourceId)) map.removeLayer(sourceId);
-    if (map.getSource(sourceId)) map.removeSource(sourceId);
+    safeRemoveLayer(map, sourceId);
+    safeRemoveSource(map, sourceId);
 
     if (!enabled || hotspots.length === 0) return;
 
@@ -146,8 +147,8 @@ export function useMapPredictions(
     });
 
     return () => {
-      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      safeRemoveLayer(map, sourceId);
+      safeRemoveSource(map, sourceId);
     };
   }, [map, enabled, hotspots]);
 
