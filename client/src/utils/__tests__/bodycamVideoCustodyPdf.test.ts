@@ -7,9 +7,10 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
+import { toDisplayLabel } from '../formatters';
 import {
   fmtDate, fmtDateTime, fmtDuration, fmtFileSize,
-  prettyAction, chainEntryActor, isEvidenceHold,
+  chainEntryActor, isEvidenceHold,
   generateBodycamVideoCustodyPdf,
 } from '../bodycamVideoCustodyPdf';
 
@@ -73,13 +74,13 @@ describe('bodycamVideoCustodyPdf — pure helpers', () => {
   });
 
   describe('prettyAction', () => {
-    it('returns em-dash for empty', () => {
-      expect(prettyAction(undefined)).toBe('—');
-      expect(prettyAction('')).toBe('—');
+    it('returns empty string for empty', () => {
+      expect(toDisplayLabel(undefined)).toBe('');
+      expect(toDisplayLabel('')).toBe('');
     });
     it('converts snake_case to Title Case', () => {
-      expect(prettyAction('bodycam_video_viewed')).toBe('Bodycam Video Viewed');
-      expect(prettyAction('use_of_force')).toBe('Use Of Force');
+      expect(toDisplayLabel('bodycam_video_viewed')).toBe('Bodycam Video Viewed');
+      expect(toDisplayLabel('use_of_force')).toBe('Use Of Force');
     });
   });
 

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { Monitor, Apple, Smartphone, Download, ArrowLeft, ChevronRight } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Monitor, Apple, Smartphone, Download, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 
 type Platform = 'win' | 'mac' | 'android';
@@ -55,11 +56,42 @@ function getRecommendedPlatform(): Platform {
   return 'win';
 }
 
+// Map a file_id query param to a platform tab. Supports bare platform names
+// ('win', 'mac', 'android') and filenames containing platform keywords.
+function platformFromFileId(fileId: string): Platform | null {
+  const lower = fileId.toLowerCase();
+  if (lower === 'mac' || lower.includes('mac') || lower.includes('darwin') || lower.endsWith('.dmg')) return 'mac';
+  if (lower === 'android' || lower.includes('android') || lower.endsWith('.apk')) return 'android';
+  if (lower === 'win' || lower.includes('win') || lower.endsWith('.exe') || lower.endsWith('.zip')) return 'win';
+  return null;
+}
+
 export default function DownloadsPage() {
+  const recommended = getRecommendedPlatform();
   const [info, setInfo] = useState<DownloadsInfo>({});
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Platform>(getRecommendedPlatform());
-  const recommended = getRecommendedPlatform();
+  const [fetchError, setFetchError] = useState(false);
+  const [activeTab, setActiveTab] = useState<Platform>(recommended);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Refs used by the N shortcut to programmatically click the active download link.
+  const downloadRefs = useRef<Record<Platform, HTMLAnchorElement | null>>({
+    win: null,
+    mac: null,
+    android: null,
+  });
+
+  // ── Deep-link: ?file_id=<platform|filename> ──────────────────────────────
+  // Read on mount, resolve to a tab, then strip the param (replace: true so
+  // the back-button returns to the referrer rather than the param URL).
+  useEffect(() => {
+    const fileId = searchParams.get('file_id');
+    if (!fileId) return;
+    const platform = platformFromFileId(fileId);
+    if (platform) setActiveTab(platform);
+    setSearchParams({}, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     apiFetch<DownloadsInfo>('/api/downloads/info')
@@ -68,8 +100,43 @@ export default function DownloadsPage() {
         setLoading(false);
       })
       .catch(() => {
+        setFetchError(true);
         setLoading(false);
       });
+  }, []);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  // N   — trigger the download link for the currently-active platform tab.
+  // Esc — if on a non-recommended tab, snap back to the recommended one;
+  //        otherwise blur any focused element.
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  const recommendedRef = useRef(recommended);
+  recommendedRef.current = recommended;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        e.stopPropagation();
+        downloadRefs.current[activeTabRef.current]?.click();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (activeTabRef.current !== recommendedRef.current) {
+          setActiveTab(recommendedRef.current);
+        } else {
+          (document.activeElement as HTMLElement | null)?.blur();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, []);
 
   const platforms: Platform[] = ['win', 'mac', 'android'];
@@ -108,8 +175,13 @@ export default function DownloadsPage() {
     },
   };
 
+  // ── Version display ───────────────────────────────────────────────────────
+  const displayVersion = !loading
+    ? (info.win?.version ?? info.mac?.version ?? info.android?.version ?? '5.8.0')
+    : null;
+
   return (
-    <div className="min-h-screen" style={{ background:"var(--surface-sunken)" }}>
+    <div className="min-h-screen" style={{ background: 'var(--surface-sunken)' }}>
       {/* Header */}
       <div className="border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-overlay)' }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
@@ -140,87 +212,112 @@ export default function DownloadsPage() {
               borderRadius: 2,
             }}
           >
-            {loading ? 'Loading...' : info.win ? `v${info.win.version}` : info.mac ? `v${info.mac.version}` : 'v5.8.0'}
+            {loading ? 'Loading...' : `v${displayVersion}`}
           </div>
           <h2 className="text-3xl font-bold text-rmpg-100 mb-3">Download RMPG Flex</h2>
-          <p className="text-sm max-w-lg mx-auto leading-relaxed" style={{ color: '#888' }}>
+          <p className="text-sm max-w-lg mx-auto leading-relaxed" style={{ color: 'var(--rmpg-500)' }}>
             Install RMPG Flex on your computer or phone. The full CAD/RMS dispatch system — available as a
             desktop app, Android app, or in any web browser.
           </p>
         </div>
 
-        {/* Download Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
-          {platforms.map((p) => {
-            const config = PLATFORM_CONFIG[p];
-            const installer = info[p as keyof DownloadsInfo];
-            const isRecommended = p === recommended && !!installer;
-            const Icon = config.icon;
+        {/* ── Loading state ─────────────────────────────────────────────── */}
+        {loading && (
+          <div
+            className="flex items-center justify-center py-16 mb-12"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+          >
+            <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--rmpg-500)' }}>
+              Loading download info…
+            </span>
+          </div>
+        )}
 
-            return (
-              <div
-                key={p}
-                className="relative flex flex-col items-center p-6 text-center transition-colors"
-                style={{
-                  background: 'var(--surface-base)',
-                  border: isRecommended ? '1px solid #d4a017' : '1px solid var(--border-subtle)',
-                  borderRadius: 2,
-                }}
-              >
-                {isRecommended && (
-                  <span
-                    className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-bold uppercase tracking-wider px-3 py-0.5"
-                    style={{
-                      background: '#d4a017',
-                      color: '#0a0a0a',
-                      borderRadius: 2,
-                    }}
-                  >
-                    Recommended
-                  </span>
-                )}
+        {/* ── Error state ───────────────────────────────────────────────── */}
+        {!loading && fetchError && (
+          <div
+            className="flex items-center justify-center py-16 mb-12"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderRadius: 2 }}
+          >
+            <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--rmpg-500)' }}>
+              Could not load download info — check your connection and refresh.
+            </span>
+          </div>
+        )}
 
-                <Icon className="w-10 h-10 mb-3" style={{ color: '#d4a017' }} />
-                <h3 className="text-base font-bold text-rmpg-100 mb-1">{config.label}</h3>
-                <span className="text-[11px] mb-3" style={{ color: 'var(--rmpg-500)' }}>{config.arch}</span>
+        {/* ── Download Cards (shown after successful load) ───────────────── */}
+        {!loading && !fetchError && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+            {platforms.map((p) => {
+              const config = PLATFORM_CONFIG[p];
+              const installer = info[p as keyof DownloadsInfo];
+              const isRecommended = p === recommended && !!installer;
+              const Icon = config.icon;
 
-                {loading ? (
-                  <span className="text-xs" style={{ color: 'var(--rmpg-500)' }}>Loading...</span>
-                ) : installer ? (
-                  <>
-                    <span className="text-[11px] mb-4" style={{ color: 'var(--rmpg-500)' }}>
-                      v{installer.version} — {installer.size}
-                    </span>
-                    <a
-                      href={`/downloads/${encodeURIComponent(installer.filename)}`}
-                      download={installer.filename}
-                      className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+              return (
+                <div
+                  key={p}
+                  className="relative flex flex-col items-center p-6 text-center transition-colors"
+                  style={{
+                    background: 'var(--surface-base)',
+                    border: isRecommended ? '1px solid #d4a017' : '1px solid var(--border-subtle)',
+                    borderRadius: 2,
+                  }}
+                >
+                  {isRecommended && (
+                    <span
+                      className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-bold uppercase tracking-wider px-3 py-0.5"
                       style={{
-                        background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
-                        border: '1px solid #d4a017',
-                        color: '#d4a017',
+                        background: '#d4a017',
+                        color: 'var(--surface-sunken)',
                         borderRadius: 2,
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(180deg, #242424 0%, #1a1a1a 100%)';
-                        e.currentTarget.style.borderColor = '#e8b52a';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
-                        e.currentTarget.style.borderColor = '#d4a017';
-                      }}
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      {config.buttonLabel}
-                    </a>
-                  </>
-                ) : (
-                  <span className="text-xs mt-4" style={{ color: 'var(--rmpg-500)' }}>Not available</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                      Recommended
+                    </span>
+                  )}
+
+                  <Icon className="w-10 h-10 mb-3" style={{ color: '#d4a017' }} />
+                  <h3 className="text-base font-bold text-rmpg-100 mb-1">{config.label}</h3>
+                  <span className="text-[11px] mb-3" style={{ color: 'var(--rmpg-500)' }}>{config.arch}</span>
+
+                  {installer ? (
+                    <>
+                      <span className="text-[11px] mb-4" style={{ color: 'var(--rmpg-500)' }}>
+                        v{installer.version} — {installer.size}
+                      </span>
+                      <a
+                        ref={(el) => { downloadRefs.current[p] = el; }}
+                        href={`/downloads/${encodeURIComponent(installer.filename)}`}
+                        download={installer.filename}
+                        className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+                        style={{
+                          background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+                          border: '1px solid #d4a017',
+                          color: '#d4a017',
+                          borderRadius: 2,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-overlay) 0%, var(--surface-raised) 100%)';
+                          e.currentTarget.style.borderColor = '#e8b52a';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
+                          e.currentTarget.style.borderColor = '#d4a017';
+                        }}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        {config.buttonLabel}
+                      </a>
+                    </>
+                  ) : (
+                    <span className="text-xs mt-4" style={{ color: 'var(--rmpg-500)' }}>Not available</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Web App Banner */}
         <div
@@ -270,7 +367,7 @@ export default function DownloadsPage() {
               'Automatic updates — always stay on the latest version',
             ].map((feature, i) => (
               <div key={i} className="flex items-center gap-2 text-xs" style={{ color: 'var(--rmpg-400)' }}>
-                <span style={{ color: '#4ade80' }}>&#10003;</span>
+                <span style={{ color: 'var(--green-500, #4ade80)' }}>&#10003;</span>
                 {feature}
               </div>
             ))}
@@ -295,7 +392,7 @@ export default function DownloadsPage() {
                 onClick={() => setActiveTab(p)}
                 className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors"
                 style={{
-                  color: activeTab === p ? '#d4a017' : '#666',
+                  color: activeTab === p ? '#d4a017' : 'var(--rmpg-600)',
                   borderBottom: activeTab === p ? '2px solid #d4a017' : '2px solid transparent',
                 }}
               >
@@ -327,13 +424,14 @@ export default function DownloadsPage() {
               <div
                 className="mt-3 p-3 text-xs leading-relaxed"
                 style={{
-                  background: '#1a1700',
-                  border: '1px solid #4a3f00',
-                  color: '#f59e0b',
+                  background: 'var(--surface-sunken)',
+                  border: '1px solid var(--border-default)',
+                  color: 'var(--brand-300, #f59e0b)',
                   borderRadius: 2,
                 }}
               >
-                <strong style={{ color: '#fbbf24' }}>Note:</strong> {STEPS[activeTab].warning}
+                <strong style={{ color: 'var(--brand-200, #fbbf24)' }}>Note:</strong>{' '}
+                {STEPS[activeTab].warning}
               </div>
             )}
           </div>
@@ -367,8 +465,7 @@ export default function DownloadsPage() {
       {/* Footer */}
       <div className="text-center py-8 text-[10px] tracking-wider" style={{ color: 'var(--rmpg-600)' }}>
         <span id="footer-version">
-          RMPG Flex v
-          {loading ? '...' : info.win ? info.win.version : info.mac ? info.mac.version : '5.8.0'}
+          RMPG Flex v{loading ? '…' : displayVersion}
         </span>
         {' — '}Rocky Mountain Protective Group, LLC<br />
         <a href="/" className="no-underline" style={{ color: 'var(--rmpg-500)' }}>Open Flex Web App</a>
