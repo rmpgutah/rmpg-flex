@@ -17,6 +17,7 @@ import {
   hexToRgb,
 } from './pdfGenerator';
 import { LAYOUT, COLOR } from './pdfTokens';
+import { toDisplayLabel } from './formatters';
 import { registerArialFont } from './pdf/fonts/registerArial';
 
 export interface SitRepCall {
@@ -73,10 +74,6 @@ const PRI_RGB: Record<string, [number, number, number]> = {
   P3: [184, 137, 58],
   P4: [122, 106, 63],
 };
-
-function titleCase(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 export async function generateMapSituationReport(data: MapSituationReportData): Promise<void> {
   const branding = await fetchPdfBranding().catch(() => DEFAULT_PDF_BRANDING);
@@ -223,9 +220,9 @@ export async function generateMapSituationReport(data: MapSituationReportData): 
       doc.text(call.priority || '—', cx + 7, y + 3.3, { align: 'center' });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(20, 20, 20);
       cx += cols[1].w;
-      doc.text(titleCase(call.incident_type || '—').slice(0, 26), cx + 1.5, y + 3.5); cx += cols[2].w;
+      doc.text(toDisplayLabel(call.incident_type).slice(0, 26) || '—', cx + 1.5, y + 3.5); cx += cols[2].w;
       doc.setTextColor(90, 90, 90);
-      doc.text(titleCase(call.status || '—').slice(0, 16), cx + 1.5, y + 3.5); cx += cols[3].w;
+      doc.text(toDisplayLabel(call.status).slice(0, 16) || '—', cx + 1.5, y + 3.5); cx += cols[3].w;
       doc.setTextColor(20, 20, 20);
       doc.text(sanitizePdfText(call.location_address || '—').slice(0, 42), cx + 1.5, y + 3.5);
       y += 5;
@@ -258,9 +255,9 @@ export async function generateMapSituationReport(data: MapSituationReportData): 
       doc.text(sanitizePdfText(u.call_sign || '—'), cx + 1.5, y + 3.5); cx += uc[0];
       doc.text(sanitizePdfText(u.officer_name || '—').slice(0, 30), cx + 1.5, y + 3.5); cx += uc[1];
       doc.setTextColor(90, 90, 90);
-      doc.text(titleCase(u.status || '—'), cx + 1.5, y + 3.5); cx += uc[2];
+      doc.text(toDisplayLabel(u.status) || '—', cx + 1.5, y + 3.5); cx += uc[2];
       doc.setTextColor(20, 20, 20);
-      const cur = u.current_call_type ? titleCase(u.current_call_type) : '—';
+      const cur = u.current_call_type ? toDisplayLabel(u.current_call_type) : '—';
       doc.text(sanitizePdfText(cur).slice(0, 36), cx + 1.5, y + 3.5);
       y += 5;
     });
