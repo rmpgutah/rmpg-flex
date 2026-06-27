@@ -36,6 +36,10 @@ interface Props {
   onFileContextMenu: (e: React.MouseEvent, file: DossierFile) => void;
   // Optional: rendered before tiles (back button, shelf widgets, etc.)
   headerSlot?: React.ReactNode;
+  // 3-state empty: loading hides the tile area, searchQuery differentiates
+  // "no results" from "folder is empty".
+  isLoading?: boolean;
+  searchQuery?: string;
 }
 
 // ── Type metadata ──────────────────────────────────────────────────────────
@@ -160,12 +164,16 @@ export default function DossierGrid({
   onFolderOpen, onFileOpen, onFileSelect,
   onFolderContextMenu, onFileContextMenu,
   headerSlot,
+  isLoading = false,
+  searchQuery = '',
 }: Props) {
+  const isEmpty = folders.length === 0 && files.length === 0;
+
   return (
     <div className="flex flex-wrap content-start gap-2 p-4 select-none">
       {headerSlot}
 
-      {folders.map(folder => (
+      {!isLoading && folders.map(folder => (
         <FolderTile
           key={`folder-${folder.id}`}
           folder={folder}
@@ -174,7 +182,7 @@ export default function DossierGrid({
         />
       ))}
 
-      {files.map(file => (
+      {!isLoading && files.map(file => (
         <FileTile
           key={`file-${file.file_id}`}
           file={file}
@@ -185,7 +193,20 @@ export default function DossierGrid({
         />
       ))}
 
-      {folders.length === 0 && files.length === 0 && (
+      {/* 3-state empty: loading / no-results / no-data */}
+      {isLoading && (
+        <div className="w-full py-16 flex flex-col items-center justify-center gap-2 text-rmpg-500">
+          <FolderOpen size={40} className="text-rmpg-700 animate-pulse" />
+          <span className="text-[11px]">Loading…</span>
+        </div>
+      )}
+      {!isLoading && isEmpty && searchQuery.trim() !== '' && (
+        <div className="w-full py-16 flex flex-col items-center justify-center gap-2 text-rmpg-500">
+          <FolderOpen size={40} className="text-rmpg-700" />
+          <span className="text-[11px]">No results match your search</span>
+        </div>
+      )}
+      {!isLoading && isEmpty && searchQuery.trim() === '' && (
         <div className="w-full py-16 flex flex-col items-center justify-center gap-2 text-rmpg-500">
           <FolderOpen size={40} className="text-rmpg-700" />
           <span className="text-[11px]">This folder is empty</span>

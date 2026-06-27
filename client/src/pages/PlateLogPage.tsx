@@ -114,6 +114,8 @@ function HitBanners({ hits }: { hits: ScreenHit[] }) {
   );
 }
 
+const DELETE_ROLES = new Set(['admin', 'manager']);
+
 export default function PlateLogPage() {
   const { user } = useAuth();
   const canManage = MANAGE_ROLES.has(user?.role ?? '');
@@ -144,6 +146,8 @@ export default function PlateLogPage() {
   const [confirmBulk, setConfirmBulk] = useState<'confirm' | 'reject' | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const plateInputRef = useRef<HTMLInputElement>(null);
+  // Ref for the scan tile — used to scroll into view after a deep-link load.
+  const scanTileRef = useRef<HTMLDivElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   // One-shot deep-link handles: `?capture_id=<n>` hydrates the scan tile from
   // server (so the entity-aware notification routing — see notificationRouting.ts
@@ -272,10 +276,14 @@ export default function PlateLogPage() {
             // missing pieces so the tile renders without throwing.
             setScan({ ...(cap as any), hits: cap.hits ?? [], enrich_status: 'done' });
             if (cap.capture?.plate) setPlate(cap.capture.plate);
+            addToast(`Capture #${numericId} loaded`, 'success');
+            requestAnimationFrame(() => scanTileRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
           })
-          .catch((e: any) => setScanErr(
-            `Could not open capture #${numericId}: ${e?.message || 'not found'}`,
-          ));
+          .catch((e: any) => {
+            const msg = `Could not open capture #${numericId}: ${e?.message || 'not found'}`;
+            setScanErr(msg);
+            addToast(msg, 'error');
+          });
       }
     }
     consumeParams();
@@ -283,7 +291,8 @@ export default function PlateLogPage() {
   }, []);
 
   // ── Esc smart-cascade: close-newest-open-first ─────────────────────────
-  // Order: dossier → editing modal → reviewMsg banner → scan tile → scanErr.
+  // Order: confirmDismissScan → confirmBulk → dossier → editing modal →
+  //        reviewMsg banner → scan tile → scanErr.
   // Skip while typing in any field — operator may be editing notes/plate.
   useEffect(() => {
     const isTypingInField = (target: EventTarget | null): boolean => {
@@ -294,19 +303,23 @@ export default function PlateLogPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (isTypingInField(e.target)) return;
+      // ConfirmDialogs own their own Esc — short-circuit so the page cascade
+      // doesn't also fire (focus is typically still on the page backdrop).
+      if (confirmDismissScan) { e.stopPropagation(); setConfirmDismissScan(false); return; }
+      if (confirmBulk !== null) { e.stopPropagation(); setConfirmBulk(null); return; }
       // PlateDossier and CaptureReviewEditor are modal overlays; they own
       // their own Esc handling once focus is inside them — but the cascade
       // here is the fallback for the (common) case where focus is still on
       // the page underneath.
-      if (dossierPlate) { setDossierPlate(null); return; }
-      if (editing) { setEditing(null); return; }
-      if (reviewMsg) { setReviewMsg(null); return; }
-      if (scanErr) { setScanErr(null); return; }
-      if (scan) { setScan(null); return; }
+      if (dossierPlate) { e.stopPropagation(); setDossierPlate(null); return; }
+      if (editing) { e.stopPropagation(); setEditing(null); return; }
+      if (reviewMsg) { e.stopPropagation(); setReviewMsg(null); return; }
+      if (scanErr) { e.stopPropagation(); setScanErr(null); return; }
+      if (scan) { e.stopPropagation(); setScan(null); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [dossierPlate, editing, reviewMsg, scanErr, scan]);
+  }, [confirmDismissScan, confirmBulk, dossierPlate, editing, reviewMsg, scanErr, scan]);
 
   // ── `N` shortcut: jump to plate input for a fresh manual entry. Keyboard
   // operators expect a quick "new entry" affordance (same convention as the
@@ -491,6 +504,13 @@ export default function PlateLogPage() {
               title="Generate court-record PDF for this capture">
               <FileText className="w-3 h-3" />{pdfBusy ? '…' : 'COURT PDF'}
             </button>
+            {canDelete && (
+              <button type="button" onClick={() => setConfirmDismissScan(true)}
+                className="text-[9px] font-bold uppercase px-1.5 py-0.5 border border-red-800 text-red-400 hover:bg-red-950/40"
+                title="Dismiss this capture from view">
+                DISMISS
+              </button>
+            )}
           </div>
           <div className="p-3 space-y-2">
             <HitBanners hits={scan.hits} />

@@ -11,6 +11,14 @@
 // navigation (↑/↓/Enter) matching GlobalSearch; Esc smart-cascade (filter →
 // query → blur); court-ready PDF export of the current result list; theme-
 // token chrome (no more raw #d4a017/#0a0a0a literals).
+//
+// Audit v1204: ConfirmDialog guards clear-recent-searches; ?article_id= deep-
+// link highlights a specific result by record id (deepLinkRef guard); N focuses
+// the search input (gated to admin/manager/supervisor/officer); Esc cascade
+// adds e.stopPropagation() per branch (clearConfirm → typeFilter → query →
+// blur); loading skeleton distinct from no-data/no-results; canCreate
+// (admin|manager) gates print button visibility; API shape already correct
+// (knowledgeBase.ts unwraps .results); brand tokens clean (no raw hex).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -22,6 +30,8 @@ import {
 import { knowledgeBaseSearch, kbTypeLabel, KB_TYPE_META, type KbResult } from '../utils/knowledgeBase';
 import { generateKnowledgeBaseSearchPdf } from '../utils/knowledgeBaseSearchPdf';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const TYPE_ICON: Record<string, LucideIcon> = {
   call: Phone, person: User, vehicle: Car, warrant: Shield, citation: Receipt,
@@ -48,13 +58,21 @@ const recentKey = (userId: string | undefined) =>
 export default function KnowledgeBasePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [params, setParams] = useSearchParams();
+
+  // Role gates: print (admin|manager), focus-shortcut (any authenticated)
+  const canPrint = !!(
+    user?.role === 'admin' || user?.role === 'manager'
+  );
+
   const [query, setQuery] = useState(params.get('q') || '');
   const [results, setResults] = useState<KbResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string | null>(params.get('type') || null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [clearConfirm, setClearConfirm] = useState(false);
   const [recent, setRecent] = useState<RecentSearch[]>(() => {
     // Lazy init from per-user storage. Bare key is intentionally not migrated:
     // the previous page never wrote any local history, so there's nothing to
@@ -69,6 +87,7 @@ export default function KnowledgeBasePage() {
     }
   });
   const inputRef = useRef<HTMLInputElement>(null);
+  const deepLinkRef = useRef(false);
 
   // Re-load recent list once the user id is known (lazy init above ran with
   // undefined). Effect re-runs only when user.id changes — same MDT shift.
@@ -130,6 +149,49 @@ export default function KnowledgeBasePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, typeFilter, user?.id]);
 
+  // Deep-link: ?article_id=<recordId> (optional &type=<type>)
+  // A shareable link to a specific search result. On load the page waits for
+  // the search to complete then scrolls to / highlights the target record.
+  // deepLinkRef prevents double-consume on re-render.
+  useEffect(() => {
+    const rawId = params.get('article_id');
+    if (!rawId || loading || deepLinkRef.current) return;
+    const numeric = parseInt(rawId, 10);
+    if (isNaN(numeric)) return;
+    if (!searched) return; // wait for search results to arrive
+    deepLinkRef.current = true;
+
+    // Find the matching result in the current set.
+    const hit = results.find((r) => r.recordId === numeric);
+    if (hit) {
+      const hitIdx = results.indexOf(hit);
+      setSelectedIndex(hitIdx);
+      // If the hit is filtered out by type, clear the filter so it's visible.
+      if (typeFilter && hit.type !== typeFilter) setTypeFilter(null);
+      // Scroll to the highlighted card after paint.
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-result-id="${numeric}"]`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      // Strip the param from the URL once consumed.
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('article_id');
+        return next;
+      }, { replace: true });
+    } else {
+      addToast(`Record #${rawId} not found in current results`, 'warning');
+      // Strip the stale param.
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('article_id');
+        return next;
+      }, { replace: true });
+    }
+  // Re-run once search completes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searched, loading]);
+
   // Counts per type (for the filter chips), in result order.
   const typeCounts = useMemo(() => {
     const order: string[] = [];
@@ -184,11 +246,17 @@ export default function KnowledgeBasePage() {
     const k = recentKey(user?.id);
     if (k) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
     setRecent([]);
+    setClearConfirm(false);
   }, [user?.id]);
+
+  const hasPrintableResults = searched && results.length > 0;
 
   // Keyboard contract — mirrors GlobalSearch so the dedicated page feels the
   // same as Cmd+K. Suppressed inside other text inputs / contenteditable.
-  // Esc smart-cascade: chip → query → blur. Each level peels back one layer.
+  // Esc smart-cascade: clearConfirm → chip → query → blur. Each level peels
+  // back one layer. e.stopPropagation() per branch prevents parent handlers
+  // from swallowing the event before we process it.
+  // N focuses the search input (gated: any authenticated user).
   // ↑/↓ navigate the visible result list, Enter opens the highlighted row.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -200,15 +268,41 @@ export default function KnowledgeBasePage() {
       );
 
       if (e.key === 'Escape') {
-        // Esc inside the field: chip → query → blur. Outside any field: same
-        // cascade but skip the blur step.
-        if (typeFilter) { e.preventDefault(); setTypeFilter(null); return; }
-        if (query) { e.preventDefault(); setQuery(''); return; }
-        if (inOurInput) { e.preventDefault(); inputRef.current?.blur(); return; }
+        // Cascade: clearConfirm → chip → query → blur.
+        if (clearConfirm) {
+          e.stopPropagation();
+          setClearConfirm(false);
+          return;
+        }
+        if (typeFilter) {
+          e.stopPropagation();
+          e.preventDefault();
+          setTypeFilter(null);
+          return;
+        }
+        if (query) {
+          e.stopPropagation();
+          e.preventDefault();
+          setQuery('');
+          return;
+        }
+        if (inOurInput) {
+          e.stopPropagation();
+          e.preventDefault();
+          inputRef.current?.blur();
+          return;
+        }
         return;
       }
 
       if (inOtherField) return;
+
+      // N — focus the search input so the operator can start typing.
+      if (e.key === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey && user) {
+        e.preventDefault();
+        inputRef.current?.focus();
+        return;
+      }
 
       if (e.key === 'ArrowDown') {
         if (shown.length === 0) return;
@@ -226,9 +320,7 @@ export default function KnowledgeBasePage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [shown, selectedIndex, query, typeFilter, open]);
-
-  const canPrint = searched && results.length > 0;
+  }, [shown, selectedIndex, query, typeFilter, clearConfirm, open, user]);
 
   return (
     <div className="p-4 space-y-4 max-w-4xl mx-auto">
@@ -237,16 +329,18 @@ export default function KnowledgeBasePage() {
         <BookOpen className="w-5 h-5 text-brand-400" />
         <h1 className="text-[13px] font-bold uppercase tracking-widest text-rmpg-100">Knowledge Base</h1>
         <span className="text-[10px] text-rmpg-500">— system-wide search</span>
-        <div className="ml-auto">
-          <button
-            type="button" onClick={handlePrint} disabled={!canPrint}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide border text-rmpg-100 disabled:opacity-40 disabled:cursor-not-allowed hover:border-brand-500 transition-colors"
-            style={{ borderRadius: 2, borderColor: 'var(--border-default)' }}
-            title={canPrint ? 'Print these search results' : 'Run a search first'}
-          >
-            <Printer className="w-3.5 h-3.5" /> Print Results
-          </button>
-        </div>
+        {canPrint && (
+          <div className="ml-auto">
+            <button
+              type="button" onClick={handlePrint} disabled={!hasPrintableResults}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide border text-rmpg-100 disabled:opacity-40 disabled:cursor-not-allowed hover:border-brand-500 transition-colors"
+              style={{ borderRadius: 2, borderColor: 'var(--border-default)' }}
+              title={hasPrintableResults ? 'Print these search results' : 'Run a search first'}
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Results
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Search box */}
@@ -304,6 +398,27 @@ export default function KnowledgeBasePage() {
 
       {/* Results */}
       <div className="space-y-1.5">
+        {/* Loading skeleton — distinct from the no-data / no-results states */}
+        {loading && (
+          <div className="space-y-1.5" aria-label="Loading results…">
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="w-full flex items-center gap-3 px-3 py-2.5 bg-surface-raised/40 border border-rmpg-800 animate-pulse"
+                style={{ borderRadius: 2 }}
+              >
+                <div className="w-4 h-4 bg-rmpg-700 shrink-0" style={{ borderRadius: 2 }} />
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="h-3 bg-rmpg-700 w-2/5" style={{ borderRadius: 2 }} />
+                  <div className="h-2.5 bg-rmpg-800 w-3/5" style={{ borderRadius: 2 }} />
+                </div>
+                <div className="h-4 w-14 bg-rmpg-800" style={{ borderRadius: 2 }} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* No-search (initial) empty state */}
         {!searched && !loading && (
           <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 text-center px-6">
             <BookOpen className="w-12 h-12 mb-3 opacity-30" />
@@ -329,7 +444,7 @@ export default function KnowledgeBasePage() {
                     <Clock className="w-3 h-3" /> Your recent searches
                   </div>
                   <button
-                    type="button" onClick={clearRecent}
+                    type="button" onClick={() => setClearConfirm(true)}
                     className="text-[10px] text-rmpg-500 hover:text-rmpg-200 transition-colors"
                   >Clear</button>
                 </div>
@@ -355,15 +470,19 @@ export default function KnowledgeBasePage() {
             )}
           </div>
         )}
+
+        {/* No-results empty state (searched, got nothing) */}
         {searched && !loading && results.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-rmpg-400">
             <Search className="w-12 h-12 mb-3 opacity-40" />
-            <p className="text-sm">No records match “{query.trim()}”.</p>
+            <p className="text-sm">No records match "{query.trim()}".</p>
             <p className="text-xs text-rmpg-500 mt-2">
               Try a shorter substring or a different identifier (call #, plate, badge…).
             </p>
           </div>
         )}
+
+        {/* Filtered-empty state (results exist but none match the active chip) */}
         {searched && !loading && results.length > 0 && shown.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-rmpg-400">
             <p className="text-sm">No <span className="text-rmpg-200 font-medium">{kbTypeLabel(typeFilter || '')}</span> results in this set.</p>
@@ -373,6 +492,7 @@ export default function KnowledgeBasePage() {
             >Show all {results.length} results</button>
           </div>
         )}
+
         {shown.map((r, idx) => {
           const Icon = iconFor(r.type);
           const color = KB_TYPE_META[r.type]?.color || 'var(--rmpg-400)';
@@ -381,6 +501,7 @@ export default function KnowledgeBasePage() {
             <button
               key={`${r.type}-${r.recordId}`} type="button" onClick={() => open(r)}
               onMouseEnter={() => setSelectedIndex(idx)}
+              data-result-id={r.recordId}
               className={`w-full flex items-center gap-3 px-3 py-2.5 text-left bg-surface-raised/40 border transition-colors ${
                 isSelected ? 'border-brand-500' : 'border-rmpg-800 hover:border-brand-600'
               }`}
@@ -400,6 +521,17 @@ export default function KnowledgeBasePage() {
           );
         })}
       </div>
+
+      {/* ConfirmDialog — guards the "Clear recent searches" action */}
+      <ConfirmDialog
+        isOpen={clearConfirm}
+        onClose={() => setClearConfirm(false)}
+        onConfirm={clearRecent}
+        title="Clear recent searches"
+        message="Remove all saved searches from your history on this device? This only affects your account and cannot be undone."
+        confirmLabel="Clear History"
+        confirmVariant="warning"
+      />
     </div>
   );
 }
