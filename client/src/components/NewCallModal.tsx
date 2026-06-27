@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
 import { X, Phone, AlertTriangle, Clock, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,
@@ -275,14 +276,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   useEffect(() => {
     if (isOpen) {
       const scrollY = window.scrollY;
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
       document.body.style.top = `-${scrollY}px`;
     }
     return () => {
       const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       document.body.style.position = '';
       document.body.style.width = '';
       document.body.style.top = '';

@@ -1,10 +1,11 @@
 // ============================================================
 // DocumentIntakePage — drop a PDF, review extracted fields, save
 // ============================================================
-// Surface for /api/document-intake. Handles three states:
-//   idle      → drop zone + file picker
+// Surface for /api/document-intake. Handles four states:
+//   idle       → drop zone + file picker
 //   processing → spinner while server runs pdftotext + OCR fallback
-//   review    → DocumentIntakeReviewer with confidence-colored fields
+//   review     → DocumentIntakeReviewer with confidence-colored fields
+//   error      → distinct error state with retry affordance
 //
 // Auth: same JWT as the rest of the app (Layout's <ProtectedRoute>).
 // Role-gated to admin/manager/supervisor/officer/dispatcher in nav.
@@ -23,18 +24,24 @@ import { useSearchParams } from 'react-router-dom';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import DocumentIntakeReviewer, { type DocumentExtraction } from '../components/DocumentIntakeReviewer';
 import { useToast } from '../components/ToastProvider';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
 type State =
   | { kind: 'idle' }
   | { kind: 'processing'; filename: string }
-  | { kind: 'review'; extraction: DocumentExtraction; filename: string };
+  | { kind: 'review'; extraction: DocumentExtraction; filename: string }
+  | { kind: 'error'; message: string };
+
+const UPLOAD_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 
 export default function DocumentIntakePage() {
+  const { user } = useAuth();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [state, setState] = useState<State>({ kind: 'idle' });
@@ -43,6 +50,7 @@ export default function DocumentIntakePage() {
   const deepLinkHandled = useRef(false);
 
   const uploadFile = useCallback(async (file: File) => {
+    if (!canUpload) return;
     if (file.type !== 'application/pdf') {
       toast.addToast('Only PDF files are supported', 'error');
       return;
@@ -73,17 +81,19 @@ export default function DocumentIntakePage() {
       });
       setState({ kind: 'review', extraction, filename: file.name });
     } catch (err: any) {
-      toast.addToast(err?.message || 'Document extraction failed', 'error');
-      setState({ kind: 'idle' });
+      const msg = err?.message || 'Document extraction failed';
+      toast.addToast(msg, 'error');
+      setState({ kind: 'error', message: msg });
     }
-  }, [toast]);
+  }, [toast, canUpload]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragActive(false);
+    if (!canUpload) return;
     const file = e.dataTransfer.files?.[0];
     if (file) uploadFile(file);
-  }, [uploadFile]);
+  }, [uploadFile, canUpload]);
 
   const handlePick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -164,9 +174,10 @@ export default function DocumentIntakePage() {
     <div className="p-4 space-y-3 min-h-full">
       <PanelTitleBar title="DOCUMENT INTAKE" icon={FileText} />
 
+      {/* ── Idle: drop zone ──────────────────────────────────────── */}
       {state.kind === 'idle' && (
         <div
-          onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
+          onDragEnter={(e) => { e.preventDefault(); if (canUpload) setDragActive(true); }}
           onDragLeave={() => setDragActive(false)}
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
@@ -217,6 +228,7 @@ export default function DocumentIntakePage() {
         </div>
       )}
 
+      {/* ── Processing ───────────────────────────────────────────── */}
       {state.kind === 'processing' && (
         <div
           className="bg-surface-sunken border border-border-default p-12 text-center"
@@ -237,6 +249,29 @@ export default function DocumentIntakePage() {
         </div>
       )}
 
+      {/* ── Error ────────────────────────────────────────────────── */}
+      {state.kind === 'error' && (
+        <div
+          className="bg-surface-sunken border border-border-default p-12 text-center"
+          style={{ borderRadius: 2 }}
+        >
+          <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-red-400" />
+          <div className="text-[13px] text-rmpg-300 mb-1">Extraction failed</div>
+          <div className="text-[11px] text-rmpg-400 font-mono mb-4">{state.message}</div>
+          {canUpload && (
+            <button
+              type="button"
+              className="px-3 py-1 text-[11px] border border-brand-gold-500 text-brand-gold-500 hover:bg-brand-gold-500 hover:text-black uppercase"
+              style={{ borderRadius: 2 }}
+              onClick={() => { setState({ kind: 'idle' }); }}
+            >
+              Try Another File
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Review ───────────────────────────────────────────────── */}
       {state.kind === 'review' && (
         <>
           <div className="text-[10px] text-rmpg-400 font-mono">
@@ -247,8 +282,20 @@ export default function DocumentIntakePage() {
             filename={state.filename}
             onReset={() => setState({ kind: 'idle' })}
           />
-        </>
+        </div>
       )}
+
+      {/* ── Discard review confirm ────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={discardConfirmOpen}
+        onClose={() => setDiscardConfirmOpen(false)}
+        onConfirm={() => { setDiscardConfirmOpen(false); setState({ kind: 'idle' }); }}
+        title="Discard Intake Review"
+        message="Return to the upload screen? Any unsaved edits to the extracted fields will be lost."
+        confirmLabel="Discard and go back"
+        cancelLabel="Keep reviewing"
+        confirmVariant="warning"
+      />
     </div>
   );
 }
