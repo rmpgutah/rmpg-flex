@@ -41,8 +41,12 @@ export default function DashcamPage() {
   const [total, setTotal] = useState(0);
   const [tab, setTab] = useState<'devices' | 'events'>('devices');
 
+  // ConfirmDialog state for device deactivation (admin/manager only)
+  const [deactivateTarget, setDeactivateTarget] = useState<any>(null);
+
   const pageRef = useRef(page);
   const searchRef = useRef(search);
+  const deepLinkRef = useRef(false);
   useEffect(() => { pageRef.current = page; }, [page]);
   useEffect(() => { searchRef.current = search; }, [search]);
 
@@ -73,6 +77,12 @@ export default function DashcamPage() {
     } catch (err) { console.warn('[DashcamPage] fetchEvents failed:', err); }
   }, []);
 
+  const doRefresh = useCallback(() => {
+    fetchStatus();
+    fetchDevices(pageRef.current, searchRef.current);
+    fetchEvents();
+  }, [fetchStatus, fetchDevices, fetchEvents]);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -81,12 +91,9 @@ export default function DashcamPage() {
       fetchEvents(),
     ]).finally(() => setLoading(false));
 
-    const iv = setInterval(() => {
-      fetchStatus();
-      fetchDevices(pageRef.current, searchRef.current);
-      fetchEvents();
-    }, 15000);
+    const iv = setInterval(doRefresh, 15000);
     return () => clearInterval(iv);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Deep-link: ?device_id=<numeric howen_devices.id>
@@ -147,11 +154,27 @@ export default function DashcamPage() {
     }
   };
 
+  const confirmDeactivate = async () => {
+    if (!deactivateTarget) return;
+    await updateDevice(deactivateTarget.id, { is_active: false });
+    addToast(`Device ${deactivateTarget.device_id} deactivated`, 'info');
+    setDeactivateTarget(null);
+    if (selectedDevice?.id === deactivateTarget.id) {
+      setSelectedDevice(null);
+      setDeviceDetail(null);
+    }
+  };
+
   if (loading && !devices.length) {
     return (
       <div className="p-4">
         <PanelTitleBar title="DASHCAM SYSTEM" icon={Camera} />
-        <div className="flex items-center justify-center h-64 text-text-muted">Loading...</div>
+        <div className="flex items-center justify-center h-64 text-text-muted">
+          <div className="text-center space-y-2">
+            <Camera className="w-8 h-8 mx-auto opacity-30 animate-pulse" />
+            <div className="text-xs">Loading dashcam system…</div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -159,6 +182,22 @@ export default function DashcamPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="HOWEN / VIZTRACK DASHCAM SYSTEM" icon={Camera} />
+
+      <ConfirmDialog
+        isOpen={!!deactivateTarget}
+        onClose={() => setDeactivateTarget(null)}
+        onConfirm={confirmDeactivate}
+        title="Deactivate Device"
+        message="Are you sure you want to deactivate this dashcam device?"
+        details={deactivateTarget && (
+          <>
+            <div>Device ID: <span className="text-text-default font-mono">{deactivateTarget.device_id}</span></div>
+            {deactivateTarget.label && <div>Label: {deactivateTarget.label}</div>}
+          </>
+        )}
+        confirmLabel="Deactivate"
+        confirmVariant="warning"
+      />
 
       {error && (
         <div className="bg-red-900/20 border border-red-800 text-red-400 px-4 py-2 text-sm">
@@ -225,13 +264,13 @@ export default function DashcamPage() {
                 </span>
                 <div className="flex items-center gap-1 ml-2">
                   <button
-                    className={`px-2 py-0.5 text-xs ${tab === 'devices' ? 'bg-[#d4a017] text-black' : 'bg-surface-raised text-text-muted'}`}
+                    className={`px-2 py-0.5 text-xs ${tab === 'devices' ? 'bg-brand-gold-500 text-black' : 'bg-surface-raised text-text-muted'}`}
                     onClick={() => setTab('devices')}
                   >
                     Devices
                   </button>
                   <button
-                    className={`px-2 py-0.5 text-xs ${tab === 'events' ? 'bg-[#d4a017] text-black' : 'bg-surface-raised text-text-muted'}`}
+                    className={`px-2 py-0.5 text-xs ${tab === 'events' ? 'bg-brand-gold-500 text-black' : 'bg-surface-raised text-text-muted'}`}
                     onClick={() => setTab('events')}
                   >
                     Events
@@ -250,7 +289,7 @@ export default function DashcamPage() {
                     />
                   </div>
                 )}
-                <IconButton onClick={() => { fetchDevices(page, search); fetchEvents(); }} aria-label="Refresh">
+                <IconButton onClick={doRefresh} aria-label="Refresh">
                   <RefreshCw className="w-3 h-3" />
                 </IconButton>
               </div>
@@ -348,12 +387,39 @@ export default function DashcamPage() {
                           {e.latitude ? `${e.latitude.toFixed(4)}, ${e.longitude.toFixed(4)}` : '—'}
                         </td>
                       </tr>
-                    ))}
-                    {events.length === 0 && (
-                      <tr><td colSpan={5} className="text-center py-8 text-text-muted">No events recorded</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {events.map((e: any) => (
+                        <tr key={e.id} className="border-b border-border-default">
+                          <td className="px-3 py-1.5 font-mono text-text-muted">
+                            {parseTimestamp(e.event_at).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <span className="text-brand-400">{e.device_id}</span>
+                            {e.device_label && <span className="text-text-muted ml-1">({e.device_label})</span>}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            {EVENT_ICONS[e.event_type] && <span className="mr-1">{EVENT_ICONS[e.event_type]}</span>}
+                            {formatEnumValue(e.event_type)}
+                          </td>
+                          <td className={`px-3 py-1.5 ${SEVERITY_COLORS[e.severity] || 'text-text-muted'}`}>
+                            {formatEnumValue(e.severity)}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-text-muted">
+                            {e.latitude ? `${e.latitude.toFixed(4)}, ${e.longitude.toFixed(4)}` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                      {events.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="text-center py-8 text-text-muted">
+                            No events recorded — events appear here when dashcam devices report them
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
           </div>
@@ -368,7 +434,7 @@ export default function DashcamPage() {
                   <IconButton onClick={() => loadDeviceDetail(selectedDevice.id)} aria-label="Refresh detail">
                     <RefreshCw className="w-3 h-3" />
                   </IconButton>
-                  <IconButton onClick={() => setSelectedDevice(null)} aria-label="Close detail">
+                  <IconButton onClick={() => { setSelectedDevice(null); setDeviceDetail(null); }} aria-label="Close detail">
                     <span>✕</span>
                   </IconButton>
                 </div>
@@ -377,29 +443,37 @@ export default function DashcamPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-text-muted">Label</span>
-                    <input id="ff-dashcampage-1"
-                      className="w-full bg-surface-sunken border border-border-default px-2 py-0.5 text-text-default mt-0.5"
-                      value={deviceDetail.label || ''}
-                      onChange={e => setDeviceDetail({ ...deviceDetail, label: e.target.value })}
-                      onBlur={() => updateDevice(deviceDetail.id, { label: deviceDetail.label })}
-                    />
+                    {canEdit ? (
+                      <input id="ff-dashcampage-1"
+                        className="w-full bg-surface-sunken border border-border-default px-2 py-0.5 text-text-default mt-0.5"
+                        value={deviceDetail.label || ''}
+                        onChange={e => setDeviceDetail({ ...deviceDetail, label: e.target.value })}
+                        onBlur={() => updateDevice(deviceDetail.id, { label: deviceDetail.label })}
+                      />
+                    ) : (
+                      <div className="text-text-default mt-0.5">{deviceDetail.label || '—'}</div>
+                    )}
                   </div>
                   <div>
                     <span className="text-text-muted">Assigned Unit</span>
-                    <div className="mt-0.5">
-                      <UnitPicker
-                        id="ff-dashcampage-2"
-                        value={deviceDetail.unit_id || null}
-                        onChange={(id) => {
-                          setDeviceDetail({ ...deviceDetail, unit_id: id });
-                          // The original input fired on blur; the picker has
-                          // no blur (it's a button), so persist immediately on
-                          // selection. Setting to null also detaches the unit.
-                          updateDevice(deviceDetail.id, { unit_id: id });
-                        }}
-                        placeholder="Search by call sign, officer, vehicle…"
-                      />
-                    </div>
+                    {canEdit ? (
+                      <div className="mt-0.5">
+                        <UnitPicker
+                          id="ff-dashcampage-2"
+                          value={deviceDetail.unit_id || null}
+                          onChange={(id) => {
+                            setDeviceDetail({ ...deviceDetail, unit_id: id });
+                            // The original input fired on blur; the picker has
+                            // no blur (it's a button), so persist immediately on
+                            // selection. Setting to null also detaches the unit.
+                            updateDevice(deviceDetail.id, { unit_id: id });
+                          }}
+                          placeholder="Search by call sign, officer, vehicle…"
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-text-default mt-0.5">{deviceDetail.call_sign || deviceDetail.unit_id || '—'}</div>
+                    )}
                   </div>
                   <div>
                     <span className="text-text-muted">IMEI</span>
@@ -427,7 +501,11 @@ export default function DashcamPage() {
                       <span className="text-text-muted ml-2">
                         {deviceDetail.last_speed ? `${deviceDetail.last_speed.toFixed(1)} mph` : ''}
                       </span>
-                      <div className="text-text-muted text-[10px] mt-0.5">{deviceDetail.last_gps_at}</div>
+                      <div className="text-text-muted text-[10px] mt-0.5">
+                        {deviceDetail.last_gps_at
+                          ? parseTimestamp(deviceDetail.last_gps_at).toLocaleString()
+                          : '—'}
+                      </div>
                     </div>
                   ) : (
                     <div className="text-text-muted">No GPS data yet</div>
@@ -442,11 +520,13 @@ export default function DashcamPage() {
                     <div key={ev.id} className="flex items-center gap-2 py-0.5 border-b border-border-subtle last:border-0">
                       <span className={`w-1.5 h-1.5 rounded-full ${ev.severity === 'critical' ? 'bg-red-400' : ev.severity === 'warning' ? 'bg-amber-400' : 'bg-rmpg-400'}`} />
                       <span className="text-text-muted w-16">{formatEnumValue(ev.event_type)}</span>
-                      <span className="text-text-muted text-[10px]">{ev.event_at}</span>
+                      <span className="text-text-muted text-[10px]">
+                        {ev.event_at ? parseTimestamp(ev.event_at).toLocaleString() : '—'}
+                      </span>
                     </div>
                   ))}
                   {(!deviceDetail.recent_events || deviceDetail.recent_events.length === 0) && (
-                    <div className="text-text-muted text-[10px]">No events</div>
+                    <div className="text-text-muted text-[10px]">No events for this device</div>
                   )}
                 </div>
 
@@ -455,9 +535,25 @@ export default function DashcamPage() {
                     GPS points (24h): <span className="text-text-default">{deviceDetail.gps_count_24h || 0}</span>
                   </div>
                   <div className="text-text-muted">
-                    Last connection: <span className="text-text-default">{deviceDetail.last_connection_at || '—'}</span>
+                    Last connection:{' '}
+                    <span className="text-text-default">
+                      {deviceDetail.last_connection_at
+                        ? parseTimestamp(deviceDetail.last_connection_at).toLocaleString()
+                        : '—'}
+                    </span>
                   </div>
                 </div>
+
+                {canManage && deviceDetail.is_active && (
+                  <div className="border-t border-border-default pt-2">
+                    <button
+                      className="text-xs text-amber-400 hover:text-amber-300 underline"
+                      onClick={() => setDeactivateTarget(deviceDetail)}
+                    >
+                      Deactivate device
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -481,6 +577,7 @@ export default function DashcamPage() {
               <li>• Use H-protocol on port 33000 (default) or 22129/47670</li>
               <li>• Set device ID (Dev ID) for unit-to-dashcam mapping</li>
               <li>• Events poll every 15s — enable receiver for live data</li>
+              <li>• Press <kbd className="px-1 bg-surface-sunken border border-border-default">N</kbd> to refresh</li>
             </ul>
           </div>
         </div>

@@ -8,7 +8,7 @@
 // Audit Page 61 of the full-app frontend pass.
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -32,6 +32,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
+import { toDisplayLabel } from '../utils/formatters';
 import { safeDateTimeStr } from '../utils/dateUtils';
 import { openWebResearchReportPdf } from '../utils/webResearchReportPdf';
 
@@ -74,6 +75,13 @@ export default function WebResearchPage() {
                        // page rather than letting the cached value go stale.
   const { addToast } = useToast();
   const { user } = useAuth();
+
+  // Role gates — delete is admin|manager only; all other actions (search,
+  // scrape, save, link, notes, PDF) are available to every authenticated role.
+  const canDelete = useMemo(
+    () => user?.role === 'admin' || user?.role === 'manager',
+    [user?.role],
+  );
 
   // Firecrawl connection
   const [firecrawlConnected, setFirecrawlConnected] = useState(false);
@@ -869,7 +877,7 @@ export default function WebResearchPage() {
                             : 'bg-brand-600/20 text-brand-400 border border-brand-600/30'
                         }`}
                       >
-                        {(result.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                        {toDisplayLabel(result.type)}
                       </span>
                       {result.linked_entity_type && (
                         <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-mono uppercase bg-green-500/20 text-green-400 border border-green-500/30 rounded-sm">
@@ -910,14 +918,16 @@ export default function WebResearchPage() {
                       <Link2 className="w-3 h-3" />
                       Link
                     </button>
-                    <button type="button"
-                      className="toolbar-btn flex items-center px-1.5 text-xs text-red-400 hover:text-red-300"
-                      title="Delete"
-                      aria-label="Delete saved result"
-                      onClick={() => setDeleteConfirm(result.id)}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    {canDelete && (
+                      <button type="button"
+                        className="toolbar-btn flex items-center px-1.5 text-xs text-red-400 hover:text-red-300"
+                        title="Delete"
+                        aria-label="Delete saved result"
+                        onClick={() => setDeleteConfirm(result.id)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
