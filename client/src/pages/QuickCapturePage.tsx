@@ -286,6 +286,14 @@ export default function QuickCapturePage() {
         </div>
       )}
 
+      {/* Loading state — network in flight */}
+      {busy && (
+        <div className="flex items-center gap-2 text-[11px] text-rmpg-400 px-1">
+          <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+          <span>Submitting capture…</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <input
           ref={firstNameRef}
