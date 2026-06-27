@@ -6,12 +6,12 @@
 // skip-trace entry. Saves the officer from having to manually
 // request it on every stale job.
 //
-// Deduped via serve_nudges (condition='auto_skip_trace') so it
-// fires at most once per job regardless of how many further
-// failed attempts land. Called fire-and-forget from serve.ts
-// logAttempt() when newStatus stays 'attempted' or 'failed'.
+// The `force` option (used by autoSkipTraceSweep cron) bypasses
+// both dedup checks so that stale jobs whose prior auto skip-trace
+// returned no results are retried on a weekly cycle.
 // ============================================================
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
@@ -22,11 +22,16 @@ const SKIP_TRACE_THRESHOLD = 3;
  * If this job has hit the skip-trace threshold and has no existing
  * skip-trace entry, insert a 'manual' skip-trace row and notify
  * supervisors + the assigned officer. Returns true on trigger.
+ *
+ * @param options.force — when true, skip dedup checks (nudge + existing
+ *   skip-trace). Used by the weekly cron sweep to retry jobs whose
+ *   prior auto skip-trace found no results.
  */
 export async function maybeAutoSkipTrace(
   db: Bindings['DB'],
   env: Bindings,
   queueId: number,
+  options?: { force?: boolean },
 ): Promise<boolean> {
   try {
     const job = await queryFirst<{
@@ -41,28 +46,31 @@ export async function maybeAutoSkipTrace(
     );
     if (!job || (job.attempt_count ?? 0) < SKIP_TRACE_THRESHOLD) return false;
 
-    // Already triggered for this job?
-    const alreadyDone = await queryFirst<{ id: number }>(
-      db,
-      'SELECT id FROM serve_nudges WHERE serve_queue_id = ? AND condition = ?',
-      queueId, 'auto_skip_trace',
-    ).catch(() => null);
-    if (alreadyDone) return false;
+    // Dedup checks — skip when force=true (cron retry after 7 days).
+    if (!options?.force) {
+      // Already triggered for this job?
+      const alreadyDone = await queryFirst<{ id: number }>(
+        db,
+        'SELECT id FROM serve_nudges WHERE serve_queue_id = ? AND condition = ?',
+        queueId, 'auto_skip_trace',
+      ).catch(() => null);
+      if (alreadyDone) return false;
 
-    // Already has any skip-trace entry (manual or prior auto)?
-    const hasTrace = await queryFirst<{ id: number }>(
-      db, 'SELECT id FROM serve_skip_traces WHERE serve_queue_id = ? LIMIT 1', queueId,
-    ).catch(() => null);
-    if (hasTrace) {
-      // Mark dedup so we don't keep checking on every subsequent attempt.
-      await execute(db,
-        `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at)
-         VALUES (?, 'auto_skip_trace', datetime('now','localtime'))
-         ON CONFLICT(serve_queue_id, condition)
-         DO UPDATE SET last_notified_at = datetime('now','localtime')`,
-        queueId,
-      ).catch(() => {});
-      return false;
+      // Already has any skip-trace entry (manual or prior auto)?
+      const hasTrace = await queryFirst<{ id: number }>(
+        db, 'SELECT id FROM serve_skip_traces WHERE serve_queue_id = ? LIMIT 1', queueId,
+      ).catch(() => null);
+      if (hasTrace) {
+        // Mark dedup so we don't keep checking on every subsequent attempt.
+        await execute(db,
+          `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at)
+           VALUES (?, 'auto_skip_trace', datetime('now','localtime'))
+           ON CONFLICT(serve_queue_id, condition)
+           DO UPDATE SET last_notified_at = datetime('now','localtime')`,
+          queueId,
+        ).catch(() => {});
+        return false;
+      }
     }
 
     const who = job.defendant_name ?? job.recipient_name ?? `Job #${queueId}`;
