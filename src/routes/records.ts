@@ -210,6 +210,7 @@ const PERSON_WRITABLE_COLUMNS = new Set([
   'address', 'address_2', 'city', 'state', 'zip', 'phone', 'phone_secondary',
   'home_phone', 'work_phone', 'email', 'email_secondary',
   'dl_number', 'dl_state', 'dl_expiry', 'dl_class',
+  'dl_issue_date', 'dl_restrictions', 'dl_endorsements',
   'ssn_last4', 'ssn_full',
   'photo_url', 'photo', 'id_image_url',
   'id_type', 'id_number', 'id_state', 'id_expiry',
@@ -244,6 +245,8 @@ const PERSON_WRITABLE_COLUMNS = new Set([
 const PERSON_EXT_COLUMNS = new Set([
   'suffix', 'nationality', 'voice_description', 'religion', 'dietary_restrictions',
   'address_2', // apartment/unit number (persons at 96 cols — overflow only)
+  // DL barcode fields (AAMVA PDF417 elements DCB/DCD/DBD) — mig 0155
+  'dl_restrictions', 'dl_endorsements', 'dl_issue_date',
 ]);
 const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
 
@@ -383,14 +386,23 @@ records.post('/from-dl-scan', async (c) => {
         : 'Created from DL scan';
       const result = await execute(db, `
         INSERT INTO persons (first_name, middle_name, last_name, dob, gender, height, weight,
-          eye_color, hair_color, address, city, state, zip, dl_number, dl_state, flags, notes, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
+          eye_color, hair_color, address, city, state, zip, dl_number, dl_state,
+          dl_expiry, dl_class, flags, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
         first, str(scan.middle_name), last, dob, str(scan.gender), str(scan.height),
         str(scan.weight), str(scan.eye_color), str(scan.hair_color), str(scan.address),
         str(scan.city), str(scan.state), str(scan.zip), dlNumber, str(scan.dl_state),
+        str(scan.dl_expiry), str(scan.dl_class),
         JSON.stringify(['dl_scan_imported']), note);
-      person = await queryFirst<Record<string, unknown>>(db,
-        'SELECT * FROM persons WHERE id = ?', Number(result.meta.last_row_id));
+      const newPersonId = Number(result.meta.last_row_id);
+      // Write AAMVA overflow fields (restrictions/endorsements/issue_date) to persons_ext
+      await writePersonExt(db, newPersonId, {
+        dl_restrictions: str(scan.dl_restrictions),
+        dl_endorsements: str(scan.dl_endorsements),
+        dl_issue_date:   str(scan.dl_issue_date),
+      });
+      person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db,
+        'SELECT * FROM persons WHERE id = ?', newPersonId));
       personCreated = true;
     }
     const personId = Number(person!.id);
@@ -1548,6 +1560,281 @@ records.delete('/evidence/:id', async (c) => {
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
+// ── Evidence sub-resource endpoints ──────────────────────────────────────────
+// These were called by EvidencePropertyPage but never mounted, causing all
+// chain-action / checkout / checkin / disposition / release / audit / links
+// button actions to 404 silently. Added 2026-06-22 (page 65 audit).
+
+// POST /records/evidence/:id/chain-action
+// Appends an entry to the JSON chain_of_custody column and updates item status.
+records.post('/evidence/:id/chain-action', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
+    const row = await queryFirst<{ id: number; chain_of_custody: string | null }>(db, 'SELECT id, chain_of_custody FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const action = String(body.action || 'check_in');
+    const entry = {
+      action,
+      user_id: user?.id ?? null,
+      user_name: (user as any)?.full_name || (user as any)?.username || null,
+      by_name: (user as any)?.full_name || (user as any)?.username || null,
+      timestamp: new Date().toISOString(),
+      to_location: body.to_location ? String(body.to_location) : undefined,
+      from_location: body.from_location ? String(body.from_location) : undefined,
+      notes: body.notes ? String(body.notes) : undefined,
+    };
+    let chain: unknown[] = [];
+    if (row.chain_of_custody) {
+      try { chain = JSON.parse(row.chain_of_custody) as unknown[]; } catch { chain = []; }
+    }
+    chain.push(entry);
+    // Map action to status
+    const STATUS_MAP: Record<string, string> = {
+      check_in: 'checked_in', check_out: 'checked_out', transfer: 'in_storage',
+      lab_submit: 'submitted_to_le', release: 'released', dispose: 'disposed',
+    };
+    const newStatus = STATUS_MAP[action];
+    const updates: string[] = ['chain_of_custody = ?'];
+    const values: unknown[] = [JSON.stringify(chain)];
+    if (newStatus) { updates.push('status = ?'); values.push(newStatus); }
+    values.push(id);
+    await execute(db, `UPDATE evidence SET ${updates.join(', ')} WHERE id = ?`, ...values);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/evidence/:id/checkout
+records.post('/evidence/:id/checkout', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const user = c.get('user') as { id?: number; full_name?: string; username?: string } | undefined;
+    const row = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const now = new Date().toISOString();
+    await execute(db,
+      `UPDATE evidence SET status = 'checked_out', checked_out_by = ?, checked_out_at = ?,
+        checkout_reason = ?, expected_return_date = ? WHERE id = ?`,
+      user?.id ?? null, now,
+      body.reason ? String(body.reason) : null,
+      body.expected_return_date ? String(body.expected_return_date) : null,
+      id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/evidence/:id/checkin
+records.post('/evidence/:id/checkin', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    await execute(db,
+      `UPDATE evidence SET status = 'checked_in', checked_out_by = NULL, checked_out_at = NULL,
+        checkout_reason = NULL, expected_return_date = NULL,
+        condition_on_return = ? WHERE id = ?`,
+      body.condition_on_return ? String(body.condition_on_return) : null,
+      id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /records/evidence/:id/disposition
+records.put('/evidence/:id/disposition', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const disposition = String(body.disposition || 'pending');
+    const newStatus = disposition === 'pending' ? 'pending_disposition'
+      : ['destroy', 'forfeit', 'auction'].includes(disposition) ? 'disposed'
+      : disposition === 'return_to_owner' ? 'released'
+      : 'pending_disposition';
+    await execute(db,
+      `UPDATE evidence SET disposition = ?, disposal_method = ?,
+        disposal_date = CASE WHEN ? != 'pending' THEN date('now') ELSE NULL END,
+        status = ? WHERE id = ?`,
+      disposition,
+      body.disposition_method ? String(body.disposition_method) : null,
+      disposition, newStatus, id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/evidence/:id/request-release
+records.post('/evidence/:id/request-release', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const user = c.get('user') as { id?: number } | undefined;
+    const row = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const now = new Date().toISOString();
+    await execute(db,
+      `UPDATE evidence SET release_status = 'release_requested',
+        release_requested_by = ?, release_requested_at = ?,
+        release_to = ?, release_reason = ? WHERE id = ?`,
+      user?.id ?? null, now,
+      body.release_to ? String(body.release_to) : null,
+      body.reason ? String(body.reason) : null,
+      id,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /records/evidence/:id/approve-release (admin/supervisor only)
+records.put('/evidence/:id/approve-release', async (c) => {
+  try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+    const db = getDb(c.env);
+    await ensureEvidenceSchema(db);
+    const id = c.req.param('id');
+    const user = c.get('user') as { id?: number } | undefined;
+    const row = await queryFirst<{ id: number; release_status: string | null }>(db, 'SELECT id, release_status FROM evidence WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const action = String(body.action || 'approve');
+    const now = new Date().toISOString();
+    if (action === 'approve') {
+      await execute(db,
+        `UPDATE evidence SET release_status = 'released', status = 'released',
+          release_approved_by = ?, release_approved_at = ? WHERE id = ?`,
+        user?.id ?? null, now, id,
+      );
+    } else {
+      await execute(db,
+        `UPDATE evidence SET release_status = NULL,
+          release_requested_by = NULL, release_requested_at = NULL,
+          release_to = NULL, release_reason = NULL WHERE id = ?`,
+        id,
+      );
+    }
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json({ success: true, data: updated });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/evidence/:id/custody-validation
+// Validates chain of custody integrity — looks for gaps > 48h and warnings.
+records.get('/evidence/:id/custody-validation', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number; status: string; storage_location: string | null; chain_of_custody: string | null }>(
+      db, 'SELECT id, status, storage_location, chain_of_custody FROM evidence WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    let chain: Array<{ action?: string; timestamp?: string; at?: string; user_name?: string; by_name?: string }> = [];
+    if (row.chain_of_custody) {
+      try { chain = JSON.parse(row.chain_of_custody); } catch { chain = []; }
+    }
+    const gaps: Array<{ from_action: string; to_action: string; from_time: string; to_time: string; gap_hours: number }> = [];
+    const warnings: string[] = [];
+    for (let i = 1; i < chain.length; i++) {
+      const prev = chain[i - 1];
+      const curr = chain[i];
+      const t1 = prev.timestamp || prev.at;
+      const t2 = curr.timestamp || curr.at;
+      if (t1 && t2) {
+        const gapH = (new Date(t2).getTime() - new Date(t1).getTime()) / 3_600_000;
+        if (gapH > 48) {
+          gaps.push({
+            from_action: prev.action || '?', to_action: curr.action || '?',
+            from_time: t1, to_time: t2, gap_hours: Math.round(gapH),
+          });
+        }
+      }
+    }
+    if (row.status === 'checked_out' && chain.length > 0) warnings.push('Item is currently checked out');
+    if (chain.length === 0) warnings.push('No chain of custody entries — evidence intake was not recorded');
+    return c.json({
+      data: {
+        is_valid: gaps.length === 0,
+        chain_length: chain.length,
+        current_status: row.status,
+        current_location: row.storage_location,
+        gaps,
+        warnings,
+      },
+    });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/evidence/:id/linked-records
+// Returns the incident, cases, and forensic cases linked to this evidence item.
+records.get('/evidence/:id/linked-records', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number; incident_id: number | null; case_id: number | null }>(
+      db, 'SELECT id, incident_id, case_id FROM evidence WHERE id = ?', id,
+    );
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    // Incident
+    const incident = row.incident_id
+      ? await queryFirst<Record<string, unknown>>(db, 'SELECT id, incident_number, incident_type, status FROM incidents WHERE id = ?', row.incident_id).catch(() => null)
+      : null;
+    // Cases linked via evidence_case_links or directly via case_id
+    const cases = await (async () => {
+      try {
+        return await query<Record<string, unknown>>(db,
+          `SELECT c.id, c.case_number, c.case_type, c.status FROM cases c
+           INNER JOIN evidence_case_links ecl ON ecl.case_id = c.id WHERE ecl.evidence_id = ?
+           UNION
+           SELECT c.id, c.case_number, c.case_type, c.status FROM cases c WHERE c.id = ?`,
+          id, row.case_id ?? -1,
+        );
+      } catch { return []; }
+    })();
+    // Forensic cases
+    const forensicCases = await (async () => {
+      try {
+        return await query<Record<string, unknown>>(db,
+          `SELECT fc.id, fc.lab_number, fc.title, fc.case_type, fc.status
+           FROM forensic_cases fc
+           INNER JOIN forensic_case_evidence fce ON fce.forensic_case_id = fc.id
+           WHERE fce.evidence_id = ?`,
+          id,
+        );
+      } catch { return []; }
+    })();
+    return c.json({ data: { incident, cases, forensic_cases: forensicCases } });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
 // POST /records/evidence/:id/archive — not applicable (evidence uses status transitions).
 records.post('/evidence/:id/archive', async (c) => {
   try {
@@ -1928,6 +2215,51 @@ records.get('/reports/approval-queue', async (c) => {
   } catch (err) {
     console.error('GET /records/reports/approval-queue error:', err);
     return c.json([], 200);
+  }
+});
+
+// POST /api/records/reports/:id/approve — supervisor approves a pending report.
+// Proxy to the incidents approve logic: updates status → 'approved'.
+records.post('/reports/:id/approve', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const id = c.req.param('id');
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  try {
+    const db = getDb(c.env);
+    const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
+    if (!report) return c.json({ error: 'Report not found' }, 404);
+    if (!['submitted', 'pending_approval', 'returned'].includes(report.status)) {
+      return c.json({ error: 'Report is not in a reviewable status', code: 'INVALID_STATUS' }, 409);
+    }
+    await db.prepare(`UPDATE incidents SET status = 'approved', supervisor_id = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(actor?.id ?? null, id).run();
+    return c.json({ success: true, id: Number(id), status: 'approved' });
+  } catch (err) {
+    console.error('POST /records/reports/:id/approve error:', err);
+    return c.json({ error: 'Failed to approve report' }, 500);
+  }
+});
+
+// POST /api/records/reports/:id/return — supervisor returns a report for revision.
+records.post('/reports/:id/return', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const id = c.req.param('id');
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  try {
+    const body = await c.req.json() as { reason?: string };
+    const reason = (body.reason ?? '').trim();
+    if (!reason) return c.json({ error: 'Return reason is required' }, 400);
+    const db = getDb(c.env);
+    const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
+    if (!report) return c.json({ error: 'Report not found' }, 404);
+    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, supervisor_notes = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(actor?.id ?? null, reason, id).run();
+    return c.json({ success: true, id: Number(id), status: 'returned', reason });
+  } catch (err) {
+    console.error('POST /records/reports/:id/return error:', err);
+    return c.json({ error: 'Failed to return report' }, 500);
   }
 });
 

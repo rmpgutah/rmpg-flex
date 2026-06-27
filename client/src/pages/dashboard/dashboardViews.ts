@@ -7,13 +7,14 @@ export type PanelId =
   | 'activeCalls' | 'recentActivity' | 'activeUnits' | 'activeBolos'
   | 'statusSummary' | 'shiftStatus' | 'weather' | 'alertsReminders'
   | 'officerActivity' | 'callsNearMe' | 'myActivity'
-  | 'callAnalytics' | 'adminExtras' | 'serveSchedule';
+  | 'callAnalytics' | 'adminExtras' | 'serveSchedule'
+  | 'servePerformance';
 
 export const PANEL_IDS: readonly PanelId[] = [
   'activeCalls', 'recentActivity', 'activeUnits', 'activeBolos',
   'statusSummary', 'shiftStatus', 'weather', 'alertsReminders',
   'officerActivity', 'callsNearMe', 'myActivity',
-  'callAnalytics', 'adminExtras', 'serveSchedule',
+  'callAnalytics', 'adminExtras', 'serveSchedule', 'servePerformance',
 ];
 
 export const DASHBOARD_VIEWS: readonly DashboardView[] = ['dispatch', 'patrol', 'admin'];
@@ -26,11 +27,11 @@ export const DASHBOARD_VIEW_LABELS: Record<DashboardView, string> = {
 
 // Which panels each view renders, in display order.
 export const VIEW_PANELS: Record<DashboardView, PanelId[]> = {
-  dispatch: ['activeCalls', 'callAnalytics', 'activeUnits', 'activeBolos', 'recentActivity', 'serveSchedule', 'shiftStatus', 'weather'],
+  dispatch: ['activeCalls', 'callAnalytics', 'activeUnits', 'activeBolos', 'recentActivity', 'serveSchedule', 'servePerformance', 'shiftStatus', 'weather'],
   patrol: ['shiftStatus', 'activeBolos', 'callsNearMe', 'myActivity', 'weather'],
   admin: [
     'statusSummary', 'activeCalls', 'callAnalytics', 'activeUnits', 'activeBolos',
-    'recentActivity', 'serveSchedule', 'adminExtras', 'officerActivity', 'alertsReminders', 'shiftStatus', 'weather',
+    'recentActivity', 'serveSchedule', 'servePerformance', 'adminExtras', 'officerActivity', 'alertsReminders', 'shiftStatus', 'weather',
   ],
 };
 

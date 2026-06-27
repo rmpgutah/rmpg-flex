@@ -146,7 +146,7 @@ const EMPTY_OUTCOME = {
 type OutcomeForm = typeof EMPTY_OUTCOME;
 
 function eventTypeLabel(val: string): string {
-  return EVENT_TYPES.find(t => t.value === val)?.label || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return EVENT_TYPES.find(t => t.value === val)?.label || toDisplayLabel(val);
 }
 
 // ============================================================

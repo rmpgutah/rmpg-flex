@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -37,6 +37,7 @@ import {
   Zap,
   Lock,
   Gavel,
+  ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
@@ -348,13 +349,20 @@ function formatCurrency(n: number | null | undefined): string {
   return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// ── Role constants ─────────────────────────────────────────
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 // ── Component ──────────────────────────────────────────────
 
 export default function CitationsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // canManage: admin / manager / supervisor may create, edit, and void citations
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
@@ -871,15 +879,18 @@ export default function CitationsPage() {
 
   const buildCitationMenu = (c: Citation): ContextMenuItem[] => [
     m.action('Open citation', () => handleSelectCitation(c), { icon: <Eye size={12} /> }),
-    m.action('Edit citation', () => handleEditCitation(c), { icon: <Pencil size={12} /> }),
+    ...(canManage ? [m.action('Edit citation', () => handleEditCitation(c), { icon: <Pencil size={12} /> })] : []),
     m.separator(),
-    ...(c.status !== 'voided'
+    ...(canManage && c.status !== 'voided'
       ? [m.action('Void citation', () => handleVoid(c), { icon: <Ban size={12} />, danger: true })]
       : []),
     m.separator(),
     m.copy('Copy citation #', c.citation_number, <Copy size={12} />),
     m.copy('Copy violator', c.person_name),
     m.copyId(c.id),
+    ...(c.vehicle_plate
+      ? [m.go('View plate history', `/intel/plate-log?plate=${encodeURIComponent(c.vehicle_plate)}`, <ExternalLink size={12} />)]
+      : []),
     ...(c.latitude != null && c.longitude != null
       ? [m.go('Show on map', `/map?flyto=${c.latitude},${c.longitude}`, <MapPin size={12} />)]
       : []),
@@ -949,9 +960,11 @@ export default function CitationsPage() {
             />
           </div>
           <div className={`flex items-center gap-2 ${isMobile ? 'w-full' : ''}`}>
+            {canManage && (
             <button type="button" onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
               <Plus size={isMobile ? 16 : 12} /> New
             </button>
+            )}
             <ExportButton exportUrl="/api/citations/export/csv" exportFilename="citations.csv" />
             <button type="button" onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
               <RefreshCw size={isMobile ? 18 : 14} />
@@ -1123,10 +1136,12 @@ export default function CitationsPage() {
               entityId={c.id}
               iconOnly
             />
+            {canManage && (
             <button type="button" onClick={() => handleEditCitation(c)} className="toolbar-btn text-[10px]">
               <FileText size={12} /> Edit
             </button>
-            {(c.status !== 'voided' || isAdmin) && (
+            )}
+            {canManage && (c.status !== 'voided' || isAdmin) && (
               <button type="button" onClick={() => handleVoid(c)} className="toolbar-btn text-[10px] text-red-400 hover:text-red-300">
                 <Ban size={12} /> {c.status === 'voided' && isAdmin ? 'Un-Void' : 'Void'}
               </button>
@@ -1272,7 +1287,21 @@ export default function CitationsPage() {
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {c.vehicle_description && <div><span className="text-rmpg-400">Description:</span> <span className="text-rmpg-200">{c.vehicle_description}</span></div>}
-                {c.vehicle_plate && <div><span className="text-rmpg-400">Plate:</span> <span className="text-rmpg-200 font-mono">{c.vehicle_plate}</span> <span className="text-rmpg-500">({c.vehicle_state || 'UT'})</span></div>}
+                {c.vehicle_plate && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-rmpg-400">Plate:</span>
+                    <span className="text-rmpg-200 font-mono">{c.vehicle_plate}</span>
+                    <span className="text-rmpg-500">({c.vehicle_state || 'UT'})</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/intel/plate-log?plate=${encodeURIComponent(c.vehicle_plate!)}`)}
+                      className="inline-flex items-center gap-0.5 text-[9px] text-brand-400 hover:text-brand-300 transition-colors"
+                      title="View plate history in Plate Log"
+                    >
+                      <ExternalLink size={9} /> ALPR
+                    </button>
+                  </div>
+                )}
                 {(c as any).vehicle_vin && <div><span className="text-rmpg-400">VIN:</span> <span className="text-rmpg-200 font-mono">{(c as any).vehicle_vin}</span></div>}
                 {((c as any).vehicle_year || (c as any).vehicle_make) && (
                   <div>
@@ -1383,6 +1412,14 @@ export default function CitationsPage() {
             <section>
               <h3 className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2 flex items-center gap-1">
                 <Scale size={10} /> Court Information
+                <button
+                  type="button"
+                  onClick={() => navigate('/court')}
+                  className="ml-auto inline-flex items-center gap-0.5 text-[9px] text-brand-400 hover:text-brand-300 transition-colors font-normal normal-case tracking-normal"
+                  title="Open Court Tracker"
+                >
+                  <ExternalLink size={9} /> Court Tracker
+                </button>
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {c.court_date && (() => {
@@ -1913,9 +1950,11 @@ export default function CitationsPage() {
         <p className="text-xs text-center text-rmpg-500 mb-6 max-w-xs">
           Select a citation from the list to view details, or create a new one.
         </p>
+        {canManage && (
         <button type="button" onClick={handleNewCitation} className="toolbar-btn toolbar-btn-primary print:hidden">
           <Plus size={14} /> New Citation
         </button>
+        )}
       </div>
     );
   };
@@ -1975,6 +2014,33 @@ export default function CitationsPage() {
     })();
   }, [citations, loading, searchParams, setSearchParams, addToast]);
 
+  // ── ?plate=<plate> deep-link — pre-fill the search box with a plate ──
+  // Incoming from PlateLogPage context-menu "View citations for this plate".
+  // Strips the param after applying so refresh doesn't re-run it.
+  useEffect(() => {
+    const plate = searchParams.get('plate');
+    if (!plate) return;
+    setSearchQuery(plate.toUpperCase());
+    setPage(1);
+    const next = new URLSearchParams(searchParams);
+    next.delete('plate');
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── ?officer_id=<id> deep-link — pre-fill search with officer's badge ──
+  // Incoming from PersonnelPage officer card "View this officer's citations".
+  useEffect(() => {
+    const officerId = searchParams.get('officer_id');
+    if (!officerId) return;
+    setSearchQuery(officerId);
+    setPage(1);
+    const next = new URLSearchParams(searchParams);
+    next.delete('officer_id');
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Keyboard shortcuts: Esc smart-cascade (smallest modal first), and `N`
   // opens a new citation from anywhere on the page (mirrors Field Interviews
   // / Dispatch for operator muscle memory). Suppressed while typing into an
@@ -1990,17 +2056,17 @@ export default function CitationsPage() {
         // Smallest modal first. ConfirmDialog handles its own Esc via its
         // overlay, but we also close the inline payment form and the
         // person-search dropdown before falling through to the form panel.
-        if (voidTarget) { setVoidTarget(null); return; }
-        if (showPaymentForm) { setShowPaymentForm(false); return; }
-        if (showPersonDropdown) { setShowPersonDropdown(false); return; }
-        if (mode !== 'list') { handleCancelForm(); return; }
+        if (voidTarget) { e.stopPropagation(); setVoidTarget(null); return; }
+        if (showPaymentForm) { e.stopPropagation(); setShowPaymentForm(false); return; }
+        if (showPersonDropdown) { e.stopPropagation(); setShowPersonDropdown(false); return; }
+        if (mode !== 'list') { e.stopPropagation(); handleCancelForm(); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
       if (e.key === 'n' || e.key === 'N') {
-        // Don't fire while a destructive confirm is open
-        if (voidTarget || mode !== 'list') return;
+        // Don't fire while a destructive confirm is open, and gate on canManage
+        if (voidTarget || mode !== 'list' || !canManage) return;
         e.preventDefault();
         handleNewCitation();
       }
@@ -2055,7 +2121,7 @@ export default function CitationsPage() {
       </div>
 
       {/* Mobile FAB for new citation */}
-      {isMobile && !selectedCitation && mode === 'list' && (
+      {isMobile && !selectedCitation && mode === 'list' && canManage && (
         <button type="button" onClick={handleNewCitation} className="mobile-fab" aria-label="New Citation">
           <Plus size={24} />
         </button>

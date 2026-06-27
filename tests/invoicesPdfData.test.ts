@@ -98,10 +98,15 @@ function makeDbStub(scenario: 'found' | 'no-table' | 'not-found') {
   return { db, calls };
 }
 
+// Type the test app with the Worker's real Variables shape so c.set('user') /
+// c.set('userId') typecheck against the same ContextVariableMap the
+// invoices route reads from in production (src/types.ts).
+type TestEnv = { Variables: import('../src/types').Variables };
+
 function makeApp(stub: ReturnType<typeof makeDbStub>) {
-  const app = new Hono();
+  const app = new Hono<TestEnv>();
   app.use('*', async (c, next) => {
-    c.set('user', { id: 7, username: 'tester', role: 'admin' });
+    c.set('user', { id: 7, username: 'tester', role: 'admin', full_name: 'Test Er' });
     c.set('userId', 7);
     (c as any).env = { DB: stub.db };
     await next();
@@ -112,7 +117,7 @@ function makeApp(stub: ReturnType<typeof makeDbStub>) {
 
 describe('GET /api/invoices/:id/pdf-data', () => {
   let stub: ReturnType<typeof makeDbStub>;
-  let app: Hono;
+  let app: Hono<TestEnv>;
 
   beforeEach(() => {
     stub = makeDbStub('found');
