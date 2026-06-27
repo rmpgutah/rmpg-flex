@@ -20,6 +20,8 @@
 // it can be unit-tested in isolation — see tests/analytics.test.ts.
 // ============================================================
 
+import { log } from './logger';
+
 /** A single analytics event. Keep it FLAT — each key becomes one Iceberg
  *  column, so values must be JSON-serialisable scalars and a given key must
  *  carry a consistent type across every event (mixed types break the schema). */
@@ -80,10 +82,7 @@ export function emitAnalytics(
 ): void {
   if (!stream || events.length === 0) return;
   const work = stream.send(events).catch((err: unknown) => {
-    console.error(
-      '[analytics] emit failed:',
-      err instanceof Error ? err.message : String(err),
-    );
+    log.error('emit failed', { err: err instanceof Error ? err.message : String(err) });
   });
   // Structural shape (waitUntil-only) so we don't have to mirror every
   // `@cloudflare/workers-types` bump — see ExecutionCtxHolder above.

@@ -10,6 +10,7 @@ import {
 import type { DashcamEvent, CpgDeviceMapping } from '../../../types';
 import { DASHCAM_EVENT_COLORS } from '../utils/personnelConstants';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   events: DashcamEvent[];
@@ -40,7 +41,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
     return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const eventLabel = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  const eventLabel = (t: string) => toDisplayLabel(t);
 
   // Stats
   const hardBrakes = events.filter(e => e.event_type === 'hard_brake').length;

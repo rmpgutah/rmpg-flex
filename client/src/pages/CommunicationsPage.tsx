@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   MessageSquare,
@@ -242,6 +243,7 @@ type Panel = 'messages' | 'bolos' | 'activity';
 export default function CommunicationsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
@@ -312,45 +314,45 @@ export default function CommunicationsPage() {
   //     known).
   //   • ?bolo_id=<id> — switch to BOLOs panel and scroll the row into view.
   // All query params are stripped after consumption so a refresh doesn't
-  // re-trigger the lookup. Mirrors the WarrantsPage / FieldInterviewsPage
-  // pattern from #1597 / #1608.
+  // re-trigger the lookup. Uses setSearchParams({ replace: true }) so
+  // React Router owns the history stack (never window.history.replaceState).
+  // Mirrors the WarrantsPage / FieldInterviewsPage pattern from #1597 / #1608.
   useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
     let consumedAny = false;
 
     // ?tab= takes effect immediately so the right panel renders before the
     // hydrate-time deep-link selection fires.
-    const tab = sp.get('tab');
+    const tab = searchParams.get('tab');
     if (tab === 'messages' || tab === 'bolos' || tab === 'activity') {
       setActivePanel(tab);
       consumedAny = true;
     }
 
-    if (sp.get('newBolo') === '1') {
+    if (searchParams.get('newBolo') === '1') {
       setActivePanel('bolos');
       setShowNewBOLO(true);
       setBoloType('person');
-      const title = sp.get('title'); if (title) setBoloTitle(title);
-      const subject = sp.get('subject'); if (subject) setBoloSubjectDescription(subject);
-      const description = sp.get('description'); if (description) setBoloDescription(description);
+      const title = searchParams.get('title'); if (title) setBoloTitle(title);
+      const subject = searchParams.get('subject'); if (subject) setBoloSubjectDescription(subject);
+      const description = searchParams.get('description'); if (description) setBoloDescription(description);
       consumedAny = true;
     }
 
     // Capture pending selection targets — actual select fires in the
     // hydrate-watching effect below.
-    const threadId = sp.get('thread_id');
+    const threadId = searchParams.get('thread_id');
     if (threadId) {
       pendingThreadIdRef.current = threadId;
       setActivePanel('messages');
       consumedAny = true;
     }
-    const messageId = sp.get('message_id');
+    const messageId = searchParams.get('message_id');
     if (messageId) {
       pendingMessageIdRef.current = messageId;
       setActivePanel('messages');
       consumedAny = true;
     }
-    const boloId = sp.get('bolo_id');
+    const boloId = searchParams.get('bolo_id');
     if (boloId) {
       pendingBoloIdRef.current = boloId;
       setActivePanel('bolos');
@@ -359,11 +361,10 @@ export default function CommunicationsPage() {
 
     if (consumedAny) {
       // Strip the params we consumed so a refresh doesn't re-trigger this.
-      const next = new URLSearchParams(window.location.search);
+      const next = new URLSearchParams(searchParams);
       ['newBolo', 'title', 'subject', 'description', 'tab', 'thread_id', 'message_id', 'bolo_id']
         .forEach((k) => next.delete(k));
-      const qs = next.toString();
-      window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+      setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -982,7 +983,7 @@ export default function CommunicationsPage() {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--surface-raised), #9ca4ad 30%, #9ca4ad 70%, var(--surface-raised))' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--surface-raised), rgb(var(--rmpg-300-rgb)) 30%, rgb(var(--rmpg-300-rgb)) 70%, var(--surface-raised))' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-300">Communications Center</h1>
@@ -1105,7 +1106,7 @@ export default function CommunicationsPage() {
                 <span className="text-rmpg-500 text-[9px]">
                   {msgPriorityStats.byPriority.map(p => (
                     <span key={p.priority} className={`mr-2 ${p.priority === 'emergency' ? 'text-red-400' : p.priority === 'urgent' ? 'text-amber-400' : 'text-rmpg-400'}`}>
-                      {(p.priority || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}: {p.total}
+                      {toDisplayLabel(p.priority)}: {p.total}
                     </span>
                   ))}
                 </span>
@@ -1323,7 +1324,7 @@ export default function CommunicationsPage() {
                                     className="w-6 h-6 flex items-center justify-center text-[9px] font-bold flex-shrink-0"
                                     style={{
                                       background: 'var(--surface-raised)',
-                                      color: '#fff',
+                                      color: 'var(--text-primary)',
                                       border: '1px solid var(--border-default)',
                                       borderRadius: 2,
                                     }}
