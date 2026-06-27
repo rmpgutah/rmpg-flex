@@ -7,6 +7,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, MoreVertical } from 'lucide-react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 // ─── Types ────────────────────────────────────────────────────
 interface ActionItem {
@@ -62,21 +63,15 @@ export default function MobileDetailView({
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setVisible(true));
       });
-      // Lock body scroll
-      document.body.style.overflow = 'hidden';
     } else {
       setVisible(false);
       setMenuOpen(false);
-      // Restore scroll after transition
-      const timer = setTimeout(() => {
-        document.body.style.overflow = '';
-      }, 300);
-      return () => clearTimeout(timer);
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
   }, [open]);
+
+  // Body scroll lock (reference-counted, leak-proof) — separate from the
+  // animation state so the lock is released synchronously on close.
+  useBodyScrollLock(open);
 
   // ── Swipe-back gesture ─────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {

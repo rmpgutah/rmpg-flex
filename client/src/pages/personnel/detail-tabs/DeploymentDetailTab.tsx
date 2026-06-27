@@ -74,7 +74,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
       {currentDeployment && (
         <div
           className="panel-beveled p-3 border-l-2 border-l-green-500 border-t-2 border-t-green-500"
-          style={{ background: '#0a1a0a' }}
+          style={{ background: 'color-mix(in srgb, var(--surface-sunken) 85%, transparent)' }}
         >
           <div className="flex items-center gap-2 mb-2">
             <span className="led-dot led-green" />
