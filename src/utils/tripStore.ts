@@ -3,6 +3,7 @@
 // decide() engine, applies its intents to D1 (unit_trips + telemetry rollups via
 // accumulate), and broadcasts trip_update. Honors the engine's CALLER WRITE
 // CONTRACT. Stateless per call — all accumulator continuity lives in row columns.
+import { log } from './logger';
 import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
 import { decide, type ActiveTrip, type TripEvent, type EngineCtx } from './tripEngine';

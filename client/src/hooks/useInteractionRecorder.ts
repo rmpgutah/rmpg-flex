@@ -96,7 +96,6 @@ export function useInteractionRecorder() {
     clearInterval(timerRef.current);
     const mr = mrRef.current;
     if (mr && mr.state !== 'inactive') { try { mr.requestData(); mr.stop(); } catch { /* ignore */ } }
-    streamRef.current?.getTracks().forEach((t) => t.stop());
     try { await wakeRef.current?.release?.(); } catch { /* ignore */ }
     wakeRef.current = null;
     setRecording(false);
@@ -104,6 +103,7 @@ export function useInteractionRecorder() {
     if (id != null) { await finalize(id, elapsed); }
     idRef.current = null;
     setOrphan(null);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
   }, [elapsed, finalize]);
 
   // Finalize an orphaned recording from a previous session.
