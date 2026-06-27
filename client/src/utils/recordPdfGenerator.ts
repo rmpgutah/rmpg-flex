@@ -819,6 +819,9 @@ export interface PersonPdfData {
   dl_state?: string;
   dl_class?: string;
   dl_expiry?: string;
+  dl_issue_date?: string;
+  dl_restrictions?: string;
+  dl_endorsements?: string;
   id_type?: string;
   id_number?: string;
   id_state?: string;
@@ -2257,22 +2260,34 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   y = drawDistrictBar(doc, y, data as any);
 
-  // Classification — dispatch surfaces present the SHORT dispatch code only
-  // (the district bar above shows it at-a-glance, this is the labeled record
-  // copy). The full Area/Section/Zone/Beat names live on the Map UI, so the
-  // verbose Section/Zone/Beat rows are intentionally omitted here.
-  { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
+  // Dispatch Identification — dense 4-row grid covering all classification,
+  // routing, and provenance fields. Secondary type, contract ID, dispatcher,
+  // and record creator are always visible on the printed form regardless of
+  // incident type so auditors don't need to dig into the PSO section or the
+  // database to answer "who created this / what was the secondary class."
+  { const sec = openAutoSection(doc, 'Dispatch Identification', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
+      // Row 1: Core classification
       { label: 'Call Number', value: data.call_number },
       { label: 'Incident Type', value: formatEnumValue(data.incident_type) },
       { label: 'Priority', value: formatEnumValue(data.priority) },
+      // Row 2: Status, routing, secondary classification
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: formatEnumValue(data.source) },
+      { label: 'Secondary Type', value: formatEnumValue(data.secondary_type) },
+      // Row 3: Resolution + geography + contract
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
       { label: 'Dispatch Code', value: zsbComposite({ zoneId: data.zone_id, beatId: data.beat_id, dispatchCode: data.dispatch_code || data.zone_beat }) },
+      { label: 'Contract ID', value: data.contract_id || '' },
+      // Row 4: Case linkage + record provenance
       { label: 'Case Number', value: normalizeCaseNumber(data.case_number) },
       { label: 'Incident Number', value: data.incident_number || '' },
+      { label: 'Created By', value: data.created_by || '' },
     ], y);
+    // Row 5: Dispatcher + record-creation timestamp (half-width pair)
+    { const yL = addFieldPair(doc, 'Dispatcher / OPR', data.dispatcher_name || '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Record Created', fmtTimestamp(data.created_at), rx, y, hfw);
+      y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2799,6 +2814,38 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
   }
 
+  // GPS Response Analytics — summary statistics derived from the logged GPS
+  // trail for this call (no individual breadcrumb points — just the rolled-up
+  // operational picture: distance, duration, speed envelope). Only renders
+  // when breadcrumb_trail.stats is populated by the API.
+  {
+    const gpsStats = data.breadcrumb_trail?.stats;
+    if (gpsStats && (gpsStats.total_distance_miles > 0 || gpsStats.duration_minutes > 0)) {
+      y = checkPageBreak(doc, y, 18, prio);
+      const gpsSec = openAutoSection(doc, 'GPS Response Analytics', y); y = gpsSec.contentY;
+      const fmtGpsMph = (n: number | undefined) => n != null ? `${n.toFixed(1)} mph` : '—';
+      const fmtGpsMi  = (n: number | undefined) => n != null ? `${n.toFixed(2)} mi` : '—';
+      const fmtGpsMin = (n: number | undefined) => {
+        if (n == null) return '—';
+        const h = Math.floor(n / 60);
+        const m = Math.round(n % 60);
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+      };
+      const srcBreakdown = gpsStats.source_breakdown
+        ? Object.entries(gpsStats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}:${v}`).join('  ')
+        : '—';
+      y = addThreeColumnFields(doc, [
+        { label: 'Total Distance', value: fmtGpsMi(gpsStats.total_distance_miles) },
+        { label: 'Duration', value: fmtGpsMin(gpsStats.duration_minutes) },
+        { label: 'GPS Points Logged', value: String(gpsStats.total_points ?? '—') },
+        { label: 'Avg Speed', value: fmtGpsMph(gpsStats.avg_speed_mph) },
+        { label: 'Max Speed', value: fmtGpsMph(gpsStats.max_speed_mph) },
+        { label: 'Data Sources', value: srcBreakdown },
+      ], y);
+      y = closeAutoSection(doc, gpsSec.sectionY, y, undefined, gpsSec.sectionPage);
+    }
+  }
+
   // Linked Persons — route through the shared addTableWithShading helper
   // so the table automatically redraws column headers + a
   // "LINKED PERSONS -- CONTINUED" sub-bar on any page break (no more
@@ -2920,14 +2967,27 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Flags — already rendered above (before Scene Conditions)
 
-  // LE Coordination
-  if (data.le_agency || data.le_case_number) {
-    y = checkPageBreak(doc, y, 18, prio);
-    const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Agency', data.le_agency || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'LE Case Number', data.le_case_number || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  // External Agency Coordination — render whenever any coordination flag is set
+  // (agency name, LE case number, LE-notified checkbox, or supervisor-notified).
+  // Previously this block was suppressed when only checkboxes were ticked,
+  // leaving no record of the notification on the printed form. Now the section
+  // always appears when any coordination occurred so auditors see a complete
+  // procedural picture.
+  {
+    const hasCoord = !!(data.le_agency || data.le_case_number || data.le_notified || data.supervisor_notified);
+    if (hasCoord) {
+      y = checkPageBreak(doc, y, 22, prio);
+      const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
+      y = addThreeColumnFields(doc, [
+        { label: 'Agency', value: data.le_agency || '' },
+        { label: 'LE Case Number', value: data.le_case_number || '' },
+        { label: 'LE Notified', value: data.le_notified ? 'YES' : 'NO' },
+      ], y);
+      { const yL = addFieldPair(doc, 'Supervisor Notified', data.supervisor_notified ? 'YES' : 'NO', lx, y, hfw);
+        const yR = addFieldPair(doc, 'Dispatcher / OPR', data.dispatcher_name || '', rx, y, hfw);
+        y = Math.max(yL, yR); }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // PSO Client Request Details — already rendered after Caller Information above
@@ -3037,9 +3097,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     // a call that simply hasn't been resolved.
     const dispVal = formatEnumValue(data.disposition) || (lifecycle.open ? 'PENDING' : 'N/A');
     const actionVal = data.action_taken || (lifecycle.open ? 'OPEN - AWAITING DISPOSITION' : 'N/A');
-    { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || (lifecycle.open ? 'UNASSIGNED' : 'N/A'), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Disposition', dispVal, rx, y, hfw);
-      y = Math.max(yL, yR); }
+    // Row 1: Responding officer + disposition + cleared timestamp (3-column)
+    y = addThreeColumnFields(doc, [
+      { label: 'Responding Officer', value: data.responding_officer || (lifecycle.open ? 'UNASSIGNED' : 'N/A') },
+      { label: 'Disposition', value: dispVal },
+      { label: 'Cleared At', value: fmtTimestamp(data.cleared_at) || (lifecycle.open ? 'PENDING' : '—') },
+    ], y);
+    // Row 2: Action taken — full-width (may contain extended narrative)
     y = addFieldPair(doc, 'Action Taken', actionVal, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -3471,6 +3535,16 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const d3 = addFieldPair(doc, 'DL Class', data.dl_class || '', lx + fifthW * 3, y, fifthW);
     const d4 = addFieldPair(doc, 'DL Expiry', fmtDate(data.dl_expiry), lx + fifthW * 4, y, fifthW);
     y = Math.max(d1, d2, d3, d4);
+    // Row 1b: Issue Date (2/5), Restrictions (3/5)
+    if (data.dl_issue_date || data.dl_restrictions) {
+      const di1 = addFieldPair(doc, 'DL Issue Date', fmtDate(data.dl_issue_date), lx, y, fifthW * 2);
+      const di2 = addFieldPair(doc, 'Restrictions', data.dl_restrictions || '', lx + fifthW * 2, y, fifthW * 3);
+      y = Math.max(di1, di2);
+    }
+    // Row 1c: Endorsements
+    if (data.dl_endorsements) {
+      y = addFieldPair(doc, 'Endorsements', data.dl_endorsements, lx, y, ffw);
+    }
     // Row 2: ID Type (1/5), ID Number (2/5), ID State (1/5), ID Expiry (1/5)
     const i1 = addFieldPair(doc, 'ID Type', data.id_type || '', lx, y, fifthW);
     const i2 = addFieldPair(doc, 'ID Number', data.id_number || '', lx + fifthW, y, fifthW * 2);

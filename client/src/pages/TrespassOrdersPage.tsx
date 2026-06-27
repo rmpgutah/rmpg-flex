@@ -77,6 +77,11 @@ export default function TrespassOrdersPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // canManage: admin / manager / supervisor may create, edit, serve, lift,
+  // violate, and renew orders. Officers and dispatchers get read-only access.
+  // Mirrors the role set used by VictimServices, Field Interviews, and Evidence.
+  const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
@@ -278,7 +283,18 @@ export default function TrespassOrdersPage() {
     } catch (err: any) { setError(err?.message || 'Operation failed'); }
   };
 
-  const handleLift = async (order: TrespassOrder) => {
+  // Lift confirmation — "Lift" is a permanent status change that removes
+  // enforcement. Unlike Serve (factual record) or Violated (escalation),
+  // Lift is the closest analog to revoke: it closes the order and removes
+  // it from the active-orders view seen by patrol. ConfirmDialog gives the
+  // operator one clear chance to verify the subject before committing.
+  const [orderToLift, setOrderToLift] = useState<TrespassOrder | null>(null);
+  const [lifting, setLifting] = useState(false);
+  const handleLiftWithConfirm = (order: TrespassOrder) => { setOrderToLift(order); };
+  const confirmLiftOrder = async () => {
+    const order = orderToLift;
+    if (!order) return;
+    setLifting(true);
     try {
       await apiFetch(`/trespass-orders/${order.id}/lift`, { method: 'PUT' });
       addToast('Order lifted', 'success');
@@ -288,6 +304,7 @@ export default function TrespassOrdersPage() {
         setSelectedOrder(updated);
       }
     } catch (err: any) { setError(err?.message || 'Operation failed'); }
+    finally { setLifting(false); setOrderToLift(null); }
   };
 
   const handleViolate = async (order: TrespassOrder) => {
@@ -374,19 +391,19 @@ export default function TrespassOrdersPage() {
     const subject = `${order.subject_first_name || ''} ${order.subject_last_name || ''}`.trim();
     return [
       m.action('Open order', () => setSelectedOrder(order), { icon: <Eye size={12} /> }),
-      m.action('Edit order', () => handleEdit(order), { icon: <Pencil size={12} /> }),
+      ...(canManage ? [m.action('Edit order', () => handleEdit(order), { icon: <Pencil size={12} /> })] : []),
       m.action('Print court PDF', () => openTrespassOrderPdf(order), { icon: <Printer size={12} /> }),
       m.separator(),
       m.copy('Copy subject name', subject),
       m.copy('Copy order #', order.order_number),
       m.copyId(order.id),
-      ...(order.status === 'active' ? [
+      ...(canManage && order.status === 'active' ? [
         m.separator(),
         m.action('Mark served', () => handleServe(order), { icon: <CheckCircle size={12} /> }),
-        m.action('Lift order', () => handleLift(order), { icon: <RotateCcw size={12} /> }),
+        m.action('Lift order', () => handleLiftWithConfirm(order), { icon: <RotateCcw size={12} /> }),
         m.action('Record violation', () => handleViolate(order), { icon: <AlertTriangle size={12} /> }),
       ] : []),
-      ...((order.status === 'expired' || order.status === 'served') ? [
+      ...(canManage && (order.status === 'expired' || order.status === 'served') ? [
         m.separator(),
         m.action('Renew order', () => handleRenew(order), { icon: <RotateCcw size={12} /> }),
       ] : []),
@@ -420,15 +437,16 @@ export default function TrespassOrdersPage() {
       if (e.key === 'Escape') {
         // Close-smallest-open-first cascade. Each branch returns after
         // closing so a single Esc doesn't blast multiple open layers.
-        if (orderToDelete) { setOrderToDelete(null); return; }
-        if (expirationCalendar) { setExpirationCalendar(null); return; }
-        if (bulkMode) { setBulkMode(false); setBulkPersons([]); return; }
-        if (formOpen) { setFormOpen(false); setEditingOrder(null); return; }
+        if (orderToDelete) { e.stopPropagation(); setOrderToDelete(null); return; }
+        if (orderToLift) { e.stopPropagation(); setOrderToLift(null); return; }
+        if (expirationCalendar) { e.stopPropagation(); setExpirationCalendar(null); return; }
+        if (bulkMode) { e.stopPropagation(); setBulkMode(false); setBulkPersons([]); return; }
+        if (formOpen) { e.stopPropagation(); setFormOpen(false); setEditingOrder(null); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
-      if (e.key === 'n' || e.key === 'N') {
+      if ((e.key === 'n' || e.key === 'N') && canManage) {
         e.preventDefault();
         handleOpenNew();
       }
@@ -436,16 +454,39 @@ export default function TrespassOrdersPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderToDelete, expirationCalendar, bulkMode, formOpen]);
+  }, [orderToDelete, orderToLift, expirationCalendar, bulkMode, formOpen, canManage]);
 
-  // \u2500\u2500 /trespass-orders?order_id=<id> URL deep-link auto-select \u2500\u2500
+  // \u2500\u2500 Deep-link: ?order_id=<id> and ?person_id=<id> \u2500\u2500
   // Honors the Dashboard-emit / page-consume contract used across the
   // other audited pages (Cases, FI, Evidence, Citations, Warrants).
-  // Once `orders` hydrates, find by id and select; strip the query so a
-  // refresh doesn't re-select. Direct-fetch fallback for ids not in the
-  // current filter view (e.g. an expired order linked from a case file).
+  //
+  // ?order_id=<id>: Once `orders` hydrates, find by id and select; falls
+  // back to a direct fetch for ids outside the current filter view (e.g.
+  // an expired order linked from a case file). Strips the param after use
+  // so a refresh doesn't re-select.
+  //
+  // ?person_id=<id>: Pre-filters the list to orders for that person by
+  // injecting the id into the search query. Strips the param after use.
   const [searchParams, setSearchParams] = useSearchParams();
   const pendingOrderIdRef = useRef<string | null>(searchParams.get('order_id'));
+  const pendingPersonIdRef = useRef<string | null>(searchParams.get('person_id'));
+  useEffect(() => {
+    // person_id deep-link: filter to orders for that person on first load.
+    // Strips the param after consuming so a refresh doesn't re-apply it.
+    const personTarget = pendingPersonIdRef.current;
+    if (personTarget && !loading) {
+      pendingPersonIdRef.current = null;
+      const next = new URLSearchParams(searchParams);
+      next.delete('person_id');
+      setSearchParams(next, { replace: true });
+      setSearchQuery(personTarget);
+      setFilterStatus('');
+      setShowActiveOnly(false);
+      setPage(1);
+      addToast(`Filtering orders for person ${personTarget}`, 'success');
+    }
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const target = pendingOrderIdRef.current;
     if (!target || loading) return;
@@ -455,13 +496,13 @@ export default function TrespassOrdersPage() {
       try {
         const hit = orders.find((o) => String(o.id) === String(target));
         if (hit) {
-          if (!cancelled) setSelectedOrder(hit);
+          if (!cancelled) { setSelectedOrder(hit); addToast(`Loaded order ${hit.order_number}`, 'success'); }
         } else {
           // Not in the current paged/filtered view \u2014 fetch by id directly
           // so the deep-link works regardless of archive / status filter.
           const item = await apiFetch<TrespassOrder>(`/trespass-orders/${target}`);
           if (cancelled) return;
-          if (item && item.id != null) setSelectedOrder(item);
+          if (item && item.id != null) { setSelectedOrder(item); addToast(`Loaded order ${(item as TrespassOrder).order_number}`, 'success'); }
           else addToast(`Order ${target} not found`, 'warning');
         }
       } catch {
@@ -489,13 +530,17 @@ export default function TrespassOrdersPage() {
         <button type="button" onClick={handleLoadExpirationCalendar} className="toolbar-btn" title="Expiration calendar">
           <Calendar style={{ width: 11, height: 11 }} /> Expirations
         </button>
-        {/* Feature 19: Bulk Create */}
-        <button type="button" onClick={() => { setBulkMode(!bulkMode); if (!bulkMode) setBulkPersons([{ first_name: '', last_name: '' }]); }} className="toolbar-btn" title="Bulk create orders">
-          <Plus style={{ width: 11, height: 11 }} /> Bulk
-        </button>
-        <button type="button" onClick={handleOpenNew} className="toolbar-btn">
-          <Plus style={{ width: 11, height: 11 }} /> New Order
-        </button>
+        {/* Feature 19: Bulk Create — privileged users only */}
+        {canManage && (
+          <button type="button" onClick={() => { setBulkMode(!bulkMode); if (!bulkMode) setBulkPersons([{ first_name: '', last_name: '' }]); }} className="toolbar-btn" title="Bulk create orders">
+            <Plus style={{ width: 11, height: 11 }} /> Bulk
+          </button>
+        )}
+        {canManage && (
+          <button type="button" onClick={handleOpenNew} className="toolbar-btn">
+            <Plus style={{ width: 11, height: 11 }} /> New Order
+          </button>
+        )}
       </PanelTitleBar>
 
       {/* Feature 18: Expiration Calendar Panel */}
@@ -617,8 +662,8 @@ export default function TrespassOrdersPage() {
               <EmptyState
                 icon={Ban}
                 title="No trespass orders found"
-                description="Create a new trespass order to get started."
-                action={{ label: 'New Order', onClick: handleOpenNew }}
+                description={canManage ? 'Create a new trespass order to get started.' : 'No trespass orders have been issued yet.'}
+                action={canManage ? { label: 'New Order', onClick: handleOpenNew } : undefined}
               />
             )
           ) : (
@@ -690,25 +735,27 @@ export default function TrespassOrdersPage() {
                 >
                   <Printer style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Print
                 </button>
-                <button type="button" onClick={() => handleEdit(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>Edit</button>
-                {selectedOrder.status === 'active' && (
+                {canManage && (
+                  <button type="button" onClick={() => handleEdit(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>Edit</button>
+                )}
+                {canManage && selectedOrder.status === 'active' && (
                   <>
                     <button type="button" onClick={() => handleServe(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'rgb(var(--sev-warn-rgb))', minHeight: isMobile ? 48 : undefined }}>
                       <CheckCircle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Serve
                     </button>
-                    <button type="button" onClick={() => handleLift(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'rgb(var(--sev-ok-rgb))', minHeight: isMobile ? 48 : undefined }}>Lift</button>
+                    <button type="button" onClick={() => handleLiftWithConfirm(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'rgb(var(--sev-ok-rgb))', minHeight: isMobile ? 48 : undefined }}>Lift</button>
                     <button type="button" onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'rgb(var(--sev-special-rgb))', minHeight: isMobile ? 48 : undefined }}>
                       <AlertTriangle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Violated
                     </button>
                     {isExpiringWithin30Days(selectedOrder) && (
-                      <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'var(--rmpg-400)', minHeight: isMobile ? 48 : undefined }}>
+                      <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn text-rmpg-400" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                         <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                       </button>
                     )}
                   </>
                 )}
-                {(selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
-                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'var(--rmpg-400)', minHeight: isMobile ? 48 : undefined }}>
+                {canManage && (selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
+                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn text-rmpg-400" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                   </button>
                 )}
@@ -758,19 +805,19 @@ export default function TrespassOrdersPage() {
 
             {selectedOrder.reason && (
               <div className="mt-3 pt-2 border-t border-rmpg-700">
-                <span className="text-[var(--brand-gold)] text-[10px] uppercase font-bold tracking-wider">Reason</span>
+                <span className="text-brand-gold-500 text-[10px] uppercase font-bold tracking-wider">Reason</span>
                 <p className="text-xs text-rmpg-200 mt-1">{selectedOrder.reason}</p>
               </div>
             )}
             {selectedOrder.conditions && (
               <div className="mt-2">
-                <span className="text-[var(--brand-gold)] text-[10px] uppercase font-bold tracking-wider">Conditions</span>
+                <span className="text-brand-gold-500 text-[10px] uppercase font-bold tracking-wider">Conditions</span>
                 <p className="text-xs text-rmpg-200 mt-1">{selectedOrder.conditions}</p>
               </div>
             )}
             {selectedOrder.notes && (
               <div className="mt-2">
-                <span className="text-[var(--brand-gold)] text-[10px] uppercase font-bold tracking-wider">Notes</span>
+                <span className="text-brand-gold-500 text-[10px] uppercase font-bold tracking-wider">Notes</span>
                 <p className="text-xs text-rmpg-200 mt-1 whitespace-pre-wrap">{selectedOrder.notes}</p>
               </div>
             )}
@@ -784,7 +831,7 @@ export default function TrespassOrdersPage() {
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700 bg-surface-base">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-[var(--brand-gold)] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
+                <span className="text-xs font-bold text-brand-gold-500 uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
                 {formIsDirty && (
                   <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
                 )}
@@ -941,6 +988,28 @@ export default function TrespassOrdersPage() {
         confirmLabel={deleting ? 'Deleting…' : 'Delete order'}
         confirmVariant="danger"
         isLoading={deleting}
+      />
+
+      {/* Lift confirmation — lifting is a permanent status change that
+          removes a subject from the active-enforcement view seen by
+          patrol. ConfirmDialog gives the operator one clear chance to
+          verify the subject before committing. */}
+      <ConfirmDialog
+        isOpen={!!orderToLift}
+        onClose={() => (lifting ? null : setOrderToLift(null))}
+        onConfirm={confirmLiftOrder}
+        title="Lift trespass order?"
+        message="Lifting removes this order from active enforcement. The record is preserved for history — use Delete only if the order should be fully expunged."
+        details={orderToLift ? (
+          <>
+            <div><span className="text-rmpg-500">Order</span> <span className="font-mono text-rmpg-100">{orderToLift.order_number}</span></div>
+            <div><span className="text-rmpg-500">Subject</span> <span className="text-rmpg-100">{orderToLift.subject_last_name}, {orderToLift.subject_first_name}</span></div>
+            <div><span className="text-rmpg-500">Property</span> <span className="text-rmpg-100">{orderToLift.property_name || orderToLift.location}</span></div>
+          </>
+        ) : undefined}
+        confirmLabel={lifting ? 'Lifting…' : 'Lift order'}
+        confirmVariant="warning"
+        isLoading={lifting}
       />
     </div>
   );

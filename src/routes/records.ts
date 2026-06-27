@@ -210,6 +210,7 @@ const PERSON_WRITABLE_COLUMNS = new Set([
   'address', 'address_2', 'city', 'state', 'zip', 'phone', 'phone_secondary',
   'home_phone', 'work_phone', 'email', 'email_secondary',
   'dl_number', 'dl_state', 'dl_expiry', 'dl_class',
+  'dl_issue_date', 'dl_restrictions', 'dl_endorsements',
   'ssn_last4', 'ssn_full',
   'photo_url', 'photo', 'id_image_url',
   'id_type', 'id_number', 'id_state', 'id_expiry',
@@ -244,6 +245,8 @@ const PERSON_WRITABLE_COLUMNS = new Set([
 const PERSON_EXT_COLUMNS = new Set([
   'suffix', 'nationality', 'voice_description', 'religion', 'dietary_restrictions',
   'address_2', // apartment/unit number (persons at 96 cols — overflow only)
+  // DL barcode fields (AAMVA PDF417 elements DCB/DCD/DBD) — mig 0155
+  'dl_restrictions', 'dl_endorsements', 'dl_issue_date',
 ]);
 const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
 
@@ -383,14 +386,23 @@ records.post('/from-dl-scan', async (c) => {
         : 'Created from DL scan';
       const result = await execute(db, `
         INSERT INTO persons (first_name, middle_name, last_name, dob, gender, height, weight,
-          eye_color, hair_color, address, city, state, zip, dl_number, dl_state, flags, notes, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
+          eye_color, hair_color, address, city, state, zip, dl_number, dl_state,
+          dl_expiry, dl_class, flags, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
         first, str(scan.middle_name), last, dob, str(scan.gender), str(scan.height),
         str(scan.weight), str(scan.eye_color), str(scan.hair_color), str(scan.address),
         str(scan.city), str(scan.state), str(scan.zip), dlNumber, str(scan.dl_state),
+        str(scan.dl_expiry), str(scan.dl_class),
         JSON.stringify(['dl_scan_imported']), note);
-      person = await queryFirst<Record<string, unknown>>(db,
-        'SELECT * FROM persons WHERE id = ?', Number(result.meta.last_row_id));
+      const newPersonId = Number(result.meta.last_row_id);
+      // Write AAMVA overflow fields (restrictions/endorsements/issue_date) to persons_ext
+      await writePersonExt(db, newPersonId, {
+        dl_restrictions: str(scan.dl_restrictions),
+        dl_endorsements: str(scan.dl_endorsements),
+        dl_issue_date:   str(scan.dl_issue_date),
+      });
+      person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db,
+        'SELECT * FROM persons WHERE id = ?', newPersonId));
       personCreated = true;
     }
     const personId = Number(person!.id);
