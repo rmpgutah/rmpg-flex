@@ -13,6 +13,7 @@
 // a dashcam_events row. Phase C ALPRs the outside-channel clips off this loop.
 // ============================================================
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from './db';
 import {
@@ -328,13 +329,13 @@ async function syncDevice(
           try {
             const { alprDashcamClip } = await import('./clearpathAlpr');
             await alprDashcamClip(env, db, { videoId: stored.videoId, r2Key: stored.r2Key, mapping: m, event });
-          } catch (err) { console.error('[cpg-alpr] clip failed:', (err as Error)?.message); }
+          } catch (err) { log.error('clip failed', {}, err); }
         }
       } catch (err) {
         if (err instanceof CpgRateLimitError) throw err;
         const msg = (err as Error)?.message || 'unknown';
         if (budget.errors.length < 3) budget.errors.push(`${m.cpg_device_id}@${event.eventTimestamp}/${channel}: ${msg}`);
-        console.error(`[cpg-media] download failed ${m.cpg_device_id}/${event.eventTimestamp}/${channel}:`, msg);
+        log.error('download failed', { device: m.cpg_device_id, eventTimestamp: event.eventTimestamp, channel, msg });
       }
     }
     if (budget.left <= 0) break;
@@ -371,7 +372,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
 
   let cameras: CpgCamera[] | null = null;
   if (mappings.some((m) => !m.cpg_camera_id)) {
-    try { cameras = await listCameras(env, client); } catch (err) { console.warn('[cpg-media] camera list failed:', (err as Error)?.message); }
+    try { cameras = await listCameras(env, client); } catch (err) { log.warn('camera list failed', { err }); }
   }
 
   const budget = { left: MAX_CLIPS_PER_RUN, errors: [] as string[] };
@@ -388,7 +389,7 @@ export async function syncClearpathMedia(env: Bindings): Promise<{ synced: numbe
         break;
       }
       errors++;
-      console.error(`[cpg-media] device ${m.cpg_device_id} error:`, (err as Error)?.message);
+      log.error('device error', { device: m.cpg_device_id }, err);
     }
   }
   try { await setConfigValue(db, 'clearpathgps_last_media_sync', new Date().toISOString()); } catch { /* */ }
@@ -430,7 +431,7 @@ export async function syncClearpathMediaRange(
     if (budget.left <= 0) break;
     try {
       const cameraId = await resolveCameraId(db, m, cameras, env, client);
-      if (!cameraId) { console.warn(`[cpg-drive] no camera ID for ${m.cpg_device_id}`); continue; }
+      if (!cameraId) { log.warn('no camera ID', { device: m.cpg_device_id }); continue; }
       synced += await syncDevice(env, db, client, m, cameraId, budget, { fromMs: opts.fromMs, toMs: opts.toMs });
     } catch (err) {
       if (err instanceof CpgRateLimitError) {
@@ -438,7 +439,7 @@ export async function syncClearpathMediaRange(
         break;
       }
       errors++;
-      console.error(`[cpg-drive] device ${m.cpg_device_id} error:`, (err as Error)?.message);
+      log.error('device error', { device: m.cpg_device_id }, err);
     }
   }
   return { synced, errors };
@@ -487,7 +488,7 @@ export async function scanClearpathMediaAlpr(env: Bindings): Promise<{ scanned: 
       if (exists) continue;
       scanned++;
       try { await alprDashcamClip(env, db, { mapping: m, event }); captured++; }
-      catch (err) { console.error('[cpg-alpr-scan] failed:', (err as Error)?.message); }
+      catch (err) { log.error('alpr scan failed', {}, err); }
     }
   }
   try { await setConfigValue(db, 'clearpathgps_last_alpr_scan', new Date().toISOString()); } catch { /* */ }
@@ -508,8 +509,8 @@ export async function maybeRunClearpathMediaSync(env: Bindings): Promise<void> {
   const lastScan = await getConfigValue(db, 'clearpathgps_last_alpr_scan');
   const scanDue = !lastScan || !Number.isFinite(Date.parse(lastScan)) || (Date.now() - Date.parse(lastScan) >= interval * 1000);
   if (scanDue) {
-    try { const s = await scanClearpathMediaAlpr(env); if (s.scanned || s.captured) console.log(`[cpg-alpr] scanned=${s.scanned} captured=${s.captured}`); }
-    catch (err) { console.error('[cpg-alpr] scan failed:', (err as Error)?.message); }
+    try { const s = await scanClearpathMediaAlpr(env); if (s.scanned || s.captured) log.info('alpr scan complete', { scanned: s.scanned, captured: s.captured }); }
+    catch (err) { log.error('alpr scan failed', {}, err); }
   }
 
   // 2) Full clip sync — runs on the same cadence as the ALPR scan.
@@ -517,6 +518,6 @@ export async function maybeRunClearpathMediaSync(env: Bindings): Promise<void> {
   const lastClip = await getConfigValue(db, 'clearpathgps_last_media_sync');
   const clipDue = !lastClip || !Number.isFinite(Date.parse(lastClip)) || (Date.now() - Date.parse(lastClip) >= interval * 1000);
   if (!clipDue) return;
-  try { const r = await syncClearpathMedia(env); if (r.synced || r.errors) console.log(`[cpg-media] synced=${r.synced} errors=${r.errors}`); }
-  catch (err) { console.error('[cpg-media] clip sync failed:', (err as Error)?.message); }
+  try { const r = await syncClearpathMedia(env); if (r.synced || r.errors) log.info('media sync complete', { synced: r.synced, errors: r.errors }); }
+  catch (err) { log.error('clip sync failed', {}, err); }
 }
