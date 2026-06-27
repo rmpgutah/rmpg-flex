@@ -12,6 +12,17 @@ recruitment.get('/candidates', async (c) => {
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
+recruitment.get('/candidates/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM recruitment_candidates WHERE id=?', id);
+    if (!row) return c.json({ error: 'Not found' }, 404);
+    return c.json(row);
+  } catch { return c.json({ error: 'Failed' }, 500); }
+});
+
 recruitment.post('/candidates', async (c) => {
   try {
   const db = getDb(c.env);

@@ -37,4 +37,13 @@ public struct CFSAPI: Sendable {
         )
         return try await client.request(endpoint, as: CreateCallResponse.self)
     }
+
+    public func fetchActiveCalls() async throws -> [ActiveCall] {
+        let endpoint = Endpoint(
+            method: .get,
+            path: "api/dispatch/calls/active",
+            queryItems: [URLQueryItem(name: "limit", value: "100")]
+        )
+        return try await client.request(endpoint, as: [ActiveCall].self)
+    }
 }

@@ -10,6 +10,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -97,12 +98,6 @@ export function parseChain(value: EvidenceItem['chain_of_custody']): ChainOfCust
     }
   }
   return [];
-}
-
-/** Public for testing. Format a chain entry's action (snake_case → Title Case). */
-export function prettyAction(action: string | undefined): string {
-  if (!action) return '—';
-  return action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Public for testing. Pick the date string from a chain entry — entries use
@@ -297,7 +292,7 @@ export function generateEvidenceItemPdf(input: EvidencePdfInput): jsPDF {
       let x = M + 4;
       doc.text(fmtDateTime(chainEntryDate(entry)), x, y + 9);
       x += cols[0].width;
-      doc.text(prettyAction(entry.action), x, y + 9);
+      doc.text(toDisplayLabel(entry.action), x, y + 9);
       x += cols[1].width;
       doc.text(ellipsize(chainEntryActor(entry), 18), x, y + 9);
       x += cols[2].width;
