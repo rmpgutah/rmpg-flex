@@ -96,7 +96,7 @@ const STUBS: StubRule[] = [
   // ── Bucket G (system review 2026-05-27) ───────────────────────
   // The following routes are listed in API_ROUTES below as going to
   // env.API, but the new worker has no matching handler (either no
-  // mount in routesConfig.ts, or the mount exists but the sub-path
+  // mount in src/index.ts, or the mount exists but the sub-path
   // isn't registered on the mounted router). All return 404 today.
   // None appeared in the original console dump that triggered this
   // session — they're dashboard polls that haven't actually fired
@@ -203,7 +203,7 @@ const STUBS: StubRule[] = [
   // now own the whole /api/crm namespace (see note above + src/routes/crm.ts).
   // /api/offender-registry/stats now has a real handler in
   // src/routes/offenderRegistry.ts. 2026-06-10: the sex-offender-registry
-  // stats/root stubs were REMOVED — routesConfig.ts deliberately dual-mounts
+  // stats/root stubs were REMOVED — src/index.ts deliberately dual-mounts
   // offenderRegistry at BOTH /api/offender-registry AND
   // /api/sex-offender-registry (backed by offender_alerts, which exists on
   // live D1), and a /api/sex-offender-registry prefix rule now routes the
@@ -1258,12 +1258,12 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/records/reports/approval-queue' },
   // Audit — entire namespace lives in src/routes/audit.ts (logs, stats,
   // index-stats, compliance-report). Legacy never had any of these so
-  // requests were 404ing on the AuditLogPage. Mounted in routesConfig.ts
+  // requests were 404ing on the AuditLogPage. Mounted in src/index.ts
   // at /api/audit; this rule routes the prefix to env.API.
   { kind: 'prefix', value: '/api/audit' },
   // Admin extras the legacy worker doesn't implement
   // Console/System Settings — entire CRUD lives in src/routes/adminSettings.ts
-  // (mounted at /api/admin/settings in routesConfig.ts) backed by the
+  // (mounted at /api/admin/settings in src/index.ts) backed by the
   // system_settings table on live D1 (seeded via migrations 0049/0050).
   // Legacy never had this surface, so requests were falling through and
   // 500ing on the AdminSettingsTab "Failed to load settings" screen.
@@ -1289,7 +1289,7 @@ const API_ROUTES: RouteRule[] = [
   // Legacy has no /api/announcements surface, so route to env.API.
   { kind: 'prefix', value: '/api/announcements' },
   // Console Settings — real handler lives in src/routes/adminSettings.ts
-  // (mounted at /api/admin/settings in routesConfig.ts) backed by the
+  // (mounted at /api/admin/settings in src/index.ts) backed by the
   // system_settings table on live D1 (428 rows, rich schema). Legacy never
   // had this surface, so without this rule requests fall through to
   // env.LEGACY and 500, producing the "Failed to load settings" screen on
@@ -1427,7 +1427,7 @@ const API_ROUTES: RouteRule[] = [
   // src/routes/offenderRegistry.ts (widened from /stats-only, 2026-06-09
   // 404 sweep: root list/POST, /:id/clear, /:id/risk-score, /:id/contacts).
   { kind: 'prefix', value: '/api/offender-registry' },
-  // routesConfig.ts dual-mounts the SAME offenderRegistry router at
+  // src/index.ts dual-mounts the SAME offenderRegistry router at
   // /api/sex-offender-registry (root list, /stats, /export/csv, all backed by
   // offender_alerts on live D1). Stubs for this namespace removed 2026-06-10;
   // only /expiring-registrations (no handler) and /:id (legacy-only) remain
@@ -1535,7 +1535,7 @@ const API_ROUTES: RouteRule[] = [
   // (src/routes/nav.ts). The entire /api/nav/* namespace is on the rewrite;
   // legacy never had it, so requests fall through to env.LEGACY and 404
   // (NavPage "No current trip" / 404 toast on /nav/trip/current + /nav/trip/history
-  // + /nav/vehicle-take-home). The rewrite mounts at /api/nav in routesConfig.ts
+  // + /nav/vehicle-take-home). The rewrite mounts at /api/nav in src/index.ts
   // with full GET/POST/PUT handlers for trip lifecycle. Note this is distinct
   // from /api/dispatch/trips (a sibling that lives under /api/dispatch and
   // routes dispatch-side trip stats); both namespaces reach the same DB but
@@ -1688,7 +1688,7 @@ const API_ROUTES: RouteRule[] = [
   // /api/process-server/* — ServePage + ServeSkipTracePanel. The rewrite
   // mounts both the full `serve` router (officer-facing workflow) and the
   // `processServer` subset (deadlines + success-rates) at this prefix
-  // (see src/routesConfig.ts:330-347), so all GETs + POSTs for jobs, stats,
+  // (see src/src/index.ts:330-347), so all GETs + POSTs for jobs, stats,
   // routes, attempts, skip-trace, CSV export, and CRUD reach the rewrite
   // instead of falling through to env.LEGACY. The two more-specific
   // /deadlines + /success-rates regex rules above still win on those exact
@@ -1708,7 +1708,7 @@ const API_ROUTES: RouteRule[] = [
   // NO AI. Previously this whole namespace fell to legacy (which 404s: every
   // /api/document-intake/* call returned "API endpoint not found"), so the
   // DocumentIntakePage was dead in prod. The router was already registered in
-  // routesConfig.ts; it just had no proxy route. Route the prefix to env.API.
+  // src/index.ts; it just had no proxy route. Route the prefix to env.API.
   // (The container-backed /extract-text + /health on this prefix are unused by
   // any client — only /extract is called.)
   { kind: 'prefix', value: '/api/document-intake' },
@@ -1808,7 +1808,7 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/voice-persona' },
 
   // ── Prefixes with rewrite handlers but no proxy route ─────────────
-  // These have real handlers in routesConfig.ts but were falling through
+  // These have real handlers in src/index.ts but were falling through
   // to legacy because the proxy never routed them.
   // Firecrawl-backed routes: FIRECRAWL_API_KEY is set on env.API
   // (rmpg-flex-api) only, so these MUST route there — falling through to
