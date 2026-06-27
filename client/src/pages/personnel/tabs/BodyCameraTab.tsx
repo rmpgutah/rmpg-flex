@@ -18,6 +18,7 @@ import PrintButton from '../../../components/PrintButton';
 import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { toDisplayLabel } from '../../../utils/formatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
@@ -180,7 +181,7 @@ export default function BodyCameraTab({
   }
 
   function statusLabel(status: string): string {
-    return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return toDisplayLabel(status);
   }
 
   function statusLedClass(status: string): string {

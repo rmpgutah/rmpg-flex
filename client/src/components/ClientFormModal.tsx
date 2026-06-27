@@ -3,7 +3,7 @@ import { Building2 } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import AddressAutocomplete from './AddressAutocomplete';
-import { formatPhoneInput } from '../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../utils/formatters';
 
 import RichTextArea from './RichTextArea';
 import { composeAddressUnit } from '../utils/addressUnit';
@@ -404,7 +404,7 @@ export default function ClientFormModal({
               <label htmlFor="ff-clientformmodal-8" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Payment Method</label>
               <select id="ff-clientformmodal-8" className="select-dark text-xs w-full" value={form.payment_method} onChange={(e) => set('payment_method', e.target.value)}>
                 {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>{m ? m.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '-- Select --'}</option>
+                  <option key={m} value={m}>{m ? toDisplayLabel(m) : '-- Select --'}</option>
                 ))}
               </select>
             </div>

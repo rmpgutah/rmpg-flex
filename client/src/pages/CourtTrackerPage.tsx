@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
-import { formatPhoneInput, formatEnumValue} from '../utils/formatters';
+import { formatPhoneInput, formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import {
   Gavel, Search, Plus, Calendar, Clock, User, X, Save, Loader2, AlertTriangle,
   CheckCircle, FileText, Scale, ChevronLeft, ChevronRight, Shield, DollarSign,
@@ -1175,8 +1175,8 @@ export default function CourtTrackerPage() {
                     <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800 last:border-0">
                       <span className={`w-2 h-2 rounded-full ${wit.contact_status === 'confirmed' ? 'bg-green-500' : wit.contact_status === 'contacted' ? 'bg-amber-500' : 'bg-rmpg-600'}`} />
                       <span className="text-[10px] text-rmpg-100 flex-1">{wit.name}</span>
-                      <span className="text-[9px] text-rmpg-500">{(wit.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                      <span className="text-[9px] text-rmpg-600">{(wit.contact_status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className="text-[9px] text-rmpg-500">{toDisplayLabel(wit.role)}</span>
+                      <span className="text-[9px] text-rmpg-600">{toDisplayLabel(wit.contact_status)}</span>
                     </div>
                   ));
                 })()}
