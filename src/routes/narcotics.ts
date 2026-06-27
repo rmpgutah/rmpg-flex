@@ -41,6 +41,16 @@ narcotics.post('/cases', async (c) => {
   catch (err) { return c.json({ error: 'Failed to create narcotics case', detail: (err as Error)?.message }, 500); }
 });
 
+narcotics.get('/cases/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<object>(db, 'SELECT * FROM narcotics_cases WHERE id=?', id);
+    if (!row) return c.json({ error: 'Not found' }, 404);
+    return c.json(row);
+  } catch (err) { return c.json({ error: 'Failed to fetch narcotics case', detail: (err as Error)?.message }, 500); }
+});
+
 narcotics.put('/cases/:id', async (c) => {
   try { const actor = c.get('user') as { role: string } | undefined; if (!actor || !new Set(['admin', 'manager', 'supervisor', 'officer']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403); const db = getDb(c.env); const id = c.req.param('id'); const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);

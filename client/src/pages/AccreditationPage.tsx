@@ -106,7 +106,11 @@ export default function AccreditationPage() {
     if (!targetId) return;
 
     const rec = standards.find((s) => String(s.id) === targetId);
-    if (rec) openEdit(rec);
+    if (rec) {
+      openEdit(rec);
+    } else {
+      addToast(`Standard #${targetId} not found`, 'error');
+    }
 
     // Strip the param without adding a history entry
     const next = new URLSearchParams(searchParams);
@@ -341,6 +345,7 @@ export default function AccreditationPage() {
       <DataTable
         columns={columns}
         data={filteredStandards}
+        loading={loading}
         emptyMessage={emptyMessage}
         onRowClick={canManage ? openEdit : undefined}
         enableContextMenu

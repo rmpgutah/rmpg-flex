@@ -18,7 +18,6 @@ import {
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
-import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
@@ -34,6 +33,7 @@ import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatActivity, type CaseActivityRow } from '../utils/caseActivity';
 import { CaseTasksTab, CaseMyTasksView } from '../components/CaseTasks';
 import { CaseDashboardView, SlaBadge } from '../components/CaseDashboard';
+import { InvestigationTab } from '../components/InvestigationTab';
 import { CaseRelatedSection } from '../components/CaseRelated';
 import { CaseReadinessCard, fetchCaseCompleteness } from '../components/CaseReadiness';
 import { downloadCaseReport } from '../utils/caseReportGenerator';
@@ -86,7 +86,7 @@ const EMPTY_FORM = {
   summary: '', lead_investigator_id: '',
 };
 
-type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability' | 'files';
+type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability' | 'files' | 'intelligence';
 
 const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -103,6 +103,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'notes', label: 'Notes', countKey: 'notes' },
   { id: 'solvability', label: 'Solvability' },
   { id: 'files', label: 'Files', countKey: 'attachments' },
+  { id: 'intelligence', label: 'Intelligence' },
 ];
 
 // ── Reusable LinkedEntityPanel for each entity tab ──
@@ -399,6 +400,12 @@ export default function CaseManagementPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const isManager = user?.role === 'manager';
+  const isSupervisor = user?.role === 'supervisor';
+  // Role gates: delete/archive → admin|manager; assign → admin|manager|supervisor
+  const canDelete = isAdmin || isManager;
+  const canArchive = isAdmin || isManager;
+  const canAssign = isAdmin || isManager || isSupervisor;
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
@@ -471,6 +478,8 @@ export default function CaseManagementPage() {
   const [noteToDelete, setNoteToDelete] = useState<number | null>(null);
   const [saveViewModalOpen, setSaveViewModalOpen] = useState(false);
   const [saveViewName, setSaveViewName] = useState('');
+  const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
+  const [caseDeleting, setCaseDeleting] = useState(false);
   const [pendingClose, setPendingClose] = useState<{
     newStatus: string;
     percent: number;
@@ -808,15 +817,19 @@ export default function CaseManagementPage() {
     finally { setReviewSubmitting(false); }
   };
 
-  // Admin God Mode — delete a case (shared by detail button + context menu)
-  const handleDeleteCase = async (c: Case) => {
-    if (!confirm(`Admin God Mode: Delete case ${c.case_number}? This cannot be undone.`)) return;
+  // Delete-case flow — opens ConfirmDialog instead of native confirm().
+  const handleDeleteCase = (c: Case) => { setCaseToDelete(c); };
+  const confirmDeleteCase = async () => {
+    const c = caseToDelete;
+    if (!c) return;
+    setCaseDeleting(true);
     try {
       await apiFetch(`/cases/${c.id}`, { method: 'DELETE' });
       addToast(`Case ${c.case_number} deleted`, 'success');
       if (selected?.id === c.id) setSelected(null);
       fetchCases();
     } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    finally { setCaseDeleting(false); setCaseToDelete(null); }
   };
 
   // ── Right-click context menu for case list rows ──
@@ -826,7 +839,7 @@ export default function CaseManagementPage() {
     m.copy('Copy case number', c.case_number),
     m.copyId(c.id),
     ...(c.title ? [m.copy('Copy title', c.title)] : []),
-    ...(isAdmin ? [m.separator(), m.action('Delete', () => handleDeleteCase(c), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ...(canDelete ? [m.separator(), m.action('Delete', () => handleDeleteCase(c), { icon: <Trash2 size={12} />, danger: true })] : []),
   ];
 
   // ── Link Person handlers ──
@@ -911,26 +924,46 @@ export default function CaseManagementPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cases, loading]);
 
-  // Keyboard shortcut: Escape closes whichever modal is currently open
-  // (smallest-open-first cascade). Previously hard-coded to only two of the
-  // page's modals — linkPerson was silently ignored, leaving operators
-  // stuck if they expected Escape to close it.
+  // Keyboard shortcuts:
+  //   N — open new case modal (only when no modal is already open and not
+  //       typing in an input/textarea).
+  //   Escape — close whichever modal is currently open (smallest-open-first
+  //       cascade). stopPropagation() prevents the event from bubbling into
+  //       nested handlers after we handle it.
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable;
+
+      if (e.key === 'N' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditable) {
+        const anyModalOpen = saveViewModalOpen || pendingClose !== null || pendingReview !== null
+          || noteToDelete !== null || caseToDelete !== null || linkPersonOpen || showReturnModal || formOpen;
+        if (!anyModalOpen) {
+          e.preventDefault();
+          setFormOpen(true);
+          setFormData({ ...EMPTY_FORM });
+          // Focus title input after modal renders
+          requestAnimationFrame(() => { titleInputRef.current?.focus(); });
+        }
+        return;
+      }
+
       if (e.key !== 'Escape') return;
       // Order: confirmation modals first (most dismissible), then the
       // entry / picker modals, finally the main form.
-      if (saveViewModalOpen) { setSaveViewModalOpen(false); return; }
-      if (pendingClose) { setPendingClose(null); return; }
-      if (pendingReview) { setPendingReview(null); return; }
-      if (noteToDelete != null) { setNoteToDelete(null); return; }
-      if (linkPersonOpen) { setLinkPersonOpen(false); return; }
-      if (showReturnModal) { setShowReturnModal(false); return; }
-      if (formOpen) { setFormOpen(false); return; }
+      if (saveViewModalOpen) { e.stopPropagation(); setSaveViewModalOpen(false); return; }
+      if (caseToDelete !== null) { e.stopPropagation(); setCaseToDelete(null); return; }
+      if (pendingClose) { e.stopPropagation(); setPendingClose(null); return; }
+      if (pendingReview) { e.stopPropagation(); setPendingReview(null); return; }
+      if (noteToDelete != null) { e.stopPropagation(); setNoteToDelete(null); return; }
+      if (linkPersonOpen) { e.stopPropagation(); setLinkPersonOpen(false); return; }
+      if (showReturnModal) { e.stopPropagation(); setShowReturnModal(false); return; }
+      if (formOpen) { e.stopPropagation(); setFormOpen(false); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [saveViewModalOpen, pendingClose, pendingReview, noteToDelete, linkPersonOpen, showReturnModal, formOpen]);
+  }, [saveViewModalOpen, caseToDelete, pendingClose, pendingReview, noteToDelete, linkPersonOpen, showReturnModal, formOpen]);
 
   return (
     <div className="h-full flex flex-col">
@@ -1042,13 +1075,17 @@ export default function CaseManagementPage() {
               <option value="">Set status…</option>
               {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-            <select aria-label="Bulk assign" value=""
-              onChange={e => { if (e.target.value) handleBulk('assign', e.target.value); }}
-              className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none">
-              <option value="">Assign to…</option>
-              {users.map(u => <option key={u.id} value={String(u.id)}>{u.full_name}</option>)}
-            </select>
-            <button type="button" onClick={() => handleBulk('archive')} className="text-[10px] px-2 py-0.5 border border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors">Archive</button>
+            {canAssign && (
+              <select aria-label="Bulk assign" value=""
+                onChange={e => { if (e.target.value) handleBulk('assign', e.target.value); }}
+                className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none">
+                <option value="">Assign to…</option>
+                {users.map(u => <option key={u.id} value={String(u.id)}>{u.full_name}</option>)}
+              </select>
+            )}
+            {canArchive && (
+              <button type="button" onClick={() => handleBulk('archive')} className="text-[10px] px-2 py-0.5 border border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors">Archive</button>
+            )}
             <button type="button" onClick={clearSelection} className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-rmpg-100 transition-colors ml-auto">Clear</button>
           </div>
         )}
@@ -1057,10 +1094,17 @@ export default function CaseManagementPage() {
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span></div>
+          ) : fetchError ? null : cases.length === 0 && (searchQuery || filterStatus || filterType || filterPriority || filterOverdue || filterMine) ? (
+            <EmptyState
+              icon={Search}
+              title="No results"
+              description="No cases match the current filters."
+              action={{ label: 'Clear filters', onClick: () => { setSearchQuery(''); setFilterStatus(''); setFilterType(''); setFilterPriority(''); setFilterOverdue(false); setFilterMine(false); setPage(1); } }}
+            />
           ) : cases.length === 0 ? (
             <EmptyState
               icon={FolderOpen}
-              title="No cases found"
+              title="No cases yet"
               description="Create a new case to get started."
               action={{ label: 'New Case', onClick: () => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); } }}
             />
@@ -1207,14 +1251,14 @@ export default function CaseManagementPage() {
                     </div>
                   </div>
 
-                  {/* Admin God Mode: Delete Case */}
-                  {isAdmin && (
+                  {/* Delete Case — admin|manager only */}
+                  {canDelete && (
                     <div className="panel-beveled p-3 border-red-900/30">
                       <button type="button"
                         onClick={() => handleDeleteCase(selected)}
                         className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30 text-[10px]"
                       >
-                        <X style={{ width: 11, height: 11 }} /> Delete Case (Admin)
+                        <X style={{ width: 11, height: 11 }} /> Delete Case
                       </button>
                     </div>
                   )}
@@ -1611,6 +1655,11 @@ export default function CaseManagementPage() {
                 </div>
               )}
 
+              {/* ── Intelligence Tab — cross-reference engine, MO patterns, timelines ── */}
+              {detailTab === 'intelligence' && (
+                <InvestigationTab caseId={selected.id} caseNumber={selected.case_number} />
+              )}
+
               {/* File Attachments (always visible outside tabs for quick access) */}
               {detailTab !== 'files' && (
                 <div className="panel-beveled p-3 bg-surface-base">
@@ -1705,7 +1754,7 @@ export default function CaseManagementPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label htmlFor="ff-casemanagementpage-6" className="field-label">Title *</label>
-                <input id="ff-casemanagementpage-6" value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
+                <input id="ff-casemanagementpage-6" ref={titleInputRef} value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -1755,6 +1804,18 @@ export default function CaseManagementPage() {
           cases; the readiness gates use a fuller surface so the
           missing-fields list can be rendered as a proper bullet list. */}
       <ConfirmDialog
+        isOpen={caseToDelete !== null}
+        onClose={() => setCaseToDelete(null)}
+        onConfirm={confirmDeleteCase}
+        title="Delete case"
+        message={`Delete case ${caseToDelete?.case_number || ''}? This cannot be undone.`}
+        details={caseToDelete?.title ? <span>{caseToDelete.title}</span> : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={caseDeleting}
+      />
+
+      <ConfirmDialog
         isOpen={noteToDelete !== null}
         onClose={() => setNoteToDelete(null)}
         onConfirm={confirmDeleteNote}
@@ -1767,8 +1828,7 @@ export default function CaseManagementPage() {
 
       {pendingClose && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.55)' }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={() => setPendingClose(null)}
         >
           <div
@@ -1806,8 +1866,7 @@ export default function CaseManagementPage() {
 
       {pendingReview && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.55)' }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={() => setPendingReview(null)}
         >
           <div
@@ -1845,8 +1904,7 @@ export default function CaseManagementPage() {
 
       {saveViewModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.55)' }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={() => setSaveViewModalOpen(false)}
         >
           <div
