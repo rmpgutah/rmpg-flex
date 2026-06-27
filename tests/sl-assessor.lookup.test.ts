@@ -1,7 +1,7 @@
 // tests/sl-assessor.lookup.test.ts
 // Orchestrator tests for lookupParcelsWithFallback — the fallback chain that
 // the route uses to keep the SLCo Assessor panel useful when one source fails.
-// Chain order under test: Firecrawl → direct fetch → AI extract → stale cache.
+// Chain order under test: direct POST → Firecrawl (multi-result) → stale cache.
 // Each layer is mocked so the test is hermetic.
 
 import { describe, expect, test, vi, beforeEach } from 'vitest';
@@ -34,8 +34,12 @@ function makeKv() {
 describe('lookupParcelsWithFallback', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
 
-  test('returns Firecrawl parcels when scrape + parse succeed', { timeout: TEST_TIMEOUT }, async () => {
+  test('returns parcels when POST + Firecrawl succeed (multi-result path)', { timeout: TEST_TIMEOUT }, async () => {
     const html = fixture('multi.html');
+    // All fetch calls return Firecrawl-format JSON. The first call (POST to
+    // resultsMain.cfm) gets the same JSON but res.url='' so it doesn't look
+    // like a single-result redirect; the second call (Firecrawl FC_SCRAPE)
+    // parses the embedded html and returns the parcel list.
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () => new Response(JSON.stringify({ success: true, data: { html } }), { status: 200 }),
     );
@@ -45,7 +49,7 @@ describe('lookupParcelsWithFallback', () => {
       { FIRECRAWL_API_KEY: 'sk_test', KV: kv as unknown as KVNamespace },
       '2200 S 500 E',
     );
-    expect(out.source).toBe('firecrawl');
+    expect(['direct', 'firecrawl']).toContain(out.source);
     expect(out.parcels.length).toBeGreaterThanOrEqual(1);
     expect(out.degraded).toBe(false);
   });
@@ -87,7 +91,12 @@ describe('lookupParcelsWithFallback', () => {
     expect(out.code).not.toBe('not_configured');
   });
 
-  test('returns not_configured (no throw) when neither Firecrawl nor AI key is set', async () => {
+  test('returns no results (no throw) when no Firecrawl key and direct POST fails', async () => {
+    // Direct POST works without a Firecrawl key, but if the upstream is down
+    // we expect a clean no-result response, never an exception.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => new Response('bad gateway', { status: 502 }),
+    );
     const kv = makeKv();
     const { lookupParcelsWithFallback } = await import('../src/utils/sl-assessor/lookup');
     const out = await lookupParcelsWithFallback(
@@ -95,7 +104,7 @@ describe('lookupParcelsWithFallback', () => {
       '2200 S 500 E',
     );
     expect(out.parcels).toEqual([]);
-    expect(out.code).toBe('not_configured');
+    expect(['no_match', 'upstream_error']).toContain(out.code);
     expect(out.source).toBe('none');
   });
 

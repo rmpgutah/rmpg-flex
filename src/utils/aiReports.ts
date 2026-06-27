@@ -12,6 +12,7 @@
 // a clear error rather than a fabricated report.
 // ============================================================
 
+import { log } from './logger';
 // `Ai` is a global type from @cloudflare/workers-types.
 const REPORT_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
 const REPORT_FALLBACK_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
@@ -40,7 +41,7 @@ async function runReportLLM(
       const cleaned = text.replace(/```/g, '').trim();
       if (cleaned) return cleaned;
     } catch (err) {
-      console.warn(`[aiReports] ${model} failed:`, (err as Error)?.message);
+      log.warn(`${model} failed`, { err });
     }
   }
   return null;

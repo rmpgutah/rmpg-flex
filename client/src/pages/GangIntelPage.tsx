@@ -45,7 +45,6 @@ export default function GangIntelPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [members, setMembers] = useState<GangMember[]>([]);
-  const [gangs, setGangs] = useState<Gang[]>([]);
   const [stats, setStats] = useState<Stats>({ totalMembers: 0, activeMembers: 0, totalGangs: 0 });
 
   // Distinguish "initial load" vs "data loaded but empty" vs "no search results"

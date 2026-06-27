@@ -75,9 +75,10 @@ export default function TrainingPage() {
   // existing isAdmin path. Recovering it would require a follow-up PR for
   // an actual god-mode surface; the variable was previously dead.)
 
-  // ── URL deep-link contract (v1054) ────────────────────
+  // ── URL deep-link contract (v1239) ────────────────────
   //   /training?tab=<tab>            — switches the active tab on mount
   //   /training?cert_id=<id>         — open the matching training record for edit
+  //   /training?session_id=<id>      — alias for cert_id (same record modal)
   //   /training?officer_id=<id>      — pre-filter Records tab to one officer
   //   /training?course_id=<reqId>    — open the matching requirement for edit
   //   /training?status=expiring_soon — pre-filter Records tab to expiring certs
@@ -315,13 +316,16 @@ export default function TrainingPage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  // v1054: ?cert_id=<id> / ?course_id=<reqId> / ?officer_id=<id> /
-  // ?status=<status> deep-link auto-resolve. One-shot per page load; each
-  // param is stripped from the URL after applying so a follow-up refresh
-  // doesn't reopen the modal. Falls through gracefully when the target id
-  // isn't present in the current dataset (records returns up to ~1k rows
-  // so this is almost always a hit).
-  const pendingCertIdRef = useRef<string | null>(searchParams.get('cert_id'));
+  // v1239: ?cert_id=<id> / ?session_id=<id> / ?course_id=<reqId> /
+  // ?officer_id=<id> / ?status=<status> deep-link auto-resolve.
+  // ?session_id is an alias for ?cert_id — both open the matching training
+  // record in the edit modal. One-shot per page load; each param is stripped
+  // from the URL after applying so a follow-up refresh doesn't reopen the
+  // modal. Falls through gracefully when the target id isn't in the current
+  // dataset (records returns up to ~1k rows so this is almost always a hit).
+  const pendingCertIdRef = useRef<string | null>(
+    searchParams.get('cert_id') ?? searchParams.get('session_id')
+  );
   const pendingCourseIdRef = useRef<string | null>(searchParams.get('course_id'));
   const pendingOfficerIdRef = useRef<string | null>(searchParams.get('officer_id'));
   const pendingStatusRef = useRef<string | null>(searchParams.get('status'));
@@ -340,7 +344,9 @@ export default function TrainingPage() {
       } else {
         addToast(`Training record ${certId} not found`, 'warning');
       }
-      next.delete('cert_id'); touched = true;
+      next.delete('cert_id');
+      next.delete('session_id');
+      touched = true;
     }
     const courseId = pendingCourseIdRef.current;
     if (courseId) {
@@ -624,8 +630,8 @@ export default function TrainingPage() {
                 </label>
                 <div className="max-h-[150px] overflow-y-auto mt-1 border border-rmpg-700 rounded-sm bg-surface-sunken p-1 space-y-0.5">
                   {officers.map(o => (
-                    <label key={o.id} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
-                      <input id="ff-trainingpage-4" type="checkbox"
+                    <label key={o.id} htmlFor={`ff-bulk-officer-${o.id}`} className="flex items-center gap-2 px-2 py-1 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 cursor-pointer">
+                      <input id={`ff-bulk-officer-${o.id}`} type="checkbox"
                         checked={bulkOfficerIds.includes(o.id)}
                         onChange={e => setBulkOfficerIds(e.target.checked ? [...bulkOfficerIds, o.id] : bulkOfficerIds.filter(id => id !== o.id))}
                         className="w-3 h-3" />

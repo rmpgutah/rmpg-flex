@@ -349,6 +349,7 @@ export default function PropertyFormModal({
               onApply={onApplyAssessor}
               onDismiss={assessor.dismiss}
               onRetry={assessor.retry}
+              onRefresh={assessor.refresh}
             />
             {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
               <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>
