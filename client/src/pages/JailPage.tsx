@@ -19,6 +19,7 @@ import {
   openJailRosterSnapshotPdf,
   type InmateChargeRow,
 } from '../utils/jailBookingSheetPdf';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface Inmate {
   id: number; booking_number: string; last_name: string; first_name: string;
@@ -50,7 +51,7 @@ type StatusFilter = '' | typeof STATUS_OPTIONS[number];
 
 function fmtRelativeAge(iso: string | undefined | null): string | null {
   if (!iso) return null;
-  const t = new Date(iso).getTime();
+  const t = parseTimestamp(iso).getTime();
   if (!Number.isFinite(t)) return null;
   const diffMs = Date.now() - t;
   if (diffMs < 0) return 'just now';
@@ -66,6 +67,8 @@ function fmtRelativeAge(iso: string | undefined | null): string | null {
 export default function JailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canCreate = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  const canDelete = user?.role === 'admin' || user?.role === 'manager';
   const [searchParams, setSearchParams] = useSearchParams();
   const [inmates, setInmates] = useState<Inmate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -323,12 +326,13 @@ export default function JailPage() {
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (t.isContentEditable) return;
       if (formOpen || deleteId !== null) return;
+      if (!canCreate) return;
       e.preventDefault();
       openNew();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [formOpen, deleteId, openNew]);
+  }, [formOpen, deleteId, canCreate, openNew]);
 
   const columns = [
     { key: 'booking_number', label: 'Booking #' },
@@ -350,7 +354,9 @@ export default function JailPage() {
             <FileText size={12} />
           </button>
           <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100" title="Edit" aria-label={`Edit ${row.booking_number}`}><Pencil size={12} /></button>
-          <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300" title="Delete" aria-label={`Delete ${row.booking_number}`}><Trash2 size={12} /></button>
+          {canDelete && (
+            <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300" title="Delete" aria-label={`Delete ${row.booking_number}`}><Trash2 size={12} /></button>
+          )}
         </div>
       ),
     },
@@ -390,7 +396,7 @@ export default function JailPage() {
   const emptyMessage = filteredEmpty
     ? `No inmates match these filters (0 of ${totalCount}).`
     : trueEmpty
-      ? 'No inmates booked yet. Press N or click "New Inmate" to book one.'
+      ? canCreate ? 'No inmates booked yet. Press N or click "New Inmate" to book one.' : 'No inmates booked yet.'
       : 'No inmates in custody';
 
   const rosterSyncLabel = (() => {
@@ -413,14 +419,16 @@ export default function JailPage() {
         >
           <Printer size={13} /> Roster PDF
         </button>
-        <button
-          onClick={openNew}
-          className="toolbar-btn flex items-center gap-1.5"
-          style={{ height: 28, padding: '0 10px' }}
-          title="Book a new inmate (press N)"
-        >
-          <Plus size={13} /> New Inmate
-        </button>
+        {canCreate && (
+          <button
+            onClick={openNew}
+            className="toolbar-btn flex items-center gap-1.5"
+            style={{ height: 28, padding: '0 10px' }}
+            title="Book a new inmate (press N)"
+          >
+            <Plus size={13} /> New Inmate
+          </button>
+        )}
       </PanelTitleBar>
       <div className="grid grid-cols-3 gap-3">
         <StatsCard icon={Users} label="Total Inmates" value={stats.total} />
@@ -518,7 +526,7 @@ export default function JailPage() {
           m.action('Print booking sheet', () => handlePrintBookingSheet(row), { icon: <FileText size={12} /> }),
           m.separator(),
           m.copyId(row.id),
-          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+          ...(canDelete ? [m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> })] : []),
         ]}
       />
 

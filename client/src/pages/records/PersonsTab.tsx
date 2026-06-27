@@ -111,6 +111,9 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     dl_state: row.dl_state ? String(row.dl_state) : undefined,
     dl_expiry: row.dl_expiry ? String(row.dl_expiry) : undefined,
     dl_class: row.dl_class ? String(row.dl_class) : undefined,
+    dl_issue_date: row.dl_issue_date ? String(row.dl_issue_date) : undefined,
+    dl_restrictions: row.dl_restrictions ? String(row.dl_restrictions) : undefined,
+    dl_endorsements: row.dl_endorsements ? String(row.dl_endorsements) : undefined,
     ssn_last4: row.ssn_last4 ? String(row.ssn_last4) : undefined,
     ssn_full: row.ssn_full ? String(row.ssn_full) : undefined,
     id_image_url: row.id_image_url ? String(row.id_image_url) : undefined,
@@ -1071,7 +1074,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Identification ──────────────────────── */}
         <CollapsibleSection title="Identification" icon={CreditCard} defaultOpen>
-          {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url) ? (
+          {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url || selectedPerson.dl_restrictions || selectedPerson.dl_endorsements || selectedPerson.dl_issue_date) ? (
             <div className="flex gap-3">
               {/* ID Image */}
               {selectedPerson.id_image_url ? (
@@ -1099,12 +1102,31 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               )}
               <div className="flex-1 space-y-1.5">
                 {selectedPerson.dl_number && (
-                  <FieldGrid cols={2}>
-                    <RecordField label="DL" value={selectedPerson.dl_number} mono copyable />
-                    <RecordField label="State" value={selectedPerson.dl_state} />
-                    <RecordField label="Class" value={selectedPerson.dl_class} />
-                    <RecordField label="Expiry" value={selectedPerson.dl_expiry ? safeDateDisplay(selectedPerson.dl_expiry) : undefined} />
-                  </FieldGrid>
+                  <>
+                    <FieldGrid cols={2}>
+                      <RecordField label="DL" value={selectedPerson.dl_number} mono copyable />
+                      <RecordField label="State" value={selectedPerson.dl_state} />
+                      <RecordField label="Class" value={selectedPerson.dl_class} />
+                      <RecordField label="Expiry" value={selectedPerson.dl_expiry ? safeDateDisplay(selectedPerson.dl_expiry) : undefined} />
+                      <RecordField label="Issue Date" value={selectedPerson.dl_issue_date ? safeDateDisplay(selectedPerson.dl_issue_date) : undefined} />
+                    </FieldGrid>
+                    {(selectedPerson.dl_restrictions || selectedPerson.dl_endorsements) && (
+                      <div className="mt-1.5 space-y-1">
+                        {selectedPerson.dl_restrictions && (
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wider">Restrictions</span>
+                            <p className="text-[11px] text-rmpg-200 mt-0.5">{selectedPerson.dl_restrictions}</p>
+                          </div>
+                        )}
+                        {selectedPerson.dl_endorsements && (
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wider">Endorsements</span>
+                            <p className="text-[11px] text-rmpg-200 mt-0.5">{selectedPerson.dl_endorsements}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
                 {selectedPerson.id_number && (
                   <FieldGrid cols={2}>
