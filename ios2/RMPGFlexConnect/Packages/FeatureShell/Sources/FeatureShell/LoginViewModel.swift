@@ -28,6 +28,20 @@ public final class LoginViewModel {
         !username.isEmpty && !password.isEmpty && state != .submitting
     }
 
+    public func enterDemoMode() {
+        let header = base64URL(#"{"alg":"HS256"}"#)
+        let payload = base64URL(#"{"role":"officer","sub":"999","exp":9999999999}"#)
+        let token = "\(header).\(payload).demo"
+        try? session.signIn(token: token)
+    }
+
+    private func base64URL(_ s: String) -> String {
+        Data(s.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
     public func submit() async {
         guard canSubmit else { return }
         state = .submitting

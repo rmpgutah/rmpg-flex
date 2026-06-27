@@ -26,6 +26,7 @@ import {
   ensureCpgConfig, backupConfig, clearConfigBackup, vehicleToCamera,
   CpgAuthError, CpgRateLimitError, CpgHttpError,
 } from '../utils/clearpathGps';
+import { isCameraOfflineFromMapping } from '../utils/clearpathSync';
 import {
   createFullDriveJob, getJobStatus, ensureFullDriveSchema,
 } from '../utils/fullDrivePipeline';
@@ -91,6 +92,29 @@ cpg.get('/status', async (c) => {
   const client = await getApiConfig(db, c.env).catch(() => null);
   const pollInterval = parseInt((await getConfigValue(db, CPG_KEYS.pollInterval)) || '30', 10);
   const mediaPoll = parseInt((await getConfigValue(db, CPG_KEYS.mediaPollInterval)) || '300', 10);
+
+  // Per-camera online state — surfaces "Waiting for Camera…" upstream rather
+  // than leaving the admin tab to wonder why video pulls keep coming back
+  // empty. Same heuristic the cron uses to suspend polling (ignition off +
+  // GPS stale), so the UI and the poller stay in lockstep.
+  const cameraRows = await query<{
+    cpg_device_id: string; cpg_display_name: string | null;
+    ignition_state: string | null; last_synced_at: string | null;
+  }>(db, `SELECT cpg_device_id, cpg_display_name, ignition_state, last_synced_at
+            FROM cpg_device_mappings WHERE is_active = 1`).catch(() =>
+    [] as Array<{ cpg_device_id: string; cpg_display_name: string | null;
+                  ignition_state: string | null; last_synced_at: string | null }>,
+  );
+  const now = Date.now();
+  const cameras = cameraRows.map((r) => ({
+    cpg_device_id: r.cpg_device_id,
+    cpg_display_name: r.cpg_display_name,
+    ignition_state: r.ignition_state,
+    last_synced_at: r.last_synced_at,
+    camera_offline: isCameraOfflineFromMapping(r, now),
+  }));
+  const any_camera_offline = cameras.some((c) => c.camera_offline);
+
   return c.json({
     configured: !!client,
     enabled: await isTruthy(db, CPG_KEYS.enabled),
@@ -101,6 +125,8 @@ cpg.get('/status', async (c) => {
     media_sync_enabled: await isTruthy(db, CPG_KEYS.mediaEnabled),
     media_poll_interval_seconds: mediaPoll,
     last_media_sync: await getConfigValue(db, 'clearpathgps_last_media_sync'),
+    any_camera_offline,
+    cameras,
   });
 });
 

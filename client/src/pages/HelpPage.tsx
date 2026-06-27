@@ -31,7 +31,9 @@ import {
   GraduationCap, Download, Printer, X,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../utils/version';
 import {
   SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS,
@@ -383,9 +385,11 @@ export default function HelpPage() {
 
   // Fetch server health info for System section
   useEffect(() => {
+    setHealthLoading(true);
     apiFetch<HealthData>('/api/health')
       .then(setHealthData)
-      .catch(() => setHealthData(null));
+      .catch(() => setHealthData(null))
+      .finally(() => setHealthLoading(false));
   }, []);
 
   // Re-sync from URL when the back/forward buttons change ?topic / ?faq /
@@ -502,6 +506,15 @@ export default function HelpPage() {
 
   return (
     <div className="flex h-full overflow-hidden">
+      {/* ── PDF error ConfirmDialog (replaces alert()) ─────── */}
+      <ConfirmDialog
+        isOpen={pdfError != null}
+        onClose={() => setPdfError(null)}
+        onConfirm={() => setPdfError(null)}
+        title="PDF Generation Failed"
+        message={pdfError ?? ''}
+      />
+
       {/* ── Left Navigation ───────────────────────────── */}
       <nav
         className="flex-shrink-0 overflow-y-auto py-3"
@@ -514,7 +527,7 @@ export default function HelpPage() {
       >
         <div className="px-3 pb-3 mb-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           <div className="flex items-center gap-2">
-            <HelpCircle className="w-4 h-4 text-[#d4a017]" />
+            <HelpCircle className="w-4 h-4 text-brand-400" />
             <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Help Center</span>
           </div>
           <div className="text-[9px] text-rmpg-500 mt-1 font-mono">RMPG Flex v{APP_VERSION}</div>
@@ -531,11 +544,11 @@ export default function HelpPage() {
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${!active ? 'hover:bg-surface-base' : ''}`}
               style={{
                 background: active ? 'rgba(136,136,136,0.12)' : 'transparent',
-                color: active ? '#ffffff' : '#888888',
-                borderLeft: active ? '3px solid #888888' : '3px solid transparent',
+                color: active ? 'var(--rmpg-100)' : 'var(--rmpg-400)',
+                borderLeft: active ? '3px solid var(--rmpg-400)' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? '#aaaaaa' : 'var(--rmpg-500)' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--rmpg-300)' : 'var(--rmpg-500)' }} />
               <span className="text-[11px] font-medium">{item.label}</span>
             </button>
           );
@@ -675,7 +688,7 @@ export default function HelpPage() {
                       style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)' }}
                     >
                       <div className="flex items-center gap-2">
-                        <card.icon className="w-3.5 h-3.5 text-[#d4a017]" />
+                        <card.icon className="w-3.5 h-3.5 text-brand-400" />
                         <span className="text-[11px] font-bold text-rmpg-100 uppercase">{card.label}</span>
                       </div>
                       <p className="text-[10px] text-rmpg-400 leading-relaxed">{card.desc}</p>
@@ -701,7 +714,7 @@ export default function HelpPage() {
                         height: 22,
                         background: 'rgba(212,160,23,0.15)',
                         border: '1px solid rgba(212,160,23,0.3)',
-                        color: '#d4a017',
+                        color: 'var(--brand-400)',
                       }}
                     >
                       {item.step}
@@ -730,7 +743,7 @@ export default function HelpPage() {
                     className="p-3"
                     style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
                   >
-                    <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2 pb-1" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <h3 className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2 pb-1" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                       {group.title}
                     </h3>
                     <div className="space-y-1.5">
@@ -813,7 +826,7 @@ export default function HelpPage() {
 
               {/* Priority Levels */}
               <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
-                <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">Priority Levels</h3>
+                <h3 className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2">Priority Levels</h3>
                 <div className="space-y-1.5">
                   {PRIORITIES.map((p) => (
                     <div key={p.level} className="flex items-center gap-3">
@@ -827,7 +840,7 @@ export default function HelpPage() {
 
               {/* Unit Status Codes */}
               <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
-                <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">Unit Status Codes</h3>
+                <h3 className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2">Unit Status Codes</h3>
                 <div className="space-y-1.5">
                   {UNIT_STATUSES.map((s) => (
                     <div key={s.code} className="flex items-center gap-3">
@@ -841,7 +854,7 @@ export default function HelpPage() {
 
               {/* CAD Command Line */}
               <div className="p-4" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
-                <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider mb-2">CAD Command Line</h3>
+                <h3 className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2">CAD Command Line</h3>
                 <p className="text-[10px] text-rmpg-400 mb-2">
                   Press <Kbd>/</Kbd> or <Kbd>F8</Kbd> to focus the command line. Type <strong className="text-rmpg-200">HELP</strong> for a full list of commands.
                 </p>
