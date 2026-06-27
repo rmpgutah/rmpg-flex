@@ -297,6 +297,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
@@ -448,6 +449,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
@@ -634,7 +636,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
         caseNumber: data.caseNumber,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
         officer: data.serverName,
         badge: data.serverBadge,
       },
@@ -678,6 +680,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
@@ -825,11 +828,10 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   }
 
   // ── Notice Statement ── (keep the whole block together — it must read as one unit)
-  // 75 mm reservation covers lead-band + body + next-attempt + spacing; if
-  // the page can't fit, break BEFORE opening the section so the IMPORTANT
-  // NOTICE header isn't orphaned at the bottom of one page with the lead
-  // and body stranded on the next.
-  y = checkPageBreak(doc, y, 75);
+  // 55 mm reservation covers lead-band + body + next-attempt + spacing at
+  // 7 pt prose. Break BEFORE opening the section so the IMPORTANT NOTICE
+  // header isn't orphaned at the bottom of one page with content on the next.
+  y = checkPageBreak(doc, y, 55);
   {
     const sec = openAutoSection(doc, 'IMPORTANT NOTICE — ATTEMPTED SERVICE OF LEGAL DOCUMENTS', y);
     y = sec.contentY + 2;
@@ -862,9 +864,8 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     const lead = 'THIS IS NOT A COURT ORDER, A SUMMONS, OR A DEMAND FOR PAYMENT.';
     // Center vertically inside the band: top + (band/2) + (cap-height/2).
     doc.text(lead, pageWidth / 2, bandY + bandH / 2 + 1.8, { align: 'center' });
-    // Generous gap before body so even an aggressive line-height can't pull
-    // the body's first line up into the band.
-    y = bandY + bandH + SPACING.LG;
+    // Compact gap after the band — 7 pt body text doesn't need the full LG clearance.
+    y = bandY + bandH + SPACING.SM;
 
     // ── Body prose in mixed case ──
     // ALL CAPS body text reads as shouting on a notice the subject must
@@ -873,6 +874,9 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     // preserveCase so the document reads as a professional legal notice
     // rather than a 1990s warrant printout. (The lead band above stays
     // caps deliberately — emphasis, not body.)
+    // 7 pt keeps the two-paragraph block ~10 mm shorter than 8 pt while
+    // remaining legible — critical for fitting all content on one page.
+    const NOTICE_FONT = FONT.SIZE_FIELD_VALUE - 1;
     const noticeText =
       `${company}, a private process service agency, has attempted to deliver the legal document(s) ` +
       'identified above to you in connection with the referenced case. As shown in the record of ' +
@@ -884,8 +888,8 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
       'government agency. It does not create, waive, extend, or otherwise affect any deadline, ' +
       'right, or obligation arising from the underlying legal matter. Process service is performed ' +
       'pursuant to Utah Rule of Civil Procedure 4 and Utah Code § 78B-8-302.';
-    y = addWrappedText(doc, noticeText, lx, y, ffw, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
-    y += SPACING.MD;
+    y = addWrappedText(doc, noticeText, lx, y, ffw, NOTICE_FONT, { preserveCase: true });
+    y += SPACING.XS;
 
     if (data.nextAttemptNote) {
       // Render the next-attempt sentence as a mixed-case italic call-out
@@ -894,7 +898,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
       // addFieldPair's sanitization — that conflicts with the professional
       // mixed-case body above it. Inline italic keeps the rhythm.
       doc.setFont(PDF_VALUE_FONT, 'bolditalic');
-      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setFontSize(NOTICE_FONT);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.text('Next attempt:', lx, y);
       const labelW = doc.getTextWidth('Next attempt: ');
@@ -904,7 +908,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
         ffw - labelW - 2,
       );
       doc.text(noteLines, lx + labelW, y);
-      y += noteLines.length * 4 + 2;
+      y += noteLines.length * 3.5 + 1.5;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -916,14 +920,16 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   // actions. Helps prevent the two most common operator headaches: a
   // recipient ignoring the notice (and getting served at work) or
   // assuming it's a scam.
-  y = checkPageBreak(doc, y, 42);
+  y = checkPageBreak(doc, y, 30);
   {
     const sec = openAutoSection(doc, 'What To Do Next', y);
-    y = sec.contentY + 4;
+    y = sec.contentY + 2;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const phoneCue = data.serverPhone
       ? `at ${data.serverPhone}`
       : 'at the number printed on this notice';
+    // 7 pt keeps the four-step block ~12 mm shorter than 8 pt.
+    const STEP_FONT = FONT.SIZE_FIELD_VALUE - 1;
     const steps: string[] = [
       `Contact ${company} ${phoneCue} to arrange a convenient delivery time. A short call will prevent further visits to this address and may be more discreet than service at your workplace.`,
       'Verify this notice. If you would like to confirm it is genuine, call our office and reference the AGENCY REF # printed at the top of this notice — we will confirm the assigned process server and the underlying matter without requiring you to share any personal information.',
@@ -931,7 +937,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
       'Do nothing only if you accept that further service attempts will be made at this address, including at times that may be inconvenient (early morning, evening, or weekend) and at locations associated with you (residence, workplace, or known third-party).',
     ];
     doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    doc.setFontSize(STEP_FONT);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     steps.forEach((step, i) => {
       // Number prefix in bold, body in normal — readable hierarchy.
@@ -940,8 +946,8 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
       doc.text(numLabel, lx, y);
       const numW = doc.getTextWidth(numLabel) + 2;
       doc.setFont(PDF_VALUE_FONT, 'normal');
-      y = addWrappedText(doc, step, lx + numW, y, ffw - numW, FONT.SIZE_FIELD_VALUE, { preserveCase: true });
-      y += SPACING.SM;
+      y = addWrappedText(doc, step, lx + numW, y, ffw - numW, STEP_FONT, { preserveCase: true });
+      y += SPACING.XS;
     });
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -956,18 +962,13 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
   });
-  y += SPACING.LG;
+  y += SPACING.SM;
 
   // ── Contact line (recipient-facing call-to-action) ──
-  // The disclaimer above tells the recipient to "contact our office to
-  // arrange delivery" but never prints the number. Surface the dispatch /
-  // server phone in a clean centered bold line below the signature so the
-  // person at the door can call without having to look up the agency.
-  // SPACING.LG gap before this line keeps the call-to-action from feeling
-  // like a continuation of the signature block (which is sworn-style and
-  // visually closed) — clearly its own section.
+  // Centered bold line immediately after the signature so the person at
+  // the door can call without looking up the agency number.
   if (data.serverPhone) {
-    y = checkPageBreak(doc, y, 12);
+    y = checkPageBreak(doc, y, 8);
     const pageWidth = doc.internal.pageSize.getWidth();
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
@@ -977,10 +978,10 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
       pageWidth / 2, y + 3, { align: 'center' });
     y += 8;
   }
-  y += SPACING.MD;
+  y += SPACING.XS;
 
   // ── Footer legal text ──
-  y = checkPageBreak(doc, y, 10);
+  y = checkPageBreak(doc, y, 8);
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
@@ -1005,7 +1006,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
         caseNumber: data.caseNumber,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
         officer: data.serverName,
         badge: data.serverBadge,
       },
@@ -1028,6 +1029,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   setActiveFormKey('');
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }));
@@ -1153,10 +1155,10 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     barcode: {
       formMetadata: {
         form: 'SERVICE-LOG',
-        caseNumber: `LOG-${(data.dateRange?.start || new Date().toISOString().slice(0, 10)).replace(/-/g, '')}`,
+        caseNumber: `LOG-${(data.dateRange?.start || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })).replace(/-/g, '')}`,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: data.dateRange?.end || new Date().toISOString().slice(0, 10),
+        reportDate: data.dateRange?.end || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
         officer: data.officerName,
         badge: data.officerBadge,
       },

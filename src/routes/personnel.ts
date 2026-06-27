@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { hashSync } from 'bcryptjs';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, ensureTimeEntryColumns } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { setFleetOdometer } from '../utils/fleetOdometer';
 import { nowDualStamp } from '../utils/denverTime';
@@ -734,6 +734,7 @@ personnel.get('/time', async (c) => {
 personnel.post('/time/clock-in', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
     const officerId = Number(body.officer_id) || selfId;
@@ -759,6 +760,7 @@ personnel.post('/time/clock-in', async (c) => {
 personnel.post('/time/clock-out', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
     const officerId = Number(body.officer_id) || selfId;
@@ -788,6 +790,7 @@ personnel.post('/time/clock-out', async (c) => {
 personnel.post('/time/start-break', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
     const officerId = Number(body.officer_id) || selfId;
@@ -812,6 +815,7 @@ personnel.post('/time/start-break', async (c) => {
 personnel.post('/time/end-break', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureTimeEntryColumns(db);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const selfId = c.get('userId') as number | undefined;
     const officerId = Number(body.officer_id) || selfId;

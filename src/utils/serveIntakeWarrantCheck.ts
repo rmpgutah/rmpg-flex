@@ -15,6 +15,7 @@
 // serve_queue.intake_screened_at is set.
 // ============================================================
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
