@@ -24,6 +24,7 @@
 //     shape the sync pipeline (clearpathSync.ts) and ALPR pass already consume.
 // ============================================================
 
+import { log } from './logger';
 import { decryptSecret, isEncrypted } from './cpgCrypto';
 import { queryFirst, execute } from './db';
 
@@ -180,9 +181,9 @@ export async function ensureCpgConfig(db: DB, env: EnvLike): Promise<boolean> {
     await setConfigValue(db, KEYS.refreshToken, backup.refreshToken);
     if (backup.userId) await setConfigValue(db, KEYS.userId, backup.userId);
     if (backup.account) await setConfigValue(db, KEYS.account, backup.account);
-    console.log('[cpg] config self-healed from KV backup');
+    log.info('config self-healed from KV backup');
     return true;
-  } catch (err) { console.error('[cpg] config restore failed:', (err as Error)?.message); return false; }
+  } catch (err) { log.error('config restore failed', {}, err); return false; }
 }
 
 // ── Auth: refresh token → cached access token ────────────────

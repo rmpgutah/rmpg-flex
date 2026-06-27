@@ -12,9 +12,10 @@
 // doesn't re-trigger the scroll. Section IDs:
 //   voice | alerts | tones | ptt | display | map | overlays | gps | markers
 //
-// Keyboard shortcuts (v1135):
-//   N          — admin/manager: trigger "Save as org default"
-//   Escape     — cascade: close ConfirmDialog → cancel key capture
+// Keyboard shortcuts (v1230):
+//   N          — admin/manager: trigger "Save as org default";
+//                other users: focus the dispatcher voice selector
+//   Escape     — cascade: close ConfirmDialogs → cancel key capture
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
@@ -98,7 +99,7 @@ function SliderRow({ label, value, min, max, step, format, onChange }: {
         <span className="text-[11px] text-rmpg-100">{label}</span>
         <span className="text-[10px] font-mono text-brand-400">{format(value)}</span>
       </div>
-      <input id="ff-settingspage-0"
+      <input
         type="range"
         min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
@@ -148,7 +149,7 @@ function SoundAssignRow({ label, desc, value, onPick }: {
         <span className="block text-[11px] text-rmpg-100 truncate">{label}</span>
         <span className="block text-[9px] text-rmpg-500 truncate">{desc}</span>
       </span>
-      <select id="ff-settingspage-1"
+      <select
         value={value}
         onChange={(e) => onPick(e.target.value as SoundId)}
         className="shrink-0 w-[150px] bg-surface-base border border-border-default text-[10px] text-rmpg-100 px-1.5 py-1"
@@ -269,8 +270,12 @@ export default function SettingsPage() {
   // Radio PTT preferences
   const [ptt, setPtt] = useState<PttPreferences>(getPttPrefs);
   const [pttChannels, setPttChannels] = useState<RadioChannel[]>([]);
+  const [pttChannelsLoading, setPttChannelsLoading] = useState(true);
   const [capturingKey, setCapturingKey] = useState(false);
   const patchPtt = (p: Partial<PttPreferences>) => { setPttPrefs(p); setPtt(getPttPrefs()); };
+
+  // Ref for N-shortcut focus target (voice selector — non-admin users).
+  const voiceSelectRef = useRef<HTMLSelectElement>(null);
 
   // Display & theme — keep local state in sync with the actual override
   // so the Auto/Day/Night picker reflects what's stored regardless of
@@ -330,7 +335,11 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    apiFetch<RadioChannel[]>('/radio/channels').then(setPttChannels).catch(() => { /* offline */ });
+    setPttChannelsLoading(true);
+    apiFetch<RadioChannel[]>('/radio/channels')
+      .then(setPttChannels)
+      .catch(() => { /* offline */ })
+      .finally(() => setPttChannelsLoading(false));
   }, []);
 
   // Capture the next key press to rebind the PTT key.
@@ -404,7 +413,7 @@ export default function SettingsPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard shortcuts:
-  //   N          — admin/manager only: publish org defaults (same role check as the button).
+  //   N          — admin/manager: publish org defaults; other users: focus voice selector.
   //   Escape     — smart cascade: close ConfirmDialogs first, then cancel key capture.
   const isTypingTarget = (el: EventTarget | null): boolean => {
     if (!(el instanceof HTMLElement)) return false;
@@ -420,16 +429,21 @@ export default function SettingsPage() {
         return;
       }
       if ((e.key === 'n' || e.key === 'N')
-          && isAdmin
           && !e.ctrlKey && !e.metaKey && !e.altKey
           && !isTypingTarget(e.target)) {
         e.preventDefault();
-        publishOrgDefaults();
+        if (isAdmin) {
+          // Admin/manager: publish current settings as org defaults.
+          publishOrgDefaults();
+        } else {
+          // All other users: focus the primary editable field (voice selector).
+          voiceSelectRef.current?.focus();
+        }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isAdmin, confirmResetTones, confirmResetMap, capturingKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAdmin, confirmResetTones, confirmResetMap, capturingKey, voiceSelectRef]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const femaleVoices = VOICE_CATALOG.filter((v) => v.gender === 'female');
   const maleVoices = VOICE_CATALOG.filter((v) => v.gender === 'male');
@@ -521,10 +535,11 @@ export default function SettingsPage() {
           </SectionCard>
 
           <SectionCard id="voice" title="DISPATCHER VOICE" icon={Mic}>
-            {/* Voice picker */}
+            {/* Voice picker — primary N-shortcut target for non-admin users */}
             <div className="px-3 py-2 border-b border-border-default">
               <span className="block text-[11px] text-rmpg-100 mb-1.5">Voice</span>
-              <select id="ff-settingspage-2"
+              <select
+                ref={voiceSelectRef}
                 value={persona.voiceId}
                 onChange={(e) => setPersona({ voiceId: e.target.value })}
                 className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
@@ -685,18 +700,24 @@ export default function SettingsPage() {
             </div>
             <div className="px-3 py-2 border-b border-border-default">
               <span className="block text-[11px] text-rmpg-100 mb-1.5">Transmit channel</span>
-              <select id="ff-settingspage-3"
-                value={ptt.channelId == null ? '' : String(ptt.channelId)}
-                onChange={(e) => patchPtt({ channelId: e.target.value === '' ? null : Number(e.target.value) })}
-                className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
-                style={{ borderRadius: 2 }}
-                aria-label="PTT transmit channel"
-              >
-                <option value="">Auto — first active channel</option>
-                {pttChannels.map((c) => (
-                  <option key={c.id} value={String(c.id)}>{c.name}</option>
-                ))}
-              </select>
+              {pttChannelsLoading ? (
+                <p className="text-[10px] text-rmpg-500 py-1">Loading channels…</p>
+              ) : (
+                <select
+                  value={ptt.channelId == null ? '' : String(ptt.channelId)}
+                  onChange={(e) => patchPtt({ channelId: e.target.value === '' ? null : Number(e.target.value) })}
+                  className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
+                  style={{ borderRadius: 2 }}
+                  aria-label="PTT transmit channel"
+                >
+                  <option value="">Auto — first active channel</option>
+                  {pttChannels.length === 0 ? (
+                    <option disabled value="">No channels configured</option>
+                  ) : pttChannels.map((c) => (
+                    <option key={c.id} value={String(c.id)}>{c.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <p className="px-3 py-2 text-[10px] text-rmpg-500">
               Every transmission is relayed to everyone on the channel and recorded to
@@ -711,7 +732,7 @@ export default function SettingsPage() {
           <SectionCard id="map" title="MAP — DEFAULT VIEW" icon={MapIcon}>
             <div className="px-3 py-2 border-b border-border-default">
               <span className="block text-[11px] text-rmpg-100 mb-1.5">Default map style</span>
-              <select id="ff-settingspage-4"
+              <select
                 value={mapPrefs.defaultStyle}
                 onChange={(e) => patchMap({ defaultStyle: e.target.value as MapStyleId })}
                 className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
