@@ -7,8 +7,9 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
+import { toDisplayLabel } from '../formatters';
 import {
-  fmtDate, fmtDateTime, fmtDuration, prettyLabel,
+  fmtDate, fmtDateTime, fmtDuration,
   hasInjuries, isLethalForce, fmtWitnesses, fmtSubject,
   generateUseOfForceReportPdf,
 } from '../useOfForceReportPdf';
@@ -51,15 +52,15 @@ describe('useOfForceReportPdf — pure helpers', () => {
   });
 
   describe('prettyLabel', () => {
-    it('returns em-dash for empty', () => {
-      expect(prettyLabel(undefined)).toBe('—');
-      expect(prettyLabel(null)).toBe('—');
-      expect(prettyLabel('')).toBe('—');
+    it('returns empty string for empty', () => {
+      expect(toDisplayLabel(undefined)).toBe('');
+      expect(toDisplayLabel(null)).toBe('');
+      expect(toDisplayLabel('')).toBe('');
     });
     it('converts snake_case to Title Case', () => {
-      expect(prettyLabel('use_of_force')).toBe('Use Of Force');
-      expect(prettyLabel('physical_control')).toBe('Physical Control');
-      expect(prettyLabel('oc_spray')).toBe('Oc Spray');
+      expect(toDisplayLabel('use_of_force')).toBe('Use Of Force');
+      expect(toDisplayLabel('physical_control')).toBe('Physical Control');
+      expect(toDisplayLabel('oc_spray')).toBe('Oc Spray');
     });
   });
 

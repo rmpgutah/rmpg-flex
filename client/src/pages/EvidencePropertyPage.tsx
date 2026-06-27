@@ -1164,8 +1164,8 @@ export default function EvidencePropertyPage() {
                           <div className="text-[10px] text-rmpg-400 uppercase font-bold mb-1">Linked Cases ({linkedRecords.cases.length})</div>
                           {linkedRecords.cases.map((c: any) => (
                             <div key={c.id} className="panel-beveled p-2 mb-1">
-                              <div className="text-xs text-rmpg-100">{c.case_number} — {(c.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
-                              <div className="text-[10px] text-rmpg-500">Status: {(c.status || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
+                              <div className="text-xs text-rmpg-100">{c.case_number} — {toDisplayLabel(c.case_type || '')}</div>
+                              <div className="text-[10px] text-rmpg-500">Status: {toDisplayLabel(c.status || '')}</div>
                             </div>
                           ))}
                         </div>
@@ -1176,7 +1176,7 @@ export default function EvidencePropertyPage() {
                           {linkedRecords.forensic_cases.map((fc: any) => (
                             <div key={fc.id} className="panel-beveled p-2 mb-1">
                               <div className="text-xs text-rmpg-100">{fc.lab_number} — {fc.title}</div>
-                              <div className="text-[10px] text-rmpg-500">{(fc.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} | {(fc.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</div>
+                              <div className="text-[10px] text-rmpg-500">{toDisplayLabel(fc.case_type || '')} | {toDisplayLabel(fc.status || '')}</div>
                             </div>
                           ))}
                         </div>
