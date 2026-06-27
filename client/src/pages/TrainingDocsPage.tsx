@@ -84,9 +84,13 @@ export default function TrainingDocsPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // ?category= deep-link — seed initial tab from URL param (once, on mount)
+  const initCategory = (searchParams.get('category') as CompanyDocCategory | 'all') || 'all';
+  const validCategory = CATEGORIES.some(c => c.key === initCategory) ? initCategory : 'all';
+
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState<CompanyDocCategory | 'all'>('all');
+  const [category, setCategory] = useState<CompanyDocCategory | 'all'>(validCategory);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editDoc, setEditDoc] = useState<any | null>(null);
@@ -117,6 +121,17 @@ export default function TrainingDocsPage() {
 
   // ?doc_id=<id> deep-link — open edit modal for matching document after load
   const pendingDocIdRef = useRef<string | null>(searchParams.get('doc_id'));
+  // Strip ?category= from URL after seeding state (one-shot on mount)
+  const categoryStripRef = useRef(!!searchParams.get('category'));
+  useEffect(() => {
+    if (!categoryStripRef.current) return;
+    categoryStripRef.current = false;
+    const next = new URLSearchParams(searchParams);
+    next.delete('category');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (loading) return;
     const docId = pendingDocIdRef.current;
@@ -147,8 +162,8 @@ export default function TrainingDocsPage() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === 'Escape') {
         // Cascade: close confirm → modal
-        if (docToDelete) { setDocToDelete(null); return; }
-        if (showModal) { setShowModal(false); setEditDoc(null); return; }
+        if (docToDelete) { e.stopPropagation(); setDocToDelete(null); return; }
+        if (showModal) { e.stopPropagation(); setShowModal(false); setEditDoc(null); return; }
         return;
       }
       if (isTypingInField(e.target)) return;

@@ -10,6 +10,7 @@ import { useActiveTripsLive } from '../hooks/useActiveTripsLive';
 import { tripLabel, tripMiles, tripDurationMin, type Trip } from '../hooks/useTrips';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Spillman EMERGENCY overlay: an officer with an active panic. Truthy for
 // either the numeric (1) or boolean (true) shape the API may serialize.
@@ -125,7 +126,7 @@ export default React.memo(function UnitStatusBoard({
 
   // All unit statuses, for the "Set status" submenu. Mirrors the UnitStatus union.
   const STATUSES: UnitStatus[] = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
-  const prettyStatus = (s: UnitStatus) => s.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+  const prettyStatus = (s: UnitStatus) => toDisplayLabel(s);
 
   const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
     ...(onStatusChange
