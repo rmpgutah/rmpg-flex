@@ -302,10 +302,11 @@ async function maybeRunEmailPoll(env: Bindings, ctx: ExecutionContext): Promise<
     db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_poll_interval' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
   ]);
   if (enabled?.config_value !== 'true') return;
-  const pollInterval = pollIntervalStr ? parseInt(pollIntervalStr.config_value, 10) : 300;
+  const parsedInterval = pollIntervalStr ? parseInt(pollIntervalStr.config_value, 10) : NaN;
+  const pollInterval = Number.isFinite(parsedInterval) && parsedInterval > 0 ? parsedInterval : 300;
   if (lastSyncStr?.config_value) {
     const last = Date.parse(lastSyncStr.config_value);
-    if (Number.isFinite(last) && Date.now() - last < pollInterval * 1000) return;
+    if (Number.isFinite(last) && last > 0 && Date.now() - last < pollInterval * 1000) return;
   }
   const r = await runEmailPoll(env, ctx);
   if (r.error) console.error(`[email-poll] ${r.error}`);

@@ -299,6 +299,52 @@ sv.get('/assignments/board', async (c) => {
   });
 });
 
+// POST /assignments/auto-assign-all — Auto-assign unassigned jobs to available officers
+sv.post('/assignments/auto-assign-all', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const user = c.get('user') as { id: number } | undefined;
+
+  // Load open unassigned jobs
+  const unassigned = await query<any>(db,
+    `SELECT id, priority, deadline FROM serve_queue
+     WHERE officer_id IS NULL AND status NOT IN ('served','cancelled','failed')
+     ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'rush' THEN 2 ELSE 3 END,
+              deadline IS NULL, deadline ASC
+     LIMIT 1000`);
+
+  if (!unassigned.length) return c.json({ assigned: [], skipped: 0 });
+
+  // Load available officers (non-admin users)
+  const officers = await query<{ id: number; full_name: string }>(db,
+    `SELECT id, full_name FROM users WHERE role IN ('officer','supervisor','manager') ORDER BY full_name LIMIT 200`);
+
+  if (!officers.length) return c.json({ assigned: [], skipped: unassigned.length });
+
+  const assigned: number[] = [];
+  const assigned_to: Record<number, number> = {}; // job_id → officer_id
+  let officerIdx = 0;
+
+  for (const job of unassigned) {
+    // Round-robin assignment
+    const officer = officers[officerIdx % officers.length];
+    officerIdx++;
+
+    const newStatus = job.status === 'pending' ? 'assigned' : job.status;
+    await execute(db,
+      `UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      officer.id, newStatus, job.id);
+    await execute(db,
+      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'auto_assign', 'serve_assignment', ?, ?)`,
+      user?.id ?? null, job.id, JSON.stringify({ to_officer: officer.id, to_officer_name: officer.full_name }));
+    assigned.push(job.id);
+    assigned_to[job.id] = officer.id;
+  }
+
+  return c.json({ success: true, assigned, assigned_to, assigned_count: assigned.length });
+});
+
 sv.post('/assignments/assign', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied }, 403);

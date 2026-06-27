@@ -280,6 +280,33 @@ incidents.put('/:id/return', requireRole(...REVIEW_ROLES), async (c) => {
 });
 
 // DELETE /:id — draft-only
+// GET /:id/persons — linked persons for an incident (e.g., involved officers, suspects)
+incidents.get('/:id/persons', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    
+    // Verify incident exists
+    const incident = await queryFirst<{ id: number }>(db, 'SELECT id FROM incidents WHERE id = ?', id);
+    if (!incident) return c.json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }, 404);
+
+    // Fetch persons linked to this incident via incident_persons junction table
+    // (or embedded persons_json if migration 0155 not yet live)
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT p.*, ip.role AS involvement_role, ip.notes
+      FROM persons p
+      LEFT JOIN incident_persons ip ON ip.person_id = p.id
+      WHERE ip.incident_id = ?
+      ORDER BY ip.role ASC, p.full_name ASC`, id);
+    
+    return c.json({ data: rows });
+  } catch (err) {
+    console.error('[incidents] persons list error', err);
+    return c.json({ error: 'Failed to fetch persons', code: 'INC_PERSONS_ERR' }, 500);
+  }
+});
+
 incidents.delete('/:id', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);

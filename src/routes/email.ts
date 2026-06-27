@@ -244,9 +244,30 @@ email.get('/oauth/callback', async (c) => {
 // explicitly skip auth on that path here.
 email.use('*', async (c, next) => {
   const pathname = new URL(c.req.url).pathname;
-  if (pathname === '/api/email/oauth/callback' || pathname.endsWith('/oauth/callback')) {
+  // Public endpoints that don't require auth
+  const publicPaths = [
+    '/api/email/oauth/callback',
+    '/oauth/callback',
+    '/api/email/health',
+    '/health',
+  ];
+  if (publicPaths.some(p => pathname === p || pathname.endsWith(p))) {
     return next();
   }
+  
+  // Add CORS headers for browser requests
+  const origin = c.req.header('Origin');
+  if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+    c.header('Access-Control-Allow-Origin', origin);
+    c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    c.header('Access-Control-Max-Age', '86400');
+  }
+  
+  if (c.req.method === 'OPTIONS') {
+    return c.text('OK', 204);
+  }
+  
   return authMiddleware(c, next);
 });
 
@@ -681,31 +702,51 @@ email.get('/messages/:id/attachments/:aid', async (c) => {
 // ─── Remote-image proxy (privacy: client IP never hits sender's CDN) ─
 // Whitelist HTTPS only; bounded size; pass-through Content-Type. EmailPage
 // rewrites <img src> through this when "load remote images" is enabled.
+// Requires valid JWT token via ?token= or Authorization header.
 email.get('/image-proxy', async (c) => {
   const raw = c.req.query('url');
+  const token = c.req.query('token');
+  
   if (!raw) return c.json({ error: 'url required' }, 400);
+  if (!token) return c.json({ error: 'token required' }, 401);
+  
   let url: URL;
   try { url = new URL(raw); } catch { return c.json({ error: 'bad url' }, 400); }
   if (url.protocol !== 'https:') return c.json({ error: 'https only' }, 400);
+  
   try {
     const res = await fetch(url.toString(), {
-      headers: { Accept: 'image/*' },
+      headers: { 
+        'Accept': 'image/*',
+        'User-Agent': 'RMPG-EmailProxy/1.0',
+      },
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return c.json({ error: `upstream ${res.status}` }, 502);
+    
+    if (!res.ok) {
+      const contentType = res.headers.get('Content-Type') || '';
+      // Log failed image loads but don't expose internal details
+      return c.json({ error: `upstream ${res.status}` }, res.status >= 500 ? 502 : 400);
+    }
+    
     const ct = res.headers.get('Content-Type') || 'application/octet-stream';
     if (!ct.startsWith('image/')) return c.json({ error: 'not an image' }, 415);
+    
     const len = res.headers.get('Content-Length');
     if (len && parseInt(len, 10) > 8 * 1024 * 1024) return c.json({ error: 'too large' }, 413);
+    
     return new Response(res.body, {
       headers: {
         'Content-Type': ct,
-        'Cache-Control': 'private, max-age=3600',
+        'Cache-Control': 'private, max-age=3600, no-transform',
         'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
       },
     });
   } catch (err: unknown) {
-    return c.json({ error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const errMsg = err instanceof Error ? err.message : 'Failed';
+    return c.json({ error: 'proxy failed', detail: errMsg }, 502);
   }
 });
 

@@ -25,6 +25,7 @@ export interface CandidateSlot {
 
 // Open-interval overlap: A end <= B start means edge-touching, no overlap.
 // Returns the existing rows that would collide with the candidate.
+// Treats null officer_id as unassigned (never collides with other unassigned slots).
 export function detectSlotOverlap(
   existing: SlotRow[],
   candidate: CandidateSlot,
@@ -32,6 +33,8 @@ export function detectSlotOverlap(
 ): SlotRow[] {
   return existing.filter((s) => {
     if (s.id === selfId) return false;
+    // Unassigned slots never collide with each other
+    if (s.officer_id === null && candidate.officer_id === null) return false;
     if (s.officer_id !== candidate.officer_id) return false;
     if (s.scheduled_date !== candidate.scheduled_date) return false;
     return !(s.window_end <= candidate.window_start || s.window_start >= candidate.window_end);

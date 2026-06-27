@@ -20,10 +20,24 @@ import type { AttemptWindow } from './serveDiligencePlanner';
 
 const TZ = 'America/Denver';
 
+// Validate date format: YYYY-MM-DD (ISO 8601 date-only)
+function isValidDateFormat(date: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date);
+}
+
+// Validate time format: HH:MM (24-hour, zero-padded)
+function isValidTimeFormat(hhmm: string): boolean {
+  return /^\d{2}:\d{2}$/.test(hhmm);
+}
+
 // Convert America/Denver local "YYYY-MM-DD HH:MM" to UTC epoch ms.
 // Tries MDT (UTC-7) then MST (UTC-6) and verifies via Intl round-trip
 // so DST transitions are handled without hardcoding switch dates.
+// Throws on malformed input to catch schema drift early.
 function localDenverToEpoch(date: string, hhmm: string): number {
+  if (!isValidDateFormat(date)) throw new Error(`Invalid date format: ${date} (expected YYYY-MM-DD)`);
+  if (!isValidTimeFormat(hhmm)) throw new Error(`Invalid time format: ${hhmm} (expected HH:MM)`);
+  
   const fmt = new Intl.DateTimeFormat('sv-SE', {
     timeZone: TZ,
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -70,6 +84,14 @@ export async function appendAttemptSlot(
   const [rawStart, rawEnd] = w.window.split('–').map((s) => s.trim());
   const windowStart = rawStart;
   const windowEnd = rawEnd || rawStart;
+
+  // Validate input — DST edge cases reveal schema drift early
+  try {
+    localDenverToEpoch(w.date, windowStart);
+    if (windowEnd !== windowStart) localDenverToEpoch(w.date, windowEnd);
+  } catch (err) {
+    throw new Error(`Failed to parse attempt window for queue=${queueId} attempt=${w.attempt}: ${(err as Error).message}`);
+  }
 
   const windowStartEpoch = localDenverToEpoch(w.date, windowStart);
 
@@ -136,7 +158,7 @@ export async function sweepAttemptNotifications(
   const tableExists = await queryFirst<{ n: number }>(
     db,
     `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='serve_attempt_schedules'`,
-  );
+  ).catch(() => null);
   if (!tableExists?.n) return 0;
 
   const now = denverNow();
@@ -152,38 +174,45 @@ export async function sweepAttemptNotifications(
      ORDER BY s.notify_at
      LIMIT 20`,
     now,
-  );
+  ).catch(() => []);
+  
   if (!due.length) return 0;
 
+  let successCount = 0;
   for (const row of due) {
-    const mins = Math.round(row.notify_before_secs / 60);
-    const timeUntil = mins < 60 ? `${mins}m` : `${Math.round(mins / 60)}h`;
-    const name = row.recipient_name || 'recipient';
-    const addr = row.recipient_address || '(address on file)';
+    try {
+      const mins = Math.round(row.notify_before_secs / 60);
+      const timeUntil = mins < 60 ? `${mins}m` : `${Math.round(mins / 60)}h`;
+      const name = row.recipient_name || 'recipient';
+      const addr = row.recipient_address || '(address on file)';
 
-    await emitAlert(env, 'serve_attempt_reminder', {
-      action: 'serve_attempt_reminder',
-      queueId: row.queue_id,
-      attemptNumber: row.attempt_number,
-      scheduledDate: row.scheduled_date,
-      windowStart: row.window_start,
-      windowEnd: row.window_end,
-      windowLabel: row.window_label,
-      minutesBefore: mins,
-      recipientName: name,
-      recipientAddress: addr,
-      caseNumber: row.case_number ?? null,
-      priority: row.priority,
-      deadline: row.deadline ?? null,
-      message: `Attempt #${row.attempt_number} for ${name} @ ${addr} — window ${row.window_start}–${row.window_end} opens in ~${timeUntil}`,
-    });
+      await emitAlert(env, 'serve_attempt_reminder', {
+        action: 'serve_attempt_reminder',
+        queueId: row.queue_id,
+        attemptNumber: row.attempt_number,
+        scheduledDate: row.scheduled_date,
+        windowStart: row.window_start,
+        windowEnd: row.window_end,
+        windowLabel: row.window_label,
+        minutesBefore: mins,
+        recipientName: name,
+        recipientAddress: addr,
+        caseNumber: row.case_number ?? null,
+        priority: row.priority,
+        deadline: row.deadline ?? null,
+        message: `Attempt #${row.attempt_number} for ${name} @ ${addr} — window ${row.window_start}–${row.window_end} opens in ~${timeUntil}`,
+      });
 
-    await execute(
-      db,
-      'UPDATE serve_attempt_schedules SET notified = 1 WHERE id = ?',
-      row.id,
-    );
+      await execute(
+        db,
+        'UPDATE serve_attempt_schedules SET notified = 1 WHERE id = ?',
+        row.id,
+      );
+      successCount++;
+    } catch (err) {
+      console.error(`[serve-schedule] alert emission failed for queue=${row.queue_id}: ${(err as Error).message}`);
+    }
   }
 
-  return due.length;
+  return successCount;
 }
