@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import { toDisplayLabel } from '../../utils/formatters';
 import type { LeadScrapeSource } from '../../types';
 
 interface ScrapeLog {
@@ -370,7 +371,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                       log.status === 'error' ? 'text-red-400 bg-red-900/30 border-red-700/50' :
                       'text-amber-400 bg-amber-900/30 border-amber-700/50'
                     }`}>
-                      {(log.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                      {toDisplayLabel(log.status)}
                     </span>
                   </td>
                   <td className="px-2 py-1 text-[10px] text-rmpg-300 text-right font-mono">{log.records_found}</td>

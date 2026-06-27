@@ -9,6 +9,12 @@ vi.mock('../../hooks/useApi', () => ({
   apiFetch: (url: string, opts?: any) => opts === undefined ? mockFetch(url) : mockFetch(url, opts),
 }));
 
+// useAuth is used for role-gating (canManage); stub as admin so all management
+// paths are reachable in tests.
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { role: 'admin', full_name: 'Test Admin', username: 'testadmin' } }),
+}));
+
 describe('ConnectionsPage', () => {
   beforeEach(() => { mockFetch.mockReset(); });
 
@@ -22,9 +28,10 @@ describe('ConnectionsPage', () => {
     expect(screen.getByLabelText(/Seed search/i)).toBeInTheDocument();
   });
 
-  it('renders the empty canvas', () => {
+  it('does not render the canvas before a seed is selected', () => {
     render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
-    expect(screen.getByTestId('graph-canvas')).toBeInTheDocument();
+    // The graph canvas is only mounted once a seed is chosen — no canvas before that.
+    expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument();
   });
 });
 

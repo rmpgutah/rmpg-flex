@@ -11,6 +11,7 @@
 // the Worker subrequest budget.
 // ============================================================
 
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute, executeBatch } from './db';
 import { isRealValue, normalizePhone, normalizeAddress, nameSimilarity } from './intelMatch';
@@ -113,7 +114,7 @@ export async function rebuildIntelIndex(db: D1Database): Promise<Record<string, 
         type, rows.length);
       counts[type] = rows.length;
     } catch (err: any) {
-      console.error(`[intel-index] ${type} sync failed:`, err?.message);
+      log.error('[intel-index] sync failed', { entity_type: type, error: err?.message });
       counts[type] = -1;
     }
   }
