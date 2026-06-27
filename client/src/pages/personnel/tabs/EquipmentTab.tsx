@@ -15,6 +15,7 @@ import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMe
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { openEquipmentCustodyPdf, type CheckoutLogEntry } from '../../../utils/equipmentCustodyPdf';
 import { exportToCsv } from '../../../utils/csvExport';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 const EQUIPMENT_TYPES: { value: EquipmentType | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -115,11 +116,11 @@ export default function EquipmentTab({
   }
 
   function statusLabel(status: string): string {
-    return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return toDisplayLabel(status);
   }
 
   function typeLabel(type: string): string {
-    return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return toDisplayLabel(type);
   }
 
   function statusLedClass(status: string): string {
