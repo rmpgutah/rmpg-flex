@@ -32,6 +32,8 @@ import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import EmailedDocuments from '../../components/EmailedDocuments';
+import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 
 export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards';
 export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
@@ -404,28 +406,49 @@ export default function FleetDetailPanel({
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex-shrink-0 flex items-center border-b border-rmpg-700 px-1 bg-surface-base overflow-x-auto" style={{ scrollbarWidth: 'none' }} role="tablist" aria-label="Vehicle detail tabs">
-        {TABS.map(({ key, label, icon: Icon }) => {
-          const isActive = activeTab === key;
-          return (
-          <button type="button"
-            key={key}
-            role="tab"
-            aria-selected={isActive}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider whitespace-nowrap transition-all duration-200 border-b-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
-              isActive
-                ? 'text-rmpg-100 border-brand-500 bg-brand-900/10'
-                : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:bg-rmpg-700/20 hover:border-rmpg-500/50'
-            }`}
-            onClick={() => onTabChange(key)}
-          >
-            <Icon className={`w-3 h-3 ${isActive ? 'text-brand-400' : ''}`} />
-            {label}
-          </button>
-          );
-        })}
-      </div>
+      {/* Tab Bar — grouped Spillman module strip */}
+      <SpillmanModuleGroup
+        groups={[
+          {
+            label: 'Status',
+            tone: 'steel',
+            tabs: [
+              { id: 'overview',   label: 'Overview' },
+              { id: 'fuel',       label: 'Fuel' },
+              { id: 'fuel_cards', label: 'Fuel Cards' },
+            ],
+          },
+          {
+            label: 'Maintenance',
+            tone: 'gold',
+            tabs: [
+              { id: 'inspections', label: 'Inspections' },
+              { id: 'tires',       label: 'Tires' },
+              { id: 'damage',      label: 'Damage' },
+              { id: 'recalls',     label: 'Recalls' },
+            ],
+          },
+          {
+            label: 'Personnel & Ops',
+            tone: 'neutral',
+            tabs: [
+              { id: 'assignments', label: 'Assignments' },
+              { id: 'personnel',   label: 'Personnel' },
+              { id: 'costs',       label: 'Costs' },
+            ],
+          },
+          {
+            label: 'Intelligence',
+            tone: 'green',
+            tabs: [
+              { id: 'analytics', label: 'Analytics' },
+              { id: 'dashcam',   label: 'Dash Cam' },
+            ],
+          },
+        ] as ModuleGroupSpec[]}
+        activeTab={activeTab}
+        onTabChange={(id) => onTabChange(id as DetailTab)}
+      />
 
       {/* Tab Content */}
       <div className="flex-1 min-h-0 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>

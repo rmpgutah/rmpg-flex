@@ -13,7 +13,7 @@
 // ready investigator-handoff PDF, and a hardened empty-state.
 // ============================================================
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, User, MapPin, Phone, Mail, Loader2, ChevronRight,
@@ -36,18 +36,17 @@ import { openSkipTracerReportPdf } from '../utils/skipTracerReportPdf';
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
 
-// Hex literals kept INTENTIONALLY here — these are per-mode accent
-// chips (icon tint) inside a tiny grid, not surface chrome. The
-// theme-token sweep migrates surfaces and brand chrome; per-mode
-// distinguishing icon colors (matched between the form picker and the
-// section headers in the detail pane) are decorative and stable across
-// day/night since the icon background derives from the theme.
+// Per-mode accent chips use CSS variable tokens so they re-theme with
+// day/night automatically. Mappings: address → sev-ok (green),
+// nameaddress → sev-special (purple), phone → sev-warn (amber),
+// email → sev-info (blue). The icon background derives from the theme
+// so the chip stays legible in both skins.
 const SEARCH_MODES: { id: SearchMode; label: string; icon: React.ElementType; color: string; description: string }[] = [
   { id: 'name', label: 'By Name', icon: User, color: 'var(--rmpg-400)', description: 'Search by full name (first and last)' },
-  { id: 'address', label: 'By Address', icon: MapPin, color: '#34d399', description: 'Search by street address' },
-  { id: 'nameaddress', label: 'Name + Address', icon: Search, color: '#a78bfa', description: 'Search by name and address combined' },
-  { id: 'phone', label: 'By Phone', icon: Phone, color: '#f59e0b', description: 'Reverse phone lookup' },
-  { id: 'email', label: 'By Email', icon: Mail, color: '#f472b6', description: 'Search by email address' },
+  { id: 'address', label: 'By Address', icon: MapPin, color: 'var(--sev-ok)', description: 'Search by street address' },
+  { id: 'nameaddress', label: 'Name + Address', icon: Search, color: 'var(--sev-special)', description: 'Search by name and address combined' },
+  { id: 'phone', label: 'By Phone', icon: Phone, color: 'var(--sev-warn)', description: 'Reverse phone lookup' },
+  { id: 'email', label: 'By Email', icon: Mail, color: 'var(--sev-info)', description: 'Search by email address' },
 ];
 
 // Clipboard copy helper
@@ -79,6 +78,9 @@ export default function SkipTracerPage() {
   const menu = useMenuActions();
   const { user } = useAuth();
 
+  // Role gates — CSV audit-export limited to admin/manager.
+  const canExport = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
+
   // ── Search state ──
   const [mode, setMode] = useState<SearchMode>('name');
   const [nameQuery, setNameQuery] = useState('');
@@ -92,14 +94,6 @@ export default function SkipTracerPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<any>(null);
-  const [expandedPerson, _setExpandedPerson] = useState<number | null>(null);
-  // expandedPerson was an unused render branch in v1.0 (the right pane
-  // already mirrors `selected`). Kept the state variable for backward-
-  // compatible callsites; the setter is no longer wired and the var is
-  // referenced here so the lint pass doesn't strip it before someone
-  // re-wires the expanded-row pattern.
-  void expandedPerson;
-
   // Person details via ID
   const [personDetail, setPersonDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -399,10 +393,10 @@ export default function SkipTracerPage() {
       // ConfirmDialog owns its own Esc handler — only react when it isn't open.
       if (showClearHistoryConfirm) return;
       if (isTypingInField(e.target)) return;
-      if (personDetail) { setPersonDetail(null); return; }
-      if (selected) { setSelected(null); return; }
-      if (error) { setError(null); return; }
-      if (results) { setResults(null); return; }
+      if (personDetail) { e.stopPropagation(); setPersonDetail(null); return; }
+      if (selected) { e.stopPropagation(); setSelected(null); return; }
+      if (error) { e.stopPropagation(); setError(null); return; }
+      if (results) { e.stopPropagation(); setResults(null); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -488,7 +482,7 @@ export default function SkipTracerPage() {
             <span>PDF</span>
           </button>
         )}
-        <ExportButton exportUrl="/api/skiptracer/export/csv" exportFilename="skip-traces.csv" />
+        {canExport && <ExportButton exportUrl="/api/skiptracer/export/csv" exportFilename="skip-traces.csv" />}
       </PanelTitleBar>
 
       <div className={`flex-1 overflow-hidden ${isMobile ? 'flex flex-col' : 'flex'}`}>
@@ -718,7 +712,15 @@ export default function SkipTracerPage() {
 
         {/* ─── Right Panel: Detail View ─────────────────────── */}
         <div className="flex-1 min-h-0 overflow-y-auto p-4" style={{ background: 'var(--surface-deep)' }}>
-          {!selected && !personDetail && !hasZeroResults && (
+          {loading && !selected && !personDetail && (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <Loader2 className="w-10 h-10 text-rmpg-600 mb-3 animate-spin" role="status" aria-label="Searching" />
+              <p className="text-sm text-rmpg-500 font-bold uppercase tracking-wider">Searching…</p>
+              <p className="text-[10px] text-rmpg-600 mt-1">Querying the local person corpus</p>
+            </div>
+          )}
+
+          {!loading && !selected && !personDetail && !hasZeroResults && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Search className="w-12 h-12 text-rmpg-700 mb-3" />
               <p className="text-sm text-rmpg-500 font-bold uppercase tracking-wider">Skip Tracker</p>
@@ -732,7 +734,7 @@ export default function SkipTracerPage() {
             </div>
           )}
 
-          {!selected && !personDetail && hasZeroResults && (
+          {!loading && !selected && !personDetail && hasZeroResults && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <AlertCircle className="w-12 h-12 text-rmpg-700 mb-3" />
               <p className="text-sm text-rmpg-400 font-bold uppercase tracking-wider">No results found</p>
@@ -801,16 +803,16 @@ export default function SkipTracerPage() {
               </div>
 
               {/* Phones */}
-              {renderArraySection(selected, ['phones', 'phoneNumbers', 'phone_numbers', 'Phones'], 'Phone Numbers', Phone, '#f59e0b', renderFieldRow, copy, copied)}
+              {renderArraySection(selected, ['phones', 'phoneNumbers', 'phone_numbers', 'Phones'], 'Phone Numbers', Phone, 'var(--sev-warn)', renderFieldRow, copy, copied)}
 
               {/* Emails */}
-              {renderArraySection(selected, ['emails', 'emailAddresses', 'email_addresses', 'Emails'], 'Email Addresses', Mail, '#f472b6', renderFieldRow, copy, copied)}
+              {renderArraySection(selected, ['emails', 'emailAddresses', 'email_addresses', 'Emails'], 'Email Addresses', Mail, 'var(--sev-info)', renderFieldRow, copy, copied)}
 
               {/* Addresses */}
-              {renderArraySection(selected, ['addresses', 'Addresses', 'address_history'], 'Addresses', MapPin, '#34d399', renderFieldRow, copy, copied)}
+              {renderArraySection(selected, ['addresses', 'Addresses', 'address_history'], 'Addresses', MapPin, 'var(--sev-ok)', renderFieldRow, copy, copied)}
 
               {/* Relatives / Associates */}
-              {renderArraySection(selected, ['relatives', 'Relatives', 'associates', 'Associates'], 'Relatives / Associates', User, '#a78bfa', renderFieldRow, copy, copied)}
+              {renderArraySection(selected, ['relatives', 'Relatives', 'associates', 'Associates'], 'Relatives / Associates', User, 'var(--sev-special)', renderFieldRow, copy, copied)}
 
               {/* Raw JSON (collapsible) */}
               <details className="panel-beveled bg-surface-base">

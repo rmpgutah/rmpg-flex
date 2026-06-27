@@ -41,6 +41,18 @@ describe('notificationRouting', () => {
         .toBe('/arrest-records?arrest_id=250');
     });
 
+    it('builds /court-records?event_id= for court_event entity_type', () => {
+      expect(routeForEntity({ type: 'system', entity_type: 'court_event', entity_id: 7 }))
+        .toBe('/court-records?event_id=7');
+    });
+
+    it('builds /web-research?research_id= for research_result entity_type', () => {
+      expect(routeForEntity({ type: 'system', entity_type: 'research_result', entity_id: 17 }))
+        .toBe('/web-research?research_id=17');
+      expect(routeForEntity({ type: 'system', entity_type: 'web_research', entity_id: 17 }))
+        .toBe('/web-research?research_id=17');
+    });
+
     it('falls back to type-default when entity_type is unknown', () => {
       expect(routeForEntity({ type: 'warrant', entity_type: 'something_new', entity_id: 1 }))
         .toBe('/warrants');

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
+import { log } from '../../utils/logger';
 import { LIST_VIEW_COLUMNS } from './calls';
 
 // Shared with /dispatch/calls — keeps the queue rows shape-compatible with
@@ -121,7 +122,7 @@ aggregates.get('/queue', async (c) => {
     });
     return c.json(enriched);
   } catch (err) {
-    console.error('Queue error:', err);
+    log.error('Queue error', {}, err);
     return c.json({ error: 'Failed to get active calls', details: String(err) }, 500);
   }
 });
@@ -163,8 +164,7 @@ aggregates.get('/districts', async (c) => {
 // GET /dispatch/heatmap?days=N&mode=all|risk|type&type=incident_type
 // Aggregated call locations for the call-density heatmap layer
 // (useMapboxHeatmap, useMapboxSafetyZones risk overlay, MapPage heatmap toggle).
-// Ported from legacy/server-vps/src/routes/dispatch/aggregates.ts — the VPS
-// route was lost in the Workers migration, leaving every heatmap-related
+// Ported from legacy VPS route — the path was lost in the Workers migration, leaving every heatmap-related
 // hook on the client 404'ing silently into an empty layer.
 // Fully defensive: schema drift / empty tables degrade to [] so the optional
 // overlay never 500s the dispatch UI.
@@ -258,7 +258,7 @@ aggregates.get('/heatmap', async (c) => {
     `, cutoff);
     return c.json(filterValidLatLng(rows));
   } catch (err) {
-    console.error('GET /dispatch/heatmap failed (degrading to []):', err);
+    log.error('GET /dispatch/heatmap failed (degrading to [])', {}, err);
     return c.json([]);
   }
 });
@@ -323,7 +323,7 @@ aggregates.get('/heatmap/enforcement', async (c) => {
     }));
     return c.json(clusters);
   } catch (err) {
-    console.error('GET /dispatch/heatmap/enforcement failed (degrading to []):', err);
+    log.error('GET /dispatch/heatmap/enforcement failed (degrading to [])', {}, err);
     return c.json([]);
   }
 });
@@ -378,7 +378,7 @@ aggregates.get('/heatmap/predictions', async (c) => {
 
     return c.json({ hotspots, shift, total: hotspots.length });
   } catch (err) {
-    console.error('GET /dispatch/heatmap/predictions failed:', err);
+    log.error('GET /dispatch/heatmap/predictions failed', {}, err);
     return c.json({ hotspots: [], shift: c.req.query('shift') || 'day', total: 0 });
   }
 });
@@ -465,7 +465,7 @@ aggregates.get('/analysis/summary', async (c) => {
       },
     });
   } catch (err) {
-    console.error('GET /dispatch/analysis/summary failed:', err);
+    log.error('GET /dispatch/analysis/summary failed', {}, err);
     return c.json({
       overlapZones: { count: 0, locations: [] },
       repeatInRiskZones: { count: 0, addresses: [] },
@@ -613,7 +613,7 @@ aggregates.get('/integration-dashboard', async (c) => {
       navigation: navSummary,
     });
   } catch (err) {
-    console.error('GET /dispatch/aggregates/integration-dashboard error:', err);
+    log.error('GET /dispatch/aggregates/integration-dashboard error', {}, err);
     return c.json({ error: 'Failed to build integration dashboard' }, 500);
   }
 });
@@ -668,7 +668,7 @@ aggregates.get('/history-map', async (c) => {
 
     return c.json(rows);
   } catch (err) {
-    console.error('GET /dispatch/history-map failed:', err);
+    log.error('GET /dispatch/history-map failed', {}, err);
     return c.json([]);
   }
 });

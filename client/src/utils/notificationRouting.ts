@@ -41,7 +41,8 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
   // Notification-type literals emitted by the server but not previously routed
   intel_screen: '/intel',
   watchlist_hit: '/intel',
-  case_task_nudge: '/cases',
+  case_task_nudge: '/tasks',
+  task_nudge: '/tasks',
   serve_nudge: '/serve',
   email_rule: '/communications?tab=messages',
   intel_product: '/intel/reports',
@@ -54,9 +55,9 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
  *  - call           → /dispatch?call_id=
  *  - warrant        → /warrants?warrant_id=
  *  - case           → /cases?case_id=
- *  - case_task      → /cases?case_id= (best-effort: cases page reads
- *                     the parent case id; the task isn't deep-linkable
- *                     on its own yet)
+ *  - case_task      → /tasks?task_id= (tasks page deep-links the row
+ *                     directly; the prior /cases?task_id= was a no-op
+ *                     because Cases only reads ?case_id=)
  *  - person         → /records?tab=persons&person_id=
  *  - vehicle        → /records?tab=vehicles&vehicle_id=
  *  - bolo           → /communications?tab=bolos&bolo_id=
@@ -69,12 +70,19 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
  *  - email_message  → /communications?tab=messages&message_id=
  *  - alpr_capture   → /plate-log?capture_id= (best-effort fallback)
  *  - use_of_force   → /use-of-force?uof_id=
+ *  - arrest_record  → /arrest-records?arrest_id= (canonical)
+ *  - arrest         → /arrest-records?arrest_id= (legacy alias used by older
+ *                     server emitters — kept so notifications generated before
+ *                     the canonical name landed still route correctly)
+ *  - court_event    → /court-records?event_id= (historical disposition view;
+ *                     /court (Court Tracker) accepts the same param for the
+ *                     upcoming-dates view, so a notification deep-link works
+ *                     equivalently from either page)
  */
 const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   call: (id) => `/dispatch?call_id=${encodeURIComponent(id)}`,
   warrant: (id) => `/warrants?warrant_id=${encodeURIComponent(id)}`,
   case: (id) => `/cases?case_id=${encodeURIComponent(id)}`,
-  case_task: (id) => `/cases?task_id=${encodeURIComponent(id)}`,
   person: (id) => `/records?tab=persons&person_id=${encodeURIComponent(id)}`,
   vehicle: (id) => `/records?tab=vehicles&vehicle_id=${encodeURIComponent(id)}`,
   bolo: (id) => `/communications?tab=bolos&bolo_id=${encodeURIComponent(id)}`,
