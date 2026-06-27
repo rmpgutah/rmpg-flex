@@ -13,12 +13,14 @@
 export interface ScheduleSlot {
   id: number;
   queue_id: number;
+  attempt: number;
   attempt_number: number;
   scheduled_date: string;
   window_start: string;
   window_end: string;
   window_label: string | null;
   notify_at: string;
+  notify_before_secs: number;
   recipient_name: string | null;
   recipient_address: string | null;
   recipient_city: string | null;

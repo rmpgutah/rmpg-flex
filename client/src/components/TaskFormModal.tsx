@@ -14,6 +14,9 @@ export interface TaskFormData {
 interface TaskFormModalProps {
   isOpen: boolean; onClose: () => void; onSubmit: (d: TaskFormData) => void;
   isSubmitting: boolean; editingRecord?: any; submitError?: string | null;
+  /** When false, the "urgent" priority option is hidden — only supervisor+
+   *  roles may escalate to urgent (enforced in sync with the backend). */
+  canEscalatePriority?: boolean;
 }
 
 const EMPTY_FORM: TaskFormData = {
@@ -22,7 +25,7 @@ const EMPTY_FORM: TaskFormData = {
   linked_entity_type: '', linked_entity_id: '', notes: '',
 };
 
-export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: TaskFormModalProps) {
+export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError, canEscalatePriority = true }: TaskFormModalProps) {
   const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<TaskFormData>({
     storageKey: 'rmpg_task_form', defaultValue: EMPTY_FORM, isActive: isOpen,
   });
@@ -60,7 +63,12 @@ export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting,
         <div className="grid grid-cols-2 gap-3">
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Priority</label>
             <select name="priority" className="select-dark mt-1" value={form.priority} onChange={handleChange}>
-              {['low','normal','high','urgent'].map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+              {(['low', 'normal', 'high'] as const).map(p => (
+                <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+              ))}
+              {canEscalatePriority && (
+                <option value="urgent">Urgent</option>
+              )}
             </select></div>
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Status</label>
             <select name="status" className="select-dark mt-1" value={form.status} onChange={handleChange}>

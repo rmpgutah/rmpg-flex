@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
+import { toDisplayLabel } from '../../utils/formatters';
 import { safeDateTimeStr } from '../../utils/dateUtils';
 import RichTextArea from '../../components/RichTextArea';
 import {
@@ -557,7 +558,7 @@ export default function AdminGodModeTab() {
                 <div key={i} className="flex items-center gap-2 py-0.5 border-b border-border-subtle/50 text-[11px]" onContextMenu={(e) => openMenu(e, buildPresenceMenu(u))}>
                   <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-rmpg-700'}`} />
                   <span className="text-rmpg-300 font-mono">{u.username || u.full_name}</span>
-                  <span className="text-rmpg-500 text-[9px]">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                  <span className="text-rmpg-500 text-[9px]">{toDisplayLabel(u.role || '')}</span>
                   {u.last_seen && <span className="text-rmpg-500 text-[9px] ml-auto">{new Date(u.last_seen).toLocaleTimeString()}</span>}
                 </div>
               ))}
@@ -588,7 +589,7 @@ export default function AdminGodModeTab() {
                   <tr key={i} className="border-b border-border-subtle/50" onContextMenu={(e) => openMenu(e, buildWsClientMenu(c))}>
                     <td className="px-2 py-1 font-mono text-rmpg-400">{c.userId}</td>
                     <td className="px-2 py-1 text-rmpg-100">{c.username}</td>
-                    <td className="px-2 py-1 text-rmpg-400">{(c.role || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</td>
+                    <td className="px-2 py-1 text-rmpg-400">{toDisplayLabel(c.role || '')}</td>
                     <td className="px-2 py-1 font-mono text-rmpg-500">{c.ip}</td>
                     <td className="px-2 py-1 text-rmpg-500">{c.connectedAt ? new Date(c.connectedAt).toLocaleTimeString() : c.duration || '—'}</td>
                   </tr>
