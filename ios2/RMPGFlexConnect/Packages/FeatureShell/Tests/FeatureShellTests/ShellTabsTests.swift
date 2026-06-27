@@ -4,7 +4,7 @@ import XCTest
 final class ShellTabsTests: XCTestCase {
     func testOfficerHasFiveTabs() {
         XCTAssertEqual(OfficerShell.tabs.count, 5)
-        XCTAssertEqual(OfficerShell.tabs.map(\.id), ["home", "cfs", "scan", "reports", "more"])
+        XCTAssertEqual(OfficerShell.tabs.map(\.id), ["home", "cfs", "scan", "records", "more"])
     }
 
     func testSupervisorHasFourTabs() {
