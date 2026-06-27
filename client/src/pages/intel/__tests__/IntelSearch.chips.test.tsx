@@ -4,6 +4,17 @@ import { vi, describe, it, expect } from 'vitest';
 import IntelSearch from '../IntelSearch';
 import { IntelProvider } from '../IntelContext';
 
+vi.mock('../../../context/AuthContext', () => {
+  const { createContext } = require('react');
+  const ctx = createContext(undefined);
+  return {
+    AuthContext: ctx,
+    AuthProvider: ({ children }: any) => children,
+    useAuth: () => ({ user: { id: 1, role: 'admin', username: 'test' } }),
+    default: ctx,
+  };
+});
+
 vi.mock('../../../hooks/useApi', () => ({
   apiFetch: vi.fn(async (path: string) => {
     if (path.startsWith('/intel/saved-searches')) return [{ id: 1, name: 'Gang plates', query_text: 'flag:gang', created_at: '' }];
