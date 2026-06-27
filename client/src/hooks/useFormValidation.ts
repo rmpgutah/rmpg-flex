@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { validateField, type ValidationResult } from '../utils/validate';
+import { toDisplayLabel } from '../utils/formatters';
 
 type FieldRules = {
   required?: boolean;
@@ -47,7 +48,7 @@ export function useFormValidation() {
       const result: ValidationResult = validateField(fieldName, value, rules);
       if (!result.valid && result.error) {
         // Use the field name as display label (convert snake_case to Title Case)
-        const label = fieldName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const label = toDisplayLabel(fieldName);
         newErrors[fieldName] = result.error.replace(fieldName, label);
       }
     }
@@ -70,7 +71,7 @@ export function useFormValidation() {
 
     const result: ValidationResult = validateField(fieldName, value, fieldRules);
     if (!result.valid && result.error) {
-      const label = fieldName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const label = toDisplayLabel(fieldName);
       setErrors(prev => ({ ...prev, [fieldName]: result.error!.replace(fieldName, label) }));
       return false;
     } else {

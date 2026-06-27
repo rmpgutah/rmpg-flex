@@ -210,6 +210,7 @@ const PERSON_WRITABLE_COLUMNS = new Set([
   'address', 'address_2', 'city', 'state', 'zip', 'phone', 'phone_secondary',
   'home_phone', 'work_phone', 'email', 'email_secondary',
   'dl_number', 'dl_state', 'dl_expiry', 'dl_class',
+  'dl_issue_date', 'dl_restrictions', 'dl_endorsements',
   'ssn_last4', 'ssn_full',
   'photo_url', 'photo', 'id_image_url',
   'id_type', 'id_number', 'id_state', 'id_expiry',
@@ -244,6 +245,8 @@ const PERSON_WRITABLE_COLUMNS = new Set([
 const PERSON_EXT_COLUMNS = new Set([
   'suffix', 'nationality', 'voice_description', 'religion', 'dietary_restrictions',
   'address_2', // apartment/unit number (persons at 96 cols — overflow only)
+  // DL barcode fields (AAMVA PDF417 elements DCB/DCD/DBD) — mig 0155
+  'dl_restrictions', 'dl_endorsements', 'dl_issue_date',
 ]);
 const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
 
@@ -383,14 +386,23 @@ records.post('/from-dl-scan', async (c) => {
         : 'Created from DL scan';
       const result = await execute(db, `
         INSERT INTO persons (first_name, middle_name, last_name, dob, gender, height, weight,
-          eye_color, hair_color, address, city, state, zip, dl_number, dl_state, flags, notes, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
+          eye_color, hair_color, address, city, state, zip, dl_number, dl_state,
+          dl_expiry, dl_class, flags, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
         first, str(scan.middle_name), last, dob, str(scan.gender), str(scan.height),
         str(scan.weight), str(scan.eye_color), str(scan.hair_color), str(scan.address),
         str(scan.city), str(scan.state), str(scan.zip), dlNumber, str(scan.dl_state),
+        str(scan.dl_expiry), str(scan.dl_class),
         JSON.stringify(['dl_scan_imported']), note);
-      person = await queryFirst<Record<string, unknown>>(db,
-        'SELECT * FROM persons WHERE id = ?', Number(result.meta.last_row_id));
+      const newPersonId = Number(result.meta.last_row_id);
+      // Write AAMVA overflow fields (restrictions/endorsements/issue_date) to persons_ext
+      await writePersonExt(db, newPersonId, {
+        dl_restrictions: str(scan.dl_restrictions),
+        dl_endorsements: str(scan.dl_endorsements),
+        dl_issue_date:   str(scan.dl_issue_date),
+      });
+      person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db,
+        'SELECT * FROM persons WHERE id = ?', newPersonId));
       personCreated = true;
     }
     const personId = Number(person!.id);
@@ -2203,6 +2215,51 @@ records.get('/reports/approval-queue', async (c) => {
   } catch (err) {
     console.error('GET /records/reports/approval-queue error:', err);
     return c.json([], 200);
+  }
+});
+
+// POST /api/records/reports/:id/approve — supervisor approves a pending report.
+// Proxy to the incidents approve logic: updates status → 'approved'.
+records.post('/reports/:id/approve', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const id = c.req.param('id');
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  try {
+    const db = getDb(c.env);
+    const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
+    if (!report) return c.json({ error: 'Report not found' }, 404);
+    if (!['submitted', 'pending_approval', 'returned'].includes(report.status)) {
+      return c.json({ error: 'Report is not in a reviewable status', code: 'INVALID_STATUS' }, 409);
+    }
+    await db.prepare(`UPDATE incidents SET status = 'approved', supervisor_id = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(actor?.id ?? null, id).run();
+    return c.json({ success: true, id: Number(id), status: 'approved' });
+  } catch (err) {
+    console.error('POST /records/reports/:id/approve error:', err);
+    return c.json({ error: 'Failed to approve report' }, 500);
+  }
+});
+
+// POST /api/records/reports/:id/return — supervisor returns a report for revision.
+records.post('/reports/:id/return', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const id = c.req.param('id');
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  try {
+    const body = await c.req.json() as { reason?: string };
+    const reason = (body.reason ?? '').trim();
+    if (!reason) return c.json({ error: 'Return reason is required' }, 400);
+    const db = getDb(c.env);
+    const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
+    if (!report) return c.json({ error: 'Report not found' }, 404);
+    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, supervisor_notes = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(actor?.id ?? null, reason, id).run();
+    return c.json({ success: true, id: Number(id), status: 'returned', reason });
+  } catch (err) {
+    console.error('POST /records/reports/:id/return error:', err);
+    return c.json({ error: 'Failed to return report' }, 500);
   }
 });
 
