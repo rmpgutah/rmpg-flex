@@ -2,6 +2,7 @@
 // Each section is isolated: a failing query yields its empty default, never
 // a 500 (mirrors the dossier endpoint's resilience). All tables/columns here
 // are verified against live D1 (785de7ae).
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst } from './db';
 
@@ -31,19 +32,19 @@ export async function buildOverview(db: D1Database): Promise<IntelOverview> {
     const r = await queryFirst<{ c: number }>(db,
       `SELECT COUNT(*) AS c FROM warrants WHERE LOWER(COALESCE(status,'')) IN ('active','outstanding')`);
     ov.stats.active_warrants = n(r?.c);
-  } catch (e: any) { console.error('[overview] warrants stat:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] warrants stat', { error: e?.message }); }
 
   try {
     const r = await queryFirst<{ c: number }>(db,
       `SELECT COUNT(*) AS c FROM intel_watchlist WHERE active = 1`);
     ov.stats.on_watchlist = n(r?.c);
-  } catch (e: any) { console.error('[overview] watchlist stat:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] watchlist stat', { error: e?.message }); }
 
   try {
     const r = await queryFirst<{ c: number }>(db,
       `SELECT COUNT(*) AS c FROM persons WHERE LOWER(COALESCE(flags,'')) LIKE '%gang%'`);
     ov.stats.gang_flagged = n(r?.c);
-  } catch (e: any) { console.error('[overview] gang stat:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] gang stat', { error: e?.message }); }
 
   // Recent activity on watched entities.
   try {
@@ -58,7 +59,7 @@ export async function buildOverview(db: D1Database): Promise<IntelOverview> {
       entity_type: r.entity_type, entity_id: n(r.entity_id), label: String(r.label),
       event: r.event, when: r.when_ts || '',
     }));
-  } catch (e: any) { console.error('[overview] watchlist activity:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] watchlist activity', { error: e?.message }); }
 
   // Active alerts: active warrants joined to subject persons.
   try {
@@ -74,7 +75,7 @@ export async function buildOverview(db: D1Database): Promise<IntelOverview> {
       kind: 'warrant', person_id: r.pid ? n(r.pid) : null,
       label: String(r.label), detail: String(r.detail), when: r.when_ts || '',
     }));
-  } catch (e: any) { console.error('[overview] alerts:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] alerts', { error: e?.message }); }
 
   // Escalation leaderboard: 30-day event tempo per person across calls + incidents.
   try {
@@ -96,7 +97,7 @@ export async function buildOverview(db: D1Database): Promise<IntelOverview> {
       person_id: n(r.pid), label: String(r.label), score: n(r.score),
       trend: n(r.score) >= 3 ? 'rising' : 'flat',
     }));
-  } catch (e: any) { console.error('[overview] escalation:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] escalation', { error: e?.message }); }
 
   // Jail cross-hits: recent bookings (inmates) in the last day, name-matched to persons.
   // NOTE: there is no jail_bookings table on live; inmates is the booking store and
@@ -116,7 +117,7 @@ export async function buildOverview(db: D1Database): Promise<IntelOverview> {
       name: (String(r.name || '').trim().replace(/^,|,$/g, '').trim()) || 'Unknown',
       person_id: r.person_id ? n(r.person_id) : null, booked_at: r.booked_at || '', match: r.match,
     }));
-  } catch (e: any) { console.error('[overview] jail cross-hits:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] jail cross-hits', { error: e?.message }); }
 
   // Recent plate sightings.
   try {
@@ -127,19 +128,19 @@ export async function buildOverview(db: D1Database): Promise<IntelOverview> {
       plate: String(r.plate || ''), state: r.state || null, flag: r.flag || null,
       location_text: r.location_text || null, when: r.when_ts || '',
     }));
-  } catch (e: any) { console.error('[overview] sightings:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] sightings', { error: e?.message }); }
 
   // Review queue counts.
   try {
     const a = await queryFirst<{ c: number }>(db,
       `SELECT COUNT(*) AS c FROM intel_link_suggestions WHERE status = 'pending'`);
     ov.queues.link_suggestions = n(a?.c);
-  } catch (e: any) { console.error('[overview] link queue:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] link queue', { error: e?.message }); }
   try {
     const b = await queryFirst<{ c: number }>(db,
       `SELECT COUNT(*) AS c FROM entity_resolution_suggestions WHERE status = 'pending'`);
     ov.queues.resolution_pairs = n(b?.c);
-  } catch (e: any) { console.error('[overview] resolution queue:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] resolution queue', { error: e?.message }); }
 
   // BOLO counts (bolos table exists on live).
   try {
@@ -148,7 +149,7 @@ export async function buildOverview(db: D1Database): Promise<IntelOverview> {
               SUM(CASE WHEN priority IN ('critical','high') THEN 1 ELSE 0 END) AS h
          FROM bolos WHERE status = 'active'`);
     ov.bolos.active = n(r?.a); ov.bolos.high_priority = n(r?.h);
-  } catch (e: any) { console.error('[overview] bolos:', e?.message); }
+  } catch (e: any) { log.error('[intel-overview] bolos', { error: e?.message }); }
 
   return ov;
 }
