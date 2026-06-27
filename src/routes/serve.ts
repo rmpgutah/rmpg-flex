@@ -140,8 +140,8 @@ sv.post('/routes', async (c) => {
        start_lat, start_lng, end_lat, end_lng, notes
      ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?)`,
     officerId, body.route_date ?? null,
-    JSON.stringify(body.optimized_order ?? []),
-    JSON.stringify(body.waypoints ?? []),
+    body.optimized_order_json ?? body.optimized_order ?? null,
+    body.waypoints_json ?? body.waypoints ?? null,
     body.total_distance_miles ?? null, body.total_time_minutes ?? null,
     body.start_lat ?? null, body.start_lng ?? null,
     body.end_lat ?? null, body.end_lng ?? null,

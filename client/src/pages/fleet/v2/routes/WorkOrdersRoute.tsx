@@ -10,6 +10,7 @@
 // ============================================================
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, X, AlertTriangle, BarChart3, Calendar, Clock } from 'lucide-react';
+import { VmrsPicker, type VmrsSelection } from '../../../../components/fleet/VmrsPicker';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { apiFetch } from '../../../../hooks/useApi';
 import { FleetListShell } from '../shell/FleetListShell';
@@ -331,6 +332,7 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
   const [scheduledDate, setScheduledDate] = useState('');
   const [failureCategory, setFailureCategory] = useState('');
   const [estimatedHours, setEstimatedHours] = useState('');
+  const [vmrsSelection, setVmrsSelection] = useState<VmrsSelection | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -367,6 +369,9 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
         scheduled_date: scheduledDate || null,
         failure_category: failureCategory || null,
         estimated_hours: estimatedHours ? parseFloat(estimatedHours) : null,
+        vmrs_system_code: vmrsSelection?.systemCode ?? null,
+        vmrs_assembly_code: vmrsSelection?.assemblyCode ?? null,
+        vmrs_component_code: vmrsSelection?.componentCode ?? null,
         est_cost: estCost ? parseFloat(estCost) : null,
         notes: notes.trim() || null,
       }),
@@ -506,6 +511,9 @@ function NewWorkOrderModal({ vehicles, onClose, onCreated }: NewWorkOrderModalPr
               <option value="computer">Computer / MDT</option>
               <option value="other">Other</option>
             </select>
+          </Field>
+          <Field label="VMRS Code (optional)">
+            <VmrsPicker value={vmrsSelection} onChange={setVmrsSelection} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Est. cost ($)">
