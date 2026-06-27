@@ -138,7 +138,6 @@ import iped from './routes/iped';
 import serve from './routes/serve';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
-import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
