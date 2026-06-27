@@ -16,7 +16,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, Navigation, RefreshCcw, Sparkles } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -110,10 +110,12 @@ export default function ServeSchedulerPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const { addToast } = useToast();
 
   const refetch = useCallback(async () => {
     try {
+      setLoading(true);
       setError(null);
       const days = RANGE_DAYS[mode];
       const endDate = shiftYmd(anchorYmd, days - 1);
@@ -220,6 +222,18 @@ export default function ServeSchedulerPage() {
     }
   }, [refetch, addToast]);
 
+  const handleBackfill = useCallback(async () => {
+    setBackfilling(true);
+    try {
+      await apiFetch('/serve-intake/schedule/backfill', { method: 'POST' });
+      await refetch();
+    } catch (e) {
+      addToast(`Schedule generation failed: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    } finally {
+      setBackfilling(false);
+    }
+  }, [refetch, addToast]);
+
   // ── ConfirmDialog: dismiss slot (DELETE /schedule/:slotId) ─────────────────
   const handleConfirmDismiss = useCallback(async (slot: ScheduleSlot) => {
     setConfirmLoading(true);
@@ -287,9 +301,26 @@ export default function ServeSchedulerPage() {
     }
     if (slots.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center h-32 gap-1 text-[11px] text-rmpg-400">
+        <div className="flex flex-col items-center justify-center h-40 gap-2 text-[11px] text-rmpg-400">
           <span>No serve attempts scheduled for this window.</span>
-          <span className="text-[10px]">Drag items from the queue{canManage ? ' or use Rebalance (N)' : ''} to populate lanes.</span>
+          <span className="text-[10px] text-rmpg-500">
+            Generate a schedule first, then drag slots between lanes to assign officers.
+          </span>
+          <button
+            type="button"
+            onClick={handleBackfill}
+            disabled={backfilling}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-brand-500/20 text-brand-200 border border-brand-500/40 rounded-[2px] hover:bg-brand-500/30 disabled:opacity-50 transition-colors"
+          >
+            {backfilling
+              ? <><RefreshCcw size={11} className="animate-spin" /> Generating…</>
+              : <><Sparkles size={11} /> Generate Schedule</>}
+          </button>
+          {canManage && (
+            <span className="text-[10px] text-rmpg-500">
+              Once slots exist, use Rebalance (N) to optimally redistribute workload.
+            </span>
+          )}
         </div>
       );
     }
@@ -348,6 +379,31 @@ export default function ServeSchedulerPage() {
           )}
         </div>
       </div>
+
+      {slots.length > 0 && (
+        <div className="flex items-center gap-3 px-2 py-1 mb-1 text-[10px] bg-surface-sunken/40 border border-rmpg-800/40 rounded-[2px]">
+          <span className="text-rmpg-400">
+            Total slots: <span className="text-rmpg-100 font-mono tabular-nums">{slots.length}</span>
+          </span>
+          <span className="text-rmpg-400">
+            Today: <span className="text-rmpg-100 font-mono tabular-nums">{slots.filter(s => s.scheduled_date === today).length}</span>
+          </span>
+          <span className="text-rmpg-400">
+            Critical: <span className={`font-mono tabular-nums ${slots.filter(s => (s as any).urgency_tier === 'critical').length > 0 ? 'text-red-300 animate-pulse' : 'text-rmpg-100'}`}>
+              {slots.filter(s => (s as any).urgency_tier === 'critical').length}
+            </span>
+          </span>
+          <span className="text-rmpg-400">
+            Unassigned: <span className="text-amber-400 font-mono tabular-nums">{slots.filter(s => s.officer_id == null).length}</span>
+          </span>
+          <a
+            href="/serve"
+            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase text-brand-200 border border-brand-500/40 rounded-[2px] hover:bg-brand-500/20"
+          >
+            Plan Route <Navigation size={9} className="inline" />
+          </a>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <UnassignedQueueSidebar onAssign={(_item, _officerId, _date) => { refetch(); }} />

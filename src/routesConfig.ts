@@ -57,9 +57,11 @@ import mapData from './routes/mapData';
 import tiles from './routes/tiles';
 import geo from './routes/geo';
 import admin from './routes/admin';
+import adminDev from './routes/adminDev';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import announcements from './routes/announcements';
+import automation from './routes/automation';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
 import alerts from './routes/notifications';
@@ -126,15 +128,16 @@ import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
 import forensics from './routes/forensics';
+import geofences from './routes/geofences';
 import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
 import patrol from './routes/patrol';
 import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
 import iped from './routes/iped';
+import serve from './routes/serve';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
-import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
@@ -142,8 +145,9 @@ import microbilt from './routes/microbilt';
 import screening from './routes/screening';
 import sorSources from './routes/sorSources';
 import nsopw from './routes/nsopw';
+import mapAnnotations from './routes/mapAnnotations';
 import personIntel from './routes/personIntel';
-import serve from './routes/serve';
+import investigation from './routes/investigation';
 
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
@@ -309,6 +313,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin/reanalysis', router: reanalysis, auth: 'required',
     note: 'Footage backfill, ALPR confidence correction, analytics replay. All endpoints require admin role (enforced per-route).' },
+  { prefix: '/api/admin/dev', router: adminDev, auth: 'required',
+    note: 'Dev panel: feature flags (KV-backed GET/PUT), mock GPS injection + call seed. Admin role enforced per-route; GET /feature-flags is readable by any authed user.' },
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
@@ -383,12 +389,16 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
     note: 'Alias for /api/forensics — client ForensicLabPage uses this path' },
+  { prefix: '/api/geofences', router: geofences, auth: 'required',
+    note: 'Geofence zone CRUD — writes to geofence_zones. All authenticated roles.' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
-    note: 'Leave + disciplinary + performance reviews; /benefits returns [] (table deferred). Payroll/exit/grievances/PIPs stay on legacy.' },
+    note: 'Full HR module: dashboard, leave/PTO, disciplinary, reviews, payroll (periods/rates/entries/overtime), grievances, documents/acknowledgments, attendance, PIPs. /benefits returns [] (table deferred).' },
   { prefix: '/api/iped', router: iped, auth: 'required',
     note: 'Read-only surface over forensic_hash_sets + forensic_hash_entries + iped_imports tables. GET /status, /hash-sets, /hash-sets/:id, /downloads.' },
+  { prefix: '/api/map/annotations', router: mapAnnotations, auth: 'required',
+    note: 'Shared map annotation pins (map_annotations table). All authenticated roles.' },
   { prefix: '/api/narcotics', router: narcotics, auth: 'required',
     note: 'Narcotics & vice: investigations, CI management, buy/bust ops, drug trend analysis' },
   { prefix: '/api/nav', router: nav, auth: 'required',
@@ -399,9 +409,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/patrol', router: patrolMileage, auth: 'required',
     note: 'Mileage anchor (auto-pickup) + admin fix/audit chain rewrite + FORM PS-211 trip-log payload' },
-  { prefix: '/api/person-intel', router: personIntel, auth: 'required',
-    note: 'Person Intelligence Dossier: create/list/get dossier + officer data-point annotations + delete' },
-  { prefix: '/api/radio', router: radio, auth: 'required',
+    { prefix: '/api/person-intel', router: personIntel, auth: 'required',
+      note: 'Person Intelligence Dossier: create/list/get dossier + officer data-point annotations + delete' },
+  { prefix: '/api/investigation', router: investigation, auth: 'required',
+    note: 'Case intelligence & cross-reference engine: FTS5 unified search, entity link CRUD, MO pattern matching. See investigation.ts.' },
+    { prefix: '/api/radio', router: radio, auth: 'required',
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
@@ -454,6 +466,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assessor', router: assessor, auth: 'required',
     note: 'Salt Lake County Assessor lookup + apply: /parcels?address, /parcel/:no, POST /apply. KV-cached 30d; 503 when FIRECRAWL_API_KEY is unset.' },
+  { prefix: '/api/automation', router: automation, auth: 'required',
+    note: 'Case management automation rules: CRUD, toggle, execution log. Cron-driven SLA escalation and unassigned-alert rules.' },
   { prefix: '/api/assets', router: assets, auth: 'required',
     note: 'Asset/inventory management: equipment, checkouts, weapons, ammo, K9 records' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
