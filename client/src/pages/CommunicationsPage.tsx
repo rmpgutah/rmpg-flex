@@ -1106,7 +1106,7 @@ export default function CommunicationsPage() {
                 <span className="text-rmpg-500 text-[9px]">
                   {msgPriorityStats.byPriority.map(p => (
                     <span key={p.priority} className={`mr-2 ${p.priority === 'emergency' ? 'text-red-400' : p.priority === 'urgent' ? 'text-amber-400' : 'text-rmpg-400'}`}>
-                      {(p.priority || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}: {p.total}
+                      {toDisplayLabel(p.priority)}: {p.total}
                     </span>
                   ))}
                 </span>

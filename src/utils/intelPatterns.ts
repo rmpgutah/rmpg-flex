@@ -8,6 +8,7 @@
 // tests/intelPatterns.test.ts.
 // ============================================================
 
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from './db';
 import { isRealValue, normalizeAddress } from './intelMatch';
@@ -96,7 +97,7 @@ async function raiseAlert(db: D1Database, dedupKey: string, severity: string, ti
       severity, title, details, dedupKey);
     return true;
   } catch (err: any) {
-    console.error('[intel-pattern] raise failed:', err?.message);
+    log.error('[intel-pattern] raise failed', { error: err?.message });
     return false;
   }
 }
@@ -127,7 +128,7 @@ export async function detectRepeatLocations(db: D1Database): Promise<number> {
         `${recent.length} calls in 7 days (prior weekly avg ${priorWeekly.toFixed(1)}): ${recent.map((c: any) => `${c.call_number || 'CFS'} ${c.incident_type || ''}`.trim()).join('; ')}`))
         raised++;
     }
-  } catch (err: any) { console.error('[intel-pattern] repeat-locations failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-pattern] repeat-locations failed', { error: err?.message }); }
   return raised;
 }
 
@@ -148,7 +149,7 @@ export async function detectNearRepeat(db: D1Database): Promise<number> {
         `${c.events.length} "${c.type}" calls within ~330m in 14 days (centroid ${c.centroid.lat.toFixed(4)}, ${c.centroid.lng.toFixed(4)})`))
         raised++;
     }
-  } catch (err: any) { console.error('[intel-pattern] near-repeat failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-pattern] near-repeat failed', { error: err?.message }); }
   return raised;
 }
 
@@ -159,7 +160,7 @@ export async function personActivityEvents(db: D1Database, personId: number): Pr
   const pull = async (kind: string, sql: string, ...binds: unknown[]) => {
     try {
       for (const r of await query<any>(db, sql, ...binds)) events.push({ kind, date: r.d });
-    } catch (err: any) { console.error(`[escalation] ${kind} failed:`, err?.message); }
+    } catch (err: any) { log.error('[intel-pattern] activity events failed', { kind, error: err?.message }); }
   };
   await pull('call', `SELECT c.created_at AS d FROM calls_for_service c JOIN call_persons cp ON cp.call_id = c.id WHERE cp.person_id = ? AND c.created_at > datetime('now','-120 days')`, personId);
   await pull('field_interview', `SELECT created_at AS d FROM field_interviews WHERE person_id = ? AND created_at > datetime('now','-120 days')`, personId);
@@ -192,6 +193,6 @@ export async function sweepEscalation(db: D1Database): Promise<number> {
         `Weighted activity ${esc.recent} in 30 days vs monthly baseline ${esc.baseline.toFixed(1)} (${esc.ratio.toFixed(1)}x)`))
         raised++;
     }
-  } catch (err: any) { console.error('[escalation] sweep failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-pattern] escalation sweep failed', { error: err?.message }); }
   return raised;
 }

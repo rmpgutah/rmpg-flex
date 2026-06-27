@@ -35,6 +35,7 @@ import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import EditServeAttemptModal from '../components/serve/EditServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
+import ServeAuditLogModal from '../components/serve/ServeAuditLogModal';
 import FormModal from '../components/FormModal';
 import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
 import type { ServeJob, ServeAttempt, ServeAttemptData, ServeSkipAddress, ServeFolder } from '../types';
@@ -186,6 +187,7 @@ export default function ServePage() {
   // (so we know which queueId to PUT against) and the specific attempt row.
   const [editAttempt, setEditAttempt] = useState<{ jobId: number; attempt: ServeAttempt } | null>(null);
   const [skipTraceJob, setSkipTraceJob] = useState<ServeJob | null>(null);
+  const [auditJobId, setAuditJobId] = useState<number | null>(null);
   const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
   const [createJobOpen, setCreateJobOpen] = useState(false);
   const [editJob, setEditJob] = useState<ServeJob | null>(null);
@@ -578,7 +580,7 @@ export default function ServePage() {
       await apiFetch('/process-server/sync-from-sm', { method: 'POST' });
       refreshJobs();
     } catch {
-      // sync failed
+      addToast('Sync from ServeManager failed', 'error');
     } finally {
       setSyncing(false);
     }
@@ -609,7 +611,7 @@ export default function ServePage() {
       });
       refreshJobs();
     } catch {
-      // flag failed
+      addToast('Could not flag address — please try again', 'error');
     }
   }, [refreshJobs]);
 
@@ -659,7 +661,7 @@ export default function ServePage() {
       dueDiligenceComplete?: boolean;
       attemptNumber?: number;
       jobStatus?: string;
-    }>(`/api/process-server/${attemptJob.id}/attempt`, {
+    }>(`/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -687,6 +689,17 @@ export default function ServePage() {
     return result;
   }, [attemptJob, refreshJobs, setJobs, addToast]);
 
+  const handleDeleteAttempt = useCallback(async (queueId: number, attempt: ServeAttempt) => {
+    try {
+      await apiFetch(`/process-server/${queueId}/attempt/${attempt.id}`, { method: 'DELETE' });
+      setEditAttempt(null);
+      addToast(`Attempt #${attempt.attempt_number} deleted`, 'success');
+      setTimeout(refreshJobs, 300);
+    } catch (e) {
+      addToast(`Could not delete attempt: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    }
+  }, [addToast, refreshJobs]);
+
   const handleRouteOptimized = useCallback(async (
     orderedJobIds: number[],
     data: { totalDistance: number; totalDuration: number; fuelCost: number },
@@ -696,12 +709,12 @@ export default function ServePage() {
     try {
       await apiFetch('/process-server/reorder', {
         method: 'PUT',
-        body: JSON.stringify({ orderedIds: orderedJobIds }),
+        body: JSON.stringify({ items: orderedJobIds.map((id, i) => ({ id, sort_order: i })) }),
       });
       refreshJobs();
       fetchSavedRoute(); // Refresh saved route for Route tab
     } catch {
-      // reorder failed — local state still updated
+      addToast('Could not save route order on server', 'error');
     }
   }, [refreshJobs, fetchSavedRoute]);
 
@@ -770,7 +783,7 @@ export default function ServePage() {
       setEditJob(null);
       refreshJobs();
     } catch {
-      // error
+      addToast('Could not save job', 'error');
     } finally {
       setFormSubmitting(false);
     }
@@ -1429,6 +1442,7 @@ export default function ServePage() {
                                 onFlagAddress={handleFlagAddress}
                                 onEdit={openEdit}
                                 onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
+                                onAudit={setAuditJobId}
                                 isExpanded={expandedJobId === job.id}
                                 onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                               />
@@ -1475,6 +1489,7 @@ export default function ServePage() {
                           onFlagAddress={handleFlagAddress}
                           onEdit={openEdit}
                           onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
+                          onAudit={setAuditJobId}
                           isExpanded={expandedJobId === job.id}
                           onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                         />
@@ -1804,7 +1819,7 @@ export default function ServePage() {
                     {deadlines.overdue.map((d: any) => (
                       <div key={d.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
                         <span>{d.recipient_name}</span>
-                        <span className="text-rmpg-500">{(d.document_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                        <span className="text-rmpg-500">{toDisplayLabel(d.document_type)}</span>
                         <span className="ml-auto">{Math.abs(Math.round(d.days_remaining))}d overdue</span>
                       </div>
                     ))}
@@ -1888,6 +1903,7 @@ export default function ServePage() {
           queueId={editAttempt.jobId}
           attempt={editAttempt.attempt}
           onSaved={refreshJobs}
+          onDelete={canManage ? handleDeleteAttempt : undefined}
         />
       )}
 
@@ -1909,6 +1925,14 @@ export default function ServePage() {
           job={skipTraceJob}
           onAddToRoute={handleSkipTraceAddToRoute}
           onLookupComplete={refreshJobs}
+        />
+      )}
+
+      {/* Audit Log Modal */}
+      {auditJobId != null && (
+        <ServeAuditLogModal
+          jobId={auditJobId}
+          onClose={() => setAuditJobId(null)}
         />
       )}
 

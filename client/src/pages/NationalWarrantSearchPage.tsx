@@ -15,6 +15,7 @@ import { formatDate } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openNationalWarrantPdf, type NationalWarrantHit } from '../utils/nationalWarrantPdf';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── US States List ──────────────────────────────────────────
 const US_STATES = [
@@ -953,12 +954,12 @@ function WarrantRow({
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           {warrant.offense_level && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${severityBadge(warrant.offense_level)}`}>
-              {warrant.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+              {toDisplayLabel(warrant.offense_level)}
             </span>
           )}
           {warrant.warrant_type && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${typeBadge(warrant.warrant_type)}`}>
-              {warrant.warrant_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+              {toDisplayLabel(warrant.warrant_type)}
             </span>
           )}
           {warrant.court && (

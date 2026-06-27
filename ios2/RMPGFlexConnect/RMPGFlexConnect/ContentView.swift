@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreAPI
 import CoreAuth
+import DesignSystem
 import FeatureShell
 
 struct ContentView: View {

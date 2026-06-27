@@ -42,6 +42,7 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import { toDisplayLabel } from '../utils/formatters';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import MileageAuditTab from './patrol/MileageAuditTab';
 import PricingTab from './patrol/PricingTab';
@@ -1041,7 +1042,7 @@ const PatrolPage: React.FC = () => {
               <div key={i} className="flex gap-2">
                 <span className="text-rmpg-500 w-24">{safeTimeStr(e.time)}</span>
                 <span className="text-rmpg-100 flex-1">{e.checkpoint}</span>
-                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status === 'on_time' ? 'On Time' : e.status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                <span className={e.status === 'on_time' ? 'text-green-400' : 'text-amber-400'}>{e.status === 'on_time' ? 'On Time' : toDisplayLabel(e.status)}</span>
                 {e.time_since_prev_min != null && <span className="text-rmpg-500">{e.time_since_prev_min}m</span>}
               </div>
             ))}
