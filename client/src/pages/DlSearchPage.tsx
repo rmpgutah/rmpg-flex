@@ -1436,7 +1436,6 @@ export default function DlSearchPage() {
       {showLiveScanner && (
         <LiveDlScanner
           onComplete={async ({ barcodeText, frontImage, backImage }) => {
-            setShowLiveScanner(false);
             // Retain both card images for filing under the person record.
             setCardImages({ front: frontImage, back: backImage });
             setCardSavedTo(null);
@@ -1444,13 +1443,27 @@ export default function DlSearchPage() {
               const ok = await processBarcodeText(barcodeText);
               if (!ok) addToast('Barcode read but not a driver license payload', 'warning');
             } else if (frontImage || backImage) {
-              // No barcode — fall back to OCR on the captured front image.
+              // Try re-decoding the back image still with the thorough
+              // decoder (tryHarder + multi-scale + contrast boost) before
+              // falling back to OCR on the front image.
+              if (backImage) {
+                try {
+                  const { decodePdf417 } = await import('../utils/pdf417Decoder');
+                  const decoded = await decodePdf417(new File([backImage], 'id-back.jpg', { type: 'image/jpeg' }));
+                  if (decoded && await processBarcodeText(decoded.text)) {
+                    setShowLiveScanner(false);
+                    return;
+                  }
+                } catch { /* fall through to OCR */ }
+              }
+              // Fall back to OCR on the captured front image.
               if (frontImage) {
                 await handleOcrUpload(new File([frontImage], 'id-front.jpg', { type: 'image/jpeg' }));
               } else {
                 addToast('Captured images — no barcode read; review and upload', 'warning');
               }
             }
+            setShowLiveScanner(false);
           }}
           onClose={() => setShowLiveScanner(false)}
           onUploadInstead={() => { setShowLiveScanner(false); fileInputRef.current?.click(); }}

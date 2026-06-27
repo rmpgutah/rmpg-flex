@@ -15,6 +15,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import type { OfficerEquipment } from '../types';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -71,12 +72,6 @@ function fmtDateTime(input: string | undefined | null): string {
   } catch { return String(input); }
 }
 
-/** Public for testing. snake_case → Title Case for action labels. */
-export function prettyAction(action: string | undefined): string {
-  if (!action) return '—';
-  return action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 /** Public for testing. The checkout-log timestamp lives on either
  *  `checkout_date` (issuance), `checkin_date` (return), or
  *  `created_at` (audit-only). Pick whichever the row carried. */
@@ -91,11 +86,6 @@ export function logEntryActor(entry: CheckoutLogEntry): string {
 }
 
 const ellipsize = (s: string, max: number) => s.length <= max ? s : s.slice(0, max - 1) + '…';
-
-function typeLabel(type: string | undefined): string {
-  if (!type) return '—';
-  return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 export function generateEquipmentCustodyPdf(input: EquipmentPdfInput): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
@@ -164,7 +154,7 @@ export function generateEquipmentCustodyPdf(input: EquipmentPdfInput): jsPDF {
   doc.setFontSize(9);
 
   const fields: Array<[string, string]> = [
-    ['Type', typeLabel(item.equipment_type)],
+    ['Type', toDisplayLabel(item.equipment_type)],
     ['Status', (item.status || '—').toUpperCase()],
     ['Make / Model', [item.make, item.model].filter(Boolean).join(' / ') || '—'],
     ['Condition', (item.condition || '—').toUpperCase()],
@@ -270,7 +260,7 @@ export function generateEquipmentCustodyPdf(input: EquipmentPdfInput): jsPDF {
       let x = M + 4;
       doc.text(fmtDateTime(logEntryDate(entry)), x, y + 9);
       x += cols[0].width;
-      doc.text(prettyAction(entry.action), x, y + 9);
+      doc.text(toDisplayLabel(entry.action), x, y + 9);
       x += cols[1].width;
       doc.text(ellipsize(logEntryActor(entry), 22), x, y + 9);
       x += cols[2].width;

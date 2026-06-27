@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { formatEnumValue } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
   LayoutDashboard,
@@ -105,13 +105,7 @@ function formatDateTime(d?: string): string {
   return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function toDisplayLabel(s: string | null | undefined): string {
-  // Guard against undefined/null fields (e.g. a task/activity/contact row whose
-  // status/type/relationship is missing) — calling .replace on undefined threw
-  // and took the whole CRM page down via the ErrorBoundary (live 2026-06-02).
-  if (s == null) return '';
-  return String(s).replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-}
+
 
 // ── Priority badge colors ──────────────────────────────
 function priorityColor(p: string): string {

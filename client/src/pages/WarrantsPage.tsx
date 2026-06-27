@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
-import { formatEnumValue } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
 import WarrantNsopwStatus from '../components/WarrantNsopwStatus';
@@ -23,7 +23,7 @@ import WarrantBadge from '../components/WarrantBadge';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
-import StatuteLookup, { OffenseLevelBadge } from '../components/StatuteLookup';
+import StatuteLookup from '../components/StatuteLookup';
 import type { StatuteResult } from '../components/StatuteLookup';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { useFormDraft } from '../hooks/useFormDraft';
@@ -1608,7 +1608,7 @@ export default function WarrantsPage() {
       <PanelTitleBar title="WARRANT SEARCH" icon={AlertTriangle}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
-        {activeTab === 'warrants' && !showArchived && (
+        {activeTab === 'warrants' && !showArchived && isAdminOrManager && (
           <button type="button" onClick={openNewForm} className="toolbar-btn toolbar-btn-primary text-[9px]">
             <Plus className="w-3 h-3" /> New Warrant
           </button>
@@ -2200,7 +2200,7 @@ export default function WarrantsPage() {
                       icon={Gavel}
                       title="No warrants on file"
                       description="Create a new warrant to get started."
-                      action={{ label: 'New Warrant', onClick: openNewForm }}
+                      action={isAdminOrManager ? { label: 'New Warrant', onClick: openNewForm } : undefined}
                     />
                   );
                 })()
@@ -2228,7 +2228,7 @@ export default function WarrantsPage() {
                       <div className="text-sm text-rmpg-200 font-medium">{w.subject_name || 'Unknown'}</div>
                       <div className="text-xs text-rmpg-400 truncate mt-0.5">{chargesFromJson(w.charge_description)}</div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
-                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}` : ''}
+                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${toDisplayLabel(w.offense_level)}` : ''}
                         {w.source ? ` \u2022 ${w.source}` : ''}
                       </div>
                       {/* UPGRADE 42: Expiration warning highlight */}
@@ -3545,7 +3545,7 @@ export default function WarrantsPage() {
                                   r.status === 'completed' ? 'bg-green-900/30 text-green-400' :
                                   r.status === 'running' ? 'bg-brand-blue/20 text-brand-blue' :
                                   'bg-red-900/30 text-red-400'
-                                }`}>{(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                                }`}>{toDisplayLabel(r.status)}</span>
                               </td>
                             </tr>
                           ))}
@@ -4212,7 +4212,7 @@ export default function WarrantsPage() {
       )}
 
       {/* MOBILE FAB */}
-      {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && (
+      {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && isAdminOrManager && (
         <IconButton onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
           <Plus className="w-6 h-6" />
         </IconButton>
@@ -4362,7 +4362,7 @@ export default function WarrantsPage() {
                             utahDetailWarrant.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                             utahDetailWarrant.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                             'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                          }`}>{(utahDetailWarrant.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                          }`}>{toDisplayLabel(utahDetailWarrant.offense_level)}</span>
                         </div>
                       </div>
                     )}
