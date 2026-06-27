@@ -13,7 +13,7 @@ import {
   AlertCircle, ChevronRight, Shield, FileText, Link2, Plus, UserCheck,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
-import { formatLabel } from '../utils/formatters';
+import { toDisplayLabel } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
@@ -420,7 +420,7 @@ export default function ColoradoDocPage() {
                       <td className="px-2.5 py-1.5">
                         {r.status ? (
                           <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[9px] uppercase tracking-wider font-bold border ${statusClass(r.status)}`}>
-                            {(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                            {toDisplayLabel(r.status)}
                           </span>
                         ) : (
                           <span className="text-rmpg-600">--</span>
@@ -504,7 +504,7 @@ export default function ColoradoDocPage() {
               {selected.status && (
                 <div className="flex justify-center">
                   <span className={`px-2.5 py-1 rounded-sm text-[10px] uppercase tracking-wider font-bold border ${statusClass(selected.status)}`}>
-                    {formatLabel(selected.status)}
+                    {toDisplayLabel(selected.status)}
                   </span>
                 </div>
               )}

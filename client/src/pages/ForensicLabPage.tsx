@@ -276,6 +276,8 @@ export default function ForensicLabPage() {
   const { user } = useAuth();
   // admin/manager/supervisor can create and edit; admin/manager can delete
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
+  // Only admin/manager may delete or cancel a forensic case
+  const canDelete = ['admin', 'manager'].includes(user?.role ?? '');
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
@@ -331,6 +333,11 @@ export default function ForensicLabPage() {
   const [pdfBusy, setPdfBusy] = useState(false);
   // Deep-link hydration guard — fire only once, before user interaction.
   const deepLinkHandled = useRef(false);
+  // Ref for the primary New Case title input — N shortcut focuses it.
+  const primaryInputRef = useRef<HTMLInputElement>(null);
+  // Close/cancel-case confirmation (admin/manager only — canDelete gated).
+  const [confirmCloseCase, setConfirmCloseCase] = useState(false);
+  const [closeCaseBusy, setCloseCaseBusy] = useState(false);
 
   // ── UPGRADE: Turnaround & QC ──
   const [turnaroundData, setTurnaroundData] = useState<any>(null);
@@ -387,6 +394,31 @@ export default function ForensicLabPage() {
   // report, /capacity/planning, /:id/evidence-intake) also don't exist on
   // live as of this PR. Re-introduce alongside the corresponding UI when
   // a future PR actually ships those tabs.)
+
+  // ── Close / Cancel Case ────────────────────────────────
+  // Gated to canDelete (admin/manager). Transitions the case to 'cancelled'
+  // status. A ConfirmDialog gate replaces the prior implicit no-protection path.
+
+  const handleConfirmCloseCase = async () => {
+    if (!selectedCase) return;
+    setCloseCaseBusy(true);
+    try {
+      await apiFetch(`/forensic-lab/${selectedCase.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      });
+      addToast(`Case ${selectedCase.lab_number || selectedCase.lab_case_number || `FC-${selectedCase.id}`} cancelled`, 'success');
+      setSelectedCase(null);
+      setDetailTab('overview');
+      fetchCases();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to cancel case', 'error');
+    } finally {
+      setCloseCaseBusy(false);
+      setConfirmCloseCase(false);
+    }
+  };
 
   // ── Fetch ──────────────────────────────────────────────
 
@@ -924,17 +956,20 @@ export default function ForensicLabPage() {
         return;
       }
       if (e.key === 'Escape') {
-        // Cascade: topmost open surface first
-        if (completeTarget) { setCompleteTarget(null); setCompleteResults(''); setCompleteConclusion(''); return; }
-        if (confirmUnlinkId != null) { setConfirmUnlinkId(null); return; }
-        if (showAnalysisModal) { setShowAnalysisModal(false); return; }
-        if (showExhibitModal) { setShowExhibitModal(false); return; }
-        if (showEditModal) { setShowEditModal(false); return; }
-        if (showCustodyModal) { setShowCustodyModal(false); return; }
-        if (linkSearchResults.length > 0) { setLinkSearchResults([]); setLinkSearchTerm(''); return; }
-        if (showFilters) { setShowFilters(false); return; }
-        if (fetchError) { setFetchError(''); return; }
-        if (selectedCase) { setSelectedCase(null); setDetailTab('overview'); return; }
+        // Cascade: topmost open surface first; stopPropagation so only one
+        // layer closes per keystroke (prevents Esc from tunnelling through
+        // stacked modals in a single event tick).
+        if (completeTarget) { e.stopPropagation(); setCompleteTarget(null); setCompleteResults(''); setCompleteConclusion(''); return; }
+        if (confirmUnlinkId != null) { e.stopPropagation(); setConfirmUnlinkId(null); return; }
+        if (confirmCloseCase) { e.stopPropagation(); setConfirmCloseCase(false); return; }
+        if (showAnalysisModal) { e.stopPropagation(); setShowAnalysisModal(false); return; }
+        if (showExhibitModal) { e.stopPropagation(); setShowExhibitModal(false); return; }
+        if (showEditModal) { e.stopPropagation(); setShowEditModal(false); return; }
+        if (showCustodyModal) { e.stopPropagation(); setShowCustodyModal(false); return; }
+        if (linkSearchResults.length > 0) { e.stopPropagation(); setLinkSearchResults([]); setLinkSearchTerm(''); return; }
+        if (showFilters) { e.stopPropagation(); setShowFilters(false); return; }
+        if (fetchError) { e.stopPropagation(); setFetchError(''); return; }
+        if (selectedCase) { e.stopPropagation(); setSelectedCase(null); setDetailTab('overview'); return; }
         return;
       }
       if (e.key === 'n' || e.key === 'N') {
@@ -945,14 +980,16 @@ export default function ForensicLabPage() {
           && !showEditModal && !showCustodyModal && confirmUnlinkId == null) {
           setActiveTab('New Case');
           setWizardStep(0);
+          // Focus the case title input so the operator can start typing immediately.
+          setTimeout(() => primaryInputRef.current?.focus(), 50);
         }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [completeTarget, confirmUnlinkId, showAnalysisModal, showExhibitModal,
+  }, [completeTarget, confirmUnlinkId, confirmCloseCase, showAnalysisModal, showExhibitModal,
       showEditModal, showCustodyModal, linkSearchResults.length, showFilters,
-      fetchError, selectedCase]);
+      fetchError, selectedCase, canManage]);
 
   // Deep-link hydration — supports ?case_id=<n>, ?tab=<detail-tab>,
   // and ?new=1 (jump straight to the New Case wizard). Mirrors the
@@ -963,7 +1000,8 @@ export default function ForensicLabPage() {
   useEffect(() => {
     if (deepLinkHandled.current) return;
     deepLinkHandled.current = true;
-    const caseIdRaw = searchParams.get('case_id') || searchParams.get('id');
+    // Accept ?case_id=, ?id=, or ?sample_id= (generic "open this item" alias)
+    const caseIdRaw = searchParams.get('case_id') || searchParams.get('id') || searchParams.get('sample_id');
     const tabRaw = searchParams.get('tab');
     const newCase = searchParams.get('new');
     if (caseIdRaw) {
@@ -973,6 +1011,9 @@ export default function ForensicLabPage() {
         if (tabRaw && ['overview', 'exhibits', 'analyses', 'timeline', 'links', 'hashes', 'qc', 'turnaround'].includes(tabRaw)) {
           setDetailTab(tabRaw as any);
         }
+        addToast(`Opening forensic case #${n}…`, 'info');
+      } else {
+        addToast('Invalid case ID in URL — showing case list', 'warning');
       }
     } else if (newCase === '1') {
       setActiveTab('New Case');
@@ -982,7 +1023,7 @@ export default function ForensicLabPage() {
     // other query params (none today, but future-proof) intact.
     if (caseIdRaw || tabRaw || newCase) {
       const next = new URLSearchParams(searchParams);
-      next.delete('case_id'); next.delete('id'); next.delete('tab'); next.delete('new');
+      next.delete('case_id'); next.delete('id'); next.delete('sample_id'); next.delete('tab'); next.delete('new');
       setSearchParams(next, { replace: true });
     }
     // Intentionally omit dependencies — this MUST be a one-shot. The
@@ -1113,6 +1154,15 @@ export default function ForensicLabPage() {
                   {pdfBusy ? <Loader2 size={10} className="animate-spin" /> : <Printer size={10} />}
                   Court PDF
                 </button>
+                {canDelete && !['closed', 'cancelled'].includes(selectedCase.status) && (
+                  <button type="button"
+                    onClick={() => setConfirmCloseCase(true)}
+                    className="toolbar-btn text-[10px] text-red-400 hover:text-red-300"
+                    title="Cancel this forensic case (admin/manager only)"
+                  >
+                    <XCircle size={10} /> Cancel Case
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2121,6 +2171,20 @@ export default function ForensicLabPage() {
           </FormModal>
         )}
 
+        {/* Cancel-case confirmation — admin/manager only (canDelete gate).
+            ConfirmDialog enforces in-theme rendering; Esc + click-outside
+            cancel; busy-state while the PUT request is in flight. */}
+        <ConfirmDialog
+          isOpen={confirmCloseCase}
+          onClose={() => setConfirmCloseCase(false)}
+          onConfirm={handleConfirmCloseCase}
+          title="Cancel forensic case"
+          message={`Cancel case "${selectedCase.lab_number || selectedCase.lab_case_number || `FC-${selectedCase.id}`}"? The case will be marked cancelled and removed from the active queue. All exhibits, analyses, and timeline entries are preserved.`}
+          confirmLabel="Cancel Case"
+          confirmVariant="danger"
+          isLoading={closeCaseBusy}
+        />
+
         {/* Unlink-entity confirmation — replaces the legacy window.confirm.
             ConfirmDialog enforces in-theme rendering, Esc + click-outside
             cancel, busy-state on Confirm, and the kind of identifying
@@ -2496,6 +2560,7 @@ export default function ForensicLabPage() {
                 <div>
                   <label htmlFor="ff-forensiclabpage-32" className="block text-[11px] text-rmpg-400 mb-1">Case Title <span className="text-red-400">*</span></label>
                   <input id="ff-forensiclabpage-32"
+                    ref={primaryInputRef}
                     type="text"
                     value={wizardData.title}
                     onChange={e => setWizardData(d => ({ ...d, title: e.target.value }))}
