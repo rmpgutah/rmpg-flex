@@ -8,6 +8,7 @@ import { retentionCutoffMs, isBeyondRequestHorizon } from './retention';
 import { assignClipsToChunks } from './assignClips';
 import { shouldEarlyAbandon } from './earlyAbandon';
 import { validateMp4Header, isDuplicateContent, formatRejectionReason } from './integrity';
+import { getOfflineCameraDeviceIds } from '../clearpathSync';
 
 const R2_PREFIX = 'flexcam/trips/';
 const MAX_DOWNLOADS_PER_RUN = 40;  // download pass cap per cron tick
@@ -145,13 +146,24 @@ export async function runRequestPass(env: Bindings): Promise<{ requested: number
   const source = await getClearPathSource(db, env);
   if (!source) return { requested: 0, expired: 0 };
   const limit = batchLimit(await cfgInt(db, 'flexcam_requests_per_run', MAX_REQUESTS_PER_RUN), MAX_REQUESTS_PER_RUN);
-  const pend = await query<{ id: number; from_ts: number; to_ts: number; channel: string; asset_id: number; attempts: number; reason: string }>(db,
-    `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id, ch.attempts, rq.reason
+  const pend = await query<{ id: number; from_ts: number; to_ts: number; channel: string; asset_id: number; attempts: number; reason: string; cpg_device_id: string | null }>(db,
+    `SELECT ch.id, ch.from_ts, ch.to_ts, ch.channel, rq.asset_id, ch.attempts, rq.reason, rq.cpg_device_id
        FROM footage_chunks ch JOIN footage_requests rq ON rq.id = ch.request_id
       WHERE ch.status='pending_request' ORDER BY ch.request_id, ch.seq LIMIT ?`, limit).catch(() => []);
-  let requested = 0, expired = 0, consecutiveErrors = 0;
+  // Cameras currently offline (vehicle parked, dashcam asleep) — defer their
+  // request-media POSTs until next tick instead of burning the request budget
+  // and the chunk's attempt counter. When the vehicle drives again the cron
+  // resumes and fires the queued requests for real.
+  const offlineDevices = await getOfflineCameraDeviceIds(
+    db, pend.map((c) => c.cpg_device_id || '').filter(Boolean),
+  );
+  let requested = 0, expired = 0, consecutiveErrors = 0, deferredOffline = 0;
   const requestErrors: string[] = [];
   for (const ch of pend) {
+    if (ch.cpg_device_id && offlineDevices.has(ch.cpg_device_id)) {
+      deferredOffline++;
+      continue;
+    }
     try {
       const vendorId = await source.requestChunk(ch.asset_id, ch.from_ts, ch.to_ts, ch.channel);
       await execute(db, `UPDATE footage_chunks SET status='requested', vendor_media_id=?, attempts=0, updated_at=datetime('now') WHERE id=?`, vendorId, ch.id);
@@ -174,6 +186,9 @@ export async function runRequestPass(env: Bindings): Promise<{ requested: number
     // Log once per run (not once per chunk) — 500s are expected when the camera is offline
     const sample = requestErrors[0];
     console.log(`[flexcam] requestChunk: ${requestErrors.length} failed (${sample})`);
+  }
+  if (deferredOffline) {
+    console.log(`[flexcam] requestChunk: deferred ${deferredOffline} chunk(s) — camera offline (will resume when vehicle drives)`);
   }
   return { requested, expired };
 }
@@ -213,12 +228,35 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
     else byRequest.set(ch.request_id, [ch]);
   }
 
-  let downloaded = 0, missing = 0;
+  // Cameras currently offline (vehicle parked). ClearPath has accepted our
+  // POSTs and queued the clips on its side; the dashcam will deliver them
+  // once the LTE modem wakes up. Until then DON'T burn the per-chunk attempt
+  // counter — that's what was killing every overnight on-demand request.
+  // Verified 2026-06-23 against ClearPath's portal: PSO Sierra 19's library
+  // showed every Manually-Retrieved clip stuck in "Waiting for Camera…"
+  // status and the request page labels the asset "Camera Offline" while
+  // ignition is off. Pure helper + bulk query are in clearpathSync.ts.
+  let offlineDevices = new Set<string>();
+  try {
+    offlineDevices = await getOfflineCameraDeviceIds(
+      db, pending.map((c) => c.cpg_device_id || '').filter(Boolean),
+    );
+  } catch { /* non-fatal — fall through to the prior behaviour */ }
+
+  let downloaded = 0, missing = 0, deferredOffline = 0;
   for (const [requestId, chunks] of byRequest) {
     // Request metadata — needed for the window query + max-attempts policy.
     // (Every chunk in the group shares these but we only need to read once.)
     const rq = chunks[0]; // chunks all share asset_id / reason via the JOIN
     const maxAttempts = rq.reason === 'on_demand' ? MAX_POLL_ATTEMPTS_ON_DEMAND : MAX_POLL_ATTEMPTS;
+    const cameraOffline = !!(rq.cpg_device_id && offlineDevices.has(rq.cpg_device_id));
+    if (cameraOffline) {
+      // Camera asleep — skip this whole request's chunks. Don't poll, don't
+      // bump attempts, don't early-abandon. They stay in 'requested' state
+      // and resume polling next tick once the camera comes back.
+      deferredOffline += chunks.length;
+      continue;
+    }
 
     // Window bounds = min(from_ts) .. max(to_ts) over THIS request's pending
     // chunks (which already cover the relevant slice — listRequestWindow adds
@@ -362,6 +400,10 @@ export async function pollAndDownload(env: Bindings): Promise<{ downloaded: numb
         await execute(db, `UPDATE footage_chunks SET attempts = attempts + 1, updated_at=datetime('now') WHERE id=?`, ch.id);
       }
     }
+  }
+
+  if (deferredOffline) {
+    console.log(`[flexcam-poll] deferred ${deferredOffline} chunk(s) — camera offline (will resume when vehicle drives)`);
   }
 
   // Close any request whose chunks are all resolved (none still pending or

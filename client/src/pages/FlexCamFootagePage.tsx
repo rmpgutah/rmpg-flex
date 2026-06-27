@@ -17,6 +17,9 @@ import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { buildTimeline, offsetToSeek, type PlayChunk } from '../utils/flexcamTimeline';
 import { formatPlayerStatus } from '../utils/flexcamPlayerStatus';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { useAuth } from '../context/AuthContext';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -90,6 +93,8 @@ function statusBadge(status: string): { bg: string; text: string; label: string 
 
 export default function FlexCamFootagePage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const canManage = user?.role === 'admin' || user?.role === 'manager';
   const [data, setData]         = useState<Detail | null>(null);
   const [err, setErr]           = useState<string | null>(null);
   const [idx, setIdx]           = useState(0);
@@ -130,6 +135,11 @@ export default function FlexCamFootagePage() {
   const [burnMsg, setBurnMsg]         = useState<string | null>(null);
   const burnRafRef    = useRef(0);
   const burnRecRef    = useRef<MediaRecorder | null>(null);
+
+  // ConfirmDialog state — lock-evidence confirm (irreversible action)
+  const [lockConfirmOpen, setLockConfirmOpen] = useState(false);
+  // Ref for N-shortcut focus target (play/pause button)
+  const playBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // Double-buffer: two video elements that swap roles.
   // frontRef / front (state) = which slot (0 or 1) is currently visible.
@@ -226,31 +236,39 @@ export default function FlexCamFootagePage() {
   const pct   = total ? Math.min(100, (posMs / total) * 100) : 0;
 
   // Keyboard shortcuts — must be declared before early returns (Rules of Hooks).
-  // Space/K=play, J/L=skip10s, Shift+skip=30s, ,/.=speed, ?=shortcuts, Esc=cascade.
+  // Space/K=play, J/L=skip10s, Shift+skip=30s, ,/.=speed, N=play toggle, ?=shortcuts, Esc=cascade.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       if (typing) return;
       // ── Escape smart-cascade (close-newest-first) ─────────────────────
-      // The page has no modal layer, but it does have an open shortcuts
-      // panel, a fullscreen video container, and a dismissable inline
-      // playback-error banner. Without an Esc handler the operator had no
-      // keyboard exit other than the browser's own fullscreen toggle.
+      // Innermost state closes first; each branch calls stopPropagation
+      // so parent handlers (e.g. a wrapping modal) do not double-fire.
       if (e.key === 'Escape') {
-        if (shortcutsOpen) { setShortcutsOpen(false); return; }
+        if (lockConfirmOpen) { e.stopPropagation(); setLockConfirmOpen(false); return; }
+        if (shortcutsOpen) { e.stopPropagation(); setShortcutsOpen(false); return; }
         if (document.fullscreenElement) {
+          e.stopPropagation();
           // exitFullscreen is async; suppress rejection on platforms
           // (e.g. iOS Safari) that resolve via webkit prefix instead.
           document.exitFullscreen().catch(() => {});
           return;
         }
-        if (playbackErr) { setPlaybackErr(null); return; }
+        if (playbackErr) { e.stopPropagation(); setPlaybackErr(null); return; }
         if (playing) {
+          e.stopPropagation();
           const v = getFrontEl();
           if (v) { v.pause(); setPlaying(false); }
           return;
         }
+        return;
+      }
+      // N = focus/activate play button (primary action shortcut)
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        playBtnRef.current?.focus();
+        togglePlay();
         return;
       }
       switch (e.key) {
@@ -269,7 +287,7 @@ export default function FlexCamFootagePage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [posMs, total, shortcutsOpen, playbackErr, playing]);
+  }, [posMs, total, shortcutsOpen, playbackErr, playing, lockConfirmOpen]);
 
   async function loadSeq(seq: number): Promise<string | null> {
     const cached = urlCache.current.get(seq);
@@ -741,7 +759,7 @@ export default function FlexCamFootagePage() {
       const res = await apiFetch<{ payloadHash: string; signedAt: string }>(
         `/flexcam/footage/${data.request.id}/court-package`, { method: 'POST' }
       );
-      setPkgMsg(`✓ Signed ${new Date(res.signedAt).toLocaleString()} · SHA-256: ${res.payloadHash.slice(0, 16)}…`);
+      setPkgMsg(`✓ Signed ${parseTimestamp(res.signedAt).toLocaleString()} · SHA-256: ${res.payloadHash.slice(0, 16)}…`);
     } catch (e: unknown) {
       const err = e as Error & { status?: number };
       setPkgMsg(err.status === 409 ? '⚠ Lock footage as evidence first.' : `Error: ${err.message}`);
@@ -1034,8 +1052,8 @@ export default function FlexCamFootagePage() {
             <SkipBack className="w-3.5 h-3.5" />
           </button>
 
-          {/* Play / Pause */}
-          <button onClick={togglePlay} disabled={!timeline.segments.length}
+          {/* Play / Pause — N shortcut target */}
+          <button ref={playBtnRef} onClick={togglePlay} disabled={!timeline.segments.length}
             className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wide
                        border border-blue-700 bg-blue-900/40 text-blue-300 hover:bg-blue-800/50
                        disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
@@ -1101,6 +1119,7 @@ export default function FlexCamFootagePage() {
         {shortcutsOpen && (
           <div className="bg-surface-sunken border border-border-default px-3 py-2 grid grid-cols-2 gap-x-6 gap-y-0.5 text-[9px]">
             {([
+              ['N', 'Play / Pause (focus)'],
               ['Space / K', 'Play / Pause'],
               ['J / ←', 'Skip back 10s'],
               ['L / →', 'Skip forward 10s'],
@@ -1109,6 +1128,7 @@ export default function FlexCamFootagePage() {
               ['< or ,', 'Speed down'],
               ['> or .', 'Speed up'],
               ['?', 'Toggle this panel'],
+              ['Esc', 'Close panel / exit fullscreen / pause'],
             ] as [string, string][]).map(([key, label]) => (
               <div key={key} className="flex items-center gap-2">
                 <span className="font-mono text-brand-400 w-28 flex-shrink-0">{key}</span>
@@ -1170,23 +1190,25 @@ export default function FlexCamFootagePage() {
         </div>
         <div className="w-px h-4 bg-border-default flex-shrink-0" />
         {data.request.evidence_locked ? (
-          <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#d4a017]">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-brand-400">
             <Lock className="w-3 h-3" />
             {data.request.evidence_number ?? 'LOCKED'}
             {data.request.classification && (
               <span className="text-[9px] text-rmpg-500 font-normal">· {data.request.classification}</span>
             )}
           </div>
-        ) : (
-          <button onClick={lockEvidence} disabled={lockBusy}
-            className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-[#d4a017] border border-border-default hover:border-[#d4a017]/50 px-2.5 py-1 transition-colors disabled:opacity-40">
+        ) : canManage ? (
+          <button onClick={() => setLockConfirmOpen(true)} disabled={lockBusy}
+            className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-brand-400 border border-border-default hover:border-brand-500/50 px-2.5 py-1 transition-colors disabled:opacity-40">
             <Lock className="w-3 h-3" />{lockBusy ? 'LOCKING…' : 'LOCK AS EVIDENCE'}
           </button>
+        ) : null}
+        {canManage && (
+          <button onClick={genCourtPkg} disabled={!data.request.evidence_locked || pkgBusy}
+            className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-brand-400 border border-border-default hover:border-brand-500 px-2.5 py-1 transition-colors disabled:opacity-30">
+            <FileText className="w-3 h-3" />{pkgBusy ? 'GENERATING…' : 'COURT PACKAGE'}
+          </button>
         )}
-        <button onClick={genCourtPkg} disabled={!data.request.evidence_locked || pkgBusy}
-          className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-brand-400 border border-border-default hover:border-brand-500 px-2.5 py-1 transition-colors disabled:opacity-30">
-          <FileText className="w-3 h-3" />{pkgBusy ? 'GENERATING…' : 'COURT PACKAGE'}
-        </button>
         <button onClick={captureFrame} disabled={capturing}
           title="Burn current frame to JPEG with evidence stamp (no playback needed)"
           className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-emerald-400 border border-border-default hover:border-emerald-700/50 px-2.5 py-1 transition-colors disabled:opacity-40">
@@ -1204,8 +1226,8 @@ export default function FlexCamFootagePage() {
             <Film className="w-3 h-3" />BURN CLIP
           </button>
         )}
-        {/* Repair — shown when trip is partial/stuck and not evidence-locked */}
-        {data.request.status === 'partial' && !data.request.evidence_locked && (
+        {/* Repair — shown when trip is partial/stuck, not evidence-locked, and user has manage rights */}
+        {data.request.status === 'partial' && !data.request.evidence_locked && canManage && (
           <button onClick={repairFootage} disabled={repairBusy}
             title="Reset missing chunks so the cron retries them"
             className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 border border-amber-700/60 hover:border-amber-600 px-2.5 py-1 transition-colors disabled:opacity-40">
@@ -1294,6 +1316,21 @@ export default function FlexCamFootagePage() {
           </ul>
         )}
       </div>
+
+      {/* ── ConfirmDialog — lock as evidence (irreversible) ── */}
+      <ConfirmDialog
+        isOpen={lockConfirmOpen}
+        onClose={() => setLockConfirmOpen(false)}
+        onConfirm={() => { setLockConfirmOpen(false); void lockEvidence(); }}
+        title="Lock as Evidence"
+        message="Locking footage as evidence is irreversible. The recording will be preserved under evidence custody and cannot be modified or deleted without a supervisor override."
+        details={
+          <span>{data?.request.title ?? `Request #${data?.request.id}`}</span>
+        }
+        confirmLabel="Lock Evidence"
+        confirmVariant="warning"
+        isLoading={lockBusy}
+      />
     </div>
   );
 }

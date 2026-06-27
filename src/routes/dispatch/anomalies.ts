@@ -8,6 +8,7 @@
 
 import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
+import { log } from '../../utils/logger';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
@@ -38,7 +39,7 @@ anomalies.get('/anomaly-alerts', requireRole(...READ_ROLES), async (c) => {
   } catch (err) {
     // Table-missing or query error → empty list so the banner degrades
     // to "no alerts" rather than throwing.
-    console.error('[dispatch] anomaly-alerts list error', err);
+    log.error('[dispatch] anomaly-alerts list error', {}, err);
     return c.json([]);
   }
 });
@@ -64,7 +65,7 @@ anomalies.post('/anomaly-alerts/:id/acknowledge', requireRole(...READ_ROLES), as
     );
     return c.json({ success: true, id });
   } catch (err) {
-    console.error('[dispatch] anomaly acknowledge error', err);
+    log.error('[dispatch] anomaly acknowledge error', {}, err);
     return c.json({ error: 'Failed to acknowledge alert', code: 'ANOMALY_ACK_ERR' }, 500);
   }
 });
