@@ -3,6 +3,12 @@
 // Search persons by name/DOB/DL, view caution flags, and display
 // chronological criminal history timeline.
 //
+// v1160 improvements:
+// - N shortcut focuses search input (when not typing).
+// - ConfirmDialog before generating court-ready PDF (sensitive doc gate).
+// - Role gate: Print/Export restricted to admin/manager/supervisor.
+// - Esc cascade extended: printConfirm → person deselect.
+//
 // v1088 improvements:
 // - Fix search API: name → /records/persons/search?q=  (FK-accurate).
 //   Previously the page sent ?name=/?dob=/?dl= params that the server
@@ -35,6 +41,9 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { openCriminalHistoryPdf } from '../utils/criminalHistoryPdf';
 import CriminalHistorySection from '../components/CriminalHistorySection';
 import WarrantNsopwStatus from '../components/WarrantNsopwStatus';
+import ConfirmDialog from '../components/ConfirmDialog';
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 interface PersonResult {
   id: string;
@@ -99,6 +108,9 @@ export default function CriminalHistoryPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
 
   // ?subject= pre-fills the name search box
   const subjectParam = searchParams.get('subject') || '';
@@ -116,19 +128,33 @@ export default function CriminalHistoryPage() {
   // the placeholder copy is different so the operator can tell which.
   const [lastSearchedQuery, setLastSearchedQuery] = useState<string | null>(null);
 
-  // ── Esc cascade: deselect person → back to list ──
+  // ── Keyboard shortcuts ──
+  // N focuses the search input (when not already typing).
+  // Esc cascade: printConfirm → person deselect.
   useEffect(() => {
+    const isTypingInField = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+    };
+
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (selectedPerson) {
-        setSelectedPerson(null);
-        setHistory([]);
-        e.stopPropagation();
+      if (e.key === 'Escape') {
+        if (printConfirmOpen) { e.stopPropagation(); setPrintConfirmOpen(false); return; }
+        if (selectedPerson) { e.stopPropagation(); setSelectedPerson(null); setHistory([]); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
       }
     };
+
     document.addEventListener('keydown', handler, { capture: true });
     return () => document.removeEventListener('keydown', handler, { capture: true });
-  }, [selectedPerson]);
+  }, [printConfirmOpen, selectedPerson]);
 
   const handleSearch = useCallback(async () => {
     const trimmed = searchQuery.trim();
@@ -392,6 +418,7 @@ export default function CriminalHistoryPage() {
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
             <input id="ff-criminalhistorypage-1"
+              ref={searchInputRef}
               type="text"
               className="input-dark pl-7 text-[11px] w-64 min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
@@ -529,20 +556,16 @@ export default function CriminalHistoryPage() {
                       {/* Court-ready PDF — subject card + caution flags +
                           5-up summary tiles + chronological history table +
                           signature block. */}
-                      <button type="button"
-                        onClick={() => openCriminalHistoryPdf({
-                          subject: selectedPerson as any,
-                          history: history as any,
-                          preparedBy: user
-                            ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
-                            : undefined,
-                        })}
-                        className="toolbar-btn text-[9px] gap-1"
-                        title="Open a printable criminal-history PDF for this subject"
-                        disabled={historyLoading}
-                      >
-                        <Printer className="w-3 h-3" /> Print
-                      </button>
+                      {canManage && (
+                        <button type="button"
+                          onClick={() => setPrintConfirmOpen(true)}
+                          className="toolbar-btn text-[9px] gap-1"
+                          title="Open a printable criminal-history PDF for this subject (admin/manager/supervisor only)"
+                          disabled={historyLoading}
+                        >
+                          <Printer className="w-3 h-3" /> Print
+                        </button>
+                      )}
                       <button type="button"
                         onClick={() => openUtahCourts(selectedPerson)}
                         className="toolbar-btn text-[9px] gap-1"
@@ -694,6 +717,25 @@ export default function CriminalHistoryPage() {
           )}
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={printConfirmOpen}
+        onClose={() => setPrintConfirmOpen(false)}
+        onConfirm={() => {
+          setPrintConfirmOpen(false);
+          openCriminalHistoryPdf({
+            subject: selectedPerson as any,
+            history: history as any,
+            preparedBy: user
+              ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
+              : undefined,
+          });
+        }}
+        title="Generate Criminal History PDF"
+        message={`Generate and open a court-ready criminal history PDF for ${selectedPerson ? `${selectedPerson.last_name}, ${selectedPerson.first_name}` : 'this subject'}?`}
+        details="This document includes all caution flags, formal criminal records, and operational history. Ensure this access is authorized and logged."
+        confirmLabel="Generate PDF"
+        confirmVariant="default"
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useCallback, useEffect } from 'react';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
 import {
   X,
   Download,
@@ -44,14 +45,14 @@ export default function DocumentViewer({
   useEffect(() => {
     if (isOpen) {
       const scrollY = window.scrollY;
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
       document.body.style.top = `-${scrollY}px`;
     }
     return () => {
       const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       document.body.style.position = '';
       document.body.style.width = '';
       document.body.style.top = '';
