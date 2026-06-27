@@ -610,6 +610,8 @@ export default function DocumentsPage() {
             folders={filteredFolders as import('./documents/DossierGrid').DossierFolder[]}
             files={filteredFiles as import('./documents/DossierGrid').DossierFile[]}
             selectedFiles={selectedFiles}
+            isLoading={loading}
+            searchQuery={searchQuery}
             onFolderOpen={navigateTo}
             onFileOpen={file => openFile(file as FileItem)}
             onFileSelect={(fileId, multi) => {

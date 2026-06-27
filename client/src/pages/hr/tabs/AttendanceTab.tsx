@@ -101,7 +101,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2"><ClipboardCheck className="w-4 h-4" /> Attendance Tracking</h2>
-        {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Log Incident</button>}
+        {isManager && <button type="button" data-hr-new-btn onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Log Incident</button>}
       </div>
 
       {/* Summary cards */}
@@ -160,7 +160,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
             </div>
             <div className="flex items-center gap-2 pt-4">
               <input id="ff-attendancetab-5" type="checkbox" checked={form.excused} onChange={e => setForm(f => ({ ...f, excused: e.target.checked }))} className="w-3 h-3" />
-              <label htmlFor="ff-attendancetab-6" className="text-xs text-rmpg-300">Excused</label>
+              <label htmlFor="ff-attendancetab-5" className="text-xs text-rmpg-300">Excused</label>
             </div>
           </div>
           <div className="flex gap-2">
