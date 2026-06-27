@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Shield, Lock, AlertTriangle, Globe, Users, Key, Loader2,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../components/ToastProvider';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { formatDateTime } from '../utils/dateUtils';
@@ -32,14 +33,20 @@ const VALID_TABS: TabId[] = ['overview', 'logins', 'threats', 'sessions', 'timel
 
 export default function SecurityDashboardPage() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const isAdmin = ['admin', 'manager', 'supervisor'].includes((user as any)?.role || '');
 
-  // Deep-link: ?tab= strips after mount
-  const initialTab = ((): TabId => {
+  // Role gates
+  const isAdmin = useMemo(
+    () => ['admin', 'manager', 'supervisor'].includes((user as any)?.role || ''),
+    [(user as any)?.role],
+  );
+
+  // Deep-link: ?tab= — consume initial value, strip after mount
+  const initialTab = useMemo((): TabId => {
     const t = searchParams.get('tab') as TabId | null;
     return t && VALID_TABS.includes(t) ? t : 'overview';
-  })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SecurityStatus | null>(null);
@@ -56,13 +63,10 @@ export default function SecurityDashboardPage() {
   const [unblockTarget, setUnblockTarget] = useState<string | null>(null);
   const [unblocking, setUnblocking] = useState(false);
 
-  // Strip deep-link param after first mount
-  useEffect(() => {
-    if (searchParams.has('tab')) {
-      setSearchParams({}, { replace: true });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Refs for blocked-IP rows (deep-link ?ip= scroll target)
+  const ipRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // useRef guard — deep-link consumed once after first data load
+  const deepLinkConsumedRef = useRef(false);
 
   const safeGet = async <T,>(url: string): Promise<T | null> => {
     try { return await apiFetch<T>(url); } catch { return null; }
@@ -95,7 +99,50 @@ export default function SecurityDashboardPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // N shortcut — refresh; Esc cascade — close confirm dialog
+  // ── Deep-link: ?tab= strip + toast on mount ───────────────────────────
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
+      if (VALID_TABS.includes(tabParam as TabId)) {
+        addToast(`Jumped to ${tabParam} tab`, 'info');
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Deep-link: ?ip= — scroll to blocked IP row after data loads ────────
+  useEffect(() => {
+    if (deepLinkConsumedRef.current || loading) return;
+    deepLinkConsumedRef.current = true;
+
+    const ipParam = searchParams.get('ip');
+    if (!ipParam) return;
+
+    // Strip the param from the URL
+    const next = new URLSearchParams(searchParams);
+    next.delete('ip');
+    setSearchParams(next, { replace: true });
+
+    if (isAdmin) {
+      setActiveTab('overview');
+      requestAnimationFrame(() => {
+        const el = ipRowRefs.current[ipParam];
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-1', 'ring-brand-400/50');
+          window.setTimeout(() => el.classList.remove('ring-1', 'ring-brand-400/50'), 1500);
+          addToast(`Showing blocked IP: ${ipParam}`, 'info');
+        } else {
+          addToast(`Blocked IP not found: ${ipParam}`, 'error');
+        }
+      });
+    }
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Keyboard: N = refresh (primary action); Esc cascade ──────────────
   const fetchAllRef = useRef(fetchAll);
   fetchAllRef.current = fetchAll;
   const unblockTargetRef = useRef(unblockTarget);
@@ -108,11 +155,14 @@ export default function SecurityDashboardPage() {
       if (e.key === 'N' || e.key === 'n') {
         e.preventDefault();
         fetchAllRef.current();
+        return;
       }
       if (e.key === 'Escape') {
-        e.stopPropagation();
+        // Cascade: close confirm dialog first
         if (unblockTargetRef.current) {
+          e.stopPropagation();
           setUnblockTarget(null);
+          return;
         }
       }
     };
@@ -126,6 +176,7 @@ export default function SecurityDashboardPage() {
     try {
       await apiFetch('/auth/security/unblock-ip', { method: 'POST', body: JSON.stringify({ ip: unblockTarget }) });
       setBlockedIps(prev => prev.filter(b => b.ip !== unblockTarget));
+      addToast(`Unblocked IP: ${unblockTarget}`, 'success');
       setUnblockTarget(null);
     } catch (err: any) {
       setError(err?.message || 'Failed to unblock IP');
@@ -134,6 +185,7 @@ export default function SecurityDashboardPage() {
     }
   };
 
+  // ── Render: loading state ─────────────────────────────────────────────
   if (loading) return (
     <div className="p-4 space-y-3">
       <PanelTitleBar title="SECURITY DASHBOARD" icon={Shield} />
@@ -220,7 +272,7 @@ export default function SecurityDashboardPage() {
             )}
           </div>
 
-          {/* Threats */}
+          {/* Threats — admin only */}
           {isAdmin && (
             <div className="panel-beveled bg-surface-base p-3">
               <div className="text-[9px] text-red-400 uppercase font-bold mb-2">Recent Threats</div>
@@ -240,26 +292,36 @@ export default function SecurityDashboardPage() {
             </div>
           )}
 
-          {/* Blocked IPs — admin only, hidden when list is empty */}
-          {isAdmin && blockedIps.length > 0 && (
+          {/* Blocked IPs — admin only, always shown so operator knows the list is clean */}
+          {isAdmin && (
             <div className="panel-beveled bg-surface-base p-3">
-              <div className="text-[9px] text-red-400 uppercase font-bold mb-2">Blocked IPs ({blockedIps.length})</div>
-              <div className="space-y-1 max-h-48 overflow-y-auto">
-                {blockedIps.map((b, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800">
-                    <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
-                    <span className="text-rmpg-100 font-mono flex-1">{b.ip}</span>
-                    <span className="text-rmpg-500">{b.reason || 'Rate limited'}</span>
-                    <button
-                      type="button"
-                      className="text-[9px] text-amber-400 hover:underline"
-                      onClick={() => setUnblockTarget(b.ip)}
-                    >
-                      Unblock
-                    </button>
-                  </div>
-                ))}
+              <div className="text-[9px] text-red-400 uppercase font-bold mb-2">
+                Blocked IPs{blockedIps.length > 0 ? ` (${blockedIps.length})` : ''}
               </div>
+              {blockedIps.length === 0 ? (
+                <div className="text-[10px] text-rmpg-500 text-center py-4">No IPs currently blocked</div>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {blockedIps.map((b, i) => (
+                    <div
+                      key={i}
+                      ref={el => { ipRowRefs.current[b.ip] = el; }}
+                      className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800 transition-all"
+                    >
+                      <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
+                      <span className="text-rmpg-100 font-mono flex-1">{b.ip}</span>
+                      <span className="text-rmpg-500">{b.reason || 'Rate limited'}</span>
+                      <button
+                        type="button"
+                        className="text-[9px] text-amber-400 hover:underline"
+                        onClick={() => setUnblockTarget(b.ip)}
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -313,8 +375,13 @@ export default function SecurityDashboardPage() {
         )
       )}
 
-      {activeTab === 'threats' && isAdmin && (
-        threats.length === 0 ? (
+      {activeTab === 'threats' && (
+        !isAdmin ? (
+          <div className="panel-beveled bg-surface-base text-center py-8 text-rmpg-500 text-xs">
+            <AlertTriangle className="w-5 h-5 mx-auto mb-2 text-rmpg-600" />
+            Admin access required to view threat data
+          </div>
+        ) : threats.length === 0 ? (
           <div className="panel-beveled bg-surface-base text-center py-8 text-rmpg-500 text-xs">No threats detected</div>
         ) : (
           <div className="panel-beveled bg-surface-base overflow-x-auto">
@@ -340,8 +407,13 @@ export default function SecurityDashboardPage() {
         )
       )}
 
-      {activeTab === 'sessions' && isAdmin && (
-        !sessionAnalytics ? (
+      {activeTab === 'sessions' && (
+        !isAdmin ? (
+          <div className="panel-beveled bg-surface-base text-center py-8 text-rmpg-500 text-xs">
+            <Monitor className="w-5 h-5 mx-auto mb-2 text-rmpg-600" />
+            Admin access required to view session analytics
+          </div>
+        ) : !sessionAnalytics ? (
           <div className="panel-beveled bg-surface-base text-center py-8 text-rmpg-500 text-xs">No session analytics available</div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -360,28 +432,35 @@ export default function SecurityDashboardPage() {
         )
       )}
 
-      {activeTab === 'timeline' && isAdmin && (
-        <div className="panel-beveled bg-surface-base p-3">
-          <div className="text-[9px] text-brand-gold-500 uppercase font-bold mb-2">Security Event Timeline</div>
-          {eventTimeline.length === 0 ? (
-            <div className="text-rmpg-500 text-xs text-center py-6">No security events recorded</div>
-          ) : (
-            <div className="space-y-1 max-h-[60vh] overflow-y-auto">
-              {eventTimeline.map((e, i) => (
-                <div key={i} className="flex items-start gap-3 py-1.5 border-b border-rmpg-800 text-[10px]">
-                  <span className="text-rmpg-500 font-mono w-32 flex-shrink-0">{formatDateTime(e.timestamp || e.created_at)}</span>
-                  <div className={`w-2 h-2 mt-1 flex-shrink-0 ${
-                    e.severity === 'critical' ? 'bg-red-400' :
-                    e.severity === 'high' ? 'bg-amber-400' :
-                    e.severity === 'medium' ? 'bg-rmpg-400' : 'bg-rmpg-600'
-                  }`} style={{ borderRadius: '1px' }} />
-                  <span className="text-rmpg-100 flex-1">{e.description || e.action || e.type}</span>
-                  {e.ip_address && <span className="text-rmpg-500 font-mono">{e.ip_address}</span>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {activeTab === 'timeline' && (
+        !isAdmin ? (
+          <div className="panel-beveled bg-surface-base text-center py-8 text-rmpg-500 text-xs">
+            <Activity className="w-5 h-5 mx-auto mb-2 text-rmpg-600" />
+            Admin access required to view event timeline
+          </div>
+        ) : (
+          <div className="panel-beveled bg-surface-base p-3">
+            <div className="text-[9px] text-brand-gold-500 uppercase font-bold mb-2">Security Event Timeline</div>
+            {eventTimeline.length === 0 ? (
+              <div className="text-rmpg-500 text-xs text-center py-6">No security events recorded</div>
+            ) : (
+              <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+                {eventTimeline.map((e, i) => (
+                  <div key={i} className="flex items-start gap-3 py-1.5 border-b border-rmpg-800 text-[10px]">
+                    <span className="text-rmpg-500 font-mono w-32 flex-shrink-0">{formatDateTime(e.timestamp || e.created_at)}</span>
+                    <div className={`w-2 h-2 mt-1 flex-shrink-0 ${
+                      e.severity === 'critical' ? 'bg-red-400' :
+                      e.severity === 'high' ? 'bg-amber-400' :
+                      e.severity === 'medium' ? 'bg-rmpg-400' : 'bg-rmpg-600'
+                    }`} style={{ borderRadius: '1px' }} />
+                    <span className="text-rmpg-100 flex-1">{e.description || e.action || e.type}</span>
+                    {e.ip_address && <span className="text-rmpg-500 font-mono">{e.ip_address}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
       )}
 
       {/* ConfirmDialog for unblock-IP (admin-only destructive action) */}
