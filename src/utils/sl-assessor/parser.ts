@@ -28,11 +28,11 @@ export function inferOwnerType(name: string | null | undefined): OwnerType {
 /** Strip HTML tags + collapse whitespace from a chunk. */
 function stripTags(s: string): string {
   return s
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
     .replace(/\s+/g, ' ')
     .trim();
 }
