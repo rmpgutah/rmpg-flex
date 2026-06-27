@@ -75,7 +75,12 @@ export default class ErrorBoundary extends Component<Props, State> {
   };
 
   handleDismiss = () => {
-    this.setState({ hasError: false, error: null, componentStack: null, showDetails: false });
+    // Navigate to the app root rather than re-rendering children — resetting
+    // hasError would re-render the same children that threw (render-time
+    // error like a null-pointer), which immediately throws again, creating
+    // a rapid crash loop. Navigation creates a fresh document, gives
+    // transient errors a clean slate, and avoids the loop entirely.
+    window.location.href = '/';
   };
 
   render() {
@@ -122,7 +127,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                   onClick={this.handleDismiss}
                   className="toolbar-btn"
                 >
-                  Try Again
+                  Return Home
                 </button>
               </div>
 

@@ -11,6 +11,10 @@ on:
       - 'ios2/**'
       - '.github/workflows/ios2-tests.yml'
 
+# Least-privilege GITHUB_TOKEN (CWE-275). Swift test job needs only read access.
+permissions:
+  contents: read
+
 jobs:
   swift-tests:
     runs-on: macos-14

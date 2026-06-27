@@ -36,9 +36,11 @@ export default function NsopwLookupPage() {
   // We only read the params once on mount; the panel strips them after
   // applying so refresh doesn't re-fire.
   const [searchParams, setSearchParams] = useSearchParams();
+  // ?name= is the canonical search param (matches the Worker's query('name')).
+  // ?surname= is accepted as an alias for back-compat with old deep-links.
   const deepLink = useMemo(() => ({
     offenderId: searchParams.get('offender_id') ?? '',
-    surname: searchParams.get('surname') ?? '',
+    surname: searchParams.get('surname') ?? searchParams.get('name') ?? '',
     forename: searchParams.get('forename') ?? '',
     dob: searchParams.get('dob') ?? '',
   // The hash is the source of truth on mount; subsequent param changes
@@ -49,11 +51,12 @@ export default function NsopwLookupPage() {
 
   // Strip deep-link params after reading them on mount so refresh doesn't re-fire.
   useEffect(() => {
-    const hasParams = searchParams.has('surname') || searchParams.has('forename') ||
-      searchParams.has('dob') || searchParams.has('offender_id');
+    const hasParams = searchParams.has('surname') || searchParams.has('name') ||
+      searchParams.has('forename') || searchParams.has('dob') || searchParams.has('offender_id');
     if (hasParams) {
       setSearchParams((p) => {
-        p.delete('surname'); p.delete('forename'); p.delete('dob'); p.delete('offender_id');
+        p.delete('surname'); p.delete('name'); p.delete('forename');
+        p.delete('dob'); p.delete('offender_id');
         return p;
       }, { replace: true });
     }
