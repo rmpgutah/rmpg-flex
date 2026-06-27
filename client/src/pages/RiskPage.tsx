@@ -122,7 +122,7 @@ export default function RiskPage() {
     setSubmitting(true);
     try {
       if (editingRecord) {
-        await apiFetch(`/risk/assessments/${editingRecord.id}`, { method: 'PUT', body: JSON.stringify(formData) });
+        await apiFetch('/risk/assessments/' + editingRecord.id, { method: 'PUT', body: JSON.stringify(formData) });
       } else {
         await apiFetch('/risk/assessments', { method: 'POST', body: JSON.stringify(formData) });
       }
