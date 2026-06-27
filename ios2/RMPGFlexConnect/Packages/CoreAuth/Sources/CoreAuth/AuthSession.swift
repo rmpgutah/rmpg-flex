@@ -11,7 +11,7 @@ public final class AuthSession {
     public private(set) var token: String?
     public private(set) var role: AppRole?
 
-    public static let tokenKey = "rmpg_flex_connect_jwt"
+    public nonisolated static let tokenKey = "rmpg_flex_connect_jwt"
 
     public init() {
         if let stored = KeychainStore.get(Self.tokenKey) {
