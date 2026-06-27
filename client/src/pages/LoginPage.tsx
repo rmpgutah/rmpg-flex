@@ -137,8 +137,11 @@ export default function LoginPage() {
   // still land where they intended). `?reset=1` flashes a success banner
   // after the reset-password flow returns the user to /login. `?error=...`
   // surfaces a single banner (e.g. `?error=session_expired`).
+  // `?username=<val>` pre-fills the username field (stripped on mount so a
+  // refresh doesn't re-populate; deepLinkConsumedRef prevents double-apply).
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkConsumedRef = useRef(false);
   const returnUrl = useMemo(() => {
     const raw = searchParams.get('return');
     if (!raw) return null;
@@ -158,15 +161,25 @@ export default function LoginPage() {
     }
   });
   // Strip consumed params on mount so a refresh doesn't re-pin the banners.
+  // Also apply ?username= pre-fill (one-shot via deepLinkConsumedRef).
   useEffect(() => {
-    if (searchParams.has('reset') || searchParams.has('error') || searchParams.has('forgot')) {
-      const next = new URLSearchParams(searchParams);
-      next.delete('reset');
-      next.delete('error');
-      next.delete('forgot');
-      // Preserve `return` — it's still load-bearing for the post-login navigate.
-      setSearchParams(next, { replace: true });
+    if (deepLinkConsumedRef.current) return;
+    deepLinkConsumedRef.current = true;
+    const hasTransient = searchParams.has('reset') || searchParams.has('error') ||
+      searchParams.has('forgot') || searchParams.has('username');
+    if (!hasTransient) return;
+    const next = new URLSearchParams(searchParams);
+    // Pre-fill username if provided and field is empty
+    const usernameParam = next.get('username');
+    if (usernameParam && !loginUsername) {
+      setLoginUsername(usernameParam);
     }
+    next.delete('reset');
+    next.delete('error');
+    next.delete('forgot');
+    next.delete('username');
+    // Preserve `return` — it's still load-bearing for the post-login navigate.
+    setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Auto-dismiss the reset-success flash after 6s so the form regains focus.
@@ -221,24 +234,42 @@ export default function LoginPage() {
   // Device info (computed once)
   const device = useMemo(() => getDeviceInfo(), []);
 
+  // Derived: true when the credentials form is the active step.
+  // Declared here (before the keyboard useEffect) so the closure captures it.
+  const isCredentialStep = !pending2FA && loginStep !== 'setup_2fa' && loginStep !== 'confirm_setup_2fa' && loginStep !== 'show_backup_codes' && loginStep !== 'password_change';
+
   // Esc smart-cascade: clear the most-foreground transient state first.
-  //   1. URL-error banner   2. reset-success flash   3. unmasked password
-  //   4. open forgot-password panel  → otherwise no-op (no native default).
+  //   1. context error (clearError)  2. URL-error banner  3. reset-success flash
+  //   4. unmasked password  5. open forgot-password panel  → no-op otherwise.
+  // N shortcut: focuses the username field when on the credentials step and the
+  //   event target is not already an input/textarea (guards typed "n" in forms).
   // Critically, Esc does NOT cancel 2FA / setup_2fa — those have their own
   // explicit "Back" controls and an accidental Esc mid-verification would
   // discard the partially-entered code.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (urlError) { setUrlError(null); return; }
-      if (resetSuccess) { setResetSuccess(false); return; }
-      if (showPassword) { setShowPassword(false); return; }
-      if (forgotPwActive) { handleForgotClose(); return; }
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (error) { clearError(); return; }
+        if (urlError) { setUrlError(null); return; }
+        if (resetSuccess) { setResetSuccess(false); return; }
+        if (showPassword) { setShowPassword(false); return; }
+        if (forgotPwActive) { handleForgotClose(); return; }
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
+        if (isCredentialStep && !forgotPwActive) {
+          e.preventDefault();
+          usernameRef.current?.focus();
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlError, resetSuccess, showPassword, forgotPwActive]);
+  }, [error, urlError, resetSuccess, showPassword, forgotPwActive, isCredentialStep]);
 
   // Auto-logout (idle / max-session) messaging removed — sessions no longer
   // expire automatically, so these notices can never fire.
@@ -490,13 +521,12 @@ export default function LoginPage() {
   };
 
   const status = stepStatus[loginStep] || stepStatus.username;
-  const isCredentialStep = !pending2FA && loginStep !== 'setup_2fa' && loginStep !== 'confirm_setup_2fa' && loginStep !== 'show_backup_codes' && loginStep !== 'password_change';
 
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
     <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
       <span className="text-[8px] uppercase tracking-wider font-bold text-rmpg-500">{label}</span>
-      <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
+      <span className="text-[9px] font-mono text-rmpg-400">{value}</span>
     </div>
   );
 
@@ -552,7 +582,7 @@ export default function LoginPage() {
           </div>
           <div className="flex items-center justify-center gap-2 mt-0.5 sm:mt-1">
             <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, var(--border-default))' }} />
-            <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(136, 136, 136, 0.65)' }}>
+            <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold text-rmpg-400/65">
               Secure Authentication
             </p>
             <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, var(--border-default), transparent)' }} />
@@ -563,7 +593,7 @@ export default function LoginPage() {
         <div className="shadow-md relative overflow-hidden panel-beveled bg-surface-base" role="form" aria-label="Authentication form">
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#888888' }} />
+            <ShieldCheck className="w-3 h-3 text-rmpg-400" />
             <span>
               {loginStep === 'setup_2fa' || loginStep === 'confirm_setup_2fa'
                 ? '2FA SETUP'
@@ -674,7 +704,7 @@ export default function LoginPage() {
             {isCredentialStep && !forgotPwActive && (
               <form onSubmit={handleCredentialsSubmit} className="space-y-3">
                 <div>
-                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Username
                   </label>
                   <input
@@ -692,7 +722,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Password
                   </label>
                   <div className="relative">
@@ -764,7 +794,7 @@ export default function LoginPage() {
                 className="space-y-4"
               >
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                     Enter Authenticator Code
                   </p>
                   <p className="text-[9px] text-rmpg-500">
@@ -805,10 +835,10 @@ export default function LoginPage() {
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
                     className="w-4 h-4 rounded-sm accent-[#888888] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
-                    style={{ accentColor: '#888888' }}
+                    style={{ accentColor: 'var(--rmpg-400)' }}
                     aria-label="Trust this device for 30 days"
                   />
-                  <span className="text-[10px] group-hover:text-rmpg-200 transition-colors" style={{ color: '#888888' }}>
+                  <span className="text-[10px] group-hover:text-rmpg-200 transition-colors text-rmpg-400">
                     Trust this device for 30 days
                   </span>
                 </label>
@@ -843,7 +873,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
                                             className="text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5 text-rmpg-500"
-                      onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--rmpg-400)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                       aria-label="Use a backup recovery code"
                     >
@@ -858,7 +888,7 @@ export default function LoginPage() {
             {pending2FA && effectiveMode === 'webauthn' && (
               <div className="space-y-4">
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Security Key</p>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">Security Key</p>
                   <p className="text-[9px] text-rmpg-500">
                     {webauthnError ? 'Authentication failed — try again' : 'Touch your security key when it flashes'}
                   </p>
@@ -904,7 +934,7 @@ export default function LoginPage() {
             {pending2FA && effectiveMode === 'backup' && (
               <form onSubmit={handleBackupSubmit} className="space-y-3">
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Recovery Code</p>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">Recovery Code</p>
                   <p className="text-[9px] text-rmpg-500">Enter one of your single-use backup codes</p>
                 </div>
 
@@ -951,7 +981,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                                         className="text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--rmpg-400)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   >
                     Use Authenticator
@@ -964,8 +994,8 @@ export default function LoginPage() {
             {loginStep === 'setup_2fa' && (
               <div className="space-y-4">
                 <div className="text-center">
-                  <ShieldCheck className="w-10 h-10 mx-auto mb-2" style={{ color: '#888888' }} />
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                  <ShieldCheck className="w-10 h-10 mx-auto mb-2 text-rmpg-400" />
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                     Two-Factor Authentication Required
                   </p>
                   <p className="text-[9px] leading-relaxed text-rmpg-500">
@@ -1003,7 +1033,7 @@ export default function LoginPage() {
             {loginStep === 'confirm_setup_2fa' && (
               <form onSubmit={handleConfirmSetup} className="space-y-4">
                 <div className="text-center">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Scan QR Code</p>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">Scan QR Code</p>
                   <p className="text-[9px] text-rmpg-500">
                     Scan with your authenticator app, then enter the 6-digit code
                   </p>
@@ -1021,8 +1051,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowManualKey(!showManualKey)}
-                    className="text-[9px] uppercase tracking-wide"
-                    style={{ color: '#888888' }}
+                    className="text-[9px] uppercase tracking-wide text-rmpg-400"
                   >
                     {showManualKey ? 'Hide' : 'Show'} manual entry key
                   </button>
@@ -1037,7 +1066,7 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="setup-code" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="setup-code" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Enter code from app to verify
                   </label>
                   <input
@@ -1079,7 +1108,7 @@ export default function LoginPage() {
               <div>
                 <div className="text-center mb-4">
                   <KeyRound className="w-8 h-8 mx-auto mb-2" style={{ color: '#d4a017' }} />
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                     Backup Recovery Codes
                   </p>
                 </div>
@@ -1094,8 +1123,8 @@ export default function LoginPage() {
             {loginStep === 'password_change' && (
               <form onSubmit={handlePasswordChange} className="space-y-3">
                 <div className="text-center mb-2">
-                  <Lock className="w-8 h-8 mx-auto mb-2" style={{ color: '#888888' }} />
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                  <Lock className="w-8 h-8 mx-auto mb-2 text-rmpg-400" />
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                     Password Change Required
                   </p>
                   <p className="text-[9px] text-rmpg-500">
@@ -1104,7 +1133,7 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     New Password
                   </label>
                   <input
@@ -1123,7 +1152,7 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Confirm Password
                   </label>
                   <input
@@ -1176,7 +1205,7 @@ export default function LoginPage() {
                   <form onSubmit={handleForgotStart} className="space-y-3">
                     <div className="text-center mb-1">
                       <HelpCircle className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
-                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                         Forgot Password
                       </p>
                       <p className="text-[9px] text-rmpg-500">
@@ -1184,7 +1213,7 @@ export default function LoginPage() {
                       </p>
                     </div>
                     <div>
-                      <label htmlFor="forgot-username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                      <label htmlFor="forgot-username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                         Username
                       </label>
                       <input
@@ -1228,7 +1257,7 @@ export default function LoginPage() {
                   <form onSubmit={handleForgotAnswerSubmit} className="space-y-3">
                     <div className="text-center mb-1">
                       <ShieldCheck className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
-                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                         Answer Security Questions
                       </p>
                       <p className="text-[9px] text-rmpg-500">
@@ -1237,7 +1266,7 @@ export default function LoginPage() {
                     </div>
                     {[0, 1, 2].map((i) => (
                       <div key={i}>
-                        <label htmlFor="ff-loginpage-2" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                        <label htmlFor="ff-loginpage-2" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                           Question {i + 1}
                         </label>
                         <p className="text-[10px] mb-1" style={{ color: 'var(--rmpg-400)' }}>{forgotQuestions[i]}</p>
@@ -1286,7 +1315,7 @@ export default function LoginPage() {
                   <form onSubmit={handleForgotReset} className="space-y-3">
                     <div className="text-center mb-1">
                       <Lock className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
-                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                         Reset Password
                       </p>
                       <p className="text-[9px] text-rmpg-500">
@@ -1294,7 +1323,7 @@ export default function LoginPage() {
                       </p>
                     </div>
                     <div>
-                      <label htmlFor="forgot-new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                      <label htmlFor="forgot-new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                         New Password
                       </label>
                       <input
@@ -1310,7 +1339,7 @@ export default function LoginPage() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="forgot-confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                      <label htmlFor="forgot-confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                         Confirm Password
                       </label>
                       <input
@@ -1355,7 +1384,7 @@ export default function LoginPage() {
                 {forgotPwStep === 'success' && (
                   <div className="text-center space-y-3 py-2">
                     <CheckCircle className="w-10 h-10 mx-auto" style={{ color: '#22c55e' }} />
-                    <p className="text-[10px] uppercase tracking-wide font-bold" style={{ color: '#888888' }}>
+                    <p className="text-[10px] uppercase tracking-wide font-bold text-rmpg-400">
                       Password Reset Complete
                     </p>
                     <p className="text-[9px] text-rmpg-500">
@@ -1402,7 +1431,7 @@ export default function LoginPage() {
             {/* System Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">
               <div className="panel-title-bar flex items-center gap-1.5">
-                <Server className="w-2.5 h-2.5" style={{ color: '#888888' }} />
+                <Server className="w-2.5 h-2.5 text-rmpg-400" />
                 <span>SYSTEM</span>
               </div>
               <div className="px-3 py-2">
@@ -1424,7 +1453,7 @@ export default function LoginPage() {
             {/* Device Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">
               <div className="panel-title-bar flex items-center gap-1.5">
-                <Monitor className="w-2.5 h-2.5" style={{ color: '#888888' }} />
+                <Monitor className="w-2.5 h-2.5 text-rmpg-400" />
                 <span>DEVICE</span>
               </div>
               <div className="px-3 py-2">

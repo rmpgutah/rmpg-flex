@@ -6,9 +6,9 @@ import {
 import type { ScheduleSlot } from '../schedulerView';
 
 const slot = (over: Partial<ScheduleSlot> = {}): ScheduleSlot => ({
-  id: 1, queue_id: 10, attempt_number: 1,
+  id: 1, queue_id: 10, attempt: 0, attempt_number: 1,
   scheduled_date: '2026-06-21', window_start: '17:00', window_end: '20:30',
-  window_label: 'evening', notify_at: '2026-06-21T15:00',
+  window_label: 'evening', notify_at: '2026-06-21T15:00', notify_before_secs: 3600,
   recipient_name: 'J. Smith', recipient_address: '123 Main',
   recipient_city: 'SLC', recipient_state: 'UT',
   case_number: '240-1', priority: 'normal', deadline: null,

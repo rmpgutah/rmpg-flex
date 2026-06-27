@@ -48,50 +48,6 @@ export interface AttemptWindow {
 }
 
 // ────────────────────────────────────────────────────────────
-// USER-CONTRIBUTED DOMAIN LOGIC
-// ────────────────────────────────────────────────────────────
-// Christopher — you have the real-world experience here. Below is
-// the scaffolding; please fill in the body of `nextAttemptWindow`
-// to reflect how RMPG actually schedules re-attempts.
-//
-// Inputs available:
-//   result       — what just happened on this attempt
-//   attemptNumber — 1 for first attempt, 2 for second, etc.
-//                  After attempt_count >= max_attempts (default 3),
-//                  the queue auto-fails — but you can return a
-//                  diligence-style "final post-and-mail" window
-//                  for attempt 3 if that's your practice.
-//   attemptedAtHour — 0..23, hour-of-day of the attempt that just
-//                    happened (in local Mountain Time).
-//   attemptedAtDow  — 0..6, day-of-week of the attempt that just
-//                    happened (0 = Sun, 6 = Sat).
-//
-// Trade-offs to weigh:
-//
-//   Aggressive (next morning): catches early-bird folks, burns
-//   mileage if they're working from home.
-//
-//   Conservative (3-5 days out): cheaper, gives time for skip-trace
-//   improvements between attempts, but loses calendar time on rush
-//   jobs.
-//
-//   Time-of-day rotation: legally strongest pattern (morning →
-//   evening → weekend midday). Some courts explicitly cite this
-//   in opinions on whether substituted service was justified.
-//
-//   Special-case results:
-//     'refused'     — they're there, but hostile. Different time?
-//                     Or document the refusal and post?
-//     'bad_address' — pause re-attempts entirely until skip-trace
-//                     returns a new address (return terminal=true
-//                     with a reasoning that flags the need).
-//     'moved'       — same as bad_address from a scheduling angle.
-//     'deceased'    — terminal; return reasoning that triggers a
-//                     return-of-service-noting-deceased document.
-//
-// 8-12 lines is plenty. Aim for something a court reviewer reading
-// the affidavit would nod at, not an optimal algorithm.
-// ────────────────────────────────────────────────────────────
 
 export function nextAttemptWindow(
   result: AttemptResult,

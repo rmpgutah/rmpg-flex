@@ -9,6 +9,7 @@
 // Every rule is try/catch-isolated; sentinel strings never match.
 // ============================================================
 
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from './db';
 import { isRealValue } from './intelMatch';
@@ -28,19 +29,19 @@ export async function screenPerson(db: D1Database, personId: number): Promise<Sc
       personId, personId))
       hits.push({ kind: 'active_warrant', severity: 'critical',
         detail: `Active warrant ${w.warrant_number || ''}${isRealValue(w.charge_description) ? ` — ${w.charge_description}` : ''}`.trim() });
-  } catch (err: any) { console.error('[screen] warrants failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-screen] warrants failed', { error: err?.message }); }
   try {
     const w = await queryFirst<any>(db,
       `SELECT reason FROM intel_watchlist WHERE entity_type = 'person' AND entity_id = ? AND active = 1 LIMIT 1`, personId);
     if (w) hits.push({ kind: 'watchlist', severity: 'critical',
       detail: `On watchlist${isRealValue(w.reason) ? `: ${w.reason}` : ''}` });
-  } catch (err: any) { console.error('[screen] watchlist failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-screen] watchlist failed', { error: err?.message }); }
   try {
     for (const t of await query<any>(db,
       `SELECT order_number, location FROM trespass_orders WHERE person_id = ? AND status = 'active' LIMIT 3`, personId))
       hits.push({ kind: 'trespass_active', severity: 'warning',
         detail: `Active trespass ${t.order_number || ''}${isRealValue(t.location) ? ` — ${t.location}` : ''}`.trim() });
-  } catch (err: any) { console.error('[screen] trespass failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-screen] trespass failed', { error: err?.message }); }
   try {
     // Offender registry alerts the agency itself created. Only ACTIVE,
     // unexpired alerts surface (a 'cleared' alert must not screen as a hit).
@@ -59,7 +60,7 @@ export async function screenPerson(db: D1Database, personId: number): Promise<Sc
       hits.push({ kind: isSor ? 'sor' : 'caution', severity: sev,
         detail: `${label}${isRealValue(a.description) ? ` — ${a.description}` : ''}`.trim() });
     }
-  } catch (err: any) { console.error('[screen] offender_alerts failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-screen] offender_alerts failed', { error: err?.message }); }
   try {
     const p = await queryFirst<any>(db,
       `SELECT caution_flags, gang_affiliation, is_sex_offender, watchlist_match, flags FROM persons WHERE id = ?`, personId);
@@ -72,7 +73,7 @@ export async function screenPerson(db: D1Database, personId: number): Promise<Sc
       if (f.includes('officer safety') || f.includes('violent'))
         hits.push({ kind: 'caution', severity: 'critical', detail: 'OFFICER SAFETY flag on record' });
     }
-  } catch (err: any) { console.error('[screen] person flags failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-screen] person flags failed', { error: err?.message }); }
   return hits;
 }
 
@@ -88,7 +89,7 @@ export async function screenVehicle(
       : ref.plate
         ? await queryFirst<any>(db, 'SELECT id, plate_number, is_stolen, stolen_status, flags, owner_person_id FROM vehicles_records WHERE UPPER(plate_number) = ?', ref.plate.toUpperCase())
         : null;
-  } catch (err: any) { console.error('[screen] vehicle lookup failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-screen] vehicle lookup failed', { error: err?.message }); }
   if (!vehicle) return { vehicleId: null, hits };
 
   if (vehicle.is_stolen === 1 || isRealValue(vehicle.stolen_status))
@@ -99,7 +100,7 @@ export async function screenVehicle(
       `SELECT reason FROM intel_watchlist WHERE entity_type = 'vehicle' AND entity_id = ? AND active = 1 LIMIT 1`, vehicle.id);
     if (w) hits.push({ kind: 'watchlist', severity: 'critical',
       detail: `Vehicle on watchlist${isRealValue(w.reason) ? `: ${w.reason}` : ''}` });
-  } catch (err: any) { console.error('[screen] vehicle watchlist failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-screen] vehicle watchlist failed', { error: err?.message }); }
   if (vehicle.owner_person_id) {
     const ownerHits = await screenPerson(db, vehicle.owner_person_id);
     for (const h of ownerHits) hits.push({ ...h, detail: `Owner: ${h.detail}` });
@@ -122,7 +123,7 @@ export async function sweepNewEntities(db: D1Database): Promise<number> {
          VALUES ('intel_screen', 'critical', ?, ?, ?, datetime('now'), datetime('now'))`,
         title, details, dedupKey);
       raised++;
-    } catch (err: any) { console.error('[screen-sweep] raise failed:', err?.message); }
+    } catch (err: any) { log.error('[intel-screen-sweep] raise failed', { error: err?.message }); }
   };
   try {
     for (const p of await query<any>(db,
@@ -131,7 +132,7 @@ export async function sweepNewEntities(db: D1Database): Promise<number> {
       if (hits.length) await raise(`intel_screen:person:${p.id}`,
         `RECORDS HIT: ${p.first_name} ${p.last_name}`, hits.map((h) => h.detail).join('; '));
     }
-  } catch (err: any) { console.error('[screen-sweep] persons failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-screen-sweep] persons failed', { error: err?.message }); }
   try {
     for (const v of await query<any>(db,
       `SELECT id, plate_number FROM vehicles_records WHERE created_at > datetime('now','-2 minutes') LIMIT 25`)) {
@@ -140,6 +141,6 @@ export async function sweepNewEntities(db: D1Database): Promise<number> {
       if (crit.length) await raise(`intel_screen:vehicle:${v.id}`,
         `RECORDS HIT: vehicle ${v.plate_number || `#${v.id}`}`, crit.map((h) => h.detail).join('; '));
     }
-  } catch (err: any) { console.error('[screen-sweep] vehicles failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-screen-sweep] vehicles failed', { error: err?.message }); }
   return raised;
 }
