@@ -13,6 +13,13 @@ name: "RMPG Flex CodeQL config"
 # (javascript-typescript, python, actions — all build-mode: none).
 paths-ignore:
   - 'legacy/**'
+  # server/ was the old Express/VPS path before the code moved to legacy/server-vps/;
+  # the directory no longer exists, but historical scan results still reference it.
+  - 'server/**'
+  # deploy/ (VPS-era webhook listener) was deleted in cleanup PR 2.
+  - 'deploy/**'
+  # tmp/ holds generated preview bundles, not deployed source.
+  - 'tmp/**'
   - '**/*.min.js'
   - 'client/dist/**'
   - 'dist/**'
