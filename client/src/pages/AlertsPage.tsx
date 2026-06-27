@@ -1,7 +1,7 @@
 // ============================================================
 // RMPG Flex — Mass Notification Templates (/alerts)
 //
-// Page 55 of the full-app frontend pass. This page manages
+// Page 122 of the full-app frontend pass. This page manages
 // *templates* for Rave-Alert-parity mass notifications (NOT the
 // per-user notification inbox at /notifications, NOT the system
 // banner alerts feed). Server router lives at src/routes/
@@ -20,10 +20,13 @@
 //   - Theme-token sweep (no more hardcoded #888888 / #991b1b /
 //     #f87171 — the inline delete modal that hardcoded those colors
 //     is gone)
+//   - Role gates: admin/manager/supervisor for create/edit/delete
+//   - created_at formatted via parseTimestamp + formatDateTime
 // ============================================================
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
@@ -31,10 +34,13 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import {
   Megaphone, FileText, Send, CheckCircle, Plus, Pencil, Trash2, Eye,
   Filter as FilterIcon, X,
 } from 'lucide-react';
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 interface NotificationTemplate {
   id: number;
@@ -77,6 +83,8 @@ export default function AlertsPage() {
   const [filterChannel, setFilterChannel] = useState<string>(initialChannelParam);
   const [filterCategory, setFilterCategory] = useState<string>(initialCategoryParam);
   const [highlightId, setHighlightId] = useState<number | null>(null);
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
   const { addToast } = useToast();
   const m = useMenuActions();
 
@@ -212,7 +220,7 @@ export default function AlertsPage() {
 
   // ── "N" shortcut → New Template ──
   // Skipped when the operator is typing in an input/textarea/select,
-  // and when a modal is already open.
+  // and when a modal is already open. Also skipped for non-managers.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'n' && e.key !== 'N') return;
@@ -221,12 +229,13 @@ export default function AlertsPage() {
       const t = e.target as HTMLElement | null;
       const tag = (t?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || t?.isContentEditable) return;
+      if (!canManage) return;
       e.preventDefault();
       openNew();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showForm, deleteTarget, openNew]);
+  }, [showForm, deleteTarget, canManage, openNew]);
 
   // ── Cmd/Ctrl+Enter inside the edit modal → save ──
   useEffect(() => {
@@ -246,11 +255,25 @@ export default function AlertsPage() {
     { key: 'subject', label: 'Subject' },
     { key: 'channel', label: 'Channel' },
     { key: 'category', label: 'Category' },
-    { key: 'created_at', label: 'Created' },
+    { key: 'created_at', label: 'Created', render: (row: NotificationTemplate) => (
+      <span title={formatDateTime(row.created_at)}>
+        {row.created_at ? (() => {
+          const ms = Date.now() - parseTimestamp(row.created_at).getTime();
+          const mins = Math.floor(ms / 60000);
+          if (mins < 1) return 'just now';
+          if (mins < 60) return `${mins}m ago`;
+          const hrs = Math.floor(mins / 60);
+          if (hrs < 24) return `${hrs}h ago`;
+          const days = Math.floor(hrs / 24);
+          if (days < 7) return `${days}d ago`;
+          return formatDateTime(row.created_at);
+        })() : '—'}
+      </span>
+    )},
     { key: 'actions', label: '', width: '100px', render: (row: NotificationTemplate) => (
       <div className="flex gap-2" data-template-row={row.id}>
-        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label={`Edit ${row.template_name}`}><Pencil size={12} /></button>
-        <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); }} className="text-red-500 hover:text-red-300" aria-label={`Delete ${row.template_name}`}><Trash2 size={12} /></button>
+        {canManage && <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label={`Edit ${row.template_name}`}><Pencil size={12} /></button>}
+        {canManage && <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); }} className="text-red-500 hover:text-red-400" aria-label={`Delete ${row.template_name}`}><Trash2 size={12} /></button>}
       </div>
     )},
   ];
@@ -270,7 +293,9 @@ export default function AlertsPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="MASS NOTIFICATION" icon={Megaphone}>
         {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
-        <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }} title="New Template (N)"><Plus size={13} /> New Template</button>
+        {canManage && (
+          <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }} title="New Template (N)"><Plus size={13} /> New Template</button>
+        )}
       </PanelTitleBar>
       <div className="grid grid-cols-3 gap-3">
         <StatsCard icon={FileText} label="Templates" value={stats.templates} />
@@ -329,14 +354,14 @@ export default function AlertsPage() {
         emptyMessage={emptyMessage}
         emptyDescription={filterHidingAll ? 'A filter is hiding templates. Press Esc or click Clear to show all.' : undefined}
         selectedKey={highlightId}
-        onRowClick={(row) => openEdit(row)}
+        onRowClick={canManage ? (row) => openEdit(row) : undefined}
         enableContextMenu
         rowContextMenu={(row: NotificationTemplate): ContextMenuItem[] => [
           m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
-          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          ...(canManage ? [m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> })] : []),
           m.separator(),
           m.copyId(row.id),
-          m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> }),
+          ...(canManage ? [m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> })] : []),
         ]}
       />
 

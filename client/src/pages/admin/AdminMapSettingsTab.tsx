@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { invalidateMapConfigCache, type MapSettings } from '../../pages/map/hooks/useMapConfig';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -382,7 +383,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
           <div className="space-y-4">
             {LAYER_IDS.map(layerId => {
               const visible = settings.default_visible_layers.includes(layerId);
-              const label = layerId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              const label = toDisplayLabel(layerId);
               const fill = (settings as any)[`layer_${layerId}_fill`] as string;
               const fillOpacity = (settings as any)[`layer_${layerId}_fill_opacity`] as number;
               const stroke = (settings as any)[`layer_${layerId}_stroke`] as string;
