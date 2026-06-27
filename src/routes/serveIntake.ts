@@ -50,6 +50,8 @@ import {
   type ExtractionResult,
   type ExtractedField,
 } from '../utils/serveIntakeExtract';
+import { judgeMerged } from '../utils/serveIntakeJudge';
+import { parseDefendants } from '../utils/serveIntakeDefendants';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 import { emitAlert } from '../utils/alertHub';
 import {
@@ -110,6 +112,42 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
     try {
       if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
         await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
+      }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+  }
+}
+
+// ── Migration 0152 runtime reconciler ───────────────────────
+// Same pattern as reconcileScheduleSchema — deploy.yml's migration
+// apply is continue-on-error, so the Worker self-heals.
+let qualityGateReconciled = false;
+async function ensureQualityGateColumns(db: D1Database): Promise<void> {
+  if (qualityGateReconciled) return;
+  qualityGateReconciled = true;
+
+  try {
+    await execute(db, `CREATE TABLE IF NOT EXISTS serve_intake_judge_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      model TEXT NOT NULL,
+      ms INTEGER NOT NULL,
+      raw_response TEXT,
+      flagged_field_count INTEGER NOT NULL DEFAULT 0,
+      overall_status TEXT NOT NULL,
+      fallback_chain TEXT NOT NULL,
+      upload_user_id INTEGER
+    )`);
+  } catch (err) { console.warn('[serve-intake] judge_runs create failed:', err); }
+
+  for (const [name, type] of [
+    ['quality_status', "TEXT NOT NULL DEFAULT 'clean'"],
+    ['judge_run_id', 'INTEGER'],
+    ['quality_reviewed_by', 'INTEGER'],
+    ['quality_reviewed_at', 'TEXT'],
+  ] as const) {
+    try {
+      if (!(await columnExists(db, 'serve_queue', name))) {
+        await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
     } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
   }
@@ -378,6 +416,7 @@ si.post('/upload', async (c) => {
   }
 
   const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
   const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
   const allDates = new Set<string>();
 
@@ -537,6 +576,16 @@ si.post('/upload', async (c) => {
   // success card) sees clean values.
   const normalizedFields = normalizeFields(mergedFields);
 
+  // ── Phase 1 Quality Gate: judge the merged result ──────────────
+  const rawDocsForJudge = collected.map(c2 => ({ name: c2.file.name, text: c2.text || '' }));
+  const docTypesForJudge = collected.map(c2 => c2.ex.documentType);
+  const judgeResult = await judgeMerged(
+    c.env,
+    normalizedFields,
+    rawDocsForJudge,
+    docTypesForJudge,
+  );
+
   // ── Operator pre-submission overrides ──────────────────────────────
   // Client sends `field_overrides` JSON (key → string) for values the
   // operator edited in the review panel before clicking Create. Applied
@@ -551,14 +600,46 @@ si.post('/upload', async (c) => {
           normalizedFields[k] = { value: v.trim(), confidence: 1.0 };
         }
       }
+      for (const k of Object.keys(overrides)) {
+        if (judgeResult.verdicts[k]) delete judgeResult.verdicts[k];
+      }
+      judgeResult.flagged_field_count = Object.values(judgeResult.verdicts).filter(v => !v.ok).length;
+      if (judgeResult.flagged_field_count === 0) judgeResult.overall_status = 'clean';
     } catch { /* ignore malformed overrides blob */ }
   }
+
+  const judgeInsert = await db.prepare(`
+    INSERT INTO serve_intake_judge_runs
+      (model, ms, raw_response, flagged_field_count, overall_status, fallback_chain, upload_user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    judgeResult.model,
+    judgeResult.ms,
+    judgeResult.raw_response,
+    judgeResult.flagged_field_count,
+    judgeResult.overall_status,
+    JSON.stringify(judgeResult.fallback_chain),
+    user.id,
+  ).run();
+  const judgeRunId = judgeInsert.meta?.last_row_id ?? null;
 
   // Operator-selected client_id (integer FK) sent as a separate FormData field
   // so it doesn't get coerced through the string-only field_overrides path.
   const clientIdRaw = form.get('client_id');
   const clientId = typeof clientIdRaw === 'string' && /^\d+$/.test(clientIdRaw.trim())
     ? Number(clientIdRaw.trim()) : null;
+
+  let defendantsSelected: string[] | null = null;
+  const defendantsRaw = form.get('defendants_selected');
+  if (typeof defendantsRaw === 'string') {
+    try {
+      const arr = JSON.parse(defendantsRaw);
+      if (Array.isArray(arr) && arr.every(s => typeof s === 'string')) {
+        defendantsSelected = arr.map(s => s.trim()).filter(Boolean);
+        if (defendantsSelected.length === 0) defendantsSelected = null;
+      }
+    } catch { /* malformed — fall back to single-recipient path */ }
+  }
 
   // Expose under the same name the rest of the handler already reads.
   const combined = { error: combinedError } as { error: string | null };
@@ -632,6 +713,9 @@ si.post('/upload', async (c) => {
       documentSummary: docSummary,
       docCount: documents.length,
       clientId,
+      defendantsSelected,
+      judgeRunId,
+      qualityStatus: judgeResult.overall_status === 'error' ? 'needs_review' : judgeResult.overall_status,
       // Per-document OCR provenance → "OCR & EXTRACTION CONTEXT" note on the
       // call + compact line on serve_queue.notes + parsed_data._intake audit.
       docs: documents.map((d) => ({
@@ -739,6 +823,10 @@ si.post('/upload', async (c) => {
     missing_critical: commit.missing_critical ?? [],
     attempt_plan: commit.attempt_plan ?? [],
     duplicate_of: commit.duplicate_of ?? null,
+    judge_verdicts: judgeResult.verdicts,
+    quality_status: judgeResult.overall_status === 'error' ? 'needs_review' : judgeResult.overall_status,
+    judge_run_id: judgeRunId,
+    defendants_detected: parseDefendants(normalizedFields.defendant?.value),
     merged: {
       documentType: bestDocType,
       confidence: bestConfidence,
@@ -1040,20 +1128,61 @@ async function reprocessDocument(
   };
 }
 
-// GET /review-queue — docs that never became a serve job (unlinked), failed, or
-// extracted at low confidence. The operator's "needs attention" list.
+// GET /review-queue — serve_queue entries filtered by quality_status.
+// Defaults to 'needs_review'; accepts ?quality_status=clean|needs_review|reviewed_ok|reviewed_fixed.
 si.get('/review-queue', async (c) => {
-  const user = c.get('user') as { role: string } | undefined;
-  if (!user || !INTAKE_ROLES.includes(user.role)) return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
-  const rows = await query(getDb(c.env),
-    `SELECT id, file_name, file_type, doc_type, confidence, status, serve_queue_id,
-            extraction_model, error_message, created_at,
-            CASE WHEN serve_queue_id IS NULL THEN 1 ELSE 0 END AS unlinked,
-            substr(raw_text, 1, 180) AS raw_preview
-       FROM serve_intake_documents
-      WHERE serve_queue_id IS NULL OR status = 'failed' OR confidence < 0.4
-      ORDER BY created_at DESC LIMIT 200`);
-  return c.json({ documents: rows });
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !INTAKE_ROLES.includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
+  const status = c.req.query('quality_status');
+  let sql = `SELECT id, recipient_name, recipient_address, quality_status, judge_run_id, created_at
+             FROM serve_queue
+             WHERE 1 = 1`;
+  const bindings: unknown[] = [];
+  if (status === 'needs_review' || status === 'clean' || status === 'reviewed_ok' || status === 'reviewed_fixed') {
+    sql += ` AND quality_status = ?`;
+    bindings.push(status);
+  } else {
+    sql += ` AND quality_status = 'needs_review'`;
+  }
+  sql += ` ORDER BY created_at DESC LIMIT 200`;
+  const rows = await query(db, sql, ...bindings);
+  return c.json({ rows });
+});
+
+const REVIEW_ROLES = ['admin', 'manager', 'supervisor'] as const;
+
+si.post('/review-queue/:id/accept', async (c) => {
+  const denied = requireRole(c, ...REVIEW_ROLES);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const user = c.get('user') as { id: number } | undefined;
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
+  const r = await db.prepare(
+    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime('now') WHERE id = ?`,
+  ).bind('reviewed_ok', user?.id ?? null, id).run();
+  if ((r.meta?.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
+  return c.json({ success: true, quality_status: 'reviewed_ok' });
+});
+
+si.post('/review-queue/:id/fix', async (c) => {
+  const denied = requireRole(c, ...REVIEW_ROLES);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const user = c.get('user') as { id: number } | undefined;
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await ensureQualityGateColumns(db);
+  const r = await db.prepare(
+    `UPDATE serve_queue SET quality_status = ?, quality_reviewed_by = ?, quality_reviewed_at = datetime('now') WHERE id = ?`,
+  ).bind('reviewed_fixed', user?.id ?? null, id).run();
+  if ((r.meta?.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
+  return c.json({ success: true, quality_status: 'reviewed_fixed' });
 });
 
 // POST /documents/:docId/reprocess — re-extract one doc; auto-commit if recovered.
@@ -1248,6 +1377,76 @@ si.get('/schedule', async (c) => {
     return { date, weekday: DAYS[dow], slots };
   });
   return c.json({ schedule, generated_at: now });
+});
+
+// ── POST /schedule/backfill — generate slots for active jobs with no schedule ─
+// Idempotent: only touches queue rows that have 0 rows in serve_attempt_schedules.
+// Designed to be called once after deploying the scheduler feature, or via the
+// "Generate Schedule" button in ServeSchedulerPanel when the view is empty.
+si.post('/schedule/backfill', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  await reconcileScheduleSchema(db);
+
+  const { persistAttemptSchedule, denverNow } = await import('../utils/serveAttemptScheduler');
+  const { planAttemptWindows } = await import('../utils/serveDiligencePlanner');
+
+  const nowIso = new Date().toISOString();
+  const nowDenver = denverNow();
+  const todayYmd = nowDenver.slice(0, 10);
+
+  // Find active queue jobs with no existing schedule rows.
+  // Fetch business_id + recipient_type so planAttemptWindows uses the right
+  // window strategy (business = weekday 09:30-11:30 / 13:30-15:30,
+  // residential = evening first, then morning, then weekend).
+  const unscheduled = await query<{
+    id: number; deadline: string | null; priority: string;
+    attempt_count: number; max_attempts: number;
+    business_id: number | null; created_at: string;
+    recipient_type: string | null;
+  }>(
+    db,
+    `SELECT q.id, q.deadline, q.priority, q.attempt_count, q.max_attempts,
+            q.business_id, q.created_at,
+            q.parsed_data->>'recipient_type' AS recipient_type
+     FROM serve_queue q
+     WHERE q.status IN ('pending', 'in_progress')
+       AND NOT EXISTS (
+         SELECT 1 FROM serve_attempt_schedules s
+          WHERE s.queue_id = q.id AND s.dismissed = 0
+       )`,
+  );
+
+  let seeded = 0;
+  for (const job of unscheduled) {
+    const remainingAttempts = job.max_attempts - job.attempt_count;
+    if (remainingAttempts <= 0) continue;
+    try {
+      // Determine serve target type from structural FK (business_id) or
+      // OCR-derived field in parsed_data. Business → weekday office windows.
+      const isBusiness = !!job.business_id || (job.recipient_type ?? '').toLowerCase() === 'business';
+
+      // Use created_at as the planning baseline when the intake happened today —
+      // gives morning uploads an evening-first plan rather than tomorrow-first.
+      const uploadedToday = job.created_at?.slice(0, 10) === todayYmd;
+      const baseIso = uploadedToday ? job.created_at : nowIso;
+
+      const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', { isBusiness });
+      // Trim plan to only remaining attempts and only future dates.
+      const futurePlan = plan
+        .filter((w) => w.date >= todayYmd)
+        .slice(0, remainingAttempts)
+        .map((w, i) => ({ ...w, attempt: job.attempt_count + i + 1 }));
+      if (futurePlan.length === 0) continue;
+      await persistAttemptSchedule(db, job.id, futurePlan, nowIso);
+      seeded++;
+    } catch {
+      // Skip individual failures — don't abort the whole backfill.
+    }
+  }
+
+  return c.json({ seeded, total_unscheduled: unscheduled.length });
 });
 
 // ── GET /officers — minimal officer roster for the scheduler lanes ─
@@ -1623,6 +1822,19 @@ si.put('/:id', async (c) => {
   sets.push("updated_at = datetime('now','localtime')");
   args.push(id);
   await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+
+  // Propagate officer_id to auto-placed schedule slots so the lane timeline stays in sync.
+  // Manually-moved slots (manually_moved=1) keep their officer assignment intact.
+  if ('officer_id' in body) {
+    const newOfficer = body.officer_id == null ? null : Number(body.officer_id) || null;
+    await execute(
+      db,
+      `UPDATE serve_attempt_schedules SET officer_id = ? WHERE queue_id = ? AND manually_moved = 0 AND dismissed = 0`,
+      newOfficer,
+      id,
+    );
+  }
+
   return c.json({ success: true });
 });
 

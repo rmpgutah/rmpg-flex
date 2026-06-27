@@ -54,6 +54,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { toDisplayLabel } from '../utils/formatters';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
@@ -255,7 +256,12 @@ export default function IncidentsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const isManager = user?.role === 'manager';
+  const isSupervisor = user?.role === 'supervisor';
+  // canSupervise: roles that can approve, return, close, and delete incidents
+  const canSupervise = isAdmin || isManager || isSupervisor;
+  // isGodMode alias retained for backward compat with existing gate expressions below
+  const isGodMode = canSupervise;
   const isMobile = useIsMobile();
 
   // ── Right-click context menu ──
@@ -1735,7 +1741,7 @@ export default function IncidentsPage() {
               {inc.process_service_type && (
                 <div>
                   <label className="field-label">Document Type:</label>
-                  <p className="text-xs text-rmpg-200">{(inc.process_service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</p>
+                  <p className="text-xs text-rmpg-200">{toDisplayLabel(inc.process_service_type || '')}</p>
                 </div>
               )}
               {inc.process_served_to && (
@@ -1772,7 +1778,7 @@ export default function IncidentsPage() {
                       ? 'bg-red-900/40 text-red-400 border-red-600/40'
                       : 'bg-amber-900/40 text-amber-400 border-amber-600/40'
                   }`}>
-                    {(inc.process_service_result || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                    {toDisplayLabel(inc.process_service_result || '')}
                   </span>
                 </div>
               )}
@@ -2079,7 +2085,7 @@ export default function IncidentsPage() {
                   case: 'var(--sev-special-soft)',
                   warrant: 'var(--sev-critical)',
                   citation: 'var(--sev-warn)',
-                  arrest: '#ec4899',
+                  arrest: 'var(--pink-400, #ec4899)',
                 };
                 const typeColorRgb: Record<string, string> = {
                   incident: 'var(--spm-text-muted-rgb)',
@@ -2087,7 +2093,7 @@ export default function IncidentsPage() {
                   case: 'var(--sev-special-rgb)',
                   warrant: 'var(--sev-critical-rgb)',
                   citation: 'var(--sev-warn-rgb)',
-                  arrest: '236 72 153',
+                  arrest: 'var(--pink-400-rgb, 236 72 153)',
                 };
                 const fg = typeColors[link.linked_type] || 'var(--rmpg-500)';
                 const rgb = typeColorRgb[link.linked_type] || 'var(--rmpg-500-rgb)';
@@ -2382,7 +2388,7 @@ export default function IncidentsPage() {
                 </button>
               </>
             )}
-            {(isAdmin || selectedIncident.status === 'draft') && (
+            {(canSupervise || selectedIncident.status === 'draft') && (
               <button type="button"
                 onClick={() => setDeleteTarget(selectedIncident)}
                 className="toolbar-btn toolbar-btn-danger"
