@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import { toDisplayLabel } from '../../utils/formatters';
 import type { PipelineSummary, PipelineStage } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────
@@ -77,10 +78,6 @@ const SOURCE_LABELS: Record<string, string> = {
 function formatCurrency(val: number | null | undefined): string {
   if (!val) return '$0';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-}
-
-function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ════════════════════════════════════════════════════════
