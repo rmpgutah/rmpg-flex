@@ -880,6 +880,23 @@ export default function MenuBar({
               }
             },
           },
+          {
+            // Two-page tear-off card with shortcuts, priorities, statuses,
+            // and CAD commands — meant to live taped to the console.
+            // Reuses the same generator the Help page exposes, lazy-imported
+            // so jsPDF only loads when the menu item is actually clicked.
+            type: 'action',
+            label: 'Quick Reference Card (PDF)',
+            icon: Download,
+            action: async () => {
+              try {
+                const { generateHelpQuickReferencePdfWithDefaults } = await import('../utils/helpQuickReferencePdf');
+                await generateHelpQuickReferencePdfWithDefaults();
+              } catch (err) {
+                console.error('[QuickReferenceCard] Generation failed:', err);
+              }
+            },
+          },
         ],
       },
       { type: 'separator' },
