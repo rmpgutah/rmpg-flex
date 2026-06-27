@@ -1,4 +1,5 @@
 // src/utils/serveNudgeSweep.ts
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 import { classifyServeJob, shouldNotify, type AttentionSettings } from './serveAttention';

@@ -15,6 +15,7 @@
 // `Ai` is a global type from @cloudflare/workers-types (no import needed).
 // ============================================================
 
+import { log } from './logger';
 const LLM_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 /** Default "fresh GPS" window (seconds) — mirrors dispatch/extensions.ts. */
@@ -182,7 +183,7 @@ export async function suggestUnits(
       : [];
     if (suggestions.length > 0) return { suggestions, provider: 'workers-ai', fallback: false };
   } catch (err) {
-    console.error('[dispatchAi] suggestUnits LLM failed:', (err as Error)?.message);
+    log.error('suggestUnits LLM failed', {}, err);
   }
   return { suggestions: deterministicReasons(candidates), provider: 'deterministic', fallback: true };
 }
@@ -221,7 +222,7 @@ export async function narrativeAssist(
       return { narrative, provider: 'workers-ai', fallback: false };
     }
   } catch (err) {
-    console.error('[dispatchAi] narrativeAssist LLM failed:', (err as Error)?.message);
+    log.error('narrativeAssist LLM failed', {}, err);
   }
 
   return {
@@ -268,7 +269,7 @@ export async function smartSearch(
       return { filters, provider: 'workers-ai', fallback: false };
     }
   } catch (err) {
-    console.error('[dispatchAi] smartSearch LLM failed:', (err as Error)?.message);
+    log.error('smartSearch LLM failed', {}, err);
   }
 
   return { filters: {}, provider: 'deterministic', fallback: true };
@@ -319,7 +320,7 @@ export async function analyzeCall(ai: Ai, call: CallContext): Promise<CallAnalys
       };
     }
   } catch (err) {
-    console.error('[dispatchAi] analyzeCall LLM failed:', (err as Error)?.message);
+    log.error('analyzeCall LLM failed', {}, err);
   }
   return {
     safetyBriefing: 'AI briefing unavailable — proceed with standard caution and confirm scene status on arrival.',
