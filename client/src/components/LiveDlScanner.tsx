@@ -104,8 +104,12 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
   const finish = useCallback(async (barcodeText: string | null, backImage: Blob | null) => {
     if (doneRef.current) return;
     doneRef.current = true;
+    // Run the parent handler FIRST so it can set up results UI
+    // while the camera feed is still live. Stop the camera stream
+    // only after the parent is done — prevents a black viewfinder
+    // during async processing (OCR upload, record lookup, …).
+    await onComplete({ barcodeText, frontImage: frontBlobRef.current, backImage });
     stopStream();
-    onComplete({ barcodeText, frontImage: frontBlobRef.current, backImage });
   }, [onComplete, stopStream]);
 
   // ── camera + continuous PDF417 read on the BACK step ──
