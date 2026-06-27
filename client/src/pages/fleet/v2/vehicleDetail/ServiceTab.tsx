@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
-import { apiFetch } from '../../../hooks/useApi';
-import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
-import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
+import { apiFetch } from '../../../../hooks/useApi';
+import FleetioConflictBadge from '../../../../components/FleetioConflictBadge';
+import type { ConflictBadgeConflict } from '../../../../components/FleetioConflictBadge';
 
 interface ServiceRow {
   id: number;
