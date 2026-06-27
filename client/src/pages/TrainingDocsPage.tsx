@@ -86,7 +86,7 @@ export default function TrainingDocsPage() {
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState<CompanyDocCategory | 'all'>('all');
+  const [category, setCategory] = useState<CompanyDocCategory | 'all'>(validCategory);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editDoc, setEditDoc] = useState<any | null>(null);
@@ -380,7 +380,9 @@ export default function TrainingDocsPage() {
                   )}
 
                   <div className="flex items-center gap-3 text-[10px] text-rmpg-500">
-                    {doc.creator_name && <span>By {doc.creator_name}</span>}
+                    {(doc.created_by_name || doc.creator_name) && (
+                      <span>By {doc.created_by_name || doc.creator_name}</span>
+                    )}
                     <span title={safeDateStr(doc.created_at)}>{timeAgo(doc.created_at)}</span>
                     {doc.file_size > 0 && <span>{formatFileSize(doc.file_size)}</span>}
                   </div>

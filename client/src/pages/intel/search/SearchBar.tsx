@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Search, Star, X } from 'lucide-react';
+import { useState, useEffect, useRef, type RefObject } from 'react';
+import { Search, Star, X, Trash2 } from 'lucide-react';
 import { useSavedSearches } from '../useSavedSearches';
 
 const HINT = 'plate:  dob:  phone:  vin:  dl:  case:  name:"…"  addr:"…"  type:  flag:  since:  until:';
@@ -36,12 +36,18 @@ function SaveSearchPopover({ onSave, onClose }: { onSave: (name: string) => void
   );
 }
 
-export default function SearchBar({ value, onChange, onSave }: {
+export default function SearchBar({ value, onChange, onSave, inputRef: inputRefProp, onRemoveSaved }: {
   value: string;
   onChange: (v: string) => void;
   onSave?: (name: string) => void;
+  /** Forwarded ref so the parent (IntelSearch) can focus the input via the N shortcut. */
+  inputRef?: RefObject<HTMLInputElement | null>;
+  /** Admin/manager only — called when the trash icon is clicked on a saved search row. */
+  onRemoveSaved?: (id: number, name: string) => void;
 }) {
   const { saved, recent } = useSavedSearches();
+  const internalRef = useRef<HTMLInputElement>(null);
+  const resolvedRef = inputRefProp ?? internalRef;
   const [open, setOpen] = useState(false);
   const [savingOpen, setSavingOpen] = useState(false);
 
@@ -50,6 +56,7 @@ export default function SearchBar({ value, onChange, onSave }: {
       <div className="flex items-center gap-2 border border-rmpg-700 bg-surface-sunken rounded-[2px] px-3 py-2 focus-within:border-brand-500">
         <Search size={14} className="text-brand-400" />
         <input
+          ref={resolvedRef}
           autoFocus value={value}
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setOpen(true)}
@@ -73,11 +80,22 @@ export default function SearchBar({ value, onChange, onSave }: {
         <div className="absolute z-20 left-0 right-0 mt-1 bg-surface-overlay border border-border-default rounded-[2px] max-h-[260px] overflow-y-auto">
           {saved.length > 0 && <div className="font-mono text-[8px] tracking-widest text-rmpg-500 uppercase px-3 pt-2">Saved</div>}
           {saved.map((s) => (
-            <button key={s.id} onMouseDown={() => onChange(s.query_text)}
-              className="w-full text-left px-3 py-[5px] text-[11px] text-rmpg-200 hover:bg-surface-sunken flex items-center gap-2">
-              <Star size={10} className="text-brand-400" /><span className="min-w-0 flex-1 truncate">{s.name}</span>
-              <span className="text-[9px] text-rmpg-500 font-mono truncate max-w-[160px]">{s.query_text}</span>
-            </button>
+            <div key={s.id} className="flex items-center hover:bg-surface-sunken">
+              <button onMouseDown={() => onChange(s.query_text)}
+                className="flex-1 min-w-0 text-left px-3 py-[5px] text-[11px] text-rmpg-200 flex items-center gap-2">
+                <Star size={10} className="text-brand-400 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                <span className="text-[9px] text-rmpg-500 font-mono truncate max-w-[160px]">{s.query_text}</span>
+              </button>
+              {onRemoveSaved && (
+                <button
+                  aria-label={`Delete saved search ${s.name}`}
+                  onMouseDown={(e) => { e.stopPropagation(); onRemoveSaved(s.id, s.name); }}
+                  className="px-2 py-[5px] text-rmpg-600 hover:text-red-400 shrink-0">
+                  <Trash2 size={10} />
+                </button>
+              )}
+            </div>
           ))}
           {recent.length > 0 && <div className="font-mono text-[8px] tracking-widest text-rmpg-500 uppercase px-3 pt-2">Recent</div>}
           {recent.map((r, i) => (
