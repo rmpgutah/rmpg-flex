@@ -458,8 +458,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/alerts', router: alerts, auth: 'required',
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
-    note: 'ALPR plate read on Cloudflare Workers AI (free, no external key) → intel plate log' },
-  { prefix: '/api/alpr', router: alpr, auth: 'required',
     note: 'ALPR collector: /summary (aggregates), /hits (paginated records), /systems (monitored systems), /hits/:uuid/image (JPEG). POST /hits for admin record. Educational tool for known Motorola ALPR security vulnerability.' },
   { prefix: '/api/analytics', router: analytics, auth: 'required',
     note: 'R2 Data Catalog (Iceberg) analytics over R2 SQL: ALPR plate history + summary + raw query. 503s until the ANALYTICS pipeline + R2_ANALYTICS_WAREHOUSE + R2_SQL_TOKEN are provisioned.' },
