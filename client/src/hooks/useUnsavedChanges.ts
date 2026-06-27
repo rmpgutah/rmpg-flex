@@ -25,6 +25,18 @@ export function useUnsavedChanges(isDirty: boolean, _message?: string) {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [handleBeforeUnload]);
+
+  // ── Global dirty counter (consumed by WebUpdateBanner.isSafeToReload) ──
+  useEffect(() => {
+    if (isDirty) {
+      (window as any).__rmpg_unsavedChangesCount = ((window as any).__rmpg_unsavedChangesCount || 0) + 1;
+    }
+    return () => {
+      if (isDirty) {
+        (window as any).__rmpg_unsavedChangesCount = Math.max(0, ((window as any).__rmpg_unsavedChangesCount || 0) - 1);
+      }
+    };
+  }, [isDirty]);
 }
 
 export default useUnsavedChanges;

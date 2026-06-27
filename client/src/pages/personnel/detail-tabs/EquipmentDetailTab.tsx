@@ -9,6 +9,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
 import { safeDateTimeStr, parseTimestamp } from '../../../utils/dateUtils';
 import { openEquipmentCustodyPdf, type CheckoutLogEntry } from '../../../utils/equipmentCustodyPdf';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   equipment: OfficerEquipment[];
@@ -125,7 +126,7 @@ export default function EquipmentDetailTab({
   };
 
   const typeLabel = (type: string) =>
-    type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    toDisplayLabel(type);
 
   const statusLabel = (status: string) =>
     status.replace(/_/g, ' ').toUpperCase();
