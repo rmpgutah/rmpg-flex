@@ -27,6 +27,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { formatHashGrouped } from './pdfIntegrity';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -178,12 +179,6 @@ export function parseChain(value: ForensicExhibitForPdf['chain_of_custody']): Ch
   return [];
 }
 
-/** Format snake_case → Title Case for action / status / type labels. */
-export function prettyLabel(input: string | undefined): string {
-  if (!input) return '—';
-  return input.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 const ellipsize = (s: string, max: number) => s.length <= max ? s : s.slice(0, max - 1) + '…';
 
 // ── PDF body ────────────────────────────────────────────────────
@@ -272,9 +267,9 @@ export function generateForensicCasePdf(input: ForensicCasePdfInput): jsPDF {
 
   const headerFields: Array<[string, string]> = [
     ['Title', c.title || '—'],
-    ['Case Type', prettyLabel(c.case_type)],
-    ['Status', prettyLabel(c.status)],
-    ['Priority', prettyLabel(c.priority)],
+    ['Case Type', toDisplayLabel(c.case_type)],
+    ['Status', toDisplayLabel(c.status)],
+    ['Priority', toDisplayLabel(c.priority)],
     ['Lead Examiner', c.lead_examiner_name || '—'],
     ['Requesting Officer', c.requesting_officer || '—'],
     ['Agency', c.requesting_agency || '—'],
@@ -349,8 +344,8 @@ export function generateForensicCasePdf(input: ForensicCasePdfInput): jsPDF {
       doc.setFont('Arial', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(TEXT_DARK);
-      doc.text(`${ex.exhibit_number || `E-${ex.id ?? '?'}`}  ·  ${prettyLabel(ex.exhibit_type)}`, M + 4, y + 10);
-      const dispLabel = ex.disposition ? prettyLabel(ex.disposition) : '—';
+      doc.text(`${ex.exhibit_number || `E-${ex.id ?? '?'}`}  ·  ${toDisplayLabel(ex.exhibit_type)}`, M + 4, y + 10);
+      const dispLabel = ex.disposition ? toDisplayLabel(ex.disposition) : '—';
       doc.text(`Disposition: ${dispLabel}`, W - M - 4, y + 10, { align: 'right' });
       y += 18;
 
@@ -414,7 +409,7 @@ export function generateForensicCasePdf(input: ForensicCasePdfInput): jsPDF {
           doc.setTextColor(TEXT_DARK);
           const tsCol = fmtTimestamp(entry.at);
           const fromTo = `${entry.from || '—'} → ${entry.to || '—'}`;
-          const reason = prettyLabel(entry.reason);
+          const reason = toDisplayLabel(entry.reason);
           doc.text(tsCol, M + 8, y);
           doc.text(ellipsize(fromTo, 50), M + 130, y);
           doc.text(reason, M + 360, y);
@@ -455,8 +450,8 @@ export function generateForensicCasePdf(input: ForensicCasePdfInput): jsPDF {
       doc.setFont('Arial', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(TEXT_DARK);
-      doc.text(prettyLabel(a.analysis_type), M + 4, y + 10);
-      doc.text(prettyLabel(a.status), W - M - 4, y + 10, { align: 'right' });
+      doc.text(toDisplayLabel(a.analysis_type), M + 4, y + 10);
+      doc.text(toDisplayLabel(a.status), W - M - 4, y + 10, { align: 'right' });
       y += 18;
 
       doc.setFont('Arial', 'normal');
