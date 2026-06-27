@@ -33,6 +33,7 @@ import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatActivity, type CaseActivityRow } from '../utils/caseActivity';
 import { CaseTasksTab, CaseMyTasksView } from '../components/CaseTasks';
 import { CaseDashboardView, SlaBadge } from '../components/CaseDashboard';
+import { InvestigationTab } from '../components/InvestigationTab';
 import { CaseRelatedSection } from '../components/CaseRelated';
 import { CaseReadinessCard, fetchCaseCompleteness } from '../components/CaseReadiness';
 import { downloadCaseReport } from '../utils/caseReportGenerator';
@@ -85,7 +86,7 @@ const EMPTY_FORM = {
   summary: '', lead_investigator_id: '',
 };
 
-type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability' | 'files';
+type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability' | 'files' | 'intelligence';
 
 const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -102,6 +103,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'notes', label: 'Notes', countKey: 'notes' },
   { id: 'solvability', label: 'Solvability' },
   { id: 'files', label: 'Files', countKey: 'attachments' },
+  { id: 'intelligence', label: 'Intelligence' },
 ];
 
 // ── Reusable LinkedEntityPanel for each entity tab ──
@@ -1651,6 +1653,11 @@ export default function CaseManagementPage() {
                   </div>
                   <FileAttachments entityType="case" entityId={String(selected.id)} />
                 </div>
+              )}
+
+              {/* ── Intelligence Tab — cross-reference engine, MO patterns, timelines ── */}
+              {detailTab === 'intelligence' && (
+                <InvestigationTab caseId={selected.id} caseNumber={selected.case_number} />
               )}
 
               {/* File Attachments (always visible outside tabs for quick access) */}

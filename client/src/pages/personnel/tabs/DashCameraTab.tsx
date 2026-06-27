@@ -18,7 +18,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { coded } from '../../../utils/searchText';
-import { formatEnumValue } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 
 // ── Filters ──────────────────────────────────────────────────
 
@@ -126,7 +126,7 @@ export default function DashCameraTab({
   }
 
   function eventLabel(eventType: string): string {
-    return eventType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+    return toDisplayLabel(eventType);
   }
 
   function statusLedClass(isActive: boolean): string {
