@@ -35,7 +35,7 @@ function ImgThumb({ blob, label }: { blob: Blob; label: string }) {
   return (
     <div className="relative flex-shrink-0">
       {url && <img src={url} alt={`ID ${label}`} className="w-16 h-10 object-cover border border-rmpg-700 rounded-sm bg-black" />}
-      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[7px] font-bold text-[var(--brand-gold)] text-center uppercase">{label}</span>
+      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[7px] font-bold text-brand-gold-500 text-center uppercase">{label}</span>
     </div>
   );
 }
@@ -127,6 +127,9 @@ export default function DlSearchPage() {
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
   // Ref for the first search field — used by the N shortcut to focus it
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  // Set to true when an auto-search is triggered by a deep-link so that
+  // handleSearch can fire a toast when the query returns no results.
+  const fromDeepLinkRef = useRef(false);
 
   // ── DL Scanner (PDF417 barcode-first, OCR fallback) ──
   const navigate = useNavigate();
@@ -557,15 +560,20 @@ export default function DlSearchPage() {
         (!st || r.dl_state === st));
       setResults(rows);
       setSource('LOCAL');
+      if (rows.length === 0 && fromDeepLinkRef.current) {
+        addToast('No DL records found for the linked query', 'warning');
+      }
+      fromDeepLinkRef.current = false;
     } catch (err: any) {
       console.error('DL search error:', err);
       setFetchError(err?.message || 'Failed to load data');
       addToast('Failed to search driver\'s license records', 'error');
       setResults([]);
       setSource('ERROR');
+      fromDeepLinkRef.current = false;
     }
     setLoading(false);
-  }, [firstName, lastName, dlNumber, state, dob]);
+  }, [firstName, lastName, dlNumber, state, dob, addToast]);
 
   // Apply pending deep-link once handleSearch is stable. One-shot — clears
   // the ref after first run so subsequent input edits don't get clobbered.
@@ -588,6 +596,7 @@ export default function DlSearchPage() {
     if (pending.first) setFirstName(pending.first);
     if (pending.dob) setDob(pending.dob);
     // Auto-run the search next tick once state has flushed.
+    fromDeepLinkRef.current = true;
     setTimeout(() => { handleSearch(); }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSearch]);
@@ -996,8 +1005,8 @@ export default function DlSearchPage() {
               {/* ── Driver's License Scanner ── */}
               <div className="border border-rmpg-700 rounded-sm bg-surface-sunken w-full max-w-sm">
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle bg-surface-deep">
-                  <ScanLine size={14} className="text-[var(--brand-gold)]" />
-                  <span className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest">Driver's License Scanner</span>
+                  <ScanLine size={14} className="text-brand-gold-500" />
+                  <span className="text-[10px] font-bold text-brand-gold-500 uppercase tracking-widest">Driver's License Scanner</span>
                 </div>
                 <div className="p-3 space-y-3">
                   <div className="border border-dashed border-rmpg-700 rounded-sm py-5 flex flex-col items-center gap-2 bg-surface-deep">
@@ -1006,7 +1015,7 @@ export default function DlSearchPage() {
                       type="button"
                       onClick={() => setShowLiveScanner(true)}
                       disabled={ocrLoading}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-[var(--brand-gold)] hover:bg-[rgb(var(--brand-gold-700-rgb))] disabled:opacity-40 rounded-sm text-[12px] font-bold text-black transition-colors uppercase tracking-wider"
+                      className="flex items-center gap-2 px-5 py-2.5 bg-brand-gold-500 hover:bg-brand-gold-700 disabled:opacity-40 rounded-sm text-[12px] font-bold text-black transition-colors uppercase tracking-wider"
                     >
                       {ocrLoading ? <Loader2 size={15} className="animate-spin" /> : <ScanLine size={15} />}
                       {ocrLoading ? 'Reading Barcode...' : 'Scan License'}
@@ -1273,7 +1282,7 @@ export default function DlSearchPage() {
           <div className="bg-surface-raised border border-border-subtle rounded-sm max-w-lg w-full max-h-[88vh] overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
-                <Database size={14} className="text-[var(--brand-gold)]" />
+                <Database size={14} className="text-brand-gold-500" />
                 <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">Data Sources</span>
                 <span className="text-[8px] text-rmpg-500 uppercase">admin</span>
               </div>
@@ -1340,7 +1349,7 @@ export default function DlSearchPage() {
               <p className="text-[8px] text-rmpg-500 leading-relaxed">DMV/MVR (MicroBilt) and RapidAPI DL require a licensed broker contract and are configured separately under Admin → Integrations. Utah UCJIS/BCI requires a credentialed terminal connection.</p>
             </div>
             <div className="flex items-center gap-2 px-4 py-3 border-t border-border-subtle bg-surface-sunken">
-              <button type="button" onClick={saveSources} disabled={sourcesSaving} className="flex items-center gap-2 px-4 py-2 bg-[var(--brand-gold)] hover:bg-[rgb(var(--brand-gold-700-rgb))] disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
+              <button type="button" onClick={saveSources} disabled={sourcesSaving} className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-700 disabled:opacity-40 rounded-sm text-[11px] font-bold text-black">
                 {sourcesSaving ? <Loader2 size={13} className="animate-spin" /> : null} Save
               </button>
               <button type="button" onClick={() => setShowSources(false)} className="px-4 py-2 bg-surface-raised hover:bg-surface-overlay border border-border-subtle rounded-sm text-[11px] text-rmpg-400 hover:text-rmpg-100">Close</button>
@@ -1354,7 +1363,7 @@ export default function DlSearchPage() {
           <div className="bg-surface-raised border border-border-subtle rounded-sm max-w-2xl w-full max-h-[88vh] flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
-                <History size={14} className="text-[var(--brand-gold)]" />
+                <History size={14} className="text-brand-gold-500" />
                 <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">Scan History</span>
                 <span className="text-[8px] text-rmpg-500 uppercase">audit log</span>
               </div>
@@ -1362,7 +1371,7 @@ export default function DlSearchPage() {
                 <button
                   type="button"
                   onClick={() => { const n = !scanHistoryMine; setScanHistoryMine(n); loadScanHistory(n); }}
-                  className={`px-2 py-1 rounded-sm text-[9px] font-bold border ${scanHistoryMine ? 'bg-[var(--brand-gold)] text-black border-[var(--brand-gold)]' : 'bg-surface-raised text-rmpg-300 border-rmpg-700 hover:text-rmpg-100'}`}
+                  className={`px-2 py-1 rounded-sm text-[9px] font-bold border ${scanHistoryMine ? 'bg-brand-gold-500 text-black border-brand-gold-500' : 'bg-surface-raised text-rmpg-300 border-rmpg-700 hover:text-rmpg-100'}`}
                 >
                   {scanHistoryMine ? 'My Scans' : 'All Scans'}
                 </button>
@@ -1399,7 +1408,7 @@ export default function DlSearchPage() {
                           <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                           <td className="px-3 py-[3px] text-rmpg-100">
                             {s.person_id
-                              ? <button type="button" className="hover:text-[var(--brand-gold)] hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>
+                              ? <button type="button" className="hover:text-brand-gold-500 hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>
                               : (s.subject_name || 'unknown')}
                           </td>
                           <td className="px-3 py-[3px] text-rmpg-400 font-mono">{s.dl_number ? `${s.dl_number} ${s.dl_state || ''}` : '—'}</td>
@@ -1427,7 +1436,6 @@ export default function DlSearchPage() {
       {showLiveScanner && (
         <LiveDlScanner
           onComplete={async ({ barcodeText, frontImage, backImage }) => {
-            setShowLiveScanner(false);
             // Retain both card images for filing under the person record.
             setCardImages({ front: frontImage, back: backImage });
             setCardSavedTo(null);
@@ -1435,13 +1443,27 @@ export default function DlSearchPage() {
               const ok = await processBarcodeText(barcodeText);
               if (!ok) addToast('Barcode read but not a driver license payload', 'warning');
             } else if (frontImage || backImage) {
-              // No barcode — fall back to OCR on the captured front image.
+              // Try re-decoding the back image still with the thorough
+              // decoder (tryHarder + multi-scale + contrast boost) before
+              // falling back to OCR on the front image.
+              if (backImage) {
+                try {
+                  const { decodePdf417 } = await import('../utils/pdf417Decoder');
+                  const decoded = await decodePdf417(new File([backImage], 'id-back.jpg', { type: 'image/jpeg' }));
+                  if (decoded && await processBarcodeText(decoded.text)) {
+                    setShowLiveScanner(false);
+                    return;
+                  }
+                } catch { /* fall through to OCR */ }
+              }
+              // Fall back to OCR on the captured front image.
               if (frontImage) {
                 await handleOcrUpload(new File([frontImage], 'id-front.jpg', { type: 'image/jpeg' }));
               } else {
                 addToast('Captured images — no barcode read; review and upload', 'warning');
               }
             }
+            setShowLiveScanner(false);
           }}
           onClose={() => setShowLiveScanner(false)}
           onUploadInstead={() => { setShowLiveScanner(false); fileInputRef.current?.click(); }}
@@ -1461,7 +1483,7 @@ export default function DlSearchPage() {
           <div className="bg-surface-raised border border-border-subtle rounded-sm max-w-xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-surface-sunken">
               <div className="flex items-center gap-2">
-                <ScanLine size={14} className="text-[var(--brand-gold)]" />
+                <ScanLine size={14} className="text-brand-gold-500" />
                 <span className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">
                   {scanReadout ? 'DL Scanner — PDF417 Read' : 'DL Scanner — OCR Read'}
                 </span>
@@ -1567,7 +1589,7 @@ export default function DlSearchPage() {
                           <div className="text-[11px] text-rmpg-100 font-bold truncate">
                             {p.last_name}, {p.first_name} <span className="text-rmpg-500 font-normal">#{p.id}</span>
                           </div>
-                          <div className="text-[8px] text-[var(--brand-gold)] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          <div className="text-[8px] text-brand-gold-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
                             {p.match_type}{p.dob ? ` · DOB ${String(p.dob).slice(0, 10)}` : ''}
                             {p.active_warrants > 0 && (
                               <span className="px-1 py-px bg-red-900/60 text-red-300 border border-red-600/70 font-bold">{p.active_warrants} ACTIVE WARRANT{p.active_warrants > 1 ? 'S' : ''}</span>
@@ -1580,7 +1602,7 @@ export default function DlSearchPage() {
                         <button
                           type="button"
                           onClick={async () => { await fileCardImagesTo(p.id); setShowOcrPreview(false); navigate(`/records?tab=persons&personId=${p.id}`); }}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--brand-gold)] hover:bg-[rgb(var(--brand-gold-700-rgb))] rounded-sm text-[10px] font-bold text-black flex-shrink-0"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[10px] font-bold text-black flex-shrink-0"
                           title="Open the matched record and file the captured ID images to it"
                         >
                           <UserCheck size={12} /> Pull Record
@@ -1602,7 +1624,7 @@ export default function DlSearchPage() {
                     <Search size={11} /> Deep Records Sweep
                     {deepSweepLoading
                       ? <Loader2 size={10} className="animate-spin" />
-                      : <span className="text-[var(--brand-gold)]">{deepSweep!.total} hit{deepSweep!.total === 1 ? '' : 's'} across {deepSweep!.sources.length} source{deepSweep!.sources.length === 1 ? '' : 's'}</span>}
+                      : <span className="text-brand-gold-500">{deepSweep!.total} hit{deepSweep!.total === 1 ? '' : 's'} across {deepSweep!.sources.length} source{deepSweep!.sources.length === 1 ? '' : 's'}</span>}
                   </div>
                   {deepSweep && deepSweep.sources.map((src: any) => (
                     <div key={src.key} className="border-b border-border-subtle last:border-b-0">
@@ -1613,7 +1635,7 @@ export default function DlSearchPage() {
                           <a
                             href="https://www.communitynotification.com/cap_main.php?office=54438"
                             target="_blank" rel="noopener noreferrer"
-                            className="ml-auto text-[8px] font-bold text-[var(--brand-gold)] hover:underline normal-case tracking-normal"
+                            className="ml-auto text-[8px] font-bold text-brand-gold-500 hover:underline normal-case tracking-normal"
                           >Open official registry ↗</a>
                         )}
                       </div>
@@ -1668,7 +1690,7 @@ export default function DlSearchPage() {
                 if (chips.length === 0 && lists.length === 0) return null;
                 return (
                   <div className="border border-border-subtle rounded-sm bg-surface-sunken">
-                    <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1.5">
+                    <div className="px-3 py-1.5 border-b border-border-subtle text-[9px] font-bold text-brand-gold-500 uppercase tracking-wider flex items-center gap-1.5">
                       <User size={11} /> Subject Profile — Full Detail (#{p.id} {p.last_name}, {p.first_name})
                     </div>
                     {(p.photo_url || p.photo || p.id_image_url) && (
@@ -1724,7 +1746,7 @@ export default function DlSearchPage() {
                         </div>
                         <div className="text-rmpg-400 mt-0.5">{[r.subjects, r.sex, r.race, r.dob && `DOB ${r.dob}`].filter(Boolean).join(' · ')}</div>
                         {r.caution && <div className="text-[var(--spm-text-muted)] mt-0.5 leading-snug">{r.caution.slice(0, 180)}{r.caution.length > 180 ? '…' : ''}</div>}
-                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[var(--brand-gold)] hover:underline">FBI bulletin ↗</a>}
+                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-brand-gold-500 hover:underline">FBI bulletin ↗</a>}
                       </div>
                     </div>
                   ))}
@@ -1738,7 +1760,7 @@ export default function DlSearchPage() {
                     <Database size={11} /> Federal Court Records
                     {courtLoading
                       ? <Loader2 size={10} className="animate-spin" />
-                      : <span className="text-[var(--brand-gold)]">{courtRecords!.length} case{courtRecords!.length === 1 ? '' : 's'} · CourtListener/PACER</span>}
+                      : <span className="text-brand-gold-500">{courtRecords!.length} case{courtRecords!.length === 1 ? '' : 's'} · CourtListener/PACER</span>}
                   </div>
                   {courtRecords && courtRecords.length > 0 && (
                     <div className="px-3 py-1 text-[8px] text-amber-500 bg-amber-950/30 border-b border-amber-900/40">
@@ -1753,7 +1775,7 @@ export default function DlSearchPage() {
                       </div>
                       <div className="text-rmpg-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
                         {[r.court, r.docket_number, r.date_filed].filter(Boolean).join(' · ')}
-                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[var(--brand-gold)] hover:underline">view ↗</a>}
+                        {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-brand-gold-500 hover:underline">view ↗</a>}
                       </div>
                     </div>
                   ))}
@@ -1803,7 +1825,7 @@ export default function DlSearchPage() {
               {leFields && leFields.length > 0 && (
                 <div className="border border-border-subtle rounded-sm bg-surface-deep">
                   <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle">
-                    <span className="text-[9px] font-bold text-[var(--brand-gold)] uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold text-brand-gold-500 uppercase tracking-wider flex items-center gap-1.5">
                       <Shield size={11} /> Law Enforcement Format — NCIC/NLETS
                     </span>
                     <div className="flex items-center gap-1.5">
@@ -1826,7 +1848,7 @@ export default function DlSearchPage() {
                           setShowOcrPreview(false);
                           navigate(`/ncic?q=${encodeURIComponent(nam.split(' ')[0] || nam)}&type=xref`);
                         }}
-                        className="px-2 py-1 bg-[var(--brand-gold)] hover:bg-[rgb(var(--brand-gold-700-rgb))] rounded-sm text-[9px] font-bold text-black"
+                        className="px-2 py-1 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[9px] font-bold text-black"
                       >
                         Run NCIC QX
                       </button>
@@ -1907,7 +1929,7 @@ export default function DlSearchPage() {
                         <tbody>
                           {scanReadout.map((row) => (
                             <tr key={row.code} className="border-t border-border-subtle text-[10px] align-top">
-                              <td className="px-2 py-[2px] font-mono text-[var(--brand-gold)] text-[9px]">{row.code}</td>
+                              <td className="px-2 py-[2px] font-mono text-brand-gold-500 text-[9px]">{row.code}</td>
                               <td className="px-2 py-[2px] text-rmpg-400">{row.label}</td>
                               <td className="px-2 py-[2px] text-rmpg-100">
                                 {row.english}
@@ -1947,7 +1969,7 @@ export default function DlSearchPage() {
                   <button
                     type="button"
                     onClick={handleCreateLinkedFromOcr}
-                    className="flex items-center gap-2 px-4 py-2 bg-[var(--brand-gold)] hover:bg-[rgb(var(--brand-gold-400-rgb))] rounded-sm text-[11px] font-bold text-black transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-400 rounded-sm text-[11px] font-bold text-black transition-colors"
                   >
                     <Database size={14} />
                     Create &amp; Link Person + Vehicle + Property
@@ -1969,7 +1991,7 @@ export default function DlSearchPage() {
                     addToast(err?.message || 'Failed to generate safety sheet', 'error');
                   }
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-[var(--brand-gold)] hover:bg-[rgb(var(--brand-gold-700-rgb))] rounded-sm text-[11px] font-bold text-black transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-brand-gold-500 hover:bg-brand-gold-700 rounded-sm text-[11px] font-bold text-black transition-colors"
               >
                 <Shield size={14} /> Safety Sheet
               </button>
