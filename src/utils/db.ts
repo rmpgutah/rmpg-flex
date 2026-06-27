@@ -209,7 +209,40 @@ export async function ensureAssessorColumns(db: D1Database): Promise<void> {
 
   // Canary verification (mirrors ensureOutboxRecordColumns in routes/email.ts):
   // only mark the cache flag true if a known new column actually landed.
-  // If a partial failure occurred above, the canary stays false and the next
+  // If a partial failure occurred above, the cache flag stays false and the next
   // call retries the whole reconciliation. Cheap — one PRAGMA per cold start.
   _assessorColumnsEnsured = await columnExists(db, 'businesses', 'parcel_number');
+}
+
+// ── Time entry columns reconciler ──────────────────────────
+// Migration 0150_time_entries_local_stamps.sql adds clock_in_local,
+// clock_out_local, break_start_local to time_entries. D1 does not
+// support IF NOT EXISTS on ADD COLUMN, and deploy.yml applies migrations
+// with continue-on-error: true. This reconciler ensures the columns
+// exist at runtime so POST /personnel/time/clock-in etc don't 500
+// with "table time_entries has no column named clock_in_local".
+//
+// Call from any route handler that writes to time_entries columns
+// (personnel clock-in/out/break, dispatch duty start/end). The flag
+// is per-isolate (once per cold start).
+let _timeEntryColumnsEnsured = false;
+
+const TIME_ENTRY_LOCAL_COLS: Array<[string, string]> = [
+  ['clock_in_local', 'TEXT'],
+  ['clock_out_local', 'TEXT'],
+  ['break_start_local', 'TEXT'],
+];
+
+export async function ensureTimeEntryColumns(db: D1Database): Promise<void> {
+  if (_timeEntryColumnsEnsured) return;
+  for (const [col, type] of TIME_ENTRY_LOCAL_COLS) {
+    try {
+      if (!(await columnExists(db, 'time_entries', col))) {
+        await db.prepare(`ALTER TABLE time_entries ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+  _timeEntryColumnsEnsured = await columnExists(db, 'time_entries', 'clock_in_local');
 }

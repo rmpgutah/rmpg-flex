@@ -685,10 +685,15 @@ export default function ServeIntakePage() {
 
   // Remove the row AND, if it's a scanned PDF, its hidden rasterized OCR pages
   // (derivedFrom === the removed file's name) so they don't upload orphaned.
+  // Gated to canManage — non-managers cannot remove documents.
   const removeFile = (idx: number) => setFiles(prev => {
     const target = prev[idx];
     return prev.filter((f, i) => i !== idx && f.derivedFrom !== target?.name);
   });
+  const requestRemoveFile = (idx: number) => {
+    if (!canManage) return;
+    setConfirmRemoveFileIdx(idx);
+  };
   const changeFileType = (idx: number, type: string) => setFiles(prev => prev.map((f, i) => i === idx ? { ...f, type } : f));
 
   const openOcrPreview = (file: UploadedFile) => {
@@ -918,6 +923,15 @@ export default function ServeIntakePage() {
         />
       </div>
 
+      {/* Empty state — no files loaded, not processing, no completed result */}
+      {!processing && !result && files.length === 0 && (
+        <p className="text-center text-[10px] text-rmpg-600 py-2">
+          {canManage
+            ? 'Drop a job packet above or press N to browse — PDF, images, or a whole folder.'
+            : 'Contact a supervisor to process service intakes.'}
+        </p>
+      )}
+
       {files.some(f => !f.derivedFrom) && (
         <div className="space-y-1">
           <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">
@@ -990,7 +1004,9 @@ export default function ServeIntakePage() {
                   <Eye className="w-3 h-3" /> Review
                 </button>
               )}
-              <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
+              {canManage && (
+                <IconButton onClick={() => requestRemoveFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
+              )}
             </div>
           ))}
         </div>

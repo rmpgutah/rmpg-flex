@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Monitor, Navigation, Eye, CheckCircle, MapPin, Clock, Send, AlertTriangle,
-  MessageSquare, Shield, FileText, Loader2, X, ChevronRight,
+  MessageSquare, Shield, FileText, Loader2, ChevronRight,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus } from '../types';
 import { apiFetch } from '../hooks/useApi';
@@ -28,6 +28,7 @@ import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
 import PremiseAlertModal from '../components/PremiseAlertModal';
 import WelfareCheckModal from '../components/WelfareCheckModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { Volume2, VolumeX, Vibrate } from 'lucide-react';
 import { type AudioMode, getLocalAudioMode, persistAudioMode, syncAudioModeFromServer } from '../utils/audioMode';
 import { formatDateTime, localToday, safeTimeStr } from '../utils/dateUtils';
@@ -247,11 +248,16 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
 
 // ── Component ──────────────────────────────────────────────
 
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 export default function MdtPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
   const gps = useGpsTracking();
+
+  // Role gates — destructive duty/call actions gated to admin/manager/supervisor
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
   // DI-5: per-unit audio mode (silent dispatch). Source of truth = server,
   // localStorage mirror keeps the voice hook gate latency-free.
@@ -286,19 +292,16 @@ export default function MdtPage() {
   const [msgUnread, setMsgUnread] = useState(0);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [dispatchingCallId, setDispatchingCallId] = useState<string | null>(null);
-  const [errorToast, setErrorToast] = useState<string | null>(null);
   const [showFiForm, setShowFiForm] = useState(false);
   const [fiData, setFiData] = useState({ subject_name: '', location: '', reason: '', narrative: '' });
   const [fiSubmitting, setFiSubmitting] = useState(false);
 
-  // Error toast auto-dismiss
-  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showError = useCallback((msg: string) => {
-    setErrorToast(msg);
-    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
-    errorTimerRef.current = setTimeout(() => setErrorToast(null), 5000);
-  }, []);
-  useEffect(() => () => { if (errorTimerRef.current) clearTimeout(errorTimerRef.current); }, []);
+  // ConfirmDialog state — off-duty (ends shift/releases vehicle) + clear call
+  const [confirmOffDuty, setConfirmOffDuty] = useState(false);
+  const [confirmClearCallId, setConfirmClearCallId] = useState<string | null>(null);
+
+  // Ref for FI subject name input — used by N shortcut
+  const fiSubjectRef = useRef<HTMLInputElement | null>(null);
 
   // Timer tick — force re-render every second so elapsed timers update
   const [, setTick] = useState(0);
@@ -430,7 +433,7 @@ export default function MdtPage() {
     } finally {
       setLoading(false);
     }
-  }, [gps.unitId, showError]);
+  }, [gps.unitId, addToast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('dispatch', fetchData);
@@ -489,19 +492,54 @@ export default function MdtPage() {
     return () => { unsubDispatch(); unsubUnit(); };
   }, [subscribe, fetchData, gps.unitId]);
 
+  // ── N shortcut + Esc cascade ──
+  // N : open Quick FI form and focus the subject-name input (field role action;
+  //     skips if already typing in an input or textarea).
+  // Esc cascade (in order, stops propagation at first match):
+  //   1. Close off-duty confirm dialog
+  //   2. Close clear-call confirm dialog
+  //   3. Close FI form
+  //   4. Deselect call (return to list on mobile)
+  //   5. Close selected call detail
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName ?? '';
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+      if (e.key === 'Escape') {
+        if (confirmOffDuty) { e.stopPropagation(); setConfirmOffDuty(false); return; }
+        if (confirmClearCallId) { e.stopPropagation(); setConfirmClearCallId(null); return; }
+        if (showFiForm) { e.stopPropagation(); setShowFiForm(false); return; }
+        if (selectedCall) { e.stopPropagation(); setSelectedCall(null); return; }
+        return;
+      }
+
+      if ((e.key === 'n' || e.key === 'N') && !inInput && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setShowFiForm(true);
+        // Focus fires after the form renders via requestAnimationFrame
+        requestAnimationFrame(() => fiSubjectRef.current?.focus());
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [confirmOffDuty, confirmClearCallId, showFiForm, selectedCall]);
+
   // ── Unit Status Change ──
   // Duty BOUNDARIES (off_duty, and going available FROM off_duty) run through
   // the integrated shift API so they clock the officer out/in AND release/assign
   // the fleet vehicle — matching the ShiftCard. Operational statuses
   // (enroute/onscene/busy, or going available mid-shift) stay on the legacy
   // unit-status path, which owns the live /api/ws broadcast + transition guard.
+  // off_duty is routed through ConfirmDialog (destructive: ends shift + releases vehicle).
   const handleUnitStatus = async (newStatus: string) => {
     if (!myUnit) return;
+    if (newStatus === 'off_duty') {
+      setConfirmOffDuty(true);
+      return;
+    }
     try {
-      if (newStatus === 'off_duty') {
-        await apiFetch('/dispatch/duty/end', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
-        addToast('Shift ended — clocked out, vehicle released', 'success');
-      } else if (newStatus === 'available' && myUnit.status === 'off_duty') {
+      if (newStatus === 'available' && myUnit.status === 'off_duty') {
         await apiFetch('/dispatch/duty/start', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
         addToast('On duty — clocked in, vehicle assigned', 'success');
       } else {
@@ -525,8 +563,32 @@ export default function MdtPage() {
     }
   };
 
+  // Confirmed off-duty: clock out + release vehicle
+  const handleConfirmOffDuty = async () => {
+    if (!myUnit) return;
+    setConfirmOffDuty(false);
+    try {
+      await apiFetch('/dispatch/duty/end', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
+      addToast('Shift ended — clocked out, vehicle released', 'success');
+      fetchData();
+    } catch (err: any) {
+      console.error('End duty failed:', err);
+      addToast('Failed to end shift', 'error');
+    }
+  };
+
   // ── Call Status Change ──
+  // 'cleared' is routed through ConfirmDialog — closing a call is irreversible
+  // from the MDT (dispatch can re-open, but the officer shouldn't do it by accident).
   const handleCallStatus = async (callId: string, newStatus: CallStatus) => {
+    if (newStatus === 'cleared') {
+      setConfirmClearCallId(callId);
+      return;
+    }
+    await executeCallStatus(callId, newStatus);
+  };
+
+  const executeCallStatus = async (callId: string, newStatus: CallStatus) => {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}/status`, {
         method: 'POST',
@@ -594,18 +656,35 @@ export default function MdtPage() {
       <PremiseAlertModal />
       {/* DI-4: Welfare-check ack modal — listens for welfare_check WS event */}
       <WelfareCheckModal />
-      {/* ── Error Toast ── */}
-      {errorToast && (
-        <div className="absolute top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-red-900/90 border border-red-700 text-red-200 text-[10px] font-bold shadow-lg"
-          style={{ maxWidth: 320 }}
-        >
-          <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0 }} />
-          <span className="flex-1">{errorToast}</span>
-          <button type="button" onClick={() => setErrorToast(null)} className="text-red-400 hover:text-rmpg-100">
-            <X style={{ width: 10, height: 10 }} />
-          </button>
-        </div>
-      )}
+
+      {/* ── ConfirmDialog: End Shift (off_duty) ── */}
+      <ConfirmDialog
+        isOpen={confirmOffDuty}
+        onClose={() => setConfirmOffDuty(false)}
+        onConfirm={handleConfirmOffDuty}
+        title="End Shift"
+        message="This will clock you out and release your assigned fleet vehicle. Are you sure you want to go off duty?"
+        details={myUnit ? <span>Unit: {myUnit.call_sign}</span> : undefined}
+        confirmLabel="Go Off Duty"
+        confirmVariant="warning"
+      />
+
+      {/* ── ConfirmDialog: Clear Call ── */}
+      <ConfirmDialog
+        isOpen={!!confirmClearCallId}
+        onClose={() => setConfirmClearCallId(null)}
+        onConfirm={() => {
+          if (confirmClearCallId) executeCallStatus(confirmClearCallId, 'cleared');
+          setConfirmClearCallId(null);
+        }}
+        title="Clear Call"
+        message="Mark this call as cleared? Dispatch can re-open if needed."
+        details={confirmClearCallId
+          ? (() => { const c = myCalls.find(x => x.id === confirmClearCallId); return c ? <span>{c.call_number} — {formatIncidentType(c.incident_type)}</span> : null; })()
+          : undefined}
+        confirmLabel="Clear"
+        confirmVariant="warning"
+      />
 
       {/* ── TOP BAR: Unit Identity & Status ─────────────── */}
       <div
@@ -666,30 +745,36 @@ export default function MdtPage() {
               : <Volume2 style={{ width: 10, height: 10 }} />}
             <span>{audioMode === 'silent' ? 'SIL' : audioMode === 'vibrate' ? 'VIB' : 'AUD'}</span>
           </button>
-          <button type="button"
-            onClick={handleGenerateShiftReport}
-            disabled={generatingReport}
-            className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 hover:border-brand-500 mr-1"
-            title="Generate End-of-Shift Report"
-          >
-            {generatingReport ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
-          </button>
-          {UNIT_STATUSES.map(({ label, status, color }) => (
+          {canManage && (
             <button type="button"
-              key={status}
-              onClick={() => handleUnitStatus(status)}
-              disabled={!myUnit}
-              className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors"
-              style={{
-                background: myUnit?.status === status ? color : 'transparent',
-                color: myUnit?.status === status ? '#000' : color,
-                border: `1px solid ${color}`,
-                opacity: myUnit ? 1 : 0.4,
-              }}
+              onClick={handleGenerateShiftReport}
+              disabled={generatingReport}
+              className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 hover:border-brand-500 mr-1"
+              title="Generate End-of-Shift Report (admin/manager/supervisor)"
             >
-              {label}
+              {generatingReport ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
             </button>
-          ))}
+          )}
+          {UNIT_STATUSES.map(({ label, status, color }) => {
+            // off_duty is destructive (ends shift + releases vehicle) — gated to managers
+            if (status === 'off_duty' && !canManage) return null;
+            return (
+              <button type="button"
+                key={status}
+                onClick={() => handleUnitStatus(status)}
+                disabled={!myUnit}
+                className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors"
+                style={{
+                  background: myUnit?.status === status ? color : 'transparent',
+                  color: myUnit?.status === status ? 'var(--surface-base)' : color,
+                  border: `1px solid ${color}`,
+                  opacity: myUnit ? 1 : 0.4,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -702,6 +787,7 @@ export default function MdtPage() {
           </div>
           <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-4'} gap-2`}>
             <input id="ff-mdtpage-2"
+              ref={fiSubjectRef}
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder="Subject Name *"
@@ -753,7 +839,7 @@ export default function MdtPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-mono font-black text-green-400">{myCalls[0].call_number}</span>
-              <span className="text-[9px] font-bold px-1 py-px rounded-sm" style={{ background: prioColor(myCalls[0].priority), color: '#fff' }}>{myCalls[0].priority}</span>
+              <span className="text-[9px] font-bold px-1 py-px rounded-sm" style={{ background: prioColor(myCalls[0].priority), color: 'var(--surface-base)' }}>{myCalls[0].priority}</span>
               <StatusBadge status={myCalls[0].status} type="call_status" size="sm" />
             </div>
             <div className="text-[10px] text-rmpg-100 font-semibold truncate">{formatIncidentType(myCalls[0].incident_type)}</div>
@@ -844,7 +930,11 @@ export default function MdtPage() {
             {activeTab === 'pending' && (
               pendingCalls.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
-                  <p>No pending calls</p>
+                  <div className="text-center">
+                    <CheckCircle className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
+                    <p>No pending calls</p>
+                    <p className="text-[9px] text-rmpg-600 mt-0.5">All clear — no calls awaiting dispatch</p>
+                  </div>
                 </div>
               ) : (
                 pendingCalls.map(call => (
@@ -862,7 +952,7 @@ export default function MdtPage() {
                         <span className="text-[10px] font-mono font-bold text-amber-400">{call.call_number}</span>
                         <span
                           className="text-[8px] font-black px-1 rounded-sm"
-                          style={{ background: prioColor(call.priority), color: '#fff' }}
+                          style={{ background: prioColor(call.priority), color: 'var(--surface-base)' }}
                         >
                           {humanizePriority(call.priority)}
                         </span>
@@ -934,7 +1024,7 @@ export default function MdtPage() {
                     <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
                     <span
                       className="text-[8px] font-black px-1 py-px rounded-sm"
-                      style={{ background: prioColor(selectedCall.priority), color: '#fff' }}
+                      style={{ background: prioColor(selectedCall.priority), color: 'var(--surface-base)' }}
                     >
                       {humanizePriority(selectedCall.priority)}
                     </span>

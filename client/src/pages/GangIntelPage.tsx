@@ -9,7 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
-import { ShieldAlert, Users, SprayCanIcon as Spray, TrendingUp, Plus, Pencil, Trash2, Eye, Loader2 } from 'lucide-react';
+import { ShieldAlert, Users, SprayCanIcon as Spray, TrendingUp, Plus, Pencil, Trash2, Eye, Loader2, Lock } from 'lucide-react';
 import { formatEnumValue } from '../utils/formatters';
 
 interface GangMember {
@@ -19,16 +19,6 @@ interface GangMember {
   gang_name: string;
   status: string;
   threat_level: string;
-  notes: string;
-}
-
-interface Gang {
-  id: number;
-  name: string;
-  colors: string;
-  member_count: number;
-  threat_level: string;
-  territory: string;
   notes: string;
 }
 
@@ -45,7 +35,6 @@ export default function GangIntelPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [members, setMembers] = useState<GangMember[]>([]);
-  const [gangs, setGangs] = useState<Gang[]>([]);
   const [stats, setStats] = useState<Stats>({ totalMembers: 0, activeMembers: 0, totalGangs: 0 });
 
   // Distinguish "initial load" vs "data loaded but empty" vs "no search results"
@@ -66,20 +55,22 @@ export default function GangIntelPage() {
   const { addToast } = useToast();
   const m = useMenuActions();
 
-  // Role gate: delete intel records restricted to admin/manager/supervisor
-  // (mirrors the Worker's DELETE endpoint guard in src/routes/gangIntel.ts)
+  // Role gates (mirror the Worker's guards in src/routes/gangIntel.ts)
+  const canCreate = ['admin', 'manager'].includes(user?.role || '');
   const canDelete = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
 
-  // ── Deep-link seed: ?member_id= or ?gang_id= ──────────────
+  // ── Deep-link seed: ?member_id= | ?person_id= | ?gang_id= ──
   // Read once on mount and strip so the URL stays clean.
+  // ?person_id= is an alias for ?member_id= (from DL Search cross-links).
   const deepLinkMemberIdRef = useRef<number | null>(null);
   useEffect(() => {
-    const mid = searchParams.get('member_id');
-    const gid = searchParams.get('gang_id');
+    const mid = searchParams.get('member_id') || searchParams.get('person_id');
+    const dirty = ['member_id', 'person_id', 'gang_id'].some(k => searchParams.has(k));
     if (mid) deepLinkMemberIdRef.current = Number(mid);
-    if (mid || gid) {
+    if (dirty) {
       const next = new URLSearchParams(searchParams);
       next.delete('member_id');
+      next.delete('person_id');
       next.delete('gang_id');
       setSearchParams(next, { replace: true });
     }
@@ -88,40 +79,43 @@ export default function GangIntelPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [ms, gs, st] = await Promise.all([
+      const [ms, st] = await Promise.all([
         apiFetch<GangMember[]>('/gang-intel').catch(() => [] as GangMember[]),
-        apiFetch<Gang[]>('/gang-intel/gangs').catch(() => [] as Gang[]),
         apiFetch<Stats>('/gang-intel/stats').catch(
           () => ({ totalMembers: 0, activeMembers: 0, totalGangs: 0 })
         ),
       ]);
       setMembers(ms);
-      setGangs(gs);
       setStats(st);
       setHasLoaded(true);
 
       // Hydrate deep-link: auto-open the target member in the edit form
       if (deepLinkMemberIdRef.current !== null) {
-        const target = ms.find(r => r.id === deepLinkMemberIdRef.current);
+        const targetId = deepLinkMemberIdRef.current;
         deepLinkMemberIdRef.current = null;
+        const target = ms.find(r => r.id === targetId);
         if (target) {
           setEditingRecord(target);
           setFormData({ ...target });
           setFormError(null);
           setFormOpen(true);
+        } else {
+          addToast(`Gang Intel record #${targetId} not found`, 'error');
         }
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [addToast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   // ── 'N' keyboard shortcut → open new-member form ──────────
   // Only fires when focus is not in an input/textarea/select.
+  // Gated to admin/manager (canCreate) to match the button guard.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (!canCreate) return;
       const tag = (e.target as HTMLElement).tagName;
       const editable =
         tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
@@ -134,7 +128,7 @@ export default function GangIntelPage() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+  }, [canCreate]);
 
   // ── Esc cascade: form → delete confirm ────────────────────
   useEffect(() => {
@@ -294,14 +288,23 @@ export default function GangIntelPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="GANG INTELLIGENCE" icon={ShieldAlert}>
-        <button
-          onClick={openNew}
-          className="toolbar-btn flex items-center gap-1.5"
-          style={{ height: 28, padding: '0 10px' }}
-          title="New Member (N)"
-        >
-          <Plus size={13} /> New Member
-        </button>
+        {canCreate ? (
+          <button
+            onClick={openNew}
+            className="toolbar-btn flex items-center gap-1.5"
+            style={{ height: 28, padding: '0 10px' }}
+            title="New Member (N)"
+          >
+            <Plus size={13} /> New Member
+          </button>
+        ) : (
+          <span
+            className="flex items-center gap-1 text-[10px] text-rmpg-500"
+            title="Admin or Manager role required"
+          >
+            <Lock size={11} /> Read-only
+          </span>
+        )}
       </PanelTitleBar>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -342,8 +345,7 @@ export default function GangIntelPage() {
       {/* Member form modal */}
       {formOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.70)' }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
           onClick={() => setFormOpen(false)}
         >
           <div
