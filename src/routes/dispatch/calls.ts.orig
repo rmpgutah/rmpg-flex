@@ -1252,7 +1252,7 @@ calls.post('/:id/action', requireRole(...WRITE_ROLES), async (c): Promise<Respon
       ...(psoCrosslink ? { pso_crosslink: psoCrosslink } : {}),
     });
   } catch (err) {
-    log.error('POST /dispatch/calls/:id/action failed', { userId: c.get('userId'), callId: id, action: 'action' }, err);
+    log.error('POST /dispatch/calls/:id/action failed', {}, err);
     return c.json({ error: 'action failed' }, 500);
   }
 });
@@ -1700,7 +1700,7 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
       SELECT c.id, c.call_number, c.status, e.pso_attempt_number, c.created_at, c.cleared_at, c.disposition, e.parent_call_id
       FROM calls_for_service c
       LEFT JOIN calls_for_service_ext e ON e.id = c.id
-      WHERE e.parent_call_id = ? OR c.id = ? OR c.id IN (SELECT parent_call_id FROM calls_for_service_ext WHERE parent_call_id = ?)
+      WHERE c.id = ? OR e.parent_call_id = ?
       ORDER BY COALESCE(e.pso_attempt_number, 1) ASC, c.id ASC
     `, rootCallId, rootCallId);
 
@@ -1712,7 +1712,7 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
 
     return c.json({ ...newCall, chain, parent_call_number: parentBase.call_number }, 201);
   } catch (err) {
-    log.error('Re-dispatch call error', { userId, callId: parentId, action: 'redispatch' }, err);
+    log.error('Re-dispatch call error', {}, err);
     return c.json({ error: `Failed to re-dispatch call: ${(err as Error)?.message || 'unknown'}`, code: 'REDISPATCH_CALL_ERROR' }, 500);
   }
 });
@@ -1775,7 +1775,7 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
 
     return c.json({ success: true, parent: updated, deleted_call: childBase.call_number });
   } catch (err) {
-    log.error('Undo redispatch error', { userId, callId: childId, action: 'undo_redispatch' }, err);
+    log.error('Undo redispatch error', {}, err);
     return c.json({ error: `Failed to undo return visit: ${(err as Error)?.message || 'unknown'}`, code: 'UNDO_REDISPATCH_ERROR' }, 500);
   }
 });
@@ -1899,7 +1899,7 @@ calls.post('/force-close-all', requireRole(...WRITE_ROLES), async (c) => {
     await emitAlert(c.env, 'dispatch_update', { action: 'bulk_force_close', closed: ids.length, disposition });
     return c.json({ success: true, closed: ids.length });
   } catch (err) {
-    log.error('Force close-all error', { userId: c.get('userId'), action: 'force_close_all' }, err);
+    log.error('Force close-all error', {}, err);
     return c.json({ error: 'Force close failed' }, 500);
   }
 });

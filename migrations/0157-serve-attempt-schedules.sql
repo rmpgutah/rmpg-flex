@@ -15,16 +15,16 @@ CREATE TABLE IF NOT EXISTS serve_attempt_schedules (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   queue_id INTEGER NOT NULL UNIQUE,
   attempt_number INTEGER NOT NULL,
-  scheduled_date TEXT NOT NULL,     -- YYYY-MM-DD (America/Denver)
-  window_start TEXT NOT NULL,       -- HH:MM (24-hour, zero-padded)
-  window_end TEXT NOT NULL,         -- HH:MM
-  window_label TEXT,                -- Focus area / brief / label
-  notify_at TEXT NOT NULL,          -- YYYY-MM-DDTHH:MM (sortable)
+  scheduled_date TEXT NOT NULL,
+  window_start TEXT NOT NULL,
+  window_end TEXT NOT NULL,
+  window_label TEXT,
+  notify_at TEXT NOT NULL,
   notify_before_secs INTEGER DEFAULT 1800,
-  notified INTEGER DEFAULT 0,       -- 1 when alert has been dispatched
-  dismissed INTEGER DEFAULT 0,      -- 1 when officer dismissed the alert
-  auto_replan_source INTEGER,       -- FK to attempt that triggered the auto-replan
-  disposition_code TEXT,            -- Optional: attempt result code (no_answer | refused | moved | etc.)
+  notified INTEGER DEFAULT 0,
+  dismissed INTEGER DEFAULT 0,
+  auto_replan_source INTEGER,
+  disposition_code TEXT,
   created_at TEXT DEFAULT datetime('now','localtime'),
   updated_at TEXT DEFAULT datetime('now','localtime'),
   
@@ -35,16 +35,12 @@ CREATE TABLE IF NOT EXISTS serve_attempt_schedules (
   CHECK (dismissed IN (0,1))
 );
 
--- Fast cron sweep: find due notifications
 CREATE INDEX IF NOT EXISTS idx_serve_attempt_notify_due 
-  ON serve_attempt_schedules(notify_at, notified, dismissed)
-  WHERE notified = 0 AND dismissed = 0;
+  ON serve_attempt_schedules(notify_at, notified, dismissed);
 
--- Dashboard calendar view by queue
 CREATE INDEX IF NOT EXISTS idx_serve_attempt_by_queue 
   ON serve_attempt_schedules(queue_id, scheduled_date);
 
--- Cron sweep monitoring table — tracks execution metrics per sweep
 CREATE TABLE IF NOT EXISTS cron_sweep_metrics (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   sweep_name TEXT NOT NULL,

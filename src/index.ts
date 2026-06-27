@@ -352,6 +352,18 @@ export default {
   // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     if (event.cron === '* * * * *') {
+      // Initialize serve scheduler schema on first per-minute tick
+      ctx.waitUntil(
+        import('./utils/serveScheduleSchema')
+          .then(async (mod) => {
+            await Promise.all([
+              mod.ensureServeScheduleSchema(env.DB),
+              mod.ensureCronMetricsSchema(env.DB),
+            ]);
+          })
+          .catch((err) => console.warn('[schema-init] setup deferred:', (err as Error)?.message))
+      );
+
       // Quick D1 connectivity check before launching all concurrent sweeps.
       // When D1 has a transient network blip every sweep fails at the same
       // instant — this collapses 9 individual errors into one quiet warning
