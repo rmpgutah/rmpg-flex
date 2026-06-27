@@ -70,21 +70,45 @@ citations.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
     const total = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM citations'))?.count ?? 0;
-    const byStatus = await query<Record<string, unknown>>(
+    const byStatusRows = await query<{ status: string; count: number }>(
       db, `SELECT status, COUNT(*) as count FROM citations GROUP BY status ORDER BY count DESC`,
     );
-    const byType = await query<Record<string, unknown>>(
+    const byTypeRows = await query<{ type: string; count: number }>(
       db, `SELECT type, COUNT(*) as count FROM citations GROUP BY type ORDER BY count DESC`,
     );
-    const last7 = (await queryFirst<{ count: number }>(
+    // CitationsPage reads by_status as Record<string,number> — convert from row array.
+    const by_status: Record<string, number> = {};
+    for (const r of byStatusRows) by_status[r.status] = Number(r.count);
+    const by_type: Record<string, number> = {};
+    for (const r of byTypeRows) by_type[r.type] = Number(r.count);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const today_count = (await queryFirst<{ count: number }>(
       db,
-      `SELECT COUNT(*) as count FROM citations WHERE violation_date >= date('now', '-7 days')`,
+      `SELECT COUNT(*) as count FROM citations WHERE violation_date = ?`,
+      today,
     ))?.count ?? 0;
-    const last30 = (await queryFirst<{ count: number }>(
+    const fines_issued = (await queryFirst<{ total: number }>(
       db,
-      `SELECT COUNT(*) as count FROM citations WHERE violation_date >= date('now', '-30 days')`,
-    ))?.count ?? 0;
-    return c.json({ data: { total, byStatus, byType, last7, last30 } });
+      `SELECT COALESCE(SUM(fine_amount), 0) as total FROM citations WHERE status NOT IN ('voided','dismissed')`,
+    ))?.total ?? 0;
+    const fines_collected = (await queryFirst<{ total: number }>(
+      db,
+      `SELECT COALESCE(SUM(amount), 0) as total FROM citation_payments`,
+    ))?.total ?? 0;
+    return c.json({
+      data: {
+        total,
+        by_status,
+        by_type,
+        fines_issued,
+        fines_collected,
+        today_count,
+        // legacy camelCase keys retained for any other consumer
+        byStatus: byStatusRows,
+        byType: byTypeRows,
+      },
+    });
   } catch (err) {
     return c.json({ error: 'Failed to get citation stats', code: 'STATS_ERROR' }, 500);
   }

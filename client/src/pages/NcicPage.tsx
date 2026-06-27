@@ -3,14 +3,15 @@
 // Full-page wrapper around the NcicQueryPanel in embedded mode.
 // ============================================================
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Terminal, FileText } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
-import NcicQueryPanel from '../components/NcicQueryPanel';
+import NcicQueryPanel, { type NcicQueryPanelHandle } from '../components/NcicQueryPanel';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { generateNcicReferencePdf } from '../utils/ncicReferencePdf';
+import { useAuth } from '../context/AuthContext';
 
 type NcicQueryType = 'person' | 'vehicle' | 'warrant' | 'xref' | 'phone' | 'address' | 'dl' | 'ofac';
 const VALID_TYPES: NcicQueryType[] = ['person', 'vehicle', 'warrant', 'xref', 'phone', 'address', 'dl', 'ofac'];
@@ -18,19 +19,54 @@ const VALID_TYPES: NcicQueryType[] = ['person', 'vehicle', 'warrant', 'xref', 'p
 export default function NcicPage() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const [params, setSearchParams] = useSearchParams();
+  const { user } = useAuth();
+  const canManage = ['admin', 'manager'].includes(user?.role ?? '');
+  const panelRef = useRef<NcicQueryPanelHandle>(null);
 
-  useEffect(() => { document.title = 'NCIC / NLETS Terminal \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'NCIC / NLETS Terminal — RMPG Flex'; }, []);
+
+  // Strip deep-link params after they have been consumed (replace so Back works)
+  useEffect(() => {
+    if (params.get('q') || params.get('type')) {
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   // Deep-link: /ncic?q=<term>&type=<xref|person|...> auto-runs a query on open
   // (e.g. launched from the Cmd+K command palette). Defaults to a full
-  // cross-reference (QX) \u2014 the most useful one-shot lookup.
+  // cross-reference (QX) — the most useful one-shot lookup.
   const initialQuery = useMemo(() => {
     const q = params.get('q');
     if (!q) return null;
     const t = params.get('type') as NcicQueryType | null;
     return { type: t && VALID_TYPES.includes(t) ? t : 'xref', query: q };
-  }, [params]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Global N shortcut — focus the query input
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== 'N' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      e.preventDefault();
+      panelRef.current?.focusInput();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
+  // Esc cascade — navigate back when no modal is open
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      navigate(-1);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [navigate]);
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
@@ -49,7 +85,14 @@ export default function NcicPage() {
         </PanelTitleBar>
       )}
       <div className="flex-1 overflow-hidden print:overflow-visible">
-        <NcicQueryPanel isOpen={true} onClose={() => navigate(-1)} embedded={true} initialQuery={initialQuery} />
+        <NcicQueryPanel
+          ref={panelRef}
+          isOpen={true}
+          onClose={() => navigate(-1)}
+          embedded={true}
+          initialQuery={initialQuery}
+          canManage={canManage}
+        />
       </div>
     </div>
   );

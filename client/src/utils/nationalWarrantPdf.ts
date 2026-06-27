@@ -12,6 +12,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -212,13 +213,10 @@ export function generateNationalWarrantPdf(input: NationalWarrantPdfInput): jsPD
   doc.setFont('Arial', 'normal');
   doc.setFontSize(9);
 
-  const titleCase = (v: string | undefined) =>
-    !v ? '—' : v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
   const warrantFields: Array<[string, string]> = [
-    ['Warrant Type', titleCase(warrant.warrant_type)],
-    ['Offense Level', titleCase(warrant.offense_level)],
-    ['Status', titleCase(warrant.status)],
+    ['Warrant Type', toDisplayLabel(warrant.warrant_type)],
+    ['Offense Level', toDisplayLabel(warrant.offense_level)],
+    ['Status', toDisplayLabel(warrant.status)],
     ['Case Number', warrant.case_number || '—'],
     ['Issuing Court', warrant.court || '—'],
     ['Issued', fmtDate(warrant.issued_date)],
