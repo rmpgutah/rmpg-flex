@@ -1,5 +1,6 @@
 import { useEffect, useRef, useId } from 'react';
 import { AlertTriangle, Info, X, Loader2 } from 'lucide-react';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -51,14 +52,14 @@ export default function ConfirmDialog({
   useEffect(() => {
     if (isOpen) {
       const scrollY = window.scrollY;
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
       document.body.style.top = `-${scrollY}px`;
     }
     return () => {
       const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       document.body.style.position = '';
       document.body.style.width = '';
       document.body.style.top = '';

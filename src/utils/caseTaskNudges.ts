@@ -1,6 +1,7 @@
 // Case-task due-date nudge sweep (v3 Phase 2). Mirrors serveNudgeSweep:
 // runs on the 4-hourly cron ("0 */4 * * *") and dedups via the notifications
 // table so each recipient is reminded at most once per ~20h per task.
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 
@@ -77,9 +78,7 @@ export async function sweepCaseTaskNudges(db: Bindings['DB'], _env: Bindings): P
         // Fail-closed: previously this swallow-to-null treated a failed dedup
         // SELECT as "no recent nudge" and re-inserted every 4h cron tick.
         // Better to miss one tick than to spam the recipient.
-        console.error('[caseTaskNudges] dedup SELECT failed; skipping insert to avoid spam', {
-          task_id: t.id, user_id: uid, error: String((err as Error)?.message ?? err),
-        });
+        log.error('dedup SELECT failed; skipping insert to avoid spam', { task_id: t.id, user_id: uid, error: String((err as Error)?.message ?? err) });
       }
       if (!dedupOk || recent) continue;
       try {
@@ -93,9 +92,7 @@ export async function sweepCaseTaskNudges(db: Bindings['DB'], _env: Bindings): P
       } catch (err) {
         // Per-recipient best-effort: don't block the loop, but log so we can
         // see if a specific user/task is chronically failing.
-        console.error('[caseTaskNudges] notification INSERT failed', {
-          task_id: t.id, user_id: uid, error: String((err as Error)?.message ?? err),
-        });
+        log.error('notification INSERT failed', { task_id: t.id, user_id: uid, error: String((err as Error)?.message ?? err) });
       }
     }
   }

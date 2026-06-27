@@ -26,6 +26,19 @@ export default function UnsavedChangesGuard({
   const [showDialog, setShowDialog] = useState(false);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
 
+  // ── Global dirty counter (consumed by WebUpdateBanner.isSafeToReload) ──
+  // Counter avoids false negatives when multiple forms are open simultaneously.
+  useEffect(() => {
+    if (hasUnsavedChanges) {
+      (window as any).__rmpg_unsavedChangesCount = ((window as any).__rmpg_unsavedChangesCount || 0) + 1;
+    }
+    return () => {
+      if (hasUnsavedChanges) {
+        (window as any).__rmpg_unsavedChangesCount = Math.max(0, ((window as any).__rmpg_unsavedChangesCount || 0) - 1);
+      }
+    };
+  }, [hasUnsavedChanges]);
+
   // ── Browser close / refresh guard ──────────────────────────
   useEffect(() => {
     if (!hasUnsavedChanges) return;
