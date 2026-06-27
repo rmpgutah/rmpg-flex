@@ -8,27 +8,30 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../../types';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
-const RMPG_GOLD = '#d4a017';
-const RMPG_BLACK = '#0a0a0a';
 const RMPG_GRAY = '#888888';
 
 // ── Shared helpers ──────────────────────────────────────────
 
 function headerStrip(doc: jsPDF, title: string, subtitle?: string) {
   const m = 40; const w = doc.internal.pageSize.getWidth();
-  doc.setFillColor(RMPG_BLACK);
-  doc.rect(0, 0, w, 52, 'F');
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(0, 52, w, 3, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor('#ffffff');
-  doc.text('RMPG FLEX — FLEET MANAGEMENT', m, 26);
-  doc.setFontSize(11); doc.setFont('helvetica', 'normal');
-  doc.text(title, m, 42);
-  if (subtitle) { doc.setFontSize(9); doc.setTextColor(RMPG_GOLD); doc.text(subtitle, m, 50); }
-  doc.setTextColor('#000000');
-  return 70;
+  let y = 40;
+  doc.setFont('Arial', 'bold'); doc.setFontSize(16); doc.setTextColor('#000000');
+  doc.text('RMPG FLEX — FLEET MANAGEMENT', m, y); y += 18;
+  doc.setFontSize(12);
+  doc.text(title, m, y);
+  if (subtitle) {
+    doc.setFont('Arial', 'normal'); doc.setFontSize(9); doc.setTextColor(RMPG_GRAY);
+    doc.text(subtitle, w - m, y, { align: 'right' });
+    doc.setTextColor('#000000');
+  }
+  y += 12;
+  doc.setDrawColor(0); doc.setLineWidth(1.2); doc.line(m, y, w - m, y); y += 2;
+  doc.setLineWidth(0.4); doc.line(m, y, w - m, y); y += 10;
+  return y;
 }
 
 function footerStrip(doc: jsPDF, page: number, total: number) {
@@ -47,7 +50,7 @@ function vehicleSummaryBlock(doc: jsPDF, v: FleetVehicle, y: number): number {
 function drawGridBox(doc: jsPDF, x: number, y: number, w: number, label: string, value: string, highlight?: boolean) {
   doc.setDrawColor('#cccccc'); doc.setLineWidth(0.5);
   doc.rect(x, y, w, 32);
-  if (highlight) { doc.setFillColor(RMPG_GOLD); doc.rect(x, y, w, 3, 'F'); }
+  if (highlight) { doc.setDrawColor(0); doc.setLineWidth(2); doc.line(x, y, x + w, y); doc.setLineWidth(0.5); }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(RMPG_GRAY);
   doc.text(label, x + 5, y + 14);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor('#000');
@@ -63,10 +66,12 @@ export function generateFleetStatusReport(data: {
   analytics: FleetAnalytics | null;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET STATUS REPORT', `Total Units: ${data.vehicles.length}  •  Active: ${data.vehicles.filter(v => v.status === 'in_service').length}`);
-  const totalPages = Math.ceil(data.vehicles.length / 25);
+  // REGRESSION-GUARD: Math.max(1,...) prevents "Page 1 of 0" on an empty fleet
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 25));
   let page = 1;
   let rowIdx = 0;
 
@@ -85,8 +90,8 @@ export function generateFleetStatusReport(data: {
   // Vehicle table
   const headers = ['Unit #', 'Yr', 'Make', 'Model', 'Plate', 'Status', 'Mileage', 'Assigned'];
   const colW = [(pageW - 80) * 0.14, 30, (pageW - 80) * 0.16, (pageW - 80) * 0.16, (pageW - 80) * 0.14, 60, 50, 60];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22;
@@ -118,6 +123,7 @@ export function generateFleetMaintenanceReport(data: {
   records: FleetMaintenance[];
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'MAINTENANCE HISTORY REPORT');
@@ -133,8 +139,8 @@ export function generateFleetMaintenanceReport(data: {
 
   const headers = ['Date', 'Type', 'Description', 'Mileage', 'Cost', 'Vendor', 'Next Due'];
   const colW = [70, 55, 140, 55, 55, 80, 70];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -162,6 +168,7 @@ export function generateFleetCostReport(data: {
   maintenanceRecords: FleetMaintenance[];
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET COST ANALYSIS REPORT');
@@ -217,6 +224,7 @@ export function generateFleetLifecycleReport(data: {
   assignments: FleetAssignment[];
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'VEHICLE LIFECYCLE REPORT');
@@ -251,8 +259,8 @@ export function generateFleetLifecycleReport(data: {
   const maintColW = [70, 55, 140, 55, 55, 80];
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
   doc.text('Maintenance History', 40, y); y += 16;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   maintHeaders.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += maintColW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -278,10 +286,11 @@ export function generateFleetComplianceReport(data: {
   vehicles: FleetVehicle[];
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET COMPLIANCE REPORT', `Generated: ${new Date().toISOString().slice(0, 10)}`);
-  const totalPages = Math.ceil(data.vehicles.length / 20);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 20));
   let page = 1; let rowIdx = 0;
 
   // Count compliance issues
@@ -302,8 +311,8 @@ export function generateFleetComplianceReport(data: {
   // Compliance table
   const headers = ['Unit #', 'Yr/Make/Model', 'Plate', 'Status', 'Ins Expiry', 'Reg Expiry', 'Last Service', 'Next Due'];
   const colW = [55, 140, 70, 60, 70, 70, 70, 70];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -336,16 +345,17 @@ export function generateFleetUtilizationReport(data: {
   days?: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET UTILIZATION REPORT', `Last ${data.days ?? 30} Days`);
-  const totalPages = Math.ceil(data.vehicles.length / 22);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 22));
   let page = 1; let rowIdx = 0;
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Days Used', 'Miles', 'Fuel Cost', 'Daily Avg Mi', 'Status'];
   const colW = [55, 160, 60, 60, 70, 70, 80];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -372,10 +382,11 @@ export function generateFleetFuelConsumptionReport(data: {
   totalCo2?: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET FUEL CONSUMPTION & EMISSIONS REPORT');
-  const totalPages = Math.ceil(data.vehicles.length / 22);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 22));
   let page = 1; let rowIdx = 0;
 
   const boxes: [string, string][] = [
@@ -390,8 +401,8 @@ export function generateFleetFuelConsumptionReport(data: {
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Gallons', 'CO2 (kg)', 'CO2 (lbs)', 'Avg Gal/Mo'];
   const colW = [55, 160, 70, 70, 70, 80];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -418,6 +429,7 @@ export function generateFleetAccidentReport(data: {
   accident: Record<string, unknown>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   let y = headerStrip(doc, 'FLEET ACCIDENT REPORT', `Vehicle #${data.vehicle.vehicle_number}`);
   y = vehicleSummaryBlock(doc, data.vehicle, y);
 
@@ -463,6 +475,7 @@ export function generateFleetBudgetReport(data: {
   budgets: Array<{ category: string; allocated_amount: number; spent_amount: number }>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   let y = headerStrip(doc, 'FLEET BUDGET REPORT', `Fiscal Year ${data.fiscalYear}`);
 
@@ -505,16 +518,17 @@ export function generateFleetReplacementReport(data: {
   vehicles: Array<FleetVehicle & { replacement_year?: number; replacement_reason?: string; estimated_replacement_cost?: number; rp_priority?: string; rp_status?: string }>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET REPLACEMENT PLAN', `Projected Replacements`);
-  const totalPages = Math.ceil(data.vehicles.length / 20);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 20));
   let page = 1; let rowIdx = 0;
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Mileage', 'Repl Year', 'Priority', 'Est. Cost', 'Reason', 'Status'];
   const colW = [50, 150, 55, 55, 55, 65, 120, 60];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -546,10 +560,11 @@ export function generateFleetDepreciationReport(data: {
   vehicles: Array<FleetVehicle & { depreciation?: { purchase_price?: number; salvage_value?: number; useful_life_months?: number; monthly_depreciation?: number; accumulated_depreciation?: number; current_book_value?: number } | null }>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET DEPRECIATION SCHEDULE');
-  const totalPages = Math.ceil(data.vehicles.length / 20);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 20));
   let page = 1; let rowIdx = 0;
 
   const totalBookValue = data.vehicles.reduce((s, v) => s + (v.depreciation?.current_book_value ?? 0), 0);
@@ -565,8 +580,8 @@ export function generateFleetDepreciationReport(data: {
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Purchase $', 'Salvage $', 'Life (mo)', 'Mo Deprec.', 'Accum Deprec', 'Book Value'];
   const colW = [50, 145, 65, 55, 55, 65, 70, 65];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -591,10 +606,11 @@ export function generateFleetKeyReport(data: {
   keys: Array<{ vehicle_number?: string; key_number?: string; key_type?: string; rfid_tag?: string; status?: string; current_holder?: string; last_checkout?: string; last_return?: string }>;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET KEY MANAGEMENT REPORT');
-  const totalPages = Math.ceil(data.keys.length / 25);
+  const totalPages = Math.max(1, Math.ceil(data.keys.length / 25));
   let page = 1; let rowIdx = 0;
 
   const checkedOut = data.keys.filter(k => k.status === 'checked_out').length;
@@ -610,8 +626,8 @@ export function generateFleetKeyReport(data: {
 
   const headers = ['Unit #', 'Key #', 'Type', 'RFID', 'Status', 'Current Holder', 'Last Checkout', 'Last Return'];
   const colW = [55, 40, 55, 80, 60, 100, 90, 90];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -642,6 +658,7 @@ export function generateFleetScorecardReport(data: {
   avg_mpg: number | null; health_score: number;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   let y = headerStrip(doc, 'FLEET HEALTH SCORECARD', `Score: ${data.health_score}/100`);
 
@@ -676,4 +693,480 @@ export function generateFleetScorecardReport(data: {
   doc.text('Score calculation: 100 - (needing_service*15 + expiring_insurance*10 + expiring_registration*10 + open_recalls*5 + open_accidents*10 + in_maintenance*5) / total', 40, y);
 
   doc.save(`fleet_health_scorecard_${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 14. FLEET PERSONNEL PRODUCTIVITY REPORT
+// ═══════════════════════════════════════════════════════════════
+// Shows assignment density, miles driven, and time-on-vehicle per
+// officer. The classic "who is using which vehicle, and how much?"
+// analysis — supports both internal fleet users and contracted officers.
+
+interface PersonnelRow {
+  officer_id?: string;
+  officer_name?: string;
+  call_sign?: string;
+  vehicle_number?: string;
+  vehicle_label?: string;
+  total_assignments: number;
+  total_miles: number;
+  total_hours: number;
+  active_assignments: number;
+}
+
+export function generatePersonnelProductivityReport(data: {
+  rows: PersonnelRow[];
+  totalOfficers?: number;
+  totalMiles?: number;
+  totalHours?: number;
+  days?: number;
+}): void {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  let y = headerStrip(doc, 'PERSONNEL PRODUCTIVITY REPORT',
+    `${data.rows.length} officers  •  ${data.days ?? 30}-day window  •  Generated ${new Date().toLocaleDateString()}`);
+
+  const totalPages = Math.max(1, Math.ceil(data.rows.length / 18));
+  let page = 1;
+
+  // Summary grid
+  const boxes: [string, string, boolean?][] = [
+    ['Officers', String(data.rows.length)],
+    ['Total Miles', String(Math.round(data.totalMiles ?? 0)), true],
+    ['Total Hours', String(Math.round(data.totalHours ?? 0))],
+    ['Avg Miles / Officer', data.rows.length ? String(Math.round((data.totalMiles ?? 0) / data.rows.length)) : '0'],
+    ['Avg Hours / Officer', data.rows.length ? String(Math.round((data.totalHours ?? 0) / data.rows.length)) : '0'],
+  ];
+  const boxW = (pageW - 80) / boxes.length;
+  boxes.forEach((b, i) => drawGridBox(doc, 40 + i * boxW, y, boxW - 4, b[0], b[1], b[2]));
+  y += 48;
+
+  // Header
+  const headers = ['Officer', 'Call Sign', 'Vehicles Used', 'Assignments', 'Active', 'Miles', 'Hours'];
+  const colW = [180, 80, 150, 80, 60, 80, 80];
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
+  let cx = 40;
+  headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
+  y += 22; doc.setTextColor('#000');
+
+  for (const r of data.rows) {
+    if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'PERSONNEL PRODUCTIVITY (cont.)'); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
+    const vals = [
+      r.officer_name || '-',
+      r.call_sign || '-',
+      r.vehicle_label || '-',
+      String(r.total_assignments),
+      String(r.active_assignments),
+      r.total_miles.toLocaleString(),
+      r.total_hours.toFixed(1),
+    ];
+    vals.forEach((val, i) => { doc.text(val, cx + 3, y + 12); cx += colW[i]; });
+    y += 15;
+  }
+
+  footerStrip(doc, page, totalPages);
+  doc.save(`personnel_productivity_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 15. FLEET INSPECTION ANALYSIS REPORT
+// ═══════════════════════════════════════════════════════════════
+// Pulls pass/fail rates, common item failures, and per-vehicle
+// compliance. Helps managers spot vehicles with chronic issues.
+
+interface InspectionAnalysisRow {
+  vehicle_number: string;
+  vehicle_label?: string;
+  total: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  last_inspection_date?: string;
+  last_result?: 'pass' | 'fail';
+  common_failures?: string[];
+}
+
+export function generateInspectionAnalysisReport(data: {
+  rows: InspectionAnalysisRow[];
+  totalInspections?: number;
+  overallPassRate?: number;
+}): void {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  let y = headerStrip(doc, 'INSPECTION ANALYSIS REPORT',
+    `${data.rows.length} vehicles  •  ${data.totalInspections ?? 0} inspections  •  Generated ${new Date().toLocaleDateString()}`);
+  const totalPages = Math.max(1, Math.ceil(data.rows.length / 22));
+  let page = 1;
+
+  // Summary
+  const boxes: [string, string, boolean?][] = [
+    ['Vehicles Inspected', String(data.rows.length)],
+    ['Total Inspections', String(data.totalInspections ?? 0), true],
+    ['Overall Pass Rate', `${(data.overallPassRate ?? 0).toFixed(1)}%`],
+    ['Failing Vehicles', String(data.rows.filter(r => r.pass_rate < 80).length)],
+  ];
+  const boxW = (pageW - 80) / boxes.length;
+  boxes.forEach((b, i) => drawGridBox(doc, 40 + i * boxW, y, boxW - 4, b[0], b[1], b[2]));
+  y += 48;
+
+  // Header
+  const headers = ['Unit #', 'Vehicle', 'Inspections', 'Passed', 'Failed', 'Pass %', 'Last Date', 'Last Result'];
+  const colW = [55, 130, 60, 50, 50, 55, 75, 60];
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
+  let cx = 40;
+  headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
+  y += 22; doc.setTextColor('#000');
+
+  for (const r of data.rows) {
+    if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'INSPECTION ANALYSIS (cont.)'); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
+    const resultColor = r.last_result === 'pass' ? [22, 163, 74] : r.last_result === 'fail' ? [239, 68, 68] : [0, 0, 0];
+    const vals: Array<{ text: string; color?: [number, number, number] }> = [
+      { text: r.vehicle_number },
+      { text: r.vehicle_label || '-' },
+      { text: String(r.total) },
+      { text: String(r.passed) },
+      { text: String(r.failed) },
+      { text: `${r.pass_rate.toFixed(0)}%`, color: r.pass_rate >= 90 ? [22, 163, 74] : r.pass_rate >= 70 ? [245, 158, 11] : [239, 68, 68] },
+      { text: r.last_inspection_date || '-' },
+      { text: r.last_result?.toUpperCase() || '-', color: resultColor as [number, number, number] },
+    ];
+    vals.forEach((v, i) => {
+      if (v.color) doc.setTextColor(v.color[0], v.color[1], v.color[2]);
+      else doc.setTextColor(0, 0, 0);
+      doc.text(v.text, cx + 3, y + 12);
+      cx += colW[i];
+    });
+    y += 15;
+  }
+
+  // Common failure items table
+  if (y > pageH - 90) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'INSPECTION ANALYSIS (cont.)'); }
+  const allFailures = new Map<string, number>();
+  for (const r of data.rows) {
+    for (const f of r.common_failures || []) {
+      allFailures.set(f, (allFailures.get(f) ?? 0) + 1);
+    }
+  }
+  if (allFailures.size > 0) {
+    y += 10;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.text('MOST COMMON FAILURE ITEMS', 40, y);
+    y += 4;
+    doc.setDrawColor('#1a1a1a'); doc.setLineWidth(0.5);
+    doc.line(40, y, pageW - 40, y);
+    y += 14;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.text('Item', 40, y);
+    doc.text('Count', 350, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    y += 12;
+    const sortedFailures = [...allFailures].sort((a, b) => b[1] - a[1]);
+    for (const [item, count] of sortedFailures) {
+      if (y > pageH - 40) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'INSPECTION ANALYSIS (cont.)'); }
+      doc.text(item, 40, y);
+      doc.text(String(count), 350, y);
+      y += 12;
+    }
+  }
+
+  footerStrip(doc, page, totalPages);
+  doc.save(`fleet_inspection_analysis_${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 16. FLEET COST-PER-MILE BREAKDOWN REPORT
+// ═══════════════════════════════════════════════════════════════
+// Per-vehicle cost-per-mile analysis: total cost, miles, $/mi, MPG,
+// ranking. The spreadsheet managers ask for first when justifying
+// vehicle replacement.
+
+interface CostPerMileRow {
+  vehicle_number: string;
+  vehicle_label?: string;
+  year?: number;
+  current_mileage: number;
+  total_cost: number;
+  fuel_cost: number;
+  maintenance_cost: number;
+  insurance_cost?: number;
+  miles_driven?: number;
+  cost_per_mile: number;
+  mpg: number | null;
+}
+
+export function generateCostPerMileReport(data: {
+  rows: CostPerMileRow[];
+  fleetAverageCpm?: number;
+  totalCost?: number;
+}): void {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  let y = headerStrip(doc, 'COST-PER-MILE ANALYSIS REPORT',
+    `${data.rows.length} vehicles  •  Fleet Avg: $${(data.fleetAverageCpm ?? 0).toFixed(3)}/mi  •  Generated ${new Date().toLocaleDateString()}`);
+  const totalPages = Math.max(1, Math.ceil(data.rows.length / 18));
+  let page = 1;
+
+  // Summary
+  const boxes: [string, string, boolean?][] = [
+    ['Vehicles', String(data.rows.length)],
+    ['Total Cost', `$${Math.round(data.totalCost ?? 0).toLocaleString()}`, true],
+    ['Fleet Avg $/mi', `$${(data.fleetAverageCpm ?? 0).toFixed(3)}`],
+    ['Most Expensive', data.rows.length ? `$${data.rows[0].cost_per_mile.toFixed(3)}/mi` : '-'],
+    ['Most Efficient', data.rows.length ? `$${data.rows[data.rows.length - 1].cost_per_mile.toFixed(3)}/mi` : '-'],
+  ];
+  const boxW = (pageW - 80) / boxes.length;
+  boxes.forEach((b, i) => drawGridBox(doc, 40 + i * boxW, y, boxW - 4, b[0], b[1], b[2]));
+  y += 48;
+
+  const headers = ['Rank', 'Unit #', 'Vehicle', 'Yr', 'Mileage', 'Total Cost', 'Fuel', 'Maint.', '$/Mile', 'MPG'];
+  const colW = [40, 55, 180, 35, 70, 80, 70, 70, 60, 50];
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
+  let cx = 40;
+  headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
+  y += 22; doc.setTextColor('#000');
+
+  // Sort by cost_per_mile desc (most expensive first)
+  const sorted = [...data.rows].sort((a, b) => b.cost_per_mile - a.cost_per_mile);
+  for (let i = 0; i < sorted.length; i++) {
+    const r = sorted[i];
+    if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'COST-PER-MILE (cont.)'); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
+    const vals = [
+      String(i + 1),
+      r.vehicle_number,
+      r.vehicle_label || '-',
+      String(r.year ?? '-'),
+      r.current_mileage.toLocaleString(),
+      `$${Math.round(r.total_cost).toLocaleString()}`,
+      `$${Math.round(r.fuel_cost).toLocaleString()}`,
+      `$${Math.round(r.maintenance_cost).toLocaleString()}`,
+      `$${r.cost_per_mile.toFixed(3)}`,
+      r.mpg != null ? r.mpg.toFixed(1) : '-',
+    ];
+    vals.forEach((val, j) => { doc.text(val, cx + 3, y + 12); cx += colW[j]; });
+    y += 15;
+  }
+
+  footerStrip(doc, page, totalPages);
+  doc.save(`fleet_cost_per_mile_${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 17. FLEET MAINTENANCE FORECAST REPORT
+// ═══════════════════════════════════════════════════════════════
+// Vehicles due for service, ranked by urgency.  Shows days / miles
+// remaining and historical cost-per-mile to flag expensive units.
+
+interface MaintenanceForecastRow {
+  vehicle_number: string;
+  vehicle_label?: string;
+  current_mileage: number;
+  next_service_mileage: number;
+  miles_until_service: number;
+  avg_daily_miles: number;
+  est_days_until_service: number | null;
+  last_service_date?: string;
+  last_service_cost?: number;
+  urgency: 'overdue' | 'critical' | 'warning' | 'ok';
+}
+
+export function generateMaintenanceForecastReport(data: {
+  rows: MaintenanceForecastRow[];
+  overdueCount?: number;
+  upcomingCount?: number;
+}): void {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  let y = headerStrip(doc, 'MAINTENANCE FORECAST REPORT',
+    `${data.rows.length} vehicles  •  ${data.overdueCount ?? 0} overdue  •  Generated ${new Date().toLocaleDateString()}`);
+  const totalPages = Math.max(1, Math.ceil(data.rows.length / 22));
+  let page = 1;
+
+  // Summary
+  const boxes: [string, string, boolean?][] = [
+    ['Vehicles', String(data.rows.length)],
+    ['Overdue', String(data.overdueCount ?? data.rows.filter(r => r.urgency === 'overdue').length), true],
+    ['Due in <7d', String(data.rows.filter(r => r.urgency === 'critical').length)],
+    ['Due in <30d', String(data.rows.filter(r => r.urgency === 'warning').length)],
+  ];
+  const boxW = (pageW - 80) / boxes.length;
+  boxes.forEach((b, i) => drawGridBox(doc, 40 + i * boxW, y, boxW - 4, b[0], b[1], b[2]));
+  y += 48;
+
+  const headers = ['Unit #', 'Vehicle', 'Current Mileage', 'Next Service', 'Miles Left', 'Avg Daily', 'Est Days', 'Urgency'];
+  const colW = [50, 145, 80, 80, 60, 60, 50, 60];
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
+  let cx = 40;
+  headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
+  y += 22; doc.setTextColor('#000');
+
+  const urgencyOrder = { overdue: 0, critical: 1, warning: 2, ok: 3 };
+  const sorted = [...data.rows].sort((a, b) =>
+    (urgencyOrder[a.urgency] - urgencyOrder[b.urgency]) || (a.miles_until_service - b.miles_until_service),
+  );
+  for (const r of sorted) {
+    if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'MAINTENANCE FORECAST (cont.)'); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
+    const urgencyColor: [number, number, number] =
+      r.urgency === 'overdue' ? [239, 68, 68]
+      : r.urgency === 'critical' ? [245, 158, 11]
+      : r.urgency === 'warning' ? [251, 191, 36]
+      : [22, 163, 74];
+    const urgencyLabel = r.urgency === 'overdue' ? 'OVERDUE' : r.urgency === 'critical' ? '< 7 DAYS' : r.urgency === 'warning' ? '< 30 DAYS' : 'OK';
+    const vals: Array<{ text: string; color?: [number, number, number] }> = [
+      { text: r.vehicle_number },
+      { text: r.vehicle_label || '-' },
+      { text: r.current_mileage.toLocaleString() },
+      { text: r.next_service_mileage.toLocaleString() },
+      { text: r.miles_until_service.toLocaleString() },
+      { text: r.avg_daily_miles.toFixed(1) },
+      { text: r.est_days_until_service?.toString() || '-' },
+      { text: urgencyLabel, color: urgencyColor },
+    ];
+    vals.forEach((v, i) => {
+      if (v.color) doc.setTextColor(v.color[0], v.color[1], v.color[2]);
+      else doc.setTextColor(0, 0, 0);
+      doc.text(v.text, cx + 3, y + 12);
+      cx += colW[i];
+    });
+    y += 15;
+  }
+
+  footerStrip(doc, page, totalPages);
+  doc.save(`fleet_maintenance_forecast_${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 18. FLEET COMPLIANCE AUDIT REPORT
+// ═══════════════════════════════════════════════════════════════
+// Single-pane audit: insurance, registration, inspections, recalls,
+// overdue maintenance.  Color-coded urgency per item.
+
+interface ComplianceRow {
+  vehicle_number: string;
+  vehicle_label?: string;
+  insurance_status: 'valid' | 'expiring' | 'expired';
+  insurance_expiry?: string;
+  registration_status: 'valid' | 'expiring' | 'expired';
+  registration_expiry?: string;
+  inspection_status: 'valid' | 'expiring' | 'expired';
+  inspection_expiry?: string;
+  open_recalls: number;
+  overdue_service: number;
+  compliance_score: number;
+}
+
+export function generateComplianceAuditReport(data: {
+  rows: ComplianceRow[];
+  totalVehicles?: number;
+  fullyCompliant?: number;
+  issuesCount?: number;
+}): void {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  let y = headerStrip(doc, 'COMPLIANCE AUDIT REPORT',
+    `${data.rows.length} vehicles  •  Generated ${new Date().toLocaleDateString()}`);
+  const totalPages = Math.max(1, Math.ceil(data.rows.length / 18));
+  let page = 1;
+
+  // Summary
+  const avgScore = data.rows.length
+    ? `${(data.rows.reduce((s, r) => s + r.compliance_score, 0) / data.rows.length).toFixed(0)}%`
+    : 'N/A';
+  const issuesCount = data.issuesCount ?? data.rows.length - (data.fullyCompliant ?? 0);
+  const boxes: [string, string, boolean?][] = [
+    ['Vehicles', String(data.rows.length)],
+    ['Fully Compliant', String(data.fullyCompliant ?? 0), true],
+    ['With Issues', String(issuesCount)],
+    ['Avg Score', avgScore],
+  ];
+  const boxW = (pageW - 80) / boxes.length;
+  boxes.forEach((b, i) => drawGridBox(doc, 40 + i * boxW, y, boxW - 4, b[0], b[1], b[2]));
+  y += 48;
+
+  const headers = ['Unit #', 'Vehicle', 'Insurance', 'Registration', 'Inspection', 'Recalls', 'Overdue Svc', 'Score'];
+  const colW = [55, 165, 100, 100, 100, 55, 75, 50];
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
+  let cx = 40;
+  headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
+  y += 22; doc.setTextColor('#000');
+
+  const colorFor = (s: 'valid' | 'expiring' | 'expired'): [number, number, number] =>
+    s === 'expired' ? [239, 68, 68] : s === 'expiring' ? [245, 158, 11] : [22, 163, 74];
+
+  const sorted = [...data.rows].sort((a, b) => a.compliance_score - b.compliance_score);
+  for (const r of sorted) {
+    if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'COMPLIANCE AUDIT (cont.)'); }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
+    const insColor = colorFor(r.insurance_status);
+    const regColor = colorFor(r.registration_status);
+    const inspColor = colorFor(r.inspection_status);
+    const insLabel = r.insurance_status === 'expired' ? 'EXPIRED' : r.insurance_status === 'expiring' ? `EXP ${r.insurance_expiry || ''}` : 'VALID';
+    const regLabel = r.registration_status === 'expired' ? 'EXPIRED' : r.registration_status === 'expiring' ? `EXP ${r.registration_expiry || ''}` : 'VALID';
+    const inspLabel = r.inspection_status === 'expired' ? 'EXPIRED' : r.inspection_status === 'expiring' ? `EXP ${r.inspection_expiry || ''}` : 'VALID';
+    const scoreColor: [number, number, number] =
+      r.compliance_score >= 90 ? [22, 163, 74]
+      : r.compliance_score >= 70 ? [245, 158, 11]
+      : [239, 68, 68];
+    const vals: Array<{ text: string; color?: [number, number, number] }> = [
+      { text: r.vehicle_number },
+      { text: r.vehicle_label || '-' },
+      { text: insLabel, color: insColor },
+      { text: regLabel, color: regColor },
+      { text: inspLabel, color: inspColor },
+      { text: String(r.open_recalls) },
+      { text: String(r.overdue_service) },
+      { text: `${r.compliance_score}%`, color: scoreColor },
+    ];
+    vals.forEach((v, i) => {
+      if (v.color) doc.setTextColor(v.color[0], v.color[1], v.color[2]);
+      else doc.setTextColor(0, 0, 0);
+      doc.text(v.text, cx + 3, y + 12);
+      cx += colW[i];
+    });
+    y += 15;
+  }
+
+  // Sign-off block
+  if (y > pageH - 80) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'COMPLIANCE AUDIT (cont.)'); }
+  y += 20;
+  doc.setDrawColor('#1a1a1a'); doc.setLineWidth(0.5);
+  doc.line(40, y, pageW - 40, y);
+  y += 16;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+  doc.text('AUDIT CERTIFICATION', 40, y);
+  y += 16;
+  const sigColW = (pageW - 80 - 40) / 2;
+  const drawSig = (label: string, xPos: number) => {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(RMPG_GRAY);
+    doc.text(label, xPos, y);
+    doc.setDrawColor('#000'); doc.setLineWidth(0.5);
+    doc.line(xPos, y + 22, xPos + 220, y + 22);
+    doc.setFontSize(7);
+    doc.text('Signature', xPos, y + 32);
+    doc.line(xPos + 240, y + 22, xPos + 460, y + 22);
+    doc.text('Date', xPos + 240, y + 32);
+  };
+  drawSig('AUDITOR', 40);
+  drawSig('FLEET MANAGER', 40 + sigColW + 40);
+
+  footerStrip(doc, page, totalPages);
+  doc.save(`fleet_compliance_audit_${new Date().toISOString().slice(0, 10)}.pdf`);
 }

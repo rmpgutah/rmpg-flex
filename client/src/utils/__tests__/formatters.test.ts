@@ -76,6 +76,32 @@ describe('acronym-aware display labels', () => {
     expect(toDisplayLabel('ems_dispatch')).toBe('EMS Dispatch');
   });
 
+  // Regression guard for the newly-added law-enforcement acronyms. If any of
+  // these regress, dispatch/ALPR/records surfaces would render "Alpr Read"
+  // or "Swat Response" instead of "ALPR Read" / "SWAT Response".
+  it('toDisplayLabel covers the extended LE acronym set', () => {
+    expect(toDisplayLabel('alpr_read')).toBe('ALPR Read');
+    expect(toDisplayLabel('cad_update')).toBe('CAD Update');
+    expect(toDisplayLabel('swat_response')).toBe('SWAT Response');
+    expect(toDisplayLabel('k9_handler')).toBe('K9 Handler');
+    expect(toDisplayLabel('cdl_violation')).toBe('CDL Violation');
+    expect(toDisplayLabel('vin_check')).toBe('VIN Check');
+    expect(toDisplayLabel('sor_match')).toBe('SOR Match');
+    expect(toDisplayLabel('doc_release')).toBe('DOC Release');
+    expect(toDisplayLabel('mva_report')).toBe('MVA Report');
+    expect(toDisplayLabel('fbi_lookup')).toBe('FBI Lookup');
+  });
+
+  // Regression for the PersonHistoryPanel screenshot bug: a local `formatType`
+  // helper was returning raw lowercase `pso client request` for the dispatch
+  // calls list. Direct call mirrors the production code path now (toDisplayLabel
+  // imported from formatters).
+  it('renders the PersonHistoryPanel dispatch-calls case correctly', () => {
+    expect(toDisplayLabel('pso_client_request')).toBe('PSO Client Request');
+    expect(toDisplayLabel('officer_assist')).toBe('Officer Assist');
+    expect(toDisplayLabel('alarm_response')).toBe('Alarm Response');
+  });
+
   it('formatLabel keeps acronyms ALL-CAPS', () => {
     expect(formatLabel('pso_client_request')).toBe('PSO Client Request');
   });

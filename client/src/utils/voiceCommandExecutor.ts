@@ -98,11 +98,15 @@ async function handleStatusUpdate(
   const newStatus = params.status;
   if (!newStatus) return { success: false, message: 'Status not specified.' };
 
-  await apiFetch(`/dispatch/units/${unit.id}/status`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: newStatus }),
-  });
+  try {
+    await apiFetch(`/dispatch/units/${unit.id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    });
+  } catch {
+    return { success: false, message: `Failed to update ${unit.call_sign} status — API error.` };
+  }
 
   return {
     success: true,

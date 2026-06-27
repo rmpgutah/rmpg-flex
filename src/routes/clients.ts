@@ -81,6 +81,8 @@ clients.put('/:id', async (c) => {
 
 clients.delete('/:id', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
     // Soft-delete: flip to inactive rather than orphaning contracts/persons.
