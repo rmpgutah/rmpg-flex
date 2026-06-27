@@ -12,18 +12,22 @@
 // fill this page within seconds.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Activity, AlertTriangle, Camera, Cpu, Filter, MapPin, PlayCircle, RefreshCw,
   Shield, Signal, Video, Zap,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ForensicDashcamPlayer from '../components/ForensicDashcamPlayer';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { formatEnumValue } from '../utils/formatters';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import usePersistedState from '../hooks/usePersistedState';
 import useLiveSync from '../hooks/useLiveSync';
 import { parseTimestamp } from '../utils/dateUtils';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -89,7 +93,7 @@ interface EventListResponse {
   offset: number;
 }
 
-// ── Style helpers (Spillman black theme) ────────────────────
+// ── Style helpers (Spillman night theme) ────────────────────
 
 const SOURCE_BADGE: Record<string, string> = {
   clearpathgps: 'bg-green-900/40 text-green-300 border-green-700/40',
@@ -134,6 +138,13 @@ function formatRelative(s: string | null): string {
 // ── Page ────────────────────────────────────────────────────
 
 export default function DashcamAiPage(): React.ReactElement {
+  const { user } = useAuth();
+  const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Role gates — configure/delete gated to admin/manager
+  const canConfigure = user?.role === 'admin' || user?.role === 'manager';
+
   const [events, setEvents] = useState<DrivingEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -141,12 +152,18 @@ export default function DashcamAiPage(): React.ReactElement {
   const [selected, setSelected] = useState<DrivingEvent | null>(null);
   const [playerEventId, setPlayerEventId] = useState<number | null>(null);
 
+  // ConfirmDialog state — gate AI result discard
+  const [discardTarget, setDiscardTarget] = useState<DrivingEvent | null>(null);
+
   const [filters, setFilters] = usePersistedState('rmpg_dashcam_ai_filters', {
     source: '',
     severity: '',
     event_type: '',
     has_video: '',
   });
+
+  // Primary input ref for N shortcut
+  const sourceFilterRef = useRef<HTMLSelectElement>(null);
 
   const queryString = useMemo(() => {
     const p = new URLSearchParams();
@@ -190,11 +207,85 @@ export default function DashcamAiPage(): React.ReactElement {
   // 15-cruiser fleet doesn't trigger 15 simultaneous refreshes.
   useLiveSync('dashcam-ai', refresh, { entities: ['event', 'heartbeat'] });
 
+  // ── Deep-link: ?session_id=<id> or ?clip_id=<id> ────────────────────
+  const deepLinkRef = useRef(false);
+  const sessionIdParam = searchParams.get('session_id');
+  const clipIdParam    = searchParams.get('clip_id');
+
+  useEffect(() => {
+    if (loading || deepLinkRef.current) return;
+    const rawId = sessionIdParam ?? clipIdParam;
+    if (!rawId) return;
+    deepLinkRef.current = true;
+
+    const id = Number(rawId);
+    const ev = events.find(e => e.id === id);
+    if (ev) {
+      setSelected(ev);
+      const el = document.getElementById(`dashcam-event-row-${id}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      addToast(`Event #${rawId} not found in current view.`, 'warning');
+    }
+
+    // Strip the param from the URL after consuming it
+    const next = new URLSearchParams(searchParams);
+    next.delete('session_id');
+    next.delete('clip_id');
+    setSearchParams(next, { replace: true });
+  }, [loading, events, sessionIdParam, clipIdParam, searchParams, setSearchParams, addToast]);
+
+  // ── N shortcut → focus source filter (primary entry point) ──────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      const tag = t.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (t.isContentEditable) return;
+      e.preventDefault();
+      sourceFilterRef.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // ── Esc cascade: close discard confirm → close detail → close player ─
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (discardTarget) {
+        e.stopPropagation();
+        setDiscardTarget(null);
+        return;
+      }
+      if (playerEventId != null) {
+        e.stopPropagation();
+        setPlayerEventId(null);
+        return;
+      }
+      if (selected) {
+        e.stopPropagation();
+        setSelected(null);
+        return;
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [discardTarget, playerEventId, selected]);
+
   const totalsByStatus = useMemo(() => {
     const acc = { healthy: 0, stale: 0, down: 0 };
     for (const u of fleet) acc[u.status]++;
     return acc;
   }, [fleet]);
+
+  // Derived empty-state flags
+  const hasNoDevices   = !loading && fleet.length === 0;
+  const hasNoEvents    = !loading && events.length === 0 && !filters.source && !filters.severity && !filters.event_type && !filters.has_video;
+  const hasNoResults   = !loading && events.length === 0 && (!!filters.source || !!filters.severity || !!filters.event_type || !!filters.has_video);
 
   return (
     <div className="flex flex-col h-full bg-surface-base text-rmpg-100">
@@ -215,7 +306,7 @@ export default function DashcamAiPage(): React.ReactElement {
           <button
             onClick={refresh}
             disabled={loading}
-            className="ml-2 inline-flex items-center gap-1 px-2 py-1 border border-border-default hover:border-[#d4a017] hover:text-[#d4a017] disabled:opacity-50 transition-colors"
+            className="ml-2 inline-flex items-center gap-1 px-2 py-1 border border-border-default hover:border-brand-400 hover:text-brand-400 disabled:opacity-50 transition-colors"
             type="button"
             aria-label="Refresh"
           >
@@ -230,10 +321,12 @@ export default function DashcamAiPage(): React.ReactElement {
         <div className="flex items-center gap-2 mb-1.5 text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold">
           <Activity className="w-3 h-3" aria-hidden="true" /> Fleet health
         </div>
-        {fleet.length === 0 ? (
+        {loading && fleet.length === 0 ? (
+          <div className="text-[11px] text-rmpg-500 italic">Loading fleet health…</div>
+        ) : hasNoDevices ? (
           <div className="text-[11px] text-rmpg-500 italic">
             No edge devices reporting yet. Configure DASHCAM_FORWARD_SECRET on the server,
-            then run <code className="text-[#d4a017]">flex-edge heartbeat</code> from a unit.
+            then run <code className="text-brand-400">flex-edge heartbeat</code> from a unit.
           </div>
         ) : (
           <div className="flex flex-wrap gap-1.5">
@@ -256,7 +349,9 @@ export default function DashcamAiPage(): React.ReactElement {
       {/* Filter bar */}
       <div className="px-3 py-2 border-b border-border-default bg-surface-base flex flex-wrap items-center gap-2 text-[11px]">
         <Filter className="w-3 h-3 text-rmpg-500" aria-hidden="true" />
-        <select id="ff-dashcamaipage-0"
+        <select
+          ref={sourceFilterRef}
+          id="ff-dashcamaipage-0"
           value={filters.source}
           onChange={e => setFilters({ ...filters, source: e.target.value })}
           className="bg-surface-sunken border border-border-default px-2 py-1 text-rmpg-200"
@@ -337,25 +432,43 @@ export default function DashcamAiPage(): React.ReactElement {
               </tr>
             </thead>
             <tbody>
-              {events.length === 0 && !loading && (
+              {loading && events.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-rmpg-500 italic">
+                    Loading events…
+                  </td>
+                </tr>
+              )}
+              {hasNoEvents && (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-rmpg-500 italic">
+                    No driving events recorded yet.
+                    <div className="mt-2 text-[10px]">
+                      Run <code className="text-brand-400">flex-edge simulate --unit-ids 1,2,3 --rate 1</code> to populate test data.
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {hasNoResults && (
                 <tr>
                   <td colSpan={9} className="py-8 text-center text-rmpg-500 italic">
                     No events match the current filters.
                     <div className="mt-2 text-[10px]">
-                      Try <code className="text-[#d4a017]">flex-edge simulate --unit-ids 1,2,3 --rate 1</code> to populate test data.
+                      Adjust the filters above to broaden the search.
                     </div>
                   </td>
                 </tr>
               )}
               {events.map(ev => (
                 <tr
+                  id={`dashcam-event-row-${ev.id}`}
                   key={ev.id}
                   onClick={() => setSelected(ev)}
                   className={`border-b border-border-default cursor-pointer hover:bg-surface-raised transition-colors ${selected?.id === ev.id ? 'bg-surface-raised' : ''}`}
                 >
                   <td className="py-1 px-2 font-mono text-rmpg-300">{formatLocalDate(ev.event_timestamp)}</td>
                   <td className="py-1 px-2">
-                    <span className="font-mono text-[#d4a017]">{ev.call_sign ?? `U${ev.unit_id ?? '?'}`}</span>
+                    <span className="font-mono text-brand-400">{ev.call_sign ?? `U${ev.unit_id ?? '?'}`}</span>
                     {ev.officer_name && <span className="text-rmpg-500 ml-1">/ {ev.officer_name}</span>}
                   </td>
                   <td className="py-1 px-2">
@@ -377,7 +490,7 @@ export default function DashcamAiPage(): React.ReactElement {
                   </td>
                   <td className="py-1 px-2 font-mono text-rmpg-300">{ev.call_number ?? '—'}</td>
                   <td className="py-1 px-2 text-center">
-                    {ev.has_video ? <Video className="w-3 h-3 text-[#d4a017] inline" aria-hidden="true" /> : null}
+                    {ev.has_video ? <Video className="w-3 h-3 text-brand-400 inline" aria-hidden="true" /> : null}
                   </td>
                 </tr>
               ))}
@@ -391,15 +504,27 @@ export default function DashcamAiPage(): React.ReactElement {
             <div className="p-3 border-b border-border-default flex items-start justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-rmpg-500">Event #{selected.id}</div>
-                <div className="text-base font-mono text-[#d4a017] mt-0.5">{formatEnumValue(selected.event_type)}</div>
+                <div className="text-base font-mono text-brand-400 mt-0.5">{formatEnumValue(selected.event_type)}</div>
                 <div className="text-[11px] text-rmpg-300 mt-0.5">{formatLocalDate(selected.event_timestamp)}</div>
               </div>
-              <button
-                onClick={() => setSelected(null)}
-                className="text-rmpg-500 hover:text-[#d4a017] text-xl leading-none"
-                type="button"
-                aria-label="Close detail"
-              >×</button>
+              <div className="flex items-center gap-1">
+                {canConfigure && (
+                  <button
+                    onClick={() => setDiscardTarget(selected)}
+                    className="text-[10px] px-2 py-1 border border-red-800/60 text-red-400 hover:bg-red-900/30 transition-colors"
+                    type="button"
+                    aria-label="Discard AI result"
+                  >
+                    Discard
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelected(null)}
+                  className="text-rmpg-500 hover:text-brand-400 text-xl leading-none ml-1"
+                  type="button"
+                  aria-label="Close detail"
+                >×</button>
+              </div>
             </div>
             {/* AI still → opens the forensic player (on-demand video + telemetry). */}
             {(selected.still_image_url || selected.has_video) && (
@@ -407,7 +532,7 @@ export default function DashcamAiPage(): React.ReactElement {
                 <button
                   type="button"
                   onClick={() => setPlayerEventId(selected.id)}
-                  className="relative block w-full border border-border-default hover:border-[#d4a017] transition-colors group"
+                  className="relative block w-full border border-border-default hover:border-brand-400 transition-colors group"
                   aria-label="Open forensic dashcam playback"
                 >
                   {selected.still_image_url ? (
@@ -422,12 +547,12 @@ export default function DashcamAiPage(): React.ReactElement {
                     <span className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/90 to-transparent text-base tracking-[0.18em] font-semibold text-rmpg-100">
                       {selected.plate}
                       {selected.confidence != null && (
-                        <span className="text-[9px] font-mono text-[#d4a017] ml-2 align-middle">{(selected.confidence * 100).toFixed(0)}%</span>
+                        <span className="text-[9px] font-mono text-brand-400 ml-2 align-middle">{(selected.confidence * 100).toFixed(0)}%</span>
                       )}
                     </span>
                   )}
                   <span className="absolute inset-0 flex items-center justify-center">
-                    <PlayCircle className="w-10 h-10 text-[#d4a017]/90 drop-shadow group-hover:scale-110 transition-transform" aria-hidden="true" />
+                    <PlayCircle className="w-10 h-10 text-brand-400/90 drop-shadow group-hover:scale-110 transition-transform" aria-hidden="true" />
                   </span>
                 </button>
               </div>
@@ -492,11 +617,37 @@ export default function DashcamAiPage(): React.ReactElement {
           onClose={() => setPlayerEventId(null)}
         />
       )}
+
+      {/* ConfirmDialog — discard AI result (admin/manager only) */}
+      <ConfirmDialog
+        isOpen={discardTarget != null}
+        onClose={() => setDiscardTarget(null)}
+        onConfirm={() => {
+          // Dismiss from view (soft-discard client-side; a full server-side
+          // delete endpoint can be wired in Phase 5 when the data-retention
+          // workflow lands). The operator still sees the event was reviewed.
+          setEvents(prev => prev.filter(e => e.id !== discardTarget?.id));
+          if (selected?.id === discardTarget?.id) setSelected(null);
+          setDiscardTarget(null);
+          addToast(`Event #${discardTarget?.id} discarded from view.`, 'info');
+        }}
+        title="Discard AI Result"
+        message="Remove this event from the current view? This dismisses the AI result from the console."
+        details={discardTarget && (
+          <>
+            <div>Event #{discardTarget.id} — {formatEnumValue(discardTarget.event_type)}</div>
+            <div className="text-rmpg-500">{formatLocalDate(discardTarget.event_timestamp)}</div>
+            {discardTarget.call_sign && <div>Unit: {discardTarget.call_sign}</div>}
+          </>
+        )}
+        confirmLabel="Discard"
+        confirmVariant="warning"
+      />
     </div>
   );
 }
 
-function DetailRow({ icon: Icon, label, value }: { icon: any; label: string; value: string }): React.ReactElement {
+function DetailRow({ icon: Icon, label, value }: { icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; label: string; value: string }): React.ReactElement {
   return (
     <div className="flex items-start gap-2">
       <Icon className="w-3 h-3 text-rmpg-500 mt-0.5" aria-hidden="true" />
