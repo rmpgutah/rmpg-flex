@@ -21,6 +21,7 @@ import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../u
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -1086,7 +1087,7 @@ export default function DashCamDetailPage() {
                   {incidentLink.incident_type && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Type</span>
-                      <span className="text-[11px] text-rmpg-200">{(incidentLink.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className="text-[11px] text-rmpg-200">{toDisplayLabel(incidentLink.incident_type || '')}</span>
                     </div>
                   )}
                   {incidentLink.status && (
