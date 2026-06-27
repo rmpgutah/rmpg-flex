@@ -143,6 +143,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const alertsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alertsDelayRef = useRef(WS_RECONNECT_DELAY);
   const alertsHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const alertsRetryCountRef = useRef(0);
 
   // Shared fan-in: dispatch a parsed WS frame to the brain, the priority
   // chime, the legacy unit_update bridge, and the type-keyed subscribers.
@@ -304,7 +305,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      ws.onerror = () => {};
+      ws.onerror = (err) => {
+        devWarn('[WS] Connection error:', err);
+        // onerror fires before onclose, so retry/limit logic lives there
+      };
 
       wsRef.current = ws;
     } catch (err) {
@@ -335,6 +339,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.onopen = () => {
         alertsDelayRef.current = WS_RECONNECT_DELAY;
+        alertsRetryCountRef.current = 0;
         try { ws.send(JSON.stringify({ type: 'authenticate', token: tokenRef.current })); } catch { /* retried on reconnect */ }
         if (alertsHeartbeatRef.current) clearInterval(alertsHeartbeatRef.current);
         alertsHeartbeatRef.current = setInterval(() => {
@@ -360,6 +365,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         if (alertsRef.current !== ws) return;
         if (alertsHeartbeatRef.current) { clearInterval(alertsHeartbeatRef.current); alertsHeartbeatRef.current = null; }
         alertsRef.current = null;
+        alertsRetryCountRef.current++;
+        if (alertsRetryCountRef.current >= WS_MAX_RETRIES) {
+          devWarn(`[AlertWS] Max retries (${WS_MAX_RETRIES}) reached`);
+          return;
+        }
         if (authRef.current) {
           alertsReconnectRef.current = setTimeout(() => {
             alertsDelayRef.current = Math.min(alertsDelayRef.current + 2000, WS_MAX_RECONNECT_DELAY);
@@ -368,7 +378,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      ws.onerror = () => {};
+      ws.onerror = (err) => {
+        devWarn('[AlertWS] Connection error:', err);
+      };
       alertsRef.current = ws;
     } catch (err) {
       console.warn('[AlertWS] Connection creation failed:', err);
@@ -408,6 +420,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           connect();
         }
         if (!alertsRef.current || alertsRef.current.readyState !== WebSocket.OPEN) {
+          alertsRetryCountRef.current = 0;
           alertsDelayRef.current = WS_RECONNECT_DELAY;
           connectAlerts();
         }
@@ -421,6 +434,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         connect();
       }
       if (!alertsRef.current || alertsRef.current.readyState !== WebSocket.OPEN) {
+        alertsRetryCountRef.current = 0;
         alertsDelayRef.current = WS_RECONNECT_DELAY;
         connectAlerts();
       }

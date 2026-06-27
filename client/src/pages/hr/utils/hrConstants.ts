@@ -16,7 +16,7 @@ export const HR_TABS = [
 export type HRTab = typeof HR_TABS[number]['key'];
 
 export const LEAVE_TYPE_COLORS: Record<string, string> = {
-  vacation: '#888888',   // blue
+  vacation: '#888888',   // gray (neutral)
   sick: '#ef4444',       // red
   personal: '#8b5cf6',   // purple
   bereavement: 'var(--rmpg-500)', // gray

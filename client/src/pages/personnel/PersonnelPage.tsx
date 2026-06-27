@@ -6,7 +6,7 @@ import { useMenuActions } from '../../utils/contextMenuActions';
 import { useAuth } from '../../context/AuthContext';
 import type {
   Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement,
-  Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera,
+  Deployment, CoverageGap, OfficerEquipment, BodyCamera,
   BodyCamVideo, DashcamEvent, CpgDeviceMapping,
 } from '../../types';
 import PanelTitleBar from '../../components/PanelTitleBar';
@@ -30,6 +30,8 @@ import type { OfficerWithStatus } from './utils/personnelMappers';
 import {
   MAIN_TABS, type MainTab, type DetailTab, type ModalMode,
 } from './utils/personnelConstants';
+import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 import { getWeekMonday } from './utils/personnelFormatters';
 import OfficerAvatar from './components/OfficerAvatar';
 import CredentialProgressBar from './components/CredentialProgressBar';
@@ -183,8 +185,6 @@ export default function PersonnelPage() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [deploymentsLoading, setDeploymentsLoading] = useState(false);
   const [coverageGaps, setCoverageGaps] = useState<CoverageGap[]>([]);
-  const [analytics, setAnalytics] = useState<PersonnelAnalytics | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   // Equipment data
   const [equipment, setEquipment] = useState<OfficerEquipment[]>([]);
@@ -199,10 +199,7 @@ export default function PersonnelPage() {
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
   const [editingVideo, setEditingVideo] = useState<BodyCamVideo | null>(null);
 
-  // Dash camera data (ClearPathGPS)
-  const [dashcamEvents, setDashcamEvents] = useState<DashcamEvent[]>([]);
-  const [deviceMappings, setDeviceMappings] = useState<CpgDeviceMapping[]>([]);
-  const [dashcamLoading, setDashcamLoading] = useState(false);
+  // Per-officer dashcam data (fetched on detail-tab switch)
   const [officerDashcamEvents, setOfficerDashcamEvents] = useState<DashcamEvent[]>([]);
   const [officerDeviceMapping, setOfficerDeviceMapping] = useState<CpgDeviceMapping | null>(null);
   const [officerDashcamLoading, setOfficerDashcamLoading] = useState(false);
@@ -799,22 +796,6 @@ export default function PersonnelPage() {
     ]);
     setBodyCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
     setBodyCamVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
-  };
-
-  const refreshDashcamData = async () => {
-    setDashcamLoading(true);
-    try {
-      const [events, mappings] = await Promise.all([
-        apiFetch<any[]>('/clearpathgps/dashcam-events'),
-        apiFetch<any[]>('/clearpathgps/mappings'),
-      ]);
-      setDashcamEvents(Array.isArray(events) ? events : []);
-      setDeviceMappings(Array.isArray(mappings) ? mappings : []);
-    } catch {
-      addToast('Failed to refresh dash camera data', 'error');
-    } finally {
-      setDashcamLoading(false);
-    }
   };
 
   const handleBodyCameraSubmit = async (data: BodyCameraFormData) => {
@@ -1475,6 +1456,15 @@ export default function PersonnelPage() {
         } else if (activeTab === 'equipment') {
           e.preventDefault();
           openAddEquipment();
+        } else if (activeTab === 'credentials') {
+          e.preventDefault();
+          openAddCredential();
+        } else if (activeTab === 'training') {
+          e.preventDefault();
+          openAddTraining();
+        } else if (activeTab === 'deployment') {
+          e.preventDefault();
+          openAddDeployment();
         }
       }
     };
@@ -1536,39 +1526,43 @@ export default function PersonnelPage() {
       </div>
       )}
 
-      {/* Tab Navigation */}
-      <div className="tab-bar overflow-x-auto scrollbar-dark" role="tablist" aria-label="Personnel management tabs" style={{ scrollbarWidth: 'none' }}>
-        {MAIN_TABS.map(tab => {
-          const Icon = tab.icon;
-          const count = tab.id === 'roster' ? officers.length
-            : tab.id === 'duty_board' ? onDutyCount
-            : tab.id === 'time' ? clockedInCount
-            : tab.id === 'credentials' && expiringCreds > 0 ? expiringCreds
-            : undefined;
-          const alert = tab.id === 'credentials' && expiringCreds > 0;
-          const isActive = activeTab === tab.id;
-          return (
-            <button type="button"
-              key={tab.id}
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => { setActiveTab(tab.id); if (tab.id !== 'roster') setSelectedOfficer(null); }}
-              className={`tab-bar-item ${isActive ? 'active' : ''}`}
-            >
-              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-brand-400' : ''}`} />
-              {tab.label}
-              {count !== undefined && (
-                <span className={`text-[8px] px-1 py-0.5 ml-0.5 font-mono ${
-                  alert ? 'bg-amber-900/30 text-amber-400 border border-amber-700/30' : 'text-rmpg-500'
-                }`}>
-                  {count}
-                </span>
-              )}
-              {alert && <span className="led-dot led-amber" />}
-            </button>
-          );
-        })}
-      </div>
+      {/* Tab Navigation (grouped Spillman module strip) */}
+      <SpillmanModuleGroup
+        groups={[
+          {
+            label: 'Operations',
+            tone: 'steel',
+            tabs: [
+              { id: 'command',    label: 'Command' },
+              { id: 'roster',     label: 'Roster',     count: officers.length || undefined },
+              { id: 'duty_board', label: 'Duty Board', count: onDutyCount || undefined },
+            ],
+          },
+          {
+            label: 'Planning',
+            tone: 'gold',
+            tabs: [
+              { id: 'schedule',   label: 'Schedule' },
+              { id: 'time',       label: 'Time',        count: clockedInCount || undefined },
+              { id: 'deployment', label: 'Deployment' },
+            ],
+          },
+          {
+            label: 'Administration',
+            tone: 'neutral',
+            tabs: [
+              { id: 'credentials', label: 'Credentials', count: expiringCreds > 0 ? expiringCreds : undefined },
+              { id: 'training',    label: 'Training' },
+              { id: 'equipment',   label: 'Equipment' },
+            ],
+          },
+        ] as ModuleGroupSpec[]}
+        activeTab={activeTab}
+        onTabChange={(id) => {
+          setActiveTab(id as MainTab);
+          if (id !== 'roster') setSelectedOfficer(null);
+        }}
+      />
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-hidden flex">
