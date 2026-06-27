@@ -20,6 +20,7 @@ import { emitAlert } from '../../utils/alertHub';
 import { recordAudit } from '../../utils/auditLog';
 import { verifySignedResource } from '../../utils/signedAccess';
 import { evaluateNotificationRules } from '../notificationEngine';
+import { log } from '../../utils/logger';
 
 const panic = new Hono<Env>();
 
@@ -34,7 +35,7 @@ async function clearUnitEmergency(db: ReturnType<typeof getDb>, panicRow: Record
     `UPDATE units SET emergency_active = 0, emergency_call_id = NULL, emergency_since = NULL
      WHERE officer_id = ? AND emergency_active = 1`,
     officerId,
-  ).catch((err) => console.error('[panic] clear unit emergency failed (non-fatal)', err));
+  ).catch((err) => log.error('[panic] clear unit emergency failed (non-fatal)', {}, err));
 }
 
 // Cascade-resolve a panic when its underlying CAD call reaches a terminal
@@ -162,7 +163,7 @@ panic.post('/panic', async (c) => {
         userId,
       );
       if (recent) callId = Number(recent.id);
-    } catch { /* dedupe is best-effort; fall through to INSERT */ }
+    } catch { log.warn('[panic] dedupe query failed', { userId }); /* dedupe is best-effort; fall through to INSERT */ }
   }
   if (callId == null) {
     try {
@@ -192,7 +193,7 @@ panic.post('/panic', async (c) => {
         );
       }
     } catch (err) {
-      console.error('[panic] CAD call create failed (non-fatal)', err);
+      log.error('[panic] CAD call create failed (non-fatal)', {}, err);
       callId = body.call_id ?? unit?.current_call_id ?? null;
     }
   }
@@ -219,7 +220,7 @@ panic.post('/panic', async (c) => {
       db,
       `UPDATE units SET emergency_active = 1, emergency_call_id = ?, emergency_since = datetime('now') WHERE id = ?`,
       callId, unit.id,
-    ).catch((err) => console.error('[panic] set unit emergency failed (non-fatal)', err));
+    ).catch((err) => log.error('[panic] set unit emergency failed (non-fatal)', {}, err));
   }
 
   // ── FlexCam auto-preserve (best-effort, strictly additive). Resolves the
@@ -233,9 +234,9 @@ panic.post('/panic', async (c) => {
     try {
       const { preserveForEvent } = await import('../../utils/footage/autoPreserve');
       await preserveForEvent(c.env, { eventType: 'panic_alert', eventId: Number(panicId), reason: 'panic', unitId: unit?.id ?? null, officerUserId: userId, callId: callId ?? null, eventTs: Date.now() }); // new-date-ok
-    } catch (e) { console.error('[flexcam-preserve] panic:', (e as Error)?.message); }
+    } catch (e) { log.error('[flexcam-preserve] panic', { message: (e as Error)?.message }); }
   })();
-  try { c.executionCtx.waitUntil(_preserve); } catch { /* no execution ctx (e.g. tests) — let it float */ }
+  try { c.executionCtx.waitUntil(_preserve); } catch { log.warn('[panic] waitUntil failed (tests or no ctx)', {}); /* no execution ctx (e.g. tests) — let it float */ }
 
   const created = await queryFirst<Record<string, unknown>>(
     db,
@@ -262,7 +263,7 @@ panic.post('/panic', async (c) => {
       details: `Officer panic: ${officer?.full_name ?? 'Unknown'} (badge ${officer?.badge_number ?? 'N/A'}) via ${triggerMethod}${callId ? ` — call ${callId}` : ''}`,
       actorId: userId,
     });
-  } catch (err) { console.error('[panic] audit failed (non-fatal)', err); }
+  } catch (err) { log.error('[panic] audit failed (non-fatal)', {}, err); }
 
   // Everything below is best-effort fan-out. The panic row is already
   // committed; a failure here must NOT surface as a 500 to the officer
@@ -285,7 +286,7 @@ panic.post('/panic', async (c) => {
       entity_id: panicId,
     }, c.env);
   } catch (err) {
-    console.error('[panic] post-insert fan-out failed (non-fatal)', err);
+    log.error('[panic] post-insert fan-out failed (non-fatal)', {}, err);
   }
 
   // Include `panic_id` explicitly: the client (PanicButton) reads it to
@@ -310,7 +311,7 @@ panic.post('/panic/:id/acknowledge', async (c) => {
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   try {
     await recordAudit(c, { action: 'panic_acknowledged', entityType: 'panic_alert', entityId: id, details: `Panic #${id} acknowledged`, actorId: userId });
-  } catch { /* audit is non-fatal */ }
+  } catch { log.warn('[panic] audit record failed on acknowledge', { panicId: id }); /* audit is non-fatal */ }
   // Ack silences the agency-wide reminder (AlertHubDO stops nagging) but the
   // unit stays emergent until a terminal transition.
   await emitAlert(c.env, 'panic_alert', { action: 'panic_acknowledged', panic: updated });
@@ -335,7 +336,7 @@ panic.post('/panic/:id/resolve', async (c) => {
   await clearUnitEmergency(db, updated as Record<string, unknown> | null);
   try {
     await recordAudit(c, { action: 'panic_resolved', entityType: 'panic_alert', entityId: id, details: `Panic #${id} resolved${body.notes ? `: ${body.notes}` : ''}`, actorId: userId });
-  } catch { /* audit is non-fatal */ }
+  } catch { log.warn('[panic] audit record failed on resolve', { panicId: id }); /* audit is non-fatal */ }
   await emitAlert(c.env, 'panic_alert', { action: 'panic_resolved', panic: updated });
   return c.json(updated);
 });
@@ -365,7 +366,7 @@ panic.post('/panic/:id/cancel', async (c) => {
   await clearUnitEmergency(db, updated as Record<string, unknown> | null);
   try {
     await recordAudit(c, { action: 'panic_cancelled', entityType: 'panic_alert', entityId: id, details: `Panic #${id} self-cancelled by originating officer`, actorId: userId });
-  } catch { /* audit is non-fatal */ }
+  } catch { log.warn('[panic] audit record failed on cancel', { panicId: id }); /* audit is non-fatal */ }
   await emitAlert(c.env, 'panic_alert', { action: 'panic_cancelled', panic: updated });
   return c.json(updated);
 });
@@ -387,7 +388,7 @@ panic.post('/panic/:id/false-alarm', async (c) => {
   await clearUnitEmergency(db, updated as Record<string, unknown> | null);
   try {
     await recordAudit(c, { action: 'panic_false_alarm', entityType: 'panic_alert', entityId: id, details: `Panic #${id} marked false alarm by supervisor`, actorId: userId });
-  } catch { /* audit is non-fatal */ }
+  } catch { log.warn('[panic] audit record failed on false-alarm', { panicId: id }); /* audit is non-fatal */ }
   await emitAlert(c.env, 'panic_alert', { action: 'panic_false_alarm', panic: updated });
   return c.json(updated);
 });
@@ -427,7 +428,7 @@ panic.post('/panic/:id/deactivate', requireRole('admin', 'manager'), async (c) =
     );
     steps.alert_resolved = true;
   } catch (err) {
-    console.error('[panic] force-deactivate: alert update failed', err);
+    log.error('[panic] force-deactivate: alert update failed', {}, err);
     steps.alert_resolved = false;
   }
 
@@ -445,7 +446,7 @@ panic.post('/panic/:id/deactivate', requireRole('admin', 'manager'), async (c) =
     }
     steps.emergency_cleared = true;
   } catch (err) {
-    console.error('[panic] force-deactivate: emergency clear failed', err);
+    log.error('[panic] force-deactivate: emergency clear failed', {}, err);
     steps.emergency_cleared = false;
   }
 
@@ -469,7 +470,7 @@ panic.post('/panic/:id/deactivate', requireRole('admin', 'manager'), async (c) =
       );
       steps.call_cleared = true;
     } catch (err) {
-      console.error('[panic] force-deactivate: call clear failed', err);
+      log.error('[panic] force-deactivate: call clear failed', {}, err);
       steps.call_cleared = false;
     }
   }
@@ -483,14 +484,14 @@ panic.post('/panic/:id/deactivate', requireRole('admin', 'manager'), async (c) =
     await emitAlert(c.env, 'panic_alert', { action: 'panic_resolved', panic: updated });
     steps.broadcast = true;
   } catch (err) {
-    console.error('[panic] force-deactivate: broadcast failed', err);
+    log.error('[panic] force-deactivate: broadcast failed', {}, err);
     steps.broadcast = false;
   }
 
   // Audit — admin force-actions on officer-safety alerts must leave a trail.
   try {
     await recordAudit(c, { action: 'panic_force_deactivated', entityType: 'panic_alert', entityId: id, details: `Admin force-deactivated panic #${id}${body.notes ? `: ${body.notes}` : ''} (was status=${row.status})`, actorId: userId });
-  } catch { /* audit is non-fatal */ }
+  } catch { log.warn('[panic] audit record failed on force-deactivate', { panicId: id }); /* audit is non-fatal */ }
 
   return c.json({ ...(updated as Record<string, unknown>), force_deactivated: true, steps });
 });
@@ -584,14 +585,14 @@ panic.post('/request-backup', async (c) => {
 
     try {
       await recordAudit(c, { action: 'backup_requested', entityType: 'user', entityId: userId, details: `Backup requested${unit?.call_sign ? ` by ${unit.call_sign}` : ''}${body.message ? `: ${body.message}` : ''}`, actorId: userId });
-    } catch { /* audit is non-fatal */ }
+    } catch { log.warn('[panic] audit record failed on backup-request', { userId }); /* audit is non-fatal */ }
 
     // Fan to the whole fleet via the shared hub (the per-isolate broadcast
     // never reached anyone — same dead path the panic alert had).
     await emitAlert(c.env, 'dispatch_update', payload);
     return c.json({ success: true, broadcast: payload });
   } catch (err) {
-    console.error('[dispatch] request-backup error', err);
+    log.error('[dispatch] request-backup error', {}, err);
     return c.json({ error: 'Failed to request backup', code: 'REQUEST_BACKUP_ERR' }, 500);
   }
 });

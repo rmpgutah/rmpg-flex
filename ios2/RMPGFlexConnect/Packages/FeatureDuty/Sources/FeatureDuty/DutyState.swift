@@ -1,12 +1,12 @@
 import Foundation
-import Observation
 
-@Observable
-@MainActor
+@Observable @MainActor
 public final class DutyState {
-    public private(set) var isOnDuty: Bool = false
-    public private(set) var shiftStartedAt: Date? = nil
-    public private(set) var unitID: String = ""
+    public var isOnDuty = false
+    public var shiftStartedAt: Date?
+    public var unitID = ""
+    public var odometerStart: Int?
+    public var inspectionPassed = false
 
     public init() {}
 
@@ -20,9 +20,10 @@ public final class DutyState {
         self.isOnDuty = false
         self.shiftStartedAt = nil
         self.unitID = ""
+        self.odometerStart = nil
     }
 
-    public func elapsedSinceShiftStart(now: Date = Date()) -> TimeInterval {
+    public func elapsedSinceShiftStart(now: Date) -> TimeInterval {
         guard let start = shiftStartedAt else { return 0 }
         return now.timeIntervalSince(start)
     }

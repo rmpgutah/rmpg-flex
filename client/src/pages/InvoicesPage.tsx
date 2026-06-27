@@ -45,6 +45,7 @@ import IconButton from '../components/IconButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { toDisplayLabel } from '../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -189,10 +190,6 @@ const PAYMENT_METHOD_COLORS: Record<string, string> = {
 function formatCurrency(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(Number(n))) return '$0.00';
   return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ── Helpers ───────────────────────────────────────────────
@@ -686,8 +683,9 @@ export default function InvoicesPage() {
 
         {/* Notes */}
         <div>
-          <label htmlFor="ff-invoicespage-5" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Notes</label>
+          <label htmlFor="ff-invoicespage-cn-notes" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Notes</label>
           <RichTextArea
+            id="ff-invoicespage-cn-notes"
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
             rows={2}
@@ -697,8 +695,9 @@ export default function InvoicesPage() {
 
         {/* Internal notes */}
         <div>
-          <label htmlFor="ff-invoicespage-4" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Internal Notes</label>
+          <label htmlFor="ff-invoicespage-cn-internal" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Internal Notes</label>
           <RichTextArea
+            id="ff-invoicespage-cn-internal"
             value={createForm.internal_notes}
             onChange={e => setCreateForm(f => ({ ...f, internal_notes: e.target.value }))}
             rows={2}
@@ -968,7 +967,7 @@ export default function InvoicesPage() {
                   onChange={e => setPaymentForm(f => ({ ...f, payment_method: e.target.value }))}
                   className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100"
                 >
-                  {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  {PAYMENT_METHODS.map(pm => <option key={pm.value} value={pm.value}>{pm.label}</option>)}
                 </select>
                 {paymentForm.payment_method === 'check' && (
                   <input id="ff-invoicespage-11"
@@ -1023,7 +1022,7 @@ export default function InvoicesPage() {
                     <span className="text-rmpg-500">{formatDate(pay.payment_date) || pay.payment_date}</span>
                     {pay.payment_method && (
                       <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${PAYMENT_METHOD_COLORS[pay.payment_method] || PAYMENT_METHOD_COLORS.other}`}>
-                        {PAYMENT_METHODS.find(m => m.value === pay.payment_method)?.icon || pay.payment_method}
+                        {PAYMENT_METHODS.find(pm => pm.value === pay.payment_method)?.icon || pay.payment_method}
                       </span>
                     )}
                     {pay.reference_number && <span className="text-rmpg-600 font-mono">#{pay.reference_number}</span>}
@@ -1179,7 +1178,7 @@ export default function InvoicesPage() {
                   );
                 })()
               ) : (
-                <div className="divide-y divide-[var(--border-subtle)]">
+                <div className="divide-y divide-border-subtle">
                   {invoices.map(inv => (
                     <div
                       key={inv.id}
