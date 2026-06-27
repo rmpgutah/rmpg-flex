@@ -134,6 +134,7 @@ export default function SecurityDashboardPage() {
     }
   };
 
+  // ── Render: loading state ─────────────────────────────────────────────
   if (loading) return (
     <div className="p-4 space-y-3">
       <PanelTitleBar title="SECURITY DASHBOARD" icon={Shield} />
@@ -220,7 +221,7 @@ export default function SecurityDashboardPage() {
             )}
           </div>
 
-          {/* Threats */}
+          {/* Threats — admin only */}
           {isAdmin && (
             <div className="panel-beveled bg-surface-base p-3">
               <div className="text-[9px] text-red-400 uppercase font-bold mb-2">Recent Threats</div>
@@ -260,6 +261,30 @@ export default function SecurityDashboardPage() {
                   </div>
                 ))}
               </div>
+              {blockedIps.length === 0 ? (
+                <div className="text-[10px] text-rmpg-500 text-center py-4">No IPs currently blocked</div>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {blockedIps.map((b, i) => (
+                    <div
+                      key={i}
+                      ref={el => { ipRowRefs.current[b.ip] = el; }}
+                      className="flex items-center gap-2 text-[10px] py-1 border-b border-rmpg-800 transition-all"
+                    >
+                      <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
+                      <span className="text-rmpg-100 font-mono flex-1">{b.ip}</span>
+                      <span className="text-rmpg-500">{b.reason || 'Rate limited'}</span>
+                      <button
+                        type="button"
+                        className="text-[9px] text-amber-400 hover:underline"
+                        onClick={() => setUnblockTarget(b.ip)}
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

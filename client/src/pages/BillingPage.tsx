@@ -35,6 +35,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
@@ -70,6 +71,8 @@ function isOverdue(inv: Invoice): boolean {
 
 export default function BillingPage() {
   const m = useMenuActions();
+  const { user } = useAuth();
+  const canManage = user?.role === 'admin' || user?.role === 'manager';
   const [searchParams, setSearchParams] = useSearchParams();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -253,23 +256,24 @@ export default function BillingPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // ConfirmDialog / FormModal both swallow Escape themselves when
-        // they're open, so this only fires for the bare page.
-        if (formOpen || deleteId !== null) return;
-        if (filtersActive) { clearFilters(); return; }
+        // Each branch stops propagation so a single Esc dismisses only the
+        // innermost layer (mirrors JailRecords / FlexCam / Warrants pattern).
+        if (deleteId !== null) { e.stopPropagation(); setDeleteId(null); return; }
+        if (formOpen) { e.stopPropagation(); setFormOpen(false); setEditingRecord(undefined); return; }
+        if (filtersActive) { e.stopPropagation(); clearFilters(); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
       if (e.key === 'n' || e.key === 'N') {
-        if (formOpen || deleteId !== null) return;
+        if (!canManage || formOpen || deleteId !== null) return;
         e.preventDefault();
         openNew();
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [formOpen, deleteId, filtersActive, clearFilters, openNew]);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [formOpen, deleteId, filtersActive, clearFilters, openNew, canManage]);
 
   const deleteTarget = deleteId !== null ? invoices.find((inv) => Number(inv.id) === deleteId) : undefined;
 
@@ -302,8 +306,12 @@ export default function BillingPage() {
           title="Download invoice PDF"
           aria-label={`Download PDF for invoice ${row.invoice_number || row.id}`}
         ><Download size={12} /></button>
-        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Edit invoice"><Pencil size={12} /></button>
-        <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300" aria-label="Delete invoice"><Trash2 size={12} /></button>
+        {canManage && (
+          <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Edit invoice"><Pencil size={12} /></button>
+        )}
+        {canManage && (
+          <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300" aria-label="Delete invoice"><Trash2 size={12} /></button>
+        )}
       </div>
     )},
   ];
@@ -312,15 +320,19 @@ export default function BillingPage() {
 
   const emptyMessage = filtersActive
     ? 'No invoices match the current filters.'
-    : 'No invoices yet. Press N or click New Invoice to create one.';
+    : canManage
+      ? 'No invoices yet. Press N or click New Invoice to create one.'
+      : 'No invoices yet.';
 
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="BILLING & FINANCIAL" icon={DollarSign}>
         {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
-        <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }} title="New Invoice (N)">
-          <Plus size={13} /> New Invoice
-        </button>
+        {canManage && (
+          <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }} title="New Invoice (N)">
+            <Plus size={13} /> New Invoice
+          </button>
+        )}
       </PanelTitleBar>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatsCard icon={FileText} label="Active Contracts" value={stats.active_contracts} />
@@ -360,15 +372,14 @@ export default function BillingPage() {
         columns={columns}
         data={filteredInvoices}
         emptyMessage={emptyMessage}
-        onRowClick={(row) => openEdit(row)}
+        onRowClick={canManage ? (row) => openEdit(row) : undefined}
         rowContextMenu={(row) => [
-          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          ...(canManage ? [m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> })] : []),
           m.action('Download PDF', () => handleDownloadPdf(row), { icon: <Download size={12} /> }),
           m.separator(),
           m.copyId((row as any).id),
           m.copy('Copy invoice #', String((row as any).invoice_number || '')),
-          m.separator(),
-          m.action('Delete', () => setDeleteId((row as any).id), { danger: true, icon: <Trash2 size={12} /> }),
+          ...(canManage ? [m.separator(), m.action('Delete', () => setDeleteId((row as any).id), { danger: true, icon: <Trash2 size={12} /> })] : []),
         ]}
       />
       <BillingFormModal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingRecord(undefined); }}

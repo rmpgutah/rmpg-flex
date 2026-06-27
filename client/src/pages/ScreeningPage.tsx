@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import { resolveSourceKey } from '../utils/screeningSource';
 import ConfirmDialog from '../components/ConfirmDialog';
 
@@ -311,6 +312,18 @@ function SourcesTab({ sources, canManage }: { sources: SourceInfo[]; canManage: 
       .finally(() => setStatusLoading(false));
   }, []);
   useEffect(load, [load]);
+
+  // ── Esc cascade for SourcesTab: editingInterval → pendingScrape ───────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (editingInterval) { e.stopPropagation(); setEditingInterval(null); return; }
+      if (pendingScrape) { e.stopPropagation(); setPendingScrape(null); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editingInterval, pendingScrape]);
+
   const byKey = new Map((status?.state ?? []).map((s) => [String(s.source_key), s]));
 
   const runSorImport = useCallback(async () => {
