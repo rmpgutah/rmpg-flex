@@ -231,17 +231,31 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
     // Back-compat: legacy rows used "{YY}-CFS{NNNNN}" — those still
     // co-exist; the LIKE here only scans the new format so we don't
     // collide with the old sequence.
+    //
+    // RACE CONDITION GUARD: Use a loop with collision detection instead of
+    // bare MAX() + INSERT. Concurrent requests could both read the same max,
+    // compute the same next number, and hit a UNIQUE constraint on insert.
     const year = new Date().getFullYear().toString().slice(-2);
     const prefix = `CFS${year}-`;
-    const [{ max }] = await query<{ max: string | null }>(
-      db,
-      "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
-      `${prefix}%`,
-    );
-    const seq = max
-      ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
-      : '00001';
-    const callNumber = `${prefix}${seq}`;
+    let callNumber: string = '';
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const [{ max }] = await query<{ max: string | null }>(
+        db,
+        "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
+        `${prefix}%`,
+      );
+      const seq = max
+        ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
+        : '00001';
+      callNumber = `${prefix}${seq}`;
+      // Check for collision before binding to the INSERT params
+      const exists = await queryFirst<{ id: number }>(
+        db, 'SELECT id FROM calls_for_service WHERE call_number = ? LIMIT 1', callNumber);
+      if (!exists) break; // Got a unique number, proceed with insert
+    }
+    if (!callNumber || callNumber.startsWith(`CFS${year}-00000`)) {
+      return c.json({ error: 'Call number generation failed after retries', code: 'CALL_NUMBER_GEN_FAIL' }, 500);
+    }
 
     // FK guard — restored-pending-draft can carry a stale property_id
     // from localStorage that no longer exists in this database. If
@@ -453,7 +467,7 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
 });
 
 // GET /dispatch/calls/active - Active calls shortcut
-calls.get('/active', async (c) => {
+calls.get('/active', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     // Narrow projection — see LIST_VIEW_COLUMNS for D1 100-col cap rationale.
@@ -473,7 +487,7 @@ calls.get('/active', async (c) => {
 });
 
 // GET /dispatch/calls/export - CSV export
-calls.get('/export', async (c) => {
+calls.get('/export', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const { status, priority, startDate, endDate } = c.req.query();
@@ -653,7 +667,13 @@ calls.get('/:id', async (c) => {
       LEFT JOIN clients cl ON cl.id = COALESCE(ck.client_id, p.client_id)
     `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null), null);
 
-    let assignedIds: number[] = []; try { assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')); if (!Array.isArray(assignedIds)) assignedIds = []; } catch { assignedIds = []; }
+    let assignedIds: number[] = [];
+    try {
+      const parsed = JSON.parse(String(call.assigned_unit_ids || '[]'));
+      if (Array.isArray(parsed)) {
+        assignedIds = parsed.map((u) => Number(u)).filter((u) => Number.isFinite(u) && u > 0);
+      }
+    } catch { assignedIds = []; }
     const assignedUnits = assignedIds.length === 0 ? [] : await soft(() => query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number
       FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
@@ -1763,6 +1783,13 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
     if (!Array.isArray(body.call_ids) || !body.call_ids.length || !body.unit_id) {
       return c.json({ error: 'call_ids (array) and unit_id required' }, 400);
     }
+    // Validate all call_ids are finite integers
+    const cleanIds = body.call_ids
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    if (cleanIds.length === 0) {
+      return c.json({ error: 'No valid call_ids provided (must be positive integers)' }, 400);
+    }
     const db = getDb(c.env);
     // `call_sign` is the units table's human-readable id (UNIQUE NOT NULL);
     // there is NO `unit_number` column on units (that lives on the GPS-device
@@ -1773,7 +1800,7 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
       'SELECT id, call_sign FROM units WHERE id = ?', body.unit_id);
     if (!unit) return c.json({ error: 'Unit not found' }, 404);
     let updated = 0;
-    for (const callId of body.call_ids.slice(0, 50)) {
+    for (const callId of cleanIds.slice(0, 50)) {
       try {
         await execute(db,
           `UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = datetime('now') WHERE id = ?`,

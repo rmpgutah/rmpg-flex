@@ -138,6 +138,7 @@ import iped from './routes/iped';
 import serve from './routes/serve';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
+import serveReplan from './routes/serveReplan';
 import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
@@ -442,6 +443,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Utah law book (search/toc/chapter/section) over utah_statutes. Cutover from legacy /statutes/search — same {data:[]} contract, richer fields. Needs the matching proxy rule routing /api/statutes/* to env.API.' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Upload + OCR (Tesseract container) + Workers-AI field extraction; commits to serve_queue + serve_intake_documents' },
+  { prefix: '/api/serve-intake/schedule', router: serveReplan, auth: 'required',
+    note: 'Auto-replan on failed attempt: compute next window, persist slot, emit alert' },
   { prefix: '/api/ocr', router: ocr, auth: 'required',
     note: 'Alias of /api/serve-intake/scan-document — the client URL the OCR preview path already calls' },
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',

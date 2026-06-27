@@ -1,50 +1,44 @@
 version: '3.8'
 
 services:
-  # Cloudflare Workers local environment with D1
-  email-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # Email service — runs Wrangler dev locally with D1
+  email-api:
+    image: node:20-alpine
     container_name: email-worker
+    working_dir: /app
+    command: sh -c "npm install -g pnpm && pnpm install && pnpm exec wrangler dev --local --host 0.0.0.0 --port 8787"
     ports:
       - "8787:8787"
     environment:
-      # D1 database connection
-      - DATABASE_URL=sqlite:///app/.wrangler/state/d1.db
-      - NODE_ENV=development
-      - WRANGLER_ENV=development
-      # For local HTTPS proxying (disable for local dev)
-      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
-      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-}
+      NODE_ENV: development
+      WRANGLER_ENV: local
     volumes:
-      # Persist D1 database
-      - worker-state:/app/.wrangler/state
-      # Hot reload source
-      - ./src:/app/src
-      - ./wrangler.toml:/app/wrangler.toml
+      - .:/app
+      - /app/node_modules  # Prevent bind mount from overwriting
     networks:
       - email-network
     restart: unless-stopped
-    depends_on:
-      - email-db
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8787/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
-  # D1 SQLite database (persistent)
-  email-db:
-    image: nfqsolutions/sqlite:latest
+  # SQLite database for D1
+  database:
+    image: keinos/sqlite3:latest
     container_name: email-db
     volumes:
-      - db-data:/data
+      - db-volume:/data
     ports:
-      - "5432:5432"  # Expose if needed for debugging
+      - "5432:5432"
     networks:
       - email-network
-    environment:
-      - SQLITE_DB=/data/rmpg.db
     restart: unless-stopped
 
-  # Reverse proxy for local HTTPS (optional, for testing image-proxy with tokens)
-  email-proxy:
+  # Nginx reverse proxy for HTTPS + CORS
+  proxy:
     image: nginx:alpine
     container_name: email-proxy
     ports:
@@ -56,14 +50,11 @@ services:
     networks:
       - email-network
     depends_on:
-      - email-worker
+      - email-api
     restart: unless-stopped
 
 volumes:
-  worker-state:
-    driver: local
-  db-data:
-    driver: local
+  db-volume:
 
 networks:
   email-network:
