@@ -325,12 +325,13 @@ export default function JailPage() {
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (t.isContentEditable) return;
       if (formOpen || deleteId !== null) return;
+      if (!canCreate) return;
       e.preventDefault();
       openNew();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [formOpen, deleteId, openNew]);
+  }, [formOpen, deleteId, canCreate, openNew]);
 
   const columns = [
     { key: 'booking_number', label: 'Booking #' },
@@ -394,7 +395,7 @@ export default function JailPage() {
   const emptyMessage = filteredEmpty
     ? `No inmates match these filters (0 of ${totalCount}).`
     : trueEmpty
-      ? 'No inmates booked yet. Press N or click "New Inmate" to book one.'
+      ? canCreate ? 'No inmates booked yet. Press N or click "New Inmate" to book one.' : 'No inmates booked yet.'
       : 'No inmates in custody';
 
   const rosterSyncLabel = (() => {
@@ -417,14 +418,16 @@ export default function JailPage() {
         >
           <Printer size={13} /> Roster PDF
         </button>
-        <button
-          onClick={openNew}
-          className="toolbar-btn flex items-center gap-1.5"
-          style={{ height: 28, padding: '0 10px' }}
-          title="Book a new inmate (press N)"
-        >
-          <Plus size={13} /> New Inmate
-        </button>
+        {canCreate && (
+          <button
+            onClick={openNew}
+            className="toolbar-btn flex items-center gap-1.5"
+            style={{ height: 28, padding: '0 10px' }}
+            title="Book a new inmate (press N)"
+          >
+            <Plus size={13} /> New Inmate
+          </button>
+        )}
       </PanelTitleBar>
       <div className="grid grid-cols-3 gap-3">
         <StatsCard icon={Users} label="Total Inmates" value={stats.total} />

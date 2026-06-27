@@ -322,6 +322,18 @@ export default function JailRecordsPage() {
         Live county portals are JS-rendered and can't be auto-scraped from the edge yet — use manual ingest for those.
         UDC/VINELink adapters are wired and self-report health; authorized feeds flip a source to active.
       </div>
+
+      <ConfirmDialog
+        isOpen={showIngestConfirm}
+        onClose={() => setShowIngestConfirm(false)}
+        onConfirm={doIngest}
+        title="Confirm Roster Ingest"
+        message={`Ingest ${lineCount} entr${lineCount === 1 ? 'y' : 'ies'} and cross-hit against known subjects?`}
+        details={county.trim() ? <span>County: {county.trim()}</span> : undefined}
+        confirmLabel="INGEST + CROSS-HIT"
+        confirmVariant="warning"
+        isLoading={busy}
+      />
     </div>
   );
 }

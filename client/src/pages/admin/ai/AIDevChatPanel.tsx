@@ -228,7 +228,7 @@ export default function AIDevChatPanel() {
   }, [isStreaming]);
 
   // Generate session ID
-  const newSessionId = () => `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const newSessionId = () => `dev-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 6)}`;
 
   // Fetch sessions
   const fetchSessions = useCallback(async () => {

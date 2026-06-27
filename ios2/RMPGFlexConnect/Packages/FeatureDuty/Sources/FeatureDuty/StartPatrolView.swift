@@ -93,7 +93,7 @@ public struct StartPatrolView: View {
     }
 
     private var formattedElapsed: String {
-        let s = Int(dutyState.elapsedSinceShiftStart())
+        let s = Int(dutyState.elapsedSinceShiftStart(now: .now))
         let h = s / 3600
         let m = (s % 3600) / 60
         return String(format: "%02d:%02d", h, m)

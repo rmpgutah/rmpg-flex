@@ -17,7 +17,6 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { handleWebSocket } from './routes/ws';
@@ -25,6 +24,7 @@ import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { DeepResearchDO } from './durable-objects/DeepResearchDO';
 import { FlexCamRemuxDO } from './durable-objects/FlexCamRemuxDO';
+import { PersonIntelDO } from './durable-objects/PersonIntelDO';
 import { doCallbackToken, timingSafeEqual } from './utils/signedAccess';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
@@ -41,11 +41,12 @@ import { processBackfillTick } from './utils/sl-assessor/backfill';
 import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
+import { traceMiddleware, requestLogMiddleware, log, logErrorToDb } from './utils/logger';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer, DeepResearchDO, FlexCamRemuxDO };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer, DeepResearchDO, FlexCamRemuxDO, PersonIntelDO };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
@@ -85,7 +86,8 @@ app.get('/updates/latest.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'w
 app.get('/updates/latest-mac.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
 
 // ─── Global middleware ───────────────────────────────────────
-app.use('*', logger());
+app.use('*', traceMiddleware());
+app.use('*', requestLogMiddleware());
 app.use('*', secureHeaders({
   contentSecurityPolicy: {
     defaultSrc: ["'self'"],
@@ -174,7 +176,21 @@ app.onError((err, c) => {
   const route = `${method} ${path}`;
   const detail = err instanceof Error ? err.message : String(err);
   const userId = c.get('userId') as number | undefined;
-  console.error(`Unhandled in ${route} (userId=${userId}):`, err);
+  const traceId = c.get('traceId') as string | undefined;
+  log.error(`Unhandled in ${route}`, { userId, traceId, route }, err);
+
+  // Persist to error_log table (fire-and-forget)
+  logErrorToDb(c.env.DB, {
+    severity: 'error',
+    category: 'route',
+    message: detail,
+    details: err instanceof Error ? { name: err.name, stack: err.stack?.split('\n').slice(0, 6).join('\n'), route } : { route },
+    traceId,
+    userId,
+    source: route,
+    statusCode: 500,
+  }, c.executionCtx);
+
   return c.json({
     error: 'Internal server error',
     code: 'UNHANDLED',
@@ -684,6 +700,16 @@ export default {
       ).run()
         .then((r) => { const n = r?.meta?.changes ?? 0; if (n) console.log(`[sessions] purged ${n} dead session row(s)`); })
         .catch((err) => console.error('Sessions purge failed:', err)),
+    );
+    // Auto skip-trace weekly sweep — retries stale jobs whose prior
+    // auto skip-trace found no results (at least 7 days between retries).
+    // Must run before the serve-nudge sweep to avoid a stale nudge from
+    // this cycle landing on the same job.
+    ctx.waitUntil(
+      import('./utils/autoSkipTraceSweep')
+        .then(({ sweepAutoSkipTraces }) => sweepAutoSkipTraces(env.DB, env))
+        .then((n) => { if (n) console.log(`[auto-skip-trace] ${n} skip-trace(s) triggered`); })
+        .catch((err) => console.error('[auto-skip-trace] sweep failed:', err)),
     );
     // Process-serve needs-attention sweep — raises notifications + supervisor
     // email digest for overdue/approaching/diligence-gap/unassigned jobs.

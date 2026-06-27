@@ -43,6 +43,7 @@ import {
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
+import { log } from './logger';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
 // ── Sentinel client for intake-generated properties ──────────
@@ -544,9 +545,56 @@ export interface CommitInput {
   // derivation. All geo enrichment is best-effort — a miss never blocks commit.
   // (Both callers — /upload and /intake — already pass `env: c.env`.)
   env: Bindings;
+  // Phase 1 Quality Gate — multi-defendant fan-out. When null/undefined, the
+  // existing single-recipient path runs. When non-empty, the function loops
+  // over each name, creating one full intake per defendant linked to a single
+  // shared case_file_id. Operator picks come from the review-panel picker.
+  defendantsSelected?: string[] | null;
+  // FK back to serve_intake_judge_runs.id, stamped onto every serve_queue row
+  // created in this commit so a reviewer can drill from a flagged queue row
+  // to the per-field verdict + raw model response.
+  judgeRunId?: number | null;
+  // From the judgeResult — persisted to serve_queue.quality_status on every
+  // row created. 'clean' | 'needs_review' | 'error'. Defaults to 'clean'.
+  qualityStatus?: 'clean' | 'needs_review' | 'error';
+  // Phase 1 Quality Gate — multi-defendant fan-out. When set, commitOneIntake
+  // SKIPS case-file creation and links the new serve_queue row to this
+  // existing case instead. The wrapper sets it on iterations 2..N from
+  // iteration 1's returned case_id, so all defendants in one packet land
+  // under one case file.
+  forcedCaseId?: number | null;
 }
 
 export async function commitIntake(db: D1Database, input: CommitInput): Promise<CommitResult> {
+  const picks = input.defendantsSelected;
+  if (!picks || picks.length <= 1) {
+    return commitOneIntake(db, input);
+  }
+  let firstResult: CommitResult | null = null;
+  let sharedCaseId: number | null = null;
+  for (let i = 0; i < picks.length; i++) {
+    const fullName = picks[i].trim();
+    const { first, last } = splitFullName(fullName);
+    const perFields = {
+      ...input.fields,
+      recipient_first_name: { value: first, confidence: 1.0 },
+      recipient_last_name: { value: last, confidence: 1.0 },
+      recipient_business_name: { value: '', confidence: 0 },
+    };
+    const perQueueRow = { ...input.queueRow, recipient_name: fullName };
+    const res = await commitOneIntake(db, {
+      ...input,
+      fields: perFields,
+      queueRow: perQueueRow,
+      forcedCaseId: sharedCaseId,    // null for iter 1; populated for iters 2..N
+    });
+    if (!firstResult) firstResult = res;
+    if (res.case_id != null && sharedCaseId == null) sharedCaseId = res.case_id;
+  }
+  return firstResult!;
+}
+
+async function commitOneIntake(db: D1Database, input: CommitInput): Promise<CommitResult> {
   const { fields, queueRow, userId } = input;
   const get = (k: string) => (fields[k]?.value || '').trim();
   const nowIso = new Date().toISOString();
@@ -918,8 +966,9 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         client_id, client_name, attorney_name, priority, deadline,
         service_instructions, notes,
         plaintiff_name, defendant_name, court_date, parsed_data, status,
-        geo_cluster_id, urgency_tier, urgency_computed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        geo_cluster_id, urgency_tier, urgency_computed_at,
+        quality_status, judge_run_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
@@ -933,6 +982,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       queueRow.service_instructions, queueNotes,
       queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
       geoClusterId, urgencyTier, urgencyComputedAt,
+      input.qualityStatus ?? 'clean', input.judgeRunId ?? null,
     );
     queueId = Number(ins.meta.last_row_id);
 
@@ -996,48 +1046,73 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   // — even when no CFS was created (address-less batches), the
   // case is the home for re-attempted intake or post-intake
   // address discovery.
+  //
+  // Multi-defendant fan-out: when forcedCaseId is set (iterations
+  // 2..N of a multi-defendant commitIntake), we SKIP case-file
+  // creation and reuse the case the first defendant's iteration
+  // already created. Only the case_persons link for this defendant
+  // is added so all defendants appear under one case file.
   let caseId: number | null = null;
   let caseNumber: string | null = null;
   try {
-    // Title reads "Service: <recipient> — <doc type>" so the case
-    // browser surfaces the same info the queue card does. Fall back
-    // through best-available identifiers when intake is sparse.
-    const recipientLabel = queueRow.recipient_name?.trim()
-      || businessName
-      || [recipientFirst, recipientLast].filter(Boolean).join(' ').trim()
-      || 'Unknown recipient';
-    const docTypeLabel = queueRow.document_type
-      ? queueRow.document_type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-      : 'Service of Process';
-    const title = `Service: ${recipientLabel} — ${docTypeLabel}`;
+    if (input.forcedCaseId != null && input.forcedCaseId > 0) {
+      // Reuse the shared case from iteration 1 — just link this person.
+      caseId = input.forcedCaseId;
+      const caseRow = await queryFirst<{ case_number: string | null }>(
+        db, 'SELECT case_number FROM cases WHERE id = ?', caseId);
+      caseNumber = caseRow?.case_number ?? null;
+      // Add this defendant as a person link on the existing case.
+      const personIdForLink = (isBusiness && agentPerson.id) ? agentPerson.id : person.id;
+      const relationshipLabel = (isBusiness && agentPerson.id) ? 'serve_recipient_agent' : 'serve_recipient';
+      if (personIdForLink) {
+        await execute(
+          db,
+          `INSERT OR IGNORE INTO case_persons (case_id, person_id, relationship)
+           VALUES (?, ?, ?)`,
+          caseId, personIdForLink, relationshipLabel,
+        );
+      }
+    } else {
+      // Title reads "Service: <recipient> — <doc type>" so the case
+      // browser surfaces the same info the queue card does. Fall back
+      // through best-available identifiers when intake is sparse.
+      const recipientLabel = queueRow.recipient_name?.trim()
+        || businessName
+        || [recipientFirst, recipientLast].filter(Boolean).join(' ').trim()
+        || 'Unknown recipient';
+      const docTypeLabel = queueRow.document_type
+        ? queueRow.document_type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+        : 'Service of Process';
+      const title = `Service: ${recipientLabel} — ${docTypeLabel}`;
 
-    // Summary mirrors the briefing the PSO sees on the call. Cap
-    // hard so a long packet can't blow the cases.summary index.
-    const summary = (input.documentSummary || '').slice(0, 1500) || null;
+      // Summary mirrors the briefing the PSO sees on the call. Cap
+      // hard so a long packet can't blow the cases.summary index.
+      const summary = (input.documentSummary || '').slice(0, 1500) || null;
 
-    // Persons: include both the agent person (corporate) and the
-    // direct recipient (individual) when both ended up created.
-    // The relationship label tells the case browser which is which.
-    const linkedPersons: { person_id: number; relationship?: string }[] = [];
-    if (isBusiness && agentPerson.id) {
-      linkedPersons.push({ person_id: agentPerson.id, relationship: 'serve_recipient_agent' });
-    } else if (person.id) {
-      linkedPersons.push({ person_id: person.id, relationship: 'serve_recipient' });
+      // Persons: include both the agent person (corporate) and the
+      // direct recipient (individual) when both ended up created.
+      // The relationship label tells the case browser which is which.
+      const linkedPersons: { person_id: number; relationship?: string }[] = [];
+      if (isBusiness && agentPerson.id) {
+        linkedPersons.push({ person_id: agentPerson.id, relationship: 'serve_recipient_agent' });
+      } else if (person.id) {
+        linkedPersons.push({ person_id: person.id, relationship: 'serve_recipient' });
+      }
+
+      const created = await createCaseWithLinks(db, {
+        title,
+        case_type: 'service',
+        summary,
+        created_by: userId,
+        source: 'serve-intake',
+        linked_call_id: callId,
+        linked_persons: linkedPersons,
+        linked_property_id: property.id || null,
+        linked_serve_queue_id: queueId,
+      });
+      caseId = created.case_id;
+      caseNumber = created.case_number;
     }
-
-    const created = await createCaseWithLinks(db, {
-      title,
-      case_type: 'service',
-      summary,
-      created_by: userId,
-      source: 'serve-intake',
-      linked_call_id: callId,
-      linked_persons: linkedPersons,
-      linked_property_id: property.id || null,
-      linked_serve_queue_id: queueId,
-    });
-    caseId = created.case_id;
-    caseNumber = created.case_number;
   } catch (err) {
     // Auto-case is a convenience layer — a failure here must NOT
     // unwind the intake. Operator can manually create + link a
