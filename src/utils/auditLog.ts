@@ -15,6 +15,7 @@
 //    (waitUntil) — audit must NEVER break the request it describes. This matches
 //    the best-effort stance every inline site already had.
 // ============================================================
+import { log } from './logger';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, execute } from './db';
@@ -73,7 +74,7 @@ export async function recordAuditCore(
       actorId, e.action, e.entityType, entityId, details, createdAt,
     );
   } catch (err) {
-    console.warn('[audit] insert failed:', err instanceof Error ? err.message : String(err));
+    log.warn('insert failed', { err: err instanceof Error ? err.message : String(err) });
   }
   // emitAnalytics reads executionCtx lazily and handles the missing-ctx case
   // (un-awaited send). Pass a thin holder so this works identically with or
