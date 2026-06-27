@@ -103,8 +103,8 @@ export function authedImageUrl(url: string | null | undefined): string {
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
 const DEDUP_WINDOW_MS = 500;
 
-// ─── Retry config for 502/503 (server restart recovery) ────
-const RETRY_STATUS_CODES = [502, 503];
+// ─── Retry config for 500/502/503/504 (server restart recovery) ────
+const RETRY_STATUS_CODES = [500, 502, 503, 504];
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
 
