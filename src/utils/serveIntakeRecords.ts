@@ -43,6 +43,7 @@ import {
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
+import { log } from './logger';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
 // ── Sentinel client for intake-generated properties ──────────
