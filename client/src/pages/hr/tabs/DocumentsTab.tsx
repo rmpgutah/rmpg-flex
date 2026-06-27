@@ -9,7 +9,7 @@ import ConfirmDialog from '../../../components/ConfirmDialog';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
-import { formatEnumValue } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import { coded } from '../../../utils/searchText';
 interface HRDocument {
   id: number;
@@ -171,7 +171,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                   <div className="flex items-center gap-2">
                     <FileText className="w-3.5 h-3.5 text-brand-400" />
                     <span className="text-xs font-bold text-rmpg-100">{doc.title}</span>
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{(doc.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{toDisplayLabel(doc.category)}</span>
                   </div>
                   {doc.description && <p className="text-[10px] text-rmpg-400 mt-1">{doc.description}</p>}
                   <span className="text-[10px] text-rmpg-500">Uploaded by {doc.uploaded_by_name} on {doc.created_at ? parseTimestamp(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
