@@ -7,6 +7,7 @@ import { NavTripProvider } from './context/NavTripContext';
 import { ToastProvider } from './components/ToastProvider';
 import MDTBridge from './components/MDTBridge';
 import { ContextMenuProvider } from './context/ContextMenuContext';
+import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
@@ -655,23 +656,25 @@ export default function App() {
   //    so the WebSocket + auth session survive a single page blowing up.
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <WebSocketProvider>
-          <UserPreferencesProvider>
-            <ToastProvider>
-              <ContextMenuProvider>
-                <ErrorBoundary>
-                  <WebUpdateBanner />
-                  <MDTBridge />
-                  <AndroidUpdateChecker />
-                  <ButtonHealthOverlay />
-                  <AppRoutes />
-                </ErrorBoundary>
-              </ContextMenuProvider>
-            </ToastProvider>
-          </UserPreferencesProvider>
-        </WebSocketProvider>
-      </AuthProvider>
+      <FeatureFlagsProvider>
+        <AuthProvider>
+          <WebSocketProvider>
+            <UserPreferencesProvider>
+              <ToastProvider>
+                <ContextMenuProvider>
+                  <ErrorBoundary>
+                    <WebUpdateBanner />
+                    <MDTBridge />
+                    <AndroidUpdateChecker />
+                    <ButtonHealthOverlay />
+                    <AppRoutes />
+                  </ErrorBoundary>
+                </ContextMenuProvider>
+              </ToastProvider>
+            </UserPreferencesProvider>
+          </WebSocketProvider>
+        </AuthProvider>
+      </FeatureFlagsProvider>
     </ErrorBoundary>
   );
 }

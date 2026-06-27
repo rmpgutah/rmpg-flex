@@ -52,8 +52,8 @@ interface PopulationSummary {
   total_active: number;
   total_released: number;
   counties_with_data: number;
-  intakes_today: number;
-  releases_today: number;
+  intakes_today?: number;
+  releases_today?: number;
 }
 
 interface ArrestRecord {
@@ -653,7 +653,7 @@ export default function ArrestRecordsPage() {
             { label: 'Releases Today', value: stats.population_summary.releases_today, color: 'text-emerald-400' },
           ].map(s => (
             <div key={s.label} className="text-center py-1">
-              <div className={`text-sm font-bold tabular-nums ${s.color}`}>{s.value.toLocaleString()}</div>
+              <div className={`text-sm font-bold tabular-nums ${s.color}`}>{(s.value ?? 0).toLocaleString()}</div>
               <div className="text-[7px] text-rmpg-500 uppercase leading-tight">{s.label}</div>
             </div>
           ))}
