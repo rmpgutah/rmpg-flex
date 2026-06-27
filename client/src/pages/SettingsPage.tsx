@@ -11,9 +11,15 @@
 // SectionCard into view on mount and strips the param so a refresh
 // doesn't re-trigger the scroll. Section IDs:
 //   voice | alerts | tones | ptt | display | map | overlays | gps | markers
+//
+// Keyboard shortcuts (v1230):
+//   N          — admin/manager: trigger "Save as org default";
+//                other users: focus the dispatcher voice selector
+//   Escape     — cascade: close ConfirmDialogs → cancel key capture
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Mic, Map as MapIcon, Volume2, Gauge, SlidersHorizontal,
   Play, RotateCcw, Radio, Crosshair, MapPin, RadioTower,
@@ -24,6 +30,7 @@ import {
   SOUND_LIBRARY, TONE_SLOTS, type SoundId,
 } from '../utils/dispatchTones';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useVoicePersona } from '../hooks/useVoicePersona';
 import { VOICE_CATALOG } from '../utils/voiceCatalog';
 import {
@@ -92,7 +99,7 @@ function SliderRow({ label, value, min, max, step, format, onChange }: {
         <span className="text-[11px] text-rmpg-100">{label}</span>
         <span className="text-[10px] font-mono text-brand-400">{format(value)}</span>
       </div>
-      <input id="ff-settingspage-0"
+      <input
         type="range"
         min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
@@ -142,7 +149,7 @@ function SoundAssignRow({ label, desc, value, onPick }: {
         <span className="block text-[11px] text-rmpg-100 truncate">{label}</span>
         <span className="block text-[9px] text-rmpg-500 truncate">{desc}</span>
       </span>
-      <select id="ff-settingspage-1"
+      <select
         value={value}
         onChange={(e) => onPick(e.target.value as SoundId)}
         className="shrink-0 w-[150px] bg-surface-base border border-border-default text-[10px] text-rmpg-100 px-1.5 py-1"
@@ -218,9 +225,15 @@ export default function SettingsPage() {
   const { persona, setPersona } = useVoicePersona();
   const { user } = useAuth();
   const { prefs: userPrefs } = useUserPreferences();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const [orgSaveOk, setOrgSaveOk] = useState<null | boolean>(null);
   const [orgSaveMsg, setOrgSaveMsg] = useState('');
+
+  // ConfirmDialog state for destructive resets
+  const [confirmResetTones, setConfirmResetTones] = useState(false);
+  const [confirmResetMap, setConfirmResetMap] = useState(false);
+
   async function publishOrgDefaults() {
     setOrgSaveOk(null);
     setOrgSaveMsg('Saving…');
@@ -257,8 +270,12 @@ export default function SettingsPage() {
   // Radio PTT preferences
   const [ptt, setPtt] = useState<PttPreferences>(getPttPrefs);
   const [pttChannels, setPttChannels] = useState<RadioChannel[]>([]);
+  const [pttChannelsLoading, setPttChannelsLoading] = useState(true);
   const [capturingKey, setCapturingKey] = useState(false);
   const patchPtt = (p: Partial<PttPreferences>) => { setPttPrefs(p); setPtt(getPttPrefs()); };
+
+  // Ref for N-shortcut focus target (voice selector — non-admin users).
+  const voiceSelectRef = useRef<HTMLSelectElement>(null);
 
   // Display & theme — keep local state in sync with the actual override
   // so the Auto/Day/Night picker reflects what's stored regardless of
@@ -318,7 +335,11 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    apiFetch<RadioChannel[]>('/radio/channels').then(setPttChannels).catch(() => { /* offline */ });
+    setPttChannelsLoading(true);
+    apiFetch<RadioChannel[]>('/radio/channels')
+      .then(setPttChannels)
+      .catch(() => { /* offline */ })
+      .finally(() => setPttChannelsLoading(false));
   }, []);
 
   // Capture the next key press to rebind the PTT key.
@@ -370,14 +391,13 @@ export default function SettingsPage() {
   useEffect(() => { document.title = 'Settings — RMPG Flex'; return () => { document.title = 'RMPG Flex'; }; }, []);
 
   // URL deep-link contract: /settings?section=<id> scrolls the matching
-  // SectionCard into view on mount, then strips the param so a refresh
-  // doesn't re-trigger the scroll. Mirrors the v1047/v1048 contract used
-  // by Intel Portal + Serve. Section IDs whitelist-validated.
+  // SectionCard into view on mount, then strips the param via setSearchParams
+  // so a refresh doesn't re-trigger the scroll. Mirrors the v1047/v1048
+  // contract used by Intel Portal + Serve. Section IDs whitelist-validated.
   const scrolledRef = useRef(false);
   useEffect(() => {
     if (scrolledRef.current) return;
-    const sp = new URLSearchParams(window.location.search);
-    const section = sp.get('section');
+    const section = searchParams.get('section');
     if (!isSectionId(section)) return;
     scrolledRef.current = true;
     // Run after paint so the SectionCard has been laid out.
@@ -385,12 +405,45 @@ export default function SettingsPage() {
       const el = document.querySelector<HTMLElement>(`[data-settings-section="${section}"]`);
       el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    // Strip the param.
-    const next = new URLSearchParams(window.location.search);
-    next.delete('section');
-    const qs = next.toString();
-    window.history.replaceState(null, '', qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
-  }, []);
+    // Strip the param with router-aware setSearchParams (no window.history.replaceState).
+    setSearchParams((prev) => {
+      prev.delete('section');
+      return prev;
+    }, { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keyboard shortcuts:
+  //   N          — admin/manager: publish org defaults; other users: focus voice selector.
+  //   Escape     — smart cascade: close ConfirmDialogs first, then cancel key capture.
+  const isTypingTarget = (el: EventTarget | null): boolean => {
+    if (!(el instanceof HTMLElement)) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  };
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (confirmResetTones) { e.stopPropagation(); setConfirmResetTones(false); return; }
+        if (confirmResetMap) { e.stopPropagation(); setConfirmResetMap(false); return; }
+        if (capturingKey) { e.stopPropagation(); setCapturingKey(false); return; }
+        return;
+      }
+      if ((e.key === 'n' || e.key === 'N')
+          && !e.ctrlKey && !e.metaKey && !e.altKey
+          && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        if (isAdmin) {
+          // Admin/manager: publish current settings as org defaults.
+          publishOrgDefaults();
+        } else {
+          // All other users: focus the primary editable field (voice selector).
+          voiceSelectRef.current?.focus();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isAdmin, confirmResetTones, confirmResetMap, capturingKey, voiceSelectRef]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const femaleVoices = VOICE_CATALOG.filter((v) => v.gender === 'female');
   const maleVoices = VOICE_CATALOG.filter((v) => v.gender === 'male');
@@ -412,7 +465,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={publishOrgDefaults}
-              title="Publish your current voice / tone / map / PTT settings as the default for all users (they can still override)."
+              title="Publish your current voice / tone / map / PTT settings as the default for all users (they can still override). Shortcut: N"
               className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border transition-colors"
               style={{
                 borderColor: 'var(--brand-gold)',
@@ -425,6 +478,26 @@ export default function SettingsPage() {
           </div>
         )}
       </PanelTitleBar>
+
+      {/* ── ConfirmDialogs for destructive resets ── */}
+      <ConfirmDialog
+        isOpen={confirmResetTones}
+        onClose={() => setConfirmResetTones(false)}
+        onConfirm={() => { resetToneMap(); setToneMap(readSlots()); setConfirmResetTones(false); }}
+        title="Reset Tone Assignments"
+        message="Reset all dispatch tone slots to Motorola factory defaults? Your current assignments will be lost."
+        confirmLabel="Reset"
+        confirmVariant="warning"
+      />
+      <ConfirmDialog
+        isOpen={confirmResetMap}
+        onClose={() => setConfirmResetMap(false)}
+        onConfirm={() => { resetMap(); setConfirmResetMap(false); }}
+        title="Reset Map Settings"
+        message="Reset all map preferences (style, layers, overlays, GPS, markers) to defaults?"
+        confirmLabel="Reset"
+        confirmVariant="warning"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {/* ── LEFT COLUMN: VOICE + AUDIO ── */}
@@ -462,10 +535,11 @@ export default function SettingsPage() {
           </SectionCard>
 
           <SectionCard id="voice" title="DISPATCHER VOICE" icon={Mic}>
-            {/* Voice picker */}
+            {/* Voice picker — primary N-shortcut target for non-admin users */}
             <div className="px-3 py-2 border-b border-border-default">
               <span className="block text-[11px] text-rmpg-100 mb-1.5">Voice</span>
-              <select id="ff-settingspage-2"
+              <select
+                ref={voiceSelectRef}
                 value={persona.voiceId}
                 onChange={(e) => setPersona({ voiceId: e.target.value })}
                 className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
@@ -585,7 +659,7 @@ export default function SettingsPage() {
             <div className="px-3 py-2">
               <button
                 type="button"
-                onClick={() => { resetToneMap(); setToneMap(readSlots()); }}
+                onClick={() => setConfirmResetTones(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 transition-colors"
                 style={{ borderRadius: 2 }}
               >
@@ -626,18 +700,24 @@ export default function SettingsPage() {
             </div>
             <div className="px-3 py-2 border-b border-border-default">
               <span className="block text-[11px] text-rmpg-100 mb-1.5">Transmit channel</span>
-              <select id="ff-settingspage-3"
-                value={ptt.channelId == null ? '' : String(ptt.channelId)}
-                onChange={(e) => patchPtt({ channelId: e.target.value === '' ? null : Number(e.target.value) })}
-                className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
-                style={{ borderRadius: 2 }}
-                aria-label="PTT transmit channel"
-              >
-                <option value="">Auto — first active channel</option>
-                {pttChannels.map((c) => (
-                  <option key={c.id} value={String(c.id)}>{c.name}</option>
-                ))}
-              </select>
+              {pttChannelsLoading ? (
+                <p className="text-[10px] text-rmpg-500 py-1">Loading channels…</p>
+              ) : (
+                <select
+                  value={ptt.channelId == null ? '' : String(ptt.channelId)}
+                  onChange={(e) => patchPtt({ channelId: e.target.value === '' ? null : Number(e.target.value) })}
+                  className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
+                  style={{ borderRadius: 2 }}
+                  aria-label="PTT transmit channel"
+                >
+                  <option value="">Auto — first active channel</option>
+                  {pttChannels.length === 0 ? (
+                    <option disabled value="">No channels configured</option>
+                  ) : pttChannels.map((c) => (
+                    <option key={c.id} value={String(c.id)}>{c.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <p className="px-3 py-2 text-[10px] text-rmpg-500">
               Every transmission is relayed to everyone on the channel and recorded to
@@ -652,7 +732,7 @@ export default function SettingsPage() {
           <SectionCard id="map" title="MAP — DEFAULT VIEW" icon={MapIcon}>
             <div className="px-3 py-2 border-b border-border-default">
               <span className="block text-[11px] text-rmpg-100 mb-1.5">Default map style</span>
-              <select id="ff-settingspage-4"
+              <select
                 value={mapPrefs.defaultStyle}
                 onChange={(e) => patchMap({ defaultStyle: e.target.value as MapStyleId })}
                 className="w-full bg-surface-base border border-border-default text-[11px] text-rmpg-100 px-2 py-1.5"
@@ -713,7 +793,7 @@ export default function SettingsPage() {
             <div className="px-3 py-2">
               <button
                 type="button"
-                onClick={resetMap}
+                onClick={() => setConfirmResetMap(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 transition-colors"
                 style={{ borderRadius: 2 }}
               >
