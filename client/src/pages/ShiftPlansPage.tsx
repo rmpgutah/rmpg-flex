@@ -1,5 +1,5 @@
 // ============================================================
-// RMPG Flex — Shift Plans Page (v1053)
+// RMPG Flex — Shift Plans Page (v1128)
 // Standalone shift planning management page. Officers/units are
 // assigned to geographic areas (beats/zones) for each shift.
 // Uses the useShiftPlanning() hook for all state/CRUD.
@@ -44,11 +44,12 @@
 //     on the Map page's shift planning overlay).
 // ============================================================
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
   ChevronRight, ChevronLeft, X, Shield, BarChart3, Save, AlertTriangle,
-  ArrowRightLeft, TrendingUp, Eye, FileText,
+  ArrowRightLeft, TrendingUp, Eye, FileText, LayoutTemplate, CalendarRange,
 } from 'lucide-react';
 import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
 import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
@@ -62,6 +63,9 @@ import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { openShiftPlanPdf } from '../utils/shiftPlanPdf';
+
+// ── Role gate ──────────────────────────────────────────────
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 // ── Date helpers ───────────────────────────────────────────
 
@@ -82,7 +86,7 @@ function todayStr() {
 // surface used by other "terminal-state" pills across the app.
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   draft:     { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--rmpg-600)' },
-  active:    { bg: 'rgba(34,197,94,0.15)',            text: '#22c55e',         border: '#16a34a' },
+  active:    { bg: 'rgba(var(--sev-ok-rgb),0.15)',     text: 'var(--sev-ok)',   border: 'rgba(var(--sev-ok-rgb),0.5)' },
   completed: { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--rmpg-500)' },
   archived:  { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-500)', border: 'var(--rmpg-600)' },
 };
@@ -106,9 +110,13 @@ export default function ShiftPlansPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const sp = useShiftPlanning();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+
+  // Role gate — admin / manager / supervisor can create, edit, delete
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
 
   // v1053 privacy — selected-date persists PER-USER. Storage is a thin
   // JSON blob ({ date, plan_id }) instead of two separate keys so the
@@ -138,26 +146,40 @@ export default function ShiftPlansPage() {
   const [deletePlanTarget, setDeletePlanTarget] = useState<ShiftPlan | null>(null);
   const [clearAllConfirm, setClearAllConfirm] = useState(false);
 
-  // ── Enhanced: Swap requests, overtime, staffing, conflicts, notifications ──
+  // ── Enhanced: Swap requests, overtime, staffing, conflicts, notifications, templates ──
   const [swapRequests, setSwapRequests] = useState<any[]>([]);
   const [overtimeData, setOvertimeData] = useState<any>(null);
   const [staffingLevels, setStaffingLevels] = useState<any>(null);
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
   const [overtimeLoading, setOvertimeLoading] = useState(true);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [saveTemplateName, setSaveTemplateName] = useState('');
+  const [saveTemplateAs, setSaveTemplateAs] = useState(false);
+  const [applyTemplateEndDate, setApplyTemplateEndDate] = useState('');
+  const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null);
 
-  // ── Deep-link consume (v1053) ────────────────────────────
+  // ── Deep-link consume ────────────────────────────────────
   //
   // ?date=YYYY-MM-DD       — land on this shift date
-  // ?plan_id=<id>          — auto-select this plan once loadPlansFromServer
-  //                          hydrates (active plan is sourced from the hook).
+  // ?plan_id=<id>          — auto-select this plan once the hook hydrates.
   //
-  // Params are stripped after consumption so a refresh doesn't re-fire
-  // the lookup. Mirrors WarrantsPage / CommunicationsPage / FleetV2.
+  // Params are stripped with setSearchParams({ replace: true }) so a
+  // refresh doesn't re-trigger. deepLinkRef guards against double-fire
+  // on React StrictMode double-invocation. Mirrors GangIntelPage /
+  // VictimServicesPage / ReportsPage patterns.
+  const deepLinkRef = useRef(false);
+  // pending plan_id from deep-link, watched until the hook has it in state
+  const pendingDeepLinkPlanRef = useRef<string | null>(null);
+
   useEffect(() => {
-    const qp = new URLSearchParams(window.location.search);
-    const dateParam = qp.get('date');
-    const planParam = qp.get('plan_id');
+    if (deepLinkRef.current) return;
+    deepLinkRef.current = true;
+
+    const dateParam = searchParams.get('date');
+    const planParam = searchParams.get('plan_id');
     let consumedAny = false;
     if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
       setSelectedDate(dateParam);
@@ -167,16 +189,14 @@ export default function ShiftPlansPage() {
       // The plan may not be in state yet (server hydrate races) — the
       // separate watch effect below picks it up once it lands.
       sp.setActivePlanId(planParam);
+      pendingDeepLinkPlanRef.current = planParam;
       consumedAny = true;
     }
     if (consumedAny) {
-      const next = new URLSearchParams(window.location.search);
-      ['date', 'plan_id'].forEach((k) => next.delete(k));
-      const qs = next.toString();
-      window.history.replaceState(
-        null, '',
-        qs ? `${window.location.pathname}?${qs}` : window.location.pathname,
-      );
+      const next = new URLSearchParams(searchParams);
+      next.delete('date');
+      next.delete('plan_id');
+      setSearchParams(next, { replace: true });
     }
     // Stored prior plan_id — apply only if no deep-link plan was passed.
     if (!planParam && initial.plan_id && initial.plan_id !== sp.activePlanId) {
@@ -184,6 +204,20 @@ export default function ShiftPlansPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Watch for the deep-link plan to hydrate and toast the result
+  useEffect(() => {
+    const pending = pendingDeepLinkPlanRef.current;
+    if (!pending || sp.plans.length === 0) return;
+    const found = sp.plans.find(p => p.id === pending);
+    if (found) {
+      addToast(`Shift plan "${found.name}" loaded`, 'success');
+    } else {
+      addToast('Shift plan not found', 'error');
+    }
+    pendingDeepLinkPlanRef.current = null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp.plans]);
 
   // Persist per-user state on every change
   useEffect(() => {
@@ -285,30 +319,32 @@ export default function ShiftPlansPage() {
   // ── Build a shift-plan row context menu ──
   const buildPlanMenu = (plan: ShiftPlan): ContextMenuItem[] => [
     m.action('Open plan', () => sp.setActivePlanId(plan.id), { icon: <Eye size={12} /> }),
-    ...(plan.status === 'draft'
+    ...(canManage && plan.status === 'draft'
       ? [m.action('Activate', () => sp.updatePlanStatus(plan.id, 'active'), { icon: <Play size={12} /> })]
       : []),
-    ...(plan.status === 'active'
+    ...(canManage && plan.status === 'active'
       ? [m.action('Mark complete', () => sp.updatePlanStatus(plan.id, 'completed'), { icon: <CheckCircle size={12} /> })]
       : []),
     m.separator(),
-    m.action('Save to server', () => handleSave(plan.id), { icon: <Save size={12} /> }),
+    ...(canManage ? [m.action('Save to server', () => handleSave(plan.id), { icon: <Save size={12} /> })] : []),
     m.action('Briefing PDF', () => handleExportPdf(plan), { icon: <FileText size={12} /> }),
-    m.action('Duplicate to next day', () => handleDuplicate(plan.id), { icon: <Copy size={12} /> }),
+    ...(canManage ? [m.action('Duplicate to next day', () => handleDuplicate(plan.id), { icon: <Copy size={12} /> })] : []),
     m.copyId(plan.id),
     m.separator(),
-    ...(plan.status !== 'archived'
+    ...(canManage && plan.status !== 'archived'
       ? [m.action('Archive', () => sp.updatePlanStatus(plan.id, 'archived'), { icon: <Archive size={12} /> })]
       : []),
-    m.action('Delete', () => setDeletePlanTarget(plan), { icon: <Trash2 size={12} />, danger: true }),
+    ...(canManage ? [m.action('Delete', () => setDeletePlanTarget(plan), { icon: <Trash2 size={12} />, danger: true })] : []),
   ];
 
   // ── Build an area-assignment row context menu ──
   const buildAssignmentMenu = (a: AreaAssignment): ContextMenuItem[] => [
     m.copy('Copy area', a.label),
     m.copyId(a.id),
-    m.separator(),
-    m.action('Remove assignment', () => sp.removeAssignment(a.id), { icon: <X size={12} />, danger: true }),
+    ...(canManage ? [
+      m.separator(),
+      m.action('Remove assignment', () => sp.removeAssignment(a.id), { icon: <X size={12} />, danger: true }),
+    ] : []),
   ];
 
   // Set document title
@@ -331,13 +367,14 @@ export default function ShiftPlansPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (clearAllConfirm) { setClearAllConfirm(false); return; }
-        if (deletePlanTarget) { setDeletePlanTarget(null); return; }
-        if (showCreateForm) { setShowCreateForm(false); return; }
-        if (sp.activePlanId) { sp.setActivePlanId(null); return; }
+        if (clearAllConfirm) { e.stopPropagation(); setClearAllConfirm(false); return; }
+        if (deletePlanTarget) { e.stopPropagation(); setDeletePlanTarget(null); return; }
+        if (showCreateForm) { e.stopPropagation(); setShowCreateForm(false); return; }
+        if (sp.activePlanId) { e.stopPropagation(); sp.setActivePlanId(null); return; }
         return;
       }
       if ((e.key === 'n' || e.key === 'N')
+          && canManage
           && !e.ctrlKey && !e.metaKey && !e.altKey
           && !isTypingTarget(e.target)) {
         e.preventDefault();
@@ -346,7 +383,7 @@ export default function ShiftPlansPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [clearAllConfirm, deletePlanTarget, showCreateForm, sp]);
+  }, [canManage, clearAllConfirm, deletePlanTarget, showCreateForm, sp]);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">
@@ -417,14 +454,26 @@ export default function ShiftPlansPage() {
             </button>
           )}
           <ExportButton exportUrl="/api/admin/shift-plans/export/csv" exportFilename="shift-plans.csv" />
-          <button type="button"
-            onClick={() => setShowCreateForm(true)}
-            className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50 transition-colors"
-            title="New shift plan (N)"
-          >
-            <Plus style={{ width: 10, height: 10 }} />
-            New Plan
-          </button>
+          {canManage && (
+            <>
+            <button type="button"
+              onClick={() => { setTemplateLoading(true); setShowTemplateModal(true); apiFetch<any>('/shift-plans/templates').then(r => setTemplates(Array.isArray(r) ? r : r?.data ?? [])).catch(() => setTemplates([])).finally(() => setTemplateLoading(false)); }}
+              className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-rmpg-400 border border-rmpg-600 hover:text-rmpg-100 hover:border-rmpg-400 transition-colors"
+              title="Shift plan templates"
+            >
+              <LayoutTemplate style={{ width: 10, height: 10 }} />
+              Templates
+            </button>
+            <button type="button"
+              onClick={() => setShowCreateForm(true)}
+              className="flex items-center gap-1 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50 transition-colors"
+              title="New shift plan (N)"
+            >
+              <Plus style={{ width: 10, height: 10 }} />
+              New Plan
+            </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -436,8 +485,8 @@ export default function ShiftPlansPage() {
             Plans for {formatDate(selectedDate)} ({plansForDate.length})
           </div>
 
-          {/* Create form */}
-          {showCreateForm && (
+          {/* Create form — only visible to admin/manager/supervisor */}
+          {canManage && showCreateForm && (
             <div className="p-3 border-b border-rmpg-700/50" style={{ background: 'var(--surface-overlay)' }}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold text-rmpg-400 uppercase">New Shift Plan</span>
@@ -462,7 +511,7 @@ export default function ShiftPlansPage() {
                     className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
                     style={{
                       background: newPlanShift === key ? val.color : 'transparent',
-                      color: newPlanShift === key ? '#000' : val.color,
+                      color: newPlanShift === key ? 'var(--surface-base)' : val.color,
                       border: `1px solid ${val.color}`,
                     }}
                   >
@@ -489,12 +538,14 @@ export default function ShiftPlansPage() {
                     <Calendar className="w-6 h-6 text-rmpg-600" />
                   </div>
                   <p className="text-rmpg-400 font-medium">No shift plans for this date</p>
-                  <button type="button"
-                    onClick={() => setShowCreateForm(true)}
-                    className="text-rmpg-400 hover:text-rmpg-300 text-[10px] mt-2 hover:underline"
-                  >
-                    + Create one
-                  </button>
+                  {canManage && (
+                    <button type="button"
+                      onClick={() => setShowCreateForm(true)}
+                      className="text-rmpg-400 hover:text-rmpg-300 text-[10px] mt-2 hover:underline"
+                    >
+                      + Create one
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -566,7 +617,7 @@ export default function ShiftPlansPage() {
                 </div>
 
                 <div className={`flex items-center gap-1 tab-scroll ${isMobile ? 'overflow-x-auto' : ''}`}>
-                  {sp.activePlan.status === 'draft' && (
+                  {canManage && sp.activePlan.status === 'draft' && (
                     <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'active')}
                       className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50"
@@ -574,7 +625,7 @@ export default function ShiftPlansPage() {
                       <Play style={{ width: 9, height: 9 }} /> Activate
                     </button>
                   )}
-                  {sp.activePlan.status === 'active' && (
+                  {canManage && sp.activePlan.status === 'active' && (
                     <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'completed')}
                       className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-sunken/50 text-rmpg-400 border border-border-default/50 hover:bg-surface-raised/50"
@@ -582,13 +633,15 @@ export default function ShiftPlansPage() {
                       <CheckCircle style={{ width: 9, height: 9 }} /> Complete
                     </button>
                   )}
-                  <button type="button"
-                    onClick={() => handleSave(sp.activePlan!.id)}
-                    className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-brand-900/50 text-brand-400 border border-brand-700/50 hover:bg-brand-800/50"
-                    title="Save to server"
-                  >
-                    <Save style={{ width: 9, height: 9 }} /> Save
-                  </button>
+                  {canManage && (
+                    <button type="button"
+                      onClick={() => handleSave(sp.activePlan!.id)}
+                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-brand-900/50 text-brand-400 border border-brand-700/50 hover:bg-brand-800/50"
+                      title="Save to server"
+                    >
+                      <Save style={{ width: 9, height: 9 }} /> Save
+                    </button>
+                  )}
                   <button type="button"
                     onClick={() => handleExportPdf(sp.activePlan!)}
                     className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 border border-rmpg-600 hover:text-rmpg-100 hover:border-rmpg-400"
@@ -596,14 +649,25 @@ export default function ShiftPlansPage() {
                   >
                     <FileText style={{ width: 9, height: 9 }} /> PDF
                   </button>
-                  <button type="button"
-                    onClick={() => handleDuplicate(sp.activePlan!.id)}
-                    className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 border border-rmpg-600 hover:text-rmpg-100 hover:border-rmpg-400"
-                    title="Duplicate for next day"
-                  >
-                    <Copy style={{ width: 9, height: 9 }} /> Duplicate
-                  </button>
-                  {sp.activePlan.status !== 'archived' && (
+                  {canManage && (
+                    <button type="button"
+                      onClick={() => handleDuplicate(sp.activePlan!.id)}
+                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 border border-rmpg-600 hover:text-rmpg-100 hover:border-rmpg-400"
+                      title="Duplicate for next day"
+                    >
+                      <Copy style={{ width: 9, height: 9 }} /> Duplicate
+                    </button>
+                  )}
+                  {canManage && sp.activePlan.assignments.length > 0 && (
+                    <button type="button"
+                      onClick={() => { setSaveTemplateAs(true); setSaveTemplateName(sp.activePlan!.name + ' Template'); setShowTemplateModal(true); }}
+                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-400 border border-rmpg-600 hover:text-brand-400 hover:border-brand-600"
+                      title="Save this shift plan as a reusable template"
+                    >
+                      <LayoutTemplate style={{ width: 9, height: 9 }} /> Template
+                    </button>
+                  )}
+                  {canManage && sp.activePlan.status !== 'archived' && (
                     <button type="button"
                       onClick={() => sp.updatePlanStatus(sp.activePlan!.id, 'archived')}
                       className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-500 border border-rmpg-600 hover:text-amber-400 hover:border-amber-600"
@@ -612,13 +676,15 @@ export default function ShiftPlansPage() {
                       <Archive style={{ width: 9, height: 9 }} />
                     </button>
                   )}
-                  <button type="button"
-                    onClick={() => setDeletePlanTarget(sp.activePlan!)}
-                    className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-500 border border-rmpg-600 hover:text-red-400 hover:border-red-600"
-                    title="Delete"
-                  >
-                    <Trash2 style={{ width: 9, height: 9 }} />
-                  </button>
+                  {canManage && (
+                    <button type="button"
+                      onClick={() => setDeletePlanTarget(sp.activePlan!)}
+                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-rmpg-500 border border-rmpg-600 hover:text-red-400 hover:border-red-600"
+                      title="Delete"
+                    >
+                      <Trash2 style={{ width: 9, height: 9 }} />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -628,7 +694,7 @@ export default function ShiftPlansPage() {
                   style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-default)' }}
                 >
                   <span>Area Assignments ({sp.activePlan.assignments.length})</span>
-                  {sp.activePlan.assignments.length > 0 && (
+                  {canManage && sp.activePlan.assignments.length > 0 && (
                     <button type="button"
                       onClick={() => setClearAllConfirm(true)}
                       className="text-red-500 hover:text-red-400"
@@ -707,14 +773,16 @@ export default function ShiftPlansPage() {
                           </td>
                           <td className="px-4 py-2 text-rmpg-400 truncate max-w-[120px]">{a.notes || '—'}</td>
                           <td className="px-4 py-2 text-right">
-                            <button type="button"
-                              onClick={() => sp.removeAssignment(a.id)}
-                              className="text-rmpg-600 hover:text-red-400 transition-colors"
-                              aria-label="Remove assignment"
-                              title="Remove assignment"
-                            >
-                              <X style={{ width: 10, height: 10 }} />
-                            </button>
+                            {canManage && (
+                              <button type="button"
+                                onClick={() => sp.removeAssignment(a.id)}
+                                className="text-rmpg-600 hover:text-red-400 transition-colors"
+                                aria-label="Remove assignment"
+                                title="Remove assignment"
+                              >
+                                <X style={{ width: 10, height: 10 }} />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -845,6 +913,188 @@ export default function ShiftPlansPage() {
           </div>
         )}
       </div>
+
+      {/* ── Template Modal ── */}
+      {showTemplateModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tmpl-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowTemplateModal(false)}
+        >
+          <div
+            className="bg-surface-raised border border-rmpg-700 rounded-sm w-[480px] max-w-full mx-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700">
+              <h2 id="tmpl-title" className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
+                <LayoutTemplate className="w-4 h-4 text-brand-400" />
+                Shift Plan Templates
+              </h2>
+              <button type="button" onClick={() => setShowTemplateModal(false)} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {saveTemplateAs && (
+                <div className="p-3 bg-surface-sunken border border-rmpg-700 rounded-sm space-y-2">
+                  <div className="text-[10px] text-rmpg-400 font-bold uppercase">Save current plan as template</div>
+                  <input
+                    type="text"
+                    value={saveTemplateName}
+                    onChange={(e) => setSaveTemplateName(e.target.value)}
+                    placeholder="Template name..."
+                    className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && saveTemplateName.trim() && sp.activePlan) {
+                        apiFetch('/shift-plans/templates', {
+                          method: 'POST',
+                          body: JSON.stringify({
+                            name: saveTemplateName.trim(),
+                            shift_type: sp.activePlan.shiftType,
+                            pattern_json: JSON.stringify(sp.activePlan.assignments.map(a => ({
+                              label: a.label,
+                              layerId: a.layerId,
+                              officerIds: a.officerIds,
+                              unitIds: a.unitIds,
+                              shiftStart: a.shiftStart,
+                              shiftEnd: a.shiftEnd,
+                              notes: a.notes,
+                              color: a.color,
+                            }))),
+                          }),
+                        })
+                          .then(() => {
+                            setSaveTemplateAs(false);
+                            setSaveTemplateName('');
+                            setTemplateLoading(true);
+                            apiFetch<any>('/shift-plans/templates').then(r => setTemplates(Array.isArray(r) ? r : r?.data ?? [])).catch(() => setTemplates([])).finally(() => setTemplateLoading(false));
+                            addToast('Template saved', 'success');
+                          })
+                          .catch((err: any) => addToast(err?.message || 'Failed to save template', 'error'));
+                      }
+                    }}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (saveTemplateName.trim() && sp.activePlan) {
+                          apiFetch('/shift-plans/templates', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                              name: saveTemplateName.trim(),
+                              shift_type: sp.activePlan.shiftType,
+                              pattern_json: JSON.stringify(sp.activePlan.assignments.map(a => ({
+                                label: a.label,
+                                layerId: a.layerId,
+                                officerIds: a.officerIds,
+                                unitIds: a.unitIds,
+                                shiftStart: a.shiftStart,
+                                shiftEnd: a.shiftEnd,
+                                notes: a.notes,
+                                color: a.color,
+                              }))),
+                            }),
+                          })
+                            .then(() => {
+                              setSaveTemplateAs(false);
+                              setSaveTemplateName('');
+                              setTemplateLoading(true);
+                              apiFetch<any>('/shift-plans/templates').then(r => setTemplates(Array.isArray(r) ? r : r?.data ?? [])).catch(() => setTemplates([])).finally(() => setTemplateLoading(false));
+                              addToast('Template saved', 'success');
+                            })
+                            .catch((err: any) => addToast(err?.message || 'Failed to save template', 'error'));
+                        }
+                      }}
+                      className="px-2 py-1 text-[10px] bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSaveTemplateAs(false); setSaveTemplateName(''); }}
+                      className="px-2 py-1 text-[10px] border border-rmpg-700 rounded-sm text-rmpg-400"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {templateLoading ? (
+                <div className="text-xs text-rmpg-400 py-4 text-center">Loading templates…</div>
+              ) : templates.length === 0 ? (
+                <div className="text-xs text-rmpg-500 py-4 text-center">
+                  <LayoutTemplate className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
+                  No templates saved yet.
+                  {sp.activePlan && sp.activePlan.assignments.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setSaveTemplateAs(true); setSaveTemplateName(sp.activePlan!.name + ' Template'); }}
+                      className="block mx-auto mt-2 px-2 py-1 text-[10px] bg-surface-sunken text-rmpg-400 border border-rmpg-700 rounded-sm hover:bg-surface-raised"
+                    >
+                      Save current plan as template
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                  {sp.activePlan && sp.activePlan.assignments.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setSaveTemplateAs(true); setSaveTemplateName(sp.activePlan!.name + ' Template'); }}
+                      className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken text-rmpg-400 border border-rmpg-700 rounded-sm hover:bg-surface-raised flex items-center gap-1 justify-center"
+                    >
+                      <Save className="w-3 h-3" /> Save current plan as template
+                    </button>
+                  )}
+                  {templates.map((t: any) => (
+                    <div key={t.id} className="p-2.5 bg-surface-base border border-rmpg-700 rounded-sm">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[11px] font-semibold text-rmpg-100">{t.name}</div>
+                          <div className="text-[9px] text-rmpg-400 mt-0.5">
+                            {t.shift_type} · {(typeof t.pattern_json === 'string' ? JSON.parse(t.pattern_json) : t.pattern_json || []).length} slots
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!applyingTemplate || applyingTemplate !== String(t.id) ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const endDate = prompt('Apply to date range. Enter end date (YYYY-MM-DD):', selectedDate);
+                                if (!endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return;
+                                setApplyingTemplate(String(t.id));
+                                apiFetch(`/shift-plans/apply-template/${t.id}`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({ start_date: selectedDate, end_date: endDate }),
+                                })
+                                  .then(() => {
+                                    addToast('Template applied — refresh to see new plans', 'success');
+                                  })
+                                  .catch((err: any) => addToast(err?.message || 'Failed to apply template', 'error'))
+                                  .finally(() => setApplyingTemplate(null));
+                              }}
+                              className="px-1.5 py-0.5 text-[9px] bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110"
+                              title="Apply template to date range"
+                            >
+                              <CalendarRange className="w-3 h-3" />
+                            </button>
+                          ) : (
+                            <span className="text-[9px] text-rmpg-400">Applying…</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ── Confirm dialogs (v1053 — replace 3 native confirm() prompts) ── */}
       <ConfirmDialog

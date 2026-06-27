@@ -43,7 +43,8 @@ export interface RunFastOptions {
 }
 
 export function fastRunUrl(opts?: { apiUrl?: string; workflowId?: string }): string {
-  const base = (opts?.apiUrl || ROBOFLOW_SERVERLESS_BASE).replace(/\/+$/, '');
+  let base = opts?.apiUrl || ROBOFLOW_SERVERLESS_BASE;
+  while (base.endsWith('/')) base = base.slice(0, -1);
   const wf = opts?.workflowId || ROBOFLOW_FAST_WORKFLOW_ID;
   return `${base}/${ROBOFLOW_WORKSPACE}/workflows/${wf}`;
 }

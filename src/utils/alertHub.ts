@@ -10,6 +10,8 @@
 // Fire-and-forget by design: a panic must never be blocked on alert fan-out.
 // Callers can `await` it (it's cheap — one DO fetch) or drop it in ctx.waitUntil.
 
+import { log } from './logger';
+
 interface AlertEnv {
   ALERT_HUB?: DurableObjectNamespace;
 }
@@ -35,6 +37,6 @@ export async function emitAlert(env: AlertEnv, type: string, data: Record<string
       body: JSON.stringify({ type, action: data.action, panic_id: panicId, data }),
     });
   } catch (err) {
-    console.error('[emitAlert] fan-out failed (non-fatal)', err);
+    log.error('fan-out failed (non-fatal)', {}, err);
   }
 }
