@@ -8,6 +8,7 @@
 import React, { useMemo } from 'react';
 import { X, Clock, Phone, TrendingUp, MapPin } from 'lucide-react';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface CallHistoryPanelProps {
   calls: {
@@ -266,7 +267,7 @@ export default function CallHistoryPanel({
                         </div>
                       </div>
                       <div className="text-[9px] font-mono text-rmpg-300 truncate">
-                        {(call.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                        {toDisplayLabel(call.incident_type || '')}
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">
                         <MapPin size={8} className="text-rmpg-600 shrink-0" />
