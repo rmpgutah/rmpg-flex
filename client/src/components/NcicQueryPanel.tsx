@@ -4,8 +4,8 @@
 // local database. Black background, green monospace text.
 // ============================================================
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { X, Terminal, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { X, Terminal, Loader2, Download, Trash2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -37,6 +37,7 @@ import {
 } from '../utils/ncicFormatter';
 import { lookupAnyCode, decode, type CodeHit } from '../constants/ncicCodes';
 import { playTone } from '../utils/dispatchTones';
+import { displayTimeZone } from '../utils/timeZoneMode';
 
 // ── Quick-query buttons shown on welcome screen ──────────────
 // Quick-query buttons rendered above the input. Clicking populates the input
@@ -82,11 +83,18 @@ const WELCOME_BANNER = `╔═════════════════�
  *  "I mistyped a plate, let me fix it" use case while bounding the array. */
 const NCIC_HISTORY_CAP = 30;
 
+export interface NcicQueryPanelHandle {
+  focusInput: () => void;
+  clearSession: () => void;
+  exportSession: () => void;
+}
+
 interface NcicQueryPanelProps {
   isOpen: boolean;
   onClose: () => void;
   initialQuery?: { type: 'person' | 'vehicle' | 'warrant' | 'xref' | 'phone' | 'address' | 'dl' | 'ofac'; query: string } | null;
   embedded?: boolean;
+  canManage?: boolean;
 }
 
 interface QueryEntry {
@@ -162,7 +170,7 @@ function formatCodeDecode(term: string, hits: CodeHit[]): string {
   return [...hdr, '', ...body, '', `  SUMMARY: ${hits.length} CODE(S) FOUND`, '─'.repeat(60), '*** END OF RECORD ***'].join('\n');
 }
 
-export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded }: NcicQueryPanelProps) {
+const NcicQueryPanel = forwardRef<NcicQueryPanelHandle, NcicQueryPanelProps>(function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded, canManage }, ref) {
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<QueryEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -177,6 +185,32 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   const historyRef = useRef<string[]>([]);
   const historyIdxRef = useRef<number>(-1);
   const draftRef = useRef<string>('');
+
+  // Export + clear session handlers — exposed via imperative ref for parent shortcuts
+  const clearSession = useCallback(() => { setEntries([]); }, []);
+  const exportSession = useCallback(() => {
+    if (entries.length === 0) return;
+    const lines: string[] = [
+      'RMPG FLEX — NCIC/NLETS TERMINAL SESSION EXPORT',
+      `EXPORTED: ${new Date().toLocaleString('en-US', { timeZone: displayTimeZone() ?? undefined, hour12: false })}`,
+      '═'.repeat(70),
+      '',
+    ];
+    for (const e of entries) {
+      lines.push(`[${e.timestamp}] > ${e.command}`);
+      lines.push(e.response);
+      lines.push('');
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ncic-session-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [entries]);
+
+  useImperativeHandle(ref, () => ({ focusInput: () => inputRef.current?.focus(), clearSession, exportSession }), [clearSession, exportSession]);
 
   // ── Right-click context menu (per result entry) ──
   const { openMenu } = useContextMenu();
@@ -233,7 +267,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 
     // Input validation: enforce length limits
     if (queryText.length > 200) {
-      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: displayTimeZone() });
       setEntries(prev => [...prev, {
         id: ++queryIdCounterRef.current, timestamp: ts, command,
         response: 'ERROR: QUERY TOO LONG — MAXIMUM 200 CHARACTERS', hasHit: false,
@@ -243,7 +277,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
     }
 
     setLoading(true);
-    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: displayTimeZone() });
 
     try {
       let response = '';
@@ -968,6 +1002,31 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           )}
         </div>
         {QuickButtons}
+        {/* Action bar — Export always visible; Clear gated to admin/manager */}
+        <div className="flex items-center gap-1 px-2 py-1 border-t border-rmpg-800">
+          <button
+            type="button"
+            onClick={exportSession}
+            disabled={entries.length === 0}
+            title="Export session as TXT"
+            className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-brand-400 hover:text-brand-300 border border-rmpg-700 hover:border-brand-500 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download size={10} />
+            <span>EXPORT</span>
+          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={clearSession}
+              disabled={entries.length === 0}
+              title="Clear session (admin/manager only)"
+              className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-red-400 hover:text-red-300 border border-rmpg-700 hover:border-red-800 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 size={10} />
+              <span>CLEAR</span>
+            </button>
+          )}
+        </div>
         {/* Input bar */}
         <div className="ncic-input-row">
           <span className="ncic-prompt">&gt;</span>
@@ -1031,6 +1090,31 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         </div>
 
         {QuickButtons}
+        {/* Action bar — Export always visible; Clear gated to admin/manager */}
+        <div className="flex items-center gap-1 px-2 py-1 border-t border-rmpg-800">
+          <button
+            type="button"
+            onClick={exportSession}
+            disabled={entries.length === 0}
+            title="Export session as TXT"
+            className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-brand-400 hover:text-brand-300 border border-rmpg-700 hover:border-brand-500 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download size={10} />
+            <span>EXPORT</span>
+          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={clearSession}
+              disabled={entries.length === 0}
+              title="Clear session (admin/manager only)"
+              className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-red-400 hover:text-red-300 border border-rmpg-700 hover:border-red-800 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 size={10} />
+              <span>CLEAR</span>
+            </button>
+          )}
+        </div>
         {/* Input bar */}
         <div className="ncic-input-row">
           <span className="ncic-prompt">&gt;</span>
@@ -1051,4 +1135,6 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
       </div>
     </div>
   );
-}
+});
+
+export default NcicQueryPanel;

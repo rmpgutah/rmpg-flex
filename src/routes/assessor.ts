@@ -27,7 +27,8 @@ import { getDb, columnExists, ensureAssessorColumns } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
 import {
-  cacheKeyParcel, getCached, putCached,
+  cacheKeyParcel, cacheKeyParcels, durableKeyParcels, durableKeyParcel,
+  getCached, putCached, invalidate,
 } from '../utils/sl-assessor/cache';
 import { getParcel } from '../utils/sl-assessor/client';
 import { applyParcelToRecord } from '../utils/sl-assessor/autofill';
@@ -68,6 +69,13 @@ const LOOKUP_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
 app.get('/parcels', requireRole(...LOOKUP_ROLES), async (c) => {
   const address = c.req.query('address')?.trim();
   if (!address) return c.json({ ok: false, code: 'missing_address' }, 400);
+  // ?fresh=1 busts the KV cache so the next call hits the live assessor POST.
+  if (c.req.query('fresh') === '1') {
+    await Promise.all([
+      invalidate(c.env, cacheKeyParcels(address)),
+      invalidate(c.env, durableKeyParcels(address)),
+    ]);
+  }
   const r = await lookupParcelsWithFallback(c.env, address);
   return c.json({
     ok: r.code === 'ok',
@@ -84,6 +92,12 @@ app.get('/parcels', requireRole(...LOOKUP_ROLES), async (c) => {
 app.get('/parcel/:parcel_no', requireRole(...LOOKUP_ROLES), async (c) => {
   const parcelNo = c.req.param('parcel_no');
   if (!parcelNo) return c.json({ ok: false, code: 'missing_parcel_no' }, 400);
+  if (c.req.query('fresh') === '1') {
+    await Promise.all([
+      invalidate(c.env, cacheKeyParcel(parcelNo)),
+      invalidate(c.env, durableKeyParcel(parcelNo)),
+    ]);
+  }
   const r = await lookupParcelWithFallback(c.env, parcelNo);
   return c.json({
     ok: r.code === 'ok' && r.parcel !== null,

@@ -49,7 +49,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
   ChevronRight, ChevronLeft, X, Shield, BarChart3, Save, AlertTriangle,
-  ArrowRightLeft, TrendingUp, Eye, FileText,
+  ArrowRightLeft, TrendingUp, Eye, FileText, LayoutTemplate, CalendarRange,
 } from 'lucide-react';
 import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
 import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
@@ -86,7 +86,7 @@ function todayStr() {
 // surface used by other "terminal-state" pills across the app.
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   draft:     { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--rmpg-600)' },
-  active:    { bg: 'rgba(34,197,94,0.15)',            text: '#22c55e',         border: '#16a34a' },
+  active:    { bg: 'rgba(var(--sev-ok-rgb),0.15)',     text: 'var(--sev-ok)',   border: 'rgba(var(--sev-ok-rgb),0.5)' },
   completed: { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-400)', border: 'var(--rmpg-500)' },
   archived:  { bg: 'var(--surface-sunken)',           text: 'var(--rmpg-500)', border: 'var(--rmpg-600)' },
 };
@@ -146,13 +146,20 @@ export default function ShiftPlansPage() {
   const [deletePlanTarget, setDeletePlanTarget] = useState<ShiftPlan | null>(null);
   const [clearAllConfirm, setClearAllConfirm] = useState(false);
 
-  // ── Enhanced: Swap requests, overtime, staffing, conflicts, notifications ──
+  // ── Enhanced: Swap requests, overtime, staffing, conflicts, notifications, templates ──
   const [swapRequests, setSwapRequests] = useState<any[]>([]);
   const [overtimeData, setOvertimeData] = useState<any>(null);
   const [staffingLevels, setStaffingLevels] = useState<any>(null);
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
   const [overtimeLoading, setOvertimeLoading] = useState(true);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [saveTemplateName, setSaveTemplateName] = useState('');
+  const [saveTemplateAs, setSaveTemplateAs] = useState(false);
+  const [applyTemplateEndDate, setApplyTemplateEndDate] = useState('');
+  const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null);
 
   // ── Deep-link consume ────────────────────────────────────
   //
@@ -173,6 +180,7 @@ export default function ShiftPlansPage() {
       // The plan may not be in state yet (server hydrate races) — the
       // separate watch effect below picks it up once it lands.
       sp.setActivePlanId(planParam);
+      pendingDeepLinkPlanRef.current = planParam;
       consumedAny = true;
     }
     if (consumedAny) {
@@ -187,6 +195,20 @@ export default function ShiftPlansPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Watch for the deep-link plan to hydrate and toast the result
+  useEffect(() => {
+    const pending = pendingDeepLinkPlanRef.current;
+    if (!pending || sp.plans.length === 0) return;
+    const found = sp.plans.find(p => p.id === pending);
+    if (found) {
+      addToast(`Shift plan "${found.name}" loaded`, 'success');
+    } else {
+      addToast('Shift plan not found', 'error');
+    }
+    pendingDeepLinkPlanRef.current = null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp.plans]);
 
   // Persist per-user state on every change
   useEffect(() => {
@@ -336,10 +358,10 @@ export default function ShiftPlansPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (clearAllConfirm) { setClearAllConfirm(false); return; }
-        if (deletePlanTarget) { setDeletePlanTarget(null); return; }
-        if (showCreateForm) { setShowCreateForm(false); return; }
-        if (sp.activePlanId) { sp.setActivePlanId(null); return; }
+        if (clearAllConfirm) { e.stopPropagation(); setClearAllConfirm(false); return; }
+        if (deletePlanTarget) { e.stopPropagation(); setDeletePlanTarget(null); return; }
+        if (showCreateForm) { e.stopPropagation(); setShowCreateForm(false); return; }
+        if (sp.activePlanId) { e.stopPropagation(); sp.setActivePlanId(null); return; }
         return;
       }
       if ((e.key === 'n' || e.key === 'N')
@@ -470,7 +492,7 @@ export default function ShiftPlansPage() {
                     className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
                     style={{
                       background: newPlanShift === key ? val.color : 'transparent',
-                      color: newPlanShift === key ? '#000' : val.color,
+                      color: newPlanShift === key ? 'var(--surface-base)' : val.color,
                       border: `1px solid ${val.color}`,
                     }}
                   >
@@ -863,6 +885,188 @@ export default function ShiftPlansPage() {
           </div>
         )}
       </div>
+
+      {/* ── Template Modal ── */}
+      {showTemplateModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tmpl-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowTemplateModal(false)}
+        >
+          <div
+            className="bg-surface-raised border border-rmpg-700 rounded-sm w-[480px] max-w-full mx-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700">
+              <h2 id="tmpl-title" className="text-sm font-semibold text-rmpg-100 flex items-center gap-2">
+                <LayoutTemplate className="w-4 h-4 text-brand-400" />
+                Shift Plan Templates
+              </h2>
+              <button type="button" onClick={() => setShowTemplateModal(false)} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {saveTemplateAs && (
+                <div className="p-3 bg-surface-sunken border border-rmpg-700 rounded-sm space-y-2">
+                  <div className="text-[10px] text-rmpg-400 font-bold uppercase">Save current plan as template</div>
+                  <input
+                    type="text"
+                    value={saveTemplateName}
+                    onChange={(e) => setSaveTemplateName(e.target.value)}
+                    placeholder="Template name..."
+                    className="w-full px-2 py-1 text-[12px] bg-surface-base border border-rmpg-700 rounded-sm text-rmpg-100"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && saveTemplateName.trim() && sp.activePlan) {
+                        apiFetch('/shift-plans/templates', {
+                          method: 'POST',
+                          body: JSON.stringify({
+                            name: saveTemplateName.trim(),
+                            shift_type: sp.activePlan.shiftType,
+                            pattern_json: JSON.stringify(sp.activePlan.assignments.map(a => ({
+                              label: a.label,
+                              layerId: a.layerId,
+                              officerIds: a.officerIds,
+                              unitIds: a.unitIds,
+                              shiftStart: a.shiftStart,
+                              shiftEnd: a.shiftEnd,
+                              notes: a.notes,
+                              color: a.color,
+                            }))),
+                          }),
+                        })
+                          .then(() => {
+                            setSaveTemplateAs(false);
+                            setSaveTemplateName('');
+                            setTemplateLoading(true);
+                            apiFetch<any>('/shift-plans/templates').then(r => setTemplates(Array.isArray(r) ? r : r?.data ?? [])).catch(() => setTemplates([])).finally(() => setTemplateLoading(false));
+                            addToast('Template saved', 'success');
+                          })
+                          .catch((err: any) => addToast(err?.message || 'Failed to save template', 'error'));
+                      }
+                    }}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (saveTemplateName.trim() && sp.activePlan) {
+                          apiFetch('/shift-plans/templates', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                              name: saveTemplateName.trim(),
+                              shift_type: sp.activePlan.shiftType,
+                              pattern_json: JSON.stringify(sp.activePlan.assignments.map(a => ({
+                                label: a.label,
+                                layerId: a.layerId,
+                                officerIds: a.officerIds,
+                                unitIds: a.unitIds,
+                                shiftStart: a.shiftStart,
+                                shiftEnd: a.shiftEnd,
+                                notes: a.notes,
+                                color: a.color,
+                              }))),
+                            }),
+                          })
+                            .then(() => {
+                              setSaveTemplateAs(false);
+                              setSaveTemplateName('');
+                              setTemplateLoading(true);
+                              apiFetch<any>('/shift-plans/templates').then(r => setTemplates(Array.isArray(r) ? r : r?.data ?? [])).catch(() => setTemplates([])).finally(() => setTemplateLoading(false));
+                              addToast('Template saved', 'success');
+                            })
+                            .catch((err: any) => addToast(err?.message || 'Failed to save template', 'error'));
+                        }
+                      }}
+                      className="px-2 py-1 text-[10px] bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSaveTemplateAs(false); setSaveTemplateName(''); }}
+                      className="px-2 py-1 text-[10px] border border-rmpg-700 rounded-sm text-rmpg-400"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {templateLoading ? (
+                <div className="text-xs text-rmpg-400 py-4 text-center">Loading templates…</div>
+              ) : templates.length === 0 ? (
+                <div className="text-xs text-rmpg-500 py-4 text-center">
+                  <LayoutTemplate className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
+                  No templates saved yet.
+                  {sp.activePlan && sp.activePlan.assignments.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setSaveTemplateAs(true); setSaveTemplateName(sp.activePlan!.name + ' Template'); }}
+                      className="block mx-auto mt-2 px-2 py-1 text-[10px] bg-surface-sunken text-rmpg-400 border border-rmpg-700 rounded-sm hover:bg-surface-raised"
+                    >
+                      Save current plan as template
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                  {sp.activePlan && sp.activePlan.assignments.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setSaveTemplateAs(true); setSaveTemplateName(sp.activePlan!.name + ' Template'); }}
+                      className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken text-rmpg-400 border border-rmpg-700 rounded-sm hover:bg-surface-raised flex items-center gap-1 justify-center"
+                    >
+                      <Save className="w-3 h-3" /> Save current plan as template
+                    </button>
+                  )}
+                  {templates.map((t: any) => (
+                    <div key={t.id} className="p-2.5 bg-surface-base border border-rmpg-700 rounded-sm">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[11px] font-semibold text-rmpg-100">{t.name}</div>
+                          <div className="text-[9px] text-rmpg-400 mt-0.5">
+                            {t.shift_type} · {(typeof t.pattern_json === 'string' ? JSON.parse(t.pattern_json) : t.pattern_json || []).length} slots
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {!applyingTemplate || applyingTemplate !== String(t.id) ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const endDate = prompt('Apply to date range. Enter end date (YYYY-MM-DD):', selectedDate);
+                                if (!endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return;
+                                setApplyingTemplate(String(t.id));
+                                apiFetch(`/shift-plans/apply-template/${t.id}`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({ start_date: selectedDate, end_date: endDate }),
+                                })
+                                  .then(() => {
+                                    addToast('Template applied — refresh to see new plans', 'success');
+                                  })
+                                  .catch((err: any) => addToast(err?.message || 'Failed to apply template', 'error'))
+                                  .finally(() => setApplyingTemplate(null));
+                              }}
+                              className="px-1.5 py-0.5 text-[9px] bg-brand-400 text-rmpg-950 rounded-sm hover:brightness-110"
+                              title="Apply template to date range"
+                            >
+                              <CalendarRange className="w-3 h-3" />
+                            </button>
+                          ) : (
+                            <span className="text-[9px] text-rmpg-400">Applying…</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ── Confirm dialogs (v1053 — replace 3 native confirm() prompts) ── */}
       <ConfirmDialog
