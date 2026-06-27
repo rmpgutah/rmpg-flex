@@ -2,6 +2,7 @@
 // GlobalSearch). Builds targeted identifier/name/addr/case lookups + FTS free
 // text, enriches person hits with photo_url + flags + cluster, and returns
 // facet counts. Each branch is try/catch-isolated. SQL verified vs live D1.
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query } from './db';
 import { personFlagsForIds } from './intelQueryFlags';
@@ -34,7 +35,7 @@ export async function runIntelQuery(db: D1Database, p: QueryParams): Promise<{ r
           WHERE (COALESCE(first_name,'') || ' ' || COALESCE(last_name,'')) LIKE ? ESCAPE '\\' LIMIT ?`,
         like(p.name), limit))
         put({ type: 'person', id: r.id, label: `${r.first_name || ''} ${r.last_name || ''}`.trim(), snippet: '', flags: [], score: 95, photo_url: r.photo_url });
-    } catch (e: any) { console.error('[query] name:', e?.message); }
+    } catch (e: any) { log.error('[intel-query] name', { error: e?.message }); }
   }
   if (p.addr) {
     try {
@@ -43,7 +44,7 @@ export async function runIntelQuery(db: D1Database, p: QueryParams): Promise<{ r
           WHERE COALESCE(address,'') LIKE ? ESCAPE '\\' OR COALESCE(city,'') LIKE ? ESCAPE '\\' LIMIT ?`,
         like(p.addr), like(p.addr), limit))
         put({ type: 'person', id: r.id, label: `${r.first_name || ''} ${r.last_name || ''}`.trim(), snippet: r.address || '', flags: [], score: 80, photo_url: r.photo_url });
-    } catch (e: any) { console.error('[query] addr:', e?.message); }
+    } catch (e: any) { log.error('[intel-query] addr', { error: e?.message }); }
   }
   for (const [col, val, sc] of [['dl_number', p.dl, 92], ['dob', p.dob, 92], ['phone', p.phone, 92]] as const) {
     if (!val) continue;
@@ -51,8 +52,8 @@ export async function runIntelQuery(db: D1Database, p: QueryParams): Promise<{ r
       for (const r of await query<any>(db,
         `SELECT id, first_name, last_name, photo_url FROM persons WHERE COALESCE(${col},'') LIKE ? ESCAPE '\\' LIMIT ?`,
         like(String(val)), limit))
-        put({ type: 'person', id: r.id, label: `${r.first_name || ''} ${r.last_name || ''}`.trim(), snippet: `${col}: ${val}`, flags: [], score: sc, photo_url: r.photo_url });
-    } catch (e: any) { console.error(`[query] ${col}:`, e?.message); }
+        put({ type: 'person', id: r.id, label: `${r.first_name || ''} ${r.last_name || ''}`.trim(), snippet: `${col}: ${val}`, flags: [], score: sc,         photo_url: r.photo_url });
+    } catch (e: any) { log.error('[intel-query] persons col query failed', { column: col, error: e?.message }); }
   }
   for (const [col, val] of [['plate_number', p.plate], ['vin', p.vin]] as const) {
     if (!val) continue;
@@ -60,8 +61,8 @@ export async function runIntelQuery(db: D1Database, p: QueryParams): Promise<{ r
       for (const r of await query<any>(db,
         `SELECT id, plate_number, make, model, color, vin FROM vehicles_records WHERE COALESCE(${col},'') LIKE ? ESCAPE '\\' LIMIT ?`,
         like(String(val)), limit))
-        put({ type: 'vehicle', id: r.id, label: [r.color, r.make, r.model].filter(Boolean).join(' ') + (r.plate_number ? ` (${r.plate_number})` : ''), snippet: r.vin || '', flags: [], score: 92 });
-    } catch (e: any) { console.error(`[query] ${col}:`, e?.message); }
+        put({ type: 'vehicle', id: r.id, label: [r.color, r.make, r.model].filter(Boolean).join(' ') + (r.plate_number ? ` (${r.plate_number})` : ''), snippet: r.vin || '', flags: [],         score: 92 });
+    } catch (e: any) { log.error('[intel-query] vehicles col query failed', { column: col, error: e?.message }); }
   }
   if (p.case) {
     try {
@@ -69,7 +70,7 @@ export async function runIntelQuery(db: D1Database, p: QueryParams): Promise<{ r
         `SELECT id, case_number, title, opened_date FROM cases WHERE COALESCE(case_number,'') LIKE ? ESCAPE '\\' LIMIT ?`,
         like(p.case), limit))
         put({ type: 'case', id: r.id, label: r.case_number || r.title || `Case #${r.id}`, snippet: r.title || '', flags: [], score: 92, date: r.opened_date });
-    } catch (e: any) { console.error('[query] case:', e?.message); }
+    } catch (e: any) { log.error('[intel-query] case', { error: e?.message }); }
   }
   if (p.q && p.q.trim().length >= 2) {
     const term = p.q.trim();
@@ -80,13 +81,13 @@ export async function runIntelQuery(db: D1Database, p: QueryParams): Promise<{ r
         term.split(/\s+/).map((t) => `"${t.replace(/"/g, '')}"`).join(' '), limit))
         put({ type: r.entity_type, id: Number(r.entity_id), label: r.label, snippet: r.snip || '', flags: [], score: 50 - Number(r.rank) });
     } catch (e: any) {
-      console.error('[query] FTS, LIKE fallback:', e?.message);
+      log.error('[intel-query] FTS fallback, using LIKE', { error: e?.message });
       try {
         for (const r of await query<any>(db,
           `SELECT id, first_name, last_name, photo_url FROM persons WHERE (COALESCE(first_name,'') || ' ' || COALESCE(last_name,'')) LIKE ? ESCAPE '\\' LIMIT ?`,
           like(term), limit))
           put({ type: 'person', id: r.id, label: `${r.first_name || ''} ${r.last_name || ''}`.trim(), snippet: '', flags: [], score: 20, photo_url: r.photo_url });
-      } catch (e2: any) { console.error('[query] LIKE fallback:', e2?.message); }
+      } catch (e2: any) { log.error('[intel-query] LIKE fallback also failed', { error: e2?.message }); }
     }
   }
 
