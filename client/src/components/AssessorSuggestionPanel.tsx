@@ -20,6 +20,7 @@ interface Props {
   onApply: (parcelNumber: string) => void;
   onDismiss: () => void;
   onRetry?: () => void;
+  onRefresh?: () => void;
 }
 
 function fmtMoney(n: number | null): string {
@@ -59,7 +60,7 @@ function codeMessage(code: LookupCode | null | undefined, error?: string | null)
 
 export function AssessorSuggestionPanel({
   parcels, cached, loading, error, code, source, degraded, manualUrl,
-  onApply, onDismiss, onRetry,
+  onApply, onDismiss, onRetry, onRefresh,
 }: Props) {
   const [picked, setPicked] = useState<string | null>(null);
   useEffect(() => {
@@ -174,7 +175,19 @@ export function AssessorSuggestionPanel({
             </a>
           )}
         </div>
-        {cached && <div className="text-rmpg-500">cached</div>}
+        {cached && (
+          <div className="flex items-center gap-2">
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="text-rmpg-400 hover:text-rmpg-200 underline text-[10px]">
+                Refresh ↺
+              </button>
+            )}
+            <div className="text-rmpg-500">cached</div>
+          </div>
+        )}
       </div>
     </div>
   );

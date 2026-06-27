@@ -672,7 +672,7 @@ export default function CodeEnforcementPage() {
               </div>
               {/* Status actions */}
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Actions</div>
+                <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {(['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'] as const)
                     .filter(s => s !== selectedViolation.status)
@@ -707,7 +707,7 @@ export default function CodeEnforcementPage() {
               {/* Schedule Reinspection */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">Reinspection</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">Reinspection</div>
                   <button type="button"
                     onClick={() => setShowReinspection(!showReinspection)}
                     className="text-[10px] px-2 py-1 border border-rmpg-600 text-rmpg-400 bg-surface-sunken hover:bg-rmpg-800/40 transition-colors"
@@ -749,7 +749,7 @@ export default function CodeEnforcementPage() {
               {propertyHistory && (
                 <div className={`panel-beveled p-3 ${propertyHistory.is_repeat_offender ? 'border-red-700/50 bg-red-900/10' : ''}`}>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">Property Violation History (12 mo)</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">Property Violation History (12 mo)</div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 border ${
                       propertyHistory.is_repeat_offender ? 'bg-red-900/50 text-red-400 border-red-700/50' : 'bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50'
                     }`}>
@@ -777,7 +777,7 @@ export default function CodeEnforcementPage() {
                   ['Created', safeDateTimeStr(selectedViolation.created_at)],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">{label}</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '—'}</div>
                   </div>
                 ))}
@@ -807,7 +807,7 @@ export default function CodeEnforcementPage() {
                 </span>
               </div>
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider mb-2">Actions</div>
+                <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {(['dispatched', 'in_progress', 'completed', 'released', 'cancelled'] as const)
                     .filter(s => s !== selectedTow.status)
@@ -851,7 +851,7 @@ export default function CodeEnforcementPage() {
                   ['Storage Fee', selectedTow.storage_fee_daily && !isNaN(Number(selectedTow.storage_fee_daily)) ? `$${Number(selectedTow.storage_fee_daily).toFixed(2)}` : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-[var(--brand-gold)] uppercase tracking-wider">{label}</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '—'}</div>
                   </div>
                 ))}

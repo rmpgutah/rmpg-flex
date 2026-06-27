@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { toDisplayLabel } from '../formatters';
 import {
   parseChain,
-  prettyAction,
   chainEntryActor,
   chainEntryDate,
   chainEntryLocation,
@@ -30,15 +30,15 @@ describe('parseChain', () => {
 
 describe('prettyAction', () => {
   it('converts snake_case to Title Case', () => {
-    expect(prettyAction('check_in')).toBe('Check In');
-    expect(prettyAction('release_to_owner')).toBe('Release To Owner');
+    expect(toDisplayLabel('check_in')).toBe('Check In');
+    expect(toDisplayLabel('release_to_owner')).toBe('Release To Owner');
   });
   it('handles a single-word action', () => {
-    expect(prettyAction('checkin')).toBe('Checkin');
+    expect(toDisplayLabel('checkin')).toBe('Checkin');
   });
-  it('returns em-dash for missing value', () => {
-    expect(prettyAction(undefined)).toBe('—');
-    expect(prettyAction('')).toBe('—');
+  it('returns empty string for missing value', () => {
+    expect(toDisplayLabel(undefined)).toBe('');
+    expect(toDisplayLabel('')).toBe('');
   });
 });
 

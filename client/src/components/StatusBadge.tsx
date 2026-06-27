@@ -6,6 +6,7 @@ import {
   CALL_STATUS_CLASSES, CALL_STATUS_LABELS,
   INCIDENT_STATUS_CLASSES, INCIDENT_STATUS_LABELS,
 } from '../utils/statusColors';
+import { toDisplayLabel } from '../utils/formatters';
 
 type BadgeType = 'priority' | 'unit_status' | 'call_status' | 'incident_status' | 'generic';
 
@@ -99,7 +100,7 @@ export default React.memo(function StatusBadge({ status, type, size = 'md', clas
 
   if (!config) {
     // Unknown status -- render with neutral gray styling, title-cased
-    const label = status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const label = toDisplayLabel(status);
     {/* 17: Whitespace-nowrap on unknown badges to prevent wrapping */}
     return (
       <span className={`inline-flex items-center font-bold tracking-wide uppercase whitespace-nowrap panel-beveled ${sizeClasses} bg-rmpg-700 text-rmpg-300 border border-rmpg-600 ${className}`} role="status" aria-label={`Status: ${label}`} title={title}>

@@ -20,8 +20,10 @@ import {
   Pill, ShieldAlert, Users, Leaf, Wine, Shield, Banknote, History, type LucideIcon,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import { OffenseLevelBadge, type StatuteResult } from '../components/StatuteLookup';
 import { parseOutline } from '../utils/statuteOutline';
 import { generateStatutePdf, printStatuteSection, printStatuteChapter } from '../utils/statutePdfGenerator';
@@ -168,6 +170,7 @@ function pushRecentStatute(userId: string | undefined, s: StatuteResult): Recent
 
 export default function LawBookPage() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const canManage = MANAGE_ROLES.has(user?.role ?? '');
 
@@ -302,7 +305,11 @@ export default function LawBookPage() {
           const hits = r?.data || [];
           target = hits[0] || null;
         }
-        if (cancelled || !target) return;
+        if (cancelled) return;
+        if (!target) {
+          addToast(`Statute ${citation ?? statuteId ?? ''} not found`, 'error');
+          return;
+        }
         const citationStr = target.citation;
         const titleNum = parseInt(String(citationStr).split('-')[0] || '', 10);
         const chapCode = (target.chapter_code || String(citationStr).split('-')[1] || '').trim();
@@ -371,7 +378,7 @@ export default function LawBookPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [openSection, results, query, chapter]);
+  }, [clearRecentConfirm, openSection, results, query, chapter, user]);
 
   // Print whatever the reader is currently showing (a chapter, or search results).
   const handlePrint = () => {
@@ -392,6 +399,21 @@ export default function LawBookPage() {
   return (
     <div className="p-4 space-y-3">
       <PanelTitleBar title="UTAH LAW BOOK" icon={Scale} />
+
+      {/* ── ConfirmDialog: clear recent statutes history ── */}
+      <ConfirmDialog
+        isOpen={clearRecentConfirm}
+        onClose={() => setClearRecentConfirm(false)}
+        onConfirm={() => {
+          try { localStorage.removeItem(recentKey(user?.id)); } catch { /* ignore */ }
+          setRecent([]);
+          setClearRecentConfirm(false);
+        }}
+        title="Clear Recent Statutes"
+        message="Remove your recent statute history? This only affects your account on this device."
+        confirmLabel="Clear History"
+        confirmVariant="warning"
+      />
 
       {/* ── Stats ribbon ── */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
@@ -415,7 +437,7 @@ export default function LawBookPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => { setCategory('all'); resetToBrowse(); }}
             className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
-            style={{ background: category === 'all' ? 'var(--brand-gold)' : 'var(--surface-base)', color: category === 'all' ? '#0a0a0a' : 'var(--spm-text-muted)', borderColor: category === 'all' ? 'var(--brand-gold)' : 'var(--border-subtle)', borderRadius: 2 }}>
+            style={{ background: category === 'all' ? 'var(--brand-gold)' : 'var(--surface-base)', color: category === 'all' ? 'var(--surface-base)' : 'var(--spm-text-muted)', borderColor: category === 'all' ? 'var(--brand-gold)' : 'var(--border-subtle)', borderRadius: 2 }}>
             All Law
           </button>
           {categoriesPresent.map((c) => {
@@ -425,7 +447,7 @@ export default function LawBookPage() {
               <button key={c} type="button"
                 onClick={() => { setCategory(c); resetToBrowse(); }}
                 className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
-                style={{ background: active ? meta.accent : 'var(--surface-base)', color: active ? '#0a0a0a' : 'var(--spm-text-muted)', borderColor: active ? meta.accent : 'var(--border-subtle)', borderRadius: 2 }}>
+                style={{ background: active ? meta.accent : 'var(--surface-base)', color: active ? 'var(--surface-base)' : 'var(--spm-text-muted)', borderColor: active ? meta.accent : 'var(--border-subtle)', borderRadius: 2 }}>
                 {meta.short}
               </button>
             );
@@ -475,9 +497,16 @@ export default function LawBookPage() {
             <BookOpen className="w-3 h-3" /> Table of Contents
           </div>
           {tocLoading ? (
-            <div className="p-4 text-center"><Loader2 className="w-4 h-4 text-brand-gold-500 animate-spin inline" /></div>
+            /* Loading state — spinner while TOC fetches */
+            <div className="p-6 text-center"><Loader2 className="w-4 h-4 text-brand-gold-500 animate-spin inline" /></div>
           ) : Object.keys(grouped).length === 0 ? (
-            <div className="p-4 text-[10px] text-rmpg-500 text-center uppercase tracking-wider">No chapters</div>
+            /* No-data state — TOC loaded but no chapters match active filter */
+            <div className="p-6 text-center space-y-1">
+              <BookOpen className="w-5 h-5 text-rmpg-600 mx-auto" />
+              <div className="text-[10px] text-rmpg-500 uppercase tracking-wider">
+                {category !== 'all' ? `No chapters in ${getCatMeta(category).label}` : 'No chapters available'}
+              </div>
+            </div>
           ) : (
             categoriesPresent.filter((c) => grouped[c]).map((cat) => {
               const rows = grouped[cat];
@@ -565,26 +594,39 @@ export default function LawBookPage() {
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              {categoriesPresent.map((c) => {
-                const meta = getCatMeta(c); const Icon = meta.icon;
-                const count = toc.filter((r) => r.category === c).reduce((a, r) => a + r.section_count, 0);
-                return (
-                  <button key={c} type="button" onClick={() => { setCategory(c); setOpenGroups((g) => ({ ...g, [c]: true })); }}
-                    className="text-left border border-rmpg-800 bg-surface-base hover:bg-surface-sunken p-3 transition-colors"
-                    style={{ borderRadius: 2, borderTop: `2px solid ${meta.accent}` }}>
-                    <Icon className="w-5 h-5 mb-2" style={{ color: meta.accent }} />
-                    <div className="text-[12px] font-bold text-rmpg-100">{meta.label}</div>
-                    <div className="text-[10px] text-rmpg-500 leading-snug mt-1">{meta.blurb}</div>
-                    <div className="text-[10px] font-mono mt-2" style={{ color: meta.accent }}>{count.toLocaleString()} sections →</div>
-                  </button>
-                );
-              })}
-              <div className="sm:col-span-2 xl:col-span-3 text-[10px] text-rmpg-600 leading-relaxed pt-1">
-                <FileText className="w-3 h-3 inline mr-1 -mt-0.5" />
-                Verbatim text scraped from le.utah.gov &amp; adminrules.utah.gov; each section links back to the official source and carries a plain-language summary. Use the severity chips to list all offenses of a class, open a chapter to read it in full, or print any section or chapter to PDF.
-              </div>
-              </div>
+              {tocLoading ? (
+                /* Loading skeleton for category grid — distinct from no-data */
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="border border-rmpg-800 bg-surface-base p-3 animate-pulse" style={{ borderRadius: 2 }}>
+                      <div className="w-5 h-5 bg-rmpg-800 mb-2" style={{ borderRadius: 2 }} />
+                      <div className="h-3 bg-rmpg-800 w-3/4 mb-1" style={{ borderRadius: 2 }} />
+                      <div className="h-2 bg-rmpg-900 w-full" style={{ borderRadius: 2 }} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {categoriesPresent.map((c) => {
+                  const meta = getCatMeta(c); const Icon = meta.icon;
+                  const count = toc.filter((r) => r.category === c).reduce((a, r) => a + r.section_count, 0);
+                  return (
+                    <button key={c} type="button" onClick={() => { setCategory(c); setOpenGroups((g) => ({ ...g, [c]: true })); }}
+                      className="text-left border border-rmpg-800 bg-surface-base hover:bg-surface-sunken p-3 transition-colors"
+                      style={{ borderRadius: 2, borderTop: `2px solid ${meta.accent}` }}>
+                      <Icon className="w-5 h-5 mb-2" style={{ color: meta.accent }} />
+                      <div className="text-[12px] font-bold text-rmpg-100">{meta.label}</div>
+                      <div className="text-[10px] text-rmpg-500 leading-snug mt-1">{meta.blurb}</div>
+                      <div className="text-[10px] font-mono mt-2" style={{ color: meta.accent }}>{count.toLocaleString()} sections →</div>
+                    </button>
+                  );
+                })}
+                <div className="sm:col-span-2 xl:col-span-3 text-[10px] text-rmpg-600 leading-relaxed pt-1">
+                  <FileText className="w-3 h-3 inline mr-1 -mt-0.5" />
+                  Verbatim text scraped from le.utah.gov &amp; adminrules.utah.gov; each section links back to the official source and carries a plain-language summary. Use the severity chips to list all offenses of a class, open a chapter to read it in full, or print any section or chapter to PDF.
+                </div>
+                </div>
+              )}
             </div>
           ) : sectionsLoading ? (
             /* Loading: chapter requested, waiting for sections */

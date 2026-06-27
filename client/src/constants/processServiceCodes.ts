@@ -21,8 +21,9 @@
 // `.10` ...) so individual codes can be added without disturbing
 // downstream codes either. The library is the single source of
 // truth — the wizard picker, the disposition-to-result mapper,
-// and the PDF renderer all import from here. Mirror any addition
-// in `src/utils/processServiceCodes.ts` (worker copy).
+// and the PDF renderer all import from here. Source of truth is
+// this client copy; mirror any addition in
+// `src/utils/processServiceCodes.ts` (worker copy — synced from here).
 // ============================================================
 
 /** Legacy `serve_attempts.result` CHECK enum — kept for back-compat. */

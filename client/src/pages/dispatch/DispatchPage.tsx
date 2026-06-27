@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench,
 } from 'lucide-react';
 import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
@@ -32,7 +32,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../../utils/caseNumbers';
-import { formatPhoneInput } from '../../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -241,7 +241,7 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 
 function formatServiceType(val: string | undefined | null): string {
   if (!val) return '';
-  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return SERVICE_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 function formatCallDuration(ms: number): string {
@@ -258,7 +258,7 @@ function formatCallDuration(ms: number): string {
 
 function formatDocumentType(val: string | undefined | null): string {
   if (!val) return '';
-  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return DOCUMENT_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 export default function DispatchPage() {
@@ -342,6 +342,7 @@ export default function DispatchPage() {
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'queue' as FilterTab, ['queue', 'pending', 'active', 'hold', 'serve', 'cleared', 'archived'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
+  const [reportingIssue, setReportingIssue] = useState(false);
   // Status-bar clock is rendered via the self-ticking <LiveClock/> component
   // (bottom bar, below). It owns its own 1s interval so the per-second tick no
   // longer re-renders this entire 6,300-line page — only the clock span.
@@ -1464,6 +1465,14 @@ export default function DispatchPage() {
 
   // PSO incident types — must be declared before filteredCalls which references it
   const PSO_INCIDENT_TYPES = ['pso_client_request'];
+
+  // When the admin-config disposition list is empty (production default),
+  // derive the correct fallback codes from the incident type so PSO calls
+  // see PS codes in the clear prompt and general calls see general codes.
+  const effectiveDispositionCodes = useMemo(() => {
+    if (dispositionCodes.length > 0) return dispositionCodes;
+    return dispositionGroupsForIncident(selectedCall?.incident_type).flatMap((g) => g.codes);
+  }, [dispositionCodes, selectedCall?.incident_type]);
 
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
@@ -2594,7 +2603,7 @@ export default function DispatchPage() {
                 <div className="px-2">
                   <DispositionPrompt
                     callNumber={selectedCall.call_number}
-                    dispositionCodes={dispositionCodes}
+                    dispositionCodes={effectiveDispositionCodes}
                     onConfirm={handleConfirmClear}
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
@@ -4071,6 +4080,36 @@ export default function DispatchPage() {
                         title="Send this process service to the serve queue"
                       >
                         <Briefcase style={{ width: 10, height: 10 }} /> {sendingToServe ? 'Sending...' : 'Serve Queue'}
+                      </button>
+                    )}
+                    {/* Report Issue — create a work order from this call */}
+                    {!isEditing && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)' }}
+                        disabled={reportingIssue}
+                        onClick={async () => {
+                          if (!window.confirm(`Report a mechanical issue from Call ${selectedCall.call_number}? This will create a work order.`)) return;
+                          setReportingIssue(true);
+                          try {
+                            const result = await apiFetch<{ data: { id: number } }>(`/dispatch/calls/${selectedCall.id}/report-issue`, {
+                              method: 'POST',
+                              body: JSON.stringify({
+                                summary: `Mechanical issue reported from Call #${selectedCall.call_number}`,
+                              }),
+                            });
+                            if (result) {
+                              addToast(`Work order #${result.data?.id ?? ''} created`, 'success');
+                            }
+                          } catch (err: any) {
+                            addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                          } finally {
+                            setReportingIssue(false);
+                          }
+                        }}
+                        title="Create a work order from this call"
+                      >
+                        <Wrench style={{ width: 10, height: 10 }} /> {reportingIssue ? 'Creating...' : 'Report Issue'}
                       </button>
                     )}
                     {/* Revert status button — go back one step */}
@@ -6163,7 +6202,7 @@ export default function DispatchPage() {
                 <div className="px-3">
                   <DispositionPrompt
                     callNumber={selectedCall.call_number}
-                    dispositionCodes={dispositionCodes}
+                    dispositionCodes={effectiveDispositionCodes}
                     onConfirm={handleConfirmClear}
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
