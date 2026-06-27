@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreAPI
 import CoreAuth
+import DesignSystem
 import FeatureShell
 
 struct ContentView: View {
@@ -13,7 +14,7 @@ struct ContentView: View {
 
     var body: some View {
         if let role = session.role, session.token != nil {
-            RoleAwareShell(role: role)
+            RoleAwareShell(role: role, session: session)
         } else {
             LoginView(vm: LoginViewModel(
                 authAPI: AuthAPI(client: Self.apiClient),

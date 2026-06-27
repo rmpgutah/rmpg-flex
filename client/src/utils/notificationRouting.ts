@@ -41,7 +41,8 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
   // Notification-type literals emitted by the server but not previously routed
   intel_screen: '/intel',
   watchlist_hit: '/intel',
-  case_task_nudge: '/cases',
+  case_task_nudge: '/tasks',
+  task_nudge: '/tasks',
   serve_nudge: '/serve',
   email_rule: '/communications?tab=messages',
   intel_product: '/intel/reports',
@@ -54,9 +55,9 @@ const TYPE_DEFAULT_ROUTE: Record<string, string> = {
  *  - call           → /dispatch?call_id=
  *  - warrant        → /warrants?warrant_id=
  *  - case           → /cases?case_id=
- *  - case_task      → /cases?case_id= (best-effort: cases page reads
- *                     the parent case id; the task isn't deep-linkable
- *                     on its own yet)
+ *  - case_task      → /tasks?task_id= (tasks page deep-links the row
+ *                     directly; the prior /cases?task_id= was a no-op
+ *                     because Cases only reads ?case_id=)
  *  - person         → /records?tab=persons&person_id=
  *  - vehicle        → /records?tab=vehicles&vehicle_id=
  *  - bolo           → /communications?tab=bolos&bolo_id=
@@ -82,7 +83,6 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   call: (id) => `/dispatch?call_id=${encodeURIComponent(id)}`,
   warrant: (id) => `/warrants?warrant_id=${encodeURIComponent(id)}`,
   case: (id) => `/cases?case_id=${encodeURIComponent(id)}`,
-  case_task: (id) => `/cases?task_id=${encodeURIComponent(id)}`,
   person: (id) => `/records?tab=persons&person_id=${encodeURIComponent(id)}`,
   vehicle: (id) => `/records?tab=vehicles&vehicle_id=${encodeURIComponent(id)}`,
   bolo: (id) => `/communications?tab=bolos&bolo_id=${encodeURIComponent(id)}`,
@@ -102,7 +102,17 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   // is a pre-existing-failure cleanup the Page 61 audit happened to land in.
   arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
   arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
-  // Web Research (Page 61 audit) — a saved-research notification (e.g.
+// Standalone task assignments — routes to the Tasks page deep-link
+  // (`?task_id=` highlights + opens the row in its edit modal, v1089+).
+  task: (id) => `/tasks?task_id=${encodeURIComponent(id)}`,
+  task_assignment: (id) => `/tasks?task_id=${encodeURIComponent(id)}`,
+  // case_task is a task that originated from a case. The Tasks page is
+  // the canonical task surface (it surfaces all tasks regardless of
+  // origin), so route to it rather than the Cases page which doesn't
+  // accept a ?task_id= param. The original mapping to /cases?task_id=
+  // was a no-op because the Cases page only reads ?case_id=.
+  case_task: (id) => `/tasks?task_id=${encodeURIComponent(id)}`,
+// Web Research (Page 61 audit) — a saved-research notification (e.g.
   // future "research result for monitored subject" emit) deep-links into
   // the Saved Results tab of /web-research with the row highlighted.
   research_result: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,

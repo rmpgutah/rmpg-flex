@@ -25,6 +25,11 @@ vi.mock('../../hooks/useApi', () => ({
   apiFetch: vi.fn(async () => fullDossier),
 }));
 
+// useAuth is used for role-gating (canManage) and N shortcut; stub as admin for tests.
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { role: 'admin', full_name: 'Test Admin', username: 'testadmin' } }),
+}));
+
 describe('PersonDossierPage', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
