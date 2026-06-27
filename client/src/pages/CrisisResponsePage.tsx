@@ -205,9 +205,9 @@ export default function CrisisResponsePage() {
 
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (deleteTarget) { setDeleteTarget(null); return; }
-        if (formOpen) { setFormOpen(false); setEditingRecord(null); return; }
-        if (hasSearch) { setSearch(''); return; }
+        if (deleteTarget) { e.stopPropagation(); setDeleteTarget(null); return; }
+        if (formOpen) { e.stopPropagation(); setFormOpen(false); setEditingRecord(null); return; }
+        if (hasSearch) { e.stopPropagation(); setSearch(''); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;

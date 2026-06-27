@@ -28,7 +28,11 @@ export default function AssetsPage() {
   const [search, setSearch] = useState('');
   const { addToast } = useToast();
 
-  // Role gates: destructive actions require admin or manager
+  // Role gates — mirror the server's requireRole calls:
+  //   POST/PUT inventory: admin | manager | supervisor
+  //   DELETE inventory:   admin | manager
+  const canCreate = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  const canEdit = canCreate;
   const canDelete = user?.role === 'admin' || user?.role === 'manager';
 
   // ── Deep-link: ?asset_id= pre-selects and opens the edit form ──
@@ -65,6 +69,8 @@ export default function AssetsPage() {
       setEditingRecord(target);
       setFormData({ ...target });
       setFormOpen(true);
+    } else {
+      addToast(`Asset #${pendingId} not found`, 'error');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, assets]);
@@ -134,18 +140,18 @@ export default function AssetsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deleteId, formOpen, error]);
 
-  // ── `N` shortcut: open New Asset (when no modal is open) ────────
+  // ── `N` shortcut: open New Asset (when no modal is open, canCreate) ─
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (formOpen || deleteId !== null) return;
+      if (!canCreate || formOpen || deleteId !== null) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNew(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [formOpen, deleteId, openNew]);
+  }, [canCreate, formOpen, deleteId, openNew]);
 
   // ── Filtered view (search bar) ───────────────────────────────────
   const q = search.trim().toLowerCase();
@@ -175,13 +181,15 @@ export default function AssetsPage() {
       width: '80px',
       render: (row: any) => (
         <div className="flex gap-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); openEdit(row); }}
-            className="text-rmpg-400 hover:text-rmpg-100"
-            aria-label="Edit asset"
-          >
-            <Pencil size={12} />
-          </button>
+          {canEdit && (
+            <button
+              onClick={(e) => { e.stopPropagation(); openEdit(row); }}
+              className="text-rmpg-400 hover:text-rmpg-100"
+              aria-label="Edit asset"
+            >
+              <Pencil size={12} />
+            </button>
+          )}
           {canDelete && (
             <button
               onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }}
@@ -222,14 +230,16 @@ export default function AssetsPage() {
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search assets"
           />
-          <button
-            onClick={openNew}
-            className="toolbar-btn flex items-center gap-1.5"
-            style={{ height: 28, padding: '0 10px' }}
-            title="New Asset (N)"
-          >
-            <Plus size={13} /> New Asset
-          </button>
+          {canCreate && (
+            <button
+              onClick={openNew}
+              className="toolbar-btn flex items-center gap-1.5"
+              style={{ height: 28, padding: '0 10px' }}
+              title="New Asset (N)"
+            >
+              <Plus size={13} /> New Asset
+            </button>
+          )}
         </div>
       </PanelTitleBar>
 
@@ -250,10 +260,11 @@ export default function AssetsPage() {
             : 'Create the first asset record using the New Asset button above'
         }
         emptyIcon={Package}
-        onRowClick={(row) => openEdit(row)}
+        onRowClick={canEdit ? (row) => openEdit(row) : undefined}
         rowContextMenu={(row) => [
-          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
-          m.separator(),
+          ...(canEdit
+            ? [m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }), m.separator()]
+            : []),
           m.copyId((row as any).id),
           ...(canDelete
             ? [m.action('Delete', () => setDeleteId((row as any).id), { danger: true, icon: <Trash2 size={12} /> })]
