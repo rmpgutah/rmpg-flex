@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -277,11 +277,21 @@ export default function AlarmManagementPage() {
   const falseRate = stats.totalAlarms > 0 ? Math.round((stats.falseAlarms / stats.totalAlarms) * 100) : 0;
 
   // -- Empty-state helpers --
+  // loadState === 'loading' is handled by DataTable's loading spinner prop.
+  // The emptyMessage/emptyDescription pair covers error vs no-data vs no-results.
   const emptyMessage =
-    loadState === 'loading' ? 'Loading alarm accounts...' :
-    loadState === 'error'   ? 'Failed to load alarm accounts' :
-    search.trim()           ? `No accounts match "${search}"` :
-                              'No alarm accounts on file';
+    loadState === 'error' ? 'Failed to load alarm accounts' :
+    search.trim()         ? `No accounts match "${search}"` :
+                            'No alarm accounts on file';
+
+  const emptyDescription =
+    loadState === 'error'
+      ? 'Check your connection and refresh the page.'
+      : search.trim()
+        ? 'Try a different search term.'
+        : canWrite
+          ? 'Use "New Account" to register the first alarm account.'
+          : undefined;
 
   return (
     <div className="p-4 space-y-4">
@@ -319,7 +329,9 @@ export default function AlarmManagementPage() {
       <DataTable
         columns={columns}
         data={filtered}
+        loading={loadState === 'loading'}
         emptyMessage={emptyMessage}
+        emptyDescription={emptyDescription}
         onRowClick={canWrite ? openEdit : undefined}
         enableContextMenu
         rowContextMenu={(row: AlarmAccount): ContextMenuItem[] => [

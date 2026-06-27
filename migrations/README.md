@@ -43,7 +43,7 @@ New migrations (`0072+`) you author **do** flow through wrangler normally on bot
 
 Wrangler applies files in **lexicographic order** by filename, tracked in the `d1_migrations` table by exact filename. The four-digit prefix is conventional, not enforced — but our convention is to use it strictly.
 
-Current high-water: **`0071_units_emergency_overlay.sql`**. Next free integer: `0072`.
+Current high-water: **`0155_case_management_expansion.sql`** / **`0155_persons_ext_dl_fields.sql`**. Next free integer: `0156`.
 
 ## Known irregularities (history)
 
@@ -61,15 +61,35 @@ These exist for historical reasons and should NOT be "fixed" by renumbering — 
 | `0064` | `0064_incident_subresource_columns.sql`, `0064_warrants_served_location.sql` | Two unrelated changes both numbered 0064; applied independently by full filename. |
 | `0067` | `0067_forensic_activity_log_exhibit_id.sql`, `0067_personnel_fitness_commendations.sql`, `0067_seed_multi_source_scrapers.sql` | Three unrelated changes sharing 0067; applied independently by full filename. |
 | `0070` | `0070_admin_departments_announcements_notif_rules.sql`, `0070_unincorporated_zone_sector_fixes.sql` | Two unrelated changes sharing 0070; applied independently by full filename. |
+| `0075` | Two files at 0075 | Two unrelated changes both numbered 0075; applied independently. |
+| `0084` | Two files at 0084 | Same pattern. |
+| `0085` | Two files at 0085 | Same pattern. |
+| `0102` | Two files at 0102 | Same pattern. |
+| `0104` | Two files at 0104 | Same pattern. |
+| `0107` | Two files at 0107 | Same pattern. |
+| `0108` | Two files at 0108 | Same pattern. |
+| `0110` | Two files at 0110 | Same pattern. |
+| `0118` | Two files at 0118 | Same pattern. |
+| `0119` | Two files at 0119 | Same pattern. |
+| `0121` | Two files at 0121 | Same pattern. |
+| `0122` | Two files at 0122 | Same pattern. |
+| `0125` | Two files at 0125 | Same pattern. |
+| `0127` | Two files at 0127 | Same pattern. |
+| `0142` | Two files at 0142 | Same pattern. |
+| `0146` | Two files at 0146 | Same pattern. |
+| `0150` | Two files at 0150 | Same pattern. |
+| `0152` | Two files at 0152 | Same pattern. |
+| `0153` | Two files at 0153 | Same pattern. |
+| `0155` | `0155_case_management_expansion.sql`, `0155_persons_ext_dl_fields.sql` | Two unrelated changes sharing 0155; applied independently. |
 
 ## Adding a new migration
 
-1. Use the next free integer (currently `0072`).
+1. Use the next free integer (currently `0156`).
 2. Single file per migration, snake_case description: `0039_describe_change.sql`.
 3. Write all DDL idempotently — `CREATE TABLE IF NOT EXISTS`, `INSERT OR IGNORE`. D1 doesn't support `IF NOT EXISTS` on `ADD COLUMN` — either accept the failure on re-apply or check first.
 4. **Watch the column cap.** `calls_for_service` (100 cols) and `persons` (94 cols) are at or near D1's 100-column SELECT cap. Any `ALTER TABLE` against them will be rejected by CI (`.github/workflows/column-cap-check.yml`). New columns go to `<table>_ext` overflow tables — see `calls_for_service_ext` for the established pattern.
 5. Run locally first: `npm run migrate:local`.
-6. On merge to main, `deploy.yml` runs `wrangler d1 migrations apply rmpg-flex --remote`. The step now blocks deploy on failure (no more `continue-on-error: true`). If your migration fails on remote, fix it before re-merging.
+6. On merge to main, `deploy.yml` runs `wrangler d1 migrations apply rmpg-flex --remote`. The step has `continue-on-error: true` to tolerate bare `ALTER TABLE ADD COLUMN` re-runs (D1 lacks `IF NOT EXISTS` for ADD COLUMN). **Do not rely on the deploy log alone** — always verify the migration landed by querying `pragma_table_info('<table>')` on live D1 after deploy.
 
 ## Manual schema patches
 
@@ -103,5 +123,24 @@ The tracker has since been brought fully honest in stages — the latest pass (2
 `continue-on-error: true` was **restored** on the apply step on 2026-05-31 (it had briefly been removed) and is kept deliberately — see the comment in `deploy.yml`. It is now belt-and-suspenders rather than a mask: with the tracker honest, the step has nothing to apply, but the flag still guarantees a stray seed/ALTER conflict can never gate the Worker + Pages deploys again.
 
 **Lesson for new migrations:** a bare `ALTER TABLE … ADD COLUMN` is *not* idempotent on D1, so once its column lands on live (or via a `CREATE TABLE` on a fresh DB) the file dup-fails on every re-apply and — because wrangler aborts a migration file at the first failing statement and never records it — re-fails forever, blocking everything numbered after it. `0057_fleet_schema_alignment.sql` was reduced to a comment-only no-op for exactly this reason (its 15 ALTERs duplicated columns already declared in `0052`/`0053`'s `CREATE TABLE`s). If you must add a column, prefer putting it in the table's `CREATE` (fresh) and applying it directly to live + recording the migration (live), per the "Manual schema patches" section above.
+
+## Drift detection
+
+Run **[`scripts/check-migration-drift.sh`](../scripts/check-migration-drift.sh)** to verify that every `CREATE TABLE` and `ALTER TABLE` from the migration files actually exists on the live schema:
+
+```bash
+# Dry-run (just reports expected schema without querying D1):
+scripts/check-migration-drift.sh
+
+# Local D1 check:
+DB_MODE=local scripts/check-migration-drift.sh
+
+# Remote (live) D1 check:
+DB_MODE=remote CLOUDFLARE_ACCOUNT_ID=<acct> scripts/check-migration-drift.sh
+```
+
+The script scans all `migrations/*.sql`, extracts every `CREATE TABLE` and `ALTER TABLE ADD COLUMN`, then queries `sqlite_master` / `pragma_table_info` on the target D1 to detect drift. Exit code 0 = clean; exit code 1 = drift found.
+
+CI runs this against remote D1 on every deploy to catch the `continue-on-error` trap before it drifts.
 
 If you're reading older PR descriptions or memory that references the dirty-schema state, it's historical context — the tracker is honest again.

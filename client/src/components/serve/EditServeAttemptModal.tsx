@@ -11,9 +11,10 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Loader2, AlertTriangle } from 'lucide-react';
+import { X, Save, Loader2, AlertTriangle, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeAttempt } from '../../types';
+import { toDisplayLabel } from '../../utils/formatters';
 import {
   PSO_CATEGORIES,
   codesInCategory,
@@ -28,6 +29,8 @@ interface EditServeAttemptModalProps {
   attempt: ServeAttempt;
   /** Called after a successful save so the parent can refetch. */
   onSaved: () => void;
+  /** Called when the user confirms deletion of this attempt. Parent handles the API call + toast. */
+  onDelete?: (queueId: number, attempt: ServeAttempt) => void;
 }
 
 type AttemptTypeOption = ServeAttempt['attempt_type'];
@@ -59,12 +62,14 @@ export default function EditServeAttemptModal({
   queueId,
   attempt,
   onSaved,
+  onDelete,
 }: EditServeAttemptModalProps) {
   const [attemptAt, setAttemptAt] = useState<string>('');
   const [attemptType, setAttemptType] = useState<AttemptTypeOption>('failed');
   const [dispositionCode, setDispositionCode] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Reset form whenever the modal opens against a (possibly different) attempt.
@@ -169,7 +174,7 @@ export default function EditServeAttemptModal({
               onChange={(e) => setAttemptType(e.target.value as AttemptTypeOption)}
             >
               {ATTEMPT_TYPES.map((t) => (
-                <option key={t} value={t}>{t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+                <option key={t} value={t}>{toDisplayLabel(t)}</option>
               ))}
             </select>
           </div>
@@ -227,7 +232,42 @@ export default function EditServeAttemptModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-rmpg-700/40">
+        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-rmpg-700/40">
+          {/* Delete button — left side */}
+          {onDelete && (
+            <div className="mr-auto">
+              {confirmingDelete ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-red-400">Remove this attempt?</span>
+                  <button
+                    type="button"
+                    onClick={() => { setConfirmingDelete(false); onDelete(queueId, attempt); }}
+                    className="text-[10px] font-bold text-red-300 bg-red-900/40 hover:bg-red-900/60 border border-red-700/50 px-2 py-1 rounded-[2px]"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    className="text-[10px] text-rmpg-400 hover:text-rmpg-200 px-2 py-1"
+                  >
+                    Keep
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1 text-[10px] text-red-400 hover:text-red-300 bg-red-900/10 hover:bg-red-900/30 border border-red-800/30 hover:border-red-700/50 px-2 py-1 rounded-[2px] disabled:opacity-40"
+                  title="Delete this attempt"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Delete
+                </button>
+              )}
+            </div>
+          )}
           <button
             type="button"
             onClick={onClose}
