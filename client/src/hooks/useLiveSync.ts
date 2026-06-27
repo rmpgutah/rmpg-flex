@@ -24,7 +24,8 @@ const DEBOUNCE_MS = 500;
  * broadcast from any connected device.
  *
  * @param modules - Module name(s) to listen for: 'records', 'personnel', 'fleet',
- *                  'incidents', 'citations', 'patrol', 'admin', 'dispatch'
+ *                  'incidents', 'citations', 'patrol', 'admin', 'dispatch',
+ *                  'process-server'
  * @param onRefresh - Function to call when data changes (e.g., reload data from API)
  * @param options - Optional configuration
  */
@@ -86,6 +87,13 @@ export function useLiveSync(
     }, delay);
   }, [moduleList]);
 
+  // ⚠️ NOTE: The 'process-server' module is NOT broadcast over WebSocket by the
+  // server. Instead, ServePage/MyRunTab rely on a periodic silent poll (via
+  // fetchData/refreshJobs) and on cross-tab CustomEvent 'serve:statusChanged'
+  // for real-time-ish updates. The WS subscription for 'process-server' below
+  // will only fire if the server ever emits a matching broadcast; until then,
+  // consumers should NOT remove their polling fallback.
+  //
   // The live Worker broadcasts dispatch mutations under the 'dispatch_update'
   // message type (action discriminator), NOT the 'data_changed' shape this hook
   // was written for. So bridge the real channel for the 'dispatch' module only.
