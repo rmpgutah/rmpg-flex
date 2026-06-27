@@ -44,8 +44,10 @@ export default function DailyActivityReportsPage() {
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // canApprove: admin / manager / supervisor may approve or return submitted DARs.
+  // canManage : admin-only unrestricted access (force-submit any status, override gates).
+  const canApprove = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
+  const canManage = user?.role === 'admin';
 
   // searchParams must be declared before filter state so the lazy
   // initialisers for ?officer_id= and ?date= can reference it.
@@ -459,12 +461,12 @@ export default function DailyActivityReportsPage() {
               <button type="button" onClick={() => generateDarPdf(selected)} className="toolbar-btn print:hidden" title="Export client/court-ready PDF">
                 <FileText style={{ width: 11, height: 11 }} /> PDF
               </button>
-              {(selected.status === 'draft' || isGodMode) && (
+              {(selected.status === 'draft' || canManage) && (
                 <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <Send style={{ width: 11, height: 11 }} /> Submit
                 </button>
               )}
-              {(isGodMode || (selected.status === 'submitted' && isAdmin)) && (
+              {(canManage || (selected.status === 'submitted' && canApprove)) && (
                 <>
                   <button type="button" onClick={handleApprove} className="toolbar-btn text-green-400 hover:text-green-300">
                     <CheckCircle style={{ width: 11, height: 11 }} /> Approve

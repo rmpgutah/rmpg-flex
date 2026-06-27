@@ -17,7 +17,8 @@ import {
 import { openEvidenceItemPdf } from '../utils/evidenceItemPdf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
-import StatusBadge from '../components/StatusBadge';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { toDisplayLabel } from '../utils/formatters';
 import VideoPlayer from '../components/VideoPlayer';
 import IncidentPickerInline from '../components/IncidentPickerInline';
 import { apiFetch } from '../hooks/useApi';
@@ -79,8 +80,14 @@ export default function EvidencePropertyPage() {
   // Approve/deny release requires supervisor-tier authority (same roles that can
   // approve on the backend: admin / manager / supervisor).
   const canApproveRelease = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  // Dispose / destroy / transfer to agency requires admin or manager authority.
+  const canDispose = user?.role === 'admin' || user?.role === 'manager';
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+
+  // useSearchParams must be declared before any useState initialiser that
+  // reads from it (searchQuery / filterStatus seed from ?case_id= / ?status=).
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Data
   const [items, setItems] = useState<any[]>([]);
@@ -172,6 +179,11 @@ export default function EvidencePropertyPage() {
   const [dispositionMethod, setDispositionMethod] = useState('');
   const [dispositionNotes, setDispositionNotes] = useState('');
   const [dispositionSubmitting, setDispositionSubmitting] = useState(false);
+
+  // ConfirmDialog — destructive actions require explicit confirmation
+  const [confirmDispose, setConfirmDispose] = useState(false);
+  const [confirmApproveRelease, setConfirmApproveRelease] = useState(false);
+  const [pendingReleaseAction, setPendingReleaseAction] = useState<'approve' | 'deny' | null>(null);
 
   // ─── Fetchers ──────────────────────────────────────
   const fetchItems = useCallback(async (opts?: { silent?: boolean }) => {
@@ -275,8 +287,12 @@ export default function EvidencePropertyPage() {
     finally { setCheckoutSubmitting(false); }
   };
 
-  const handleDisposition = async () => {
+  // Destructive disposition types (destroy / forfeit) require ConfirmDialog.
+  const DESTRUCTIVE_DISPOSITIONS = new Set(['destroy', 'forfeit']);
+
+  const handleDispositionConfirmed = async () => {
     if (!selected || !dispositionType) return;
+    setConfirmDispose(false);
     setDispositionSubmitting(true);
     try {
       await apiFetch(`/records/evidence/${selected.id}/disposition`, {
@@ -290,6 +306,14 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true }); fetchStats();
     } catch (err: any) { addToast(err?.message || 'Disposition failed', 'error'); }
     finally { setDispositionSubmitting(false); }
+  };
+
+  const handleDispositionSubmit = () => {
+    if (DESTRUCTIVE_DISPOSITIONS.has(dispositionType)) {
+      setConfirmDispose(true);
+    } else {
+      handleDispositionConfirmed();
+    }
   };
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
@@ -377,8 +401,16 @@ export default function EvidencePropertyPage() {
     finally { setReleaseSubmitting(false); }
   };
 
-  const handleApproveRelease = async (action: 'approve' | 'deny') => {
-    if (!selected) return;
+  const requestApproveRelease = (action: 'approve' | 'deny') => {
+    setPendingReleaseAction(action);
+    setConfirmApproveRelease(true);
+  };
+
+  const handleApproveRelease = async () => {
+    if (!selected || !pendingReleaseAction) return;
+    const action = pendingReleaseAction;
+    setConfirmApproveRelease(false);
+    setPendingReleaseAction(null);
     setReleaseSubmitting(true);
     try {
       await apiFetch(`/records/evidence/${selected.id}/approve-release`, {
@@ -459,8 +491,11 @@ export default function EvidencePropertyPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // Close-smallest-open-first cascade. Each modal returns after
-        // closing so a single Esc doesn't blast multiple open modals.
+        e.stopPropagation();
+        // Close-smallest-open-first cascade. Each branch returns after
+        // closing so a single Esc doesn't blast through multiple open modals.
+        if (confirmDispose) { setConfirmDispose(false); return; }
+        if (confirmApproveRelease) { setConfirmApproveRelease(false); setPendingReleaseAction(null); return; }
         if (releaseOpen) { setReleaseOpen(false); return; }
         if (dispositionOpen) { setDispositionOpen(false); return; }
         if (newEvidenceOpen) { setNewEvidenceOpen(false); return; }
@@ -476,13 +511,14 @@ export default function EvidencePropertyPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [releaseOpen, dispositionOpen, newEvidenceOpen, chainModalOpen]);
+  }, [confirmDispose, confirmApproveRelease, releaseOpen, dispositionOpen, newEvidenceOpen, chainModalOpen]);
 
   // ── /evidence?evidence_id=<id> URL deep-link auto-select ──
   // Tenth consecutive page-pass implementing the cross-page contract. Court
   // case + incident references → "view this evidence" land directly on the
   // item. One-shot per page load; param is stripped after applying.
-  const [searchParams, setSearchParams] = useSearchParams();
+  // (searchParams / setSearchParams are declared earlier so they can seed
+  //  the ?case_id= / ?status= filter initialisers.)
   // Accept both ?evidence_id= (canonical) and ?id= (QuickSearchCard mobile link).
   const pendingEvidenceIdRef = useRef<string | null>(
     searchParams.get('evidence_id') || searchParams.get('id'),
@@ -681,7 +717,7 @@ export default function EvidencePropertyPage() {
                 aria-selected={selected?.id === item.id}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono font-bold text-rmpg-100 truncate px-1.5 py-0.5" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,255,255,0.06) 2px, rgba(255,255,255,0.06) 4px)', letterSpacing: '0.08em' }}>
+                  <span className="text-[11px] font-mono font-bold text-rmpg-100 truncate px-1.5 py-0.5 evidence-barcode-stripe" style={{ letterSpacing: '0.08em' }}>
                     {item.evidence_number || `EV-${item.id}`}
                   </span>
                   <span className={`text-[9px] px-1.5 py-0.5 border font-semibold whitespace-nowrap ${STATUS_COLORS[item.status] || STATUS_COLORS.in_storage}`}>
@@ -872,11 +908,11 @@ export default function EvidencePropertyPage() {
                         {/* Approve/Deny gate: supervisor/manager/admin only — mirrors backend PUT approve-release role check. */}
                         {canApproveRelease ? (
                           <div className="flex gap-1">
-                            <button type="button" onClick={() => handleApproveRelease('approve')} disabled={releaseSubmitting}
+                            <button type="button" onClick={() => requestApproveRelease('approve')} disabled={releaseSubmitting}
                               className="toolbar-btn text-green-400 border-green-700/50 hover:bg-green-900/30">
                               <CheckCircle style={{ width: 11, height: 11 }} /> Approve Release
                             </button>
-                            <button type="button" onClick={() => handleApproveRelease('deny')} disabled={releaseSubmitting}
+                            <button type="button" onClick={() => requestApproveRelease('deny')} disabled={releaseSubmitting}
                               className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30">
                               <X style={{ width: 11, height: 11 }} /> Deny
                             </button>
@@ -1042,9 +1078,10 @@ export default function EvidencePropertyPage() {
                           className="input-standard w-full text-xs">
                           <option value="pending">Pending</option>
                           <option value="return_to_owner">Return to Owner</option>
-                          <option value="destroy">Destroy</option>
+                          {/* Destroy and forfeit are irreversible — admin/manager only */}
+                          {canDispose && <option value="destroy">Destroy</option>}
                           <option value="auction">Auction</option>
-                          <option value="forfeit">Forfeit</option>
+                          {canDispose && <option value="forfeit">Forfeit</option>}
                           <option value="retain">Retain</option>
                           <option value="transfer_to_agency">Transfer to Agency</option>
                         </select>
@@ -1052,11 +1089,14 @@ export default function EvidencePropertyPage() {
                           className="input-standard w-full text-xs" placeholder="Method details..." />
                         <RichTextArea value={dispositionNotes} onChange={e => setDispositionNotes(e.target.value)}
                           className="input-standard w-full text-xs h-16 resize-none" placeholder="Disposition notes..." />
-                        <button type="button" onClick={handleDisposition} disabled={dispositionSubmitting}
+                        <button type="button" onClick={handleDispositionSubmit} disabled={dispositionSubmitting}
                           className="btn-warning w-full flex items-center justify-center gap-2 text-xs">
                           {dispositionSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 style={{ width: 12, height: 12 }} />}
                           Record Disposition
                         </button>
+                        {!canDispose && (
+                          <p className="text-[9px] text-rmpg-500">Destroy and forfeit require admin or manager authority.</p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1125,8 +1165,8 @@ export default function EvidencePropertyPage() {
                           <div className="text-[10px] text-rmpg-400 uppercase font-bold mb-1">Linked Cases ({linkedRecords.cases.length})</div>
                           {linkedRecords.cases.map((c: any) => (
                             <div key={c.id} className="panel-beveled p-2 mb-1">
-                              <div className="text-xs text-rmpg-100">{c.case_number} — {(c.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
-                              <div className="text-[10px] text-rmpg-500">Status: {(c.status || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</div>
+                              <div className="text-xs text-rmpg-100">{c.case_number} — {toDisplayLabel(c.case_type || '')}</div>
+                              <div className="text-[10px] text-rmpg-500">Status: {toDisplayLabel(c.status || '')}</div>
                             </div>
                           ))}
                         </div>
@@ -1137,7 +1177,7 @@ export default function EvidencePropertyPage() {
                           {linkedRecords.forensic_cases.map((fc: any) => (
                             <div key={fc.id} className="panel-beveled p-2 mb-1">
                               <div className="text-xs text-rmpg-100">{fc.lab_number} — {fc.title}</div>
-                              <div className="text-[10px] text-rmpg-500">{(fc.case_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} | {(fc.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</div>
+                              <div className="text-[10px] text-rmpg-500">{toDisplayLabel(fc.case_type || '')} | {toDisplayLabel(fc.status || '')}</div>
                             </div>
                           ))}
                         </div>
@@ -1446,6 +1486,43 @@ export default function EvidencePropertyPage() {
         video={playingVideo}
         apiBase={window.location.origin + '/api'}
         getAuthHeaders={getAuthHeaders}
+      />
+
+      {/* ── Confirm: destructive disposition (destroy / forfeit) ── */}
+      <ConfirmDialog
+        isOpen={confirmDispose}
+        onClose={() => setConfirmDispose(false)}
+        onConfirm={handleDispositionConfirmed}
+        title="Confirm Disposition"
+        message={`Record "${dispositionType.replace(/_/g, ' ')}" disposition? This is an irreversible action and will be logged in the chain of custody.`}
+        details={selected && (
+          <span>{selected.evidence_number || `EV-${selected.id}`} — {selected.description}</span>
+        )}
+        confirmLabel="Record Disposition"
+        confirmVariant="danger"
+        isLoading={dispositionSubmitting}
+      />
+
+      {/* ── Confirm: approve / deny release ── */}
+      <ConfirmDialog
+        isOpen={confirmApproveRelease}
+        onClose={() => { setConfirmApproveRelease(false); setPendingReleaseAction(null); }}
+        onConfirm={handleApproveRelease}
+        title={pendingReleaseAction === 'approve' ? 'Approve Release' : 'Deny Release'}
+        message={
+          pendingReleaseAction === 'approve'
+            ? 'Approve this release request? The item will be marked as released and the chain of custody updated.'
+            : 'Deny this release request? The requesting officer will need to resubmit.'
+        }
+        details={selected && (
+          <>
+            <span>{selected.evidence_number || `EV-${selected.id}`} — {selected.description}</span>
+            {selected.release_to && <span>Release to: {selected.release_to}</span>}
+          </>
+        )}
+        confirmLabel={pendingReleaseAction === 'approve' ? 'Approve' : 'Deny'}
+        confirmVariant={pendingReleaseAction === 'approve' ? 'warning' : 'danger'}
+        isLoading={releaseSubmitting}
       />
     </div>
   );

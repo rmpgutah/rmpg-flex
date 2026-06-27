@@ -107,8 +107,12 @@ ct.get('/events', async (c) => {
 
   const where: string[] = [];
   const args: any[] = [];
+  // case_id= lets the CourtTrackerPage ?case_id= deep-link filter to
+  // events belonging to a specific case without a separate endpoint.
+  const caseId = c.req.query('case_id');
   if (status) { where.push('status = ?'); args.push(status); }
   if (type) { where.push('event_type = ?'); args.push(type); }
+  if (caseId) { where.push('case_id = ?'); args.push(parseInt(caseId, 10)); }
   if (from) { where.push('event_date >= ?'); args.push(from); }
   if (to) { where.push('event_date <= ?'); args.push(to); }
   if (search) {
@@ -134,7 +138,10 @@ ct.get('/events/upcoming', async (c) => {
                WHERE event_date >= ? AND event_date <= date(?, '+' || ? || ' days')
                  AND status NOT IN ('cancelled','completed','no_show')
                ORDER BY event_date ASC, event_time ASC LIMIT 500`;
-  return c.json(await query(getDb(c.env), sql, today, today, days));
+  const rows = await query(getDb(c.env), sql, today, today, days);
+  // Wrap in { data } so the client can use the same apiFetch<{ data: CourtEvent[] }>
+  // contract as every other list endpoint on this page.
+  return c.json({ data: rows });
 });
 
 // ── GET /calendar ───────────────────────────────────────────
@@ -153,7 +160,9 @@ ct.get('/calendar', async (c) => {
   // Bucket by date for calendar UI.
   const byDate: Record<string, any[]> = {};
   for (const r of rows) (byDate[r.event_date] ??= []).push(r);
-  return c.json({ from, to, events: rows, by_date: byDate });
+  // `data` alias for the CourtTrackerPage client which reads res.data as a
+  // Record<string, any[]> keyed by date string.
+  return c.json({ from, to, events: rows, by_date: byDate, data: byDate });
 });
 
 // ── GET /statistics ─────────────────────────────────────────
@@ -193,7 +202,8 @@ ct.get('/statistics', async (c) => {
         avg_fine: null as number | null,
       },
       byOutcome,
-      byType: byType.map((t) => ({ type: t.event_type, count: t.n })),
+      // event_type key matches what CourtTrackerPage reads: r.event_type / r.count
+      byType: byType.map((t) => ({ event_type: t.event_type, count: t.n })),
     },
   });
 });
@@ -292,7 +302,8 @@ ct.get('/events/:id', async (c) => {
   row.documents = parseJsonCol(row.documents, []);
   row.witnesses = parseJsonCol(row.witnesses, []);
   row.court_fees = parseJsonCol(row.court_fees, {});
-  return c.json(row);
+  // Wrap in { data } to match the client's apiFetch<{ data: CourtEvent }> contract.
+  return c.json({ data: row });
 });
 
 // ── GET /events/:id/conflicts ───────────────────────────────
@@ -321,7 +332,8 @@ ct.get('/events/:id/conflicts', async (c) => {
       conflicts.push({ event_id: o.id, event_number: o.event_number, event_time: o.event_time, overlap_officers: overlap });
     }
   }
-  return c.json({ event_id: id, date: ev.event_date, conflicts, total: conflicts.length });
+  // `data` matches CourtTrackerPage's apiFetch<{ data: any[] }> contract.
+  return c.json({ event_id: id, date: ev.event_date, conflicts, total: conflicts.length, data: conflicts });
 });
 
 // ── GET /events/:id/witnesses ───────────────────────────────

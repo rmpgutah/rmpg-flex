@@ -7,6 +7,7 @@ import { NavTripProvider } from './context/NavTripContext';
 import { ToastProvider } from './components/ToastProvider';
 import MDTBridge from './components/MDTBridge';
 import { ContextMenuProvider } from './context/ContextMenuContext';
+import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
@@ -164,6 +165,8 @@ const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
 const RiskPage = lazyRetry(() => import('./pages/RiskPage'));
 const InteragencyPage = lazyRetry(() => import('./pages/InteragencyPage'));
 const GangIntelPage = lazyRetry(() => import('./pages/GangIntelPage'));
+const PersonIntelPage = lazyRetry(() => import('./pages/PersonIntelPage'));
+const PersonIntelDossierPage = lazyRetry(() => import('./pages/PersonIntelDossierPage'));
 const SpecialOpsPage = lazyRetry(() => import('./pages/SpecialOpsPage'));
 const CrisisResponsePage = lazyRetry(() => import('./pages/CrisisResponsePage'));
 const VictimServicesPage = lazyRetry(() => import('./pages/VictimServicesPage'));
@@ -614,6 +617,8 @@ function AppRoutes() {
             <Route path="/risk" element={<RouteErrorBoundary><RiskPage /></RouteErrorBoundary>} />
             <Route path="/interagency" element={<RouteErrorBoundary><InteragencyPage /></RouteErrorBoundary>} />
             <Route path="/gang-intel" element={<RouteErrorBoundary><GangIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel" element={<RouteErrorBoundary><PersonIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel/:id" element={<RouteErrorBoundary><PersonIntelDossierPage /></RouteErrorBoundary>} />
             <Route path="/special-ops" element={<RouteErrorBoundary><SpecialOpsPage /></RouteErrorBoundary>} />
             <Route path="/crisis-response" element={<RouteErrorBoundary><CrisisResponsePage /></RouteErrorBoundary>} />
             <Route path="/victim-services" element={<RouteErrorBoundary><VictimServicesPage /></RouteErrorBoundary>} />
@@ -651,23 +656,25 @@ export default function App() {
   //    so the WebSocket + auth session survive a single page blowing up.
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <WebSocketProvider>
-          <UserPreferencesProvider>
-            <ToastProvider>
-              <ContextMenuProvider>
-                <ErrorBoundary>
-                  <WebUpdateBanner />
-                  <MDTBridge />
-                  <AndroidUpdateChecker />
-                  <ButtonHealthOverlay />
-                  <AppRoutes />
-                </ErrorBoundary>
-              </ContextMenuProvider>
-            </ToastProvider>
-          </UserPreferencesProvider>
-        </WebSocketProvider>
-      </AuthProvider>
+      <FeatureFlagsProvider>
+        <AuthProvider>
+          <WebSocketProvider>
+            <UserPreferencesProvider>
+              <ToastProvider>
+                <ContextMenuProvider>
+                  <ErrorBoundary>
+                    <WebUpdateBanner />
+                    <MDTBridge />
+                    <AndroidUpdateChecker />
+                    <ButtonHealthOverlay />
+                    <AppRoutes />
+                  </ErrorBoundary>
+                </ContextMenuProvider>
+              </ToastProvider>
+            </UserPreferencesProvider>
+          </WebSocketProvider>
+        </AuthProvider>
+      </FeatureFlagsProvider>
     </ErrorBoundary>
   );
 }
