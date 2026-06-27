@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { toDisplayLabel } from '../formatters';
 import {
   wrapText,
   fmtTimestamp,
   fmtDate,
-  prettyLabel,
   isOverdue,
   generateAffairsComplaintPdf,
   type IaComplaintForPdf,
@@ -91,14 +91,14 @@ describe('fmtDate (affairs pdf)', () => {
 });
 
 describe('prettyLabel (affairs pdf)', () => {
-  it('returns em-dash for missing input', () => {
-    expect(prettyLabel(null)).toBe('—');
-    expect(prettyLabel(undefined)).toBe('—');
-    expect(prettyLabel('')).toBe('—');
+  it('returns empty string for missing input', () => {
+    expect(toDisplayLabel(null)).toBe('');
+    expect(toDisplayLabel(undefined)).toBe('');
+    expect(toDisplayLabel('')).toBe('');
   });
   it('uppercases first letter of each word and replaces underscores', () => {
-    expect(prettyLabel('excessive_force')).toBe('Excessive Force');
-    expect(prettyLabel('under_investigation')).toBe('Under Investigation');
+    expect(toDisplayLabel('excessive_force')).toBe('Excessive Force');
+    expect(toDisplayLabel('under_investigation')).toBe('Under Investigation');
   });
 });
 
