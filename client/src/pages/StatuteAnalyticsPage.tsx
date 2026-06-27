@@ -58,17 +58,28 @@ export default function StatuteAnalyticsPage() {
     const parsed = raw ? parseInt(raw, 10) : NaN;
     return [30, 60, 90, 180, 365].includes(parsed) ? parsed : 90;
   })();
-  const initStatute = searchParams.get('statute') ?? '';
+  // ?statute_id= and ?section= pre-fill the search filter; ?statute= is legacy alias
+  const initStatute =
+    searchParams.get('statute_id') ??
+    searchParams.get('section') ??
+    searchParams.get('statute') ??
+    '';
 
   const [days, setDays] = useState(initDays);
   const [search, setSearch] = useState(initStatute);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // Map from statute_number → row DOM element, for deep-link scroll-to-highlight
+  const rowRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Guard: run deep-link scroll only once per mount
+  const deepLinkHandled = useRef(false);
 
   // Strip deep-link params after mount so they don't persist in history
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     let dirty = false;
     if (next.has('statute'))    { next.delete('statute');    dirty = true; }
+    if (next.has('statute_id')) { next.delete('statute_id'); dirty = true; }
+    if (next.has('section'))    { next.delete('section');    dirty = true; }
     if (next.has('date_range')) { next.delete('date_range'); dirty = true; }
     if (dirty) setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,17 +99,6 @@ export default function StatuteAnalyticsPage() {
 
   // ── Feature 37: Top Charged ──────────────────────────────────
   const [topCharged, setTopCharged] = useState<any[]>([]);
-
-  // ── Feature 39: Enhancement Calculator ──────────────────────
-  const [enhancementResult, setEnhancementResult] = useState<any>(null);
-  const [enhancementFactors, setEnhancementFactors] = useState({
-    repeat_offender: false, weapon_used: false, vulnerable_victim: false,
-    gang_related: false, domestic_violence: false,
-  });
-
-  // ── Feature 40: Statute Comparison ───────────────────────────
-  const [compareIds, setCompareIds] = useState<number[]>([]);
-  const [comparisonResult, setComparisonResult] = useState<any>(null);
 
   // ── Clear cache confirm (admin/manager only) ─────────────────
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
@@ -125,6 +125,21 @@ export default function StatuteAnalyticsPage() {
   }, [fetchData]);
 
   useLiveSync('incidents', fetchData);
+
+  // ── Deep-link: scroll to + highlight matching statute row after data loads ──
+  useEffect(() => {
+    if (!hasLoaded || deepLinkHandled.current || !initStatute) return;
+    deepLinkHandled.current = true;
+    const el = rowRefsMap.current.get(initStatute);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-1', 'ring-brand-400/60');
+      setTimeout(() => el.classList.remove('ring-1', 'ring-brand-400/60'), 2000);
+      addToast(`Statute ${initStatute} highlighted`, 'info');
+    } else {
+      addToast(`Statute "${initStatute}" not found in current data`, 'warning');
+    }
+  }, [hasLoaded, initStatute, addToast]);
 
   // ── Keyboard: N focuses search; Esc cascades ─────────────────
   useEffect(() => {
@@ -180,33 +195,6 @@ export default function StatuteAnalyticsPage() {
       setTopCharged(data?.data ?? []);
     } catch (err) {
       console.warn('[StatuteAnalytics] top charged load failed:', err);
-    }
-  };
-
-  const handleCalculateEnhancement = async (citation: string) => {
-    try {
-      const data = await apiFetch<any>('/statutes/calculate-enhancement', {
-        method: 'POST',
-        body: JSON.stringify({ citation, factors: enhancementFactors }),
-      });
-      setEnhancementResult(data?.data ?? data);
-    } catch (err) {
-      console.warn('[StatuteAnalytics] enhancement calculation failed:', err);
-      addToast('Enhancement calculation failed', 'error');
-    }
-  };
-
-  const handleCompareStatutes = async () => {
-    if (compareIds.length < 2) { addToast('Select at least 2 statutes', 'error'); return; }
-    try {
-      const data = await apiFetch<any>('/statutes/compare', {
-        method: 'POST',
-        body: JSON.stringify({ statute_ids: compareIds }),
-      });
-      setComparisonResult(data?.data ?? data);
-    } catch (err) {
-      console.warn('[StatuteAnalytics] statute comparison failed:', err);
-      addToast('Comparison failed', 'error');
     }
   };
 
@@ -393,7 +381,11 @@ export default function StatuteAnalyticsPage() {
               <div className="space-y-1.5 max-h-80 overflow-auto">
                 {filteredStatutes.length > 0 ? (
                   filteredStatutes.map((s, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                    <div
+                      key={i}
+                      ref={el => { if (el) rowRefsMap.current.set(s.statute_number, el); else rowRefsMap.current.delete(s.statute_number); }}
+                      className="flex items-center gap-2 transition-all duration-300"
+                    >
                       <span className="text-[9px] font-mono text-rmpg-400 w-24 shrink-0 truncate">{s.statute_number}</span>
                       <div className="flex-1 relative h-5 bg-rmpg-800/50">
                         <div
