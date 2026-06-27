@@ -25,6 +25,10 @@ import { getDb, queryFirst } from './db';
 import { identifyBeat } from './geofence';
 
 export interface ResolvedDistrict {
+  // Area — top of the Area › Section › Zone › Beat hierarchy.
+  area_id: number | null;
+  area_code: string | null;
+  area_name: string | null;
   sector_id: number | null;
   sector_name: string | null;
   zone_id: string | null;
@@ -38,6 +42,9 @@ export interface ResolvedDistrict {
 }
 
 interface JoinRow {
+  area_id: number | null;
+  area_code: string | null;
+  area_name: string | null;
   sector_id: number;
   sector_name: string | null;
   zone_id: string | null;
@@ -52,6 +59,9 @@ interface JoinRow {
 // the row whose beat_name starts with the supplied city when a pair collides.
 const RESOLVE_SQL = `
   SELECT
+    da.id          AS area_id,
+    da.area_code   AS area_code,
+    da.area_name   AS area_name,
     ds.id          AS sector_id,
     ds.sector_name AS sector_name,
     dz.zone_code   AS zone_id,
@@ -63,6 +73,7 @@ const RESOLVE_SQL = `
   FROM dispatch_beats db
   JOIN dispatch_zones dz   ON dz.id = db.zone_id
   JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+  LEFT JOIN dispatch_areas da ON da.id = ds.area_id
   WHERE dz.zone_code = ?
     AND (db.beat_code = ? OR db.beat_code = ? || '-2')
   ORDER BY
@@ -76,6 +87,9 @@ function toDistrict(row: JoinRow): ResolvedDistrict {
   // beat code so the field is never blank when a beat is known.
   const zone_beat = row.dispatch_code || row.beat_id || null;
   return {
+    area_id: row.area_id ?? null,
+    area_code: row.area_code ?? null,
+    area_name: row.area_name ?? null,
     sector_id: row.sector_id,
     sector_name: row.sector_name,
     zone_id: row.zone_id,

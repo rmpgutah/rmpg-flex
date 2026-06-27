@@ -28,16 +28,30 @@ properties.post('/', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.name || !body.address) return c.json({ error: 'name and address required' }, 400);
     const result = await execute(db,
-      `INSERT INTO properties (client_id, name, address, property_type, latitude, longitude, gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, city, state, zip, notes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      `INSERT INTO properties (client_id, name, address, property_type, latitude, longitude, gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, city, state, zip, notes, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       body.client_id ?? 1, body.name, body.address, body.property_type || null,
       body.latitude || null, body.longitude || null, body.gate_code || null,
       body.alarm_code || null, body.emergency_contact || null, body.post_orders || null,
       body.hazard_notes || null, body.city || null, body.state || null, body.zip || null,
-      body.notes || null);
+      body.notes || null, body.is_active ?? 1);
     const created = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/properties/export — MUST be registered BEFORE '/:id'. Hono's
+// SmartRouter falls back to the order-sensitive TrieRouter on the static-vs-param
+// overlap, so '/:id' (registered first) would otherwise shadow this with id='export'.
+properties.get('/export', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT p.*, c.name as client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id ORDER BY p.name LIMIT 50000');
+    if (rows.length === 0) return c.json([]);
+    const keys = Object.keys(rows[0] as object);
+    const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/properties/:id
@@ -68,7 +82,13 @@ properties.put('/:id', async (c) => {
       'alarm_account', 'alarm_company', 'alarm_system', 'camera_system',
       'closing_hours', 'contact_email', 'opening_hours', 'parking_info',
       'patrol_frequency', 'roof_access', 'secondary_contact_name',
-      'secondary_contact_phone', 'utility_shutoffs']);
+      'secondary_contact_phone', 'utility_shutoffs',
+      // Assessor-sourced columns (migration 0142). `year_built` was already
+      // writable above (pre-existing column from 0037); the rest are new.
+      'parcel_number', 'owner_of_record', 'owner_type', 'owner_mailing_address',
+      'total_market_value', 'land_sqft',
+      'last_sale_date', 'last_sale_price', 'legal_description', 'tax_district',
+      'assessor_last_synced_at', 'assessor_source_url']);
     const cols: string[] = []; const params: unknown[] = [];
     for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
     if (cols.length === 0) return c.json({ message: 'No changes' });
@@ -115,18 +135,6 @@ properties.post('/:id/unarchive', async (c) => {
     await execute(db, 'UPDATE properties SET archived_at = NULL WHERE id = ?', id);
     return c.json({ success: true, archived: false });
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
-});
-
-// GET /records/properties/export
-properties.get('/export', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT p.*, c.name as client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id ORDER BY p.name LIMIT 50000');
-    if (rows.length === 0) return c.json([]);
-    const keys = Object.keys(rows[0] as object);
-    const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
-    return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 export default properties;

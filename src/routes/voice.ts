@@ -117,15 +117,21 @@ voice.post('/dialogue', async (c) => {
   if (decision?.action) {
     const written = await runAction(
       c.env as Bindings, db, decision.action,
+      // The requesting officer is the BOLO issuer (bolos.issued_by is NOT NULL);
+      // without this every radio-requested create_bolo was refused, then
+      // mis-reported as "unable to start that call" by the gap below.
+      { issuedBy: userId },
     ).catch(() => null);
     if (written) {
       replyText = written.spoken;
       actions.push({ type: `action:${decision.action.type}`, result: written.summary });
     } else {
-      // Write refused or failed — give an honest correction.
+      // Write refused or failed — give an honest correction (mirrors VoiceHubDO).
       replyText = decision.action.type === 'set_unit_status'
         ? `${speaker || 'Unit calling'}, dispatch did not catch your call-sign — say again your unit and status.`
-        : `${speaker || 'Unit calling'}, unable to start that call — say again the location and the nature.`;
+        : decision.action.type === 'create_bolo'
+          ? `${speaker || 'Unit calling'}, unable to put that BOLO out — say again the details.`
+          : `${speaker || 'Unit calling'}, unable to start that call — say again the location and the nature.`;
       actions.push({ type: `action_refused:${decision.action.type}`, result: 'refused' });
     }
   }

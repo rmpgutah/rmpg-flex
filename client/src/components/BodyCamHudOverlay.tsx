@@ -41,20 +41,20 @@ function interactionColor(type: string | null | undefined): string {
     case 'use_of_force':
     case 'foot_pursuit':
     case 'vehicle_pursuit':
-      return 'bg-red-500/80 text-white';
+      return 'bg-red-500/80 text-rmpg-100';
     case 'arrest':
     case 'search_warrant':
     case 'domestic_violence':
       return 'bg-amber-500/80 text-black';
     case 'evidence_collection':
     case 'interview':
-      return 'bg-purple-500/70 text-white';
+      return 'bg-purple-500/70 text-rmpg-100';
     case 'traffic_stop':
     case 'welfare_check':
     case 'community_contact':
     case 'field_training':
     default:
-      return 'bg-[#888888]/70 text-white';
+      return 'bg-[#888888]/70 text-rmpg-100';
   }
 }
 
@@ -112,7 +112,7 @@ export default function BodyCamHudOverlay({ video, videoRef, isPlaying }: Props)
   const font = { fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace" };
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none z-10" style={font}>
+    <div className="tactical-dark absolute inset-0 pointer-events-none select-none z-10" style={font}>
 
       {/* ── TOP BAR — Camera serial + Interaction + REC ── */}
       <div className="absolute top-0 left-0 right-0 bg-black/55 px-3 py-1.5 flex items-center justify-between">
@@ -147,7 +147,7 @@ export default function BodyCamHudOverlay({ video, videoRef, isPlaying }: Props)
       {/* ── BOTTOM BAR — Timestamp + Officer + Case ──── */}
       <div className="absolute bottom-0 left-0 right-0 bg-black/55 px-3 py-1.5 flex items-center justify-between">
         {/* Left: timestamp */}
-        <span className="text-[11px] text-white font-bold tracking-wide" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <span className="text-[11px] text-rmpg-100 font-bold tracking-wide" style={{ fontVariantNumeric: 'tabular-nums' }}>
           {timestamp}
         </span>
 

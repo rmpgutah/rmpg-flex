@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
-  Tag, Radio, Archive, DollarSign, Fuel,
+  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2, FileText,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
@@ -23,6 +25,7 @@ import FleetDetailPanel, { type DetailTab, type CostSubTab } from './FleetDetail
 import FleetCostFormModal, { type CostCategory, type CostFormState, EMPTY_COST_FORM } from './modals/FleetCostFormModal';
 import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostBudget, FleetCostSummary } from '../../types';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
+import FleetAnalysisFormsTab from './tabs/FleetAnalysisFormsTab';
 import VehicleFormModal, { type VehicleFormState, EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
 import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
 import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
@@ -82,6 +85,10 @@ export default function FleetPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+
   // Core state
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
@@ -90,8 +97,19 @@ export default function FleetPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Map vehicle.id → display number (e.g. "PS-D19") for PDF report labels
+  const vehicleNumberById = useMemo(() => {
+    const m = new Map<string | number, string>();
+    for (const v of vehicles) {
+      m.set(v.id, v.vehicle_number || `#${v.id}`);
+    }
+    return m;
+  }, [vehicles]);
+
   // Tab & modal state
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
+  // Top-level view mode when no vehicle is selected: dashboard (default) or analysis forms
+  const [viewMode, setViewMode] = useState<'dashboard' | 'analysis'>('dashboard');
   const [modal, setModal] = useState<ModalMode>('none');
   const v = useFormDraft<VehicleFormState>({
     storageKey: 'rmpg_fleet_vehicle_form',
@@ -154,6 +172,39 @@ export default function FleetPage() {
 
   // ── Feature 16/19/20: Pre-trip, vehicle swaps, cost-per-mile ──
   const [costPerMile, setCostPerMile] = useState<any>(null);
+
+  // ── GPS mileage (from dispatch breadcrumbs) ──────────────────
+  const [gpsMileage, setGpsMileage] = useState<any>(null);
+  const [gpsMileageLoading, setGpsMileageLoading] = useState(false);
+
+  const fetchGpsMileage = useCallback(async (days = 30) => {
+    if (!selectedId) return;
+    setGpsMileageLoading(true);
+    try {
+      const data = await apiFetch<any>(`/fleet/${selectedId}/gps-mileage?days=${days}`);
+      setGpsMileage(data);
+    } catch (err: any) {
+      if (err?.code !== 'NO_UNIT_ASSIGNED') {
+        addToast('Failed to compute GPS mileage', 'error');
+      }
+    } finally { setGpsMileageLoading(false); }
+  }, [selectedId, addToast]);
+
+  const handleSyncGpsMileage = async () => {
+    if (!selectedId || !gpsMileage?.total_miles) return;
+    setGpsMileageLoading(true);
+    try {
+      const resp = await apiFetch<any>(`/fleet/${selectedId}/gps-mileage`, {
+        method: 'PUT',
+        body: JSON.stringify({ miles_delta: gpsMileage.total_miles }),
+      });
+      addToast(`Odometer updated: ${resp.previous_mileage?.toLocaleString()} → ${resp.new_mileage?.toLocaleString()}`, 'success');
+      if (selectedId) fetchDetail(selectedId);
+      setGpsMileage(null);
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to sync mileage', 'error');
+    } finally { setGpsMileageLoading(false); }
+  };
 
   // ── Cost-of-ownership state (Costs tab) ──────────────────────
   const [loans, setLoans] = useState<FleetLoan[]>([]);
@@ -253,16 +304,25 @@ export default function FleetPage() {
     setAssignments([]);
     setAnalytics(null);
     setPersonnelData(null);
+    setLoans([]);
+    setInsurancePolicies([]);
+    setAccessories([]);
+    setUtilities([]);
+    setOtherCosts([]);
+    setCostSummary(null);
+    setGpsMileage(null);
   }, [selectedId]);
 
   // Lazy-load tab data
   useEffect(() => {
     if (!selectedId) return;
     if (activeTab === 'fuel') fetchFuelLogs(selectedId);
+    if (activeTab === 'costs') { fetchCosts(selectedId); fetchFuelLogs(selectedId); }
     if (activeTab === 'inspections') fetchInspections(selectedId);
     if (activeTab === 'assignments') fetchAssignments(selectedId);
     if (activeTab === 'analytics') fetchVehicleAnalytics();
-    if (activeTab === 'personnel') fetchPersonnel(selectedId);
+    // Personnel tab renders the shared `assignments` state too — fetch both.
+    if (activeTab === 'personnel') { fetchPersonnel(selectedId); fetchAssignments(selectedId); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, activeTab]);
 
@@ -288,15 +348,17 @@ export default function FleetPage() {
 
   const fetchInspections = async (id: string | number) => {
     try {
-      const data = await apiFetch<{ data: FleetInspection[] }>(`/fleet/${id}/inspections`);
-      setInspections(data.data || []);
+      // Worker returns a bare array; older builds wrapped in { data }.
+      const data = await apiFetch<FleetInspection[] | { data: FleetInspection[] }>(`/fleet/${id}/inspections`);
+      setInspections(Array.isArray(data) ? data : data.data || []);
     } catch { addToast('Failed to load inspections', 'error'); }
   };
 
   const fetchAssignments = async (id: string | number) => {
     try {
-      const data = await apiFetch<{ data: FleetAssignment[] }>(`/fleet/${id}/assignments`);
-      setAssignments(data.data || []);
+      // Worker returns a bare array; older builds wrapped in { data }.
+      const data = await apiFetch<FleetAssignment[] | { data: FleetAssignment[] }>(`/fleet/${id}/assignments`);
+      setAssignments(Array.isArray(data) ? data : data.data || []);
     } catch { addToast('Failed to load assignments', 'error'); }
   };
 
@@ -323,7 +385,7 @@ export default function FleetPage() {
     try {
       const q = period ? `?period=${period}` : '';
       const data = await apiFetch<FleetAnalytics>(`/fleet/analytics${q}`);
-      setFleetAnalytics(data);
+      if (data && typeof data === 'object') setFleetAnalytics(data);
     } catch { /* silent - fleet analytics is optional */ }
     finally { setFleetAnalyticsLoading(false); }
   };
@@ -429,10 +491,14 @@ export default function FleetPage() {
         description: maintForm.description.trim(),
         mileage_at_service: maintForm.mileage_at_service ? parseInt(maintForm.mileage_at_service, 10) : null,
         cost: maintForm.cost ? parseFloat(maintForm.cost) : null,
+        labor_cost: maintForm.labor_cost ? parseFloat(maintForm.labor_cost) : null,
         vendor: maintForm.vendor.trim() || null,
         performed_by: maintForm.performed_by.trim() || null,
         performed_at: maintForm.performed_at || nowLocalISO(),
         next_due_date: maintForm.next_due_date || null,
+        next_due_mileage: maintForm.next_due_mileage ? parseInt(maintForm.next_due_mileage, 10) : null,
+        service_tasks: maintForm.service_tasks.trim() || null,
+        notes: maintForm.notes.trim() || null,
       };
       if (modal === 'edit_maintenance' && editingMaintenanceId) {
         await apiFetch(`/fleet/maintenance/${editingMaintenanceId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -487,13 +553,13 @@ export default function FleetPage() {
   };
 
   const handleSaveInspection = async () => {
-    if (!inspectionForm.inspector_name.trim()) { addToast('Inspector name is required', 'warning'); return; }
+    if (!(inspectionForm.inspector_name || '').trim()) { addToast('Inspector name is required', 'warning'); return; }
     if (selectedId == null) return;
     setSaving(true);
     try {
       const payload = {
         inspection_type: inspectionForm.inspection_type,
-        inspector_name: inspectionForm.inspector_name.trim(),
+        inspector_name: (inspectionForm.inspector_name || '').trim(),
         inspection_date: inspectionForm.inspection_date,
         overall_result: inspectionForm.overall_result,
         mileage: inspectionForm.mileage ? parseInt(inspectionForm.mileage, 10) : null,
@@ -947,23 +1013,37 @@ export default function FleetPage() {
       description: record.description || '',
       mileage_at_service: record.mileage_at_service != null ? String(record.mileage_at_service) : '',
       cost: record.cost != null ? String(record.cost) : '',
+      labor_cost: (record as any).labor_cost != null ? String((record as any).labor_cost) : '',
       vendor: record.vendor || '',
       performed_by: record.performed_by || '',
       performed_at: toDatetimeLocal(record.performed_at),
       next_due_date: record.next_due_date ? toDatetimeLocal(record.next_due_date) : '',
+      next_due_mileage: (record as any).next_due_mileage != null ? String((record as any).next_due_mileage) : '',
+      service_tasks: (record as any).service_tasks || '',
+      notes: (record as any).notes || '',
     });
     setEditingMaintenanceId(record.id);
     setModal('edit_maintenance');
   };
 
   const openEditInspection = (inspection: FleetInspection) => {
+    // Defensive: mobile/field-app inspections may have a null inspector and a
+    // simplified checklist shape ({item,result,note}) — normalize both so the
+    // form never renders against null (was a page-crashing TypeError).
+    const rawItems = Array.isArray(inspection.items) ? inspection.items : [];
+    const items = rawItems.map((i: any) => ({
+      category: i.category ?? 'FIELD',
+      item: i.item ?? i.label ?? '',
+      status: i.status ?? (i.result === 'fail' ? 'fail' : 'pass'),
+      notes: i.notes ?? i.note ?? '',
+    }));
     setInspectionForm({
-      inspection_type: inspection.inspection_type,
-      inspector_name: inspection.inspector_name,
+      inspection_type: inspection.inspection_type ?? 'pre_trip',
+      inspector_name: inspection.inspector_name ?? '',
       inspection_date: toDatetimeLocal(inspection.inspection_date),
       mileage: inspection.mileage != null ? String(inspection.mileage) : '',
-      overall_result: inspection.overall_result,
-      items: inspection.items.map(i => ({ ...i })),
+      overall_result: inspection.overall_result ?? 'pass',
+      items,
       notes: inspection.notes || '',
     });
     setEditingInspectionId(inspection.id);
@@ -1040,6 +1120,23 @@ export default function FleetPage() {
     setModal('none');
   };
 
+  // Right-click menu for a vehicle list row. Acts on the right-clicked row,
+  // not the current selection (Open selects it; Delete opens the confirm).
+  const buildVehicleMenu = (vehicle: FleetVehicle): ContextMenuItem[] => {
+    const label = `${vehicle.vehicle_number}${[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).length ? ' — ' + [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') : ''}`;
+    return [
+      cm.action('Open vehicle', () => setSelectedId(vehicle.id), { icon: <Eye size={12} /> }),
+      cm.separator(),
+      cm.copy('Copy unit #', vehicle.vehicle_number),
+      ...(vehicle.plate_number ? [cm.copy('Copy plate', vehicle.plate_number, <Tag size={12} />)] : []),
+      ...(vehicle.vin ? [cm.copy('Copy VIN', vehicle.vin)] : []),
+      cm.copyId(vehicle.id),
+      ...(isAdmin && !showArchived
+        ? [cm.separator(), cm.action('Delete', () => setDeletingVehicleId(vehicle.id), { danger: true, icon: <Trash2 size={12} /> })]
+        : []),
+    ];
+  };
+
   return (
     <div className="flex flex-col h-full animate-fade-in bg-surface-base">
       <UnsavedChangesGuard hasUnsavedChanges={isDirtyAny} />
@@ -1052,7 +1149,7 @@ export default function FleetPage() {
           <span className="toolbar-separator" />
           <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 mr-3">
             <Car className="w-3 h-3" />
-            <span>Total: <strong className="text-white">{vehicles.length}</strong></span>
+            <span>Total: <strong className="text-rmpg-100">{vehicles.length}</strong></span>
             <span className="text-rmpg-600">|</span>
             <span>Assigned: <strong className="text-amber-400">{assignedVehicles}</strong></span>
           </div>
@@ -1086,9 +1183,9 @@ export default function FleetPage() {
         </PanelTitleBar>
 
         {/* Stats Bar — compact inline row */}
-        <div className="px-4 py-2 flex items-center gap-4" role="group" aria-label="Fleet statistics">
+        <div className={`py-2 flex items-center gap-4 ${isMobile ? 'px-2 overflow-x-auto scrollbar-dark' : 'px-4'}`} role="group" aria-label="Fleet statistics">
           {/* Status Gauges */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {VEHICLE_STATUSES.map(({ value, label }) => (
               <button type="button"
                 key={value}
@@ -1138,9 +1235,9 @@ export default function FleetPage() {
               <span className="font-bold" style={{ color: needsService > 0 ? '#f59e0b' : '#22c55e' }}>{needsService}</span>
             </div>
             <div className="flex items-center gap-1.5" title="Monthly Costs (Maintenance + Fuel)">
-              <DollarSign className="w-3.5 h-3.5 text-gray-400" />
+              <DollarSign className="w-3.5 h-3.5 text-rmpg-400" />
               <span className="text-rmpg-400">Costs:</span>
-              <span className="font-bold text-gray-400">
+              <span className="font-bold text-rmpg-400">
                 {fleetAnalytics?.fleet_summary ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
               </span>
             </div>
@@ -1187,7 +1284,7 @@ export default function FleetPage() {
         {/* ---- LEFT PANEL: Vehicle List ---- */}
         <div className={`flex flex-col min-h-0 bg-surface-raised ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`} style={isMobile ? undefined : { width: '36%', minWidth: 300, maxWidth: 440 }}>
           <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-surface-base">
-            <select
+            <select id="ff-fleetpage-0"
               className="select-dark text-[10px] py-1 px-2 min-h-[36px]"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -1199,7 +1296,7 @@ export default function FleetPage() {
             </select>
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-              <input
+              <input id="ff-fleetpage-1"
                 className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
                 placeholder="Search vehicles..." aria-label="Search fleet vehicles by number, make, model, or plate"
                 value={searchQuery}
@@ -1236,6 +1333,7 @@ export default function FleetPage() {
                   }`}
                   style={isSelected ? { backgroundColor: 'var(--surface-base)', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
                   onClick={() => setSelectedId(v.id)}
+                  onContextMenu={(e) => openMenu(e, buildVehicleMenu(v))}
                   aria-selected={isSelected}
                 >
                   <div className="flex items-center gap-2.5">
@@ -1248,12 +1346,12 @@ export default function FleetPage() {
                       <Car className="w-4 h-4" style={{ color: statusColor }} />
                       {hasAlert && (
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
-                          <span className="text-[6px] text-white font-bold">!</span>
+                          <span className="text-[6px] text-rmpg-100 font-bold">!</span>
                         </div>
                       )}
                       {!hasAlert && hasWarning && (
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center">
-                          <span className="text-[6px] text-white font-bold">!</span>
+                          <span className="text-[6px] text-rmpg-100 font-bold">!</span>
                         </div>
                       )}
                     </div>
@@ -1342,27 +1440,62 @@ export default function FleetPage() {
         {/* ---- RIGHT PANEL ---- */}
         <div className={`${isMobile ? (selectedId ? 'w-full' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden bg-surface-raised`}>
           {selectedId == null || !detail ? (
-            // Fleet-wide: Maintenance Monitor + Analytics when no vehicle selected
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
-              {fleetAnalytics ? (
-                <div className="px-3 pb-3">
-                  <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} onPeriodChange={(p) => fetchFleetAnalytics(p)} />
-                </div>
-              ) : (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-center">
-                    <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
-                    <p className="text-xs text-rmpg-500">Select a vehicle to view details</p>
-                    <p className="text-[10px] text-rmpg-600 mt-1">{vehicles.length} vehicles in fleet</p>
-                  </div>
-                </div>
-              )}
+            // Fleet-wide: view mode toggle (dashboard vs analysis forms)
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              <div className="flex border-b border-subtle bg-surface-sunken flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('dashboard')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    color: viewMode === 'dashboard' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'dashboard' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  Dashboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('analysis')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1"
+                  style={{
+                    color: viewMode === 'analysis' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'analysis' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  <FileText size={10} /> Analysis Reports
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                {viewMode === 'dashboard' ? (
+                  <>
+                    <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
+                    {fleetAnalytics ? (
+                      <div className="px-3 pb-3">
+                        <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} onPeriodChange={(p) => fetchFleetAnalytics(p)} />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="text-center">
+                          <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+                          <p className="text-xs text-rmpg-500">Select a vehicle to view details</p>
+                          <p className="text-[10px] text-rmpg-600 mt-1">{vehicles.length} vehicles in fleet</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <FleetAnalysisFormsTab
+                    vehicles={vehicles}
+                    vehicleNumberById={vehicleNumberById}
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <>
             {isMobile && (
-              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
+              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
                 ◀ Back to Vehicles
               </button>
             )}
@@ -1410,6 +1543,10 @@ export default function FleetPage() {
               onUnarchiveVehicle={handleUnarchiveVehicle}
               onDeleteVehicle={() => setDeletingVehicleId(selectedId)}
               isArchived={showArchived}
+              gpsMileage={gpsMileage}
+              gpsMileageLoading={gpsMileageLoading}
+              onFetchGpsMileage={fetchGpsMileage}
+              onSyncGpsMileage={handleSyncGpsMileage}
               onClose={() => { setSelectedId(null); setDetail(null); }}
             />
             </>
@@ -1467,6 +1604,29 @@ export default function FleetPage() {
         onDiscardDraft={i.clearDraft}
       />
 
+      {/* Cost-of-ownership form modal */}
+      <FleetCostFormModal
+        isOpen={costModalOpen}
+        category={costCategory}
+        mode={costMode}
+        initial={costInitial}
+        onSave={handleSaveCost}
+        onClose={() => { setCostModalOpen(false); setEditingCostId(null); }}
+        saving={savingCost}
+      />
+
+      {/* Delete Cost Confirmation */}
+      <ConfirmDialog
+        isOpen={deletingCost !== null}
+        onClose={() => setDeletingCost(null)}
+        onConfirm={confirmDeleteCost}
+        title="Delete Cost Entry"
+        message={`Delete this ${deletingCost?.category} entry? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={isDeleting}
+      />
+
       {/* Delete Vehicle Confirmation */}
       <ConfirmDialog
         isOpen={deletingVehicleId !== null}
@@ -1514,11 +1674,11 @@ export default function FleetPage() {
 
       {/* Feature 16: Pre-Trip Checklist Modal */}
       {showPretripModal && selectedVehicle && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 p-2" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-w-[95vw] max-h-[90vh] md:max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
-              <h3 className="text-sm font-bold text-white">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
-              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-white text-lg">&times;</button>
+              <h3 className="text-sm font-bold text-rmpg-100">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
+              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-rmpg-100 text-lg">&times;</button>
             </div>
             <div className="p-3 flex-1 overflow-auto space-y-2">
               {[
@@ -1533,8 +1693,8 @@ export default function FleetPage() {
                 { key: 'interior_ok', label: 'Interior Condition' },
                 { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
               ].map(item => (
-                <label key={item.key} className="flex items-center gap-3 p-2 bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
-                  <input
+                <label key={item.key} className="flex items-center gap-3 p-2 min-h-[44px] bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
+                  <input id="ff-fleetpage-2"
                     type="checkbox"
                     checked={(pretripForm as any)[item.key]}
                     onChange={e => setPretripForm(prev => ({ ...prev, [item.key]: e.target.checked }))}
@@ -1563,19 +1723,19 @@ export default function FleetPage() {
 
       {/* Feature 20: Cost Per Mile Display */}
       {costPerMile && (
-        <div className="fixed bottom-16 right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl">
+        <div className="fixed bottom-16 right-4 left-4 md:left-auto z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-auto md:w-[300px] shadow-xl">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-bold text-white">Cost Analysis: {costPerMile.vehicle_number}</h4>
-            <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>
+            <h4 className="text-sm font-bold text-rmpg-100">Cost Analysis: {costPerMile.vehicle_number}</h4>
+            <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-rmpg-100">&times;</button>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
               <div className="text-rmpg-400">Fuel Cost</div>
-              <div className="text-white font-mono">${costPerMile.total_fuel_cost?.toFixed(2)}</div>
+              <div className="text-rmpg-100 font-mono">${costPerMile.total_fuel_cost?.toFixed(2)}</div>
             </div>
             <div>
               <div className="text-rmpg-400">Maint Cost</div>
-              <div className="text-white font-mono">${costPerMile.total_maintenance_cost?.toFixed(2)}</div>
+              <div className="text-rmpg-100 font-mono">${costPerMile.total_maintenance_cost?.toFixed(2)}</div>
             </div>
             <div>
               <div className="text-rmpg-400">Total Cost</div>

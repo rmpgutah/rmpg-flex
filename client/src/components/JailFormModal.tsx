@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
-import { localToday } from '../utils/dateUtils';
+import OfficerPicker from '../components/OfficerPicker';
+import IncidentPickerInline from '../components/IncidentPickerInline';
+import { useAuth } from '../context/AuthContext';
 
 export interface JailFormData {
   last_name: string; first_name: string; middle_name: string;
@@ -38,8 +40,14 @@ const EMPTY_FORM: JailFormData = {
 type SectionId = 'identity' | 'physical' | 'housing' | 'notes';
 
 export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: JailFormModalProps) {
-  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<JailFormData>({
-    storageKey: 'rmpg_jail_form', defaultValue: EMPTY_FORM, isActive: isOpen,
+  // Per-user draft scope: a half-typed booking from operator A on
+  // a shared MDT shouldn't auto-restore for operator B. Falls back
+  // to the legacy global key when there's no user (login screen,
+  // etc.) so we never lose existing drafts during the rollout.
+  const { user } = useAuth();
+  const draftKey = user?.id ? `rmpg_jail_form_${user.id}` : 'rmpg_jail_form';
+  const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<JailFormData>({
+    storageKey: draftKey, defaultValue: EMPTY_FORM, isActive: isOpen,
   });
   const [activeSection, setActiveSection] = useState<SectionId>('identity');
 
@@ -71,7 +79,7 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSubmit(form); };
+  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); signalSaved(); onSubmit(form); };
 
   const sections: { id: SectionId; label: string }[] = [
     { id: 'identity', label: 'Identity' }, { id: 'physical', label: 'Physical' },
@@ -89,7 +97,7 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {sections.map(s => (
           <button key={s.id} type="button" onClick={() => setActiveSection(s.id)}
-            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${activeSection === s.id ? 'text-red-400 bg-red-900/20 border border-red-700/40' : 'text-rmpg-400 hover:text-white'}`}>
+            className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${activeSection === s.id ? 'text-red-400 bg-red-900/20 border border-red-700/40' : 'text-rmpg-400 hover:text-rmpg-100'}`}>
             {s.label}
           </button>
         ))}
@@ -125,8 +133,14 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
             </select></div>
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Agency</label>
             <input name="arresting_agency" className="input-dark mt-1" value={form.arresting_agency} onChange={handleChange} /></div>
-          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer ID</label>
-            <input name="arresting_officer_id" type="number" className="input-dark mt-1" value={form.arresting_officer_id} onChange={handleChange} /></div>
+          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Arresting Officer</label>
+            <div className="mt-1">
+              <OfficerPicker
+                value={form.arresting_officer_id ? Number(form.arresting_officer_id) : null}
+                onChange={(id) => setForm(f => ({ ...f, arresting_officer_id: id ? String(id) : '' }))}
+                placeholder="Search by name, badge, rank, unit…"
+              />
+            </div></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Bail Amount</label>
@@ -172,8 +186,14 @@ export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting,
             <input name="housing_cell" className="input-dark mt-1" value={form.housing_cell} onChange={handleChange} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Arrest Incident ID</label>
-            <input name="arrest_incident_id" type="number" className="input-dark mt-1" value={form.arrest_incident_id} onChange={handleChange} /></div>
+          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Arrest Incident</label>
+            <div className="mt-1">
+              <IncidentPickerInline
+                value={form.arrest_incident_id ? Number(form.arrest_incident_id) : null}
+                onChange={(id) => setForm(f => ({ ...f, arrest_incident_id: id ? String(id) : '' }))}
+                placeholder="Search incident # / type / location…"
+              />
+            </div></div>
         </div>
       </>)}
 

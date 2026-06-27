@@ -151,9 +151,12 @@ export async function fetchPdfSignature(
   caseNumber: string,
   payloadHash: string,
 ): Promise<PdfSignatureBundle | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
   try {
     const res = await fetch('/api/pdf-tools/sign-payload', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         // Auth header is set globally by the apiFetch interceptor in
@@ -174,6 +177,8 @@ export async function fetchPdfSignature(
     };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

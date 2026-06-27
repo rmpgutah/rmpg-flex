@@ -78,7 +78,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       <div className="flex items-center justify-between px-2.5 py-1.5" style={{ borderBottom: '1px solid #2b2b2b' }}>
         <span className="text-[9px] font-mono font-black tracking-wider text-rmpg-300 uppercase">Legend</span>
           {/* #12: Collapse chevron with rotation animation */}
-        <button type="button" onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-white transition-colors duration-150 p-0.5">
+        <button type="button" onClick={() => setExpanded(false)} aria-expanded={expanded} className="text-rmpg-400 hover:text-rmpg-100 transition-colors duration-150 p-0.5">
           <ChevronDown className="w-3 h-3 transition-transform duration-200" style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
         </button>
       </div>
@@ -86,16 +86,16 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       <div className="px-2.5 py-2 space-y-2.5">
         {/* Unit Status */}
         <div>
-          <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">Unit Status</div>
+          <div className="text-[8px] font-mono font-bold tracking-wider text-rmpg-400 uppercase mb-1">Unit Status</div>
           <div className="space-y-0.5">
             {STATUS_ORDER.map((status) => (
-              <div key={status} className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+              <div key={status} className="flex items-center gap-1.5 hover:bg-surface-raised/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
                 {/* #13: Legend swatches with consistent LED glow */}
                 <div
                   className="rounded-sm shrink-0"
                   style={{ backgroundColor: UNIT_STATUS_COLORS[status], boxShadow: `0 0 6px ${UNIT_STATUS_COLORS[status]}60`, width: 10, height: 10 }}
                 />
-                <span className="text-[9px] font-mono text-[#9ca3af]">{UNIT_STATUS_LABELS[status]}</span>
+                <span className="text-[9px] font-mono text-rmpg-400">{UNIT_STATUS_LABELS[status]}</span>
               </div>
             ))}
           </div>
@@ -104,49 +104,49 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
         {/* Call Priority */}
         <div>
           <div className="h-px mb-2" style={{ background: 'linear-gradient(90deg, transparent, #2b2b2b, transparent)' }} />
-          <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">Priority Badge</div>
+          <div className="text-[8px] font-mono font-bold tracking-wider text-rmpg-400 uppercase mb-1">Priority Badge</div>
           <div className="space-y-0.5">
             {PRIORITY_ORDER.map((p) => {
               const c = PRIORITY_COLORS[p] || PRIORITY_FALLBACK;
               return (
-              <div key={p} className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+              <div key={p} className="flex items-center gap-1.5 hover:bg-surface-raised/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
                 {/* #14: Priority legend swatches match swatch sizing */}
               <div className="shrink-0 rounded-sm" style={{ backgroundColor: c, width: 10, height: 10, borderRadius: 2, boxShadow: `0 0 4px ${c}50` }} />
-                <span className="text-[9px] font-mono text-[#9ca3af]">{p} - {PRIORITY_LABELS[p]}</span>
+                <span className="text-[9px] font-mono text-rmpg-400">{p} - {PRIORITY_LABELS[p]}</span>
               </div>
               );
             })}
           </div>
-          <div className="text-[7px] font-mono text-[#666666] mt-1 leading-snug">Incident pin color = call type</div>
+          <div className="text-[7px] font-mono text-rmpg-500 mt-1 leading-snug">Incident pin color = call type</div>
         </div>
 
         {/* Layer Symbols */}
         <div>
           <div className="h-px mb-2" style={{ background: 'linear-gradient(90deg, transparent, #2b2b2b, transparent)' }} />
-          <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">Symbols</div>
+          <div className="text-[8px] font-mono font-bold tracking-wider text-rmpg-400 uppercase mb-1">Symbols</div>
           <div className="space-y-0.5">
             {layers.properties && (
-              <div className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+              <div className="flex items-center gap-1.5 hover:bg-surface-raised/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
                 {/* #15: Property swatch with gold glow */}
               <div className="shrink-0 rounded-sm" style={{ backgroundColor: '#d4a017', opacity: 0.8, width: 10, height: 10, boxShadow: '0 0 4px #d4a01750' }} />
-                <span className="text-[9px] font-mono text-[#9ca3af]">Property</span>
+                <span className="text-[9px] font-mono text-rmpg-400">Property</span>
               </div>
             )}
-            <div className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+            <div className="flex items-center gap-1.5 hover:bg-surface-raised/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
               <div className="shrink-0" style={{ width: 12, height: 2, background: 'linear-gradient(90deg, #888888, #22c55e)', borderRadius: 1 }} />
-              <span className="text-[9px] font-mono text-[#9ca3af]">Tracking line</span>
+              <span className="text-[9px] font-mono text-rmpg-400">Tracking line</span>
             </div>
-            <div className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+            <div className="flex items-center gap-1.5 hover:bg-surface-raised/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
               <div className="shrink-0" style={{ width: 12, height: 0, borderTop: '2px dashed #d4a017', borderRadius: 1 }} />
-              <span className="text-[9px] font-mono text-[#9ca3af]">Patrol route</span>
+              <span className="text-[9px] font-mono text-rmpg-400">Patrol route</span>
             </div>
-            <div className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+            <div className="flex items-center gap-1.5 hover:bg-surface-raised/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
               <div className="flex gap-px shrink-0">
-                <div className="w-1 h-1 rounded-full bg-gray-400" />
-                <div className="w-1 h-1 rounded-full bg-gray-400 opacity-70" />
-                <div className="w-1 h-1 rounded-full bg-gray-400 opacity-40" />
+                <div className="w-1 h-1 rounded-full bg-rmpg-400" />
+                <div className="w-1 h-1 rounded-full bg-rmpg-400 opacity-70" />
+                <div className="w-1 h-1 rounded-full bg-rmpg-400 opacity-40" />
               </div>
-              <span className="text-[9px] font-mono text-[#9ca3af]">Breadcrumb trail</span>
+              <span className="text-[9px] font-mono text-rmpg-400">Breadcrumb trail</span>
             </div>
           </div>
         </div>
@@ -155,7 +155,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
         {showBreadcrumbs && (
           <div>
             <div className="h-px mb-2" style={{ background: 'linear-gradient(90deg, transparent, #2b2b2b, transparent)' }} />
-            <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">
+            <div className="text-[8px] font-mono font-bold tracking-wider text-rmpg-400 uppercase mb-1">
               Breadcrumbs: {breadcrumbColorMode === 'unit' ? 'By Unit' : breadcrumbColorMode === 'speed' ? 'By Speed' : 'By Status'}
             </div>
             {breadcrumbColorMode === 'speed' && (

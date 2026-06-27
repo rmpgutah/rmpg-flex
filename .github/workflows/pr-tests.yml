@@ -16,13 +16,19 @@ concurrency:
   group: pr-tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege default for every job (CWE-275). These are read-only quality
+# gates — checkout + typecheck/test/build — so they need nothing beyond reading
+# the repo. A job that ever needs more (e.g. PR comments) must opt in locally.
+permissions:
+  contents: read
+
 jobs:
   worker-typecheck:
     name: Worker TypeScript check
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -33,22 +39,41 @@ jobs:
   worker-tests:
     name: Worker vitest suite
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      # Worker-runtime (Miniflare/workerd) route smoke tests. First run downloads
+      # the workerd binary, hence the larger job timeout.
+      - run: npm run test:worker
+
+  client-hook-order-guard:
+    name: Hooks-after-early-return guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      # Grep-guard for React error #310 (hook declared after a conditional
+      # `return null` — see PR #1128). No ESLint in this repo, so this is the
+      # only automated check for the Rules of Hooks. No deps needed.
+      - run: node scripts/check-hooks-after-early-return.js
 
   client-typecheck:
     name: Client TypeScript check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -66,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -85,7 +110,7 @@ jobs:
     timeout-minutes: 10
     needs: [client-typecheck]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
