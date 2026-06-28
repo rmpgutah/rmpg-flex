@@ -95,30 +95,7 @@ const ENTITY_ROUTE_BUILDERS: Record<string, (id: string) => string> = {
   email_message: (id) => `/communications?tab=messages&message_id=${encodeURIComponent(id)}`,
   alpr_capture: (id) => `/plate-log?capture_id=${encodeURIComponent(id)}`,
   use_of_force: (id) => `/use-of-force?uof_id=${encodeURIComponent(id)}`,
-// Arrest Records (Page 43 audit) — the test in
-  // notificationRouting.test.ts asserts this route, but PR #1655 added the
-  // test without the corresponding builder entry, leaving the assertion
-  // failing on main. Wiring it correctly here (and the `arrest` alias)
-  // is a pre-existing-failure cleanup the Page 61 audit happened to land in.
-  arrest_record: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
-  arrest: (id) => `/arrest-records?arrest_id=${encodeURIComponent(id)}`,
-// Standalone task assignments — routes to the Tasks page deep-link
-  // (`?task_id=` highlights + opens the row in its edit modal, v1089+).
-  task: (id) => `/tasks?task_id=${encodeURIComponent(id)}`,
-  task_assignment: (id) => `/tasks?task_id=${encodeURIComponent(id)}`,
-  // case_task is a task that originated from a case. The Tasks page is
-  // the canonical task surface (it surfaces all tasks regardless of
-  // origin), so route to it rather than the Cases page which doesn't
-  // accept a ?task_id= param. The original mapping to /cases?task_id=
-  // was a no-op because the Cases page only reads ?case_id=.
-  case_task: (id) => `/tasks?task_id=${encodeURIComponent(id)}`,
-// Web Research (Page 61 audit) — a saved-research notification (e.g.
-  // future "research result for monitored subject" emit) deep-links into
-  // the Saved Results tab of /web-research with the row highlighted.
-  research_result: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
-  web_research: (id) => `/web-research?research_id=${encodeURIComponent(id)}`,
-  court_event: (id) => `/court-records?event_id=${encodeURIComponent(id)}`,
-// IA complaint / investigation — added v1070 alongside the IA page deep-link
+  // IA complaint / investigation — added v1070 alongside the IA page deep-link
   // contract. Both land on /affairs?complaint_id= because the investigation
   // is only viewable inside the parent complaint detail panel (the IA route
   // exposes /affairs/complaints/:id/investigations but not a standalone
