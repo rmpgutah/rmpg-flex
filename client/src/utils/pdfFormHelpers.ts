@@ -314,7 +314,7 @@ export function drawSideTab(
   const maxTextLen = height - 4;
   let fontSize: number = FONT.SIZE_SIDEBAR_TAB;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(fontSize);
   let textW = doc.getTextWidth(upperLabel);
 
@@ -415,7 +415,7 @@ export function drawCodeReferenceTable(
   // Title bar
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(x, y, totalW, 4, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text(title.toUpperCase(), x + 1.5, y + 2.8);

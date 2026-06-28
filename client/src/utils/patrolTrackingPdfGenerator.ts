@@ -316,7 +316,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
 
   // Bold report title
   doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setTextColor(...primaryRgb);
   doc.text('PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 

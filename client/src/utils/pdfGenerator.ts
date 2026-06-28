@@ -528,6 +528,15 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 }
 
+/** Enforce strict police-report typography defaults across all PDF generators. */
+export function applyPoliceReportFormatting(doc: jsPDF): void {
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  // Tighter character spacing for dense, typewriter-style report output.
+  doc.setCharSpace(-0.1);
+}
+
 export function addClassificationBar(doc: jsPDF, priority: string, yStart: number): number {
   const cw = getContentWidth(doc);
   const prio = PRIORITY_COLORS[priority?.toLowerCase()] || PRIORITY_COLORS['routine'];
@@ -603,13 +612,13 @@ export function addReportHeader(
   }
 
   // ── Line 1: Agency name ────────────────────────────────
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(headerTextColor[0], headerTextColor[1], headerTextColor[2]);
   doc.text(agencyName || brand.report_header_text, textStartX, headerY + 6.5);
 
   // ── Line 2: Subheader ──────────────────────────────────
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(subheaderColor[0], subheaderColor[1], subheaderColor[2]);
   doc.text(brand.report_subheader_text, textStartX, headerY + 11);
@@ -666,7 +675,7 @@ export function addReportHeader(
 
   // Label
   doc.setFontSize(FONT.SIZE_SMALL_META);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setTextColor(...caseTextColor);
   doc.text(caseBoxLabel, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 5, { align: 'center' });
 
@@ -1148,7 +1157,7 @@ export function addCautionBlock(
   doc.rect(x, y, width, boxH);
 
   // Label
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.CAUTION_TEXT);
   doc.text('[!] CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
@@ -3331,7 +3340,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_INVERTED);
   doc.setLineWidth(BORDER.CASE_BOX);
   doc.rect(LAYOUT.PAGE_MARGIN + 1.5, y + 1.2, cw - 3, 7.6);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text('WARNING -- TRESPASS NOTICE', pageWidth / 2, y + 7, { align: 'center' });
@@ -3645,7 +3654,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_INVERTED);
   doc.setLineWidth(BORDER.BANNER);
   doc.rect(LAYOUT.PAGE_MARGIN + 1, y + 1, cw - 2, 6);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER_SMALL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text('MANDATORY REPORT -- MUST BE COMPLETED WITHIN 24 HOURS OF INCIDENT', pageWidth / 2, y + 5.5, { align: 'center' });
@@ -3769,7 +3778,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
     doc.line(LAYOUT.PAGE_MARGIN + 1, y + 5, LAYOUT.PAGE_MARGIN + cw - 1, y + 5);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text('TIME', lx, y + 2);
