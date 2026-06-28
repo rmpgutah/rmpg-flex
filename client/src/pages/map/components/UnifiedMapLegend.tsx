@@ -54,7 +54,7 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
   if (!anyActive) return null;
 
   const bg = isLight ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.94)';
-  const fg = isLight ? '#222' : '#cfcfcf';
+  const fg = isLight ? '#222' : 'var(--rmpg-300)';
   const sub = isLight ? '#666' : '#888';
 
   return (

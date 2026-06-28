@@ -19,6 +19,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { getTaggedBeats } from '../pages/map/utils/districtGeoData';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 export type HierarchyLevelId = 'area' | 'section' | 'zone';
 
@@ -162,11 +163,11 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
     whenStyleReady(map, () => {
       if (addedRef.current.has(id)) return;
       try {
-        if (!map.getSource(SRC_FILL)) map.addSource(SRC_FILL, { type: 'geojson', data: tagged });
+        if (!hasSource(map, SRC_FILL)) map.addSource(SRC_FILL, { type: 'geojson', data: tagged });
 
         // Fill: shared beat geometry colored by this level. Added first/sync so
         // toggling feels instant — the heavier dissolve runs deferred below.
-        if (!map.getLayer(fillLayer(id))) {
+        if (!hasLayer(map, fillLayer(id))) {
           map.addLayer({
             id: fillLayer(id),
             type: 'fill',
@@ -188,8 +189,8 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
         try {
           const labelPts = ensureLabelPoints(id);
           if (labelPts) {
-            if (!map.getSource(dissolveSrc(id))) map.addSource(dissolveSrc(id), { type: 'geojson', data: labelPts });
-            if (!map.getLayer(labelLayer(id))) {
+            if (!hasSource(map, dissolveSrc(id))) map.addSource(dissolveSrc(id), { type: 'geojson', data: labelPts });
+            if (!hasLayer(map, labelLayer(id))) {
               map.addLayer({
                 id: labelLayer(id),
                 type: 'symbol',
@@ -205,7 +206,7 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
               });
             }
             const vis = statesRef.current[id]?.visible ? 'visible' : 'none';
-            if (map.getLayer(labelLayer(id))) map.setLayoutProperty(labelLayer(id), 'visibility', vis);
+            if (hasLayer(map, labelLayer(id))) map.setLayoutProperty(labelLayer(id), 'visibility', vis);
           }
         } catch (err) {
           console.warn('[hierarchy] label add failed', id, err);
@@ -244,7 +245,7 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
     if (!map) return;
     const v = visible ? 'visible' : 'none';
     for (const lid of [fillLayer(id), outlineLayer(id), labelLayer(id)]) {
-      try { if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', v); } catch { /* style not ready */ }
+      try { if (hasLayer(map, lid)) map.setLayoutProperty(lid, 'visibility', v); } catch { /* style not ready */ }
     }
   }, [map]);
 

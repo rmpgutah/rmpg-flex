@@ -18,6 +18,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import {
   roadColorExpression, roadSortKeyExpression, ptTypeColorExpression,
   classifyCartocode, classifyPtType,
@@ -190,7 +191,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       const lp = labelPaint(isLightRef.current);
 
       try {
-        if (!map.getSource(source)) {
+        if (!hasSource(map, source)) {
           map.addSource(source, {
             type: 'vector',
             tiles: [tilesUrl(cfg.name)],
@@ -200,7 +201,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
         }
 
         if (cfg.kind === 'line') {
-          if (!map.getLayer(lineLayerId(cfg.id))) {
+          if (!hasLayer(map, lineLayerId(cfg.id))) {
             map.addLayer({
               id: lineLayerId(cfg.id),
               type: 'line',
@@ -233,7 +234,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
             });
           }
           // Road name labels at high zoom.
-          if (!map.getLayer(labelLayerId(cfg.id))) {
+          if (!hasLayer(map, labelLayerId(cfg.id))) {
             map.addLayer({
               id: labelLayerId(cfg.id),
               type: 'symbol',
@@ -259,32 +260,46 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
             });
           }
         } else {
-          // Point layer — small gold dots + address labels at very high zoom.
-          if (!map.getLayer(circleLayerId(cfg.id))) {
+          // Point layer — address NUMBERS (not dots), colored by property type.
+          // Extract the leading house number from FullAdd ("3515 S 5600 W" →
+          // "3515") via index-of/slice; fall back to AddNum or the full string.
+          const houseNumberExpr = [
+            'case',
+            ['has', 'AddNum'], ['to-string', ['get', 'AddNum']],
+            ['>', ['index-of', ' ', ['coalesce', ['get', 'FullAdd'], '']], 0],
+            ['slice', ['coalesce', ['get', 'FullAdd'], ''], 0, ['index-of', ' ', ['coalesce', ['get', 'FullAdd'], '']]],
+            ['coalesce', ['get', 'FullAdd'], ''],
+          ];
+          if (!hasLayer(map, circleLayerId(cfg.id))) {
             map.addLayer({
               id: circleLayerId(cfg.id),
-              type: 'circle',
+              type: 'symbol',
               source,
               'source-layer': cfg.sourceLayer,
               // Always load regardless of zoom — gate at the archive's own min
               // (z10) so address points appear well before street level.
               minzoom: cfg.sourceMinzoom,
-              layout: { visibility: 'none' },
+              layout: {
+                visibility: 'none',
+                'text-field': houseNumberExpr as any,
+                'text-size': ['interpolate', ['linear'], ['zoom'], 10, 8, 14, 10, 18, 13] as any,
+                'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+                'text-allow-overlap': false,
+                'text-padding': 1,
+              },
               paint: {
-                'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.4, 14, 2.6, 18, 5.5] as any,
                 // Full building/property-type color-coding generated from the
                 // shared PROPERTY_TYPES taxonomy (landTypes.ts): residential,
                 // commercial, industrial, agricultural, mixed, government,
                 // education, religious, medical, recreation, utility,
                 // transportation, vacant + Other. One source drives map+legend.
-                'circle-color': ptTypeColorExpression(cfg.color) as any,
-                'circle-opacity': 0.9,
-                'circle-stroke-color': '#0a0a0a',
-                'circle-stroke-width': 0.6,
+                'text-color': ptTypeColorExpression(cfg.color) as any,
+                'text-halo-color': '#0a0a0a',
+                'text-halo-width': 1.2,
               },
             });
           }
-          if (!map.getLayer(labelLayerId(cfg.id))) {
+          if (!hasLayer(map, labelLayerId(cfg.id))) {
             map.addLayer({
               id: labelLayerId(cfg.id),
               type: 'symbol',
@@ -293,7 +308,14 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
               minzoom: 16,
               layout: {
                 visibility: 'none',
-                'text-field': ['get', 'FullAdd'] as any,
+                // Street part only — the house number is already rendered by
+                // the point layer above; avoid printing it twice.
+                'text-field': [
+                  'case',
+                  ['>', ['index-of', ' ', ['coalesce', ['get', 'FullAdd'], '']], 0],
+                  ['slice', ['coalesce', ['get', 'FullAdd'], ''], ['+', ['index-of', ' ', ['coalesce', ['get', 'FullAdd'], '']], 1]],
+                  '',
+                ] as any,
                 'text-size': 9,
                 'text-offset': [0, 0.9],
                 'text-anchor': 'top',
@@ -350,7 +372,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
             ? [lineLayerId(cfg.id), labelLayerId(cfg.id)]
             : [circleLayerId(cfg.id), labelLayerId(cfg.id)];
           for (const id of visIds) {
-            try { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible'); } catch { /* noop */ }
+            try { if (hasLayer(map, id)) map.setLayoutProperty(id, 'visibility', 'visible'); } catch { /* noop */ }
           }
         }
 
@@ -369,7 +391,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       ? [lineLayerId(cfg.id), labelLayerId(cfg.id)]
       : [circleLayerId(cfg.id), labelLayerId(cfg.id)];
     for (const id of ids) {
-      try { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis); } catch { /* style not ready */ }
+      try { if (hasLayer(map, id)) map.setLayoutProperty(id, 'visibility', vis); } catch { /* style not ready */ }
     }
   }, [map]);
 
@@ -431,6 +453,39 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     }
   }, [map, addLayer]);
 
+  // ── Self-healing safety net ──────────────────────────────────────────────
+  // Every other add path hangs off a SINGLE one-shot signal (whenStyleReady's
+  // immediate call or the next 'style.load'). If that signal is missed — the
+  // style finished before the listener attached, a setStyle() wipe + re-add
+  // raced, the source errored once, or a slow/throttled edge stalled the style
+  // so style.load never fired — the layers are never added and nothing retries,
+  // so the statewide overlays silently never appear (confirmed live: a fully
+  // built basemap with zero vt-* layers/sources). 'idle' fires whenever the map
+  // settles after any render/interaction; we use it as an idempotent re-assert:
+  // for each layer that SHOULD be visible, if its layer is missing from the
+  // style, re-add it. addLayer is guarded by addedRef + getLayer/getSource
+  // checks, so this is a no-op once everything is present.
+  useEffect(() => {
+    if (!map) return;
+    const ensure = () => {
+      for (const cfg of VECTOR_TILE_CONFIGS) {
+        if (!layerStatesRef.current[cfg.id]?.visible) continue;
+        const dataLayer = cfg.kind === 'line' ? lineLayerId(cfg.id) : circleLayerId(cfg.id);
+        try {
+          if (!hasLayer(map, dataLayer)) {
+            // Layer absent (never added, or wiped by a style swap and not
+            // re-added) — clear the add-guard and rebuild it.
+            addedRef.current.delete(cfg.id);
+            addLayer(cfg);
+            setLayerVisibility(cfg, true);
+          }
+        } catch { /* style mid-swap; next idle retries */ }
+      }
+    };
+    map.on('idle', ensure);
+    return () => { map.off('idle', ensure); };
+  }, [map, addLayer, setLayerVisibility]);
+
   // Re-color labels live when the basemap light/dark theme changes (for layers
   // already on the map — newly added ones pick up the current theme in addLayer).
   useEffect(() => {
@@ -439,7 +494,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     for (const cfg of VECTOR_TILE_CONFIGS) {
       const id = labelLayerId(cfg.id);
       try {
-        if (map.getLayer(id)) {
+        if (hasLayer(map, id)) {
           map.setPaintProperty(id, 'text-color', lp.text);
           map.setPaintProperty(id, 'text-halo-color', lp.halo);
         }

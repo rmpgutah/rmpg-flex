@@ -48,14 +48,38 @@ async function wireBackButton(): Promise<void> {
   }
 }
 
+// Debounced service-worker update check, fired when the native app
+// returns to the foreground. Capacitor WebViews don't reliably emit the
+// DOM `visibilitychange`/`focus` events that useServiceWorker listens on,
+// so without this an officer reopening the app right after a deploy could
+// wait up to the 15-minute poll before the new bundle is even checked for.
+// We only trigger the *check*; WebUpdateBanner still owns the actual reload
+// and applies it silently when it's safe (no focused field / open modal),
+// so an in-progress report is never clobbered.
+let lastResumeUpdateCheck = 0;
+async function checkForUpdateOnResume(): Promise<void> {
+  const now = Date.now();
+  if (now - lastResumeUpdateCheck < 10_000) return; // debounce rapid resume churn
+  lastResumeUpdateCheck = now;
+  try {
+    if (!('serviceWorker' in navigator)) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    await reg?.update();
+  } catch (err) {
+    console.warn('[nativeAppShell] resume SW update check failed', err);
+  }
+}
+
 async function wireAppLifecycle(): Promise<void> {
   try {
     const { App } = await import('@capacitor/app');
     await App.addListener('appStateChange', ({ isActive }) => {
-      // Log only — leave hooks for future resume-refresh / pause-stop-GPS work.
       // Logged at info-level so this is visible in chrome://inspect during APK testing.
       // eslint-disable-next-line no-console
       console.info(`[nativeAppShell] appStateChange isActive=${isActive}`);
+      // On foreground/resume, force a SW update check so web/feature deploys
+      // land automatically on device (see checkForUpdateOnResume above).
+      if (isActive) void checkForUpdateOnResume();
     });
   } catch (err) {
     console.warn('[nativeAppShell] appStateChange listener failed', err);

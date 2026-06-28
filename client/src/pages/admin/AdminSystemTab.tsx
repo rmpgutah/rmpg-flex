@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import IconButton from '../../components/IconButton';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { INCIDENT_TYPE_CODES, INCIDENT_TYPE_CATEGORIES, type IncidentCategory } from '../../utils/caseNumbers';
 import { OffenseLevelBadge } from '../../components/StatuteLookup';
@@ -120,7 +122,7 @@ const DEFAULT_PRIORITIES: PriorityConfig[] = [
   { level: 'P1', label: 'Emergency', color: '#dc2626', target: '< 3 min' },
   { level: 'P2', label: 'Urgent', color: '#f59e0b', target: '< 5 min' },
   { level: 'P3', label: 'Routine', color: '#888888', target: '< 10 min' },
-  { level: 'P4', label: 'Scheduled', color: '#666666', target: 'Scheduled' },
+  { level: 'P4', label: 'Scheduled', color: 'var(--rmpg-500)', target: 'Scheduled' },
 ];
 
 const DEFAULT_CALL_SOURCES = ['phone', 'radio', 'walk_in', 'alarm', 'patrol', 'online', 'dispatch', 'email', 'servemanager', 'other'];
@@ -132,7 +134,7 @@ const DEFAULT_UNIT_TYPES: UnitTypeConfig[] = [
   { type: 'medical', label: 'Medical', color: '#ef4444' },
   { type: 'bike', label: 'Bike Patrol', color: '#10b981' },
   { type: 'foot', label: 'Foot Patrol', color: '#888888' },
-  { type: 'vehicle', label: 'Vehicle', color: '#666666' },
+  { type: 'vehicle', label: 'Vehicle', color: 'var(--rmpg-500)' },
 ];
 
 const DEFAULT_EVIDENCE_TYPES = [
@@ -156,7 +158,7 @@ const DEFAULT_BRANDING: BrandingConfig = {
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#dc2626',
   accent_color: '#d4a017',
-  header_bg_color: '#1c1c1c',
+  header_bg_color: 'var(--surface-raised)',
 };
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
@@ -388,7 +390,12 @@ export default function AdminSystemTab({
     setLoadingConfig(true);
     setError(null);
     try {
-      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config');
+      // /admin/config-items returns the Record<category, ConfigItem[]> shape this
+      // tab needs for inline Add/Edit/Delete (each row has id + category). The
+      // sibling /admin/config returns a FLAT key/value map used by DispatchPage
+      // and IncidentsPage; calling it here yielded undefined for every category
+      // (only `dispositions` matched the shape), so every editor was empty.
+      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config-items');
       setIncidentTypes(grouped.incident_types || []);
       setDispositionCodes(grouped.dispositions || []);
 
@@ -445,7 +452,10 @@ export default function AdminSystemTab({
     setLoadingTemplates(true);
     try {
       const templates = await apiFetch<CallTemplate[]>('/admin/call-templates');
-      setCallTemplates(templates.filter((t) => t.is_active));
+      // Legacy endpoint may return a bare array or a { data: [...] } envelope;
+      // normalize so a non-array shape doesn't silently empty the list.
+      const list = Array.isArray(templates) ? templates : ((templates as any)?.data ?? []);
+      setCallTemplates(list.filter((t: CallTemplate) => t.is_active));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load call templates');
     } finally {
@@ -514,8 +524,12 @@ export default function AdminSystemTab({
   const saveJsonConfig = async (key: string, category: string, value: unknown) => {
     const jsonVal = JSON.stringify(value);
     try {
+      // Guard against `undefined` interpolating into the URL — the old code
+      // shipped `PUT /admin/config/undefined 404` whenever a prior POST silently
+      // returned no id and we re-tried the save (visible in the prod console).
+      // Always require a Number id before using the PUT path.
       const cachedId = configIdCacheRef.current[`${category}:${key}`];
-      if (cachedId) {
+      if (typeof cachedId === 'number' && Number.isFinite(cachedId) && cachedId > 0) {
         await apiFetch(`/admin/config/${cachedId}`, {
           method: 'PUT',
           body: JSON.stringify({ config_value: jsonVal }),
@@ -523,11 +537,14 @@ export default function AdminSystemTab({
         return;
       }
 
-      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config');
+      // Look up the row id from the grouped endpoint (matches the fetch above
+      // — the flat /admin/config doesn't return per-row ids).
+      const grouped = await apiFetch<Record<string, ConfigItem[]>>('/admin/config-items');
       const existing = (grouped[category] || []).find((i) => i.config_key === key);
-      if (existing) {
-        configIdCacheRef.current[`${category}:${key}`] = existing.id;
-        await apiFetch(`/admin/config/${existing.id}`, {
+      const existingId = existing?.id;
+      if (typeof existingId === 'number' && Number.isFinite(existingId) && existingId > 0) {
+        configIdCacheRef.current[`${category}:${key}`] = existingId;
+        await apiFetch(`/admin/config/${existingId}`, {
           method: 'PUT',
           body: JSON.stringify({ config_value: jsonVal }),
         });
@@ -536,7 +553,12 @@ export default function AdminSystemTab({
           method: 'POST',
           body: JSON.stringify({ config_key: key, config_value: jsonVal, category }),
         });
-        if (created?.id) configIdCacheRef.current[`${category}:${key}`] = created.id;
+        // Only cache a real numeric id — never `undefined`, never the literal
+        // string 'undefined'. A bad cache here is what produced the prod URL
+        // `/admin/config/undefined`.
+        if (typeof created?.id === 'number' && Number.isFinite(created.id) && created.id > 0) {
+          configIdCacheRef.current[`${category}:${key}`] = created.id;
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to save ${category}`);
@@ -569,6 +591,12 @@ export default function AdminSystemTab({
   };
 
   const removeConfigItem = async (id: number) => {
+    // Same `undefined`-in-URL guard as saveJsonConfig — never fire DELETE
+    // /admin/config/undefined when an id is missing or malformed.
+    if (typeof id !== 'number' || !Number.isFinite(id) || id <= 0) {
+      setError('Cannot remove: missing or invalid id');
+      return;
+    }
     try {
       await apiFetch(`/admin/config/${id}`, { method: 'DELETE' });
       await fetchConfig();
@@ -598,6 +626,15 @@ export default function AdminSystemTab({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add disposition code');
     }
+  };
+
+  // Start editing a disposition row (shared by the inline pencil + context menu).
+  const startEditDisposition = (item: ConfigItem) => {
+    let parsed = { code: '', description: '', color: '#888888' };
+    try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
+    setEditingDispId(item.id);
+    setEditDispDesc(parsed.description);
+    setEditDispColor(parsed.color || '#888888');
   };
 
   const updateDispositionCode = async (id: number) => {
@@ -1153,7 +1190,7 @@ export default function AdminSystemTab({
     return (
       <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
         <div className="bg-rmpg-800 border border-rmpg-600 p-6 max-w-md w-full mx-4">
-          <h3 className="text-sm font-bold text-white mb-2">Delete Dispatch Unit</h3>
+          <h3 className="text-sm font-bold text-rmpg-100 mb-2">Delete Dispatch Unit</h3>
           <p className="text-xs text-rmpg-300 mb-4">
             Are you sure you want to permanently delete unit "{unitName}"? This action cannot be undone.
           </p>
@@ -1172,6 +1209,61 @@ export default function AdminSystemTab({
       </div>
     );
   };
+
+  // ============================================================
+  // Right-click context menus (record-row tables)
+  // ============================================================
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
+    m.action('Edit unit', () => startEditUnit(unit), { icon: <Edit size={12} /> }),
+    m.separator(),
+    m.copy('Copy call sign', unit.call_sign),
+    ...(unit.officer_name ? [m.copy('Copy officer', unit.officer_name)] : []),
+    m.copyId(unit.id, 'Copy unit ID'),
+    ...(!unit.current_call_id
+      ? [m.separator(), m.action('Delete unit', () => setDeletingUnitId(unit.id), { icon: <Trash2 size={12} />, danger: true })]
+      : []),
+  ];
+
+  const buildTemplateMenu = (tpl: CallTemplate): ContextMenuItem[] => [
+    m.action('Edit template', () => startEditTemplate(tpl), { icon: <Edit size={12} /> }),
+    m.separator(),
+    m.copy('Copy name', tpl.name),
+    m.copyId(tpl.id, 'Copy template ID'),
+    m.separator(),
+    m.action('Delete template', () => removeCallTemplate(tpl.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  const buildDispositionMenu = (item: ConfigItem): ContextMenuItem[] => {
+    let parsed = { code: '', description: '', color: '#888888' };
+    try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
+    return [
+      m.action('Edit disposition', () => startEditDisposition(item), { icon: <Edit size={12} /> }),
+      m.separator(),
+      m.copy('Copy code', parsed.code),
+      m.copy('Copy description', parsed.description),
+      m.copyId(item.id, 'Copy config ID'),
+      m.separator(),
+      m.action('Delete disposition', () => removeConfigItem(item.id), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
+  const buildZoneMenu = (z: ZoneBeat): ContextMenuItem[] => [
+    m.action('Edit zone', () => startEditZone(z), { icon: <Edit size={12} /> }),
+    m.separator(),
+    m.copy('Copy code', z.code),
+    m.copy('Copy name', z.name),
+    m.separator(),
+    m.action('Delete zone', () => removeZone(z.code), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  const buildStatuteMenu = (s: any): ContextMenuItem[] => [
+    m.copy('Copy citation', s.citation),
+    m.copy('Copy title', s.short_title),
+    m.copyId(s.id, 'Copy statute ID'),
+  ];
 
   // ============================================================
   // Render
@@ -1205,7 +1297,7 @@ export default function AdminSystemTab({
                 onClick={() => setActiveSection(sec.id)}
                 className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium transition-all duration-150 ${
                   isActive
-                    ? 'bg-brand-900/40 text-white border border-brand-500/50'
+                    ? 'bg-brand-900/40 text-rmpg-100 border border-brand-500/50'
                     : 'text-rmpg-400 hover:bg-rmpg-700/40 hover:text-rmpg-200 border border-transparent'
                 }`}
               >
@@ -1229,7 +1321,7 @@ export default function AdminSystemTab({
       </div>
 
       {/* ====== CONTENT PANEL (full width) ====== */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark p-4" role="tabpanel">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark p-4" role="tabpanel">
       {loadingConfig ? (
         <LoadingSpinner />
       ) : (
@@ -1353,7 +1445,7 @@ export default function AdminSystemTab({
                       try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
                       const isEditing = editingDispId === item.id;
                       return (
-                        <tr key={item.id}>
+                        <tr key={item.id} onContextMenu={(e) => openMenu(e, buildDispositionMenu(item))}>
                           <td>
                             {isEditing ? (
                               <input id="ff-adminsystemtab-1" type="color" value={editDispColor} onChange={(e) => setEditDispColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
@@ -1361,7 +1453,7 @@ export default function AdminSystemTab({
                               <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: parsed.color || '#888888' }} />
                             )}
                           </td>
-                          <td className="font-bold text-white font-mono">{parsed.code}</td>
+                          <td className="font-bold text-rmpg-100 font-mono">{parsed.code}</td>
                           <td>
                             {isEditing ? (
                               <input id="ff-adminsystemtab-2"
@@ -1389,7 +1481,7 @@ export default function AdminSystemTab({
                               ) : (
                                 <>
                                   <button type="button"
-                                    onClick={() => { setEditingDispId(item.id); setEditDispDesc(parsed.description); setEditDispColor(parsed.color || '#888888'); }}
+                                    onClick={() => startEditDisposition(item)}
                                     className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400"
                                     title="Edit"
                                   >
@@ -1453,10 +1545,10 @@ export default function AdminSystemTab({
                           onChange={(e) => updatePriority(i, 'color', e.target.value)}
                           className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent"
                         />
-                        <span className="text-sm font-bold text-white font-mono">{p.level}</span>
+                        <span className="text-sm font-bold text-rmpg-100 font-mono">{p.level}</span>
                       </div>
                       <div>
-                        <label className="text-[9px] text-rmpg-400 uppercase">Label</label>
+                        <label htmlFor="ff-adminsystemtab-7" className="text-[9px] text-rmpg-400 uppercase">Label</label>
                         <input id="ff-adminsystemtab-7"
                           type="text"
                           className="input-dark text-xs w-full min-h-[36px]"
@@ -1465,7 +1557,7 @@ export default function AdminSystemTab({
                         />
                       </div>
                       <div>
-                        <label className="text-[9px] text-rmpg-400 uppercase">Response Target</label>
+                        <label htmlFor="ff-adminsystemtab-8" className="text-[9px] text-rmpg-400 uppercase">Response Target</label>
                         <input id="ff-adminsystemtab-8"
                           type="text"
                           className="input-dark text-xs w-full min-h-[36px]"
@@ -1530,7 +1622,7 @@ export default function AdminSystemTab({
                             <button type="button"
                               onClick={() => moveCallSource(i, 'up')}
                               disabled={i === 0}
-                              className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
+                              className="p-0.5 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-20 disabled:cursor-not-allowed"
                               title="Move up"
                             >
                               <ChevronDown className="w-3 h-3 rotate-180" />
@@ -1538,7 +1630,7 @@ export default function AdminSystemTab({
                             <button type="button"
                               onClick={() => moveCallSource(i, 'down')}
                               disabled={i === callSources.length - 1}
-                              className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
+                              className="p-0.5 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-20 disabled:cursor-not-allowed"
                               title="Move down"
                             >
                               <ChevronDown className="w-3 h-3" />
@@ -1613,7 +1705,7 @@ export default function AdminSystemTab({
                         <>
                           <div className="w-4 h-4 rounded-sm flex-shrink-0" style={{ backgroundColor: ut.color }} />
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs text-white font-medium truncate">{ut.label}</div>
+                            <div className="text-xs text-rmpg-100 font-medium truncate">{ut.label}</div>
                             <div className="text-[10px] text-rmpg-500 font-mono">{ut.type}</div>
                           </div>
                           <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -1687,7 +1779,7 @@ export default function AdminSystemTab({
                         </thead>
                         <tbody>
                           {adminUnits.map((unit) => (
-                            <tr key={unit.id}>
+                            <tr key={unit.id} onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}>
                               {editingAdminUnitId === unit.id ? (
                                 <>
                                   <td>
@@ -1722,13 +1814,13 @@ export default function AdminSystemTab({
                                 </>
                               ) : (
                                 <>
-                                  <td><span className="font-bold text-white font-mono text-xs">{unit.call_sign}</span></td>
+                                  <td><span className="font-bold text-rmpg-100 font-mono text-xs">{unit.call_sign}</span></td>
                                   <td className="text-rmpg-200 text-xs">{unit.officer_name || <span className="text-rmpg-500">Unassigned</span>}</td>
                                   <td>
                                     <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${
                                       unit.status === 'available' ? 'bg-green-900/40 text-green-400 border-green-700/50' :
                                       unit.status === 'dispatched' ? 'bg-amber-900/40 text-amber-400 border-amber-700/50' :
-                                      unit.status === 'enroute' ? 'bg-gray-900/40 text-gray-400 border-gray-700/50' :
+                                      unit.status === 'enroute' ? 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50' :
                                       unit.status === 'onscene' ? 'bg-purple-900/40 text-purple-400 border-purple-700/50' :
                                       unit.status === 'busy' ? 'bg-red-900/40 text-red-400 border-red-700/50' :
                                       'bg-rmpg-700/40 text-rmpg-400 border-rmpg-600/50'
@@ -1739,7 +1831,7 @@ export default function AdminSystemTab({
                                   <td className="text-xs font-mono text-rmpg-300">{unit.current_call_number || <span className="text-rmpg-500">-</span>}</td>
                                   <td>
                                     <div className="flex items-center gap-1">
-                                      <button type="button" onClick={() => startEditUnit(unit)} className="text-rmpg-400 hover:text-gray-400" title="Edit unit">
+                                      <button type="button" onClick={() => startEditUnit(unit)} className="text-rmpg-400 hover:text-rmpg-400" title="Edit unit">
                                         <Edit className="w-3.5 h-3.5" />
                                       </button>
                                       {!unit.current_call_id && (
@@ -1803,10 +1895,10 @@ export default function AdminSystemTab({
                     </thead>
                     <tbody>
                       {zones.map((z) => (
-                        <tr key={z.code}>
+                        <tr key={z.code} onContextMenu={(e) => openMenu(e, buildZoneMenu(z))}>
                           {editingZoneCode === z.code ? (
                             <>
-                              <td className="font-bold text-white font-mono">{z.code}</td>
+                              <td className="font-bold text-rmpg-100 font-mono">{z.code}</td>
                               <td>
                                 <input id="ff-adminsystemtab-22" type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneName} onChange={(e) => setEditZoneName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} autoFocus />
                               </td>
@@ -1822,7 +1914,7 @@ export default function AdminSystemTab({
                             </>
                           ) : (
                             <>
-                              <td className="font-bold text-white font-mono">{z.code}</td>
+                              <td className="font-bold text-rmpg-100 font-mono">{z.code}</td>
                               <td className="text-rmpg-200">{z.name}</td>
                               <td className="text-rmpg-300 text-xs">{z.description || '--'}</td>
                               <td>
@@ -1921,7 +2013,7 @@ export default function AdminSystemTab({
                         </thead>
                         <tbody>
                           {callTemplates.map((tpl) => (
-                            <tr key={tpl.id}>
+                            <tr key={tpl.id} onContextMenu={(e) => openMenu(e, buildTemplateMenu(tpl))}>
                               {editingTemplateId === tpl.id ? (
                                 <>
                                   <td>
@@ -1953,7 +2045,7 @@ export default function AdminSystemTab({
                                 </>
                               ) : (
                                 <>
-                                  <td className="font-semibold text-white">{tpl.name}</td>
+                                  <td className="font-semibold text-rmpg-100">{tpl.name}</td>
                                   <td className="text-xs text-rmpg-200">
                                     <span className="font-mono text-brand-400 mr-1">{INCIDENT_TYPE_CODES[tpl.incident_type] || '---'}</span>
                                     {tpl.incident_type.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
@@ -1962,9 +2054,9 @@ export default function AdminSystemTab({
                                     <span className={`font-mono font-bold text-xs ${
                                       tpl.priority === 'P1' ? 'text-red-400' :
                                       tpl.priority === 'P2' ? 'text-amber-400' :
-                                      tpl.priority === 'P3' ? 'text-gray-400' :
+                                      tpl.priority === 'P3' ? 'text-rmpg-400' :
                                       'text-rmpg-400'
-                                    }`}>{tpl.priority}</span>
+                                    }`}>{(tpl.priority || '').toUpperCase()}</span>
                                   </td>
                                   <td className="text-xs text-rmpg-300 max-w-xs truncate">{tpl.description_template || '--'}</td>
                                   <td>
@@ -2021,11 +2113,11 @@ export default function AdminSystemTab({
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Password Policy</div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Minimum Password Length</label>
+                      <label htmlFor="ff-adminsystemtab-37" className="text-[10px] text-rmpg-400 uppercase block mb-1">Minimum Password Length</label>
                       <input id="ff-adminsystemtab-37" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.min_password_length} onChange={(e) => updateSecuritySetting('min_password_length', e.target.value)} min="6" max="32" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password Expiry (days, 0 = never)</label>
+                      <label htmlFor="ff-adminsystemtab-38" className="text-[10px] text-rmpg-400 uppercase block mb-1">Password Expiry (days, 0 = never)</label>
                       <input id="ff-adminsystemtab-38" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.password_expiry_days} onChange={(e) => updateSecuritySetting('password_expiry_days', e.target.value)} min="0" max="365" />
                     </div>
                     <div className="space-y-2">
@@ -2056,16 +2148,16 @@ export default function AdminSystemTab({
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Lockout & Sessions</div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Login Attempts</label>
+                      <label htmlFor="ff-adminsystemtab-39" className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Login Attempts</label>
                       <input id="ff-adminsystemtab-39" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_login_attempts} onChange={(e) => updateSecuritySetting('max_login_attempts', e.target.value)} min="1" max="20" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Account locks after this many failed attempts.</p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Lockout Duration (minutes)</label>
+                      <label htmlFor="ff-adminsystemtab-40" className="text-[10px] text-rmpg-400 uppercase block mb-1">Lockout Duration (minutes)</label>
                       <input id="ff-adminsystemtab-40" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.lockout_duration_minutes} onChange={(e) => updateSecuritySetting('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Active Sessions</label>
+                      <label htmlFor="ff-adminsystemtab-41" className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Active Sessions</label>
                       <input id="ff-adminsystemtab-41" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_active_sessions} onChange={(e) => updateSecuritySetting('max_active_sessions', e.target.value)} min="1" max="10" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Maximum concurrent sessions per user.</p>
                     </div>
@@ -2094,21 +2186,21 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Brand Colors</div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Primary</label>
+                        <label htmlFor="ff-adminsystemtab-42" className="text-[10px] text-rmpg-400 uppercase block mb-1">Primary</label>
                         <div className="flex items-center gap-2">
                           <input id="ff-adminsystemtab-42" type="color" value={brandingConfig.primary_color} onChange={(e) => updateBranding('primary_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
                           <span className="text-[10px] text-rmpg-500 font-mono">{brandingConfig.primary_color}</span>
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Accent</label>
+                        <label htmlFor="ff-adminsystemtab-43" className="text-[10px] text-rmpg-400 uppercase block mb-1">Accent</label>
                         <div className="flex items-center gap-2">
                           <input id="ff-adminsystemtab-43" type="color" value={brandingConfig.accent_color} onChange={(e) => updateBranding('accent_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
                           <span className="text-[10px] text-rmpg-500 font-mono">{brandingConfig.accent_color}</span>
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Header BG</label>
+                        <label htmlFor="ff-adminsystemtab-44" className="text-[10px] text-rmpg-400 uppercase block mb-1">Header BG</label>
                         <div className="flex items-center gap-2">
                           <input id="ff-adminsystemtab-44" type="color" value={brandingConfig.header_bg_color} onChange={(e) => updateBranding('header_bg_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
                           <span className="text-[10px] text-rmpg-500 font-mono">{brandingConfig.header_bg_color}</span>
@@ -2196,12 +2288,12 @@ export default function AdminSystemTab({
                       </thead>
                       <tbody>
                         {statutes.map((s: any) => (
-                          <tr key={s.id} className="border-t border-rmpg-700/30 hover:bg-rmpg-700/20">
+                          <tr key={s.id} className="border-t border-rmpg-700/30 hover:bg-rmpg-700/20" onContextMenu={(e) => openMenu(e, buildStatuteMenu(s))}>
                             <td className="px-2 py-1.5 font-mono text-brand-400 font-bold whitespace-nowrap">{s.citation}</td>
                             <td className="px-2 py-1.5 text-rmpg-200 max-w-[250px] truncate">{s.short_title}</td>
                             <td className="px-2 py-1.5">
                               <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase border ${
-                                s.category === 'criminal' ? 'bg-red-900/30 text-red-400 border-red-700/40' : 'bg-gray-900/30 text-gray-400 border-gray-700/40'
+                                s.category === 'criminal' ? 'bg-red-900/30 text-red-400 border-red-700/40' : 'bg-surface-sunken/30 text-rmpg-400 border-border-default/40'
                               }`}>
                                 {s.category === 'criminal' ? 'Criminal' : 'Vehicle'}
                               </span>
@@ -2255,15 +2347,15 @@ export default function AdminSystemTab({
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Agency Information</div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency Name</label>
+                      <label htmlFor="ff-adminsystemtab-47" className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency Name</label>
                       <input id="ff-adminsystemtab-47" type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_name} onChange={(e) => updateSetting('agency_name', e.target.value)} placeholder="Used in PDF report headers" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency ORI Number</label>
+                      <label htmlFor="ff-adminsystemtab-48" className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency ORI Number</label>
                       <input id="ff-adminsystemtab-48" type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_ori} onChange={(e) => updateSetting('agency_ori', e.target.value)} placeholder="e.g. UT0190000" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Timezone</label>
+                      <label htmlFor="ff-adminsystemtab-49" className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Timezone</label>
                       <select id="ff-adminsystemtab-49" className="select-dark text-xs w-full" value={systemSettings.default_timezone} onChange={(e) => updateSetting('default_timezone', e.target.value)}>
                         <option value="America/New_York">Eastern (America/New_York)</option>
                         <option value="America/Chicago">Central (America/Chicago)</option>
@@ -2278,12 +2370,12 @@ export default function AdminSystemTab({
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">System Parameters</div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Auto-Archive After (days)</label>
+                      <label htmlFor="ff-adminsystemtab-50" className="text-[10px] text-rmpg-400 uppercase block mb-1">Auto-Archive After (days)</label>
                       <input id="ff-adminsystemtab-50" type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.auto_archive_days} onChange={(e) => updateSetting('auto_archive_days', e.target.value)} min="0" max="365" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Closed calls are auto-archived after this many days. 0 = disabled.</p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Session Timeout (minutes)</label>
+                      <label htmlFor="ff-adminsystemtab-51" className="text-[10px] text-rmpg-400 uppercase block mb-1">Session Timeout (minutes)</label>
                       <input id="ff-adminsystemtab-51" type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.session_timeout_minutes} onChange={(e) => updateSetting('session_timeout_minutes', e.target.value)} min="5" max="1440" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Inactive sessions are logged out after this duration.</p>
                     </div>

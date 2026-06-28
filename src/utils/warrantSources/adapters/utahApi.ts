@@ -45,6 +45,7 @@ function toRawHit(w: FetchedWarrant): RawWarrantHit {
 
 export const utahApiAdapter: WarrantSourceAdapter = {
   meta,
+  mode: 'per-person',
   // `env` is accepted to satisfy the adapter contract but unused — the Utah
   // fetch uses module-level constants (API_BASE/USER_AGENT) + global fetch and
   // needs no DB binding. (PersonRow here is identical in shape to the poller's

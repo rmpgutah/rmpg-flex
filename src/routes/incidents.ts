@@ -13,6 +13,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
+import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { requireRole } from '../middleware/auth';
 import { validateIncidentForNibrs } from './nibrs';
 import { geocodeAddress } from './geocode';
@@ -108,6 +110,33 @@ incidents.post('/', requireRole(...WRITE_ROLES), async (c) => {
       geo?.sector_id ?? null, geo?.zone_id ?? null, geo?.beat_id ?? null, geo?.zone_beat ?? null,
       geo?.area_code ?? null, geo?.area_name ?? null);
     const created = await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', result.meta.last_row_id);
+
+    // Analytics lakehouse: incident-created event (best-effort, fire-and-forget).
+    emitAnalytics(c, c.env.EVENTS, [flexEvent({
+      event_type: 'incident_created', occurred_at: new Date().toISOString(),
+      actor_id: userId, entity_type: 'incident', entity_id: Number(result.meta.last_row_id),
+      lat, lng, status: 'draft', label: incident_type, priority: priority || 'P3',
+      category: 'records',
+      payload: { incident_number, call_id: call_id ?? null, area: geo?.area_name ?? null },
+    })]);
+    // ── FlexCam auto-preserve (best-effort, strictly additive). Resolve the
+    // officer's unit from the reporting officer; never throws into the filing
+    // flow — a preserve failure logs and is swallowed so the incident still files.
+    // Fire-and-forget via waitUntil: the preserve issues ~11 sequential ClearPath
+    // POSTs (7-min window) which must NOT delay the filing response. waitUntil
+    // also keeps the work alive after the response returns. The unit lookup runs
+    // INSIDE _preserve; only the request-scoped ids are captured up front.
+    const incidentId = Number(result.meta.last_row_id);
+    const preserveUserId = userId ?? null;
+    const preserveCallId = call_id != null ? Number(call_id) : null;
+    const _preserve = (async () => {
+      try {
+        const unit = preserveUserId ? await queryFirst<{ id: number }>(getDb(c.env), 'SELECT id FROM units WHERE officer_id=? LIMIT 1', preserveUserId).catch(() => null) : null;
+        const { preserveForEvent } = await import('../utils/footage/autoPreserve');
+        await preserveForEvent(c.env, { eventType: 'incident', eventId: incidentId, reason: 'incident', unitId: unit?.id ?? null, officerUserId: preserveUserId, callId: preserveCallId, eventTs: Date.now() }); // new-date-ok
+      } catch (e) { console.error('[flexcam-preserve] incident:', (e as Error)?.message); }
+    })();
+    try { c.executionCtx.waitUntil(_preserve); } catch { /* no execution ctx (e.g. tests) — let it float */ }
     return c.json(created, 201);
   } catch (err) {
     console.error('[incidents] create error', err);
@@ -177,10 +206,7 @@ incidents.put('/:id/submit', requireRole(...WRITE_ROLES), async (c) => {
     }
     if (!validation.valid && force) {
       try {
-        await execute(db, `
-          INSERT INTO audit_log (user_id, action, entity_type, entity_id, details)
-          VALUES (?, 'admin_override', 'incident', ?, ?)`,
-          user.id, id, `God Mode: bypassed NIBRS validation (${validation.errors.length} errors)`);
+        await recordAudit(c, { action: 'admin_override', entityType: 'incident', entityId: id, details: `God Mode: bypassed NIBRS validation (${validation.errors.length} errors)`, actorId: user.id });
       } catch { /* non-fatal */ }
     }
 
@@ -206,6 +232,19 @@ incidents.put('/:id/approve', requireRole(...REVIEW_ROLES), async (c) => {
       return c.json({ error: 'Can only approve submitted/under_review', code: 'INC_NOT_APPROVABLE' }, 400);
     }
     await execute(db, "UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = datetime('now'), updated_at = datetime('now') WHERE id = ?", user.id, id);
+    // Audit 2026-06-21 caught that the companion /return route logs
+    // via recordAudit but /approve did not. Approval is the
+    // consequential transition that locks the incident as NIBRS-
+    // eligible — should be the LOUDER trail, not the quieter one.
+    try {
+      await recordAudit(c, {
+        action: 'incident_approved',
+        entityType: 'incident',
+        entityId: id,
+        details: `Approved by supervisor ${user.full_name ?? user.id} (previous status=${incident.status})`,
+        actorId: user.id,
+      });
+    } catch { /* non-fatal */ }
     return c.json(await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', id));
   } catch (err) {
     console.error('[incidents] approve error', err);
@@ -231,10 +270,7 @@ incidents.put('/:id/return', requireRole(...REVIEW_ROLES), async (c) => {
     if (!reason) return c.json({ error: 'reason is required', code: 'INC_REASON_REQUIRED' }, 400);
     await execute(db, "UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = datetime('now') WHERE id = ?", user.id, id);
     try {
-      await execute(db, `
-        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details)
-        VALUES (?, 'incident_returned', 'incident', ?, ?)`,
-        user.id, id, `Returned for revision: ${reason}`);
+      await recordAudit(c, { action: 'incident_returned', entityType: 'incident', entityId: id, details: `Returned for revision: ${reason}`, actorId: user.id });
     } catch { /* non-fatal */ }
     return c.json(await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', id));
   } catch (err) {

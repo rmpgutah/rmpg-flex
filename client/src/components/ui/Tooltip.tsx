@@ -104,9 +104,9 @@ export default function Tooltip({ content, children, position = 'top', delay = 3
           className={`fixed z-[9999] pointer-events-none px-2 py-1 text-[10px] font-medium shadow-lg max-w-xs ${className}`}
           style={{
             ...positionStyles[position],
-            background: '#0a0a0a',
+            background: 'var(--surface-overlay)',
             color: '#d4a017',
-            border: '1px solid #2a2a2a',
+            border: '1px solid var(--border-default)',
             borderLeft: '2px solid #d4a017',
             letterSpacing: '0.04em',
           }}

@@ -26,6 +26,7 @@ export interface InvoicePdfOptions {
 import { FORM_NUMBERS } from './pdfAssets';
 // Vite-bundled URL — see pdfAssets.ts for why we don't use `/rmpg-seal.png`.
 import sealUrl from '../assets/rmpg-seal.png?url';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 // ── Data interface ────────────────────────────────────────
 
@@ -90,6 +91,7 @@ export async function generateInvoicePdf(data: InvoicePdfData, options: InvoiceP
   }));
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageWidth = doc.internal.pageSize.getWidth();
   const cw = getContentWidth(doc);

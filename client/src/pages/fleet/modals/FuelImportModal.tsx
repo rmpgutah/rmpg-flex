@@ -179,7 +179,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
           <button type="button" className="toolbar-btn text-[9px]" onClick={handleClose}>X</button>
         </PanelTitleBar>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
           {error && (
             <div className="panel-beveled p-2 border border-red-700/40 bg-red-900/20 mb-3">
               <div className="flex items-center gap-1.5 text-[10px] text-red-400"><AlertCircle className="w-3 h-3" />{error}</div>
@@ -222,7 +222,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-2">
                 <div className="panel-beveled p-2 bg-surface-sunken text-center">
-                  <div className="text-sm font-bold font-mono text-gray-400">{preview.row_count}</div>
+                  <div className="text-sm font-bold font-mono text-rmpg-400">{preview.row_count}</div>
                   <div className="text-[8px] text-rmpg-500 uppercase">Rows Detected</div>
                 </div>
                 <div className="panel-beveled p-2 bg-surface-sunken text-center">
@@ -243,7 +243,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
               </div>
 
               <div className="panel-beveled bg-surface-sunken overflow-auto max-h-[40vh]">
-                <table className="w-full text-[10px] font-mono">
+                <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
                   <thead className="bg-surface-raised sticky top-0">
                     <tr className="text-left text-[9px] uppercase text-rmpg-500">
                       <th className="px-2 py-1">Row</th>
@@ -299,7 +299,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
                       );
                     })}
                   </tbody>
-                </table>
+                </table></div>
               </div>
             </div>
           )}

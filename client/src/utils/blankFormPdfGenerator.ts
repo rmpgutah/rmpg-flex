@@ -34,6 +34,7 @@ import {
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { FORM_REVISION } from './pdfAssets';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -1096,6 +1097,7 @@ export async function generateBlankForm(formType: BlankFormType): Promise<jsPDF>
   setActiveCaseNumber('');
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
 
   // Generate form content
   GENERATORS[formType](doc);

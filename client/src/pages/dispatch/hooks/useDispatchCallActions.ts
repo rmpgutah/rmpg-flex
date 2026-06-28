@@ -149,15 +149,17 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       if (newStatus === 'cleared' || newStatus === 'closed' || newStatus === 'cancelled') {
         await refreshUnits();
       }
-      // Auto-archive on closed/cancelled to clear the "All" view.
-      if (newStatus === 'closed' || newStatus === 'cancelled') {
-        await handleArchive(callId);
-      }
+      // NOTE: Auto-archive on closed/cancelled was removed 2026-06-05. The
+      // previous behavior immediately archived the call after close/cancel,
+      // which set selectedCall to null and jarringly closed the detail panel
+      // mid-workflow. The 5-minute auto-archive timer (DispatchPage.tsx line
+      // ~2050) still handles stale cleared calls; manual archive is available
+      // via the Archive button for immediate cleanup.
     } catch (err) {
       console.error('Failed to update status:', err);
       addToast('Failed to update call status', 'error');
     }
-  }, [setCalls, setSelectedCall, refreshUnits, handleArchive, addToast]);
+  }, [setCalls, setSelectedCall, refreshUnits, addToast]);
 
   const handleHoldCall = useCallback(async (callId: string) => {
     try {
@@ -237,24 +239,11 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
 
       if (createIncident) {
         try {
-          const token = localStorage.getItem('rmpg_token');
-          const incRes = await fetch(`/api/dispatch/calls/${callId}/generate-incident`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          });
-          if (incRes.ok) {
-            navigate('/incidents');
-          } else {
-            const errData = await incRes.json().catch(() => ({}));
-            addToast(errData.error || 'Failed to create incident report', 'error');
-          }
-        } catch (err) {
+          await apiFetch(`/dispatch/calls/${callId}/generate-incident`, { method: 'POST' });
+          navigate('/incidents');
+        } catch (err: any) {
           console.error('Failed to promote call to incident:', err);
-          addToast('Failed to create incident report from call', 'error');
+          addToast(err?.error || err?.message || 'Failed to create incident report', 'error');
         }
       }
     } catch (err: any) {
@@ -264,7 +253,10 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
     setDispositionPromptCallId(null);
   }, [dispositionPromptCallId, setCalls, setSelectedCall, refreshUnits, navigate, addToast]);
 
-  // ── Delete (any call) ─────────────────────────────────────
+  // ── Remove (soft-delete / archive a call) ─────────────────
+  // The server now soft-deletes (tombstones calls_for_service_ext.deleted_at)
+  // instead of physically deleting — the call leaves the board but stays
+  // recoverable by an admin. Gated to senior roles server-side (403 otherwise).
   const handleDeleteAnyCall = useCallback(async () => {
     if (!deleteCallTarget) return;
     const callNum = deleteCallTarget.call_number;
@@ -275,9 +267,9 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       setArchivedCalls((prev) => prev.filter((c) => c.id !== deleteCallTarget.id));
       setSelectedCall((prev) => prev?.id === deleteCallTarget.id ? null : prev);
       setDeleteCallTarget(null);
-      addToast(`Call ${callNum} deleted`, 'success');
+      addToast(`Call ${callNum} removed (archived, admin-recoverable)`, 'success');
     } catch (err: any) {
-      addToast(err?.message || err?.error || 'Failed to delete call', 'error');
+      addToast(err?.message || err?.error || 'Failed to remove call', 'error');
     } finally {
       setIsDeletingCall(false);
     }
@@ -323,33 +315,20 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
     if (!selectedCall) return;
     setIsGenerating(true);
     try {
-      // Direct fetch (not apiFetch) to preserve full error response.
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch(`/api/dispatch/calls/${selectedCall.id}/generate-incident`, {
+      const incident = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/generate-incident`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
       });
-
-      if (res.status === 409) {
+      addToast(`Incident ${incident.incident_number || ''} created`, 'success');
+      navigate('/incidents');
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (msg.includes('already exists')) {
         addToast('An incident report already exists for this call', 'info');
         navigate('/incidents');
         return;
       }
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
-      }
-
-      const incident = await res.json();
-      addToast(`Incident ${incident.incident_number || ''} created`, 'success');
-      navigate('/incidents');
-    } catch (err: any) {
       console.error('Failed to generate incident:', err);
-      addToast(err?.message || 'Failed to generate incident report', 'error');
+      addToast(msg || 'Failed to generate incident report', 'error');
     } finally {
       setIsGenerating(false);
     }

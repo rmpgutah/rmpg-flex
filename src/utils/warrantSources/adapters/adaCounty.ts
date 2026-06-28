@@ -31,6 +31,7 @@ const meta: SourceMeta = {
 
 export const adaCountyAdapter: WarrantSourceAdapter = {
   meta,
+  mode: 'per-person',
   // `env` is accepted to satisfy the adapter contract but unused — this source
   // is a public HTML endpoint needing no DB binding or secret.
   async fetchForPerson(person: PersonRow, _env): Promise<RawWarrantHit[]> {

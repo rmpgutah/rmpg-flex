@@ -15,6 +15,7 @@
 import jsPDF from 'jspdf';
 import { applyPrintTarget, type PrintTarget } from './pdfTokens';
 import { SHOTS, type GuideShot } from './dispatchGuideShots';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 /** Brother PJ-700/800 6mm leading-edge dead zone, expressed in points
  *  (this generator works in pt, not mm). 6mm × 72/25.4 ≈ 17pt. */
@@ -2143,7 +2144,7 @@ function drawCallLifecycleDiagram(ctx: GuideContext): void {
     const bx = x + 12 + i * (boxW + gap);
     const [title, sub] = states[i];
     const box = dBox(d, bx, cy, boxW, boxH, `${title}\n${sub}`, {
-      fill: i === 0 ? '#141414' : (i === states.length - 1 ? '#333333' : '#1a1a1a'),
+      fill: i === 0 ? '#0d1722' : (i === states.length - 1 ? '#333333' : '#1a1a1a'),
       stroke: COLOR.ACCENT,
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -2213,7 +2214,7 @@ function drawUnitStatusDiagram(ctx: GuideContext): void {
     const nx = cx + s.dx - 42;
     const ny = cy + s.dy - 14;
     nodes[s.label] = dBox(d, nx, ny, 84, 28, s.label, {
-      fill: '#141414', stroke: s.color, textColor: s.color, fontSize: 8, bold: true,
+      fill: '#0d1722', stroke: s.color, textColor: s.color, fontSize: 8, bold: true,
     });
   }
 
@@ -2445,7 +2446,7 @@ function drawBrainPipelineDiagram(ctx: GuideContext): void {
     const bx = x + 12 + i * (boxW + gap);
     const isRule = stages[i] === 'Rule Engine';
     boxes.push(dBox(d, bx, cy, boxW, boxH, stages[i], {
-      fill: isRule ? '#2a2a2a' : '#141414',
+      fill: isRule ? '#2a2a2a' : '#0d1722',
       stroke: isRule ? COLOR.ACCENT : '#2e2e2e',
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -2521,7 +2522,7 @@ function drawWebSocketArchDiagram(ctx: GuideContext): void {
     const ncx = cx + Math.cos(c.angle) * radius;
     const ncy = cy + Math.sin(c.angle) * radius * 0.8;
     const nb = dBox(d, ncx - 48, ncy - 16, 96, 32, c.label, {
-      fill: '#141414', stroke: '#777777', textColor: '#888888', fontSize: 7, bold: true,
+      fill: '#0d1722', stroke: '#777777', textColor: '#888888', fontSize: 7, bold: true,
     });
     // Bidirectional arrow indicator (two lines)
     const fx = nb.x + nb.w / 2;
@@ -2604,7 +2605,7 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
     fed:   { fill: '#333333', stroke: '#666666', text: '#aaaaaa' },
     state: { fill: '#2a2a2a', stroke: '#555555', text: '#888888' },
     local: { fill: '#333333', stroke: '#777777', text: '#999999' },
-    oss:   { fill: '#141414', stroke: '#666666', text: '#cccccc' },
+    oss:   { fill: '#0d1722', stroke: '#666666', text: '#cccccc' },
   };
 
   const drawRing = (sources: Src[], radius: number, startAngle: number): void => {
@@ -2884,7 +2885,7 @@ function drawPursuitSwimlaneDiagram(ctx: GuideContext): void {
   // Lane backgrounds + labels
   for (let i = 0; i < lanes.length; i++) {
     const ly = topY + i * laneH;
-    d.setFillColor(i % 2 === 0 ? '#0d0d0d' : '#111111');
+    d.setFillColor(i % 2 === 0 ? '#0d0d0d' : '#0d1722');
     d.rect(x, ly, w, laneH, 'F');
     d.setFont('helvetica', 'bold');
     d.setFontSize(7);
@@ -2913,7 +2914,7 @@ function drawPursuitSwimlaneDiagram(ctx: GuideContext): void {
     const ex = x + 70 + ev.slot * slotW + slotW / 2 - 30;
     const ey = topY + ev.lane * laneH + 18;
     dBox(d, ex, ey, 60, 28, ev.label, {
-      fill: '#141414', stroke: lanes[ev.lane].color, textColor: lanes[ev.lane].color, fontSize: 6, bold: true,
+      fill: '#0d1722', stroke: lanes[ev.lane].color, textColor: lanes[ev.lane].color, fontSize: 6, bold: true,
     });
   }
   // Time-slot labels across the top
@@ -2976,7 +2977,7 @@ function drawMapLayerStackDiagram(ctx: GuideContext): void {
     d.text(lyr.label, x + xIndent + 28, by + 11);
     d.setFont('helvetica', 'normal');
     d.setFontSize(7);
-    d.setTextColor('#111111');
+    d.setTextColor('#0d1722');
     d.text(lyr.detail, x + xIndent + 110, by + 11);
   }
 
@@ -3028,7 +3029,7 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
     const s = stages[i];
     const isOutcome = s.label === 'OUTCOME';
     boxes.push(dBox(d, bx, cy, boxW, boxH, `${s.label}\n${s.detail}`, {
-      fill: isOutcome ? '#2a2a2a' : '#141414',
+      fill: isOutcome ? '#2a2a2a' : '#0d1722',
       stroke: isOutcome ? COLOR.ACCENT : '#2e2e2e',
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -3127,7 +3128,7 @@ function drawCompoundSearchMatrixDiagram(ctx: GuideContext): void {
     const cy = gridY + row * cellH;
     const f = fields[i];
     dBox(d, cx, cy, cellW - 8, cellH - 6, `${f.label}\n\n${f.example}`, {
-      fill: '#141414', stroke: f.color, textColor: f.color, fontSize: 7, bold: true,
+      fill: '#0d1722', stroke: f.color, textColor: f.color, fontSize: 7, bold: true,
     });
   }
 
@@ -3227,13 +3228,13 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
 
   // Step 2 — Broadcast
   const broadcast = dBox(d, centerX - 100, y + 60, 200, 28, 'STEP 1 — Press F12 (panic)', {
-    fill: '#141414', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+    fill: '#0d1722', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
   });
   dArrow(d, centerX, trigger.y + trigger.h, centerX, broadcast.y);
 
   // Step 3 — Hold traffic
   const holdTraffic = dBox(d, centerX - 100, y + 104, 200, 28, 'STEP 2 — Hold all traffic', {
-    fill: '#141414', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+    fill: '#0d1722', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
   });
   dArrow(d, centerX, broadcast.y + broadcast.h, centerX, holdTraffic.y);
 
@@ -3272,7 +3273,7 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
   // Final steps (merge)
   const supY = decisionY + 140;
   const supervisor = dBox(d, centerX - 100, supY, 200, 26, 'STEP 5 — Page supervisor', {
-    fill: '#141414', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
+    fill: '#0d1722', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
   });
   dArrow(d, yesBox.x + yesBox.w / 2, yesBox.y + yesBox.h, supervisor.x + supervisor.w / 2 - 30, supervisor.y);
   dArrow(d, noBox.x + noBox.w / 2, noBox.y + noBox.h, supervisor.x + supervisor.w / 2 + 30, supervisor.y);
@@ -3326,7 +3327,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   d.text('1', x + w + 12, y + 11, { align: 'center' });
 
   // --- 2. Menu bar ---
-  d.setFillColor('#141414');
+  d.setFillColor('#0d1722');
   d.rect(x, y + 18, w, 14, 'F');
   d.setFont('helvetica', 'normal');
   d.setFontSize(6);
@@ -3360,7 +3361,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   d.setDrawColor('#2e2e2e');
   d.rect(x, cpY, leftW, cpH, 'FD');
   // Stack header
-  d.setFillColor('#141414');
+  d.setFillColor('#0d1722');
   d.rect(x, cpY, leftW, 14, 'F');
   d.setFont('helvetica', 'bold');
   d.setFontSize(6);
@@ -3410,7 +3411,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   d.setFillColor('#050505');
   d.setDrawColor('#2e2e2e');
   d.rect(mapX, rosterY, mapW, rosterH, 'FD');
-  d.setFillColor('#141414');
+  d.setFillColor('#0d1722');
   d.rect(mapX, rosterY, mapW, 12, 'F');
   d.setFont('helvetica', 'bold');
   d.setFontSize(6);
@@ -3445,7 +3446,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
 
   // --- 8. Status bar (very bottom) ---
   const sbY = y + h - 14;
-  d.setFillColor('#141414');
+  d.setFillColor('#0d1722');
   d.rect(x, sbY, w, 14, 'F');
   d.setFont('helvetica', 'normal');
   d.setFontSize(6);
@@ -4654,6 +4655,7 @@ export async function buildDispatchGuideDoc(options: DispatchGuidePdfOptions = {
   const liveCodes = await fetchLiveCodes();
 
   const doc = new jsPDF({ format: 'letter', unit: 'pt' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const topOffset = options.printTarget === 'mobile' ? MOBILE_TOP_OFFSET_PT : 0;
   const ctx: GuideContext = {

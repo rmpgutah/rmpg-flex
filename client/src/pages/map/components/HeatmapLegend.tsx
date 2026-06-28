@@ -89,7 +89,7 @@ export default function HeatmapLegend({
           display: 'flex',
           justifyContent: 'space-between',
           fontSize: 8,
-          color: '#9ca3af',
+          color: 'var(--rmpg-400)',
           marginTop: 2,
           letterSpacing: '0.05em',
         }}
