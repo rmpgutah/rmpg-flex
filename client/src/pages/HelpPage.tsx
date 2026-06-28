@@ -5,15 +5,12 @@
 // URL deep-linking (so /help?topic=shortcuts loads straight
 // into the shortcuts tab and pastes well into chat/email):
 //   ?topic=overview|shortcuts|modules|dispatch|faq|system
-//   ?section=<sectionId>    alias for ?topic= (stripped after mount)
-//   ?article=<sectionId>    alias for ?topic= (stripped after mount)
-//   ?faq=<idx>              expand FAQ #idx (and force topic=faq)
-//   ?search=<term>          global content search across all
-//                           shortcuts/modules/FAQ — renders a
-//                           consolidated result list at the top.
+//   ?faq=<idx>            expand FAQ #idx (and force topic=faq)
+//   ?search=<term>        global content search across all
+//                         shortcuts/modules/FAQ — renders a
+//                         consolidated result list at the top.
 //
 // Keyboard:
-//   N         focus the search box (unless typing in a field)
 //   /         focus the search box (unless typing in a field)
 //   Esc       smart-cascade — clears search first, then
 //             collapses any expanded FAQ, then drops back to
@@ -21,10 +18,8 @@
 //
 // PDFs (printable take-away artifacts for the console):
 //   • Quick Reference Card (shortcuts + priorities + statuses)
-//     — admin-only
 //   • Dispatch Console Guide (long-form training PDF, reused
 //     from dispatchGuidePdfGenerator)
-//     — admin-only
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -364,12 +359,12 @@ export function searchHelpContent(query: string): SearchHit[] {
 // ── Main Page ───────────────────────────────────────────────
 export default function HelpPage() {
   const [params, setParams] = useSearchParams();
-  const { user } = useAuth();
-  const canPrint = user?.role === 'admin';
 
-  // Deep-link: ?article= and ?section= are aliases for ?topic= (stripped after
-  // mount so the URL stays canonical). Read all three on first render.
-  const topicParam = params.get('topic') ?? params.get('section') ?? params.get('article');
+  // Hydrate active section + expanded FAQ + search from the URL so a link
+  // like /help?topic=shortcuts or /help?faq=3 jumps straight to the right
+  // place. We treat the URL as the source of truth — every state change
+  // writes back via setParams.
+  const topicParam = params.get('topic');
   const faqParam = params.get('faq');
   const searchParam = params.get('search') ?? '';
 
@@ -386,25 +381,7 @@ export default function HelpPage() {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(initialFaq);
   const [search, setSearch] = useState(searchParam);
   const [healthData, setHealthData] = useState<HealthData | null>(null);
-  const [healthLoading, setHealthLoading] = useState(true);
-  const [pdfError, setPdfError] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Strip alias params (?section=, ?article=) after mount so the URL is
-  // canonical (?topic=…) and browser back/forward stays clean.
-  useEffect(() => {
-    if (params.get('section') || params.get('article')) {
-      const merged: Record<string, string> = {};
-      const resolved = params.get('topic') ?? params.get('section') ?? params.get('article');
-      if (resolved && resolved !== 'overview') merged.topic = resolved;
-      const f = params.get('faq');
-      if (f) merged.faq = f;
-      const s = params.get('search');
-      if (s) merged.search = s;
-      setParams(merged, { replace: true });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Fetch server health info for System section
   useEffect(() => {
@@ -419,7 +396,7 @@ export default function HelpPage() {
   // ?search out from under us. Without this, browser back from a deep link
   // would leave the visible tab pointed at the wrong section.
   useEffect(() => {
-    const t = params.get('topic') ?? params.get('section') ?? params.get('article');
+    const t = params.get('topic');
     const f = params.get('faq');
     const s = params.get('search') ?? '';
     setActiveSection(isSectionId(t) ? t : f != null ? 'faq' : 'overview');
@@ -463,44 +440,32 @@ export default function HelpPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // Keyboard: "n"/"N" or "/" focuses the search; Esc smart-cascades.
+  // Keyboard: "/" focuses the search; Esc smart-cascades.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const typingInField = t && (
         t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
       );
-
-      // N or / — focus the search box (mirrors the "/" key on other pages)
-      if ((e.key === 'n' || e.key === 'N' || e.key === '/') && !typingInField && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === '/' && !typingInField) {
         e.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
         return;
       }
-
       if (e.key === 'Escape') {
-        // Smart cascade: smallest-open-first; stopPropagation so nested
-        // components don't also fire their own Esc handlers.
-        if (pdfError) {
-          e.stopPropagation();
-          setPdfError(null);
-          return;
-        }
+        // Smart cascade: smallest-open-first
         if (search) {
-          e.stopPropagation();
           setSearch('');
           updateUrl({ search: null });
           return;
         }
         if (expandedFaq != null) {
-          e.stopPropagation();
           setExpandedFaq(null);
           updateUrl({ faq: null });
           return;
         }
         if (activeSection !== 'overview') {
-          e.stopPropagation();
           setActiveSection('overview');
           updateUrl({ topic: null, faq: null });
           return;
@@ -509,37 +474,35 @@ export default function HelpPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [search, expandedFaq, activeSection, pdfError, updateUrl]);
+  }, [search, expandedFaq, activeSection, updateUrl]);
 
   // Search results — derived from `search`; the search section overrides
   // the active tab content when populated.
   const hits = useMemo(() => searchHelpContent(search), [search]);
 
   // PDF generation handlers (dynamic-imported so jsPDF doesn't bloat the
-  // help-page route bundle when nobody clicks Print). Admin-only.
+  // help-page route bundle when nobody clicks Print).
   const onPrintQuickRef = useCallback(async () => {
-    if (!canPrint) return;
     try {
       const mod = await import('../utils/helpQuickReferencePdf');
       await mod.generateHelpQuickReferencePdfWithDefaults();
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[Help] Quick Reference PDF failed:', err);
-      setPdfError('Quick Reference PDF generation failed. See console for details.');
+      alert('PDF generation failed. See console for details.');
     }
-  }, [canPrint]);
+  }, []);
 
   const onDownloadDispatchGuide = useCallback(async () => {
-    if (!canPrint) return;
     try {
       const mod = await import('../utils/dispatchGuidePdfGenerator');
       await mod.generateDispatchGuidePdf();
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[Help] Dispatch Guide PDF failed:', err);
-      setPdfError('Dispatch guide PDF generation failed. See console for details.');
+      alert('Dispatch guide PDF generation failed. See console for details.');
     }
-  }, [canPrint]);
+  }, []);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -591,30 +554,28 @@ export default function HelpPage() {
           );
         })}
 
-        {/* Print/export actions — admin only */}
-        {canPrint && (
-          <div className="mt-3 pt-3 px-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-            <div className="text-[9px] text-rmpg-500 uppercase tracking-wider mb-2">Print</div>
-            <button
-              type="button"
-              onClick={onPrintQuickRef}
-              className="w-full flex items-center gap-2 px-2 py-1.5 mb-1 text-[10px] text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 transition-colors"
-              title="Two-page tear-off card with shortcuts, priorities, statuses, and CAD commands"
-            >
-              <Printer style={{ width: 12, height: 12, flexShrink: 0 }} />
-              <span>Quick Reference Card</span>
-            </button>
-            <button
-              type="button"
-              onClick={onDownloadDispatchGuide}
-              className="w-full flex items-center gap-2 px-2 py-1.5 text-[10px] text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 transition-colors"
-              title="Long-form dispatcher training PDF (loads live 10-codes)"
-            >
-              <Download style={{ width: 12, height: 12, flexShrink: 0 }} />
-              <span>Dispatch Guide</span>
-            </button>
-          </div>
-        )}
+        {/* Print/export actions */}
+        <div className="mt-3 pt-3 px-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+          <div className="text-[9px] text-rmpg-500 uppercase tracking-wider mb-2">Print</div>
+          <button
+            type="button"
+            onClick={onPrintQuickRef}
+            className="w-full flex items-center gap-2 px-2 py-1.5 mb-1 text-[10px] text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 transition-colors"
+            title="Two-page tear-off card with shortcuts, priorities, statuses, and CAD commands"
+          >
+            <Printer style={{ width: 12, height: 12, flexShrink: 0 }} />
+            <span>Quick Reference Card</span>
+          </button>
+          <button
+            type="button"
+            onClick={onDownloadDispatchGuide}
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-[10px] text-rmpg-300 hover:bg-surface-base hover:text-rmpg-100 transition-colors"
+            title="Long-form dispatcher training PDF (loads live 10-codes)"
+          >
+            <Download style={{ width: 12, height: 12, flexShrink: 0 }} />
+            <span>Dispatch Guide</span>
+          </button>
+        </div>
       </nav>
 
       {/* ── Content Area ──────────────────────────────── */}
@@ -624,7 +585,7 @@ export default function HelpPage() {
           {/* ── Search bar ──────────────────────────────── */}
           <div
             className="flex items-center gap-2 px-3 py-2"
-            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderTop: '2px solid var(--brand-400)' }}
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderTop: '2px solid #d4a017' }}
           >
             <Search className="w-4 h-4 text-rmpg-300 shrink-0" />
             <input
@@ -632,7 +593,7 @@ export default function HelpPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search shortcuts, modules, and FAQ — press N or / to focus"
+              placeholder="Search shortcuts, modules, and FAQ — press / to focus"
               aria-label="Help content search"
               className="flex-1 bg-transparent text-[12px] text-rmpg-100 placeholder-rmpg-600 outline-none"
             />
@@ -646,7 +607,7 @@ export default function HelpPage() {
                 <X className="w-4 h-4" />
               </button>
             )}
-            <span className="text-[9px] text-rmpg-600 font-mono shrink-0">N or / to focus</span>
+            <span className="text-[9px] text-rmpg-600 font-mono shrink-0">/ to focus</span>
           </div>
 
           {/* ── Search results override the section content ── */}
@@ -773,7 +734,7 @@ export default function HelpPage() {
               <PanelTitleBar title="KEYBOARD SHORTCUTS" icon={Keyboard} />
               <div className="text-[10px] text-rmpg-500 mb-2">
                 Press <Kbd>?</Kbd> anywhere in the app to open the quick shortcuts overlay,
-                or <Kbd>N</Kbd> on this page to search.
+                or <Kbd>/</Kbd> on this page to search.
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {SHORTCUT_GROUPS.map((group) => (
@@ -944,41 +905,37 @@ export default function HelpPage() {
             <>
               <PanelTitleBar title="SYSTEM INFORMATION" icon={Settings} />
               <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}>
-                {healthLoading ? (
-                  <p className="text-[10px] text-rmpg-500">Loading system info…</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-                    {[
-                      { label: 'Application', value: 'RMPG Flex' },
-                      { label: 'Client Version', value: APP_VERSION },
-                      { label: 'Platform', value: 'Web / Electron / Capacitor' },
-                      { label: 'Frontend', value: 'React + TypeScript + Vite' },
-                      // Backend is Cloudflare-era now — the old VPS Express + SQLite
-                      // stack was decommissioned 2026-06-15.
-                      { label: 'Backend', value: 'Cloudflare Workers + Hono' },
-                      { label: 'Database', value: 'Cloudflare D1 (rmpg-flex)' },
-                      { label: 'Storage', value: 'Cloudflare R2 + KV' },
-                      { label: 'Real-time', value: 'Durable Objects + WebSocket' },
-                      { label: 'Maps', value: 'Mapbox GL JS' },
-                      { label: 'Auth', value: 'JWT (TOTP/WebAuthn not yet ported)' },
-                      ...(healthData ? [
-                        { label: 'Server Version', value: healthData.version || 'N/A' },
-                        { label: 'Server Status', value: healthData.status || 'N/A' },
-                        ...(healthData.db ? [
-                          { label: 'DB Schema', value: healthData.db.version || 'unknown' },
-                          { label: 'DB Users', value: healthData.db.users != null ? String(healthData.db.users) : 'N/A' },
-                        ] : []),
-                      ] : [
-                        { label: 'Server Status', value: 'unreachable' },
-                      ]),
-                    ].map((row) => (
-                      <div key={row.label} className="flex items-center justify-between">
-                        <span className="text-[10px] text-rmpg-500 uppercase">{row.label}</span>
-                        <span className="text-[10px] font-mono text-rmpg-200">{row.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+                  {[
+                    { label: 'Application', value: 'RMPG Flex' },
+                    { label: 'Client Version', value: APP_VERSION },
+                    { label: 'Platform', value: 'Web / Electron / Capacitor' },
+                    { label: 'Frontend', value: 'React + TypeScript + Vite' },
+                    // Backend is Cloudflare-era now — the old VPS Express + SQLite
+                    // stack was decommissioned 2026-06-15.
+                    { label: 'Backend', value: 'Cloudflare Workers + Hono' },
+                    { label: 'Database', value: 'Cloudflare D1 (rmpg-flex)' },
+                    { label: 'Storage', value: 'Cloudflare R2 + KV' },
+                    { label: 'Real-time', value: 'Durable Objects + WebSocket' },
+                    { label: 'Maps', value: 'Mapbox GL JS' },
+                    { label: 'Auth', value: 'JWT (TOTP/WebAuthn not yet ported)' },
+                    ...(healthData ? [
+                      { label: 'Server Version', value: healthData.version || 'N/A' },
+                      { label: 'Server Status', value: healthData.status || 'N/A' },
+                      ...(healthData.db ? [
+                        { label: 'DB Schema', value: healthData.db.version || 'unknown' },
+                        { label: 'DB Users', value: healthData.db.users != null ? String(healthData.db.users) : 'N/A' },
+                      ] : []),
+                    ] : [
+                      { label: 'Server Status', value: 'unreachable' },
+                    ]),
+                  ].map((row) => (
+                    <div key={row.label} className="flex items-center justify-between">
+                      <span className="text-[10px] text-rmpg-500 uppercase">{row.label}</span>
+                      <span className="text-[10px] font-mono text-rmpg-200">{row.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <PanelTitleBar title="BROWSER COMPATIBILITY" icon={Monitor} />
