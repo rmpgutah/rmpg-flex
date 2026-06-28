@@ -1567,12 +1567,11 @@ cases.get('/:id/full', async (c) => {
     // write to. `id` is the person's id (the detail view unlinks by it);
     // link_id keeps the junction PK; relationship surfaces as `role`.
     const persons = await safeQuery<Record<string, unknown>>(
-      `SELECT cpl.id AS link_id, cpl.relationship AS role,
-              p.id, p.first_name, p.last_name, p.dob AS date_of_birth, p.phone, p.address
-       FROM case_person_links cpl
-       JOIN persons p ON cpl.person_id = p.id
-       WHERE cpl.case_id = ?
-       ORDER BY cpl.created_at DESC`,
+      `SELECT cp.*, p.first_name, p.last_name, p.dob AS date_of_birth, p.phone, p.address
+       FROM case_persons cp
+       LEFT JOIN persons p ON cp.person_id = p.id
+       WHERE cp.case_id = ?
+       ORDER BY cp.created_at DESC`,
       id,
     );
     const vehicles = await safeQuery<Record<string, unknown>>(
