@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../../components/RichTextArea';
-import { formatPhoneInput } from '../../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import {
   Search, MapPin, Phone, Mail, Globe, Trash2, Pencil, X, Users, Briefcase,
   ArrowUpDown, Filter, Shield, FileText, Eye, Navigation,
@@ -289,7 +289,20 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
         {displayBusinesses.length === 0 && (
           <div className="text-center py-16">
             <Briefcase className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No businesses match.' : 'No business records found.'}</p>
+            <p className="text-sm text-rmpg-400">
+              {searchQuery
+                ? 'No businesses match.'
+                : showArchived
+                  ? 'No archived business records.'
+                  : 'No business records found.'}
+            </p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery
+                ? 'Try broadening your search.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Business" to add a record.'}
+            </p>
           </div>
         )}
         {displayBusinesses.map((b, idx) => (
@@ -313,7 +326,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
                   {b.status === 'active' && <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Active" />}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                  {b.business_type && <span>{b.business_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>}
+                  {b.business_type && <span>{toDisplayLabel(b.business_type)}</span>}
                   {b.industry && <span>{b.industry}</span>}
                   {b.phone && <span className="flex items-center gap-0.5"><Phone className="w-2.5 h-2.5" />{b.phone}</span>}
                 </div>
@@ -373,7 +386,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
           subtitle={
             <span className="flex flex-col gap-0.5">
               {b.dba_name && <span className="text-amber-400">DBA: {b.dba_name}</span>}
-              <span>{b.business_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} · {b.industry || 'N/A'}</span>
+              <span>{toDisplayLabel(b.business_type)} · {b.industry || 'N/A'}</span>
             </span>
           }
           flags={b.flags}
@@ -426,7 +439,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
           <RecordField label="Industry" value={b.industry} showEmpty />
           <RecordField label="Employees" value={b.employee_count} showEmpty />
           <RecordField label="Revenue" value={b.annual_revenue} showEmpty />
-          <RecordField label="Status" value={(b.status || 'N/A').toUpperCase()} valueColor={b.status === 'active' ? '#4ade80' : undefined} />
+          <RecordField label="Status" value={(b.status || 'N/A').toUpperCase()} valueColor={b.status === 'active' ? 'var(--sev-ok-soft)' : undefined} />
         </FieldGrid>
       </CollapsibleSection>
 
@@ -562,8 +575,15 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
               parcels={assessor.parcels}
               cached={assessor.cached}
               loading={assessor.loading}
+              error={assessor.error}
+              code={assessor.code}
+              source={assessor.source}
+              degraded={assessor.degraded}
+              manualUrl={assessor.manualUrl}
               onApply={onApplyAssessor}
               onDismiss={assessor.dismiss}
+              onRetry={assessor.retry}
+              onRefresh={assessor.refresh}
             />
             {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
               <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>

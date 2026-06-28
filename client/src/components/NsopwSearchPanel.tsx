@@ -15,10 +15,12 @@
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Search, Loader2, Shield, AlertTriangle, MapPin, User, RefreshCw, Building, Link2 } from 'lucide-react';
+import { Search, Loader2, Shield, AlertTriangle, MapPin, User, RefreshCw, Building, Printer } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
-import IconButton from './IconButton';
+import { openOffenderRegistrationCardPdf } from '../utils/offenderRegistrationCardPdf';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from './ToastProvider';
 
 interface OffenderCard {
   nsopwOffenderId: string;
@@ -81,23 +83,42 @@ interface Props {
   initialSurname?: string;
   initialForename?: string;
   initialDob?: string;
+  /** When set, fetch + render this single offender on mount (deep-link from
+   *  another page or a saved URL). Accepted on /nsopw + the legacy
+   *  /offender-registry + /sex-offender-registry routes (all redirect here
+   *  with the query param preserved). */
+  initialOffenderId?: string;
   /** When true, auto-fire the search on mount (e.g. when embedded in a
    *  person dossier flow). Defaults to false. */
   autoSearch?: boolean;
   /** Compact mode trims spacing for embedding inside another panel. */
   compact?: boolean;
+  /** Called after the deep-link offender_id is consumed so the parent can
+   *  strip it from the URL via setSearchParams (constraint: no window.history). */
+  onClearOffenderId?: () => void;
 }
 
 export default function NsopwSearchPanel({
-  initialSurname = '', initialForename = '', initialDob = '',
-  autoSearch = false, compact = false,
+  initialSurname = '', initialForename = '', initialDob = '', initialOffenderId,
+  autoSearch = false, compact = false, onClearOffenderId,
 }: Props) {
+  const { user } = useAuth();
+  const { addToast } = useToast();
+  // canPrint: admin/manager/supervisor may print court-ready offender cards.
+  const canPrint = !!(
+    user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor'
+  );
+
   const [surname, setSurname] = useState(initialSurname);
   const [forename, setForename] = useState(initialForename);
   const [dob, setDob] = useState(initialDob);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<NsopwResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Set when a deep-link by offender_id resolved to a single offender — we
+   *  render it inline as a synthetic single-card "possible" panel so the
+   *  print + person-record links work the same as the normal flow. */
+  const [deepLinkOffender, setDeepLinkOffender] = useState<Classified | null>(null);
 
   const search = useCallback(async () => {
     if (!surname.trim() || !forename.trim()) {
@@ -131,6 +152,74 @@ export default function NsopwSearchPanel({
       void search();
     }
   }, [autoSearch, initialSurname, initialForename, search]);
+
+  // Deep-link by offender_id. Fetches the raw national_sex_offenders row from
+  // /api/nsopw/offender/:id and renders it as a single-card "possible" match
+  // (no classification info is available outside the screening pipeline; the
+  // operator can see the full record + print, which is the operational point).
+  // Strips the param after applying so a refresh doesn't loop.
+  const deepLinkFiredRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkFiredRef.current || !initialOffenderId) return;
+    deepLinkFiredRef.current = true;
+    const id = initialOffenderId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await apiFetch<Record<string, unknown>>(`/nsopw/offender/${encodeURIComponent(id)}`);
+        if (cancelled || !row || typeof row !== 'object') return;
+        const offender = mapRowToOffenderCard(row);
+        setDeepLinkOffender({
+          offender,
+          classification: 'possible',
+          score: 0,
+          matchedFields: [],
+          reason: `direct offender_id=${id} load`,
+        });
+        addToast(`Offender #${id} loaded from deep link`, 'info');
+      } catch (err) {
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : `failed to load offender ${id}`;
+          setError(msg);
+          addToast(`Offender #${id} not found`, 'error');
+        }
+      } finally {
+        if (!cancelled) {
+          // Notify parent to strip offender_id from URL via setSearchParams
+          // (constraint: no window.history.replaceState).
+          onClearOffenderId?.();
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOffenderId]);
+
+  // N shortcut — focus Last Name field when not typing in a form element.
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        document.getElementById('ff-nsopw-surname')?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, []);
+
+  // Esc cascade — clears error → results → deep-link offender card in order.
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (error) { e.stopPropagation(); setError(null); return; }
+      if (result) { e.stopPropagation(); setResult(null); return; }
+      if (deepLinkOffender) { e.stopPropagation(); setDeepLinkOffender(null); return; }
+    };
+    document.addEventListener('keydown', handleEsc, true);
+    return () => document.removeEventListener('keydown', handleEsc, true);
+  }, [error, result, deepLinkOffender]);
 
   const sp = compact ? 'space-y-2' : 'space-y-3';
   return (
@@ -190,16 +279,86 @@ export default function NsopwSearchPanel({
         </div>
       )}
 
+      {/* Deep-link single offender — rendered above ResultView when set. */}
+      {deepLinkOffender && (
+        <Section title="OFFENDER (DEEP LINK)" tone="amber"
+          subtitle="Loaded directly by URL — operator review required (no name/DOB cross-check was performed).">
+          <OffenderRow c={deepLinkOffender} queryContext={{ surname, forename, dob }} canPrint={canPrint} />
+        </Section>
+      )}
+
       {result && (
-        <ResultView result={result} onRetry={() => void search()} />
+        <ResultView result={result} onRetry={() => void search()}
+          queryContext={{ surname, forename, dob }} canPrint={canPrint} />
+      )}
+
+      {/* First-load empty state — distinguishes "no search yet" from
+          "search ran with zero matches" (which lives inside ResultView). */}
+      {!result && !deepLinkOffender && !loading && !error && (
+        <div className="bg-surface-raised border border-border-subtle px-2 py-3 text-[11px] text-rmpg-300 flex items-start gap-2">
+          <Search className="w-3 h-3 mt-0.5 flex-shrink-0 text-rmpg-400" />
+          <div>
+            <div className="font-bold text-rmpg-200">Enter a subject name to cross-reference.</div>
+            <div className="text-[10px] text-rmpg-400">
+              The search federates across all 50 states + territories + tribes
+              in one query. DOB enables strict-match auto-confirmation; without
+              it everything surfaces as &ldquo;possible&rdquo; for review.
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
+// Maps a raw national_sex_offenders DB row (returned by GET /api/nsopw/offender/:id)
+// to the OffenderCard shape the rest of the panel expects. Snake-case columns
+// → camelCase fields; nullable string columns → null when blank; numeric
+// jurisdiction tier passes through. Kept separate from the panel render so
+// the deep-link path doesn't duplicate the search-result mapping.
+function mapRowToOffenderCard(row: Record<string, unknown>): OffenderCard {
+  const s = (k: string): string | null => {
+    const v = row[k];
+    return typeof v === 'string' && v.trim() ? v : null;
+  };
+  const n = (k: string): number | null => {
+    const v = row[k];
+    return typeof v === 'number' ? v : null;
+  };
+  return {
+    nsopwOffenderId: s('nsopw_offender_id') ?? '',
+    jurisdiction: s('jurisdiction') ?? '',
+    jurisdictionLabel: s('jurisdiction_label') ?? '',
+    firstName: s('first_name') ?? '',
+    middleName: s('middle_name'),
+    lastName: s('last_name') ?? '',
+    dateOfBirth: s('date_of_birth'),
+    sex: s('sex'),
+    address: s('address'),
+    city: s('city'),
+    state: s('state'),
+    zip: s('zip'),
+    offense: s('offense'),
+    riskLevel: s('risk_level'),
+    tier: n('tier'),
+    registrationStatus: s('registration_status'),
+    photoUrl: s('photo_url'),
+    localPhotoUrl: s('local_photo_url'),
+    rowId: n('id'),
+    personId: n('person_id'),
+    linkedProperties: [],
+    detailUrl: s('detail_url'),
+  };
+}
+
 // ────────────────────────────────────────────────────────────
 
-function ResultView({ result, onRetry }: { result: NsopwResult; onRetry: () => void }) {
+function ResultView({ result, onRetry, queryContext, canPrint }: {
+  result: NsopwResult;
+  onRetry: () => void;
+  queryContext?: { surname?: string; forename?: string; dob?: string };
+  canPrint?: boolean;
+}) {
   if (!result.configured) {
     return (
       <div className="bg-amber-950/40 border border-amber-700/50 text-amber-300 px-2 py-2 text-[11px]">
@@ -257,7 +416,8 @@ function ResultView({ result, onRetry }: { result: NsopwResult; onRetry: () => v
         <Section title="CONFIRMED MATCHES" tone="red"
           subtitle="Name + DOB matched exactly. High confidence.">
           {result.confirmed.map((c) => (
-            <OffenderRow key={`${c.offender.jurisdiction}:${c.offender.nsopwOffenderId}`} c={c} />
+            <OffenderRow key={`${c.offender.jurisdiction}:${c.offender.nsopwOffenderId}`} c={c}
+              queryContext={queryContext} canPrint={canPrint} />
           ))}
         </Section>
       )}
@@ -267,7 +427,8 @@ function ResultView({ result, onRetry }: { result: NsopwResult; onRetry: () => v
         <Section title="POSSIBLE MATCHES" tone="amber"
           subtitle="Borderline — needs officer review (no DOB, phonetic name, or partial match).">
           {result.possible.map((c) => (
-            <OffenderRow key={`${c.offender.jurisdiction}:${c.offender.nsopwOffenderId}`} c={c} />
+            <OffenderRow key={`${c.offender.jurisdiction}:${c.offender.nsopwOffenderId}`} c={c}
+              queryContext={queryContext} canPrint={canPrint} />
           ))}
         </Section>
       )}
@@ -306,7 +467,11 @@ function Section({ title, subtitle, tone, children }: {
   );
 }
 
-function OffenderRow({ c }: { c: Classified }) {
+function OffenderRow({ c, queryContext, canPrint }: {
+  c: Classified;
+  queryContext?: { surname?: string; forename?: string; dob?: string };
+  canPrint?: boolean;
+}) {
   const o = c.offender;
   // Prefer the locally persisted photo (worker-served from R2) over the
   // upstream state-SOR host. If the local copy 404s (e.g. download still
@@ -377,7 +542,18 @@ function OffenderRow({ c }: { c: Classified }) {
           </div>
         )}
       </div>
-      <div className="text-right">
+      <div className="text-right flex flex-col items-end gap-1">
+        {canPrint && (
+          <button
+            type="button"
+            onClick={() => void printOffenderCard(c, queryContext)}
+            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-surface-raised border border-border-subtle hover:bg-surface-sunken"
+            title="Print court-ready Offender Identification Card"
+            aria-label="Print Offender Identification Card"
+          >
+            <Printer className="w-3 h-3" /> Print
+          </button>
+        )}
         {o.detailUrl && (
           <a href={o.detailUrl} target="_blank" rel="noopener noreferrer"
             className="text-[10px] underline text-rmpg-300 hover:text-white">
@@ -387,6 +563,81 @@ function OffenderRow({ c }: { c: Classified }) {
       </div>
     </div>
   );
+}
+
+// Wires the inline Print button to the court-ready PDF generator. Best-effort
+// photo embed: prefers the locally persisted R2-served photo (private, auth-
+// gated) so the PDF doesn't depend on the upstream state-SOR host being up.
+// On any fetch / decode failure the PDF falls back to a "no photo on file"
+// placeholder — we never block the print path on photo availability.
+async function printOffenderCard(
+  c: Classified,
+  queryContext?: { surname?: string; forename?: string; dob?: string },
+): Promise<void> {
+  const o = c.offender;
+  let photoDataUrl: string | null = null;
+  // Prefer the local (R2-backed) URL so the PDF embeds bytes we control.
+  const src = o.localPhotoUrl || o.photoUrl;
+  if (src) {
+    try {
+      photoDataUrl = await fetchImageAsDataUrl(src);
+    } catch {
+      photoDataUrl = null;
+    }
+  }
+  openOffenderRegistrationCardPdf({
+    offender: {
+      nsopwOffenderId: o.nsopwOffenderId,
+      jurisdiction: o.jurisdiction,
+      jurisdictionLabel: o.jurisdictionLabel,
+      firstName: o.firstName,
+      middleName: o.middleName,
+      lastName: o.lastName,
+      dateOfBirth: o.dateOfBirth,
+      sex: o.sex,
+      address: o.address,
+      city: o.city,
+      state: o.state,
+      zip: o.zip,
+      offense: o.offense,
+      riskLevel: o.riskLevel,
+      tier: o.tier,
+      registrationStatus: o.registrationStatus,
+      detailUrl: o.detailUrl,
+      rowId: o.rowId,
+      personId: o.personId,
+      linkedProperties: o.linkedProperties ?? [],
+    },
+    classification: c.classification,
+    score: c.score,
+    matchedFields: c.matchedFields,
+    reason: c.reason,
+    photoDataUrl,
+    queryContext: queryContext ?? null,
+  });
+}
+
+// Fetch an image URL into a base64 data URL so jsPDF can embed the bytes
+// without a cross-origin <img> handshake. Uses apiFetch's same-origin cookies
+// when the URL is a same-origin worker route (e.g. /api/nsopw/photo/...);
+// falls back to a plain fetch for the upstream state-SOR URL. 5s timeout so
+// a slow state SOR host can't hang the operator's Print click.
+async function fetchImageAsDataUrl(url: string): Promise<string> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(url, { credentials: 'same-origin', signal: controller.signal });
+    if (!res.ok) throw new Error(`http ${res.status}`);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error ?? new Error('reader error'));
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.readAsDataURL(blob);
+    });
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 // Renders the locally persisted photo first; on load error (e.g. local copy
@@ -420,10 +671,13 @@ function CoverageBar({ coverage }: { coverage: Record<string, string> }) {
     );
   }
   return (
-    <div className="text-[10px] bg-amber-950/40 border border-amber-700/50 text-amber-300 px-2 py-1">
-      <span className="font-bold">⚠ Coverage incomplete:</span>{' '}
-      {failures.map(([j, s]) => `${j}=${s}`).join(', ')}. A clear result is NOT a
-      clearance for these jurisdictions.
+    <div className="text-[10px] bg-amber-950/40 border border-amber-700/50 text-amber-300 px-2 py-1 flex items-start gap-1">
+      <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+      <div>
+        <span className="font-bold">Coverage incomplete:</span>{' '}
+        {failures.map(([j, s]) => `${j}=${s}`).join(', ')}. A clear result is NOT a
+        clearance for these jurisdictions.
+      </div>
     </div>
   );
 }

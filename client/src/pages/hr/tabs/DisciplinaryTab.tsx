@@ -18,6 +18,7 @@ import type {
 } from '../../../types';
 import { SEVERITY_COLORS, DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import DisciplinaryFormModal from '../modals/DisciplinaryFormModal';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import ExportButton from '../../../components/ExportButton';
 import { safeDateStr, parseTimestamp } from '../../../utils/dateUtils';
 
@@ -109,6 +110,10 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   const [modalOpen, setModalOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<DisciplinaryRecord | null>(null);
 
+  // Delete confirm dialog
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
+
   // Expanded descriptions
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
@@ -170,14 +175,22 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     setModalOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this disciplinary record? This cannot be undone.')) return;
+  const handleDelete = (id: number) => {
+    setConfirmDeleteId(id);
+  };
+
+  const doDelete = async () => {
+    if (confirmDeleteId === null) return;
+    setConfirmDeleteLoading(true);
     try {
-      await apiFetch(`/hr/disciplinary/${id}`, { method: 'DELETE' });
+      await apiFetch(`/hr/disciplinary/${confirmDeleteId}`, { method: 'DELETE' });
       toast.addToast('Record deleted', 'success');
+      setConfirmDeleteId(null);
       fetchRecords();
     } catch {
       toast.addToast('Failed to delete record', 'error');
+    } finally {
+      setConfirmDeleteLoading(false);
     }
   };
 
@@ -352,6 +365,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
           </div>
           <ExportButton exportUrl="/api/hr/disciplinary/export/csv" exportFilename="disciplinary.csv" />
           <button type="button"
+            data-hr-new-btn
             onClick={handleCreate}
             className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm flex items-center gap-1.5"
           >
@@ -483,6 +497,18 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
         onSubmit={handleSubmit}
         editRecord={editRecord}
         officers={officers}
+      />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={doDelete}
+        title="Delete Record"
+        message="Delete this disciplinary record? This cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={confirmDeleteLoading}
       />
     </div>
   );

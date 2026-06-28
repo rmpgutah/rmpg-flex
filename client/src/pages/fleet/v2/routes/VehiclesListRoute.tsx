@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutGrid, Table as TableIcon, Plus } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { FleetListShell } from '../shell/FleetListShell';
@@ -26,9 +26,43 @@ type ViewMode = 'card' | 'table';
 
 export function VehiclesListRoute() {
   useFleetV2View('/fleet/v2/vehicles');
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<FleetVehicleRow[]>([]);
   const [search, setSearch] = useState('');
   const [mode, setMode] = useState<ViewMode>('card');
+
+  // Deep-link contract: `?vehicle_id=42` (or `?fleet_id=42`, same semantics —
+  // operators arrive here from Dispatch / Map / GPS pills with either) drops
+  // the operator straight onto the vehicle detail screen and strips the
+  // query so back-button doesn't re-fire the redirect. Falls back to the
+  // direct path API even if the row isn't in the limit=500 list (large
+  // fleets / soft-deleted rows). Pattern lifted from the prior page audits
+  // (warrants, FI, cases) so deep-links are uniform across the app.
+  // `?unit_id=` arrives from dispatch/MDT unit pills — we resolve the
+  // unit's assigned vehicle_id via the same navigate path (the vehicle
+  // detail page falls back gracefully when the vehicle isn't found).
+  useEffect(() => {
+    const raw =
+      searchParams.get('vehicle_id') ??
+      searchParams.get('fleet_id') ??
+      searchParams.get('unit_id');
+    if (!raw) return;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      // strip junk
+      const next = new URLSearchParams(searchParams);
+      next.delete('vehicle_id'); next.delete('fleet_id'); next.delete('unit_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // strip first so the redirect doesn't loop on back-button
+    const next = new URLSearchParams(searchParams);
+    next.delete('vehicle_id'); next.delete('fleet_id'); next.delete('unit_id');
+    const tab = searchParams.get('tab');
+    setSearchParams(next, { replace: true });
+    navigate(`/fleet/v2/vehicles/${n}${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`, { replace: true });
+  }, [searchParams, setSearchParams, navigate]);
 
   // ─── New Vehicle modal state ────────────────────────────
   // The header button used to be unwired (zero onClick) — click did nothing.
@@ -38,6 +72,32 @@ export function VehiclesListRoute() {
   const [form, setForm] = useState<VehicleFormState>(EMPTY_VEHICLE_FORM);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  // Track whether any input is focused so the N shortcut doesn't fire while
+  // typing in the search box or another text field.
+  const modalOpenRef = useRef(modalOpen);
+  modalOpenRef.current = modalOpen;
+
+  // N shortcut — opens New Vehicle modal (when not typing).
+  // Esc cascade — if the modal is open, Esc closes it first.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable;
+      if (e.key === 'Escape' && modalOpenRef.current && !saving) {
+        e.stopPropagation();
+        setModalOpen(false);
+        return;
+      }
+      if (e.key === 'n' && !inInput && !e.metaKey && !e.ctrlKey && !e.altKey && !modalOpenRef.current) {
+        e.preventDefault();
+        setForm(EMPTY_VEHICLE_FORM);
+        setModalOpen(true);
+      }
+    };
+    document.addEventListener('keydown', onKey, { capture: true });
+    return () => document.removeEventListener('keydown', onKey, { capture: true });
+  }, [saving]);
 
   const fetchRows = useCallback(() => {
     // /api/fleet returns { data: FleetVehicleRow[], pagination: {...} } —
@@ -59,11 +119,11 @@ export function VehiclesListRoute() {
 
   useEffect(() => { fetchRows(); }, [fetchRows]);
 
-  const openNew = () => {
+  const openNew = useCallback(() => {
     setForm(EMPTY_VEHICLE_FORM);
     setModalOpen(true);
-  };
-  const closeNew = () => setModalOpen(false);
+  }, []);
+  const closeNew = useCallback(() => setModalOpen(false), []);
 
   const handleSave = async () => {
     if (!form.vehicle_number.trim()) return; // modal already shows inline error

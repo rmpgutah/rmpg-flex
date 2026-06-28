@@ -1,47 +1,71 @@
 import SwiftUI
+import CoreAPI
 import DesignSystem
+import FeatureDuty
+import FeatureCFS
+import FeatureReports
 
-/// Half-sheet grid of all `QuickActionsRegistry.all`. Tap a tile → presents
-/// `PendingActionSheet` until M1 handlers land.
+@MainActor
 public struct QuickActionsSheetView: View {
     @Environment(\.theme) private var theme
-    @State private var pending: QuickAction?
+    @Environment(\.dismiss) private var dismiss
+    let apiClient: APIClient
+    @Bindable var dutyState: DutyState
+    @State private var showStartPatrol = false
+    @State private var showNewCall = false
+    @State private var showFI = false
+    @State private var showCitation = false
+    @State private var showInspection = false
+    @State private var showFieldCamera = false
 
-    public init() {}
-
-    /// 2-column grid. With 8 actions = 4 rows.
-    private let columns = [
-        GridItem(.flexible(), spacing: 8),
-        GridItem(.flexible(), spacing: 8),
-    ]
+    public init(apiClient: APIClient, dutyState: DutyState) {
+        self.apiClient = apiClient
+        self.dutyState = dutyState
+    }
 
     public var body: some View {
-        ZStack {
-            theme.colors.surfaceBase.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("QUICK ACTIONS")
-                        .font(.caption.weight(.semibold))
-                        .tracking(2)
-                        .foregroundStyle(theme.colors.brandGold)
-                        .padding(.top, 20)
-                        .padding(.horizontal, 20)
-
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(QuickActionsRegistry.all) { action in
-                            QuickActionButton(action: action) {
-                                pending = action
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 32)
+        NavigationStack {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Quick Actions").font(.headline).foregroundColor(theme.colors.brandGold)
+                    Spacer()
                 }
+                .padding()
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(QuickActionsRegistry.all) { action in
+                        QuickActionButton(action: action) { handleAction(action) }
+                    }
+                }
+                .padding(.horizontal)
+                Spacer()
             }
+            .background(theme.colors.surfaceBase)
         }
-        .sheet(item: $pending) { action in
-            PendingActionSheet(action: action)
-                .presentationDetents([.medium])
+        .presentationDetents([.fraction(0.6), .large])
+        .sheet(isPresented: $showStartPatrol) {
+            StartPatrolView(dutyState: dutyState)
+        }
+        .sheet(isPresented: $showNewCall) {
+            NewCallForm(vm: NewCallViewModel(api: CFSAPI(client: apiClient)))
+        }
+        .sheet(isPresented: $showFI) {
+            FieldInterviewCardView()
+        }
+        .sheet(isPresented: $showCitation) {
+            CitationView()
+        }
+    }
+
+    private func handleAction(_ action: QuickAction) {
+        switch action.id {
+        case "start_patrol": showStartPatrol = true
+        case "new_call": showNewCall = true
+        case "new_incident": showNewCall = true
+        case "new_citation": showCitation = true
+        case "quick_capture", "field_camera": showFieldCamera = true
+        case "process_server", "tasks": break
+        default: break
         }
     }
 }

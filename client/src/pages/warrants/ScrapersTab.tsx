@@ -163,9 +163,9 @@ function StatusLed({
   count: number;
 }) {
   const colorMap = {
-    green: 'bg-green-500 shadow-[0_0_6px_#22c55e]',
-    amber: 'bg-amber-500 shadow-[0_0_6px_#f59e0b]',
-    red: 'bg-red-500 shadow-[0_0_6px_#ef4444]',
+    green: 'bg-green-500 shadow-[0_0_6px_var(--sev-ok)]',
+    amber: 'bg-amber-500 shadow-[0_0_6px_var(--sev-warn)]',
+    red: 'bg-red-500 shadow-[0_0_6px_var(--sev-critical)]',
     dark: 'bg-rmpg-700',
   };
   return (
@@ -195,8 +195,8 @@ function ScraperHealthHeader({
       <div className="flex-1" />
       <div className="text-[10px] uppercase tracking-widest text-rmpg-500">
         Last hour:{' '}
-        <span className="text-[#d4a017] font-bold">{summary.last_hour_runs}</span> runs,{' '}
-        <span className="text-[#d4a017] font-bold">{summary.last_hour_inserted}</span>{' '}
+        <span className="text-[var(--brand-gold)] font-bold">{summary.last_hour_runs}</span> runs,{' '}
+        <span className="text-[var(--brand-gold)] font-bold">{summary.last_hour_inserted}</span>{' '}
         new
       </div>
       <button
@@ -224,7 +224,7 @@ function ScraperHealthDistribution({
 
   return (
     <div className="panel-raised p-3">
-      <div className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">
+      <div className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">
         Health Distribution (24h)
       </div>
       <div className="space-y-1.5">
@@ -253,7 +253,7 @@ function ScraperHealthDistribution({
 function ScraperLiveFeed({ entries }: { entries: LiveFeedEntry[] }) {
   return (
     <div className="panel-raised p-3 h-full max-h-[240px] flex flex-col">
-      <div className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">
+      <div className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">
         Live Feed
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark space-y-0.5 font-mono text-[10px]">

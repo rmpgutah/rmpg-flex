@@ -111,6 +111,9 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     dl_state: row.dl_state ? String(row.dl_state) : undefined,
     dl_expiry: row.dl_expiry ? String(row.dl_expiry) : undefined,
     dl_class: row.dl_class ? String(row.dl_class) : undefined,
+    dl_issue_date: row.dl_issue_date ? String(row.dl_issue_date) : undefined,
+    dl_restrictions: row.dl_restrictions ? String(row.dl_restrictions) : undefined,
+    dl_endorsements: row.dl_endorsements ? String(row.dl_endorsements) : undefined,
     ssn_last4: row.ssn_last4 ? String(row.ssn_last4) : undefined,
     ssn_full: row.ssn_full ? String(row.ssn_full) : undefined,
     id_image_url: row.id_image_url ? String(row.id_image_url) : undefined,
@@ -690,9 +693,19 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         {displayPersons.length === 0 && (
           <div className="text-center py-16">
             <UserCircle className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No persons match your search.'
+                : showArchived
+                  ? 'No archived person records.'
+                  : 'No person records found.'}
+            </p>
             <p className="text-[10px] text-rmpg-600 mt-1">
-              {searchQuery ? 'Try broadening your search terms.' : 'Click "New Person" to create a record.'}
+              {searchQuery
+                ? 'Try broadening your search terms.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Person" to create a record.'}
             </p>
           </div>
         )}
@@ -1032,13 +1045,13 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             <RecordField label="Language" value={selectedPerson.language} />
           </FieldGrid>
           {selectedPerson.scars_marks_tattoos && (
-            <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="#fbbf24" /></div>
+            <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="var(--sev-warn-soft)" /></div>
           )}
           {selectedPerson.clothing_description && (
             <div className="mt-1"><RecordField label="Clothing" value={selectedPerson.clothing_description} /></div>
           )}
           {selectedPerson.alias_nickname && (
-            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="#e8b820" /></div>
+            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="rgb(var(--brand-gold-400-rgb))" /></div>
           )}
         </CollapsibleSection>
 
@@ -1061,7 +1074,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Identification ──────────────────────── */}
         <CollapsibleSection title="Identification" icon={CreditCard} defaultOpen>
-          {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url) ? (
+          {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url || selectedPerson.dl_restrictions || selectedPerson.dl_endorsements || selectedPerson.dl_issue_date) ? (
             <div className="flex gap-3">
               {/* ID Image */}
               {selectedPerson.id_image_url ? (
@@ -1089,12 +1102,31 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               )}
               <div className="flex-1 space-y-1.5">
                 {selectedPerson.dl_number && (
-                  <FieldGrid cols={2}>
-                    <RecordField label="DL" value={selectedPerson.dl_number} mono copyable />
-                    <RecordField label="State" value={selectedPerson.dl_state} />
-                    <RecordField label="Class" value={selectedPerson.dl_class} />
-                    <RecordField label="Expiry" value={selectedPerson.dl_expiry ? safeDateDisplay(selectedPerson.dl_expiry) : undefined} />
-                  </FieldGrid>
+                  <>
+                    <FieldGrid cols={2}>
+                      <RecordField label="DL" value={selectedPerson.dl_number} mono copyable />
+                      <RecordField label="State" value={selectedPerson.dl_state} />
+                      <RecordField label="Class" value={selectedPerson.dl_class} />
+                      <RecordField label="Expiry" value={selectedPerson.dl_expiry ? safeDateDisplay(selectedPerson.dl_expiry) : undefined} />
+                      <RecordField label="Issue Date" value={selectedPerson.dl_issue_date ? safeDateDisplay(selectedPerson.dl_issue_date) : undefined} />
+                    </FieldGrid>
+                    {(selectedPerson.dl_restrictions || selectedPerson.dl_endorsements) && (
+                      <div className="mt-1.5 space-y-1">
+                        {selectedPerson.dl_restrictions && (
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wider">Restrictions</span>
+                            <p className="text-[11px] text-rmpg-200 mt-0.5">{selectedPerson.dl_restrictions}</p>
+                          </div>
+                        )}
+                        {selectedPerson.dl_endorsements && (
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wider">Endorsements</span>
+                            <p className="text-[11px] text-rmpg-200 mt-0.5">{selectedPerson.dl_endorsements}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
                 {selectedPerson.id_number && (
                   <FieldGrid cols={2}>
@@ -1119,8 +1151,8 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                           onClick={() => setSSNRevealed(!ssnRevealed)}
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase border transition-colors"
                           style={ssnRevealed
-                            ? { color: '#f87171', background: 'rgba(220,38,38,0.15)', borderColor: 'rgba(220,38,38,0.4)' }
-                            : { color: 'var(--rmpg-400)', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
+                            ? { color: 'var(--sev-critical-soft)', background: 'rgb(var(--sev-critical-rgb) / 0.15)', borderColor: 'rgb(var(--sev-critical-rgb) / 0.4)' }
+                            : { color: 'rgb(var(--rmpg-400-rgb))', background: 'rgb(var(--rmpg-500-rgb) / 0.15)', borderColor: 'rgb(var(--rmpg-500-rgb) / 0.3)' }
                           }
                           title={ssnRevealed ? 'Hide SSN' : 'Reveal SSN'}
                         >

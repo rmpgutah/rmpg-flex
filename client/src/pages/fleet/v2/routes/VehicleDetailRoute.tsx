@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState, useCallback } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { apiFetchV2 } from '../hooks/apiFetchV2';
 import { OverviewTab } from '../vehicleDetail/OverviewTab';
@@ -12,6 +12,7 @@ import { RecallsTab } from '../vehicleDetail/RecallsTab';
 import { DamageTab } from '../vehicleDetail/DamageTab';
 import { TiresTab } from '../vehicleDetail/TiresTab';
 import { AssignmentsTab } from '../vehicleDetail/AssignmentsTab';
+import { WorkOrdersTab } from '../vehicleDetail/WorkOrdersTab';
 import { EmptyStateCard } from '../shell/EmptyStateCard';
 import { useFleetV2View } from '../hooks/useFleetV2Audit';
 
@@ -48,17 +49,71 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'activity',    label: 'Activity' },
 ];
 
+const TAB_IDS = new Set<TabId>([
+  'overview', 'service', 'inspections', 'fuel', 'issues', 'work-orders',
+  'documents', 'costs', 'recalls', 'damage', 'tires', 'assignments', 'activity',
+]);
+
+function isTabId(v: string | null): v is TabId {
+  return !!v && (TAB_IDS as Set<string>).has(v);
+}
+
 export function VehicleDetailRoute() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   useFleetV2View(`/fleet/v2/vehicles/${id ?? ''}`);
   const [vehicle, setVehicle] = useState<FleetVehicleDetail | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [loadError, setLoadError] = useState(false);
+  // Tab is URL-driven so an operator can land directly on, say,
+  // /fleet/v2/vehicles/42?tab=inspections from a deep-link in dispatch or
+  // a court-prep email. Falls through to 'overview' if the param is
+  // missing or unknown — never throws on a bad ?tab=.
+  const urlTab = searchParams.get('tab');
+  const initialTab: TabId = isTabId(urlTab) ? urlTab : 'overview';
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+
+  // Sync local state when the URL changes (back/forward, paste new link).
+  useEffect(() => {
+    const next = searchParams.get('tab');
+    if (isTabId(next) && next !== activeTab) {
+      setActiveTab(next);
+    }
+    // Strip unknown ?tab= values silently rather than leaving stale junk.
+    if (next && !isTabId(next)) {
+      const cleaned = new URLSearchParams(searchParams);
+      cleaned.delete('tab');
+      setSearchParams(cleaned, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const selectTab = useCallback((t: TabId) => {
+    setActiveTab(t);
+    const next = new URLSearchParams(searchParams);
+    if (t === 'overview') next.delete('tab'); // keep the default URL clean
+    else next.set('tab', t);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!id) return;
-    apiFetchV2<FleetVehicleDetail>(`/fleet/${id}`).then(setVehicle).catch(() => setVehicle(null));
+    setVehicle(null);
+    setLoadError(false);
+    apiFetchV2<FleetVehicleDetail>(`/fleet/${id}`)
+      .then(setVehicle)
+      .catch(() => setLoadError(true));
   }, [id]);
 
+  if (loadError) {
+    return (
+      <div className="p-4 text-rmpg-400 text-sm">
+        Vehicle #{id} could not be loaded. It may not exist or you may not have access.
+        <div className="mt-2">
+          <a href="/fleet/v2/vehicles" className="text-brand-400 hover:underline text-xs">Back to Vehicles</a>
+        </div>
+      </div>
+    );
+  }
   if (!vehicle) return <div className="p-4 text-rmpg-400 text-sm">Loading vehicle #{id}…</div>;
 
   return (
@@ -87,7 +142,7 @@ export function VehicleDetailRoute() {
               key={t.id}
               role="tab"
               aria-selected={activeTab === t.id}
-              onClick={() => setActiveTab(t.id)}
+              onClick={() => selectTab(t.id)}
               className={`px-3 py-1 text-[11px] whitespace-nowrap rounded-t-sm ${
                 activeTab === t.id ? 'bg-rmpg-700 text-rmpg-50' : 'text-rmpg-400 hover:text-rmpg-100'
               }`}
@@ -107,17 +162,16 @@ export function VehicleDetailRoute() {
          activeTab === 'recalls'     ? <RecallsTab vehicleId={vehicle.id} /> :
          activeTab === 'damage'      ? <DamageTab vehicleId={vehicle.id} /> :
          activeTab === 'tires'       ? <TiresTab vehicleId={vehicle.id} /> :
+         activeTab === 'work-orders' ? <WorkOrdersTab vehicleId={vehicle.id} /> :
          activeTab === 'assignments' ? <AssignmentsTab vehicleId={vehicle.id} /> : (
           <div className="p-4">
             <EmptyStateCard
               title={TABS.find((t) => t.id === activeTab)?.label ?? ''}
               plannedPr={
-                activeTab === 'work-orders' ? 'PR 5' :
                 activeTab === 'issues' ? 'PR 6' :
                 'Phase 2'
               }
               description="This tab will land in a future PR of the Fleet Manager UI program."
-              fleetioUrl={activeTab === 'work-orders' ? `https://secure.fleetio.com/vehicles/${vehicle.id}/work_orders` : undefined}
             />
           </div>
         )}

@@ -70,8 +70,8 @@ export default function WarrantNsopwStatus({ personId }: Props) {
   if (loading && !hits) {
     return (
       <div className="panel-beveled p-4">
-        <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2 mb-3">
-          <Shield className="w-4 h-4 text-[#d4a017]" /> NSOPW Status
+        <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
+          <Shield className="w-4 h-4 text-[var(--brand-gold)]" /> NSOPW Status
         </h3>
         <div className="text-[11px] text-rmpg-300 flex items-center gap-1">
           <Loader2 className="w-3 h-3 animate-spin" /> Loading nationwide SOR status…
@@ -91,7 +91,7 @@ export default function WarrantNsopwStatus({ personId }: Props) {
 
   return (
     <div className="panel-beveled p-4">
-      <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-widest flex items-center gap-2 mb-3">
+      <h3 className="text-[10px] font-bold text-[var(--brand-gold)] uppercase tracking-widest flex items-center gap-2 mb-3">
         <HeaderIcon className={`w-4 h-4 ${headerColor}`} /> NSOPW Status — Nationwide Sex Offender Registry
         <span className="ml-auto flex items-center gap-2">
           {total > 0 && (

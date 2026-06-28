@@ -85,7 +85,7 @@ const MAPBOX_KEYS: ApiKeyConfig[] = [
 ];
 
 const AI_ML_KEYS: ApiKeyConfig[] = [
-  { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4 / GPT-4o — narrative generation, report writing, evidence analysis', pattern: /^sk-[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk-' },
+  { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4o / 4o-mini — narrative generation, report writing, evidence analysis. Used as fallback below Claude in the callAi() chain across Deep Research, OCR, Intel AI. Test sends a minimal Chat Completions ping.', pattern: /^sk-(?:proj-)?[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk- or sk-proj-', testable: true },
   { key: 'anthropic_api_key', label: 'Anthropic (Claude)', desc: 'Claude — document analysis, legal research, policy compliance checks. Deep Research & OCR silently fall back to free Workers AI when this is invalid or out of credit — use Test to confirm it actually works.', pattern: /^sk-ant-[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk-ant-', testable: true },
   { key: 'replicate_api_key', label: 'Replicate', desc: 'Free tier — open-source AI models, image generation, facial similarity search' },
   { key: 'huggingface_api_key', label: 'Hugging Face', desc: 'Free tier — NLP models, text classification, entity extraction for reports', pattern: /^hf_[A-Za-z0-9]+$/, formatHint: 'Starts with hf_' },

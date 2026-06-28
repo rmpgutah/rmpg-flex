@@ -22,11 +22,17 @@ describe('<DashboardRoute>', () => {
     expect(screen.getByText(/in service/i)).toBeInTheDocument();
   });
 
-  it('renders 3 cards: Upcoming Service, Recent Fuel, Recent Inspections', () => {
+  it('renders 3 cards: Upcoming Service, Recent Fuel, Inspection Issues', () => {
     renderDash();
-    expect(screen.getByText(/upcoming service/i)).toBeInTheDocument();
-    expect(screen.getByText(/recent fuel/i)).toBeInTheDocument();
-    expect(screen.getByText(/recent inspections/i)).toBeInTheDocument();
+    // Use heading-role queries so the title text doesn't also match
+    // body copy ("No inspection issues." is rendered in the loading-empty
+    // state and would otherwise double-match the title regex).
+    expect(screen.getByRole('heading', { name: /upcoming service/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /recent fuel/i })).toBeInTheDocument();
+    // Page-24 audit: the third card was renamed from "Recent Inspections" to
+    // "Inspection Issues" because the count it now displays (overdue +
+    // failing) is the *issue* count, not a recent-activity feed.
+    expect(screen.getByRole('heading', { name: /inspection issues/i })).toBeInTheDocument();
   });
 
   it('each card has a "View all" link to its full section', () => {

@@ -1,7 +1,9 @@
 import SwiftUI
+import UIKit
 import DesignSystem
 import CoreAuth
 
+@MainActor
 public struct LoginView: View {
     @Environment(\.theme) private var theme
     @Bindable public var vm: LoginViewModel
@@ -10,11 +12,31 @@ public struct LoginView: View {
         self.vm = vm
     }
 
+    private var sealImage: Image {
+        guard let data = sealPNGData(), let uiImage = UIImage(data: data) else {
+            return Image(systemName: "lock")
+        }
+        return Image(uiImage: uiImage)
+    }
+
+    private func sealPNGData() -> Data? {
+        guard let bundlePath = Bundle.main.path(forResource: "FeatureShell_FeatureShell", ofType: "bundle"),
+              let bundle = Bundle(path: bundlePath),
+              let imagePath = bundle.path(forResource: "rmpg-seal", ofType: "png") else {
+            return nil
+        }
+        return try? Data(contentsOf: URL(fileURLWithPath: imagePath))
+    }
+
     public var body: some View {
         ZStack {
             theme.colors.surfaceBase.ignoresSafeArea()
             VStack(spacing: 24) {
-                Spacer().frame(height: 40)
+                Spacer().frame(height: 20)
+                sealImage
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 100, height: 100)
                 VStack(spacing: 4) {
                     Text("RMPG FLEX CONNECT")
                         .font(.title2.weight(.bold))
@@ -39,24 +61,36 @@ public struct LoginView: View {
                         .padding(.horizontal, 24)
                 }
 
-                Button {
-                    Task { await vm.submit() }
-                } label: {
-                    HStack {
-                        if vm.state == .submitting {
-                            ProgressView().tint(theme.colors.surfaceBase)
+                VStack(spacing: 8) {
+                    Button {
+                        Task { await vm.submit() }
+                    } label: {
+                        HStack {
+                            if vm.state == .submitting {
+                                ProgressView().tint(theme.colors.surfaceBase)
+                            }
+                            Text("LOGIN")
+                                .font(.headline)
+                                .tracking(1)
                         }
-                        Text("TEST LOGIN")
-                            .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(theme.colors.brandGold)
+                        .foregroundStyle(theme.colors.surfaceBase)
+                    }
+                    .disabled(!vm.canSubmit)
+                    .opacity(vm.canSubmit ? 1.0 : 0.5)
+
+                    Button {
+                        vm.enterDemoMode()
+                    } label: {
+                        Text("DEMO MODE")
+                            .font(.subheadline.weight(.medium))
                             .tracking(1)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(theme.colors.brandGold)
-                    .foregroundStyle(theme.colors.surfaceBase)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.colors.textMuted)
                 }
-                .disabled(!vm.canSubmit)
-                .opacity(vm.canSubmit ? 1.0 : 0.5)
                 .padding(.horizontal, 24)
 
                 Spacer()
