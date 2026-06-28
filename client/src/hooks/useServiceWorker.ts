@@ -35,6 +35,7 @@ export function useServiceWorker() {
 
     let checkInterval: ReturnType<typeof setInterval> | undefined;
     let unmounted = false;
+    let visibilityCheck: (() => void) | undefined;
 
     const handleControllerChange = () => {
       // The SW controller changed — a new version activated
@@ -78,36 +79,40 @@ export function useServiceWorker() {
           }, UPDATE_CHECK_INTERVAL);
         }
 
+        // Also check the moment the tab regains focus / visibility. The 15-min
+        // poll alone meant a freshly-deployed change could stay invisible for up
+        // to 15 minutes on an already-open console; an operator switching back to
+        // the tab now picks up the new bundle right away (debounced to avoid a
+        // burst of update() calls when focus + visibility fire together).
+        let lastVisibleCheck = 0;
+        visibilityCheck = () => {
+          if (document.visibilityState !== 'visible') return;
+          const now = Date.now();
+          if (now - lastVisibleCheck < 10_000) return; // debounce
+          lastVisibleCheck = now;
+          reg.update().catch(() => { /* offline / transient — interval retries */ });
+        };
+        document.addEventListener('visibilitychange', visibilityCheck);
+        window.addEventListener('focus', visibilityCheck);
+
       } catch (err) {
         console.warn('[useServiceWorker] Registration failed:', err);
       }
     };
 
-    // Listen for messages from the SW (e.g., SW_UPDATED).
-    // Behavior change 2026-05-05: when the SW activates a new bundle,
-    // auto-reload the page after a short delay so users always see the
-    // newest assets without needing a manual hard-reload. Previously
-    // this only set updateAvailable=true and waited for the user to
-    // dismiss a banner — but in practice the banner was easy to miss
-    // and operators kept reporting "changes aren't visible" because
-    // their browser was still serving the cached pdfGenerator chunk.
-    // The 1.5s delay gives any in-flight tool tip / form submit a
-    // chance to finish before reload.
+    // Listen for messages from the SW (e.g., SW_UPDATED). We ONLY flip
+    // `updateAvailable` here — the actual page reload is owned by
+    // WebUpdateBanner, which gates it on a "safe to reload" check (no
+    // focused field, no open modal) and retries until that's true.
+    //
+    // History: this used to reload here too (with its own focus heuristic),
+    // but WebUpdateBanner ALSO reloads off `updateAvailable` WITHOUT that
+    // guard — so the two raced and the banner won, force-reloading mid-edit
+    // and wiping unsaved work ("changes lost / app keeps reverting", 2026-06-02).
+    // One gated reload authority (the banner) fixes that.
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'SW_UPDATED') {
         setUpdateAvailable(true);
-        try {
-          // Skip auto-reload if the user is in the middle of editing
-          // an unsaved form — there's no perfect signal for "active
-          // edit", so we use a heuristic: skip if any input/textarea
-          // currently has focus.
-          const ae = document.activeElement;
-          const editingTags = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
-          if (ae && editingTags.has(ae.tagName)) return;
-          setTimeout(() => {
-            try { window.location.reload(); } catch { /* noop */ }
-          }, 1500);
-        } catch { /* noop — fall back to manual reload prompt */ }
       }
     };
 
@@ -119,6 +124,10 @@ export function useServiceWorker() {
     return () => {
       unmounted = true;
       if (checkInterval) clearInterval(checkInterval);
+      if (visibilityCheck) {
+        document.removeEventListener('visibilitychange', visibilityCheck);
+        window.removeEventListener('focus', visibilityCheck);
+      }
       navigator.serviceWorker.removeEventListener('message', handleMessage);
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
     };

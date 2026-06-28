@@ -93,26 +93,41 @@ ct.get('/events', async (c) => {
   const db = getDb(c.env);
   const status = c.req.query('status');
   const type = c.req.query('type');
-  const from = c.req.query('from');
-  const to = c.req.query('to');
-  const search = c.req.query('q');
-  const limit = Math.min(parseInt(c.req.query('limit') || '200', 10), 1000);
+  // Accept the client's param names (date_from/date_to/search/page) with the
+  // older q/from/to as aliases. Previously only q/from/to were read and there
+  // was no pagination, so the client's text/date filters and paging were no-ops
+  // — and the bare-array response (no { data, pagination }) crashed both court
+  // pages, which read res.data / res.pagination.
+  const from = c.req.query('date_from') || c.req.query('from');
+  const to = c.req.query('date_to') || c.req.query('to');
+  const search = c.req.query('search') || c.req.query('q');
+  const limit = Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 1000);
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
+  const offset = (page - 1) * limit;
 
   const where: string[] = [];
   const args: any[] = [];
+  // case_id= lets the CourtTrackerPage ?case_id= deep-link filter to
+  // events belonging to a specific case without a separate endpoint.
+  const caseId = c.req.query('case_id');
   if (status) { where.push('status = ?'); args.push(status); }
   if (type) { where.push('event_type = ?'); args.push(type); }
+  if (caseId) { where.push('case_id = ?'); args.push(parseInt(caseId, 10)); }
   if (from) { where.push('event_date >= ?'); args.push(from); }
   if (to) { where.push('event_date <= ?'); args.push(to); }
   if (search) {
     where.push('(defendant_name LIKE ? OR court_case_number LIKE ? OR event_number LIKE ?)');
     args.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
-  const sql = `SELECT * FROM court_events
-               ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-               ORDER BY event_date ASC, event_time ASC LIMIT ?`;
-  args.push(limit);
-  return c.json(await query(db, sql, ...args));
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM court_events ${whereSql}`, ...args);
+  const total = totalRow?.n ?? 0;
+  const rows = await query(
+    db,
+    `SELECT * FROM court_events ${whereSql} ORDER BY event_date ASC, event_time ASC LIMIT ? OFFSET ?`,
+    ...args, limit, offset,
+  );
+  return c.json({ data: rows, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } });
 });
 
 // ── GET /events/upcoming ────────────────────────────────────
@@ -123,7 +138,10 @@ ct.get('/events/upcoming', async (c) => {
                WHERE event_date >= ? AND event_date <= date(?, '+' || ? || ' days')
                  AND status NOT IN ('cancelled','completed','no_show')
                ORDER BY event_date ASC, event_time ASC LIMIT 500`;
-  return c.json(await query(getDb(c.env), sql, today, today, days));
+  const rows = await query(getDb(c.env), sql, today, today, days);
+  // Wrap in { data } so the client can use the same apiFetch<{ data: CourtEvent[] }>
+  // contract as every other list endpoint on this page.
+  return c.json({ data: rows });
 });
 
 // ── GET /calendar ───────────────────────────────────────────
@@ -142,7 +160,9 @@ ct.get('/calendar', async (c) => {
   // Bucket by date for calendar UI.
   const byDate: Record<string, any[]> = {};
   for (const r of rows) (byDate[r.event_date] ??= []).push(r);
-  return c.json({ from, to, events: rows, by_date: byDate });
+  // `data` alias for the CourtTrackerPage client which reads res.data as a
+  // Record<string, any[]> keyed by date string.
+  return c.json({ from, to, events: rows, by_date: byDate, data: byDate });
 });
 
 // ── GET /statistics ─────────────────────────────────────────
@@ -160,6 +180,12 @@ ct.get('/statistics', async (c) => {
     db,
     `SELECT event_type, COUNT(*) AS n FROM court_events GROUP BY event_type`,
   );
+  const continued = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM court_events WHERE status='continued'");
+  const byOutcome = await query<{ outcome: string; count: number }>(
+    db, `SELECT status AS outcome, COUNT(*) AS count FROM court_events GROUP BY status`,
+  );
+  // CourtTrackerPage reads res.data.totals / byOutcome / byType; keep top-level
+  // keys too for any other consumer. avg_fine has no source column yet (null).
   return c.json({
     total: total?.n ?? 0,
     scheduled: scheduled?.n ?? 0,
@@ -167,6 +193,18 @@ ct.get('/statistics', async (c) => {
     no_show: noShow?.n ?? 0,
     upcoming_7d: upcoming7?.n ?? 0,
     by_type: byType,
+    data: {
+      totals: {
+        total: total?.n ?? 0,
+        completed: completed?.n ?? 0,
+        scheduled: scheduled?.n ?? 0,
+        total_continuances: continued?.n ?? 0,
+        avg_fine: null as number | null,
+      },
+      byOutcome,
+      // event_type key matches what CourtTrackerPage reads: r.event_type / r.count
+      byType: byType.map((t) => ({ event_type: t.event_type, count: t.n })),
+    },
   });
 });
 
@@ -246,7 +284,7 @@ ct.post('/events/from-citation', async (c) => {
     eventNumber, body.event_type ?? 'arraignment', body.event_date, body.event_time ?? null,
     body.court_name ?? cit.court_name ?? null, body.citation_id,
     body.defendant_name ?? cit.violator_name ?? null,
-    body.defendant_person_id ?? cit.violator_person_id ?? null,
+    body.defendant_person_id ?? cit.person_id ?? null,
     user?.id ?? null,
   );
   return c.json({ success: true, id: r.meta.last_row_id, event_number: eventNumber }, 201);
@@ -264,7 +302,8 @@ ct.get('/events/:id', async (c) => {
   row.documents = parseJsonCol(row.documents, []);
   row.witnesses = parseJsonCol(row.witnesses, []);
   row.court_fees = parseJsonCol(row.court_fees, {});
-  return c.json(row);
+  // Wrap in { data } to match the client's apiFetch<{ data: CourtEvent }> contract.
+  return c.json({ data: row });
 });
 
 // ── GET /events/:id/conflicts ───────────────────────────────
@@ -293,7 +332,8 @@ ct.get('/events/:id/conflicts', async (c) => {
       conflicts.push({ event_id: o.id, event_number: o.event_number, event_time: o.event_time, overlap_officers: overlap });
     }
   }
-  return c.json({ event_id: id, date: ev.event_date, conflicts, total: conflicts.length });
+  // `data` matches CourtTrackerPage's apiFetch<{ data: any[] }> contract.
+  return c.json({ event_id: id, date: ev.event_date, conflicts, total: conflicts.length, data: conflicts });
 });
 
 // ── GET /events/:id/witnesses ───────────────────────────────
@@ -623,6 +663,53 @@ ct.put('/events/:id/bail', async (c) => {
     body.bail_amount ?? null, body.bond_status ?? null, body.surety_info ?? null, id,
   );
   return c.json({ success: true });
+});
+
+// ── GET /dashboard — court overview tiles ──────────────────
+ct.get('/dashboard', async (c) => {
+  const db = getDb(c.env);
+  const safe = async (sql: string): Promise<number> => {
+    try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
+  };
+  const [total, scheduled, upcoming7d, completedThisMonth, noShows, continuances] = await Promise.all([
+    safe('SELECT COUNT(*) AS n FROM court_events'),
+    safe("SELECT COUNT(*) AS n FROM court_events WHERE status = 'scheduled'"),
+    safe(`SELECT COUNT(*) AS n FROM court_events WHERE event_date BETWEEN date('now','localtime') AND date('now','localtime','+7 days') AND status NOT IN ('cancelled','completed')`),
+    safe(`SELECT COUNT(*) AS n FROM court_events WHERE status = 'completed' AND substr(event_date,1,7) = substr(date('now','localtime'),1,7)`),
+    safe("SELECT COUNT(*) AS n FROM court_events WHERE status = 'no_show'"),
+    safe("SELECT COUNT(*) AS n FROM court_events WHERE status = 'continued'"),
+  ]);
+  return c.json({ total, scheduled, upcoming7d, completedThisMonth, noShows, continuances });
+});
+
+// ── GET /appearances — officer court appearance schedule ────
+ct.get('/appearances', async (c) => {
+  const officerId = c.req.query('officer_id');
+  const from = c.req.query('from') || new Date().toISOString().slice(0, 10);
+  const to = c.req.query('to') || new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+  try {
+    const db = getDb(c.env);
+    const where = officerId
+      ? `WHERE event_date BETWEEN ? AND ? AND officers_required LIKE ? AND status NOT IN ('cancelled')`
+      : `WHERE event_date BETWEEN ? AND ? AND status NOT IN ('cancelled')`;
+    const params = officerId ? [from, to, `%${officerId}%`] : [from, to];
+    const rows = await query<any>(db,
+      `SELECT id, event_number, event_type, status, event_date, event_time,
+              court_name, courtroom, defendant_name, officers_required
+       FROM court_events ${where}
+       ORDER BY event_date ASC, event_time ASC LIMIT 500`, ...params);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── GET /discovery — discovery tracking (stub, no table yet) ─
+ct.get('/discovery', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM court_discovery ORDER BY due_date ASC LIMIT 200`);
+    return c.json(rows);
+  } catch { return c.json([]); }
 });
 
 export default ct;

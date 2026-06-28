@@ -4,6 +4,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import type { OverlayMarker } from '../utils/mapMarkerBuilders';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface Geofence {
   id: number;
@@ -209,6 +210,7 @@ export function useMapGeofences(
     });
 
     if (polyFeatures.length > 0) {
+      whenStyleReady(map, () => {
       map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: polyFeatures } });
       map.addLayer({
         id: sourceId,
@@ -243,7 +245,7 @@ export function useMapGeofences(
             <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">${p.name}</div>
             <table style="width:100%;font-size:11px;border-collapse:collapse">
               <tr><td style="color:#888888;padding:1px 6px 1px 0">Type</td><td style="color:#e0e0e0">${p.zone_type || 'Unknown'}</td></tr>
-              <tr><td style="color:#888888;padding:1px 6px 1px 0">Alerts</td><td style="color:${alertCount > 0 ? '#f59e0b' : '#e0e0e0'}">${alertCount}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Alerts</td><td style="color:${alertCount > 0 ? '#f59e0b' : 'var(--text-secondary)'}">${alertCount}</td></tr>
               <tr><td style="color:#888888;padding:1px 6px 1px 0">Enter Alerts</td><td style="color:#e0e0e0">${p.alert_on_enter ? 'Yes' : 'No'}</td></tr>
               <tr><td style="color:#888888;padding:1px 6px 1px 0">Exit Alerts</td><td style="color:#e0e0e0">${p.alert_on_exit ? 'Yes' : 'No'}</td></tr>
             </table>
@@ -254,9 +256,11 @@ export function useMapGeofences(
           .setHTML(html)
           .addTo(map);
       });
+      });
     }
 
     if (labelFeatures.length > 0) {
+      whenStyleReady(map, () => {
       map.addSource(labelSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: labelFeatures } });
       map.addLayer({
         id: labelSourceId,
@@ -273,6 +277,7 @@ export function useMapGeofences(
           'text-halo-color': '#000000',
           'text-halo-width': 1,
         },
+      });
       });
     }
 
@@ -322,8 +327,10 @@ export function useMapGeofences(
       if (map.getSource(drawSourceId)) {
         (map.getSource(drawSourceId) as mapboxgl.GeoJSONSource).setData(lineData);
       } else {
-        map.addSource(drawSourceId, { type: 'geojson', data: lineData });
-        map.addLayer({ id: `${drawSourceId}-line`, type: 'line', source: drawSourceId, paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.9 } });
+        whenStyleReady(map, () => {
+          map.addSource(drawSourceId, { type: 'geojson', data: lineData });
+          map.addLayer({ id: `${drawSourceId}-line`, type: 'line', source: drawSourceId, paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.9 } });
+        });
       }
     };
 

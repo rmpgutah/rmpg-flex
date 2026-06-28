@@ -3,6 +3,8 @@
 import { useCallback, useState, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface Incident {
   id: number;
@@ -46,8 +48,8 @@ export function useMapboxIncidents(map: mapboxgl.Map | null) {
     if (!map) return;
     visibleRef.current = false;
     try {
-      if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
-      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      safeRemoveLayer(map, LAYER_ID);
+      safeRemoveSource(map, SOURCE_ID);
     } catch { /* ignore */ }
   }, [map]);
 
@@ -138,7 +140,7 @@ export function useMapboxIncidents(map: mapboxgl.Map | null) {
       const data = await apiFetch<Incident[]>(`/incidents?days=${days}&limit=${limit}`);
       const incs = Array.isArray(data) ? data : [];
       setIncidents(incs);
-      if (map.loaded()) renderOnMap(incs, map);
+      whenStyleReady(map, () => { renderOnMap(incs, map); });
     } catch (err) {
       console.warn('[useMapboxIncidents] fetch failed:', err);
     } finally {

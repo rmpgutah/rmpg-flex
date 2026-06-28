@@ -36,8 +36,86 @@ const geocode = new Hono<Env>();
 geocode.use('*', authMiddleware);
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
+const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
 const USER_AGENT = 'RMPG-Flex-Dispatch/1.0 (https://rmpgutah.us)';
 const CACHE_TTL_SECONDS = 24 * 3600;
+
+// Reverse-geocode coordinates to a short street label (server-side), for the
+// AI dispatcher's "where am I" answer. Rounds to ~11 m before caching so a
+// breadcrumb that jitters a few feet still hits the same KV key. Returns null
+// on any miss/error — the dispatcher then falls back to the beat/zone name,
+// which it always has. Nominatim reverse is free + keyless (1 req/s policy;
+// the round+cache keeps us well under it).
+export async function reverseGeocodeAddress(
+  env: { KV: KVNamespace },
+  lat: number,
+  lng: number,
+): Promise<string | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const key = `geocode:rev:${lat.toFixed(4)},${lng.toFixed(4)}`;
+  try {
+    const cached = await env.KV.get(key).catch(() => null);
+    if (cached != null) return cached || null;
+    const params = new URLSearchParams({
+      lat: String(lat), lon: String(lng), format: 'json', zoom: '18', addressdetails: '1',
+    });
+    const resp = await fetch(`${NOMINATIM_REVERSE}?${params}`, {
+      headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en' },
+    });
+    if (!resp.ok) return null;
+    const raw = await resp.json<{ address?: Record<string, string>; display_name?: string }>();
+    const a = raw?.address || {};
+    // Prefer "<house#> <street>, <city>"; fall back to the first two display
+    // segments so the dispatcher always reads something recognizable.
+    const street = [a.house_number, a.road].filter(Boolean).join(' ');
+    const city = a.city || a.town || a.village || a.suburb || a.neighbourhood || '';
+    const label = [street, city].filter(Boolean).join(', ')
+      || (raw?.display_name ? raw.display_name.split(',').slice(0, 2).join(',').trim() : '');
+    if (!label) return null;
+    await env.KV.put(key, label, { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {});
+    return label;
+  } catch {
+    return null;
+  }
+}
+
+// Forward-geocode a single address to coordinates (server-side), reusing the
+// same Nominatim source + Utah viewbox bias + KV cache as /geocode/search.
+// Returns null on any miss/error — callers MUST treat geocoding as best-effort
+// and never block their write on it. Used by the dispatch call-create flow so
+// every CFS gets map coordinates even when the client didn't supply lat/lng
+// (created via API, the CAD command line, or a path that skipped autocomplete).
+export async function geocodeAddress(
+  env: { KV: KVNamespace },
+  address: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const q = (address || '').trim();
+  if (q.length < 3) return null;
+  const cacheKey = `geocode:fwd:${q.toLowerCase()}`;
+  try {
+    const cached = (await env.KV.get(cacheKey, 'json').catch(() => null)) as { lat: number; lng: number } | null;
+    if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) return cached;
+    const params = new URLSearchParams({
+      q, format: 'json', addressdetails: '0', limit: '1', countrycodes: 'us',
+      viewbox: '-114.052,42.001,-109.041,36.998', bounded: '1',
+    });
+    const resp = await fetch(`${NOMINATIM_BASE}?${params}`, {
+      headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en' },
+    });
+    if (!resp.ok) return null;
+    const raw = await resp.json<Array<{ lat?: string; lon?: string }>>();
+    const first = raw?.[0];
+    if (!first?.lat || !first?.lon) return null;
+    const lat = parseFloat(first.lat);
+    const lng = parseFloat(first.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    const coords = { lat, lng };
+    await env.KV.put(cacheKey, JSON.stringify(coords), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {});
+    return coords;
+  } catch {
+    return null;
+  }
+}
 
 // GET /api/geocode/search?q=…&limit=…
 // Mounted at /api so the inner paths below match what the client
@@ -107,6 +185,22 @@ geocode.get('/geocode/search', async (c) => {
   } catch (err) {
     return c.json({ results: [], error: String(err) }, 502);
   }
+});
+
+// GET /api/geocode/reverse?lat=…&lng=…
+// Reverse-geocode a unit's live GPS to a short street label for the dispatch
+// board ("123 S Main St, Salt Lake City"). Reuses the KV-cached Nominatim
+// helper (rounds to ~11 m so a stationary unit's jittering fix hits cache).
+// Cross-street derivation stays client-side (Mapbox Tilequery in
+// utils/crossStreet); this endpoint only owns the street address.
+geocode.get('/geocode/reverse', async (c) => {
+  const lat = parseFloat(c.req.query('lat') || '');
+  const lng = parseFloat(c.req.query('lng') || '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return c.json({ error: 'lat and lng required', address: null }, 400);
+  }
+  const address = await reverseGeocodeAddress(c.env, lat, lng);
+  return c.json({ address: address ?? null });
 });
 
 // GET /api/integrations/mapbox/client-token

@@ -9,7 +9,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
-import { broadcastAll } from '../ws';
 
 const businessVisits = new Hono<Env>();
 
@@ -80,9 +79,6 @@ businessVisits.post('/', async (c) => {
       db, 'SELECT * FROM business_visits WHERE id = ?', Number(result.meta.last_row_id),
     );
 
-    broadcastAll('business_update', {
-      action: 'business_visits_updated', business_id,
-    });
 
     return c.json(row, 201);
   } catch (err) {
