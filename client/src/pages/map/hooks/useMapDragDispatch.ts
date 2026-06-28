@@ -16,21 +16,30 @@ export function useMapDragDispatch(
   const [dispatching, setDispatching] = useState(false);
   const mountedRef = useRef(true);
 
-  const originalPositions = useRef<Map<string, mapboxgl.LngLat>>(new Map());
-  const dragStateRef = useRef<Map<string, boolean>>(new Map());
+  const originalPositions = useRef<Map<string, [number, number]>>(new Map());
 
-  const findNearestCall = useCallback((dragPos: mapboxgl.LngLat): { callId: string; distance: number } | null => {
+  const latLngToPixel = useCallback((lng: number, lat: number): { x: number; y: number } | null => {
     if (!map) return null;
-    const dragPoint = map.project(dragPos);
+    const point = map.project([lng, lat]);
+    return { x: point.x, y: point.y };
+  }, [map]);
+
+  const findNearestCall = useCallback((dragLng: number, dragLat: number): { callId: string; distance: number } | null => {
+    const dragPx = latLngToPixel(dragLng, dragLat);
+    if (!dragPx) return null;
+
     let nearest: { callId: string; distance: number } | null = null;
     const THRESHOLD_PX = 50;
 
     callMarkers.forEach((entry) => {
       const pos = entry.marker.getLngLat();
       if (!pos) return;
-      const callPoint = map.project(pos);
-      const dx = dragPoint.x - callPoint.x;
-      const dy = dragPoint.y - callPoint.y;
+
+      const callPx = latLngToPixel(pos.lng, pos.lat);
+      if (!callPx) return;
+
+      const dx = dragPx.x - callPx.x;
+      const dy = dragPx.y - callPx.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist <= THRESHOLD_PX && (!nearest || dist < nearest.distance)) {
         nearest = { callId: entry.callId, distance: dist };
@@ -38,93 +47,91 @@ export function useMapDragDispatch(
     });
 
     return nearest;
-  }, [callMarkers, map]);
+  }, [callMarkers, latLngToPixel]);
 
   useEffect(() => {
     if (!map) return;
 
-    dragStateRef.current.clear();
     originalPositions.current.clear();
+
+    // Defensive: marker objects must be native mapbox-gl Markers for drag to
+    // work. If a non-conforming object ever lands in the map (e.g. a custom
+    // overlay), skip it rather than throwing — a thrown error inside this
+    // effect would propagate to the page-level error boundary and blank the
+    // entire map, which is exactly the regression this guard prevents.
+    const supportsDrag = (m: unknown): m is mapboxgl.Marker =>
+      !!m && typeof (m as mapboxgl.Marker).setDraggable === 'function';
 
     if (!enabled) {
       unitMarkers.forEach((marker) => {
-        marker.setDraggable(false);
+        if (supportsDrag(marker)) marker.setDraggable(false);
       });
       return;
     }
 
     unitMarkers.forEach((marker, unitId) => {
+      if (!supportsDrag(marker)) return;
+      marker.setDraggable(true);
+
       const pos = marker.getLngLat();
-      if (pos) originalPositions.current.set(unitId, pos);
+      if (pos) {
+        originalPositions.current.set(unitId, [pos.lng, pos.lat]);
+      }
 
-      // Make marker draggable
-      if (marker.setDraggable) marker.setDraggable(true);
-      else (marker as any)._draggable = true;
+      const content = marker.getElement();
+      if (content) {
+        const origTransition = content.style.transition;
+        const origFilter = content.style.filter;
 
-      const el = marker.getElement();
-      const origTransition = el.style.transition;
-      const origFilter = el.style.filter;
-
-      const onDragStart = () => {
-        dragStateRef.current.set(unitId, true);
-        el.style.transition = 'filter 0.2s ease';
-        el.style.filter = 'drop-shadow(0 0 8px #d4a017) drop-shadow(0 0 16px #d4a017)';
-      };
-
-      const onDragEnd = async () => {
-        dragStateRef.current.set(unitId, false);
-        el.style.filter = origFilter || '';
-        el.style.transition = origTransition || '';
-
-        const origPos = originalPositions.current.get(unitId);
-        if (origPos) marker.setLngLat(origPos);
-
-        const currentPos = marker.getLngLat();
-        if (!currentPos) return;
-
-        const nearest = findNearestCall(currentPos);
-        if (nearest) {
-          setDispatching(true);
-          try {
-            await onDispatch(unitId, nearest.callId);
-          } catch (err) {
-            console.warn('[useMapDragDispatch] Dispatch failed:', err);
-          } finally {
-            if (mountedRef.current) setDispatching(false);
+        marker.on('dragstart', () => {
+          if (content && content.style) {
+            content.style.transition = 'filter 0.2s ease';
+            content.style.filter = 'drop-shadow(0 0 8px #d4a017) drop-shadow(0 0 16px #d4a017)';
           }
         }
       };
 
-      el.addEventListener('mousedown', onDragStart);
-      el.addEventListener('mouseup', onDragEnd);
-      el.addEventListener('touchstart', onDragStart);
-      el.addEventListener('touchend', onDragEnd);
+        marker.on('dragend', async () => {
+          if (content && content.style) {
+            content.style.filter = origFilter || '';
+            content.style.transition = origTransition || '';
+          }
 
-      // Store cleanup
-      const _cleanup = () => {
-        el.removeEventListener('mousedown', onDragStart);
-        el.removeEventListener('mouseup', onDragEnd);
-        el.removeEventListener('touchstart', onDragStart);
-        el.removeEventListener('touchend', onDragEnd);
-      };
-      (marker as any)._dragCleanup = _cleanup;
+          const origPos = originalPositions.current.get(unitId);
+          if (origPos) {
+            marker.setLngLat(origPos);
+          }
+
+          const pos = marker.getLngLat();
+          if (!pos) return;
+
+          const nearest = findNearestCall(pos.lng, pos.lat);
+          if (nearest) {
+            setDispatching(true);
+            try {
+              await onDispatch(unitId, nearest.callId);
+            } catch (err) {
+              console.warn('[useMapDragDispatch] Dispatch failed:', err);
+            } finally {
+              if (mountedRef.current) setDispatching(false);
+            }
+          }
+        });
+      }
     });
 
     return () => {
       unitMarkers.forEach((marker) => {
-        if (marker.setDraggable) marker.setDraggable(false);
-        else (marker as any)._draggable = false;
-        if ((marker as any)._dragCleanup) {
-          (marker as any)._dragCleanup();
-          delete (marker as any)._dragCleanup;
-        }
+        if (supportsDrag(marker)) marker.setDraggable(false);
       });
     };
   }, [map, enabled, unitMarkers, callMarkers, findNearestCall, onDispatch]);
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   return { dispatching };

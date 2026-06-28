@@ -1,18 +1,12 @@
-// ============================================================
-// RMPG Flex — useMapCallHistory Hook
-// Historical call data layer: cleared/closed/archived calls
-// with full info window details and filter support.
-// ============================================================
-
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { PRIORITY_COLORS } from '../utils/mapConstants';
 import { buildHistoricalCallMarkerContent } from '../utils/mapMarkerBuilders';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { escapeHtml } from '../../../utils/sanitize';
-
-// ─── Types ──────────────────────────────────────────────────
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface HistoricalCall {
   id: number;
@@ -48,8 +42,6 @@ interface UseMapCallHistoryReturn {
   incidentCategories: string[];
 }
 
-// ─── Helpers ────────────────────────────────────────────────
-
 function formatResponseTime(minutes: number | null): string {
   if (minutes == null) return '-';
   if (minutes < 60) return `${Math.round(minutes)} min`;
@@ -61,7 +53,7 @@ function formatResponseTime(minutes: number | null): string {
 function formatTimestamp(iso: string | null): string {
   if (!iso) return '-';
   try {
-    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+    const d = parseTimestamp(iso);
     return d.toLocaleString('en-US', {
       month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit',
@@ -73,9 +65,9 @@ function formatTimestamp(iso: string | null): string {
 function getStatusColor(status: string): string {
   switch (status) {
     case 'cleared': return '#22c55e';
-    case 'closed': return '#666666';
+    case 'closed': return 'var(--rmpg-500)';
     case 'archived': return '#555555';
-    default: return '#666666';
+    default: return 'var(--rmpg-500)';
   }
 }
 
@@ -89,91 +81,112 @@ function getSourceLabel(source: string | null): string {
   return labels[source] || source;
 }
 
-// ─── Hook ───────────────────────────────────────────────────
-
 export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHistoryReturn {
   const { map, enabled, days, statuses, types, priorities } = opts;
 
   const [calls, setCalls] = useState<HistoricalCall[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
-
-  // ── Clear markers ───────────────────────────────────────
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const sourceId = 'call-history';
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-  }, []);
-
-  // ── Render markers ──────────────────────────────────────
+    if (map) {
+      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+    }
+  }, [map]);
 
   const renderMarkers = useCallback((data: HistoricalCall[]) => {
     if (!map) return;
 
     clearMarkers();
 
-    if (!infoWindowRef.current) {
-      infoWindowRef.current = new mapboxgl.Popup({
-        closeButton: true,
-        closeOnClick: false,
-        maxWidth: '360px',
-        offset: 15,
-      });
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
     }
 
-    data.forEach((call) => {
-      if (call.latitude == null || call.longitude == null) return;
+    const validCalls = data.filter((call) => call.latitude != null && call.longitude != null);
+    if (validCalls.length === 0) return;
 
-      const content = buildHistoricalCallMarkerContent(call.priority, call.incident_type, call.call_number);
-      content.style.cursor = 'pointer';
-      content.title = `${call.call_number} - ${formatIncidentType(call.incident_type)}`;
+    const features = validCalls.map((call) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [call.longitude, call.latitude] as [number, number] },
+      properties: {
+        id: call.id,
+        call_number: call.call_number,
+        incident_type: call.incident_type,
+        priority: call.priority,
+        status: call.status,
+        disposition: call.disposition,
+        location_address: call.location_address,
+        created_at: call.created_at,
+        cleared_at: call.cleared_at,
+        response_time_min: call.response_time_min,
+        assigned_units: call.assigned_units,
+        description: call.description,
+        source: call.source,
+      },
+    }));
 
-      content.addEventListener('click', () => {
-        const pColor = PRIORITY_COLORS[call.priority] || '#666666';
-        const sColor = getStatusColor(call.status);
-
-        const popup = infoWindowRef.current;
-        if (popup) {
-          popup.remove();
-          popup.setLngLat([call.longitude, call.latitude]).setHTML(`
-            <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${pColor}40;border-radius:4px;">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
-                <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
-              </div>
-              <div style="font-size:12px;color:#a0a0a0;font-weight:bold;">${escapeHtml(call.call_number)}</div>
-              <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
-                <span style="font-size:9px;text-transform:uppercase;color:${sColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${sColor}20;border:1px solid ${sColor}30;border-radius:2px;">${escapeHtml(call.status)}</span>
-                ${call.disposition ? `<span style="font-size:9px;color:#9ca3af;">${escapeHtml(call.disposition)}</span>` : ''}
-              </div>
-              <div style="font-size:10px;margin-top:6px;color:#d1d5db;">${escapeHtml(call.location_address || '')}</div>
-              <div style="margin-top:8px;padding-top:6px;border-top:1px solid #2b2b2b;">
-                <div style="display:flex;gap:12px;font-size:9px;color:#5a6e80;">
-                  <div><span style="color:#9ca3af;font-weight:bold;">Response:</span> ${escapeHtml(formatResponseTime(call.response_time_min))}</div>
-                </div>
-                ${call.assigned_units ? `<div style="font-size:9px;color:#a0a0a0;margin-top:4px;font-weight:bold;">${escapeHtml(call.assigned_units)}</div>` : ''}
-                <div style="font-size:8px;color:#545454;margin-top:4px;">
-                  ${escapeHtml(formatTimestamp(call.created_at))} &rarr; ${escapeHtml(formatTimestamp(call.cleared_at))}
-                </div>
-              </div>
-              ${call.description ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #2b2b2b;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(call.description.substring(0, 150))}</div>` : ''}
-              ${call.source ? `<div style="margin-top:4px;"><span style="font-size:8px;color:#5a6e80;padding:1px 4px;background:#2b2b2b30;border:1px solid #2b2b2b60;border-radius:2px;">${escapeHtml(getSourceLabel(call.source))}</span></div>` : ''}
-            </div>
-          `).addTo(map);
-        }
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['==', ['get', 'priority'], 'P1'], '#dc2626',
+            ['==', ['get', 'priority'], 'P2'], '#f59e0b',
+            ['==', ['get', 'priority'], 'P3'], '#888888',
+            'var(--rmpg-500)',
+          ],
+          'circle-radius': 8,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 1,
+        },
       });
 
-      const marker = new mapboxgl.Marker({ element: content })
-        .setLngLat([call.longitude, call.latitude])
-        .addTo(map);
+      map.on('click', sourceId, (e) => {
+      const feature = e.features?.[0];
+      if (!feature || !feature.properties) return;
+      const p = feature.properties;
+      const pColor = PRIORITY_COLORS[p.priority as string] || 'var(--rmpg-500)';
+      const sColor = getStatusColor(p.status as string);
 
-      markersRef.current.push(marker);
+      const html = `
+        <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${pColor}40;border-radius:4px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(p.priority as string)}</span>
+            <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(p.incident_type as string))}</span>
+          </div>
+          <div style="font-size:12px;color:#a0a0a0;font-weight:bold;">${escapeHtml(p.call_number as string)}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+            <span style="font-size:9px;text-transform:uppercase;color:${sColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${sColor}20;border:1px solid ${sColor}30;border-radius:2px;">${escapeHtml(p.status as string)}</span>
+            ${p.disposition ? `<span style="font-size:9px;color:#9ca3af;">${escapeHtml(p.disposition as string)}</span>` : ''}
+          </div>
+          <div style="font-size:10px;margin-top:6px;color:#d1d5db;">${escapeHtml(p.location_address as string || '')}</div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid #2b2b2b;">
+            <div style="display:flex;gap:12px;font-size:9px;color:#5a6e80;">
+              <div><span style="color:#9ca3af;font-weight:bold;">Response:</span> ${escapeHtml(formatResponseTime(p.response_time_min as number | null))}</div>
+            </div>
+            ${p.assigned_units ? `<div style="font-size:9px;color:#a0a0a0;margin-top:4px;font-weight:bold;">${escapeHtml(p.assigned_units as string)}</div>` : ''}
+            <div style="font-size:8px;color:#545454;margin-top:4px;">
+              ${escapeHtml(formatTimestamp(p.created_at as string))} &rarr; ${escapeHtml(formatTimestamp(p.cleared_at as string | null))}
+            </div>
+          </div>
+          ${p.description ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #2b2b2b;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml((p.description as string).substring(0, 150))}</div>` : ''}
+          ${p.source ? `<div style="margin-top:4px;"><span style="font-size:8px;color:#5a6e80;padding:1px 4px;background:#2b2b2b30;border:1px solid #2b2b2b60;border-radius:2px;">${escapeHtml(getSourceLabel(p.source as string | null))}</span></div>` : ''}
+        </div>
+      `;
+      if (popupRef.current) {
+        popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      }
+      });
     });
   }, [map, clearMarkers]);
-
-  // ── Fetch & render on filter change ─────────────────────
 
   useEffect(() => {
     if (!map || !enabled) {
@@ -210,15 +223,11 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, enabled, days, statuses.join(','), types.join(','), priorities.join(','), clearMarkers, renderMarkers]);
 
-  // ── Cleanup on unmount ──────────────────────────────────
-
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
-      if (infoWindowRef.current) {
-        infoWindowRef.current.remove();
-        infoWindowRef.current = null;
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
       }
     };
   }, []);

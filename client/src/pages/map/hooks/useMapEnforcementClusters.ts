@@ -1,14 +1,9 @@
-// ============================================================
-// RMPG Flex — useMapEnforcementClusters Hook
-// Enforcement cluster overlays for citations and arrests,
-// showing geographic concentration of enforcement activity.
-// ============================================================
-
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-
-// ─── Types ──────────────────────────────────────────────────
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface EnforcementCluster {
   lat: number;
@@ -25,15 +20,11 @@ interface UseMapEnforcementClustersReturn {
   totalRecords: number;
 }
 
-// ─── Color config ───────────────────────────────────────────
-
 const TYPE_COLORS: Record<string, string> = {
   citations: '#888888',
   arrests: '#dc2626',
   warnings: '#f59e0b',
 };
-
-// ─── Hook ───────────────────────────────────────────────────
 
 export function useMapEnforcementClusters(
   map: mapboxgl.Map | null,
@@ -44,10 +35,8 @@ export function useMapEnforcementClusters(
   const [clusters, setClusters] = useState<EnforcementCluster[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
-
-  // ── Fetch enforcement data ────────────────────────────────
+  const sourceId = 'enforcement-clusters';
 
   useEffect(() => {
     if (!enabled) {
@@ -67,7 +56,7 @@ export function useMapEnforcementClusters(
       })
       .catch((err) => {
         if (!cancelled) {
-          console.warn('[useMapEnforcementClusters] Enforcement data fetch failed:', err);
+          console.warn('[useMapEnforcementClusters] enforcement overlay failed:', err?.message || err);
           setClusters([]);
           setLoading(false);
         }
@@ -76,98 +65,85 @@ export function useMapEnforcementClusters(
     return () => { cancelled = true; };
   }, [enabled, type, days]);
 
-  // ── Render circles ────────────────────────────────────────
-
   useEffect(() => {
     if (!map) return;
 
-    // Clear existing
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    safeRemoveLayer(map, sourceId);
+    safeRemoveSource(map, sourceId);
 
     if (!enabled || clusters.length === 0) return;
 
     if (!popupRef.current) {
-      popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '360px', offset: 15 });
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
     }
 
     const color = TYPE_COLORS[type] || '#888888';
 
-    clusters.forEach((cluster) => {
-      if (cluster.lat == null || cluster.lng == null) return;
+    const features = clusters
+      .filter((cluster) => cluster.lat != null && cluster.lng != null)
+      .map((cluster) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [cluster.lng, cluster.lat] as [number, number] },
+        properties: {
+          total: cluster.total,
+          top_statutes: cluster.top_statutes,
+          first_date: cluster.first_date,
+          last_date: cluster.last_date,
+          radius: Math.max(100, Math.min(500, cluster.total * 30)),
+        },
+      }));
 
-      const radiusPx = Math.max(10, Math.min(50, cluster.total * 3));
+    if (features.length === 0) return;
 
-      const el = document.createElement('div');
-      el.style.cssText = `
-        width: ${radiusPx * 2}px;
-        height: ${radiusPx * 2}px;
-        border-radius: 50%;
-        background: ${color}33;
-        border: 2px solid ${color};
-        cursor: pointer;
-      `;
-      el.style.zIndex = '7';
-
-      el.addEventListener('click', () => {
-        const label = type === 'citations' ? 'Citation Cluster' : 'Arrest Cluster';
-        const statutes = cluster.top_statutes
-          ? cluster.top_statutes.split(',').slice(0, 5).join(', ')
-          : 'N/A';
-        const firstDate = cluster.first_date
-          ? new Date(cluster.first_date).toLocaleDateString()
-          : 'Unknown';
-        const lastDate = cluster.last_date
-          ? new Date(cluster.last_date).toLocaleDateString()
-          : 'Unknown';
-
-        const container = document.createElement('div');
-        container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222';
-
-        const heading = document.createElement('div');
-        heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
-        heading.textContent = label;
-        container.appendChild(heading);
-
-        const table = document.createElement('table');
-        table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse';
-
-        const addRow = (lbl: string, val: string) => {
-          const tr = document.createElement('tr');
-          const tdLabel = document.createElement('td');
-          tdLabel.style.cssText = 'color:#888888;padding:1px 6px 1px 0';
-          tdLabel.textContent = lbl;
-          const tdVal = document.createElement('td');
-          tdVal.style.cssText = 'color:#e0e0e0';
-          tdVal.textContent = val;
-          tr.appendChild(tdLabel);
-          tr.appendChild(tdVal);
-          table.appendChild(tr);
-        };
-
-        addRow('Count', String(cluster.total));
-        addRow('Top Statutes', statutes);
-        addRow('Date Range', `${firstDate} \u2014 ${lastDate}`);
-
-        container.appendChild(table);
-
-        popupRef.current?.setLngLat([cluster.lng, cluster.lat]).setDOMContent(container).addTo(map);
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': color,
+          'circle-radius': ['get', 'radius'],
+          'circle-opacity': 0.2,
+          'circle-stroke-color': color,
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': 0.6,
+        },
       });
 
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([cluster.lng, cluster.lat])
-        .addTo(map);
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const p = feature.properties;
+        const statutes = p.top_statutes ? (p.top_statutes as string).split(',').slice(0, 5).join(', ') : 'N/A';
+        const firstDate = p.first_date ? parseTimestamp(p.first_date as string).toLocaleDateString() : 'Unknown';
+        const lastDate = p.last_date ? parseTimestamp(p.last_date as string).toLocaleDateString() : 'Unknown';
+        const label = type === 'citations' ? 'Citation Cluster' : 'Arrest Cluster';
 
-      markersRef.current.push(marker);
+        const html = `
+          <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
+            <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">${label}</div>
+            <table style="width:100%;font-size:11px;border-collapse:collapse">
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Count</td><td style="color:#e0e0e0">${p.total}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Top Statutes</td><td style="color:#e0e0e0">${statutes}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Date Range</td><td style="color:#e0e0e0">${firstDate} \u2014 ${lastDate}</td></tr>
+            </table>
+          </div>
+        `;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        }
+      });
     });
-  }, [map, enabled, clusters, type]);
 
-  // ── Cleanup on unmount ────────────────────────────────────
+    return () => {
+      safeRemoveLayer(map, sourceId);
+      safeRemoveSource(map, sourceId);
+    };
+  }, [map, enabled, clusters, type]);
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
       if (popupRef.current) {
         popupRef.current.remove();
         popupRef.current = null;

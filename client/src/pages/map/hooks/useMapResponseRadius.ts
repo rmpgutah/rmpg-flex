@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { whenStyleReady } from '../utils/safeAddSource';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface UseMapResponseRadiusReturn {
   showRadiusAt: (lat: number, lng: number) => void;
@@ -10,49 +12,35 @@ interface UseMapResponseRadiusReturn {
 }
 
 const RINGS = [
-  { minutes: 2, radiusMeters: 1609, color: '#22c55e', fillOpacity: 0.08, label: '2 min' },
-  { minutes: 5, radiusMeters: 4023, color: '#f59e0b', fillOpacity: 0.06, label: '5 min' },
-  { minutes: 10, radiusMeters: 8047, color: '#dc2626', fillOpacity: 0.04, label: '10 min' },
+  { minutes: 2, radiusMeters: 1609, fillColor: '#22c55e', strokeColor: '#22c55e', fillOpacity: 0.08, label: '2 min' },
+  { minutes: 5, radiusMeters: 4023, fillColor: '#f59e0b', strokeColor: '#f59e0b', fillOpacity: 0.06, label: '5 min' },
+  { minutes: 10, radiusMeters: 8047, fillColor: '#dc2626', strokeColor: '#dc2626', fillOpacity: 0.04, label: '10 min' },
 ];
 
 const CURSOR_RINGS = [
-  { radiusMeters: 100, color: '#22c55e', fillOpacity: 0.05, label: '100m' },
-  { radiusMeters: 250, color: '#888888', fillOpacity: 0.04, label: '250m' },
-  { radiusMeters: 500, color: '#f59e0b', fillOpacity: 0.03, label: '500m' },
-  { radiusMeters: 1000, color: '#ef4444', fillOpacity: 0.02, label: '1km' },
+  { radiusMeters: 100, strokeColor: '#22c55e', fillOpacity: 0.05, label: '100m' },
+  { radiusMeters: 250, strokeColor: '#888888', fillOpacity: 0.04, label: '250m' },
+  { radiusMeters: 500, strokeColor: '#f59e0b', fillOpacity: 0.03, label: '500m' },
+  { radiusMeters: 1000, strokeColor: '#ef4444', fillOpacity: 0.02, label: '1km' },
 ];
 
-const RINGS_SOURCE = 'response-radius-source';
-const RINGS_LAYER = 'response-radius-layer';
-
-function circleToPolygon(center: [number, number], radiusM: number, segments = 32): [number, number][] {
-  const coords: [number, number][] = [];
-  const metersPerDegLat = 111320;
-  const metersPerDegLng = 111320 * Math.cos(center[1] * Math.PI / 180);
-  const dLat = radiusM / metersPerDegLat;
-  const dLng = radiusM / metersPerDegLng;
-  for (let i = 0; i <= segments; i++) {
-    const angle = (i / segments) * 2 * Math.PI;
-    coords.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
-  }
-  return coords;
-}
-
-function removeLayer(map: mapboxgl.Map) {
-  try {
-    if (map.getLayer(RINGS_LAYER)) map.removeLayer(RINGS_LAYER);
-    if (map.getSource(RINGS_SOURCE)) map.removeSource(RINGS_SOURCE);
-  } catch { /* ignore */ }
-}
-
-export function useMapResponseRadius(map: mapboxgl.Map | null, enabled: boolean): UseMapResponseRadiusReturn {
+export function useMapResponseRadius(
+  map: mapboxgl.Map | null,
+  enabled: boolean,
+): UseMapResponseRadiusReturn {
   const [activePoint, setActivePoint] = useState<{ lat: number; lng: number } | null>(null);
   const [cursorRingsEnabled, setCursorRingsEnabled] = useState(false);
-  const cursorCirclesRef = useRef<mapboxgl.Marker[]>([]);
+
+  const sourceId = 'response-radius';
+  const cursorSourceId = 'cursor-rings';
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const mouseMoveHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearRadius = useCallback(() => {
-    if (map) removeLayer(map);
+    if (!map) return;
+    safeRemoveLayer(map, sourceId);
+    safeRemoveSource(map, sourceId);
     setActivePoint(null);
   }, [map]);
 
@@ -62,78 +50,123 @@ export function useMapResponseRadius(map: mapboxgl.Map | null, enabled: boolean)
     removeLayer(map);
     setActivePoint({ lat, lng });
 
-    const features: GeoJSON.Feature[] = [...RINGS].reverse().map((ring) => ({
-      type: 'Feature',
-      properties: { color: ring.color, opacity: ring.fillOpacity },
-      geometry: { type: 'Polygon', coordinates: [circleToPolygon([lng, lat], ring.radiusMeters)] },
+    clearRadius();
+    setActivePoint({ lat, lng });
+
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
+    }
+
+    const features = RINGS.map((ring) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] },
+      properties: { radius: ring.radiusMeters, color: ring.fillColor, opacity: ring.fillOpacity, label: ring.label },
     }));
 
-    map.addSource(RINGS_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: RINGS_LAYER, type: 'fill', source: RINGS_SOURCE,
-      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'opacity'], 'fill-outline-color': ['get', 'color'] },
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+
+      RINGS.forEach((ring, i) => {
+        map.addLayer({
+          id: `${sourceId}-${i}`,
+          type: 'circle',
+          source: sourceId,
+          filter: ['==', ['get', 'label'], ring.label],
+          paint: {
+            'circle-color': ring.fillColor,
+            'circle-radius': ring.radiusMeters,
+            'circle-opacity': ring.fillOpacity,
+            'circle-stroke-color': ring.strokeColor,
+            'circle-stroke-width': 2,
+            'circle-stroke-opacity': 0.5,
+          },
+        });
+      });
     });
-  }, [map, enabled]);
+  }, [map, enabled, clearRadius]);
 
   useEffect(() => {
     if (!enabled) clearRadius();
   }, [enabled, clearRadius]);
 
-  // Cursor rings
   useEffect(() => {
     if (!map || !enabled || !cursorRingsEnabled) {
-      cursorCirclesRef.current.forEach((m) => m.remove());
-      cursorCirclesRef.current = [];
-      if (throttleTimerRef.current) { clearTimeout(throttleTimerRef.current); throttleTimerRef.current = null; }
+      if (map) {
+        safeRemoveLayer(map, cursorSourceId);
+        safeRemoveSource(map, cursorSourceId);
+      }
+      if (mouseMoveHandlerRef.current) {
+        map?.getCanvas()?.removeEventListener('mousemove', mouseMoveHandlerRef.current);
+        mouseMoveHandlerRef.current = null;
+      }
       return;
     }
 
-    // Create cursor ring markers (DOM-based circles)
-    const markers = CURSOR_RINGS.map((ring) => {
-      const el = document.createElement('div');
-      const r = ring.radiusMeters;
-      const size = Math.min(r / 5, 200);
-      el.style.cssText = `
-        width: ${size * 2}px; height: ${size * 2}px;
-        border-radius: 50%;
-        border: 1px solid ${ring.color};
-        background: transparent;
-        pointer-events: none;
-        opacity: 0.4;
-      `;
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([0, 0]);
-      return marker;
-    });
-    cursorCirclesRef.current = markers;
+    const features = CURSOR_RINGS.map((ring) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [0, 0] as [number, number] },
+      properties: { radius: ring.radiusMeters, color: ring.strokeColor, opacity: ring.fillOpacity, label: ring.label },
+    }));
 
-    const onMouseMove = (e: mapboxgl.MapMouseEvent) => {
+    whenStyleReady(map, () => {
+      map.addSource(cursorSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+
+      CURSOR_RINGS.forEach((ring, i) => {
+        safeRemoveLayer(map, `${cursorSourceId}-${i}`);
+        map.addLayer({
+          id: `${cursorSourceId}-${i}`,
+          type: 'circle',
+          source: cursorSourceId,
+          filter: ['==', ['get', 'label'], ring.label],
+          paint: {
+            'circle-color': ring.strokeColor,
+            'circle-radius': ring.radiusMeters,
+            'circle-opacity': ring.fillOpacity,
+            'circle-stroke-color': ring.strokeColor,
+            'circle-stroke-width': 1,
+            'circle-stroke-opacity': 0.4,
+          },
+        });
+      });
+    });
+
+    const handler = (e: MouseEvent) => {
       if (throttleTimerRef.current) return;
       throttleTimerRef.current = setTimeout(() => { throttleTimerRef.current = null; }, 100);
-      markers.forEach((m) => m.setLngLat(e.lngLat));
-      markers.forEach((m) => { if (!m.getElement().parentNode) m.addTo(map); });
+
+      const rect = map.getCanvas().getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const point: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
+      const lngLat = map.unproject(point);
+      if (!Number.isFinite(lngLat.lng) || !Number.isFinite(lngLat.lat)) return;
+
+      const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, cursorSourceId);
+      if (source) {
+        const updatedFeatures = CURSOR_RINGS.map((ring) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [lngLat.lng, lngLat.lat] as [number, number] },
+          properties: { radius: ring.radiusMeters, color: ring.strokeColor, opacity: ring.fillOpacity, label: ring.label },
+        }));
+        source.setData({ type: 'FeatureCollection', features: updatedFeatures });
+      }
     };
 
-    const onMouseOut = () => {
-      markers.forEach((m) => m.remove());
-    };
-
-    map.on('mousemove', onMouseMove);
-    map.on('mouseout', onMouseOut);
+    map.getCanvas().addEventListener('mousemove', handler);
+    mouseMoveHandlerRef.current = handler;
 
     return () => {
-      map.off('mousemove', onMouseMove);
-      map.off('mouseout', onMouseOut);
-      markers.forEach((m) => m.remove());
-      cursorCirclesRef.current = [];
+      map.getCanvas().removeEventListener('mousemove', handler);
+      mouseMoveHandlerRef.current = null;
+      safeRemoveLayer(map, cursorSourceId);
+      safeRemoveSource(map, cursorSourceId);
       if (throttleTimerRef.current) { clearTimeout(throttleTimerRef.current); throttleTimerRef.current = null; }
     };
   }, [map, enabled, cursorRingsEnabled]);
 
   useEffect(() => {
     return () => {
-      if (map) removeLayer(map);
-      cursorCirclesRef.current.forEach((m) => m.remove());
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
+      if (mouseMoveHandlerRef.current && map) map.getCanvas().removeEventListener('mousemove', mouseMoveHandlerRef.current);
       if (throttleTimerRef.current) clearTimeout(throttleTimerRef.current);
     };
   }, [map]);

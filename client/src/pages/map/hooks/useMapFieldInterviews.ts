@@ -1,14 +1,9 @@
-// ============================================================
-// RMPG Flex — useMapFieldInterviews Hook
-// Field interview pins with diamond-shaped markers
-// color-coded by contact reason.
-// ============================================================
-
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-
-// ─── Types ──────────────────────────────────────────────────
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface FIRecord {
   id: number;
@@ -29,8 +24,6 @@ interface UseMapFieldInterviewsReturn {
   loading: boolean;
 }
 
-// ─── Contact reason colors ──────────────────────────────────
-
 const REASON_COLORS: Record<string, string> = {
   trespass: '#f59e0b',
   suspicious: '#dc2626',
@@ -38,82 +31,27 @@ const REASON_COLORS: Record<string, string> = {
 };
 
 function getReasonColor(reason: string): string {
-  return REASON_COLORS[reason?.toLowerCase()] || '#666666';
+  return REASON_COLORS[reason?.toLowerCase()] || 'var(--rmpg-500)';
 }
 
-// ─── Create diamond-shaped marker ───────────────────────────
-// Fix 74: color code by recency (recent = bright, old = faded)
-
-function createDiamondMarker(reason: string, createdAt?: string): HTMLDivElement {
-  const color = getReasonColor(reason);
-
-  // Fix 74: calculate opacity based on recency
-  let opacity = 1;
-  if (createdAt) {
-    const createdTime = new Date(createdAt).getTime();
-    const ageMs = isNaN(createdTime) ? 0 : Date.now() - createdTime;
-    const ageDays = ageMs / (1000 * 60 * 60 * 24);
-    opacity = Math.max(0.4, 1 - (ageDays / 60));
-  }
-
-  const el = document.createElement('div');
-  el.style.cssText = `
-    width: 20px;
-    height: 20px;
-    background: ${color};
-    transform: rotate(45deg);
-    border: 2px solid white;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    cursor: pointer;
-    opacity: ${opacity};
-  `;
-
-  return el;
-}
-
-// ─── Build info window content ──────────────────────────────
-
-function buildFIInfoContent(fi: FIRecord): HTMLDivElement {
+function buildFIInfoContent(fi: FIRecord): string {
   const color = getReasonColor(fi.contact_reason);
-
-  const container = document.createElement('div');
-  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222';
-
-  const heading = document.createElement('div');
-  heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
-  heading.textContent = `Field Interview ${fi.fi_number}`;
-  container.appendChild(heading);
-
-  const table = document.createElement('table');
-  table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse';
-
-  const addRow = (lbl: string, value: unknown) => {
-    if (value == null || value === '') return;
-    const tr = document.createElement('tr');
-    const tdLabel = document.createElement('td');
-    tdLabel.style.cssText = 'color:#888888;padding:1px 6px 1px 0';
-    tdLabel.textContent = lbl;
-    const tdValue = document.createElement('td');
-    tdValue.style.cssText = 'color:#e0e0e0';
-    tdValue.textContent = String(value);
-    tr.appendChild(tdLabel);
-    tr.appendChild(tdValue);
-    table.appendChild(tr);
-  };
-
   const name = [fi.subject_first_name, fi.subject_last_name].filter(Boolean).join(' ');
-  addRow('Subject', name || 'Unknown');
-  addRow('Reason', fi.contact_reason);
-  addRow('Action', fi.action_taken);
-  addRow('Officer', fi.officer_name);
-  addRow('Location', fi.location);
-  addRow('Date', fi.created_at ? new Date(fi.created_at).toLocaleString() : undefined);
 
-  container.appendChild(table);
-  return container;
+  return `
+    <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
+      <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">Field Interview ${fi.fi_number}</div>
+      <table style="width:100%;font-size:11px;border-collapse:collapse">
+        <tr><td style="color:#888888;padding:1px 6px 1px 0">Subject</td><td style="color:#e0e0e0">${name || 'Unknown'}</td></tr>
+        <tr><td style="color:#888888;padding:1px 6px 1px 0">Reason</td><td style="color:#e0e0e0">${fi.contact_reason}</td></tr>
+        ${fi.action_taken ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Action</td><td style="color:#e0e0e0">${fi.action_taken}</td></tr>` : ''}
+        ${fi.officer_name ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Officer</td><td style="color:#e0e0e0">${fi.officer_name}</td></tr>` : ''}
+        ${fi.location ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Location</td><td style="color:#e0e0e0">${fi.location}</td></tr>` : ''}
+        <tr><td style="color:#888888;padding:1px 6px 1px 0">Date</td><td style="color:#e0e0e0">${fi.created_at ? parseTimestamp(fi.created_at).toLocaleString() : ''}</td></tr>
+      </table>
+    </div>
+  `;
 }
-
-// ─── Hook ───────────────────────────────────────────────────
 
 export function useMapFieldInterviews(
   map: mapboxgl.Map | null,
@@ -123,32 +61,23 @@ export function useMapFieldInterviews(
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
-
-  // ── Clear markers ─────────────────────────────────────────
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const sourceId = 'field-interviews';
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => {
-      m.remove();
-    });
-    markersRef.current = [];
-  }, []);
-
-  // ── Render markers ────────────────────────────────────────
+    if (map) {
+      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+    }
+  }, [map]);
 
   const renderMarkers = useCallback((records: FIRecord[]) => {
     if (!map) return;
 
     clearMarkers();
 
-    if (!infoWindowRef.current) {
-      infoWindowRef.current = new mapboxgl.Popup({
-        closeButton: true,
-        closeOnClick: false,
-        maxWidth: '360px',
-        offset: 15,
-      });
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
     }
 
     const withCoords = records.filter(
@@ -157,32 +86,51 @@ export function useMapFieldInterviews(
 
     setCount(withCoords.length);
 
-    withCoords.forEach((fi) => {
-      const lat = Number(fi.latitude);
-      const lng = Number(fi.longitude);
+    if (withCoords.length === 0) return;
 
-      const content = createDiamondMarker(fi.contact_reason, fi.created_at);
-      content.style.cursor = 'pointer';
-      content.title = `FI ${fi.fi_number}`;
+    const features = withCoords.map((fi) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [fi.longitude, fi.latitude] as [number, number] },
+      properties: { id: fi.id, fi_number: fi.fi_number, contact_reason: fi.contact_reason, created_at: fi.created_at },
+    }));
 
-      content.addEventListener('click', () => {
-        const infoContent = buildFIInfoContent(fi);
-        const popup = infoWindowRef.current;
-        if (popup) {
-          popup.remove();
-          popup.setLngLat([lng, lat]).setDOMContent(infoContent).addTo(map);
-        }
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['==', ['get', 'contact_reason'], 'trespass'], '#f59e0b',
+            ['==', ['get', 'contact_reason'], 'suspicious'], '#dc2626',
+            ['==', ['get', 'contact_reason'], 'welfare'], '#888888',
+            'var(--rmpg-500)',
+          ],
+          'circle-radius': 8,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+          'circle-opacity': [
+            'interpolate', ['linear'],
+            ['-', ['number', ['/', ['-', ['now'], ['to-number', ['to-date', ['get', 'created_at']]]], 86400000], 60], 0],
+            0, 1,
+            60, 0.4,
+          ],
+        },
       });
 
-      const marker = new mapboxgl.Marker({ element: content })
-        .setLngLat([lng, lat])
-        .addTo(map);
-
-      markersRef.current.push(marker);
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const fi = withCoords.find(f => f.id === feature.properties?.id);
+        if (!fi) return;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(buildFIInfoContent(fi)).addTo(map);
+        }
+      });
     });
   }, [map, clearMarkers]);
-
-  // ── Fetch and render ──────────────────────────────────────
 
   useEffect(() => {
     if (!map) return;
@@ -213,15 +161,11 @@ export function useMapFieldInterviews(
     return () => { cancelled = true; };
   }, [map, enabled, days, clearMarkers, renderMarkers]);
 
-  // ── Cleanup on unmount ────────────────────────────────────
-
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.remove(); });
-      markersRef.current = [];
-      if (infoWindowRef.current) {
-        infoWindowRef.current.remove();
-        infoWindowRef.current = null;
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
       }
     };
   }, []);

@@ -1,14 +1,9 @@
-// ============================================================
-// RMPG Flex — useMapRepeatAddresses Hook
-// Flags addresses with repeated calls for service, displaying
-// color-coded circle markers with call counts and info windows.
-// ============================================================
-
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-
-// ─── Types ──────────────────────────────────────────────────
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface RepeatAddress {
   location_address: string;
@@ -25,8 +20,6 @@ interface UseMapRepeatAddressesReturn {
   count: number;
 }
 
-// ─── Color thresholds ───────────────────────────────────────
-
 function getColor(count: number): string {
   if (count >= 20) return '#991b1b';
   if (count >= 11) return '#dc2626';
@@ -35,81 +28,23 @@ function getColor(count: number): string {
   return '#eab308';
 }
 
-// ─── Create circle marker element using DOM API ─────────────
-
-function createCountMarker(count: number): HTMLDivElement {
-  const color = getColor(count);
-  const size = count >= 20 ? 38 : count >= 11 ? 32 : count >= 6 ? 28 : 24;
-
-  const el = document.createElement('div');
-  el.style.cssText = `
-    background: ${color};
-    width: ${size}px;
-    height: ${size}px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid white;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    cursor: pointer;
-  `;
-
-  const label = document.createElement('span');
-  label.style.cssText = 'color: white; font-size: 11px; font-weight: bold; line-height: 1;';
-  label.textContent = String(count);
-  el.appendChild(label);
-
-  return el;
-}
-
-// ─── Build info window content using DOM API ────────────────
-
-function buildInfoContent(addr: RepeatAddress): HTMLDivElement {
+function buildInfoContent(addr: RepeatAddress): string {
   const color = getColor(addr.call_count);
+  const types = addr.incident_types ? addr.incident_types.split(',').map((t) => t.trim()).join(', ') : '';
+  const lastDate = addr.last_call ? parseTimestamp(addr.last_call).toLocaleDateString() : '';
 
-  const container = document.createElement('div');
-  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222';
-
-  const heading = document.createElement('div');
-  heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
-  heading.textContent = 'Repeat Call Address';
-  container.appendChild(heading);
-
-  const table = document.createElement('table');
-  table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse';
-
-  const addRow = (lbl: string, value: string, valColor?: string) => {
-    const tr = document.createElement('tr');
-    const tdLabel = document.createElement('td');
-    tdLabel.style.cssText = 'color:#888888;padding:1px 6px 1px 0;white-space:nowrap';
-    tdLabel.textContent = lbl;
-    const tdVal = document.createElement('td');
-    tdVal.style.cssText = `color:${valColor || '#e0e0e0'}`;
-    tdVal.textContent = value;
-    tr.appendChild(tdLabel);
-    tr.appendChild(tdVal);
-    table.appendChild(tr);
-  };
-
-  addRow('Address', addr.location_address || 'Unknown');
-  addRow('Call Count', String(addr.call_count), color);
-
-  if (addr.incident_types) {
-    const types = addr.incident_types.split(',').map((t) => t.trim());
-    addRow('Incident Types', types.join(', '));
-  }
-
-  if (addr.last_call) {
-    const lastDate = new Date(addr.last_call).toLocaleDateString();
-    addRow('Last Call', lastDate);
-  }
-
-  container.appendChild(table);
-  return container;
+  return `
+    <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
+      <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">Repeat Call Address</div>
+      <table style="width:100%;font-size:11px;border-collapse:collapse">
+        <tr><td style="color:#888888;padding:1px 6px 1px 0;white-space:nowrap">Address</td><td style="color:#e0e0e0">${addr.location_address || 'Unknown'}</td></tr>
+        <tr><td style="color:#888888;padding:1px 6px 1px 0;white-space:nowrap">Call Count</td><td style="color:${color}">${addr.call_count}</td></tr>
+        ${types ? `<tr><td style="color:#888888;padding:1px 6px 1px 0;white-space:nowrap">Incident Types</td><td style="color:#e0e0e0">${types}</td></tr>` : ''}
+        ${lastDate ? `<tr><td style="color:#888888;padding:1px 6px 1px 0;white-space:nowrap">Last Call</td><td style="color:#e0e0e0">${lastDate}</td></tr>` : ''}
+      </table>
+    </div>
+  `;
 }
-
-// ─── Hook ───────────────────────────────────────────────────
 
 export function useMapRepeatAddresses(
   map: mapboxgl.Map | null,
@@ -120,19 +55,15 @@ export function useMapRepeatAddresses(
   const [addresses, setAddresses] = useState<RepeatAddress[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
-
-  // ── Clear markers ─────────────────────────────────────────
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const sourceId = 'repeat-addresses';
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => {
-      m.remove();
-    });
-    markersRef.current = [];
-  }, []);
-
-  // ── Fetch data ────────────────────────────────────────────
+    if (map) {
+      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+    }
+  }, [map]);
 
   useEffect(() => {
     if (!enabled) {
@@ -161,8 +92,6 @@ export function useMapRepeatAddresses(
     return () => { cancelled = true; };
   }, [enabled, days, minCount]);
 
-  // ── Render markers ────────────────────────────────────────
-
   useEffect(() => {
     if (!map) return;
 
@@ -170,40 +99,56 @@ export function useMapRepeatAddresses(
 
     if (!enabled || addresses.length === 0) return;
 
-    if (!infoWindowRef.current) {
-      infoWindowRef.current = new mapboxgl.Popup({
-        closeButton: true,
-        closeOnClick: false,
-        maxWidth: '360px',
-        offset: 15,
-      });
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
     }
 
-    addresses.forEach((addr) => {
-      if (addr.lat == null || addr.lng == null) return;
+    const features = addresses
+      .filter((addr) => addr.lat != null && addr.lng != null && !isNaN(addr.lat) && !isNaN(addr.lng))
+      .map((addr) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [addr.lng, addr.lat] as [number, number] },
+        properties: { call_count: addr.call_count, location_address: addr.location_address },
+      }));
 
-      const lat = Number(addr.lat);
-      const lng = Number(addr.lng);
-      if (isNaN(lat) || isNaN(lng)) return;
+    if (features.length === 0) return;
 
-      const content = createCountMarker(addr.call_count);
-      content.style.cursor = 'pointer';
-      content.title = `${addr.call_count} calls — ${addr.location_address || 'Unknown'}`;
-
-      content.addEventListener('click', () => {
-        const infoContent = buildInfoContent(addr);
-        const popup = infoWindowRef.current;
-        if (popup) {
-          popup.remove();
-          popup.setLngLat([lng, lat]).setDOMContent(infoContent).addTo(map);
-        }
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['>=', ['get', 'call_count'], 20], '#991b1b',
+            ['>=', ['get', 'call_count'], 11], '#dc2626',
+            ['>=', ['get', 'call_count'], 6], '#f97316',
+            ['>=', ['get', 'call_count'], 4], '#f59e0b',
+            '#eab308',
+          ],
+          'circle-radius': [
+            'case',
+            ['>=', ['get', 'call_count'], 20], 19,
+            ['>=', ['get', 'call_count'], 11], 16,
+            ['>=', ['get', 'call_count'], 6], 14,
+            12,
+          ],
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+        },
       });
 
-      const marker = new mapboxgl.Marker({ element: content })
-        .setLngLat([lng, lat])
-        .addTo(map);
-
-      markersRef.current.push(marker);
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const addr = addresses.find(a => a.lat === e.lngLat.lat && a.lng === e.lngLat.lng);
+        if (!addr) return;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(buildInfoContent(addr)).addTo(map);
+        }
+      });
     });
 
     return () => {
@@ -211,15 +156,11 @@ export function useMapRepeatAddresses(
     };
   }, [map, enabled, addresses, clearMarkers]);
 
-  // ── Cleanup on unmount ────────────────────────────────────
-
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.remove(); });
-      markersRef.current = [];
-      if (infoWindowRef.current) {
-        infoWindowRef.current.remove();
-        infoWindowRef.current = null;
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
       }
     };
   }, []);

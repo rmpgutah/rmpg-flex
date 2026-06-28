@@ -23,6 +23,7 @@ export function useMarkerAnimation() {
 
       const map = animationsRef.current;
       const existing = map.get(markerId);
+
       const startLat = existing ? existing.currentLat : newLat;
       const startLng = existing ? existing.currentLng : newLng;
 
@@ -42,11 +43,12 @@ export function useMarkerAnimation() {
         const elapsed = now - startTime;
         const t = Math.min(elapsed / INTERPOLATION_DURATION_MS, 1);
         const ease = 1 - Math.pow(1 - t, 3);
-        state.currentLat = state.startLat + (state.targetLat - state.startLat) * ease;
-        state.currentLng = state.startLng + (state.targetLng - state.startLng) * ease;
-        onUpdate(state.currentLat, state.currentLng);
-        if (t < 1) state.animFrame = requestAnimationFrame(step);
-        else state.animFrame = 0;
+        const lat = state.startLat + (state.targetLat - state.startLat) * ease;
+        const lng = state.startLng + (state.targetLng - state.startLng) * ease;
+        state.currentLat = lat;
+        state.currentLng = lng;
+        onUpdate(lat, lng);
+        if (t < 1) { state.animFrame = requestAnimationFrame(step); } else { state.animFrame = 0; }
       };
 
       state.animFrame = requestAnimationFrame(step);
@@ -63,8 +65,9 @@ export function useMarkerAnimation() {
   }, []);
 
   const cleanupAll = useCallback(() => {
-    animationsRef.current.forEach((state) => { if (state.animFrame) cancelAnimationFrame(state.animFrame); });
-    animationsRef.current.clear();
+    const map = animationsRef.current;
+    map.forEach((state) => { if (state.animFrame) cancelAnimationFrame(state.animFrame); });
+    map.clear();
   }, []);
 
   useEffect(() => () => cleanupAll(), [cleanupAll]);
@@ -72,12 +75,14 @@ export function useMarkerAnimation() {
   return { animateMarkerTo, cancelAnimation, cleanupAll };
 }
 
-export function animateMarkerToPosition(marker: mapboxgl.Marker, targetLat: number, targetLng: number, duration = 1000): void {
-  const startPos = marker.getLngLat();
-  if (!startPos) { marker.setLngLat([targetLng, targetLat]); return; }
-  const startLat = startPos.lat;
-  const startLng = startPos.lng;
-
+export function animateMarkerToPosition(
+  updatePosition: (lat: number, lng: number) => void,
+  startLat: number,
+  startLng: number,
+  targetLat: number,
+  targetLng: number,
+  duration = 1000,
+): void {
   if (Math.abs(targetLat - startLat) < 0.000001 && Math.abs(targetLng - startLng) < 0.000001) return;
 
   const startTime = performance.now();
@@ -88,7 +93,7 @@ export function animateMarkerToPosition(marker: mapboxgl.Marker, targetLat: numb
     const eased = 1 - Math.pow(1 - progress, 3);
     const lat = startLat + (targetLat - startLat) * eased;
     const lng = startLng + (targetLng - startLng) * eased;
-    marker.setLngLat([lng, lat]);
+    updatePosition(lat, lng);
     if (progress < 1) requestAnimationFrame(step);
   }
   requestAnimationFrame(step);

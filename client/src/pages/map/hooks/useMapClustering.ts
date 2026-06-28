@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 
 interface ClusterGroup {
   lat: number;
@@ -13,7 +15,7 @@ const PRIORITY_COLORS: Record<number, string> = {
   1: '#dc2626',
   2: '#f59e0b',
   3: '#888888',
-  4: '#666666',
+  4: 'var(--rmpg-500)',
 };
 
 function getPriorityColor(priority: number): string {
@@ -29,7 +31,7 @@ export function useMapClustering(
   callMarkers: mapboxgl.Marker[],
 ): { clustered: boolean } {
   const [clustered, setClustered] = useState(false);
-  const clusterMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const clusterMarkersRef = useRef<(OverlayMarker & { remove: () => void })[]>([]);
   const hiddenMarkersRef = useRef<Set<mapboxgl.Marker>>(new Set());
 
   const clearClusters = useCallback(() => {
@@ -52,11 +54,6 @@ export function useMapClustering(
       return;
     }
 
-    const mapCanvas = map.getCanvas();
-    const mapWidth = mapCanvas.width;
-    const mapHeight = mapCanvas.height;
-    if (!mapWidth || !mapHeight) return;
-
     interface MarkerInfo {
       marker: mapboxgl.Marker;
       px: number;
@@ -67,14 +64,14 @@ export function useMapClustering(
     const markerInfos: MarkerInfo[] = [];
 
     callMarkers.forEach((marker) => {
-      const lngLat = marker.getLngLat();
-      if (!lngLat) return;
+      const pos = marker.getLngLat();
+      if (!pos) return;
 
-      const point = map.project(lngLat);
+      const point = map.project([pos.lng, pos.lat]);
 
       let priority = 4;
       const el = marker.getElement();
-      const title = el.getAttribute('title') || '';
+      const title = el?.getAttribute('title') || '';
       const pMatch = title.match(/P(\d)/);
       if (pMatch) priority = parseInt(pMatch[1], 10);
 
@@ -118,10 +115,10 @@ export function useMapClustering(
           group.markerIndices.push(j);
           group.count++;
 
-          const lngLat = markerInfos[j].marker.getLngLat();
-          if (lngLat) {
-            group.lat += lngLat.lat;
-            group.lng += lngLat.lng;
+          const pos = markerInfos[j].marker.getLngLat();
+          if (pos) {
+            group.lat += pos.lat;
+            group.lng += pos.lng;
           }
 
           if (markerInfos[j].priority < group.highestPriority) {
@@ -181,20 +178,26 @@ export function useMapClustering(
       `;
       el.textContent = String(group.count);
 
-      const clusterMarker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([group.lng, group.lat])
-        .addTo(map);
-
-      el.addEventListener('click', () => {
-        const bounds = new mapboxgl.LngLatBounds();
-        group.markerIndices.forEach((idx) => {
-          const lngLat = markerInfos[idx].marker.getLngLat();
-          if (lngLat) bounds.extend(lngLat);
+      const OverlayMarkerClass = getOverlayMarkerClass();
+      if (OverlayMarkerClass) {
+        const clusterMarker = new OverlayMarkerClass({
+          map,
+          position: { lat: group.lat, lng: group.lng },
+          content: el,
+          zIndex: 100,
+          title: `${group.count} incidents`,
+          onClick: () => {
+            if (group.markerIndices.length > 0) {
+              const firstPos = markerInfos[group.markerIndices[0]].marker.getLngLat();
+              if (firstPos) {
+                map.flyTo({ center: [firstPos.lng, firstPos.lat], zoom: Math.min(map.getZoom() + 2, 18) });
+              }
+            }
+          },
         });
-        map.fitBounds(bounds, { padding: 50 });
-      });
 
-      clusterMarkersRef.current.push(clusterMarker);
+        clusterMarkersRef.current.push(clusterMarker as OverlayMarker & { remove: () => void });
+      }
     });
 
     setClustered(anyClustered);
@@ -209,11 +212,11 @@ export function useMapClustering(
 
     buildClusters();
 
-    const onZoom = () => buildClusters();
-    map.on('zoom', onZoom);
+    const onZoom = () => { buildClusters(); };
+    map.on('zoomend', onZoom);
 
     return () => {
-      map.off('zoom', onZoom);
+      map.off('zoomend', onZoom);
       clearClusters();
       setClustered(false);
     };

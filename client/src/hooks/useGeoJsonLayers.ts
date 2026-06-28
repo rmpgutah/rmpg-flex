@@ -1,6 +1,22 @@
+// ============================================================
+// RMPG Flex — GeoJSON Layer Manager Hook (Mapbox GL JS)
+// ============================================================
+// Loads split GeoJSON layer files from /geojson/ and renders
+// them as Mapbox GL JS source + layer pairs. Supports lazy
+// loading, per-layer toggle, click popups, style theming,
+// and interactive selection mode for shift planning.
+// ============================================================
+
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import mapboxgl from 'mapbox-gl';
-import { dissolveBeatsByArea } from '../utils/dissolveAreas';
+import { mapboxgl } from '../utils/mapboxLoader';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+
+// Tactical-dark fallback when a config color won't parse as a Mapbox color
+// (most commonly a leaked `var(--…)` string). Keeps the layer rendered while
+// the upstream value is repaired. Matches AdminMapSettingsTab default.
+const COLOR_FALLBACK_FILL = '#0d1722';
+const COLOR_FALLBACK_STROKE = '#444444';
 
 export interface GeoLayerConfig {
   id: string;
@@ -37,9 +53,12 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     id: 'county',
     label: 'Counties',
     file: 'county.geojson',
-    visible: false,
+    visible: true,
     selectable: true,
-    style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
+    // fillColor: steel-blue tactical-dark surface. NEVER use a CSS var string
+    // here — mapbox.addLayer's style-spec validator rejects var(...) and the
+    // whole layer fails to render. Tactical map stays dark always.
+    style: { fillColor: '#0d1722', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['POP_CURRESTIMATE', 'STATEPLANE'],
@@ -61,13 +80,14 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     id: 'beat',
     label: 'Beats',
     file: 'beat.geojson',
-    visible: false,
+    visible: true,
     selectable: true,
     style: { fillColor: '#22c55e', fillOpacity: 0.20, strokeColor: '#22c55e', strokeOpacity: 0.6, strokeWeight: 1.2 },
     labelProp: 'beat_code',
     featureKeyProp: 'beat_code',
     detailProps: ['city', 'beat_id', 'district_letter', 'beat_number'],
-    minZoom: 10,
+    // No minZoom — Beat is part of the A/S/Z/B coverage system and must stay
+    // visible at every zoom once selected (no pop in/out while zooming).
   },
   {
     id: 'highway',
@@ -94,21 +114,17 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
   },
 ];
 
-const SELECTION_STYLE = {
-  fillColor: '#f59e0b',
-  fillOpacity: 0.25,
-  strokeColor: '#f59e0b',
-  strokeOpacity: 0.9,
-  strokeWeight: 2.5,
-};
+const SELECTION_FILL_COLOR = '#f59e0b';
+const SELECTION_FILL_OPACITY = 0.25;
+const SELECTION_STROKE_COLOR = '#f59e0b';
+const SELECTION_STROKE_OPACITY = 0.9;
+const SELECTION_STROKE_WEIGHT = 2.5;
 
-const ASSIGNED_STYLE = {
-  fillColor: '#22c55e',
-  fillOpacity: 0.18,
-  strokeColor: '#22c55e',
-  strokeOpacity: 0.8,
-  strokeWeight: 2,
-};
+const ASSIGNED_FILL_COLOR = '#22c55e';
+const ASSIGNED_FILL_OPACITY = 0.18;
+const ASSIGNED_STROKE_COLOR = '#22c55e';
+const ASSIGNED_STROKE_OPACITY = 0.8;
+const ASSIGNED_STROKE_WEIGHT = 2;
 
 const MUNI_COLORS = [
   '#22c55e', '#d4a017', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
@@ -176,18 +192,12 @@ export interface GeoFeatureInfo {
 
 interface UseGeoJsonLayersOptions {
   map: mapboxgl.Map | null;
-  infoWindow: mapboxgl.Popup | null;
+  popup: mapboxgl.Popup | null;
   selectionMode?: boolean;
   onFeatureClick?: (info: GeoFeatureInfo) => void;
   selectedFeatures?: Set<string>;
   assignedFeatures?: Set<string>;
   beatDistrictMap?: Map<string, Map<string, BeatDistrictEntry>>;
-  hierarchyColors?: {
-    sectionColors: Map<string, string>;
-    zoneColors: Map<string, string>;
-    areaColors: Map<string | number, string>;
-    beatToArea: Map<string, string | number>;
-  } | null;
 }
 
 export interface GeoLayerState {
@@ -221,137 +231,45 @@ function buildDefaultInfoHtml(name: string, cfg: GeoLayerConfig, props: Record<s
   return html;
 }
 
-// ── Helper: enrich a feature with style properties ──────────
+function getLayerSourceId(layerId: string): string { return `geojson-${layerId}`; }
+function getFillLayerId(layerId: string): string { return `geojson-${layerId}-fill`; }
+function getLineLayerId(layerId: string): string { return `geojson-${layerId}-line`; }
 
-function enrichFeature(
-  feature: GeoJSON.Feature,
-  cfg: GeoLayerConfig,
-  beatStyleLookupRef: React.MutableRefObject<Map<string, BeatStyleEntry> | undefined>,
-  beatDistrictMapRef: React.MutableRefObject<Map<string, Map<string, BeatDistrictEntry>> | undefined>,
-  hierarchyColorsRef: React.MutableRefObject<UseGeoJsonLayersOptions['hierarchyColors']>,
-): GeoJSON.Feature {
-  const props = feature.properties || {};
-  const fId = `${cfg.id}::${props[cfg.featureKeyProp] || ''}`;
-
-  const geometryType = feature.geometry?.type;
-  const isPoint = geometryType === 'Point' || geometryType === 'MultiPoint';
-  const isLine = geometryType === 'LineString' || geometryType === 'MultiLineString';
-
-  let fillColor: string;
-  let fillOpacity: number;
-  let strokeColor: string;
-  let strokeOpacity: number;
-  let strokeWeight: number;
-  let iconScale = cfg.style.iconScale ?? 1;
-
-  // Tier-aware beat styling
-  if (cfg.id === 'beat' && hierarchyColorsRef.current) {
-    const hc = hierarchyColorsRef.current;
-    const cityCode = props.city_code as string | undefined;
-    const distLetter = props.district_letter as string | undefined;
-    const entry = lookupBeatDistrict(beatDistrictMapRef.current, cityCode, distLetter);
-    const sectorCode = entry?.sectionId;
-    const zoneCode = entry?.zoneId;
-    fillColor = sectorCode ? (hc.sectionColors.get(sectorCode) ?? '#3a3a3a') : '#3a3a3a';
-    fillOpacity = 0.30;
-    strokeColor = zoneCode ? (hc.zoneColors.get(zoneCode) ?? '#666') : '#666';
-    strokeOpacity = 0.85;
-    strokeWeight = 1.5;
-  } else if (cfg.id === 'beat') {
-    const cityCode = props.city_code as string;
-    const distLetter = props.district_letter as string;
-    let baseStyle = cfg.style;
-    if (cityCode && distLetter && beatStyleLookupRef.current) {
-      const cached = beatStyleLookupRef.current.get(`${cityCode}::${distLetter}`);
-      if (cached) baseStyle = cached.style;
-    }
-    if (baseStyle === cfg.style && cityCode) {
-      const cc = getCityColor(cityCode);
-      baseStyle = { ...cfg.style, fillColor: cc, strokeColor: cc, fillOpacity: 0.12, strokeOpacity: 0.5, strokeWeight: 1 };
-    }
-    fillColor = isLine ? 'transparent' : baseStyle.fillColor;
-    fillOpacity = isLine ? 0 : baseStyle.fillOpacity;
-    strokeColor = baseStyle.strokeColor;
-    strokeOpacity = baseStyle.strokeOpacity;
-    strokeWeight = baseStyle.strokeWeight;
-  } else if (cfg.id === 'municipality') {
-    const name = props.NAME as string;
-    if (name) {
-      const mc = getMuniColor(name);
-      fillColor = mc;
-      fillOpacity = 0.10;
-      strokeColor = mc;
-      strokeOpacity = 0.5;
-      strokeWeight = cfg.style.strokeWeight;
-    } else {
-      fillColor = cfg.style.fillColor;
-      fillOpacity = cfg.style.fillOpacity;
-      strokeColor = cfg.style.strokeColor;
-      strokeOpacity = cfg.style.strokeOpacity;
-      strokeWeight = cfg.style.strokeWeight;
-    }
-  } else {
-    fillColor = isLine ? 'transparent' : cfg.style.fillColor;
-    fillOpacity = isLine ? 0 : cfg.style.fillOpacity;
-    strokeColor = cfg.style.strokeColor;
-    strokeOpacity = cfg.style.strokeOpacity;
-    strokeWeight = cfg.style.strokeWeight;
+// Build a Mapbox `match` expression that resolves a beat feature's color
+// from its `city_code` property. All districts within a city share a color
+// (the lookup is keyed `${cityCode}::${distLetter}` but the colors collapse
+// per city), so we match on city_code alone to keep the expression small.
+//
+// `pickColor` lets the caller pick fill vs stroke from the same lookup.
+// Returns a flat string if the lookup is empty (no `match` overhead).
+function buildBeatColorExpression(
+  lookup: Map<string, BeatStyleEntry> | undefined,
+  pickColor: (entry: BeatStyleEntry) => string,
+  fallback: string,
+): string | unknown[] {
+  if (!lookup || lookup.size === 0) return fallback;
+  const cityColors = new Map<string, string>();
+  for (const [key, entry] of lookup) {
+    const cityCode = key.split('::')[0];
+    if (!cityColors.has(cityCode)) cityColors.set(cityCode, pickColor(entry));
   }
-
-  (feature.properties as any)['_fid'] = fId;
-  (feature.properties as any)['_isPoint'] = isPoint;
-  (feature.properties as any)['_isLine'] = isLine;
-  (feature.properties as any)['_fillColor'] = fillColor;
-  (feature.properties as any)['_fillOpacity'] = fillOpacity;
-  (feature.properties as any)['_strokeColor'] = strokeColor;
-  (feature.properties as any)['_strokeOpacity'] = strokeOpacity;
-  (feature.properties as any)['_strokeWeight'] = strokeWeight;
-  (feature.properties as any)['_iconScale'] = iconScale;
-
-  return feature;
-}
-
-function computeCentroid(feature: GeoJSON.Feature): [number, number] | null {
-  const geom = feature.geometry;
-  if (!geom) return null;
-  const coords = (geom as any).coordinates;
-  if (!coords || !coords.length) return null;
-
-  if (geom.type === 'Polygon') {
-    const ring = coords[0];
-    let lngSum = 0, latSum = 0, count = 0;
-    for (const pt of ring) {
-      lngSum += pt[0];
-      latSum += pt[1];
-      count++;
-    }
-    return count > 0 ? [lngSum / count, latSum / count] : null;
+  if (cityColors.size === 0) return fallback;
+  const expr: unknown[] = ['match', ['to-string', ['get', 'city_code']]];
+  for (const [cityCode, color] of cityColors) {
+    expr.push(cityCode, color);
   }
-  if (geom.type === 'MultiPolygon') {
-    let lngSum = 0, latSum = 0, count = 0;
-    for (const polygon of coords) {
-      for (const ring of polygon) {
-        for (const pt of ring) {
-          lngSum += pt[0];
-          latSum += pt[1];
-          count++;
-        }
-      }
-    }
-    return count > 0 ? [lngSum / count, latSum / count] : null;
-  }
-  return null;
+  expr.push(fallback);
+  return expr;
 }
 
 export function useGeoJsonLayers({
   map,
-  infoWindow,
+  popup,
   selectionMode = false,
   onFeatureClick,
   selectedFeatures,
   assignedFeatures,
   beatDistrictMap,
-  hierarchyColors,
 }: UseGeoJsonLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, GeoLayerState>>(() => {
     const initial: Record<string, GeoLayerState> = {};
@@ -361,13 +279,17 @@ export function useGeoJsonLayers({
     return initial;
   });
 
-  // Track which sources/layers/markers exist
-  const geojsonCacheRef = useRef<Record<string, any>>({});
-  const labelMarkersRef = useRef<Record<string, mapboxgl.Marker[]>>({});
-  const areaBoundarySourceId = useRef<string | null>(null);
-  const areaBoundaryLayerId = useRef<string | null>(null);
-  const beatFeaturesCacheRef = useRef<GeoJSON.Feature<GeoJSON.Polygon>[] | null>(null);
-  const loadRunningRef = useRef<Set<string>>(new Set());
+  const geojsonCacheRef = useRef<Record<string, object>>({});
+  const labelMarkerRefs = useRef<Record<string, mapboxgl.Marker[]>>({});
+  // Concurrency guard: prevents two parallel loadLayer() calls for the same
+  // layer from both passing the getSource() check and racing to addSource().
+  // The async fetch on /geojson/<file>.json creates a window where multiple
+  // effects (auto-load + ensureLayerLoaded) can interleave and double-add.
+  const inFlightLayersRef = useRef<Set<string>>(new Set());
+  // Track which layers we've already bound the click handler for. Without
+  // this, every successful loadLayer() call stacks another listener on the
+  // same fill layer, so a remount produces N popups per click.
+  const clickHandlerRegisteredRef = useRef<Set<string>>(new Set());
 
   const selectionModeRef = useRef(selectionMode);
   const onFeatureClickRef = useRef(onFeatureClick);
@@ -381,58 +303,6 @@ export function useGeoJsonLayers({
 
   const beatDistrictMapRef = useRef(beatDistrictMap);
   useEffect(() => { beatDistrictMapRef.current = beatDistrictMap; }, [beatDistrictMap]);
-
-  const hierarchyColorsRef = useRef<typeof hierarchyColors>(null);
-  useEffect(() => { hierarchyColorsRef.current = hierarchyColors ?? null; }, [hierarchyColors]);
-
-  // Rebuild area-boundary overlay when hierarchyColors arrives after beats
-  useEffect(() => {
-    if (!hierarchyColors || !beatFeaturesCacheRef.current || !map) return;
-
-    // Remove existing
-    if (areaBoundaryLayerId.current) {
-      try { if (map.getLayer(areaBoundaryLayerId.current)) map.removeLayer(areaBoundaryLayerId.current); } catch { /* ignore */ }
-      areaBoundaryLayerId.current = null;
-    }
-    if (areaBoundarySourceId.current) {
-      try { if (map.getSource(areaBoundarySourceId.current)) map.removeSource(areaBoundarySourceId.current); } catch { /* ignore */ }
-      areaBoundarySourceId.current = null;
-    }
-
-    const lines = dissolveBeatsByArea(beatFeaturesCacheRef.current, hierarchyColors.beatToArea);
-    if (lines.length === 0) return;
-
-    // Enrich lines with resolved area colors
-    const coloredLines = lines.map((l: any) => ({
-      ...l,
-      properties: {
-        ...(l.properties || {}),
-        _strokeColor: hierarchyColors.areaColors.get(l.properties?.area_id) ?? '#ffffff',
-      },
-    }));
-
-    const sourceId = 'area-boundary-src';
-    const layerId = 'area-boundary-layer';
-
-    map.addSource(sourceId, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: coloredLines },
-    });
-
-    map.addLayer({
-      id: layerId,
-      type: 'line',
-      source: sourceId,
-      paint: {
-        'line-color': ['get', '_strokeColor'],
-        'line-width': 3,
-        'line-opacity': 0.85,
-      },
-    });
-
-    areaBoundarySourceId.current = sourceId;
-    areaBoundaryLayerId.current = layerId;
-  }, [hierarchyColors, map]);
 
   const beatStyleLookup = useMemo(() => {
     if (!beatDistrictMap) return undefined;
@@ -454,193 +324,67 @@ export function useGeoJsonLayers({
   const beatStyleLookupRef = useRef(beatStyleLookup);
   useEffect(() => { beatStyleLookupRef.current = beatStyleLookup; }, [beatStyleLookup]);
 
-  const getFeatureKey = useCallback((feature: GeoJSON.Feature, cfg: GeoLayerConfig): string => {
-    const val = feature.properties?.[cfg.featureKeyProp];
-    return val != null ? String(val) : '';
-  }, []);
-
   const makeCompositeKey = (layerId: string, featureKey: string) => `${layerId}::${featureKey}`;
 
-  // ── Insert/update selection/assigned overlay layers ─────────
-
-  const updateOverlays = useCallback((layerId: string) => {
+  const setLayerPaint = useCallback((cfg: GeoLayerConfig, isSelected: boolean, isAssigned: boolean) => {
     if (!map) return;
-    const selSourceId = `${layerId}-sel`;
-    const asnSourceId = `${layerId}-asn`;
-    const selFillLayer = `${layerId}-sel-fill`;
-    const asnFillLayer = `${layerId}-asn-fill`;
-    const selLineLayer = `${layerId}-sel-line`;
-    const asnLineLayer = `${layerId}-asn-line`;
-    const selCircleLayer = `${layerId}-sel-circle`;
-    const asnCircleLayer = `${layerId}-asn-circle`;
-    const srcId = `geojson-src-${layerId}`;
-    const src = map.getSource(srcId) as mapboxgl.GeoJSONSource | undefined;
-    if (!src) return;
+    const fillId = getFillLayerId(cfg.id);
+    const lineId = getLineLayerId(cfg.id);
 
-    const selected = selectedFeaturesRef.current;
-    const assigned = assignedFeaturesRef.current;
+    let fillColor = cfg.style.fillColor;
+    let fillOpacity = cfg.style.fillOpacity;
+    let strokeColor = cfg.style.strokeColor;
+    let strokeOpacity = cfg.style.strokeOpacity;
+    let strokeWeight = cfg.style.strokeWeight;
 
-    // Collect features matching selection/assigned
-    const selFeatures: GeoJSON.Feature[] = [];
-    const asnFeatures: GeoJSON.Feature[] = [];
-
-    if (selected || assigned) {
-      const cachedData = geojsonCacheRef.current[layerId];
-      if (cachedData?.features) {
-        for (const feat of cachedData.features) {
-          const fKey = feat.properties?.[GEO_LAYER_CONFIGS.find(c => c.id === layerId)?.featureKeyProp || ''];
-          if (!fKey) continue;
-          const compositeKey = makeCompositeKey(layerId, String(fKey));
-          if (selected?.has(compositeKey)) {
-            selFeatures.push({ ...feat });
-          }
-          if (assigned?.has(compositeKey)) {
-            asnFeatures.push({ ...feat });
-          }
-        }
-      }
+    if (isSelected) {
+      fillColor = SELECTION_FILL_COLOR;
+      fillOpacity = SELECTION_FILL_OPACITY;
+      strokeColor = SELECTION_STROKE_COLOR;
+      strokeOpacity = SELECTION_STROKE_OPACITY;
+      strokeWeight = SELECTION_STROKE_WEIGHT;
+    } else if (isAssigned) {
+      fillColor = ASSIGNED_FILL_COLOR;
+      fillOpacity = ASSIGNED_FILL_OPACITY;
+      strokeColor = ASSIGNED_STROKE_COLOR;
+      strokeOpacity = ASSIGNED_STROKE_OPACITY;
+      strokeWeight = ASSIGNED_STROKE_WEIGHT;
     }
 
-    for (const [features, prefix, styleKey] of [
-      [selFeatures, 'sel', 'selected'] as const,
-      [asnFeatures, 'asn', 'assigned'] as const,
-    ]) {
-      const sourceId = `${layerId}-${prefix}`;
-      const fillLayer = `${layerId}-${prefix}-fill`;
-      const lineLayer = `${layerId}-${prefix}-line`;
-      const circleLayer = `${layerId}-${prefix}-circle`;
-
-      if (features.length === 0) {
-        try { if (map.getLayer(fillLayer)) map.removeLayer(fillLayer); } catch { /* ignore */ }
-        try { if (map.getLayer(lineLayer)) map.removeLayer(lineLayer); } catch { /* ignore */ }
-        try { if (map.getLayer(circleLayer)) map.removeLayer(circleLayer); } catch { /* ignore */ }
-        try { if (map.getSource(sourceId)) map.removeSource(sourceId); } catch { /* ignore */ }
-        continue;
-      }
-
-      const styleDef = styleKey === 'selected' ? SELECTION_STYLE : ASSIGNED_STYLE;
-      const circleRadius = layerId === 'place' ? (4 + (styleKey === 'selected' ? 3 : 2)) : 8;
-
-      const geojsonData: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: features.map((f) => ({
-          ...f,
-          properties: { ...f.properties },
-        })),
-      };
-
-      if (!map.getSource(sourceId)) {
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: geojsonData,
-        });
-      } else {
-        (map.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(geojsonData);
-      }
-
-      if (!map.getLayer(fillLayer)) {
-        map.addLayer({
-          id: fillLayer,
-          type: 'fill',
-          source: sourceId,
-          paint: {
-            'fill-color': styleDef.fillColor,
-            'fill-opacity': styleDef.fillOpacity,
-          },
-        });
-      } else {
-        map.setPaintProperty(fillLayer, 'fill-color', styleDef.fillColor);
-        map.setPaintProperty(fillLayer, 'fill-opacity', styleDef.fillOpacity);
-      }
-
-      if (!map.getLayer(lineLayer)) {
-        map.addLayer({
-          id: lineLayer,
-          type: 'line',
-          source: sourceId,
-          paint: {
-            'line-color': styleDef.strokeColor,
-            'line-opacity': styleDef.strokeOpacity,
-            'line-width': styleDef.strokeWeight,
-          },
-        });
-      } else {
-        map.setPaintProperty(lineLayer, 'line-color', styleDef.strokeColor);
-        map.setPaintProperty(lineLayer, 'line-opacity', styleDef.strokeOpacity);
-        map.setPaintProperty(lineLayer, 'line-width', styleDef.strokeWeight);
-      }
-
-      if (!map.getLayer(circleLayer)) {
-        map.addLayer({
-          id: circleLayer,
-          type: 'circle',
-          source: sourceId,
-          paint: {
-            'circle-color': styleDef.fillColor,
-            'circle-opacity': styleDef.fillOpacity,
-            'circle-radius': circleRadius,
-            'circle-stroke-color': styleDef.strokeColor,
-            'circle-stroke-opacity': styleDef.strokeOpacity,
-            'circle-stroke-width': styleDef.strokeWeight,
-          },
-        });
-      } else {
-        map.setPaintProperty(circleLayer, 'circle-color', styleDef.fillColor);
-        map.setPaintProperty(circleLayer, 'circle-radius', circleRadius);
-      }
+    if (hasLayer(map, fillId)) {
+      map.setPaintProperty(fillId, 'fill-color', fillColor);
+      map.setPaintProperty(fillId, 'fill-opacity', fillOpacity);
+    }
+    if (hasLayer(map, lineId)) {
+      map.setPaintProperty(lineId, 'line-color', strokeColor);
+      map.setPaintProperty(lineId, 'line-opacity', strokeOpacity);
+      map.setPaintProperty(lineId, 'line-width', strokeWeight);
     }
   }, [map]);
 
-  // ── Restyle (called when selection/assigned changes) ───────
-
-  const restyleLayers = useCallback(() => {
-    for (const cfg of GEO_LAYER_CONFIGS) {
-      updateOverlays(cfg.id);
-    }
-  }, [updateOverlays]);
-
-  useEffect(() => {
-    restyleLayers();
-  }, [selectedFeatures, assignedFeatures, selectionMode, restyleLayers]);
-
-  useEffect(() => {
-    if (beatStyleLookup) restyleLayers();
-  }, [beatStyleLookup, restyleLayers]);
-
-  // ── Build layer id constants for a config ──────────────────
-
-  function getLayerIds(cfg: GeoLayerConfig) {
-    return {
-      srcId: `geojson-src-${cfg.id}`,
-      fillId: `geojson-fill-${cfg.id}`,
-      lineId: `geojson-line-${cfg.id}`,
-      circleId: `geojson-circle-${cfg.id}`,
-    };
-  }
-
-  // ── Load a single GeoJSON layer onto the map ───────────────
-
   const loadLayer = useCallback(async (cfg: GeoLayerConfig) => {
     if (!map) return;
-    if (loadRunningRef.current.has(cfg.id)) return;
-    loadRunningRef.current.add(cfg.id);
 
-    const { srcId, fillId, lineId, circleId } = getLayerIds(cfg);
+    // Concurrency guard — bail if another invocation is already mid-load
+    // for this layer. Without this, the async fetch creates a window where
+    // a second call (from auto-load effect, toggle, or ensureLayerLoaded)
+    // can race past the getSource() check and double-add the source.
+    if (inFlightLayersRef.current.has(cfg.id)) return;
 
-    // Already loaded - just show
-    if (geojsonCacheRef.current[cfg.id]) {
-      if (map.getSource(srcId)) {
-        const layers = [fillId, lineId, circleId];
-        for (const lid of layers) {
-          if (map.getLayer(lid)) {
-            map.setLayoutProperty(lid, 'visibility', 'visible');
-          }
-        }
+    const sourceId = getLayerSourceId(cfg.id);
+    if (hasSource(map, sourceId)) {
+      // Safe check: If layers were somehow removed but source remained, or vice versa, handle it
+      if (!hasLayer(map, getFillLayerId(cfg.id)) && !hasLayer(map, getLineLayerId(cfg.id))) {
+        // Let it fall through or clean up the source first to re-add safely
+        try { map.removeSource(sourceId); } catch { /* ignore */ }
+      } else {
+        // Already fully loaded — just set visibility
+        setLayerStates(prev => ({ ...prev, [cfg.id]: { ...prev[cfg.id], visible: true } }));
+        return;
       }
-      loadRunningRef.current.delete(cfg.id);
-      return;
     }
 
+    inFlightLayersRef.current.add(cfg.id);
     let geojson = geojsonCacheRef.current[cfg.id];
     if (!geojson) {
       try {
@@ -650,349 +394,158 @@ export function useGeoJsonLayers({
         geojsonCacheRef.current[cfg.id] = geojson;
       } catch (err) {
         console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
-        loadRunningRef.current.delete(cfg.id);
+        inFlightLayersRef.current.delete(cfg.id);
         return;
       }
     }
 
-    const typedGeojson = geojson as GeoJSON.FeatureCollection;
+      // Defensive re-check before each side-effect — a sibling caller could
+      // have completed between our fetch starting and finishing. Guard on
+      // STYLE readiness — addSource/addLayer throw "Style is not done loading"
+      // when the basemap style hasn't finished, even if map.loaded() is true.
+      whenStyleReady(map, () => {
+      if (!hasSource(map, sourceId)) {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: geojson as any,
+        });
+      }
 
-    // Enrich features with style properties
-    const enrichedFeatures: GeoJSON.Feature[] = (typedGeojson.features || []).map((f) =>
-      enrichFeature({ ...f }, cfg, beatStyleLookupRef, beatDistrictMapRef, hierarchyColorsRef),
-    );
+      // For beats specifically, use a data-driven color expression keyed
+      // on city_code so each city renders in its own color (per
+      // beatDistrictMap). All other layers use the static config color.
+      //
+      // safeMapboxColor is the boundary guard: a leaked `var(--…)` string
+      // or empty value here crashes the whole layer and renders nothing.
+      // 'transparent' is fine — only invalid colors fall back.
+      const safeFill = safeMapboxColor(cfg.style.fillColor, COLOR_FALLBACK_FILL);
+      const safeStroke = safeMapboxColor(cfg.style.strokeColor, COLOR_FALLBACK_STROKE);
+      const fillColorExpr = cfg.id === 'beat'
+        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => safeMapboxColor(e.style.fillColor, COLOR_FALLBACK_FILL), safeFill)
+        : safeFill;
+      const lineColorExpr = cfg.id === 'beat'
+        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => safeMapboxColor(e.style.strokeColor, COLOR_FALLBACK_STROKE), safeStroke)
+        : safeStroke;
 
-    const enrichedCollection: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: enrichedFeatures,
-    };
+      // Add fill layer for polygon features
+      if (!hasLayer(map, getFillLayerId(cfg.id))) {
+        map.addLayer({
+          id: getFillLayerId(cfg.id),
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': fillColorExpr as any,
+            'fill-opacity': cfg.style.fillOpacity,
+          },
+          layout: {
+            visibility: cfg.visible ? 'visible' : 'none',
+          },
+        });
+      }
 
-    // Update cache with enriched data
-    geojsonCacheRef.current[cfg.id] = enrichedCollection;
+      // Add line layer for stroke
+      if (!hasLayer(map, getLineLayerId(cfg.id))) {
+        map.addLayer({
+          id: getLineLayerId(cfg.id),
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': lineColorExpr as any,
+            'line-opacity': cfg.style.strokeOpacity,
+            'line-width': cfg.style.strokeWeight,
+          },
+          layout: {
+            visibility: cfg.visible ? 'visible' : 'none',
+          },
+        });
+      }
 
-    // Create source
-    if (!map.getSource(srcId)) {
-      map.addSource(srcId, {
-        type: 'geojson',
-        data: enrichedCollection,
-      });
-    }
+      // Click handler — gate registration so a re-invocation of loadLayer
+      // (after Mapbox style reload, layer cleanup, etc.) doesn't stack
+      // listeners. The handler reads from refs so it stays current without
+      // needing re-registration when callbacks/state change.
+      if (!clickHandlerRegisteredRef.current.has(cfg.id)) {
+        clickHandlerRegisteredRef.current.add(cfg.id);
+        map.on('click', getFillLayerId(cfg.id), (e) => {
+          if (!e.features || e.features.length === 0) return;
+          const feat = e.features[0];
+          const props = feat.properties || {};
+          const fKey = props[cfg.featureKeyProp] != null ? String(props[cfg.featureKeyProp]) : '';
+          const name = props[cfg.labelProp] || props.name || props.NAME || cfg.label;
 
-    // Determine feature types
-    const hasPolygons = enrichedFeatures.some(
-      (f) => f.geometry?.type === 'Polygon' || f.geometry?.type === 'MultiPolygon',
-    );
-    const hasLines = enrichedFeatures.some(
-      (f) => f.geometry?.type === 'LineString' || f.geometry?.type === 'MultiLineString',
-    );
-    const hasPoints = enrichedFeatures.some(
-      (f) => f.geometry?.type === 'Point' || f.geometry?.type === 'MultiPoint',
-    );
+          if (selectionModeRef.current && cfg.selectable && onFeatureClickRef.current) {
+            onFeatureClickRef.current({
+              layerId: cfg.id,
+              featureKey: fKey,
+              label: String(name),
+              properties: props,
+            });
+            return;
+          }
 
-    // Create fill layer (for polygons)
-    if (hasPolygons && !map.getLayer(fillId)) {
-      map.addLayer({
-        id: fillId,
-        type: 'fill',
-        source: srcId,
-        filter: ['any',
-          ['==', ['geometry-type'], 'Polygon'],
-          ['==', ['geometry-type'], 'MultiPolygon'],
-        ],
-        paint: {
-          'fill-color': ['get', '_fillColor'],
-          'fill-opacity': ['get', '_fillOpacity'],
-        },
-      });
+          if (!popup) return;
 
-      // Click handler for polygon features
-      map.on('click', fillId, (e) => {
-        if (!e.features?.length) return;
-        const feat = e.features[0];
-        const props: Record<string, any> = feat.properties || {};
-        const fKey = String(props[cfg.featureKeyProp] || '');
-        const name = props[cfg.labelProp] || props.name || props.NAME || cfg.label;
+          let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
 
-        if (selectionModeRef.current && cfg.selectable && onFeatureClickRef.current) {
-          onFeatureClickRef.current({
-            layerId: cfg.id,
-            featureKey: fKey,
-            label: String(name),
-            properties: props,
-          });
-          return;
-        }
+          const entry = cfg.id === 'beat'
+            ? lookupBeatDistrict(beatDistrictMapRef.current, props.city_code, props.district_letter)
+            : undefined;
 
-        if (!infoWindow) return;
-        let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
+          if (entry) {
+            const sColor = getSectionColor(entry.sectionId);
+            html += `<div style="font-weight:bold;font-size:13px;color:${sColor};margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(entry.dispatchCode)}</div>`;
+            html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(entry.beatName)}${entry.beatDescriptor ? ' — ' + escapeForHtml(entry.beatDescriptor) : ''}</div>`;
+            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Section:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
+            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> <span style="color:#ddd;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span></div>`;
+            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> <span style="color:#ddd;">${escapeForHtml(entry.beatId)}</span></div>`;
+          } else {
+            html += buildDefaultInfoHtml(name, cfg, props);
+          }
 
-        const entry = cfg.id === 'beat'
-          ? lookupBeatDistrict(beatDistrictMapRef.current, props.city_code as string, props.district_letter as string)
-          : undefined;
+          const compositeKey = makeCompositeKey(cfg.id, fKey);
+          if (assignedFeaturesRef.current?.has(compositeKey)) {
+            html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #333;font-size:9px;color:#22c55e;font-weight:bold;">● ASSIGNED</div>`;
+          }
 
-        if (entry) {
-          const sColor = getSectionColor(entry.sectionId);
-          html += `<div style="font-weight:bold;font-size:13px;color:${sColor};margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(entry.dispatchCode)}</div>`;
-          html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(entry.beatName)}${entry.beatDescriptor ? ' — ' + escapeForHtml(entry.beatDescriptor) : ''}</div>`;
-          html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Section:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
-          html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> <span style="color:#ddd;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span></div>`;
-          html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> <span style="color:#ddd;">${escapeForHtml(entry.beatId)}</span></div>`;
-        } else if (cfg.id === 'beat') {
-          const cityCode = String(props.city_code || '').toUpperCase();
-          const distLetter = String(props.district_letter || '').toUpperCase();
-          const cityName = String(props.city || '');
-          const isUninc = distLetter === 'U' || /unincorp/i.test(cityName);
-          const chartLabel = cityCode && distLetter ? `${cityCode}/${distLetter}` : (props.beat_code || cityCode || 'Unknown');
-          html += `<div style="font-weight:bold;font-size:13px;color:#d4a017;margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(chartLabel)}</div>`;
-          html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(cityName || 'Beat polygon')}${isUninc ? ' — Unincorporated' : ''}</div>`;
-          html += `<div style="font-size:10px;color:#888;margin-top:2px;font-style:italic;">No canonical dispatch beat — assign manually</div>`;
-        } else {
-          html += buildDefaultInfoHtml(name, cfg, props);
-        }
+          html += `</div>`;
+          popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        });
+      }
+      }); // end whenStyleReady
 
-        const compositeKey = makeCompositeKey(cfg.id, fKey);
-        if (assignedFeaturesRef.current?.has(compositeKey)) {
-          html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #333;font-size:9px;color:#22c55e;font-weight:bold;">● ASSIGNED</div>`;
-        }
+      // REGRESSION-GUARD: in-flight flag cleared INSIDE whenStyleReady (not
+      // in a finally block outside it). whenStyleReady may defer via
+      // map.once('style.load') — clearing the flag before the callback fires
+      // allows a second loadLayer() invocation to enter before the first
+      // callback's addSource/addLayer mutations complete, causing a
+      // "Layer with id '...' already exists" duplicate-layer error.
+      inFlightLayersRef.current.delete(cfg.id);
 
-        html += `</div>`;
-        infoWindow.setLngLat(e.lngLat).setHTML(html).addTo(map);
-      });
-    }
-
-    // Create line layer (for strokes on polygons and for line features)
-    if (!map.getLayer(lineId)) {
-      map.addLayer({
-        id: lineId,
-        type: 'line',
-        source: srcId,
-        paint: {
-          'line-color': ['get', '_strokeColor'],
-          'line-opacity': ['get', '_strokeOpacity'],
-          'line-width': ['get', '_strokeWeight'],
-        },
-      });
-
-      map.on('click', lineId, (e) => {
-        if (!e.features?.length) return;
-        const feat = e.features[0];
-        const props: Record<string, any> = feat.properties || {};
-        const fKey = String(props[cfg.featureKeyProp] || '');
-        const name = props[cfg.labelProp] || props.name || props.NAME || cfg.label;
-
-        if (selectionModeRef.current && cfg.selectable && onFeatureClickRef.current) {
-          onFeatureClickRef.current({
-            layerId: cfg.id,
-            featureKey: fKey,
-            label: String(name),
-            properties: props,
-          });
-          return;
-        }
-
-        if (!infoWindow) return;
-        let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
-        if (cfg.id === 'beat') {
-          const cityCode = String(props.city_code || '').toUpperCase();
-          const distLetter = String(props.district_letter || '').toUpperCase();
-          const cityName = String(props.city || '');
-          const isUninc = distLetter === 'U' || /unincorp/i.test(cityName);
-          const chartLabel = cityCode && distLetter ? `${cityCode}/${distLetter}` : (props.beat_code || cityCode || 'Unknown');
-          html += `<div style="font-weight:bold;font-size:13px;color:#d4a017;margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(chartLabel)}</div>`;
-          html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(cityName || 'Beat polygon')}${isUninc ? ' — Unincorporated' : ''}</div>`;
-          html += `<div style="font-size:10px;color:#888;margin-top:2px;font-style:italic;">No canonical dispatch beat — assign manually</div>`;
-        } else {
-          html += buildDefaultInfoHtml(name, cfg, props);
-        }
-        html += `</div>`;
-        infoWindow.setLngLat(e.lngLat).setHTML(html).addTo(map);
-      });
-    }
-
-    // Create circle layer (for point features)
-    if (hasPoints && !map.getLayer(circleId)) {
-      map.addLayer({
-        id: circleId,
-        type: 'circle',
-        source: srcId,
-        filter: ['any',
-          ['==', ['geometry-type'], 'Point'],
-          ['==', ['geometry-type'], 'MultiPoint'],
-        ],
-        paint: {
-          'circle-color': ['get', '_fillColor'],
-          'circle-opacity': ['get', '_fillOpacity'],
-          'circle-radius': ['get', '_iconScale'],
-          'circle-stroke-color': ['get', '_strokeColor'],
-          'circle-stroke-opacity': ['get', '_strokeOpacity'],
-          'circle-stroke-width': ['get', '_strokeWeight'],
-        },
-      });
-
-      map.on('click', circleId, (e) => {
-        if (!e.features?.length) return;
-        const feat = e.features[0];
-        const props: Record<string, any> = feat.properties || {};
-        const fKey = String(props[cfg.featureKeyProp] || '');
-        const name = props[cfg.labelProp] || props.name || props.NAME || cfg.label;
-
-        if (selectionModeRef.current && cfg.selectable && onFeatureClickRef.current) {
-          onFeatureClickRef.current({
-            layerId: cfg.id,
-            featureKey: fKey,
-            label: String(name),
-            properties: props,
-          });
-          return;
-        }
-
-        if (!infoWindow) return;
-        const html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">${buildDefaultInfoHtml(name, cfg, props)}</div>`;
-        infoWindow.setLngLat(e.lngLat).setHTML(html).addTo(map);
-      });
-    }
-
-    // Update feature count
-    const count = enrichedFeatures.length;
-    setLayerStates((prev) => ({
-      ...prev,
-      [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: count },
+      setLayerStates((prev) => ({
+        ...prev,
+        [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
     }));
+  }, [map, popup]);
 
-    // ── Beat label overlays ──
-    if (cfg.id === 'beat') {
-      for (const feature of enrichedFeatures) {
-        const props = feature.properties || {};
-        const cityCode = props.city_code as string;
-        const distLetter = props.district_letter as string;
-        const beatCode = props.beat_code as string;
-        if (!cityCode) continue;
+  // Keep the beat layer's paint in sync with beatStyleLookup. The layer's
+  // initial paint is set inside loadLayer using whatever lookup was
+  // present at first load — but the district map is fetched async, so it
+  // often arrives AFTER the beat layer is already on the map. This effect
+  // re-applies the expression whenever the lookup changes (and the beat
+  // layer is present).
+  useEffect(() => {
+    if (!map) return;
+    const beatCfg = GEO_LAYER_CONFIGS.find(c => c.id === 'beat');
+    if (!beatCfg) return;
+    const fillId = getFillLayerId('beat');
+    const lineId = getLineLayerId('beat');
+    if (!hasLayer(map, fillId) && !hasLayer(map, lineId)) return;
 
-        const entry = beatDistrictMapRef.current
-          ? lookupBeatDistrict(beatDistrictMapRef.current, cityCode, distLetter)
-          : null;
-        const labelText = entry
-          ? (entry.dispatchCode || `${entry.zoneId}/${entry.beatId}`)
-          : (distLetter ? `${cityCode}/${distLetter}` : beatCode || cityCode);
-
-        const centroid = computeCentroid(feature);
-        if (!centroid) continue;
-
-        const labelColor = getCityColor(cityCode);
-        const el = document.createElement('div');
-        el.style.cssText = `color:${labelColor};font-size:9px;font-weight:bold;font-family:'JetBrains Mono','Courier New',monospace;text-shadow:0 0 2px #000,0 0 2px #000;pointer-events:none;line-height:1;`;
-        el.textContent = labelText;
-
-        const marker = new mapboxgl.Marker({ element: el })
-          .setLngLat(centroid)
-          .addTo(map);
-
-        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
-        labelMarkersRef.current[cfg.id].push(marker);
-      }
-
-      // Cache beat features for area boundary
-      if (!beatFeaturesCacheRef.current) {
-        const beatFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-        for (const f of enrichedFeatures) {
-          if (f.geometry?.type !== 'Polygon') continue;
-          beatFeatures.push({
-            type: 'Feature',
-            properties: { beat_code: f.properties?.beat_code },
-            geometry: { type: 'Polygon', coordinates: (f.geometry as GeoJSON.Polygon).coordinates },
-          });
-        }
-        beatFeaturesCacheRef.current = beatFeatures;
-      }
-
-      // Area boundary on initial load if hierarchyColors available
-      if (hierarchyColorsRef.current && !areaBoundaryLayerId.current && beatFeaturesCacheRef.current) {
-        const lines = dissolveBeatsByArea(beatFeaturesCacheRef.current, hierarchyColorsRef.current.beatToArea);
-        if (lines.length > 0) {
-          const coloredLines = lines.map((l: any) => ({
-            ...l,
-            properties: {
-              ...(l.properties || {}),
-              _strokeColor: hierarchyColorsRef.current!.areaColors.get(l.properties?.area_id) ?? '#ffffff',
-            },
-          }));
-          const srcId = 'area-boundary-src';
-          const layerId = 'area-boundary-layer';
-          if (!map.getSource(srcId)) {
-            map.addSource(srcId, {
-              type: 'geojson',
-              data: { type: 'FeatureCollection', features: coloredLines },
-            });
-          }
-          if (!map.getLayer(layerId)) {
-            map.addLayer({
-              id: layerId,
-              type: 'line',
-              source: srcId,
-              paint: {
-                'line-color': ['get', '_strokeColor'],
-                'line-width': 3,
-                'line-opacity': 0.85,
-              },
-            });
-          }
-          areaBoundarySourceId.current = srcId;
-          areaBoundaryLayerId.current = layerId;
-        }
-      }
-    }
-
-    // ── County label overlays ──
-    if (cfg.id === 'county') {
-      for (const feature of enrichedFeatures) {
-        const props = feature.properties || {};
-        const name = props.NAME as string;
-        if (!name) continue;
-        const centroid = computeCentroid(feature);
-        if (!centroid) continue;
-
-        const el = document.createElement('div');
-        el.style.cssText = `color:#88888880;font-size:10px;font-weight:bold;font-family:'JetBrains Mono','Courier New',monospace;text-shadow:0 0 2px #000;pointer-events:none;line-height:1;text-transform:uppercase;`;
-        el.textContent = name.toUpperCase() + ' CO.';
-
-        const marker = new mapboxgl.Marker({ element: el })
-          .setLngLat(centroid)
-          .addTo(map);
-
-        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
-        labelMarkersRef.current[cfg.id].push(marker);
-      }
-    }
-
-    // ── Municipality label overlays ──
-    if (cfg.id === 'municipality') {
-      for (const feature of enrichedFeatures) {
-        const props = feature.properties || {};
-        const name = props.NAME as string;
-        if (!name) continue;
-        const centroid = computeCentroid(feature);
-        if (!centroid) continue;
-
-        const mc = getMuniColor(name);
-        const el = document.createElement('div');
-        el.style.cssText = `color:${mc};font-size:8px;font-weight:bold;font-family:'JetBrains Mono','Courier New',monospace;text-shadow:0 0 2px #000;pointer-events:none;line-height:1;`;
-        el.textContent = name.toUpperCase();
-
-        const marker = new mapboxgl.Marker({ element: el })
-          .setLngLat(centroid)
-          .addTo(map);
-
-        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
-        labelMarkersRef.current[cfg.id].push(marker);
-      }
-    }
-
-    // Apply current selection/assigned overlays
-    updateOverlays(cfg.id);
-    loadRunningRef.current.delete(cfg.id);
-  }, [map, infoWindow, getFeatureKey, updateOverlays]);
-
-  // ── Ensure layer is loaded ─────────────────────────────────
+    const fillExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.fillColor, beatCfg.style.fillColor);
+    const lineExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.strokeColor, beatCfg.style.strokeColor);
+    try { if (hasLayer(map, fillId)) map.setPaintProperty(fillId, 'fill-color', fillExpr as any); } catch {}
+    try { if (hasLayer(map, lineId)) map.setPaintProperty(lineId, 'line-color', lineExpr as any); } catch {}
+  }, [map, beatStyleLookup]);
 
   const ensureLayerLoaded = useCallback(async (layerId: string) => {
     const cfg = GEO_LAYER_CONFIGS.find((c) => c.id === layerId);
@@ -1006,48 +559,26 @@ export function useGeoJsonLayers({
     }));
   }, [map, layerStates, loadLayer]);
 
-  // ── Toggle layer visibility ────────────────────────────────
-
   const toggleGeoLayer = useCallback((layerId: string) => {
     setLayerStates((prev) => {
       const curr = prev[layerId];
       if (!curr) return prev;
       const nowVisible = !curr.visible;
 
-      const { srcId, fillId, lineId, circleId } = getLayerIds({ id: layerId } as GeoLayerConfig);
-      // We'll derive from the actual config
-      const cfg = GEO_LAYER_CONFIGS.find((c) => c.id === layerId);
-      if (!cfg) return prev;
-
-      const lids = getLayerIds(cfg);
-      const layersToToggle = [lids.fillId, lids.lineId, lids.circleId];
-
-      // Also toggle selection/assigned layers
-      if (cfg.selectable) {
-        layersToToggle.push(`${layerId}-sel-fill`, `${layerId}-sel-line`, `${layerId}-sel-circle`);
-        layersToToggle.push(`${layerId}-asn-fill`, `${layerId}-asn-line`, `${layerId}-asn-circle`);
-      }
+      const fillId = getFillLayerId(layerId);
+      const lineId = getLineLayerId(layerId);
+      const vis = nowVisible ? 'visible' : 'none';
 
       if (map) {
-        const visibility = nowVisible ? 'visible' : 'none';
-        for (const lid of layersToToggle) {
-          try {
-            if (map.getLayer(lid)) {
-              map.setLayoutProperty(lid, 'visibility', visibility as any);
-            }
-          } catch { /* ignore layer might not exist yet */ }
-        }
+        try { if (hasLayer(map, fillId)) map.setLayoutProperty(fillId, 'visibility', vis); } catch {}
+        try { if (hasLayer(map, lineId)) map.setLayoutProperty(lineId, 'visibility', vis); } catch {}
       }
 
-      // Toggle label markers
-      const labels = labelMarkersRef.current[layerId];
+      // Show/hide label markers
+      const labels = labelMarkerRefs.current[layerId];
       if (labels) {
         for (const m of labels) {
-          if (nowVisible) {
-            m.addTo(map!);
-          } else {
-            m.remove();
-          }
+          if (nowVisible) m.addTo(map!); else m.remove();
         }
       }
 
@@ -1055,11 +586,9 @@ export function useGeoJsonLayers({
     });
   }, [map]);
 
-  // ── Auto-load visible layers when map is ready ─────────────
-
+  // Auto-load visible layers when map is ready
   useEffect(() => {
     if (!map) return;
-
     for (const cfg of GEO_LAYER_CONFIGS) {
       const state = layerStates[cfg.id];
       if (state?.visible && !state.loaded) {
@@ -1068,97 +597,50 @@ export function useGeoJsonLayers({
     }
   }, [map, layerStates, loadLayer]);
 
-  // ── Zoom-based visibility management ───────────────────────
+  // Zoom-based visibility management.
+  // Uses `zoomend` (fires once at gesture end) instead of `zoom` (fires
+  // continuously at ~60Hz during a pinch) — running per-config setLayoutProperty
+  // loops every frame was a meaningful frame-time cost. Reads layerStates via
+  // ref so the listener doesn't re-bind on every state change.
+  const layerStatesRef = useRef(layerStates);
+  useEffect(() => { layerStatesRef.current = layerStates; }, [layerStates]);
 
   useEffect(() => {
     if (!map) return;
-
-    const handler = () => {
+    const onZoomEnd = () => {
       const zoom = map.getZoom();
+      const states = layerStatesRef.current;
       for (const cfg of GEO_LAYER_CONFIGS) {
-        const state = layerStates[cfg.id];
+        const state = states[cfg.id];
         if (!state?.visible) continue;
-
-        const visible = !cfg.minZoom || zoom >= cfg.minZoom;
-        const layers = getLayerIds(cfg);
-        const visibility = visible ? 'visible' : 'none';
-
-        for (const lid of [layers.fillId, layers.lineId, layers.circleId]) {
-          try {
-            if (map.getLayer(lid)) {
-              map.setLayoutProperty(lid, 'visibility', visibility as any);
-            }
-          } catch { /* ignore */ }
-        }
-
-        // Also toggle selection/assigned layers
-        for (const suffix of ['-sel-fill', '-sel-line', '-sel-circle', '-asn-fill', '-asn-line', '-asn-circle']) {
-          const lid = `${cfg.id}${suffix}`;
-          try {
-            if (map.getLayer(lid)) {
-              map.setLayoutProperty(lid, 'visibility', visibility as any);
-            }
-          } catch { /* ignore */ }
-        }
-
-        // Toggle labels based on zoom
-        const labels = labelMarkersRef.current[cfg.id];
-        if (labels) {
-          const showLabels = visible && zoom >= 10;
-          for (const m of labels) {
-            if (showLabels) {
-              if (!m.getLngLat()) m.addTo(map);
-            } else {
-              m.remove();
-            }
-          }
-        }
+        const fillId = getFillLayerId(cfg.id);
+        const lineId = getLineLayerId(cfg.id);
+        const viz = !cfg.minZoom || zoom >= cfg.minZoom ? 'visible' : 'none';
+        try { if (hasLayer(map, fillId)) map.setLayoutProperty(fillId, 'visibility', viz); } catch {}
+        try { if (hasLayer(map, lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch {}
       }
     };
+    map.on('zoomend', onZoomEnd);
+    // Apply once on bind so initial zoom state is respected without waiting for a gesture.
+    onZoomEnd();
+    return () => { map.off('zoomend', onZoomEnd); };
+  }, [map]);
 
-    map.on('zoom', handler);
-    return () => { map.off('zoom', handler); };
-  }, [map, layerStates]);
-
-  // ── Cleanup on unmount ─────────────────────────────────────
-
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (!map) return;
-
-      // Remove all geo layers
-      for (const cfg of GEO_LAYER_CONFIGS) {
-        const lids = getLayerIds(cfg);
-        for (const lid of [lids.fillId, lids.lineId, lids.circleId]) {
-          try { if (map.getLayer(lid)) map.removeLayer(lid); } catch { /* ignore */ }
-        }
-        try { if (map.getSource(lids.srcId)) map.removeSource(lids.srcId); } catch { /* ignore */ }
-
-        // Remove selection/assigned overlays
-        for (const suffix of ['-sel-fill', '-sel-line', '-sel-circle', '-asn-fill', '-asn-line', '-asn-circle']) {
-          try { if (map.getLayer(`${cfg.id}${suffix}`)) map.removeLayer(`${cfg.id}${suffix}`); } catch { /* ignore */ }
-        }
-        for (const suffix of ['-sel', '-asn']) {
-          try { if (map.getSource(`${cfg.id}${suffix}`)) map.removeSource(`${cfg.id}${suffix}`); } catch { /* ignore */ }
-        }
-      }
-
-      // Clean up label markers
-      for (const markers of Object.values(labelMarkersRef.current)) {
+      for (const markers of Object.values(labelMarkerRefs.current)) {
         for (const m of markers) m.remove();
       }
-      labelMarkersRef.current = {};
-      geojsonCacheRef.current = {};
-      beatFeaturesCacheRef.current = null;
-
-      // Remove area boundary
-      if (areaBoundaryLayerId.current) {
-        try { if (map.getLayer(areaBoundaryLayerId.current)) map.removeLayer(areaBoundaryLayerId.current); } catch { /* ignore */ }
-      }
-      if (areaBoundarySourceId.current) {
-        try { if (map.getSource(areaBoundarySourceId.current)) map.removeSource(areaBoundarySourceId.current); } catch { /* ignore */ }
-      }
+      labelMarkerRefs.current = {};
     };
+  }, [map]);
+
+  // Reset per-map registration tracking when the map instance changes.
+  // Mapbox handlers live on the map; a new map needs fresh bindings.
+  useEffect(() => {
+    clickHandlerRegisteredRef.current.clear();
+    inFlightLayersRef.current.clear();
   }, [map]);
 
   return {

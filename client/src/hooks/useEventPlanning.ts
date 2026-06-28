@@ -1,5 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import mapboxgl from 'mapbox-gl';
+import { mapboxgl } from '../utils/mapboxLoader';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+
+// ── Types ────────────────────────────────────────────────────
 
 export type PlanItemType = 'perimeter' | 'route' | 'staging' | 'annotation';
 
@@ -8,6 +12,7 @@ export interface PlanItem {
   type: PlanItemType;
   label: string;
   color: string;
+  /** For polygons/routes: array of [lng, lat] coords */
   path?: Array<{ lat: number; lng: number }>;
   position?: { lat: number; lng: number };
   text?: string;
@@ -59,10 +64,10 @@ function lineCoordsToGeoJson(coords: Array<{ lat: number; lng: number }>) {
 
 interface UseEventPlanningOptions {
   map: mapboxgl.Map | null;
-  infoWindow: mapboxgl.Popup | null;
+  popup: mapboxgl.Popup | null;
 }
 
-export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
+export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
   const [plans, setPlans] = useState<EventPlan[]>(() => {
     try {
       const saved = localStorage.getItem(LS_KEY);
@@ -75,26 +80,28 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [planVisible, setPlanVisible] = useState(true);
 
-  const clickListenerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
-  const mapClickListenerRef = useRef<mapboxgl.Map | null>(null);
-  const drawPointsRef = useRef<Array<{ lat: number; lng: number }>>([]);
-  const drawLineSourceRef = useRef<string | null>(null);
-  const drawLineLayerRef = useRef<string | null>(null);
-  // Track all overlay IDs for cleanup
-  const overlaySourceIds = useRef<Set<string>>(new Set());
-  const overlayLayerIds = useRef<Set<string>>(new Set());
-  const overlayMarkers = useRef<mapboxgl.Marker[]>([]);
+  // Map overlay tracking
+  const overlayMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const overlaySourceIdsRef = useRef<string[]>([]);
+  const drawPointsRef = useRef<[number, number][]>([]);
+  const drawSourceIdRef = useRef<string | null>(null);
+  const drawLayerIdRef = useRef<string | null>(null);
 
+  // Refs to break stale closure in listeners
   const addItemToPlanRef = useRef<(item: PlanItem) => void>(() => {});
   const finishDrawingRef = useRef<() => void>(() => {});
   const cancelDrawingRef = useRef<() => void>(() => {});
+  const clickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
+  const dblClickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
 
   const activePlan = plans.find((p) => p.id === activePlanId) ?? null;
 
+  // ── Persist plans to localStorage ──────────────────────────
   useEffect(() => {
     try { localStorage.setItem(LS_KEY, JSON.stringify(plans)); } catch { /* ignore */ }
   }, [plans]);
 
+  // ── Create a new plan ──────────────────────────────────────
   const createPlan = useCallback((name: string, description?: string) => {
     const plan: EventPlan = {
       id: `plan_${Date.now()}`,
@@ -120,58 +127,21 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
     ));
   }, []);
 
-  const addLayer = useCallback((sourceId: string, layerId: string, layerConfig: mapboxgl.AnyLayer) => {
-    if (!map) return;
-    if (!map.getSource(sourceId) && (layerConfig as any).source === sourceId) {
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-    }
-    if (!map.getLayer(layerId)) {
-      map.addLayer(layerConfig);
-    }
-    overlaySourceIds.current.add(sourceId);
-    overlayLayerIds.current.add(layerId);
-  }, [map]);
-
-  const removeAllOverlays = useCallback(() => {
-    if (!map) return;
-    for (const layerId of overlayLayerIds.current) {
-      try { if (map.getLayer(layerId)) map.removeLayer(layerId); } catch { /* ignore */ }
-    }
-    for (const sourceId of overlaySourceIds.current) {
-      try { if (map.getSource(sourceId)) map.removeSource(sourceId); } catch { /* ignore */ }
-    }
-    overlayLayerIds.current.clear();
-    overlaySourceIds.current.clear();
-    for (const m of overlayMarkers.current) m.remove();
-    overlayMarkers.current = [];
-  }, [map]);
-
+  // ── Cleanup drawing preview layers ────────────────────────
   const stopDrawingListeners = useCallback(() => {
-    if (mapClickListenerRef.current && clickListenerRef.current) {
-      mapClickListenerRef.current.off('click', clickListenerRef.current);
+    if (!map) return;
+    if (drawLayerIdRef.current) {
+      try { map.removeLayer(drawLayerIdRef.current); } catch {}
+      drawLayerIdRef.current = null;
     }
-    mapClickListenerRef.current = null;
-    clickListenerRef.current = null;
-    if (drawLineLayerRef.current && map) {
-      try {
-        if (map.getLayer(drawLineLayerRef.current)) map.removeLayer(drawLineLayerRef.current);
-      } catch { /* ignore */ }
-      overlayLayerIds.current.delete(drawLineLayerRef.current);
-      drawLineLayerRef.current = null;
-    }
-    if (drawLineSourceRef.current && map) {
-      try {
-        if (map.getSource(drawLineSourceRef.current)) map.removeSource(drawLineSourceRef.current);
-      } catch { /* ignore */ }
-      overlaySourceIds.current.delete(drawLineSourceRef.current);
-      drawLineSourceRef.current = null;
+    if (drawSourceIdRef.current) {
+      try { map.removeSource(drawSourceIdRef.current); } catch {}
+      drawSourceIdRef.current = null;
     }
     drawPointsRef.current = [];
   }, [map]);
 
+  // ── Start drawing mode ─────────────────────────────────────
   const startDrawing = useCallback((type: PlanItemType) => {
     if (!map || !activePlanId) return;
     cancelDrawingRef.current();
@@ -179,9 +149,9 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
 
     if (type === 'staging' || type === 'annotation') {
       setIsDrawing(true);
-      const handler = (e: mapboxgl.MapMouseEvent) => {
-        const position = { lat: e.lngLat.lat, lng: e.lngLat.lng };
-
+      const onMapClick = (e: mapboxgl.MapMouseEvent) => {
+        const lngLat = e.lngLat;
+        const position = { lat: lngLat.lat, lng: lngLat.lng };
         const label = type === 'staging' ? 'Staging Area' : 'Note';
         const text = type === 'annotation' ? prompt('Enter annotation text:') || 'Note' : undefined;
 
@@ -199,67 +169,68 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
         stopDrawingListeners();
         setDrawMode(null);
         setIsDrawing(false);
+        map.off('click', onMapClick);
       };
-      mapClickListenerRef.current = map;
-      clickListenerRef.current = handler;
-      map.on('click', handler);
+      clickHandlerRef.current = onMapClick;
+      dblClickHandlerRef.current = null;
+      map.on('click', onMapClick);
+      drawLayerIdRef.current = onMapClick as any;
     } else {
       setIsDrawing(true);
       drawPointsRef.current = [];
 
-      const previewSourceId = `draw-preview-source-${Date.now()}`;
-      const previewLayerId = `draw-preview-line-${Date.now()}`;
+      const sourceId = `draw-preview-${Date.now()}`;
+      const layerId = sourceId;
+      drawSourceIdRef.current = sourceId;
+      drawLayerIdRef.current = layerId;
 
-      map.addSource(previewSourceId, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-      overlaySourceIds.current.add(previewSourceId);
-      drawLineSourceRef.current = previewSourceId;
+      const onMapClick = (e: mapboxgl.MapMouseEvent) => {
+        drawPointsRef.current.push([e.lngLat.lng, e.lngLat.lat]);
 
-      map.addLayer({
-        id: previewLayerId,
-        type: 'line',
-        source: previewSourceId,
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round',
-        },
-        paint: {
-          'line-color': PLAN_COLORS[type],
-          'line-width': 2,
-          'line-opacity': 0.8,
-        },
-      });
-      overlayLayerIds.current.add(previewLayerId);
-      drawLineLayerRef.current = previewLayerId;
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: drawPointsRef.current } },
+        });
 
-      const handler = (e: mapboxgl.MapMouseEvent) => {
-        drawPointsRef.current.push({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-        const source = map.getSource(previewSourceId) as mapboxgl.GeoJSONSource;
-        if (source) {
-          source.setData({
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: drawPointsRef.current.map((p) => [p.lng, p.lat]),
-            },
-            properties: {},
+        if (hasLayer(map, layerId)) {
+          getSourceSafe<any>(map, sourceId)?.setData?.(
+            { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: drawPointsRef.current } }
+          );
+        } else {
+          const isPerimeter = type === 'perimeter';
+          map.addLayer({
+            id: layerId,
+            type: isPerimeter ? 'fill' : 'line',
+            source: sourceId,
+            ...(isPerimeter ? {
+              paint: {
+                'fill-color': PLAN_COLORS[type],
+                'fill-opacity': 0.12,
+              },
+            } : {
+              paint: {
+                'line-color': PLAN_COLORS[type],
+                'line-width': 2,
+                'line-opacity': 0.8,
+              },
+            }),
           });
         }
       };
 
-      const dblHandler = () => {
+      const onMapDblClick = () => {
         finishDrawingRef.current();
       };
 
-      mapClickListenerRef.current = map;
-      clickListenerRef.current = handler;
-      map.on('click', handler);
-      map.on('dblclick', dblHandler);
+      clickHandlerRef.current = onMapClick;
+      dblClickHandlerRef.current = onMapDblClick;
+
+      map.on('click', onMapClick);
+      map.on('dblclick', onMapDblClick);
     }
   }, [map, activePlanId, stopDrawingListeners]);
 
+  // ── Finish multi-point drawing ─────────────────────────────
   const finishDrawing = useCallback(() => {
     if (!drawMode || !activePlanId) return;
     const points = drawPointsRef.current;
@@ -268,7 +239,7 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
       return;
     }
 
-    const path = points.map((p) => ({ lat: p.lat, lng: p.lng }));
+    const path = points.map(([lng, lat]) => ({ lat, lng }));
 
     const defaultLabel = drawMode === 'perimeter' ? 'Perimeter' : 'Route';
     const item: PlanItem = {
@@ -281,17 +252,31 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
     };
 
     addItemToPlanRef.current(item);
+    if (map) {
+      if (clickHandlerRef.current) map.off('click', clickHandlerRef.current);
+      if (dblClickHandlerRef.current) map.off('dblclick', dblClickHandlerRef.current);
+      clickHandlerRef.current = null;
+      dblClickHandlerRef.current = null;
+    }
     stopDrawingListeners();
     setDrawMode(null);
     setIsDrawing(false);
-  }, [drawMode, activePlanId, stopDrawingListeners]);
+  }, [drawMode, activePlanId, map, stopDrawingListeners]);
 
+  // ── Cancel current drawing ─────────────────────────────────
   const cancelDrawing = useCallback(() => {
+    if (map) {
+      if (clickHandlerRef.current) map.off('click', clickHandlerRef.current);
+      if (dblClickHandlerRef.current) map.off('dblclick', dblClickHandlerRef.current);
+      clickHandlerRef.current = null;
+      dblClickHandlerRef.current = null;
+    }
     stopDrawingListeners();
     setDrawMode(null);
     setIsDrawing(false);
-  }, [stopDrawingListeners]);
+  }, [map, stopDrawingListeners]);
 
+  // ── Add item to active plan ────────────────────────────────
   const addItemToPlan = useCallback((item: PlanItem) => {
     setPlans((prev) => prev.map((p) =>
       p.id === activePlanId
@@ -300,6 +285,7 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
     ));
   }, [activePlanId]);
 
+  // Keep refs in sync so map listeners always call the latest version
   addItemToPlanRef.current = addItemToPlan;
   finishDrawingRef.current = finishDrawing;
   cancelDrawingRef.current = cancelDrawing;
@@ -320,132 +306,129 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
     ));
   }, [activePlanId]);
 
+  // ── Render plan overlays on map ────────────────────────────
   useEffect(() => {
-    removeAllOverlays();
+    // Clear existing overlays
+    for (const m of overlayMarkersRef.current) m.remove();
+    overlayMarkersRef.current = [];
+    for (const id of overlaySourceIdsRef.current) {
+      try {
+        if (map) {
+          safeRemoveLayer(map, id);
+          safeRemoveSource(map, id);
+        }
+      } catch {}
+    }
+    overlaySourceIdsRef.current = [];
+
     if (!map || !activePlan || !planVisible) return;
 
+    // Guard on STYLE readiness — addSource/addLayer throw "Style is not done
+    // loading" if this render effect fires before the basemap style finishes.
+    whenStyleReady(map, () => {
+    let idx = 0;
     for (const item of activePlan.items) {
       if (item.type === 'perimeter' && item.path && item.path.length >= 3) {
-        const sourceId = `ev-plan-perim-${item.id}`;
-        const layerId = `ev-plan-perim-layer-${item.id}`;
-        const outlineLayerId = `ev-plan-perim-outline-${item.id}`;
-
-        if (!map.getSource(sourceId)) {
-          map.addSource(sourceId, {
-            type: 'geojson',
-            data: polygonCoordsToGeoJson(item.path),
-          });
-        }
-        overlaySourceIds.current.add(sourceId);
-
-        if (!map.getLayer(layerId)) {
-          map.addLayer({
-            id: layerId,
-            type: 'fill',
-            source: sourceId,
-            paint: {
-              'fill-color': item.color,
-              'fill-opacity': 0.12,
-            },
-          });
-        }
-        overlayLayerIds.current.add(layerId);
-
-        if (!map.getLayer(outlineLayerId)) {
-          map.addLayer({
-            id: outlineLayerId,
-            type: 'line',
-            source: sourceId,
-            paint: {
-              'line-color': item.color,
-              'line-opacity': 0.8,
-              'line-width': 2,
-            },
-          });
-        }
-        overlayLayerIds.current.add(outlineLayerId);
-
-        map.on('click', layerId, (e) => {
-          if (infoWindow && e.lngLat) {
-            infoWindow.setLngLat(e.lngLat).setHTML(makeInfoHtml(item)).addTo(map);
-          }
+        const coords = item.path.map(p => [p.lng, p.lat] as [number, number]);
+        coords.push([item.path[0].lng, item.path[0].lat]); // close polygon
+        const sourceId = `plan-perimeter-${idx++}`;
+        overlaySourceIdsRef.current.push(sourceId);
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [coords] } },
         });
-        map.on('click', outlineLayerId, (e) => {
-          if (infoWindow && e.lngLat) {
-            infoWindow.setLngLat(e.lngLat).setHTML(makeInfoHtml(item)).addTo(map);
-          }
+        map.addLayer({
+          id: sourceId,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': item.color,
+            'fill-opacity': 0.12,
+          },
+        });
+        // Outline
+        const outlineId = `${sourceId}-outline`;
+        overlaySourceIdsRef.current.push(outlineId);
+        map.addLayer({
+          id: outlineId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': item.color,
+            'line-width': 2,
+            'line-opacity': 0.8,
+          },
         });
       }
 
       if (item.type === 'route' && item.path && item.path.length >= 2) {
-        const sourceId = `ev-plan-route-${item.id}`;
-        const layerId = `ev-plan-route-layer-${item.id}`;
-
-        if (!map.getSource(sourceId)) {
-          map.addSource(sourceId, {
-            type: 'geojson',
-            data: lineCoordsToGeoJson(item.path),
-          });
-        }
-        overlaySourceIds.current.add(sourceId);
-
-        if (!map.getLayer(layerId)) {
-          map.addLayer({
-            id: layerId,
-            type: 'line',
-            source: sourceId,
-            paint: {
-              'line-color': item.color,
-              'line-opacity': 0.9,
-              'line-width': 3,
-            },
-          });
-        }
-        overlayLayerIds.current.add(layerId);
-
-        map.on('click', layerId, (e) => {
-          if (infoWindow && e.lngLat) {
-            infoWindow.setLngLat(e.lngLat).setHTML(makeInfoHtml(item)).addTo(map);
-          }
+        const coords = item.path.map(p => [p.lng, p.lat] as [number, number]);
+        const sourceId = `plan-route-${idx++}`;
+        overlaySourceIdsRef.current.push(sourceId);
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
+        });
+        map.addLayer({
+          id: sourceId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': item.color,
+            'line-width': 3,
+            'line-opacity': 0.9,
+          },
         });
       }
 
       if ((item.type === 'staging' || item.type === 'annotation') && item.position) {
-        const markerColor = item.color;
-        let marker: mapboxgl.Marker;
+        const el = document.createElement('div');
+        el.style.cssText = `width:16px;height:16px;text-align:center;line-height:16px;font-size:14px;`;
+        el.textContent = item.type === 'staging' ? '◆' : '●';
+        el.style.color = item.color;
 
-        if (item.type === 'annotation') {
-          const el = document.createElement('div');
-          el.style.cssText = `color:#fff;font-size:10px;font-weight:bold;font-family:'Courier New',monospace;background:${markerColor};padding:2px 4px;border-radius:2px;border:1px solid #fff;white-space:nowrap;`;
-          el.textContent = item.text || item.label;
-          marker = new mapboxgl.Marker({ element: el })
-            .setLngLat([item.position.lng, item.position.lat])
-            .addTo(map);
-        } else {
-          const el = document.createElement('div');
-          el.style.cssText = `width:16px;height:16px;background:${markerColor};border:2px solid #fff;border-radius:0;transform:rotate(45deg);cursor:pointer;`;
-          marker = new mapboxgl.Marker({ element: el })
-            .setLngLat([item.position.lng, item.position.lat])
-            .addTo(map);
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([item.position.lng, item.position.lat])
+          .addTo(map);
+
+        if (item.type === 'annotation' && (item.text || item.label)) {
+          const labelDiv = document.createElement('div');
+          labelDiv.style.cssText = 'color:#fff;font-size:10px;font-weight:bold;text-shadow:0 0 4px #000;white-space:nowrap;';
+          labelDiv.textContent = item.text || item.label;
+          elementAppendToMarker(marker, labelDiv);
         }
 
         marker.getElement().addEventListener('click', () => {
-          if (infoWindow && item.position) {
-            infoWindow.setLngLat([item.position.lng, item.position.lat]).setHTML(makeInfoHtml(item)).addTo(map!);
+          if (popup) {
+            popup.setLngLat([item.position!.lng, item.position!.lat])
+              .setHTML(makeInfoHtml(item))
+              .addTo(map);
           }
         });
 
-        overlayMarkers.current.push(marker);
+        overlayMarkersRef.current.push(marker);
       }
     }
-  }, [map, activePlan, planVisible, infoWindow, removeAllOverlays]);
+    });
+  }, [map, activePlan, planVisible, popup]);
 
+  // ── Cleanup on unmount ─────────────────────────────────────
   useEffect(() => {
     return () => {
       stopDrawingListeners();
-      removeAllOverlays();
+      for (const m of overlayMarkersRef.current) m.remove();
+      overlayMarkersRef.current = [];
+      for (const id of overlaySourceIdsRef.current) {
+        try {
+          if (map) {
+            safeRemoveLayer(map, id);
+            safeRemoveSource(map, id);
+          }
+        } catch {}
+      }
+      overlaySourceIdsRef.current = [];
     };
-  }, [stopDrawingListeners, removeAllOverlays]);
+  }, [map, stopDrawingListeners]);
 
   return {
     plans,
@@ -484,4 +467,13 @@ function makeInfoHtml(item: PlanItem): string {
   }
   html += `</div>`;
   return html;
+}
+
+function elementAppendToMarker(marker: mapboxgl.Marker, childEl: HTMLElement): void {
+  const markerEl = marker.getElement();
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
+  while (markerEl.firstChild) wrapper.appendChild(markerEl.firstChild);
+  wrapper.appendChild(childEl);
+  markerEl.appendChild(wrapper);
 }

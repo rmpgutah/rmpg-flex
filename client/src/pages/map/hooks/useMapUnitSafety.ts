@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface UnitExposureData {
   call_sign: string; lat: number; lng: number;
@@ -43,13 +44,6 @@ const SHIFT_FATIGUE_HOURS = 10;
 const DEG_TO_RAD = Math.PI / 180;
 const EARTH_RADIUS_MI = 3958.8;
 
-const GAP_SOURCE = 'unit-safety-gap-source';
-const GAP_LAYER = 'unit-safety-gap-layer';
-const LONE_SOURCE = 'unit-safety-lone-source';
-const LONE_LAYER = 'unit-safety-lone-layer';
-const CLUSTER_SOURCE = 'unit-safety-cluster-source';
-const CLUSTER_LAYER = 'unit-safety-cluster-layer';
-
 function haversineMi(lat1: number, lng1: number, lat2: number, lng2: number): number {
   if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return Infinity;
   const dLat = (lat2 - lat1) * DEG_TO_RAD;
@@ -58,27 +52,11 @@ function haversineMi(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return EARTH_RADIUS_MI * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function circleToPolygon(center: [number, number], radiusM: number, segments = 32): [number, number][] {
-  const coords: [number, number][] = [];
-  const metersPerDegLat = 111320;
-  const metersPerDegLng = 111320 * Math.cos(center[1] * Math.PI / 180);
-  const dLat = radiusM / metersPerDegLat;
-  const dLng = radiusM / metersPerDegLng;
-  for (let i = 0; i <= segments; i++) {
-    const angle = (i / segments) * 2 * Math.PI;
-    coords.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
-  }
-  return coords;
-}
-
-function removeSourceAndLayer(map: mapboxgl.Map, layerId: string, sourceId: string) {
-  try {
-    if (map.getLayer(layerId)) map.removeLayer(layerId);
-    if (map.getSource(sourceId)) map.removeSource(sourceId);
-  } catch { /* ignore */ }
-}
-
-export function useMapUnitSafety(map: mapboxgl.Map | null, enabled: boolean, units?: any[]): UseMapUnitSafetyReturn {
+export function useMapUnitSafety(
+  map: mapboxgl.Map | null,
+  enabled: boolean,
+  units?: any[],
+): UseMapUnitSafetyReturn {
   const [unitExposure, setUnitExposure] = useState<Map<string, UnitExposureData>>(new Map());
   const [coverageGaps, setCoverageGaps] = useState<CoverageGap[]>([]);
   const [coveragePercent, setCoveragePercent] = useState(100);
@@ -90,14 +68,20 @@ export function useMapUnitSafety(map: mapboxgl.Map | null, enabled: boolean, uni
   const [backupCounts, setBackupCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
+
   const posHistoryRef = useRef<Map<string, { lat: number; lng: number; since: number }>>(new Map());
 
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const loneSourceId = 'safety-lone-officers';
+  const clusterSourceId = 'safety-unit-clusters';
+  const gapSourceId = 'safety-coverage-gaps';
+
   const clearOverlays = useCallback(() => {
-    if (map) {
-      removeSourceAndLayer(map, GAP_LAYER, GAP_SOURCE);
-      removeSourceAndLayer(map, LONE_LAYER, LONE_SOURCE);
-      removeSourceAndLayer(map, CLUSTER_LAYER, CLUSTER_SOURCE);
-    }
+    if (!map) return;
+    [loneSourceId, clusterSourceId, gapSourceId].forEach(id => {
+      if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(id)) map.removeSource(id);
+    });
   }, [map]);
 
   const computeSafetyMetrics = useCallback((exposureMap: Map<string, UnitExposureData>) => {
@@ -106,15 +90,15 @@ export function useMapUnitSafety(map: mapboxgl.Map | null, enabled: boolean, uni
 
     const lone: string[] = [];
     entries.forEach((u) => {
-      const nearby = entries.filter((o) => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) < LONE_OFFICER_RADIUS_MI);
+      const nearby = entries.filter(o => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) < LONE_OFFICER_RADIUS_MI);
       if (nearby.length === 0) lone.push(u.call_sign);
     });
     setLoneOfficers(lone);
 
-    const warnings = entries.filter((u) => u.high_risk_minutes > EXPOSURE_THRESHOLD_MIN).map((u) => ({ callSign: u.call_sign, minutes: u.high_risk_minutes }));
+    const warnings = entries.filter(u => u.high_risk_minutes > EXPOSURE_THRESHOLD_MIN).map(u => ({ callSign: u.call_sign, minutes: u.high_risk_minutes }));
     setExposureWarnings(warnings);
 
-    const speedFlags = entries.filter((u) => u.speed_mph > SPEED_ANOMALY_MPH).map((u) => ({ callSign: u.call_sign, speed: u.speed_mph }));
+    const speedFlags = entries.filter(u => u.speed_mph > SPEED_ANOMALY_MPH).map(u => ({ callSign: u.call_sign, speed: u.speed_mph }));
     setSpeedAnomalies(speedFlags);
 
     const now = Date.now();
@@ -123,15 +107,21 @@ export function useMapUnitSafety(map: mapboxgl.Map | null, enabled: boolean, uni
     entries.forEach((u) => {
       const prev = history.get(u.call_sign);
       if (prev) {
-        if (haversineMi(prev.lat, prev.lng, u.lat, u.lng) > 0.02) history.set(u.call_sign, { lat: u.lat, lng: u.lng, since: now });
-        else if (now - prev.since > STATIONARY_THRESHOLD_MS) stationary.push(u.call_sign);
-      } else history.set(u.call_sign, { lat: u.lat, lng: u.lng, since: now });
+        const moved = haversineMi(prev.lat, prev.lng, u.lat, u.lng) > 0.02;
+        if (moved) {
+          history.set(u.call_sign, { lat: u.lat, lng: u.lng, since: now });
+        } else if (now - prev.since > STATIONARY_THRESHOLD_MS) {
+          stationary.push(u.call_sign);
+        }
+      } else {
+        history.set(u.call_sign, { lat: u.lat, lng: u.lng, since: now });
+      }
     });
     setStationaryUnits(stationary);
 
     const backup = new Map<string, number>();
     entries.forEach((u) => {
-      const count = entries.filter((o) => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) < BACKUP_RADIUS_MI).length;
+      const count = entries.filter(o => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) < BACKUP_RADIUS_MI).length;
       backup.set(u.call_sign, count);
     });
     setBackupCounts(backup);
@@ -140,13 +130,13 @@ export function useMapUnitSafety(map: mapboxgl.Map | null, enabled: boolean, uni
     const visited = new Set<string>();
     entries.forEach((u) => {
       if (visited.has(u.call_sign)) return;
-      const nearby = entries.filter((o) => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) * 1000 < CLUSTER_RADIUS_M);
+      const nearby = entries.filter(o => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) * 1000 < CLUSTER_RADIUS_M);
       if (nearby.length >= 2) {
-        const cUnits = [u.call_sign, ...nearby.map((n) => n.call_sign)];
-        cUnits.forEach((cs) => visited.add(cs));
+        const clusterUnits = [u.call_sign, ...nearby.map(n => n.call_sign)];
+        clusterUnits.forEach(cs => visited.add(cs));
         const avgLat = [u, ...nearby].reduce((s, n) => s + n.lat, 0) / (nearby.length + 1);
         const avgLng = [u, ...nearby].reduce((s, n) => s + n.lng, 0) / (nearby.length + 1);
-        clusters.push({ lat: avgLat, lng: avgLng, units: cUnits });
+        clusters.push({ lat: avgLat, lng: avgLng, units: clusterUnits });
       }
     });
     setUnitClusters(clusters);
@@ -156,50 +146,108 @@ export function useMapUnitSafety(map: mapboxgl.Map | null, enabled: boolean, uni
     if (!map) return;
     clearOverlays();
 
-    // Gap rectangles
-    if (gaps.length > 0) {
-      const gapFeatures: GeoJSON.Feature[] = gaps.map((gap) => ({
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'Polygon', coordinates: [[
-          [gap.lng - gap.width / 2, gap.lat - gap.height / 2],
-          [gap.lng + gap.width / 2, gap.lat - gap.height / 2],
-          [gap.lng + gap.width / 2, gap.lat + gap.height / 2],
-          [gap.lng - gap.width / 2, gap.lat + gap.height / 2],
-          [gap.lng - gap.width / 2, gap.lat - gap.height / 2],
-        ]] },
-      }));
-      map.addSource(GAP_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: gapFeatures } });
-      map.addLayer({ id: GAP_LAYER, type: 'fill', source: GAP_SOURCE, paint: { 'fill-color': '#ef4444', 'fill-opacity': 0.12, 'fill-outline-color': '#ef4444' } });
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
     }
 
-    // Lone officer circles
-    if (lone.length > 0) {
-      const loneFeatures: GeoJSON.Feature[] = [];
-      lone.forEach((cs) => {
-        const unit = exposureMap.get(cs);
-        if (!unit) return;
-        loneFeatures.push({
-          type: 'Feature',
-          properties: {},
-          geometry: { type: 'Polygon', coordinates: [circleToPolygon([unit.lng, unit.lat], 150)] },
+    const loneFeatures: any[] = [];
+    lone.forEach((cs) => {
+      const unit = exposureMap.get(cs);
+      if (!unit) return;
+      loneFeatures.push({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [unit.lng, unit.lat] as [number, number] },
+        properties: { call_sign: cs },
+      });
+    });
+
+    if (loneFeatures.length > 0) {
+      whenStyleReady(map, () => {
+        map.addSource(loneSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: loneFeatures } });
+        map.addLayer({
+          id: loneSourceId,
+          type: 'circle',
+          source: loneSourceId,
+          paint: {
+            'circle-color': '#f59e0b',
+            'circle-radius': 150,
+            'circle-opacity': 0.2,
+            'circle-stroke-color': '#f59e0b',
+            'circle-stroke-width': 2,
+            'circle-stroke-opacity': 0.6,
+          },
+        });
+
+        map.on('click', loneSourceId, (e) => {
+          const feature = e.features?.[0];
+          if (!feature || !feature.properties) return;
+          const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #f59e0b40"><div style="font-weight:bold;font-size:12px;color:#f59e0b;margin-bottom:4px">Lone Officer — ${feature.properties.call_sign}</div><div style="font-size:9px;color:#9ca3af">No backup within ${LONE_OFFICER_RADIUS_MI} mi</div></div>`;
+          if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
         });
       });
-      if (loneFeatures.length > 0) {
-        map.addSource(LONE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: loneFeatures } });
-        map.addLayer({ id: LONE_LAYER, type: 'fill', source: LONE_SOURCE, paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.2, 'fill-outline-color': '#f59e0b' } });
-      }
     }
 
-    // Cluster indicators
-    if (clusters.length > 0) {
-      const clusterFeatures: GeoJSON.Feature[] = clusters.map((cl) => ({
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'Polygon', coordinates: [circleToPolygon([cl.lng, cl.lat], 100)] },
-      }));
-      map.addSource(CLUSTER_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: clusterFeatures } });
-      map.addLayer({ id: CLUSTER_LAYER, type: 'fill', source: CLUSTER_SOURCE, paint: { 'fill-color': '#888888', 'fill-opacity': 0.15, 'fill-outline-color': '#888888' } });
+    const clusterFeatures: any[] = [];
+    clusters.forEach((cl) => {
+      clusterFeatures.push({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [cl.lng, cl.lat] as [number, number] },
+        properties: { units: cl.units.join(', '), count: cl.units.length },
+      });
+    });
+
+    if (clusterFeatures.length > 0) {
+      whenStyleReady(map, () => {
+        map.addSource(clusterSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: clusterFeatures } });
+        map.addLayer({
+          id: clusterSourceId,
+          type: 'circle',
+          source: clusterSourceId,
+          paint: {
+            'circle-color': '#888888',
+            'circle-radius': 100,
+            'circle-opacity': 0.15,
+            'circle-stroke-color': '#888888',
+            'circle-stroke-width': 2,
+            'circle-stroke-opacity': 0.5,
+          },
+        });
+
+        map.on('click', clusterSourceId, (e) => {
+          const feature = e.features?.[0];
+          if (!feature || !feature.properties) return;
+          const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #88888840"><div style="font-weight:bold;font-size:12px;color:#888888;margin-bottom:4px">Unit Cluster</div><div style="font-size:9px;color:#9ca3af">${feature.properties.count} units: ${feature.properties.units}</div></div>`;
+          if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        });
+      });
+    }
+
+    const gapFeatures: any[] = [];
+    gaps.forEach((gap) => {
+      gapFeatures.push({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [gap.lng, gap.lat] as [number, number] },
+        properties: { severity: gap.gap_severity },
+      });
+    });
+
+    if (gapFeatures.length > 0) {
+      whenStyleReady(map, () => {
+        map.addSource(gapSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: gapFeatures } });
+        map.addLayer({
+          id: gapSourceId,
+          type: 'circle',
+          source: gapSourceId,
+          paint: {
+            'circle-color': '#ef4444',
+            'circle-radius': ['case', ['==', ['get', 'severity'], 'high'], 200, ['==', ['get', 'severity'], 'moderate'], 150, 100],
+            'circle-opacity': 0.12,
+            'circle-stroke-color': '#ef4444',
+            'circle-stroke-width': 1,
+            'circle-stroke-opacity': 0.3,
+          },
+        });
+      });
     }
   }, [map, clearOverlays]);
 
@@ -214,46 +262,61 @@ export function useMapUnitSafety(map: mapboxgl.Map | null, enabled: boolean, uni
       for (let i = 0; i < activeUnits.length; i += CONCURRENCY) {
         const batch = activeUnits.slice(i, i + CONCURRENCY);
         const batchResults = await Promise.allSettled(batch.map(async (u: any) => {
-          try { return await apiFetch<UnitExposureData>(`/map/safety/unit-exposure/${encodeURIComponent(u.call_sign)}`); } catch { return null; }
+          const data = await apiFetch<UnitExposureData>(`/map/safety/unit-exposure/${encodeURIComponent(u.call_sign)}`);
+          return data;
         }));
         exposureEntries.push(...batchResults);
       }
 
       const newExposure = new Map<string, UnitExposureData>();
-      exposureEntries.forEach((result) => { if (result.status === 'fulfilled' && result.value) newExposure.set(result.value.call_sign, result.value); });
+      exposureEntries.forEach((result) => {
+        if (result.status === 'fulfilled' && result.value) newExposure.set(result.value.call_sign, result.value);
+      });
       if (mountedRef.current) setUnitExposure(newExposure);
 
       let gaps: CoverageGap[] = [];
       let covPct = 100;
-      if (map) {
-        const center = map.getCenter();
+      const center = map?.getCenter();
+      if (center) {
         try {
           const perimeterData = await apiFetch<PerimeterCheckResult>(`/map/safety/perimeter-check/${center.lat}/${center.lng}`);
-          if (perimeterData) { gaps = perimeterData.gaps || []; covPct = perimeterData.coverage_percent ?? 100; }
-        } catch { /* ignore */ }
+          if (perimeterData) {
+            gaps = perimeterData.gaps || [];
+            covPct = perimeterData.coverage_percent ?? 100;
+          }
+        } catch (err) {
+          console.warn('[useMapUnitSafety] Perimeter check failed:', err);
+        }
       }
+
       try {
         const coverageData = await apiFetch<CoverageGap[]>('/map/safety/coverage-gaps');
         if (coverageData && coverageData.length > 0) gaps = [...gaps, ...coverageData];
-      } catch { /* ignore */ }
-      if (mountedRef.current) { setCoverageGaps(gaps); setCoveragePercent(covPct); }
+      } catch (err) {
+        console.warn('[useMapUnitSafety] Coverage gaps fetch failed:', err);
+      }
+
+      if (mountedRef.current) {
+        setCoverageGaps(gaps);
+        setCoveragePercent(covPct);
+      }
 
       computeSafetyMetrics(newExposure);
 
-      const loneList = Array.from(newExposure.values()).filter((u) => {
-        const others = Array.from(newExposure.values()).filter((o) => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) < LONE_OFFICER_RADIUS_MI);
+      const loneList = Array.from(newExposure.values()).filter(u => {
+        const others = Array.from(newExposure.values()).filter(o => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) < LONE_OFFICER_RADIUS_MI);
         return others.length === 0;
-      }).map((u) => u.call_sign);
+      }).map(u => u.call_sign);
 
       const clusterList: UnitCluster[] = [];
       const visited = new Set<string>();
       const entries = Array.from(newExposure.values());
       entries.forEach((u) => {
         if (visited.has(u.call_sign)) return;
-        const nearby = entries.filter((o) => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) * 1000 < CLUSTER_RADIUS_M);
+        const nearby = entries.filter(o => o.call_sign !== u.call_sign && haversineMi(u.lat, u.lng, o.lat, o.lng) * 1000 < CLUSTER_RADIUS_M);
         if (nearby.length >= 2) {
-          const cUnits = [u.call_sign, ...nearby.map((n) => n.call_sign)];
-          cUnits.forEach((cs) => visited.add(cs));
+          const cUnits = [u.call_sign, ...nearby.map(n => n.call_sign)];
+          cUnits.forEach(cs => visited.add(cs));
           const avgLat = [u, ...nearby].reduce((s, n) => s + n.lat, 0) / (nearby.length + 1);
           const avgLng = [u, ...nearby].reduce((s, n) => s + n.lng, 0) / (nearby.length + 1);
           clusterList.push({ lat: avgLat, lng: avgLng, units: cUnits });
@@ -267,7 +330,10 @@ export function useMapUnitSafety(map: mapboxgl.Map | null, enabled: boolean, uni
   }, [enabled, units, map, computeSafetyMetrics, renderOverlays]);
 
   useEffect(() => {
-    if (!enabled) { clearOverlays(); return; }
+    if (!enabled) {
+      clearOverlays();
+      return;
+    }
     fetchData();
     const timer = setInterval(fetchData, POLL_INTERVAL_MS);
     return () => { clearInterval(timer); clearOverlays(); };
@@ -278,8 +344,11 @@ export function useMapUnitSafety(map: mapboxgl.Map | null, enabled: boolean, uni
     return () => { mountedRef.current = false; clearOverlays(); };
   }, [clearOverlays]);
 
-  return {
-    unitExposure, coverageGaps, coveragePercent, loneOfficers, exposureWarnings,
-    stationaryUnits, speedAnomalies, unitClusters, backupCounts, loading, refresh: fetchData,
-  };
+  useEffect(() => {
+    return () => {
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
+    };
+  }, []);
+
+  return { unitExposure, coverageGaps, coveragePercent, loneOfficers, exposureWarnings, stationaryUnits, speedAnomalies, unitClusters, backupCounts, loading, refresh: fetchData };
 }

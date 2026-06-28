@@ -26,10 +26,15 @@ interface UseMapEnvironmentReturn {
 const SLC_LAT = 40.7608;
 const SLC_LNG = -111.891;
 const REFRESH_INTERVAL = 5 * 60 * 1000;
-const OPEN_METEO_URL = `https://api.open-meteo.com/v1/forecast?latitude=${SLC_LAT}&longitude=${SLC_LNG}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+
+const OPEN_METEO_URL =
+  `https://api.open-meteo.com/v1/forecast?latitude=${SLC_LAT}&longitude=${SLC_LNG}` +
+  `&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m` +
+  `&temperature_unit=fahrenheit&wind_speed_unit=mph`;
 
 const RAIN_CODES = new Set([51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99]);
 const SNOW_CODES = new Set([71, 73, 75, 77, 85, 86]);
+
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
 
@@ -53,7 +58,7 @@ function findNextTransition(now: Date, lat: number, lng: number): { minutes: num
   const STEP_MS = 2 * 60 * 1000;
   const startMs = now.getTime();
   let prevElev = solarElevation(now, lat, lng);
-  for (let ms = startMs + STEP_MS; ms <= startMs + 24 * 60 * 60 * 1000; ms += STEP_MS) {
+  for (let ms = startMs + STEP_MS; ms <= startMs + MAX_MS; ms += STEP_MS) {
     const d = new Date(ms);
     const elev = solarElevation(d, lat, lng);
     if (prevElev <= 0 && elev > 0) return { minutes: Math.round((ms - startMs) / 60000), type: 'sunrise' };
@@ -72,13 +77,18 @@ function isSchoolZoneTime(): boolean {
   const now = new Date();
   const day = now.getDay();
   if (day === 0 || day === 6) return false;
-  const totalMin = now.getHours() * 60 + now.getMinutes();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const totalMin = h * 60 + m;
   return (totalMin >= 450 && totalMin <= 510) || (totalMin >= 870 && totalMin <= 930);
 }
 
 const DEFAULT_WEATHER: WeatherHazards = { freezing: false, highWind: false, rain: false, snow: false, description: '' };
 
-export function useMapEnvironment(_map: mapboxgl.Map | null, enabled: boolean): UseMapEnvironmentReturn {
+export function useMapEnvironment(
+  _map: mapboxgl.Map | null,
+  enabled: boolean,
+): UseMapEnvironmentReturn {
   const [lighting, setLighting] = useState<LightingCondition>('daylight');
   const [sunriseSunset, setSunriseSunset] = useState<SunriseSunset | null>(null);
   const [lowVisibility, setLowVisibility] = useState(false);
@@ -109,7 +119,9 @@ export function useMapEnvironment(_map: mapboxgl.Map | null, enabled: boolean): 
       if (lightData?.condition) {
         setLighting(lightData.condition);
         setLowVisibility(lightData.condition !== 'daylight');
-        if (lightData.sunrise || lightData.sunset) setSunriseSunset((prev) => prev ? { ...prev, sunrise: lightData.sunrise || '', sunset: lightData.sunset || '' } : prev);
+        if (lightData.sunrise || lightData.sunset) {
+          setSunriseSunset((prev) => prev ? { ...prev, sunrise: lightData.sunrise || '', sunset: lightData.sunset || '' } : prev);
+        }
       }
     } catch { /* ignore */ }
 
@@ -135,9 +147,11 @@ export function useMapEnvironment(_map: mapboxgl.Map | null, enabled: boolean): 
         if (highWind) parts.push(`High Wind (${windSpeed}mph)`);
         if (rain) parts.push('Rain');
         if (snow) parts.push('Snow');
+
         setWeatherHazards({ freezing, highWind, rain, snow, description: parts.length > 0 ? parts.join(', ') : 'Clear' });
         setIcyRoad(freezing);
         setWindCondition({ speed: windSpeed, direction: windDir, cardinal: windCardinal(windDir) });
+
         let vis = 10000;
         if (lightCond === 'darkness') vis = 3000;
         if (lightCond === 'twilight') vis = 5000;
@@ -147,7 +161,11 @@ export function useMapEnvironment(_map: mapboxgl.Map | null, enabled: boolean): 
         if (vis < 5000) setLowVisibility(true);
         setVisibilityRange(vis);
       }
-    } catch { /* ignore */ } finally { setLoading(false); }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+    } finally {
+      setLoading(false);
+    }
   }, [enabled]);
 
   useEffect(() => {
@@ -159,10 +177,19 @@ export function useMapEnvironment(_map: mapboxgl.Map | null, enabled: boolean): 
     }
     calculate();
     intervalRef.current = setInterval(calculate, REFRESH_INTERVAL);
-    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } abortRef.current?.abort(); };
+
+    return () => {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      abortRef.current?.abort();
+    };
   }, [enabled, calculate]);
 
-  useEffect(() => { return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } abortRef.current?.abort(); }; }, []);
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const refresh = useCallback(() => { calculate(); }, [calculate]);
 

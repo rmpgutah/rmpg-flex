@@ -18,7 +18,6 @@ import {
 import type { CallInfoData, PropertyDetails } from '../utils/infoWindowBuilder';
 import { useMarkerAnimation } from './useMarkerAnimation';
 
-// ── Constants ─────────────────────────────────────────────
 const MAX_UNIT_MARKERS = 500;
 const MAX_CALL_MARKERS = 500;
 const MAX_PROPERTY_MARKERS = 500;
@@ -45,6 +44,25 @@ interface UseMapMarkersParams {
   };
 }
 
+function createMapboxMarker(
+  map: mapboxgl.Map,
+  lng: number,
+  lat: number,
+  content: HTMLElement,
+  zIndex: number,
+  title: string,
+  onClick?: () => void,
+  anchor: mapboxgl.Anchor = 'bottom',
+): mapboxgl.Marker {
+  const marker = new mapboxgl.Marker({ element: content, anchor })
+    .setLngLat([lng, lat])
+    .addTo(map);
+  if (onClick) {
+    content.addEventListener('click', onClick);
+  }
+  return marker;
+}
+
 export function useMapMarkers({
   mapInstanceRef,
   markersRef,
@@ -63,17 +81,14 @@ export function useMapMarkers({
   const unitMarkerMapRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const { animateMarkerTo, cancelAnimation, cleanupAll: cleanupAnimations } = useMarkerAnimation();
 
-  // Cleanup animations on unmount
   useEffect(() => {
     return () => { cleanupAnimations(); };
   }, [cleanupAnimations]);
 
-  // Helper: remove a marker
-  const removeMarker = useCallback((m: any) => {
-    if (m && typeof m.remove === 'function') m.remove();
+  const removeMarker = useCallback((m: mapboxgl.Marker) => {
+    if (m) m.remove();
   }, []);
 
-  // Update Markers
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
@@ -81,7 +96,6 @@ export function useMapMarkers({
     const prevUnitMarkers = unitMarkerMapRef.current;
     const nextUnitIds = new Set<string>();
 
-    // Remove non-unit markers (incidents, properties)
     markersRef.current.forEach((m) => {
       if (m._rmpgUnitId) return;
       removeMarker(m);
@@ -89,10 +103,8 @@ export function useMapMarkers({
     markersRef.current = [];
     if (infoWindowRef.current) infoWindowRef.current.remove();
 
-    // Coordinate deduplication set
     const seenCoords = new Set<string>();
 
-    // Add / update unit markers with smooth position animation
     if (layers.units) {
       let unitCount = 0;
       units.forEach((unit) => {
@@ -109,9 +121,12 @@ export function useMapMarkers({
 
         if (existingMarker) {
           try {
-            const newContent = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading);
-            existingMarker.getElement().innerHTML = '';
-            existingMarker.getElement().appendChild(newContent);
+            const newContent = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, undefined, unit.on_foot === 1 || unit.on_foot === true);
+            const el = existingMarker.getElement();
+            if (el) {
+              el.innerHTML = '';
+              el.appendChild(newContent);
+            }
 
             animateMarkerTo(unit.call_sign, unit.latitude, unit.longitude, (lat, lng) => {
               existingMarker.setLngLat([lng, lat]);
@@ -124,26 +139,31 @@ export function useMapMarkers({
           }
         } else {
           try {
-            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading);
+            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, undefined, unit.on_foot === 1 || unit.on_foot === true);
 
-            const marker = new mapboxgl.Marker({ element: content, anchor: 'center' })
-              .setLngLat([unit.longitude, unit.latitude])
-              .addTo(map);
+            const marker = createMapboxMarker(
+              map,
+              unit.longitude,
+              unit.latitude,
+              content,
+              1000,
+              `${unit.call_sign} - ${unit.officer_name}`,
+              () => {
+                const assignedCall = unit.current_call_id
+                  ? calls.find(c => String(c.id) === String(unit.current_call_id))
+                  : null;
 
-            marker.getElement().addEventListener('click', () => {
-              const assignedCall = unit.current_call_id
-                ? calls.find(c => String(c.id) === String(unit.current_call_id))
-                : null;
+                if (infoWindowRef.current) infoWindowRef.current.remove();
+                infoWindowRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false })
+                  .setLngLat([unit.longitude!, unit.latitude!])
+                  .setHTML(buildUnitInfoWindow(unit, assignedCall))
+                  .addTo(map);
+              },
+            );
 
-              if (infoWindowRef.current) infoWindowRef.current.remove();
-              const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '360px', offset: 15 })
-                .setLngLat([unit.longitude!, unit.latitude!])
-                .setHTML(buildUnitInfoWindow(unit, assignedCall))
-                .addTo(map);
-              infoWindowRef.current = popup;
-            });
+            if (!marker) return;
 
-            (marker as any).__rmpgUnitId = unit.call_sign;
+            (marker as any)._rmpgUnitId = unit.call_sign;
             unitMarkerMapRef.current.set(unit.call_sign, marker);
             markersRef.current.push(marker);
             unitCount++;
@@ -154,7 +174,6 @@ export function useMapMarkers({
       });
     }
 
-    // Remove unit markers for units no longer present
     prevUnitMarkers.forEach((marker, callSign) => {
       if (!nextUnitIds.has(callSign)) {
         removeMarker(marker);
@@ -163,7 +182,6 @@ export function useMapMarkers({
       }
     });
 
-    // If units layer is off, clear all unit markers
     if (!layers.units) {
       prevUnitMarkers.forEach((marker, callSign) => {
         removeMarker(marker);
@@ -172,7 +190,6 @@ export function useMapMarkers({
       unitMarkerMapRef.current.clear();
     }
 
-    // Add incident markers
     if (layers.incidents) {
       let callCount = 0;
       calls.forEach((call) => {
@@ -183,21 +200,25 @@ export function useMapMarkers({
         try {
           const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number, call.created_at);
 
-          const marker = new mapboxgl.Marker({ element: content, anchor: 'center' })
-            .setLngLat([call.longitude, call.latitude])
-            .addTo(map);
+          const marker = createMapboxMarker(
+            map,
+            call.longitude,
+            call.latitude,
+            content,
+            call.priority === 'P1' ? 2000 : 500,
+            `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
+            () => {
+              const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
 
-          marker.getElement().addEventListener('click', () => {
-            const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
+              if (infoWindowRef.current) infoWindowRef.current.remove();
+              infoWindowRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false })
+                .setLngLat([call.longitude!, call.latitude!])
+                .setHTML(buildCallInfoWindow(call as CallInfoData, assignedUnits))
+                .addTo(map);
+            },
+          );
 
-            if (infoWindowRef.current) infoWindowRef.current.remove();
-            const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '360px', offset: 15 })
-              .setLngLat([call.longitude!, call.latitude!])
-              .setHTML(buildCallInfoWindow(call as CallInfoData, assignedUnits))
-              .addTo(map);
-            infoWindowRef.current = popup;
-          });
-
+          if (!marker) return;
           markersRef.current.push(marker);
           callCount++;
         } catch (err) {
@@ -206,7 +227,6 @@ export function useMapMarkers({
       });
     }
 
-    // Add property markers
     if (layers.properties) {
       let propCount = 0;
       properties.forEach((prop) => {
@@ -217,31 +237,35 @@ export function useMapMarkers({
         try {
           const content = buildPropertyMarkerContent(prop.name, prop.address, prop.client_name || undefined);
 
-          const marker = new mapboxgl.Marker({ element: content, anchor: 'center' })
-            .setLngLat([prop.longitude, prop.latitude])
-            .addTo(map);
+          const marker = createMapboxMarker(
+            map,
+            prop.longitude,
+            prop.latitude,
+            content,
+            100,
+            prop.name,
+            async () => {
+              if (infoWindowRef.current) infoWindowRef.current.remove();
+              infoWindowRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false })
+                .setLngLat([prop.longitude!, prop.latitude!])
+                .setHTML(buildPropertyInfoWindow(prop))
+                .addTo(map);
 
-          marker.getElement().addEventListener('click', async () => {
-            if (infoWindowRef.current) infoWindowRef.current.remove();
-            const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '360px', offset: 15 })
-              .setLngLat([prop.longitude!, prop.latitude!])
-              .setHTML(buildPropertyInfoWindow(prop))
-              .addTo(map);
-            infoWindowRef.current = popup;
-
-            try {
-              const details = await apiFetch<PropertyDetails>(`/records/properties/${prop.id}`);
-              if (infoWindowRef.current && infoWindowRef.current.isOpen()) {
-                infoWindowRef.current.setHTML(buildPropertyInfoWindow(prop, details));
+              try {
+                const details = await apiFetch<PropertyDetails>(`/records/properties/${prop.id}`);
+                if (infoWindowRef.current?.isOpen()) {
+                  infoWindowRef.current.setHTML(buildPropertyInfoWindow(prop, details));
+                }
+              } catch (err) {
+                console.warn('[useMapMarkers] Property details fetch failed:', err);
+                if (infoWindowRef.current?.isOpen()) {
+                  infoWindowRef.current.setHTML(buildPropertyFallbackWindow(prop));
+                }
               }
-            } catch (err) {
-              console.warn('[useMapMarkers] Property details fetch failed:', err);
-              if (infoWindowRef.current && infoWindowRef.current.isOpen()) {
-                infoWindowRef.current.setHTML(buildPropertyFallbackWindow(prop));
-              }
-            }
-          });
+            },
+          );
 
+          if (!marker) return;
           markersRef.current.push(marker);
           propCount++;
         } catch (err) {
@@ -251,7 +275,16 @@ export function useMapMarkers({
     }
   }, [layers, units, calls, properties, mapLoaded, removeMarker, animateMarkerTo, cancelAnimation, mapInstanceRef, markersRef, infoWindowRef]);
 
-  // Route Button Click Handler (delegated from info window HTML)
+  // Stabilize parent callbacks via refs so the document-level click
+  // listeners bind once on mount, not on every MapPage render. The
+  // listener reads showRouteRef.current / onFindClosestRef.current at
+  // dispatch time, so updates to those props still take effect — they
+  // just don't churn add/removeEventListener.
+  const showRouteRef = useRef(showRoute);
+  useEffect(() => { showRouteRef.current = showRoute; }, [showRoute]);
+  const onFindClosestRef = useRef(onFindClosest);
+  useEffect(() => { onFindClosestRef.current = onFindClosest; }, [onFindClosest]);
+
   useEffect(() => {
     function handleRouteClick(e: MouseEvent) {
       const btn = (e.target as HTMLElement).closest('[data-route-unit]') as HTMLElement | null;
@@ -263,30 +296,31 @@ export function useMapMarkers({
       const cLat = parseFloat(btn.getAttribute('data-route-clat') || '');
       const cLng = parseFloat(btn.getAttribute('data-route-clng') || '');
       if (!isNaN(uLat) && !isNaN(uLng) && !isNaN(cLat) && !isNaN(cLng)) {
-        showRoute(unitCallSign, callNumber, uLat, uLng, cLat, cLng);
+        showRouteRef.current(unitCallSign, callNumber, uLat, uLng, cLat, cLng);
         if (infoWindowRef.current) infoWindowRef.current.remove();
       }
     }
     document.addEventListener('click', handleRouteClick);
     return () => document.removeEventListener('click', handleRouteClick);
-  }, [showRoute, infoWindowRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Find Closest Unit Button Click Handler (delegated from info window HTML)
   useEffect(() => {
     function handleFindClosestClick(e: MouseEvent) {
       const btn = (e.target as HTMLElement).closest('[data-find-closest]') as HTMLElement | null;
       if (!btn) return;
       const callId = btn.getAttribute('data-find-closest') || '';
-      if (callId && onFindClosest) {
-        onFindClosest(callId);
+      const cb = onFindClosestRef.current;
+      if (callId && cb) {
+        cb(callId);
         if (infoWindowRef.current) infoWindowRef.current.remove();
       }
     }
     document.addEventListener('click', handleFindClosestClick);
     return () => document.removeEventListener('click', handleFindClosestClick);
-  }, [onFindClosest, infoWindowRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // GPS Self-Position Marker
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
@@ -295,13 +329,21 @@ export function useMapMarkers({
       if (selfMarkerRef.current) {
         selfMarkerRef.current.setLngLat([gps.longitude, gps.latitude]);
         const el = selfMarkerRef.current.getElement();
-        el.innerHTML = '';
-        el.appendChild(buildSelfPositionMarker(gps.accuracy, gps.heading));
+        if (el) {
+          el.innerHTML = '';
+          el.appendChild(buildSelfPositionMarker(gps.accuracy, gps.heading));
+        }
       } else {
-        const content = buildSelfPositionMarker(gps.accuracy, gps.heading);
-        selfMarkerRef.current = new mapboxgl.Marker({ element: content, anchor: 'center' })
-          .setLngLat([gps.longitude, gps.latitude])
-          .addTo(map);
+        selfMarkerRef.current = createMapboxMarker(
+          map,
+          gps.longitude,
+          gps.latitude,
+          buildSelfPositionMarker(gps.accuracy, gps.heading),
+          9999,
+          `Your Position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`,
+          undefined,
+          'center',
+        );
       }
     } else {
       if (selfMarkerRef.current) {
@@ -311,5 +353,5 @@ export function useMapMarkers({
     }
   }, [gps.isTracking, gps.latitude, gps.longitude, gps.accuracy, gps.heading, gps.unitCallSign, mapLoaded, removeMarker, mapInstanceRef]);
 
-  return { createMarker: null as any, removeMarker, animateMarkerTo, cancelAnimation };
+  return { removeMarker, animateMarkerTo, cancelAnimation };
 }

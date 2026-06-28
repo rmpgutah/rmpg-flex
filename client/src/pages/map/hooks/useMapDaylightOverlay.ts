@@ -12,6 +12,7 @@ interface UseMapDaylightOverlayReturn {
 
 const DEFAULT_LAT = 40.76;
 const DEFAULT_LNG = -111.89;
+
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
 
@@ -69,8 +70,14 @@ function findNextEvent(date: Date, lat: number, lng: number, targetElevation: nu
   return null;
 }
 
-export function useMapDaylightOverlay(map: mapboxgl.Map | null, enabled: boolean): UseMapDaylightOverlayReturn {
-  const [state, setState] = useState<UseMapDaylightOverlayReturn>({ phase: 'Day', sunElevation: 0, minutesToSunset: null, minutesToSunrise: null });
+export function useMapDaylightOverlay(
+  map: mapboxgl.Map | null,
+  enabled: boolean,
+): UseMapDaylightOverlayReturn {
+  const [state, setState] = useState<UseMapDaylightOverlayReturn>({
+    phase: 'Day', sunElevation: 0, minutesToSunset: null, minutesToSunrise: null,
+  });
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastDateKeyRef = useRef<string>('');
   const stateRef = useRef(state);
@@ -93,6 +100,7 @@ export function useMapDaylightOverlay(map: mapboxgl.Map | null, enabled: boolean
       const now = new Date();
       const elevation = calcSunElevation(now, lat, lng);
       const phase = getPhase(elevation);
+
       const dateKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${Math.floor(now.getHours() / 2)}`;
 
       let minutesToSunset: number | null;
@@ -111,10 +119,13 @@ export function useMapDaylightOverlay(map: mapboxgl.Map | null, enabled: boolean
 
     calculate();
     intervalRef.current = setInterval(calculate, 60_000);
+
     return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
   }, [map, enabled]);
 
-  useEffect(() => { return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } }; }, []);
+  useEffect(() => {
+    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
+  }, []);
 
   return state;
 }

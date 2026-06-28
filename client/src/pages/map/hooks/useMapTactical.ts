@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { whenStyleReady } from '../utils/safeAddSource';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface LatLng {
   lat: number;
@@ -58,24 +60,6 @@ const VENUE_ZONES: { lat: number; lng: number; radius: number; name: string; pea
   { lat: 40.7713, lng: -111.8542, radius: 500, name: 'University of Utah', peakHours: [9, 10, 11, 12, 13, 14, 15] },
 ];
 
-const COMMAND_RING_SOURCE = 'tactical-command-ring-source';
-const COMMAND_RING_LAYER = 'tactical-command-ring-layer';
-const K9_SOURCE = 'tactical-k9-source';
-const K9_LAYER = 'tactical-k9-layer';
-
-function circleToPolygon(center: [number, number], radiusM: number, segments = 64): [number, number][] {
-  const coords: [number, number][] = [];
-  const metersPerDegLat = 111320;
-  const metersPerDegLng = 111320 * Math.cos(center[1] * Math.PI / 180);
-  const dLat = radiusM / metersPerDegLat;
-  const dLng = radiusM / metersPerDegLng;
-  for (let i = 0; i <= segments; i++) {
-    const angle = (i / segments) * 2 * Math.PI;
-    coords.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
-  }
-  return coords;
-}
-
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -84,299 +68,259 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function useMapTactical(
-  map: mapboxgl.Map | null,
-): UseMapTacticalReturn {
+export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
   const [rallyPoint, setRallyPointState] = useState<RallyPoint | null>(null);
   const [entryPoints, setEntryPoints] = useState<EntryPoint[]>([]);
   const loading = false;
 
-  const rallyMarkerRef = useRef<mapboxgl.Marker | null>(null);
-  const hospitalMarkersRef = useRef<mapboxgl.Marker[]>([]);
-  const fireMarkersRef = useRef<mapboxgl.Marker[]>([]);
-  const entryMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
   const entryCounterRef = useRef(0);
+
+  const rallySourceId = 'tactical-rally';
+  const commandRingsSourceId = 'tactical-command-rings';
+  const k9SourceId = 'tactical-k9';
+  const hospitalSourceId = 'tactical-hospitals';
+  const fireSourceId = 'tactical-fire';
+  const entrySourceId = 'tactical-entry';
+
+  const clearSource = useCallback((id: string) => {
+    if (!map) return;
+    safeRemoveLayer(map, id);
+    safeRemoveSource(map, id);
+  }, [map]);
 
   useEffect(() => {
     return () => {
-      if (rallyMarkerRef.current) rallyMarkerRef.current.remove();
-      hospitalMarkersRef.current.forEach((m) => m.remove());
-      fireMarkersRef.current.forEach((m) => m.remove());
-      entryMarkersRef.current.forEach((m) => m.remove());
-      if (map) {
-        try {
-          if (map.getLayer(COMMAND_RING_LAYER)) map.removeLayer(COMMAND_RING_LAYER);
-          if (map.getSource(COMMAND_RING_SOURCE)) map.removeSource(COMMAND_RING_SOURCE);
-          if (map.getLayer(K9_LAYER)) map.removeLayer(K9_LAYER);
-          if (map.getSource(K9_SOURCE)) map.removeSource(K9_SOURCE);
-        } catch { /* ignore */ }
-      }
+      [rallySourceId, commandRingsSourceId, k9SourceId, hospitalSourceId, fireSourceId, entrySourceId].forEach(id => {
+        safeRemoveLayer(map, id);
+        safeRemoveSource(map, id);
+      });
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
     };
   }, [map]);
 
-  const setRallyPoint = useCallback(
-    (lat: number, lng: number, label: string) => {
-      if (!map) return;
-      if (rallyMarkerRef.current) rallyMarkerRef.current.remove();
+  const setRallyPoint = useCallback((lat: number, lng: number, label: string) => {
+    if (!map) return;
+    clearSource(rallySourceId);
 
-      const el = document.createElement('div');
-      el.style.cssText = `
-        width: 28px; height: 28px;
-        background: #d4a017;
-        border: 3px solid #fbbf24;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #050505;
-        font-size: 16px;
-        font-weight: bold;
-        cursor: pointer;
-      `;
-      el.textContent = '\u2605';
-      el.title = `Rally: ${label}`;
+    if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
 
-      rallyMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([lng, lat])
-        .addTo(map);
-      setRallyPointState({ lat, lng, label });
-    },
-    [map],
-  );
+    whenStyleReady(map, () => {
+      map.addSource(rallySourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { label } }] },
+      });
+      map.addLayer({
+        id: rallySourceId,
+        type: 'circle',
+        source: rallySourceId,
+        paint: { 'circle-color': '#d4a017', 'circle-radius': 14, 'circle-stroke-color': '#fbbf24', 'circle-stroke-width': 3 },
+      });
+
+      map.on('click', rallySourceId, () => {
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #d4a01740"><div style="font-weight:bold;color:#d4a017">Rally Point</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${label}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat([lng, lat]).setHTML(html).addTo(map);
+      });
+    });
+
+    setRallyPointState({ lat, lng, label });
+  }, [map, clearSource]);
 
   const clearRallyPoint = useCallback(() => {
-    if (rallyMarkerRef.current) rallyMarkerRef.current.remove();
-    rallyMarkerRef.current = null;
+    clearSource(rallySourceId);
     setRallyPointState(null);
-  }, []);
+  }, [clearSource]);
 
-  const showCommandRings = useCallback(
-    (lat: number, lng: number) => {
-      if (!map) return;
-      try {
-        if (map.getLayer(COMMAND_RING_LAYER)) map.removeLayer(COMMAND_RING_LAYER);
-        if (map.getSource(COMMAND_RING_SOURCE)) map.removeSource(COMMAND_RING_SOURCE);
-      } catch { /* ignore */ }
+  const showCommandRings = useCallback((lat: number, lng: number) => {
+    if (!map) return;
+    clearSource(commandRingsSourceId);
 
-      const rings = [
-        { radius: 100, color: '#ef4444' },
-        { radius: 300, color: '#f59e0b' },
-        { radius: 500, color: '#888888' },
-      ];
+    const rings = [
+      { radius: 100, color: '#ef4444', label: 'Inner Perimeter' },
+      { radius: 300, color: '#f59e0b', label: 'Outer Perimeter' },
+      { radius: 500, color: '#888888', label: 'Staging Area' },
+    ];
 
-      const features: GeoJSON.Feature[] = rings.map((ring) => ({
-        type: 'Feature',
-        properties: { color: ring.color },
-        geometry: { type: 'Polygon', coordinates: [circleToPolygon([lng, lat], ring.radius)] },
-      }));
+    const features = rings.map(ring => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] },
+      properties: { radius: ring.radius, color: ring.color, label: ring.label, opacity: 0.08, strokeOpacity: 0.7 },
+    }));
 
-      map.addSource(COMMAND_RING_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    whenStyleReady(map, () => {
+      map.addSource(commandRingsSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
       map.addLayer({
-        id: COMMAND_RING_LAYER,
-        type: 'fill',
-        source: COMMAND_RING_SOURCE,
+        id: commandRingsSourceId,
+        type: 'circle',
+        source: commandRingsSourceId,
         paint: {
-          'fill-color': ['get', 'color'],
-          'fill-opacity': 0.08,
-          'fill-outline-color': ['get', 'color'],
+          'circle-color': ['get', 'color'],
+          'circle-radius': ['get', 'radius'],
+          'circle-opacity': ['get', 'opacity'],
+          'circle-stroke-color': ['get', 'color'],
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': ['get', 'strokeOpacity'],
         },
       });
-    },
-    [map],
-  );
+    });
+  }, [map, clearSource]);
 
-  const clearCommandRings = useCallback(() => {
-    if (map) {
-      try {
-        if (map.getLayer(COMMAND_RING_LAYER)) map.removeLayer(COMMAND_RING_LAYER);
-        if (map.getSource(COMMAND_RING_SOURCE)) map.removeSource(COMMAND_RING_SOURCE);
-      } catch { /* ignore */ }
-    }
-  }, [map]);
+  const clearCommandRings = useCallback(() => { clearSource(commandRingsSourceId); }, [clearSource]);
 
-  const showK9Radius = useCallback(
-    (lat: number, lng: number) => {
-      if (!map) return;
-      try {
-        if (map.getLayer(K9_LAYER)) map.removeLayer(K9_LAYER);
-        if (map.getSource(K9_SOURCE)) map.removeSource(K9_SOURCE);
-      } catch { /* ignore */ }
+  const showK9Radius = useCallback((lat: number, lng: number) => {
+    if (!map) return;
+    clearSource(k9SourceId);
 
-      const poly = circleToPolygon([lng, lat], 800);
-      map.addSource(K9_SOURCE, {
+    whenStyleReady(map, () => {
+      map.addSource(k9SourceId, {
         type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: [{
-            type: 'Feature',
-            properties: {},
-            geometry: { type: 'Polygon', coordinates: [poly] },
-          }],
-        },
+        data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: {} }] },
       });
       map.addLayer({
-        id: K9_LAYER,
-        type: 'fill',
-        source: K9_SOURCE,
-        paint: {
-          'fill-color': '#22c55e',
-          'fill-opacity': 0.06,
-          'fill-outline-color': '#22c55e',
-        },
+        id: k9SourceId,
+        type: 'circle',
+        source: k9SourceId,
+        paint: { 'circle-color': '#22c55e', 'circle-radius': 800, 'circle-opacity': 0.06, 'circle-stroke-color': '#22c55e', 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.6 },
       });
-    },
-    [map],
-  );
+    });
+  }, [map, clearSource]);
 
-  const clearK9Radius = useCallback(() => {
-    if (map) {
-      try {
-        if (map.getLayer(K9_LAYER)) map.removeLayer(K9_LAYER);
-        if (map.getSource(K9_SOURCE)) map.removeSource(K9_SOURCE);
-      } catch { /* ignore */ }
-    }
-  }, [map]);
+  const clearK9Radius = useCallback(() => { clearSource(k9SourceId); }, [clearSource]);
 
   const showHospitals = useCallback(() => {
     if (!map) return;
-    if (hospitalMarkersRef.current.length > 0) return;
-    for (const h of HOSPITALS) {
-      const el = document.createElement('div');
-      el.style.cssText = `
-        width: 20px; height: 20px;
-        background: #888888;
-        border: 1px solid #666666;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #ffffff;
-        font-size: 12px;
-        font-weight: bold;
-        cursor: pointer;
-      `;
-      el.textContent = '+';
-      el.title = h.name;
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([h.lng, h.lat])
-        .addTo(map);
-      hospitalMarkersRef.current.push(marker);
-    }
-  }, [map]);
+    clearSource(hospitalSourceId);
+
+    const features = HOSPITALS.map(h => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [h.lng, h.lat] as [number, number] },
+      properties: { name: h.name },
+    }));
+
+    if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
+
+    whenStyleReady(map, () => {
+      map.addSource(hospitalSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: hospitalSourceId,
+        type: 'circle',
+        source: hospitalSourceId,
+        paint: { 'circle-color': '#888888', 'circle-radius': 8, 'circle-stroke-color': '#666666', 'circle-stroke-width': 1 },
+      });
+
+      map.on('click', hospitalSourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #88888840"><div style="font-weight:bold;color:#888888">Hospital</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.name}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
+    });
+  }, [map, clearSource]);
 
   const showFireStations = useCallback(() => {
     if (!map) return;
-    if (fireMarkersRef.current.length > 0) return;
-    for (const fs of FIRE_STATIONS) {
-      const el = document.createElement('div');
-      el.style.cssText = `
-        width: 20px; height: 20px;
-        background: #ef4444;
-        border: 1px solid #b91c1c;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #ffffff;
-        font-size: 11px;
-        cursor: pointer;
-      `;
-      el.textContent = '\uD83D\uDD25';
-      el.title = fs.name;
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([fs.lng, fs.lat])
-        .addTo(map);
-      fireMarkersRef.current.push(marker);
-    }
-  }, [map]);
+    clearSource(fireSourceId);
+
+    const features = FIRE_STATIONS.map(fs => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [fs.lng, fs.lat] as [number, number] },
+      properties: { name: fs.name },
+    }));
+
+    if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
+
+    whenStyleReady(map, () => {
+      map.addSource(fireSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: fireSourceId,
+        type: 'circle',
+        source: fireSourceId,
+        paint: { 'circle-color': '#ef4444', 'circle-radius': 8, 'circle-stroke-color': '#b91c1c', 'circle-stroke-width': 1 },
+      });
+
+      map.on('click', fireSourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #ef444440"><div style="font-weight:bold;color:#ef4444">Fire Station</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.name}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
+    });
+  }, [map, clearSource]);
 
   const hideEmergencyServices = useCallback(() => {
-    hospitalMarkersRef.current.forEach((m) => m.remove());
-    hospitalMarkersRef.current = [];
-    fireMarkersRef.current.forEach((m) => m.remove());
-    fireMarkersRef.current = [];
-  }, []);
+    clearSource(hospitalSourceId);
+    clearSource(fireSourceId);
+  }, [clearSource]);
 
-  const addEntryPoint = useCallback(
-    (lat: number, lng: number, label: string) => {
-      if (!map) return;
-      entryCounterRef.current += 1;
-      const num = entryCounterRef.current;
+  const addEntryPoint = useCallback((lat: number, lng: number, label: string) => {
+    if (!map) return;
 
-      const el = document.createElement('div');
-      el.style.cssText = `
-        width: 24px; height: 24px;
-        background: #8b5cf6;
-        border: 2px solid #a78bfa;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #ffffff;
-        font-size: 11px;
-        font-weight: bold;
-        cursor: pointer;
-      `;
-      el.textContent = String(num);
-      el.title = `Entry ${num}: ${label}`;
+    entryCounterRef.current += 1;
+    const num = entryCounterRef.current;
 
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([lng, lat])
-        .addTo(map);
-      entryMarkersRef.current.push(marker);
-      setEntryPoints((prev) => [...prev, { lat, lng, label, number: num }]);
-    },
-    [map],
-  );
+    const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, entrySourceId);
+    if (source) {
+      const data = source._data as any;
+      const features = data?.features || [];
+      features.push({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] },
+        properties: { label, number: num },
+      });
+      source.setData({ type: 'FeatureCollection', features });
+    } else {
+      whenStyleReady(map, () => {
+        map.addSource(entrySourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { label, number: num } }] },
+        });
+        map.addLayer({
+          id: entrySourceId,
+          type: 'circle',
+          source: entrySourceId,
+          paint: { 'circle-color': '#8b5cf6', 'circle-radius': 12, 'circle-stroke-color': '#a78bfa', 'circle-stroke-width': 2 },
+        });
+      });
+    }
+
+    setEntryPoints(prev => [...prev, { lat, lng, label, number: num }]);
+  }, [map]);
 
   const clearEntryPoints = useCallback(() => {
-    entryMarkersRef.current.forEach((m) => m.remove());
-    entryMarkersRef.current = [];
+    clearSource(entrySourceId);
     entryCounterRef.current = 0;
     setEntryPoints([]);
+  }, [clearSource]);
+
+  const estimateCrowdDensity = useCallback((lat: number, lng: number): CrowdDensity => {
+    const now = new Date();
+    const hour = now.getHours();
+    const dayOfWeek = now.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+    for (const venue of VENUE_ZONES) {
+      const dist = haversineMeters(lat, lng, venue.lat, venue.lng);
+      if (dist <= venue.radius) {
+        const isPeakHour = venue.peakHours.includes(hour);
+        if (isPeakHour || isWeekend) return 'High (200+)';
+        return 'Medium (50-200)';
+      }
+    }
+
+    if (lat >= 40.745 && lat <= 40.775 && lng >= -111.91 && lng <= -111.86) {
+      if (hour >= 7 && hour <= 18) return 'Medium (50-200)';
+      return 'Low (<50)';
+    }
+
+    return 'Low (<50)';
   }, []);
 
-  const estimateCrowdDensity = useCallback(
-    (lat: number, lng: number): CrowdDensity => {
-      const now = new Date();
-      const hour = now.getHours();
-      const dayOfWeek = now.getDay();
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
-      for (const venue of VENUE_ZONES) {
-        const dist = haversineMeters(lat, lng, venue.lat, venue.lng);
-        if (dist <= venue.radius) {
-          const isPeakHour = venue.peakHours.includes(hour);
-          if (isPeakHour || isWeekend) return 'High (200+)';
-          return 'Medium (50-200)';
-        }
-      }
-
-      if (lat >= 40.745 && lat <= 40.775 && lng >= -111.91 && lng <= -111.86) {
-        if (hour >= 7 && hour <= 18) return 'Medium (50-200)';
-        return 'Low (<50)';
-      }
-
-      return 'Low (<50)';
-    },
-    [],
-  );
-
   return {
-    rallyPoint,
-    setRallyPoint,
-    clearRallyPoint,
-    showCommandRings,
-    clearCommandRings,
-    showK9Radius,
-    clearK9Radius,
-    showHospitals,
-    showFireStations,
-    hideEmergencyServices,
-    entryPoints,
-    addEntryPoint,
-    clearEntryPoints,
-    estimateCrowdDensity,
-    loading,
+    rallyPoint, setRallyPoint, clearRallyPoint,
+    showCommandRings, clearCommandRings,
+    showK9Radius, clearK9Radius,
+    showHospitals, showFireStations, hideEmergencyServices,
+    entryPoints, addEntryPoint, clearEntryPoints,
+    estimateCrowdDensity, loading,
   };
 }

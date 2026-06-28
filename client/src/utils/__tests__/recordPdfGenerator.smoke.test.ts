@@ -203,12 +203,18 @@ describe('recordPdfGenerator smoke tests', () => {
     expect(doc).toBeDefined();
   });
 
-  it('embeds EXPIRED text in PDF when expires_at is past', async () => {
+  it('embeds the Arial font (record headers/body use embedded Arial)', async () => {
     const data = { ...minWarrant, expires_at: '2020-01-01' };
     const doc = await generateRecordPdf('warrant', data);
     const pdfBytes = Buffer.from(doc.output('arraybuffer'));
-    // jsPDF encodes text as parenthesized literals like "(EXPIRED) Tj" — search for the substring
-    expect(pdfBytes.includes(Buffer.from('EXPIRED'))).toBe(true);
+    // Record PDFs embed Liberation Sans (Arial-compatible) as a CID/Type0 font
+    // with a ToUnicode CMap. Note: text is now glyph-encoded (Identity-H), so a
+    // naive ASCII byte-search for rendered words like "EXPIRED" no longer
+    // matches — the text is still searchable/copyable in real viewers via the
+    // ToUnicode map. Assert the embedding invariant instead.
+    expect(pdfBytes.includes(Buffer.from('Arial'))).toBe(true);
+    expect(pdfBytes.includes(Buffer.from('Identity-H'))).toBe(true);
+    expect(pdfBytes.includes(Buffer.from('ToUnicode'))).toBe(true);
   });
 
   it('renders ARCHIVED watermark when archived_at set', async () => {
@@ -426,6 +432,45 @@ describe('recordPdfGenerator smoke tests', () => {
       scanActivity: { totalScans: 150, totalFound: 19, totalCleared: 7 },
     });
     expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('mobile printTarget produces a PDF with the same page count but different bytes', async () => {
+    const data: CallPdfData = {
+      call_number: 'C-26-MOBILE',
+      incident_type: 'TRAFFIC',
+      priority: '3',
+      status: 'CLEARED',
+      description: 'mobile print smoke',
+    };
+    const officeDoc = await generateRecordPdf('call', data, { printTarget: 'office' });
+    const mobileDoc = await generateRecordPdf('call', data, { printTarget: 'mobile' });
+    expect(officeDoc.getNumberOfPages()).toBe(mobileDoc.getNumberOfPages());
+    // Bytes differ because top-edge draws shift +6mm under mobile target.
+    const officeBytes = new Uint8Array(officeDoc.output('arraybuffer'));
+    const mobileBytes = new Uint8Array(mobileDoc.output('arraybuffer'));
+    expect(officeBytes.byteLength).toBeGreaterThan(0);
+    expect(mobileBytes.byteLength).toBeGreaterThan(0);
+    let diff = officeBytes.byteLength === mobileBytes.byteLength ? 0 : 1;
+    if (!diff) {
+      for (let i = 0; i < officeBytes.byteLength; i++) {
+        if (officeBytes[i] !== mobileBytes[i]) { diff = 1; break; }
+      }
+    }
+    expect(diff).toBe(1);
+  });
+
+  it('mobile printTarget on BOLO and Warrant Summary completes without throwing', () => {
+    const subjects: BoloSubject[] = [{
+      first_name: 'M', last_name: 'P',
+      warrants: [{ warrant_number: 'W-1', type: 'arrest', charge_description: 'x', offense_level: null, issuing_court: null, bail_amount: null }],
+    }];
+    expect(() => generateBoloPdf(subjects, { printTarget: 'mobile' })).not.toThrow();
+    expect(() => generateWarrantSummaryPdf({
+      period: { from: '2025-01-01', to: '2025-03-31' },
+      byStatus: {}, byType: {}, bySeverity: {}, bySource: {},
+      topCourts: [], newThisPeriod: 0, clearedThisPeriod: 0,
+      scanActivity: { totalScans: 0, totalFound: 0, totalCleared: 0 },
+    }, { printTarget: 'mobile' })).not.toThrow();
   });
 
   it('setActiveOfficerSignature accepts undefined and a signature payload', () => {

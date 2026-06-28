@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import type { OverlayMarker } from '../utils/mapMarkerBuilders';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface Geofence {
   id: number;
@@ -36,15 +39,6 @@ interface UseMapGeofencesReturn {
   alerts: GeofenceAlert[];
 }
 
-const GEOFENCE_POLY_SOURCE = 'geofence-poly-source';
-const GEOFENCE_POLY_LAYER = 'geofence-poly-layer';
-const GEOFENCE_LABEL_SOURCE = 'geofence-label-source';
-const GEOFENCE_LABEL_LAYER = 'geofence-label-layer';
-const DRAW_LINE_SOURCE = 'geofence-draw-line-source';
-const DRAW_LINE_LAYER = 'geofence-draw-line-layer';
-const DRAW_VERTEX_SOURCE = 'geofence-draw-vertex-source';
-const DRAW_VERTEX_LAYER = 'geofence-draw-vertex-layer';
-
 let audioCtxCache: AudioContext | null = null;
 
 function playGeofenceBeep(isEnter: boolean): void {
@@ -58,6 +52,7 @@ function playGeofenceBeep(isEnter: boolean): void {
     const gain = ctx.createGain();
     osc.connect(gain);
     gain.connect(ctx.destination);
+
     osc.type = 'sine';
     osc.frequency.value = isEnter ? 880 : 440;
     gain.gain.value = 0.15;
@@ -103,13 +98,6 @@ function computeCentroid(path: { lat: number; lng: number }[]): { lat: number; l
   return { lat: sum.lat / path.length, lng: sum.lng / path.length };
 }
 
-function removeSourceAndLayer(map: mapboxgl.Map, layerId: string, sourceId: string) {
-  try {
-    if (map.getLayer(layerId)) map.removeLayer(layerId);
-    if (map.getSource(sourceId)) map.removeSource(sourceId);
-  } catch { /* ignore */ }
-}
-
 export function useMapGeofences(
   map: mapboxgl.Map | null,
   enabled: boolean,
@@ -123,9 +111,12 @@ export function useMapGeofences(
   const [drawnVertices, setDrawnVertices] = useState<{ lat: number; lng: number }[]>([]);
   const [alerts, setAlerts] = useState<GeofenceAlert[]>([]);
 
-  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const drawMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const clickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
-  const dblClickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
+  const dblClickHandlerRef = useRef<(() => void) | null>(null);
+  const sourceId = 'geofences';
+  const labelSourceId = 'geofence-labels';
+  const drawSourceId = 'geofence-draw';
 
   useEffect(() => {
     if (!enabled) { setGeofences([]); return; }
@@ -139,8 +130,12 @@ export function useMapGeofences(
 
   useEffect(() => {
     if (!map) return;
-    removeSourceAndLayer(map, GEOFENCE_POLY_LAYER, GEOFENCE_POLY_SOURCE);
-    removeSourceAndLayer(map, GEOFENCE_LABEL_LAYER, GEOFENCE_LABEL_SOURCE);
+
+    if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+    if (map.getLayer(labelSourceId)) map.removeLayer(labelSourceId);
+    if (map.getSource(labelSourceId)) map.removeSource(labelSourceId);
+
     if (!enabled || geofences.length === 0) return;
 
     const ZONE_TYPE_COLORS: Record<string, string> = {
@@ -155,155 +150,186 @@ export function useMapGeofences(
     const alertCounts = new Map<number, number>();
     alerts.forEach((a) => { alertCounts.set(a.geofenceId, (alertCounts.get(a.geofenceId) || 0) + 1); });
 
-    const polyFeatures: GeoJSON.Feature[] = [];
-    const labelFeatures: GeoJSON.Feature[] = [];
+    const polyFeatures: any[] = [];
+    const labelFeatures: any[] = [];
 
     geofences.forEach((fence) => {
       if (!fence.is_active || !fence.polygon_coords) return;
       const path = parsePolygonCoords(fence.polygon_coords);
       if (path.length < 3) return;
+
       const color = ZONE_TYPE_COLORS[fence.zone_type?.toLowerCase()] || fence.color || '#888888';
-      const coords = [...path.map(p => [p.lng, p.lat] as [number, number]), [path[0].lng, path[0].lat]];
+      const coords = path.map(p => [p.lng, p.lat] as [number, number]);
+      coords.push(coords[0]);
+
       polyFeatures.push({
-        type: 'Feature',
-        properties: { color, fenceId: fence.id, name: fence.name, zoneType: fence.zone_type || '', alertOnEnter: fence.alert_on_enter, alertOnExit: fence.alert_on_exit },
-        geometry: { type: 'Polygon', coordinates: [coords] },
+        type: 'Feature' as const,
+        geometry: { type: 'Polygon' as const, coordinates: [coords] },
+        properties: { id: fence.id, name: fence.name, color, zone_type: fence.zone_type, alert_on_enter: fence.alert_on_enter, alert_on_exit: fence.alert_on_exit, alertCount: alertCounts.get(fence.id) || 0 },
       });
 
       const centroid = computeCentroid(path);
-      const alertCount = alertCounts.get(fence.id) || 0;
       labelFeatures.push({
-        type: 'Feature',
-        properties: { name: fence.name, color, alertCount },
-        geometry: { type: 'Point', coordinates: [centroid.lng, centroid.lat] },
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [centroid.lng, centroid.lat] as [number, number] },
+        properties: { name: fence.name, alertCount: alertCounts.get(fence.id) || 0 },
       });
     });
 
     if (polyFeatures.length > 0) {
-      map.addSource(GEOFENCE_POLY_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: polyFeatures } });
+      whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: polyFeatures } });
       map.addLayer({
-        id: GEOFENCE_POLY_LAYER,
+        id: sourceId,
         type: 'fill',
-        source: GEOFENCE_POLY_SOURCE,
+        source: sourceId,
         paint: {
           'fill-color': ['get', 'color'],
           'fill-opacity': 0.1,
           'fill-outline-color': ['get', 'color'],
         },
       });
+      map.addLayer({
+        id: `${sourceId}-outline`,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': 2,
+          'line-opacity': 0.7,
+        },
+      });
 
-      map.on('click', GEOFENCE_POLY_LAYER, (e) => {
-        if (!e.features || e.features.length === 0) return;
-        const props = e.features[0].properties;
-        if (!props) return;
-        const point = e.lngLat;
-        const alertCount = alertCounts.get(props.fenceId) || 0;
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const p = feature.properties;
+        const color = p.color as string;
+        const alertCount = p.alertCount as number;
+
         const html = `
           <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
-            <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${props.color}">${escapeHtml(props.name)}</div>
+            <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">${p.name}</div>
             <table style="width:100%;font-size:11px;border-collapse:collapse">
-              <tr><td style="color:#888888;padding:1px 6px 1px 0">Type</td><td style="color:#e0e0e0">${escapeHtml(props.zoneType || 'Unknown')}</td></tr>
-              <tr><td style="color:#888888;padding:1px 6px 1px 0">Alerts</td><td style="color:${alertCount > 0 ? '#f59e0b' : '#e0e0e0'}">${alertCount}</td></tr>
-              <tr><td style="color:#888888;padding:1px 6px 1px 0">Enter Alerts</td><td style="color:#e0e0e0">${props.alertOnEnter ? 'Yes' : 'No'}</td></tr>
-              <tr><td style="color:#888888;padding:1px 6px 1px 0">Exit Alerts</td><td style="color:#e0e0e0">${props.alertOnExit ? 'Yes' : 'No'}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Type</td><td style="color:#e0e0e0">${p.zone_type || 'Unknown'}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Alerts</td><td style="color:${alertCount > 0 ? '#f59e0b' : 'var(--text-secondary)'}">${alertCount}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Enter Alerts</td><td style="color:#e0e0e0">${p.alert_on_enter ? 'Yes' : 'No'}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Exit Alerts</td><td style="color:#e0e0e0">${p.alert_on_exit ? 'Yes' : 'No'}</td></tr>
             </table>
           </div>
         `;
-        if (popupRef.current) popupRef.current.remove();
-        popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '300px', offset: 15 })
-          .setLngLat(point)
+        const popup = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false })
+          .setLngLat(e.lngLat)
           .setHTML(html)
           .addTo(map);
+      });
       });
     }
 
     if (labelFeatures.length > 0) {
-      map.addSource(GEOFENCE_LABEL_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: labelFeatures } });
+      whenStyleReady(map, () => {
+      map.addSource(labelSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: labelFeatures } });
       map.addLayer({
-        id: GEOFENCE_LABEL_LAYER,
+        id: labelSourceId,
         type: 'symbol',
-        source: GEOFENCE_LABEL_SOURCE,
+        source: labelSourceId,
         layout: {
-          'text-field': ['get', 'name'],
+          'text-field': ['concat', ['get', 'name'], ['case', ['>', ['get', 'alertCount'], 0], ['concat', ' (', ['to-string', ['get', 'alertCount']], ')'], '']],
           'text-size': 10,
-          'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-          'text-offset': [0, -1.5],
+          'text-font': ['Open Sans Regular'],
+          'text-allow-overlap': true,
         },
         paint: {
           'text-color': '#ffffff',
           'text-halo-color': '#000000',
           'text-halo-width': 1,
-          'text-halo-blur': 1,
         },
+      });
       });
     }
 
     return () => {
-      removeSourceAndLayer(map, GEOFENCE_POLY_LAYER, GEOFENCE_POLY_SOURCE);
-      removeSourceAndLayer(map, GEOFENCE_LABEL_LAYER, GEOFENCE_LABEL_SOURCE);
+      if (map.getLayer(`${sourceId}-outline`)) map.removeLayer(`${sourceId}-outline`);
+      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      if (map.getLayer(labelSourceId)) map.removeLayer(labelSourceId);
+      if (map.getSource(labelSourceId)) map.removeSource(labelSourceId);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, enabled, geofences]);
+  }, [map, enabled, geofences, alerts]);
 
-  // Drawing mode
   useEffect(() => {
     if (!map) return;
 
-    if (clickHandlerRef.current) { map.off('click', clickHandlerRef.current); clickHandlerRef.current = null; }
-    if (dblClickHandlerRef.current) { map.off('dblclick', dblClickHandlerRef.current); dblClickHandlerRef.current = null; }
-    removeSourceAndLayer(map, DRAW_LINE_LAYER, DRAW_LINE_SOURCE);
-    removeSourceAndLayer(map, DRAW_VERTEX_LAYER, DRAW_VERTEX_SOURCE);
+    if (clickHandlerRef.current) {
+      map.off('click', clickHandlerRef.current);
+      clickHandlerRef.current = null;
+    }
+    if (dblClickHandlerRef.current) {
+      map.off('dblclick', dblClickHandlerRef.current);
+      dblClickHandlerRef.current = null;
+    }
 
-    if (!drawingMode) return;
+    if (!drawingMode) {
+      map.doubleClickZoom.enable();
+      return;
+    }
+
+    map.doubleClickZoom.disable();
 
     const vertices: { lat: number; lng: number }[] = [];
 
     const onClick = (e: mapboxgl.MapMouseEvent) => {
+      if (!e.lngLat) return;
       const point = { lat: e.lngLat.lat, lng: e.lngLat.lng };
       vertices.push(point);
       setDrawnVertices([...vertices]);
 
-      removeSourceAndLayer(map, DRAW_LINE_LAYER, DRAW_LINE_SOURCE);
-      removeSourceAndLayer(map, DRAW_VERTEX_LAYER, DRAW_VERTEX_SOURCE);
+      const markerEl = document.createElement('div');
+      markerEl.style.cssText = 'width:10px;height:10px;background:#d4a017;border:2px solid #050505;border-radius:50%;';
+      const marker = new mapboxgl.Marker({ element: markerEl }).setLngLat([point.lng, point.lat]).addTo(map);
+      drawMarkersRef.current.push(marker);
 
-      const coords = vertices.map(p => [p.lng, p.lat] as [number, number]);
-      map.addSource(DRAW_LINE_SOURCE, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }] },
-      });
-      map.addLayer({ id: DRAW_LINE_LAYER, type: 'line', source: DRAW_LINE_SOURCE, paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.9 } });
-
-      const vertexFeatures = vertices.map(p => ({
-        type: 'Feature' as const,
-        properties: {},
-        geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
-      }));
-      map.addSource(DRAW_VERTEX_SOURCE, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: vertexFeatures },
-      });
-      map.addLayer({ id: DRAW_VERTEX_LAYER, type: 'circle', source: DRAW_VERTEX_SOURCE, paint: { 'circle-color': '#d4a017', 'circle-radius': 5, 'circle-stroke-color': '#050505', 'circle-stroke-width': 2 } });
+      const coords = vertices.map(v => [v.lng, v.lat] as [number, number]);
+      const lineData = { type: 'Feature' as const, geometry: { type: 'LineString' as const, coordinates: coords }, properties: {} };
+      if (map.getSource(drawSourceId)) {
+        (map.getSource(drawSourceId) as mapboxgl.GeoJSONSource).setData(lineData);
+      } else {
+        whenStyleReady(map, () => {
+          map.addSource(drawSourceId, { type: 'geojson', data: lineData });
+          map.addLayer({ id: `${drawSourceId}-line`, type: 'line', source: drawSourceId, paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.9 } });
+        });
+      }
     };
 
-    const onDblClick = () => setDrawingMode(false);
+    const onDblClick = () => {
+      setDrawingMode(false);
+    };
 
-    clickHandlerRef.current = onClick;
-    dblClickHandlerRef.current = onDblClick;
     map.on('click', onClick);
     map.on('dblclick', onDblClick);
 
+    clickHandlerRef.current = onClick;
+    dblClickHandlerRef.current = onDblClick;
+
     return () => {
-      if (clickHandlerRef.current) { map.off('click', clickHandlerRef.current); clickHandlerRef.current = null; }
-      if (dblClickHandlerRef.current) { map.off('dblclick', dblClickHandlerRef.current); dblClickHandlerRef.current = null; }
-      removeSourceAndLayer(map, DRAW_LINE_LAYER, DRAW_LINE_SOURCE);
-      removeSourceAndLayer(map, DRAW_VERTEX_LAYER, DRAW_VERTEX_SOURCE);
+      if (clickHandlerRef.current) {
+        map.off('click', clickHandlerRef.current);
+        clickHandlerRef.current = null;
+      }
+      if (dblClickHandlerRef.current) {
+        map.off('dblclick', dblClickHandlerRef.current);
+        dblClickHandlerRef.current = null;
+      }
+      map.doubleClickZoom.enable();
     };
   }, [map, drawingMode]);
 
   const clearDrawing = useCallback(() => {
+    drawMarkersRef.current.forEach((m) => m.remove());
+    drawMarkersRef.current = [];
     if (map) {
-      removeSourceAndLayer(map, DRAW_LINE_LAYER, DRAW_LINE_SOURCE);
-      removeSourceAndLayer(map, DRAW_VERTEX_LAYER, DRAW_VERTEX_SOURCE);
+      if (map.getLayer(`${drawSourceId}-line`)) map.removeLayer(`${drawSourceId}-line`);
+      if (map.getSource(drawSourceId)) map.removeSource(drawSourceId);
     }
     setDrawnVertices([]);
     setDrawingMode(false);
@@ -330,14 +356,10 @@ export function useMapGeofences(
 
   useEffect(() => {
     return () => {
-      if (map) {
-        removeSourceAndLayer(map, GEOFENCE_POLY_LAYER, GEOFENCE_POLY_SOURCE);
-        removeSourceAndLayer(map, GEOFENCE_LABEL_LAYER, GEOFENCE_LABEL_SOURCE);
-        removeSourceAndLayer(map, DRAW_LINE_LAYER, DRAW_LINE_SOURCE);
-        removeSourceAndLayer(map, DRAW_VERTEX_LAYER, DRAW_VERTEX_SOURCE);
-      }
-      if (clickHandlerRef.current) map?.off('click', clickHandlerRef.current);
-      if (dblClickHandlerRef.current) map?.off('dblclick', dblClickHandlerRef.current);
+      drawMarkersRef.current.forEach((m) => m.remove());
+      drawMarkersRef.current = [];
+      if (clickHandlerRef.current && map) map.off('click', clickHandlerRef.current);
+      if (dblClickHandlerRef.current && map) map.off('dblclick', dblClickHandlerRef.current);
     };
   }, [map]);
 

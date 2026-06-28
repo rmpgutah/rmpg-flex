@@ -44,8 +44,10 @@ export async function isOrganicMapsInstalled(): Promise<boolean> {
 }
 
 /** OpenStreetMap directions URL — works in any browser, any OS. */
-function googleMapsDirectionsUrl(lat: number, lng: number, label?: string): string {
-  return `https://www.openstreetmap.org/directions?from=&to=${lat}%2C${lng}`;
+function osmDirectionsUrl(lat: number, lng: number, label?: string): string {
+  const dest = `${lat},${lng}`;
+  const q = label ? `&to=${encodeURIComponent(label)}` : '';
+  return `https://www.openstreetmap.org/directions?engine=graphhopper_car&to=${dest}${q}`;
 }
 
 /**
@@ -53,7 +55,7 @@ function googleMapsDirectionsUrl(lat: number, lng: number, label?: string): stri
  * Returns { ok, mode } — mode reports which path was used so callers can log/telemetry.
  *   mode = "turn-by-turn"   → native OM Intent with registered API
  *   mode = "pin-fallback"   → native OM via geo: URI (pre-signup)
- *   mode = "osm-web"        → OpenStreetMap directions URL opened in new tab
+ *   mode = "osm-web"         → OpenStreetMap directions URL opened in new tab
  */
 export async function navigateTo(
   lat: number,
@@ -70,7 +72,7 @@ export async function navigateTo(
     }
   }
   try {
-    const url = googleMapsDirectionsUrl(lat, lng, label);
+    const url = osmDirectionsUrl(lat, lng, label);
     window.open(url, '_blank', 'noopener,noreferrer');
     return { ok: true, mode: 'osm-web' };
   } catch (e: any) {

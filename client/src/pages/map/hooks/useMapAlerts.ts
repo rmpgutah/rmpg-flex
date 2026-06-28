@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export type SafetyAlertType =
   | 'shots_fired' | 'officer_down' | 'pursuit' | 'hazmat' | 'armed_subject'
@@ -58,25 +60,15 @@ const TONE_PATTERNS: Record<string, TonePattern> = {
 
 function getAlertPattern(type: SafetyAlertType): TonePattern {
   switch (type) {
-    case 'officer_down': case 'active_shooter': return TONE_PATTERNS.critical;
-    case 'shots_fired': case 'armed_subject': return TONE_PATTERNS.high;
+    case 'officer_down':
+    case 'active_shooter': return TONE_PATTERNS.critical;
+    case 'shots_fired':
+    case 'armed_subject': return TONE_PATTERNS.high;
     case 'pursuit': return TONE_PATTERNS.siren;
-    case 'hazmat': case 'bomb_threat': return TONE_PATTERNS.warning;
+    case 'hazmat':
+    case 'bomb_threat': return TONE_PATTERNS.warning;
     default: return TONE_PATTERNS.info;
   }
-}
-
-function circleToPolygon(center: [number, number], radiusM: number, segments = 32): [number, number][] {
-  const coords: [number, number][] = [];
-  const metersPerDegLat = 111320;
-  const metersPerDegLng = 111320 * Math.cos(center[1] * Math.PI / 180);
-  const dLat = radiusM / metersPerDegLat;
-  const dLng = radiusM / metersPerDegLng;
-  for (let i = 0; i <= segments; i++) {
-    const angle = (i / segments) * 2 * Math.PI;
-    coords.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
-  }
-  return coords;
 }
 
 export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
@@ -84,26 +76,15 @@ export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
   const [loading, setLoading] = useState(false);
   const { subscribe } = useWebSocket();
 
-  const sourceIdsRef = useRef<Map<string, string>>(new Map());
-  const pulseTimersRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const sourceId = 'safety-alerts';
   const audioCtxRef = useRef<AudioContext | null>(null);
-
-  function removeAlertLayer(alertId: string) {
-    if (!map) return;
-    const layerId = `alert-layer-${alertId}`;
-    const sourceId = `alert-source-${alertId}`;
-    try {
-      if (map.getLayer(layerId)) map.removeLayer(layerId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
-    } catch { /* ignore */ }
-    sourceIdsRef.current.delete(alertId);
-  }
 
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
       setAlerts((prev) => prev.map((a) => {
-        if (!a.expired && now - new Date(a.timestamp).getTime() > ALERT_EXPIRY_MS) return { ...a, expired: true };
+        if (!a.expired && now - parseTimestamp(a.timestamp).getTime() > ALERT_EXPIRY_MS) return { ...a, expired: true };
         return a;
       }));
     }, 30_000);
@@ -112,13 +93,13 @@ export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
 
   useEffect(() => {
     return () => {
-      pulseTimersRef.current.forEach((t) => clearInterval(t));
-      pulseTimersRef.current.clear();
-      sourceIdsRef.current.forEach((_, id) => removeAlertLayer(id));
-      sourceIdsRef.current.clear();
+      if (map) {
+        if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+      }
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
       audioCtxRef.current?.close().catch(() => {});
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
   const playAlertSound = useCallback((type: SafetyAlertType) => {
@@ -131,7 +112,8 @@ export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
       for (let i = 0; i < pattern.frequencies.length; i++) {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
         osc.frequency.value = pattern.frequencies[i];
         osc.type = 'square';
         gain.gain.value = 0.15;
@@ -142,58 +124,78 @@ export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
     } catch (err) { console.warn('[useMapAlerts] Audio playback failed:', err); }
   }, []);
 
-  const renderAlertCircle = useCallback((alert: SafetyAlert) => {
+  const renderAlertCircles = useCallback(() => {
     if (!map) return;
-    if (!Number.isFinite(alert.lat) || !Number.isFinite(alert.lng)) return;
-    removeAlertLayer(alert.id);
-    const existingTimer = pulseTimersRef.current.get(alert.id);
-    if (existingTimer) { clearInterval(existingTimer); pulseTimersRef.current.delete(alert.id); }
 
-    const color = ALERT_SEVERITY_COLORS[alert.type] || '#f59e0b';
-    const poly = circleToPolygon([alert.lng, alert.lat], alert.radius);
-    const sourceId = `alert-source-${alert.id}`;
-    const layerId = `alert-layer-${alert.id}`;
-    sourceIdsRef.current.set(alert.id, sourceId);
+    if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
 
-    map.addSource(sourceId, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [poly] } }] },
+    if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
+
+    const activeAlerts = alerts.filter(a => !a.expired);
+    if (activeAlerts.length === 0) return;
+
+    const features = activeAlerts.map(alert => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [alert.lng, alert.lat] as [number, number] },
+      properties: { id: alert.id, type: alert.type, color: ALERT_SEVERITY_COLORS[alert.type] || '#f59e0b', radius: alert.radius, details: alert.details, acknowledged: alert.acknowledged, timestamp: alert.timestamp },
+    }));
+
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': ['get', 'radius'],
+          'circle-opacity': ['case', ['get', 'acknowledged'], 0.06, 0.12],
+          'circle-stroke-color': ['get', 'color'],
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': ['case', ['get', 'acknowledged'], 0.4, 0.8],
+        },
+      });
+
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const p = feature.properties;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid ${p.color}40"><div style="font-weight:bold;font-size:12px;color:${p.color};margin-bottom:4px">${ALERT_TYPE_LABELS[p.type as SafetyAlertType] || p.type}</div><div style="font-size:9px;color:#9ca3af">${p.details}</div><div style="font-size:8px;color:#545454;margin-top:4px">${parseTimestamp(p.timestamp as string).toLocaleString()}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
     });
-    map.addLayer({ id: layerId, type: 'fill', source: sourceId, paint: { 'fill-color': color, 'fill-opacity': alert.acknowledged ? 0.06 : 0.12, 'fill-outline-color': color } });
-  }, [map]);
+  }, [map, alerts]);
 
-  const removeAlertLayerSafe = useCallback((alertId: string) => {
-    removeAlertLayer(alertId);
-    const timer = pulseTimersRef.current.get(alertId);
-    if (timer) { clearInterval(timer); pulseTimersRef.current.delete(alertId); }
-  }, []);
+  useEffect(() => {
+    renderAlertCircles();
+  }, [map, alerts, renderAlertCircles]);
 
   const handleIncomingAlert = useCallback((data: unknown) => {
-    const alertData = data as any;
+    const alertData = data as { id: string; type: SafetyAlertType; lat: number; lng: number; details: string; radius?: number; timestamp: string };
     if (!alertData.id || !alertData.type || alertData.lat == null || alertData.lng == null) {
       console.warn('[useMapAlerts] Received alert with missing required fields, ignoring');
       return;
     }
+
     const newAlert: SafetyAlert = {
       id: alertData.id, type: alertData.type, lat: alertData.lat, lng: alertData.lng,
       details: alertData.details, radius: (alertData.radius != null && Number.isFinite(alertData.radius) && alertData.radius > 0) ? alertData.radius : 500,
       timestamp: alertData.timestamp, acknowledged: false, expired: false,
     };
-    setAlerts((prev) => prev.some((a) => a.id === newAlert.id) ? prev : [newAlert, ...prev].slice(0, MAX_HISTORY));
-    renderAlertCircle(newAlert);
+
+    setAlerts((prev) => {
+      if (prev.some((a) => a.id === newAlert.id)) return prev;
+      return [newAlert, ...prev].slice(0, MAX_HISTORY);
+    });
+
     playAlertSound(newAlert.type);
-  }, [renderAlertCircle, playAlertSound]);
+  }, [playAlertSound]);
 
   useEffect(() => {
     const unsub = subscribe('safety:broadcast' as any, handleIncomingAlert);
     return unsub;
   }, [subscribe, handleIncomingAlert]);
-
-  useEffect(() => {
-    if (!map) return;
-    alerts.forEach((a) => { if (!a.expired) renderAlertCircle(a); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map]);
 
   const broadcastAlert = useCallback(async (type: SafetyAlertType, lat: number, lng: number, details: string, radius?: number) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
@@ -203,34 +205,20 @@ export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, lat, lng, details, radius: radius || 500 }),
       });
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const acknowledgeAlert = useCallback((alertId: string) => {
-    setAlerts((prev) => prev.map((a) => {
-      if (a.id === alertId && !a.acknowledged) {
-        const timer = pulseTimersRef.current.get(alertId);
-        if (timer) { clearInterval(timer); pulseTimersRef.current.delete(alertId); }
-        const sourceId = sourceIdsRef.current.get(alertId);
-        if (sourceId && map && map.getLayer(`alert-layer-${alertId}`)) {
-          map.setPaintProperty(`alert-layer-${alertId}`, 'fill-opacity', 0.06);
-        }
-        return { ...a, acknowledged: true };
-      }
-      return a;
-    }));
-  }, [map]);
+    setAlerts((prev) => prev.map((a) => a.id === alertId && !a.acknowledged ? { ...a, acknowledged: true } : a));
+  }, []);
 
   const clearAlert = useCallback((alertId: string) => {
-    removeAlertLayerSafe(alertId);
     setAlerts((prev) => prev.filter((a) => a.id !== alertId));
-  }, [removeAlertLayerSafe]);
+  }, []);
 
   const clearAllAlerts = useCallback(() => {
-    sourceIdsRef.current.forEach((_, id) => removeAlertLayer(id));
-    sourceIdsRef.current.clear();
-    pulseTimersRef.current.forEach((t) => clearInterval(t));
-    pulseTimersRef.current.clear();
     setAlerts([]);
   }, []);
 
