@@ -7,7 +7,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { displayTimeZone } from '../../../utils/timeZoneMode';
 
 /** Filter tab type for the dispatch call queue. */
-export type FilterTab = 'all' | 'pending' | 'active' | 'cleared' | 'archived' | 'serve' | 'mine';
+export type FilterTab = 'queue' | 'pending' | 'active' | 'hold' | 'serve' | 'cleared' | 'archived';
 
 /**
  * Format a server timestamp to MM/DD/YYYY @ HH:MM:SS (24-hour) in the active

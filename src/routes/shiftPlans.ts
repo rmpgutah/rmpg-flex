@@ -398,8 +398,8 @@ sp.post('/shift-swaps', async (c) => {
     db,
     `INSERT INTO shift_swap_requests (
        requester_id, requester_name, target_id, target_name, plan_id,
-       shift_date, original_shift, requested_shift, reason, status
-     ) VALUES (?,?,?,?,?, ?,?,?,?,'pending')`,
+       shift_date, original_shift, requested_shift, reason, status, created_at
+     ) VALUES (?,?,?,?,?, ?,?,?,?,'pending', datetime('now','localtime'))`,
     user.id, user.full_name ?? null, body.target_id ?? null, targetName,
     body.plan_id ?? null, body.shift_date, body.original_shift ?? null,
     body.requested_shift ?? null, body.reason ?? null,
@@ -477,7 +477,7 @@ sp.get('/staffing-levels', async (c) => {
   const minimums: Record<string, number> = {
     day: parseInt(c.req.query('min_day') || '2', 10),
     swing: parseInt(c.req.query('min_swing') || '2', 10),
-    grave: parseInt(c.req.query('min_grave') || '1', 10),
+    graveyard: parseInt(c.req.query('min_grave') || '1', 10),
   };
   const plans = await query<any>(getDb(c.env), 'SELECT * FROM shift_plans WHERE date = ? ORDER BY shift_type', targetDate);
   const levels: any[] = [];
@@ -550,6 +550,102 @@ sp.get('/shift-notifications', async (c) => {
   const sevOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
   notifications.sort((a, b) => (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9));
   return c.json({ notifications, total: notifications.length });
+});
+
+// ─────────────────────────────────────────────────────────────
+// Shift Plan Templates
+// ─────────────────────────────────────────────────────────────
+
+// GET /shift-plans/templates — list reusable shift pattern templates
+sp.get('/shift-plans/templates', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<any>(db, 'SELECT * FROM shift_plan_templates ORDER BY name ASC');
+  for (const r of rows) {
+    try { r.pattern = typeof r.pattern_json === 'string' ? JSON.parse(r.pattern_json) : (r.pattern_json || []); }
+    catch { r.pattern = []; }
+  }
+  return c.json({ count: rows.length, data: rows });
+});
+
+// POST /shift-plans/templates — create a new template
+sp.post('/shift-plans/templates', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const user = c.get('user') as { id: number } | undefined;
+  const body = await c.req.json<any>().catch(() => ({}));
+  if (!body.name) return c.json({ error: 'name is required' }, 400);
+  const db = getDb(c.env);
+  const result = await execute(
+    db,
+    `INSERT INTO shift_plan_templates (name, description, shift_type, pattern_json, created_by)
+     VALUES (?, ?, ?, ?, ?)`,
+    body.name, body.description ?? null, body.shift_type ?? 'day',
+    JSON.stringify(body.pattern ?? []), user?.id ?? null,
+  );
+  const created = await queryFirst<any>(db, 'SELECT * FROM shift_plan_templates WHERE id = ?', result.meta.last_row_id);
+  if (created) {
+    try { created.pattern = JSON.parse(created.pattern_json); } catch { created.pattern = []; }
+  }
+  return c.json({ data: created }, 201);
+});
+
+// POST /shift-plans/apply-template/:templateId — apply a template to a date range
+sp.post('/shift-plans/apply-template/:templateId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
+  const templateId = parseInt(c.req.param('templateId'), 10);
+  if (isNaN(templateId)) return c.json({ error: 'Invalid template id' }, 400);
+  const user = c.get('user') as { id: number } | undefined;
+  const body = await c.req.json<{ start_date?: string; end_date?: string; override_name?: string }>().catch(
+    () => ({} as { start_date?: string; end_date?: string; override_name?: string }),
+  );
+  if (!body.start_date || !body.end_date) return c.json({ error: 'start_date and end_date required' }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(body.start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(body.end_date)) {
+    return c.json({ error: 'Dates must be YYYY-MM-DD format' }, 400);
+  }
+  const db = getDb(c.env);
+  const template = await queryFirst<any>(db, 'SELECT * FROM shift_plan_templates WHERE id = ?', templateId);
+  if (!template) return c.json({ error: 'Template not found' }, 404);
+
+  let pattern: any[] = [];
+  try { pattern = typeof template.pattern_json === 'string' ? JSON.parse(template.pattern_json) : (template.pattern_json || []); }
+  catch { pattern = []; }
+
+  const start = new Date(body.start_date);
+  const end = new Date(body.end_date);
+  const created: number[] = [];
+  let dayIdx = 0;
+
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().slice(0, 10);
+    const slot = pattern[dayIdx % pattern.length] || {};
+    const existing = await queryFirst<any>(db, 'SELECT id FROM shift_plans WHERE date = ? AND shift_type = ? AND status = ?', dateStr, template.shift_type, 'draft');
+    if (existing) continue;
+
+    const planName = body.override_name
+      ? `${body.override_name} (${dateStr})`
+      : `${template.name} (${dateStr})`;
+
+    const assignments = slot.assignments || [];
+    const result = await execute(
+      db,
+      `INSERT INTO shift_plans (id, name, date, shift_type, assignments, status, created_by)
+       VALUES (?, ?, ?, ?, ?, 'draft', ?)`,
+      `${template.shift_type}_${dateStr}_${Date.now()}`, planName, dateStr,
+      template.shift_type, JSON.stringify(assignments), user?.id ?? null,
+    );
+    created.push(Number(result.meta.last_row_id));
+    dayIdx++;
+  }
+
+  return c.json({
+    success: true,
+    count: created.length,
+    template_name: template.name,
+    date_range: { start: body.start_date, end: body.end_date },
+  });
 });
 
 export default sp;

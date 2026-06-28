@@ -3,9 +3,10 @@ import { Building2 } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import AddressAutocomplete from './AddressAutocomplete';
-import { formatPhoneInput } from '../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../utils/formatters';
 
 import RichTextArea from './RichTextArea';
+import { composeAddressUnit } from '../utils/addressUnit';
 export interface ClientFormData {
   name: string;
   client_code: string;
@@ -140,6 +141,7 @@ export default function ClientFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<ClientFormData>({
     storageKey: 'rmpg_client_form',
@@ -188,14 +190,26 @@ export default function ClientFormModal({
         snapshot();
       }
     }
-  }, [isOpen, editingClient]);
+    // Depend on the id, not the object ref: a LiveSync list refresh produces a
+    // new editingClient object for the same client, and depending on the ref
+    // would re-run this reset mid-edit, wiping in-progress input + stealing focus
+    // (matches the fix UserFormModal already uses).
+  }, [isOpen, editingClient?.id]);
 
   const set = (field: keyof ClientFormData, value: string | boolean) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
+  const [addressUnit, setAddressUnit] = useState('');
+  const [billingUnit, setBillingUnit] = useState('');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(form);
+    signalSaved();
+    onSubmit({
+      ...form,
+      address: composeAddressUnit(form.address, addressUnit),
+      billing_address: composeAddressUnit(form.billing_address, billingUnit),
+    });
   };
 
   const isEdit = !!editingClient;
@@ -229,7 +243,7 @@ export default function ClientFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -243,10 +257,10 @@ export default function ClientFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Client Name */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
+              <label htmlFor="ff-clientformmodal-0" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
                 Client Name <span className="text-red-400">*</span>
               </label>
-              <input
+              <input id="ff-clientformmodal-0"
                 type="text"
                 className="input-dark text-xs w-full"
                 value={form.name}
@@ -258,10 +272,10 @@ export default function ClientFormModal({
 
             {/* Client Code */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
+              <label htmlFor="ff-clientformmodal-1" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
                 Client Code
               </label>
-              <input
+              <input id="ff-clientformmodal-1"
                 type="text"
                 className="input-dark text-xs w-full"
                 value={form.client_code}
@@ -274,10 +288,10 @@ export default function ClientFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Industry */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
+              <label htmlFor="ff-clientformmodal-2" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
                 Industry
               </label>
-              <select
+              <select id="ff-clientformmodal-2"
                 className="input-dark text-xs w-full"
                 value={form.industry}
                 onChange={(e) => set('industry', e.target.value)}
@@ -290,10 +304,10 @@ export default function ClientFormModal({
 
             {/* Website */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
+              <label htmlFor="ff-clientformmodal-3" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
                 Website
               </label>
-              <input
+              <input id="ff-clientformmodal-3"
                 type="text"
                 className="input-dark text-xs w-full"
                 value={form.website}
@@ -304,7 +318,8 @@ export default function ClientFormModal({
           </div>
 
           {/* Address */}
-          <div>
+          <div className="flex gap-3">
+            <div className="flex-1">
             <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
               Address
             </label>
@@ -315,6 +330,11 @@ export default function ClientFormModal({
               onSelect={(addr) => set('address', addr.formatted || addr.street)}
               placeholder="145 S State St, SLC, UT 84111"
             />
+            </div>
+            <div className="w-28">
+              <label htmlFor="ff-clientformmodal-addrunit" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Ste / Unit</label>
+              <input id="ff-clientformmodal-addrunit" type="text" className="input-dark text-xs w-full" value={addressUnit} onChange={(e) => setAddressUnit(e.target.value)} placeholder="Ste 200" />
+            </div>
           </div>
 
           {/* Notes */}
@@ -341,26 +361,27 @@ export default function ClientFormModal({
           {/* Primary Contact */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Name</label>
-              <input type="text" className="input-dark text-xs w-full" value={form.contact_name} onChange={(e) => set('contact_name', e.target.value)} placeholder="Jennifer Wong" />
+              <label htmlFor="ff-clientformmodal-4" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Name</label>
+              <input id="ff-clientformmodal-4" type="text" className="input-dark text-xs w-full" value={form.contact_name} onChange={(e) => set('contact_name', e.target.value)} placeholder="Jennifer Wong" />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Email</label>
-              <input type="email" className="input-dark text-xs w-full" value={form.contact_email} onChange={(e) => set('contact_email', e.target.value)} placeholder="jwong@gateway.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" />
+              <label htmlFor="ff-clientformmodal-5" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Email</label>
+              <input id="ff-clientformmodal-5" type="email" className="input-dark text-xs w-full" value={form.contact_email} onChange={(e) => set('contact_email', e.target.value)} placeholder="jwong@gateway.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Phone</label>
-              <input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={(e) => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-3001" pattern="[0-9()\-\s+]{7,20}" />
+              <label htmlFor="ff-clientformmodal-6" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Phone</label>
+              <input id="ff-clientformmodal-6" type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={(e) => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-3001" pattern="[0-9\(\)\-\s+]{7,20}" />
             </div>
           </div>
 
           {/* Billing Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Email</label>
-              <input type="email" className="input-dark text-xs w-full" value={form.billing_email} onChange={(e) => set('billing_email', e.target.value)} placeholder="billing@gateway.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" />
+              <label htmlFor="ff-clientformmodal-7" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Email</label>
+              <input id="ff-clientformmodal-7" type="email" className="input-dark text-xs w-full" value={form.billing_email} onChange={(e) => set('billing_email', e.target.value)} placeholder="billing@gateway.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" />
             </div>
-            <div>
+            <div className="flex gap-3">
+              <div className="flex-1">
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Address</label>
               <AddressAutocomplete
                 className="input-dark text-xs w-full"
@@ -369,24 +390,29 @@ export default function ClientFormModal({
                 onSelect={(addr) => set('billing_address', addr.formatted || addr.street)}
                 placeholder="Same as above or different"
               />
+              </div>
+              <div className="w-24">
+                <label htmlFor="ff-clientformmodal-billunit" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Ste / Unit</label>
+                <input id="ff-clientformmodal-billunit" type="text" className="input-dark text-xs w-full" value={billingUnit} onChange={(e) => setBillingUnit(e.target.value)} placeholder="Ste 200" />
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {/* Payment Method */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Payment Method</label>
-              <select className="select-dark text-xs w-full" value={form.payment_method} onChange={(e) => set('payment_method', e.target.value)}>
+              <label htmlFor="ff-clientformmodal-8" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Payment Method</label>
+              <select id="ff-clientformmodal-8" className="select-dark text-xs w-full" value={form.payment_method} onChange={(e) => set('payment_method', e.target.value)}>
                 {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>{m ? m.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '-- Select --'}</option>
+                  <option key={m} value={m}>{m ? toDisplayLabel(m) : '-- Select --'}</option>
                 ))}
               </select>
             </div>
 
             {/* Billing Cycle */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Cycle</label>
-              <select className="select-dark text-xs w-full" value={form.billing_cycle} onChange={(e) => set('billing_cycle', e.target.value)}>
+              <label htmlFor="ff-clientformmodal-9" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Cycle</label>
+              <select id="ff-clientformmodal-9" className="select-dark text-xs w-full" value={form.billing_cycle} onChange={(e) => set('billing_cycle', e.target.value)}>
                 {BILLING_CYCLES.map((c) => (
                   <option key={c} value={c}>{c ? c.charAt(0).toUpperCase() + c.slice(1) : '-- Select --'}</option>
                 ))}
@@ -395,15 +421,15 @@ export default function ClientFormModal({
 
             {/* Billing Day */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Day</label>
-              <input type="number" min="1" max="31" className="input-dark text-xs w-full" value={form.billing_day} onChange={(e) => set('billing_day', e.target.value)} placeholder="e.g. 1" />
+              <label htmlFor="ff-clientformmodal-10" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Day</label>
+              <input id="ff-clientformmodal-10" type="number" min="1" max="31" className="input-dark text-xs w-full" value={form.billing_day} onChange={(e) => set('billing_day', e.target.value)} placeholder="e.g. 1" />
             </div>
           </div>
 
           {/* Tax ID */}
           <div>
-            <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Tax ID / EIN</label>
-            <input type="text" className="input-dark text-xs w-full" value={form.tax_id} onChange={(e) => set('tax_id', e.target.value)} placeholder="e.g. 12-3456789" pattern="\d{2}-\d{7}" />
+            <label htmlFor="ff-clientformmodal-11" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Tax ID / EIN</label>
+            <input id="ff-clientformmodal-11" type="text" className="input-dark text-xs w-full" value={form.tax_id} onChange={(e) => set('tax_id', e.target.value)} placeholder="e.g. 12-3456789" pattern="\d{2}-\d{7}" />
           </div>
         </>
       )}
@@ -413,39 +439,39 @@ export default function ClientFormModal({
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contract Type</label>
-              <select className="select-dark text-xs w-full" value={form.contract_type} onChange={(e) => set('contract_type', e.target.value)}>
+              <label htmlFor="ff-clientformmodal-12" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contract Type</label>
+              <select id="ff-clientformmodal-12" className="select-dark text-xs w-full" value={form.contract_type} onChange={(e) => set('contract_type', e.target.value)}>
                 {CONTRACT_TYPES.map((t) => <option key={t} value={t}>{t || '-- Select --'}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contract Start</label>
-              <input type="date" className="input-dark text-xs w-full" value={form.contract_start} onChange={(e) => set('contract_start', e.target.value)} />
+              <label htmlFor="ff-clientformmodal-13" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contract Start</label>
+              <input id="ff-clientformmodal-13" type="date" className="input-dark text-xs w-full" value={form.contract_start} onChange={(e) => set('contract_start', e.target.value)} />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contract End</label>
-              <input type="date" className="input-dark text-xs w-full" value={form.contract_end} onChange={(e) => set('contract_end', e.target.value)} />
+              <label htmlFor="ff-clientformmodal-14" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contract End</label>
+              <input id="ff-clientformmodal-14" type="date" className="input-dark text-xs w-full" value={form.contract_end} onChange={(e) => set('contract_end', e.target.value)} />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contract Value ($)</label>
-              <input type="number" min="0" step="0.01" className="input-dark text-xs w-full" value={form.contract_value} onChange={(e) => set('contract_value', e.target.value)} placeholder="0.00" />
+              <label htmlFor="ff-clientformmodal-15" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contract Value ($)</label>
+              <input id="ff-clientformmodal-15" type="number" min="0" step="0.01" className="input-dark text-xs w-full" value={form.contract_value} onChange={(e) => set('contract_value', e.target.value)} placeholder="0.00" />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Payment Terms</label>
-              <select className="select-dark text-xs w-full" value={form.payment_terms} onChange={(e) => set('payment_terms', e.target.value)}>
+              <label htmlFor="ff-clientformmodal-16" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Payment Terms</label>
+              <select id="ff-clientformmodal-16" className="select-dark text-xs w-full" value={form.payment_terms} onChange={(e) => set('payment_terms', e.target.value)}>
                 {PAYMENT_TERMS.map((t) => <option key={t} value={t}>{t || '-- Select --'}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">SLA Response (min)</label>
-              <input type="number" min="1" className="input-dark text-xs w-full" value={form.sla_response_minutes} onChange={(e) => set('sla_response_minutes', e.target.value)} placeholder="e.g. 15" />
+              <label htmlFor="ff-clientformmodal-17" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">SLA Response (min)</label>
+              <input id="ff-clientformmodal-17" type="number" min="1" className="input-dark text-xs w-full" value={form.sla_response_minutes} onChange={(e) => set('sla_response_minutes', e.target.value)} placeholder="e.g. 15" />
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors w-full">
-                <input
+                <input id="ff-clientformmodal-18"
                   type="checkbox"
                   checked={form.auto_renew}
                   onChange={(e) => set('auto_renew', e.target.checked)}
@@ -459,14 +485,14 @@ export default function ClientFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Discount Percent */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Discount (%)</label>
-              <input type="number" min="0" max="100" step="0.1" className="input-dark text-xs w-full" value={form.discount_percent} onChange={(e) => set('discount_percent', e.target.value)} placeholder="0" />
+              <label htmlFor="ff-clientformmodal-19" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Discount (%)</label>
+              <input id="ff-clientformmodal-19" type="number" min="0" max="100" step="0.1" className="input-dark text-xs w-full" value={form.discount_percent} onChange={(e) => set('discount_percent', e.target.value)} placeholder="0" />
             </div>
 
             {/* Late Fee Percent */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Late Fee (%)</label>
-              <input type="number" min="0" max="100" step="0.1" className="input-dark text-xs w-full" value={form.late_fee_percent} onChange={(e) => set('late_fee_percent', e.target.value)} placeholder="0" />
+              <label htmlFor="ff-clientformmodal-20" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Late Fee (%)</label>
+              <input id="ff-clientformmodal-20" type="number" min="0" max="100" step="0.1" className="input-dark text-xs w-full" value={form.late_fee_percent} onChange={(e) => set('late_fee_percent', e.target.value)} placeholder="0" />
             </div>
           </div>
         </>
@@ -478,21 +504,21 @@ export default function ClientFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Account Manager */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Account Manager</label>
-              <input type="text" className="input-dark text-xs w-full" value={form.account_manager} onChange={(e) => set('account_manager', e.target.value)} placeholder="e.g. James Thompson" />
+              <label htmlFor="ff-clientformmodal-21" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Account Manager</label>
+              <input id="ff-clientformmodal-21" type="text" className="input-dark text-xs w-full" value={form.account_manager} onChange={(e) => set('account_manager', e.target.value)} placeholder="e.g. James Thompson" />
             </div>
 
             {/* Client Since */}
             <div>
-              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Client Since</label>
-              <input type="date" className="input-dark text-xs w-full" value={form.client_since} onChange={(e) => set('client_since', e.target.value)} />
+              <label htmlFor="ff-clientformmodal-22" className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Client Since</label>
+              <input id="ff-clientformmodal-22" type="date" className="input-dark text-xs w-full" value={form.client_since} onChange={(e) => set('client_since', e.target.value)} />
             </div>
           </div>
 
           {/* Priority Client Toggle */}
           <div>
             <label className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors w-fit">
-              <input
+              <input id="ff-clientformmodal-23"
                 type="checkbox"
                 checked={form.priority_client}
                 onChange={(e) => set('priority_client', e.target.checked)}

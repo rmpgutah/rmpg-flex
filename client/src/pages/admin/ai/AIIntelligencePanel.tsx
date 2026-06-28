@@ -69,24 +69,24 @@ export default function AIIntelligencePanel({ setError }: Props) {
     <div className="space-y-6">
       {/* ── Health Section ── */}
       <section>
-        <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2 flex items-center gap-2">
+        <h3 className="text-xs font-semibold text-rmpg-100 uppercase tracking-wide mb-2 flex items-center gap-2">
           <Heart className="w-3.5 h-3.5 text-brand-400" />
           System Health
           <button
             onClick={checkHealth}
             disabled={healthLoading}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 text-xs font-medium rounded transition-colors disabled:opacity-50"
           >
             {healthLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Check Health
           </button>
         </h3>
 
-        <div className="bg-[#121212] border border-[#1c1c1c] rounded p-4">
+        <div className="bg-surface-base border border-border-default rounded p-4">
           {healthReport ? (
             <div className="space-y-4">
               {healthReport.aiSummary && (
-                <div className="px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded text-xs text-rmpg-300 leading-relaxed">
+                <div className="px-3 py-2 bg-surface-sunken border border-border-default rounded text-xs text-rmpg-300 leading-relaxed">
                   {healthReport.aiSummary}
                 </div>
               )}
@@ -142,8 +142,8 @@ export default function AIIntelligencePanel({ setError }: Props) {
                   <div className="text-[10px] text-rmpg-500 uppercase font-medium">Record Counts</div>
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                     {Object.entries(healthReport.database.record_counts).map(([table, count]) => (
-                      <div key={table} className="text-center px-2 py-1.5 bg-[#0b0b0b] border border-[#1c1c1c] rounded">
-                        <div className="text-xs font-mono text-white">{String(count)}</div>
+                      <div key={table} className="text-center px-2 py-1.5 bg-surface-sunken border border-border-default rounded">
+                        <div className="text-xs font-mono text-rmpg-100">{String(count)}</div>
                         <div className="text-[9px] text-rmpg-600 mt-0.5 truncate">{table.replace(/_/g, ' ')}</div>
                       </div>
                     ))}
@@ -161,20 +161,20 @@ export default function AIIntelligencePanel({ setError }: Props) {
 
       {/* ── Data Cleanup Section ── */}
       <section>
-        <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2 flex items-center gap-2">
+        <h3 className="text-xs font-semibold text-rmpg-100 uppercase tracking-wide mb-2 flex items-center gap-2">
           <Trash2 className="w-3.5 h-3.5 text-brand-400" />
           Data Cleanup
           <button
             onClick={scanCleanup}
             disabled={cleanupLoading}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 text-xs font-medium rounded transition-colors disabled:opacity-50"
           >
             {cleanupLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Scan for Issues
           </button>
         </h3>
 
-        <div className="bg-[#121212] border border-[#1c1c1c] rounded p-4">
+        <div className="bg-surface-base border border-border-default rounded p-4">
           {cleanupReport ? (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
@@ -185,7 +185,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
               </div>
 
               {cleanupReport.aiSummary && (
-                <div className="px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded text-xs text-rmpg-300 leading-relaxed">
+                <div className="px-3 py-2 bg-surface-sunken border border-border-default rounded text-xs text-rmpg-300 leading-relaxed">
                   {cleanupReport.aiSummary}
                 </div>
               )}
@@ -198,9 +198,9 @@ export default function AIIntelligencePanel({ setError }: Props) {
                 empty={!cleanupReport.staleCalls?.count}
               >
                 {cleanupReport.staleCalls?.items?.map((item: any) => (
-                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded">
+                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-surface-sunken border border-border-default rounded">
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs text-white font-mono">{item.call_number}</div>
+                      <div className="text-xs text-rmpg-100 font-mono">{item.call_number}</div>
                       <div className="text-[10px] text-rmpg-500">
                         {humanizeType(item.incident_type)} &mdash; stuck in &ldquo;{humanizeStatus(item.status, 'call')}&rdquo; for {item.hours_in_status}h
                       </div>
@@ -235,9 +235,9 @@ export default function AIIntelligencePanel({ setError }: Props) {
                 empty={!cleanupReport.orphanedUnits?.count}
               >
                 {cleanupReport.orphanedUnits?.items?.map((item: any) => (
-                  <div key={item.unit_id} className="flex items-center gap-3 px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded">
+                  <div key={item.unit_id} className="flex items-center gap-3 px-3 py-2 bg-surface-sunken border border-border-default rounded">
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs text-white font-mono">{item.call_sign}</div>
+                      <div className="text-xs text-rmpg-100 font-mono">{item.call_sign}</div>
                       <div className="text-[10px] text-rmpg-500">Shows "{item.status}" with no active call</div>
                     </div>
                     <button
@@ -259,9 +259,9 @@ export default function AIIntelligencePanel({ setError }: Props) {
                 empty={!cleanupReport.incompleteRecords?.count}
               >
                 {cleanupReport.incompleteRecords?.items?.map((item: any) => (
-                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded">
+                  <div key={item.call_id} className="flex items-center gap-3 px-3 py-2 bg-surface-sunken border border-border-default rounded">
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs text-white font-mono">{item.call_number}</div>
+                      <div className="text-xs text-rmpg-100 font-mono">{item.call_number}</div>
                       <div className="text-[10px] text-rmpg-500">Missing: {item.missing_fields?.join(', ')}</div>
                     </div>
                     <span className="text-[10px] text-yellow-500 shrink-0">Needs review</span>

@@ -148,7 +148,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
     }
   };
 
-  const inputClass = 'w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none';
+  const inputClass = 'w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none';
   const labelClass = 'block text-xs text-rmpg-400 mb-1';
 
   return (
@@ -160,11 +160,11 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
         <div className="px-4 py-2 border-b border-rmpg-700 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-orange-400" />
-            <h3 className="text-sm font-semibold text-white">
+            <h3 className="text-sm font-semibold text-rmpg-100">
               {action?.id ? 'Edit Disciplinary Action' : 'New Disciplinary Action'}
             </h3>
           </div>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -189,8 +189,8 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
           )}
 
           <div>
-            <label className={labelClass}>Employee *</label>
-            <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={inputClass}>
+            <label htmlFor="ff-disciplinaryactionmodal-0" className={labelClass}>Employee *</label>
+            <select id="ff-disciplinaryactionmodal-0" value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={inputClass}>
               <option value="">Select employee...</option>
               {users.map(u => (
                 <option key={u.id} value={u.id}>
@@ -202,16 +202,16 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Action Type *</label>
-              <select value={form.action_type} onChange={e => setForm(f => ({ ...f, action_type: e.target.value }))} className={inputClass}>
+              <label htmlFor="ff-disciplinaryactionmodal-1" className={labelClass}>Action Type *</label>
+              <select id="ff-disciplinaryactionmodal-1" value={form.action_type} onChange={e => setForm(f => ({ ...f, action_type: e.target.value }))} className={inputClass}>
                 {ACTION_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className={labelClass}>Severity *</label>
-              <select value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className={inputClass}>
+              <label htmlFor="ff-disciplinaryactionmodal-2" className={labelClass}>Severity *</label>
+              <select id="ff-disciplinaryactionmodal-2" value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className={inputClass}>
                 {SEVERITY_LEVELS.map(s => (
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
@@ -221,8 +221,8 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Incident Date *</label>
-              <input
+              <label htmlFor="ff-disciplinaryactionmodal-3" className={labelClass}>Incident Date *</label>
+              <input id="ff-disciplinaryactionmodal-3"
                 type="date"
                 value={form.incident_date}
                 onChange={e => setForm(f => ({ ...f, incident_date: e.target.value }))}
@@ -230,8 +230,8 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
               />
             </div>
             <div>
-              <label className={labelClass}>Follow-Up Date</label>
-              <input
+              <label htmlFor="ff-disciplinaryactionmodal-4" className={labelClass}>Follow-Up Date</label>
+              <input id="ff-disciplinaryactionmodal-4"
                 type="date"
                 value={form.follow_up_date}
                 onChange={e => setForm(f => ({ ...f, follow_up_date: e.target.value }))}
@@ -241,8 +241,8 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
           </div>
 
           <div>
-            <label className={labelClass}>Description *</label>
-            <textarea
+            <label htmlFor="ff-disciplinaryactionmodal-5" className={labelClass}>Description *</label>
+            <textarea id="ff-disciplinaryactionmodal-5"
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               className={`${inputClass} h-20 resize-none`}
@@ -251,8 +251,8 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
           </div>
 
           <div>
-            <label className={labelClass}>Corrective Action</label>
-            <textarea
+            <label htmlFor="ff-disciplinaryactionmodal-6" className={labelClass}>Corrective Action</label>
+            <textarea id="ff-disciplinaryactionmodal-6"
               value={form.corrective_action}
               onChange={e => setForm(f => ({ ...f, corrective_action: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
@@ -263,13 +263,13 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
         {/* Footer */}
         <div className="px-4 py-2 border-t border-rmpg-700 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-100">
             Cancel
           </button>
           <button type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="px-3 py-1.5 text-xs bg-brand-500 text-white rounded-sm hover:bg-brand-600 disabled:opacity-50"
+            className="px-3 py-1.5 text-xs bg-brand-500 text-rmpg-100 rounded-sm hover:bg-brand-600 disabled:opacity-50"
           >
             {saving ? 'Saving...' : action?.id ? 'Update Action' : 'Create Action'}
           </button>

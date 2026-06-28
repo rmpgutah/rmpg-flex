@@ -67,7 +67,7 @@ const LINE_BASE: React.CSSProperties = {
 
 // ── Component ───────────────────────────────────────────────
 
-export default function VideoHudOverlay(props: VideoHudOverlayProps) {
+function VideoHudOverlay(props: VideoHudOverlayProps) {
   const { type, visible, videoRef, recordedAt } = props;
   const timestampRef = useRef<HTMLSpanElement>(null);
   const animRef = useRef<number>(0);
@@ -259,3 +259,5 @@ function RecIndicator() {
     </div>
   );
 }
+
+export default React.memo(VideoHudOverlay);

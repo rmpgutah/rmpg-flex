@@ -138,7 +138,7 @@ export default function ModuleTileBar({
       style={{
         height: 58,
         background: 'linear-gradient(180deg, #050505 0%, #000000 100%)',
-        borderBottom: '1px solid #1d1d1d',
+        borderBottom: '1px solid var(--border-subtle)',
         zIndex: 40,
       }}
     >
@@ -200,7 +200,7 @@ export default function ModuleTileBar({
                 cursor: 'pointer',
                 transition: 'all 120ms ease',
                 background: active ? 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' : 'transparent',
-                color: active ? '#d1d5db' : '#666666',
+                color: active ? '#d1d5db' : 'var(--rmpg-500)',
                 borderBottom: active ? '2px solid #6f6f6f' : '2px solid transparent',
                 boxShadow: active ? 'inset 0 1px 0 rgba(255,255,255,0.03), 0 0 10px rgba(255,255,255,0.04)' : 'none',
               }}
@@ -215,7 +215,7 @@ export default function ModuleTileBar({
                 if (!active) {
                   (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
                   (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
-                  (e.currentTarget as HTMLButtonElement).style.color = '#666666';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--rmpg-500)';
                 }
               }}
             >
@@ -248,7 +248,7 @@ export default function ModuleTileBar({
                     fontWeight: 700,
                     lineHeight: '14px',
                     textAlign: 'center',
-                    borderRadius: 7,
+                    borderRadius: 2,
                     background: '#dc2626',
                     color: '#fff',
                     padding: '0 3px',
@@ -269,7 +269,7 @@ export default function ModuleTileBar({
                   zIndex: 50,
                   minWidth: 180,
                   background: 'var(--surface-raised, #0b0b0b)',
-                  border: '1px solid #242424',
+                  border: '1px solid var(--border-subtle)',
                   borderTop: '2px solid #6f6f6f',
                   boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
                   padding: '4px 0',
@@ -291,7 +291,7 @@ export default function ModuleTileBar({
                       style={{
                         padding: '6px 12px',
                         fontSize: 12,
-                        color: childActive ? '#d1d5db' : '#9a9a9a',
+                        color: childActive ? '#d1d5db' : 'var(--rmpg-400)',
                         background: childActive ? 'rgba(255,255,255,0.05)' : 'transparent',
                         borderLeft: childActive ? '2px solid #6f6f6f' : '2px solid transparent',
                         cursor: 'pointer',
