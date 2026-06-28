@@ -24,6 +24,16 @@ const BUILD_TIME: string =
 
 type TwoFactorMode = 'choose' | 'totp' | 'webauthn' | 'backup';
 
+// ── Performance detection ─────────────────────────
+/** True when the device is likely too slow for heavy login visuals (WebGL globe, stacked CSS animations). */
+function isLowPerfDevice(): boolean {
+  // Honour OS / browser reduced-motion preference
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return true;
+  // Very low core-count (≤2) usually means a truly low-power device / Toughbook
+  if (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 2) return true;
+  return false;
+}
+
 // ── Device detection helpers ──────────────────────
 function getDeviceInfo() {
   const ua = navigator.userAgent;
@@ -214,6 +224,26 @@ export default function LoginPage() {
     }
   }, [loginStep]);
 
+  // Last login display
+  const [lastLoginInfo, setLastLoginInfo] = useState<{ time: string; ip: string } | null>(null);
+
+  // Check for last login info stored during login flow
+  useEffect(() => {
+    if (loginStep === 'complete') {
+      const info = sessionStorage.getItem('rmpg_last_login_info');
+      if (info) {
+        try {
+          const parsed = JSON.parse(info);
+          setLastLoginInfo(parsed);
+          sessionStorage.removeItem('rmpg_last_login_info');
+          // Auto-dismiss after 8 seconds
+          const t = setTimeout(() => setLastLoginInfo(null), 8000);
+          return () => clearTimeout(t);
+        } catch { /* ignore */ }
+      }
+    }
+  }, [loginStep]);
+
   // 2FA setup state
   const [qrCodeUri, setQrCodeUri] = useState('');
   const [manualKey, setManualKey] = useState('');
@@ -224,12 +254,15 @@ export default function LoginPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Clock
+  // Performance tier (computed once)
+  const lowPerf = useMemo(() => isLowPerfDevice(), []);
+
+  // Clock — update every 60s on low-perf, every 1s otherwise
   const [clock, setClock] = useState(getCurrentTime());
   useEffect(() => {
-    const iv = setInterval(() => setClock(getCurrentTime()), 1000);
+    const iv = setInterval(() => setClock(getCurrentTime()), lowPerf ? 60_000 : 1000);
     return () => clearInterval(iv);
-  }, []);
+  }, [lowPerf]);
 
   // Device info (computed once)
   const device = useMemo(() => getDeviceInfo(), []);
@@ -521,6 +554,15 @@ export default function LoginPage() {
   };
 
   const status = stepStatus[loginStep] || stepStatus.username;
+  const isCredentialStep = !pending2FA && loginStep !== 'setup_2fa' && loginStep !== 'confirm_setup_2fa' && loginStep !== 'show_backup_codes' && loginStep !== 'password_change';
+
+  // ── Info row item ──────────────────────────────
+  const InfoRow = ({ label, value }: { label: string; value: string }) => (
+    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #050505' }}>
+      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
+      <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
+    </div>
+  );
 
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
@@ -832,6 +874,7 @@ export default function LoginPage() {
                 <label className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
                   <input id="ff-loginpage-0"
                     type="checkbox"
+                    name="trust-device"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
                     className="w-4 h-4 rounded-sm accent-[#888888] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
@@ -940,6 +983,7 @@ export default function LoginPage() {
 
                 <input id="ff-loginpage-1"
                   type="text"
+                  name="backup-code"
                   className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 text-center font-mono tracking-widest uppercase"
                   placeholder="XXXX-XXXX"
                   value={backupCode}
@@ -1071,6 +1115,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="setup-code"
+                    name="setup-code"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -1138,6 +1183,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="new-pw"
+                    name="new-password"
                     type="password"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Enter new password"
@@ -1157,6 +1203,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="confirm-pw"
+                    name="confirm-password"
                     type="password"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Confirm new password"

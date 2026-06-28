@@ -6,6 +6,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { getAgencyName } from './brandConfig';
 import {
   openAutoSection,
   closeAutoSection,
@@ -178,7 +179,7 @@ function generateBlankIncidentForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'INCIDENT REPORT',
     formNumber: 'FORM PS-205-BLK',
     reportDate: '',
@@ -255,7 +256,7 @@ function generateBlankPersonForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'PERSON RECORD',
     formNumber: 'FORM PS-206-BLK',
     reportDate: '',
@@ -342,7 +343,7 @@ function generateBlankVehicleForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'VEHICLE RECORD',
     formNumber: 'FORM PS-207-BLK',
     reportDate: '',
@@ -419,7 +420,7 @@ function generateBlankPropertyForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'PROPERTY RECORD',
     formNumber: 'FORM PS-208-BLK',
     reportDate: '',
@@ -476,7 +477,7 @@ function generateBlankCitationForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'CITATION',
     formNumber: 'FORM PS-209-BLK',
     reportDate: '',
@@ -539,7 +540,7 @@ function generateBlankFieldInterviewForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'FIELD INTERVIEW CARD',
     formNumber: 'FORM PS-211-BLK',
     reportDate: '',
@@ -600,7 +601,7 @@ function generateBlankPreTripForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'PRE-TRIP VEHICLE INSPECTION',
     formNumber: 'FORM PS-206-PTI',
     reportDate: '',
@@ -684,7 +685,7 @@ function generateBlankCheckoutForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'FLEET VEHICLE CHECK-OUT',
     formNumber: 'FORM PS-206-CKO',
     reportDate: '',
@@ -747,7 +748,7 @@ function generateBlankDamageForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'FLEET VEHICLE DAMAGE REPORT',
     formNumber: 'FORM PS-206-DMG',
     reportDate: '',
@@ -900,7 +901,7 @@ function generateBlankFuelVoucherForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'FLEET FUEL PURCHASE VOUCHER',
     formNumber: 'FORM PS-206-FV',
     reportDate: '',
@@ -966,7 +967,7 @@ function generateBlankFuelLogForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'FLEET FUEL LOG SHEET',
     formNumber: 'FORM PS-206-FL',
     reportDate: '',
@@ -1011,7 +1012,7 @@ function generateBlankExpenseForm(doc: jsPDF) {
   addBlankFormWatermark(doc);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'FLEET EXPENSE REIMBURSEMENT',
     formNumber: 'FORM PS-206-EXP',
     reportDate: '',
