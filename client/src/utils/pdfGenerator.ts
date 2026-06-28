@@ -107,6 +107,13 @@ export function displayStatus(status: string): string {
   return status.toUpperCase();
 }
 
+// ── Status Display Helper — "archived" shows as "CLOSED" in printed documents ──
+export function displayStatus(status: string): string {
+  if (!status) return '';
+  if (status.toLowerCase() === 'archived') return 'CLOSED';
+  return status.toUpperCase();
+}
+
 // ── Branding Interface (matches Admin BrandingConfig) ────────
 
 export interface PdfBranding {
@@ -824,6 +831,7 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
   if (startPage !== currentPage) {
     doc.setPage(currentPage);
   }
+  // No enclosing section outline — section header bar is sufficient
 
   // Bottom rule — section accent color line marking section end
   const closeAccentRgb = activeBranding.section_accent_color
@@ -995,6 +1003,12 @@ export function addFlagBadges(
   priority?: string,
 ): number {
   if (!flags || flags.length === 0) return y;
+  // Normalize: flags may be strings or objects with a name/label/flag property
+  const normalized: string[] = flags.map((f: any) => {
+    if (typeof f === 'string') return f;
+    if (typeof f === 'object' && f !== null) return f.name || f.label || f.flag || f.title || JSON.stringify(f);
+    return String(f);
+  }).filter(Boolean);
 
   // Dedup — callers may pass the same flag twice (e.g. from merging
   // multiple data sources). Normalize case/whitespace for matching so
@@ -1084,7 +1098,7 @@ export function addFlagBadges(
   let curX = x;
   let curY = y;
 
-  for (const flag of flags) {
+  for (const flag of normalized) {
     if (!flag) continue;
     const text = String(flag).toUpperCase();
     const tw = doc.getTextWidth(text);
@@ -2093,6 +2107,43 @@ export interface PdfImage {
 }
 
 /** Embed a single image into the PDF with aspect-ratio preservation. */
+/**
+ * Convert image to high-contrast monochrome B&W for document printing.
+ * Lower threshold = more black (darker faces, bolder text).
+ * Applies contrast enhancement before thresholding for detail retention.
+ */
+export async function convertToGrayscale(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(dataUrl); return; }
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+        // Six-tone posterize: black → dark → mid-dark → mid → light → white
+        let val: number;
+        if (lum < 45) val = 0;           // deep shadows → black
+        else if (lum < 85) val = 50;     // dark detail → very dark gray
+        else if (lum < 125) val = 100;   // mid-shadows → dark gray
+        else if (lum < 170) val = 150;   // mid-tones → medium gray
+        else if (lum < 210) val = 200;   // light areas → light gray
+        else val = 255;                  // highlights → white
+        d[i] = d[i + 1] = d[i + 2] = val;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 export function addImageToPage(
   doc: jsPDF,
   image: PdfImage,
@@ -2407,14 +2458,13 @@ export function addTableWithShading(
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
     }
 
-    // y = top of this data row rect
-    // Zebra shading — rect starts at y, full rowH
-    if (i % 2 === 0) {
+    // Zebra shading — first row white, second light gray, alternating
+    if (i % 2 === 1) {
       doc.setFillColor(...COLOR.BG_ZEBRA);
       doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
     }
 
-    // Row separator at bottom of row
+    // Light row separator
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
     doc.line(LAYOUT.PAGE_MARGIN, y + rowH, LAYOUT.PAGE_MARGIN + cw, y + rowH);
@@ -2438,17 +2488,14 @@ export function addTableWithShading(
   // Update final segment bottom
   colSegments[colSegments.length - 1].bottom = y - 1;
 
-  // Draw column borders and outer border per segment (page-aware)
+  // Draw light column dividers only (no outer border box)
   const currentPage = doc.getNumberOfPages();
   for (const seg of colSegments) {
     const segH = seg.bottom - seg.top + 1;
     if (segH < 2) continue;
-
     doc.setPage(seg.page);
-
-    // Vertical column dividers
-    doc.setDrawColor(...COLOR.BORDER_COLUMN);
-    doc.setLineWidth(BORDER.TABLE_COLUMN);
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(0.15);
     for (let c = 1; c < colPositions.length; c++) {
       const sepX = colPositions[c] - 2;
       doc.line(sepX, seg.top, sepX, seg.bottom);
@@ -2456,7 +2503,6 @@ export function addTableWithShading(
 
     // No outer border — section header bar provides the visual frame
   }
-  // Restore to current (last) page
   doc.setPage(currentPage);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
@@ -3186,7 +3232,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 20, data.priority);
   const vehicles = data.linked_vehicles || [];
-  { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.contentY;
+  { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.sectionY + 3.8;
     if (vehicles.length > 0) {
       const colPositions = [lx, mx + 30, mx + 65, mx + 120];
       const tableHeaders = [
@@ -4073,7 +4119,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
       { label: 'Service Type', value: serviceTypeLabel },
-      { label: 'Contract ID', value: data.contract_id || '' },
+      { label: 'Contract ID', value: safeStr(data.contract_id) },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -4081,11 +4127,11 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   // Client / Requestor Information
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Client / Requestor Information', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Requestor Name', data.pso_requestor_name || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Requestor Phone', data.pso_requestor_phone || '', rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Requestor Name', safeStr(data.pso_requestor_name), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Requestor Phone', safeStr(data.pso_requestor_phone), rx, y, hfw);
       y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Requestor Email', data.pso_requestor_email || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Requestor Email', safeStr(data.pso_requestor_email), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Billing Code', safeStr(data.pso_billing_code), rx, y, hfw);
       y = Math.max(yL, yR); }
     { const yL = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'PSO Service Type', formatEnumValue(data.pso_service_type), rx, y, hfw);
@@ -4112,11 +4158,11 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   y = checkPageBreak(doc, y, 35, data.priority);
   { const sec = openAutoSection(doc, 'Service Attempt Details', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Document Type', serviceTypeLabel, lx, y, hfw);
-      const yR = addFieldPair(doc, 'Serve To (Name)', data.process_served_to || '', rx, y, hfw);
+      const yR = addFieldPair(doc, 'Serve To (Name)', safeStr(data.process_served_to), rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Service Address', data.process_served_address || data.location || '', lx, y, ffw);
-    { const yL = addFieldPair(doc, 'Attempts Made', String(data.process_attempts || 0), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Served At', data.process_served_at || '', rx, y, hfw);
+    y = addFieldPair(doc, 'Service Address', safeStr(data.process_served_address || data.location), lx, y, ffw);
+    { const yL = addFieldPair(doc, 'Attempts Made', String(data.process_attempts ?? 0), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Served At', safeStr(data.process_served_at), rx, y, hfw);
       y = Math.max(yL, yR); }
     y = addFieldPair(doc, 'Service Result', formatEnumValue(data.process_service_result), lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);

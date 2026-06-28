@@ -163,6 +163,11 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
   // @ts-expect-error jsPDF GState — safety reset after watermark
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
+  // Add watermark to the first page (newPage() handles subsequent pages)
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState — safety reset after watermark
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
   // ── Utility: add header/footer to each page ──────────
   // Page 1 = cover (no top header bar — it has its own centered layout)
   // Pages 2+ = dark header bar with logo + text

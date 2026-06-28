@@ -37,6 +37,7 @@ import StatusBadge from '../components/StatusBadge';
 import IconButton from '../components/IconButton';
 import IncidentFormModal, { type IncidentFormData } from '../components/IncidentFormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import AddLinkModal from '../components/AddLinkModal';
 import FileAttachments from '../components/FileAttachments';
 import LinkPersonModal from '../components/LinkPersonModal';
 import LinkVehicleModal from '../components/LinkVehicleModal';
@@ -454,6 +455,25 @@ export default function IncidentsPage() {
       } catch { /* best-effort save */ }
     };
   }, []);
+
+  // Debounced narrative auto-save (every 10s while editing)
+  const [narrativeLastSaved, setNarrativeLastSaved] = useState<string | null>(null);
+  const narrativeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isEditing || !selectedIncident) return;
+    if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current);
+    narrativeAutoSaveTimer.current = setTimeout(() => {
+      const narrative = narrativeRef.current?.value;
+      if (narrative == null || !selectedIncidentRef.current) return;
+      apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ narrative }),
+      }).then(() => {
+        setNarrativeLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }).catch(() => { /* silent fail — unmount save is the fallback */ });
+    }, 10000);
+    return () => { if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current); };
+  }, [isEditing, selectedIncident]);
 
   // ============================================================
   // Fetch incidents
@@ -1489,14 +1509,16 @@ export default function IncidentsPage() {
             }}
             onPreview={async (reportType) => {
               try {
+                if (!selectedIncident) { addToast('No incident selected', 'error'); return; }
                 if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
                 const pdfData = await buildIncidentPdfData();
                 const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData);
                 setPdfBlobUrl(blobUrl);
                 setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()}`);
                 setPdfViewerOpen(true);
-              } catch (err) {
+              } catch (err: any) {
                 console.error('[IncidentsPage] PDF preview failed:', err);
+                addToast(err?.message || 'PDF preview generation failed', 'error');
               }
             }}
             onSignAndExport={async (reportType, signature) => {

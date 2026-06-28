@@ -472,6 +472,20 @@ function unitStatusColor(status: string | undefined): string {
 
 // ─── Component ───────────────────────────────────────────
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
   const [activities, setActivities] = useState<ActivityLogEntry[]>([]);
@@ -1298,6 +1312,168 @@ export default function DashboardPage() {
         </SpmGroup>
         )}
 
+      </div>
+
+      {/* Shift Countdown + Weather + Quick Actions Row */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'}`}>
+        {/* Shift Countdown Timer */}
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current shift status">
+          <PanelTitleBar title="SHIFT STATUS" icon={Timer} />
+          <div className="p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-rmpg-200 tracking-wide">{shiftInfo.name}</div>
+                <div className="text-[10px] text-rmpg-500 font-mono mt-0.5 tabular-nums">
+                  {shiftInfo.startLabel} &mdash; {shiftInfo.endLabel}
+                </div>
+              </div>
+              <div className="text-right" aria-live="polite" aria-atomic="true">
+                <div className="text-lg font-bold font-mono text-brand-400 tabular-nums tracking-tight">{formatCountdown(shiftInfo.remaining)}</div>
+                <div className="text-[9px] text-rmpg-500 uppercase tracking-widest font-semibold">Remaining</div>
+              </div>
+            </div>
+            {/* Progress Bar */}
+            <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
+              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#222222] shadow-inner">
+                <div
+                  className="h-full transition-all duration-1000 ease-linear rounded-sm"
+                  style={{
+                    width: `${Math.round(shiftInfo.progress * 100)}%`,
+                    background: `linear-gradient(90deg, #1a1a1a, #888888 ${Math.round(shiftInfo.progress * 100)}%)`,
+                    boxShadow: '0 0 6px rgba(136, 136, 136, 0.4)',
+                  }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] font-mono text-rmpg-500 tabular-nums">
+                <span>{shiftInfo.startLabel}</span>
+                <span className="font-bold text-rmpg-400">{Math.round(shiftInfo.progress * 100)}%</span>
+                <span>{shiftInfo.endLabel}</span>
+              </div>
+            </div>
+            {/* Shift Indicator Dots */}
+            <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
+              {[
+                { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
+                { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
+                { label: 'Night', hours: '22-06', active: shiftInfo.name === 'Night Shift' },
+              ].map(s => (
+                <div key={s.label} className={`flex-1 text-center p-1.5 rounded-sm transition-colors duration-300 ${s.active ? 'bg-brand-500/20 border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'bg-surface-sunken border border-transparent'}`}>
+                  <div className="flex items-center justify-center gap-1">
+                    <span className={`led-dot ${s.active ? 'led-green animate-led-pulse' : 'led-off'}`} />
+                    <span className={`text-[10px] font-bold select-none ${s.active ? 'text-brand-400' : 'text-rmpg-500'}`}>{s.label}</span>
+                  </div>
+                  <div className="text-[8px] font-mono text-rmpg-600 mt-0.5 tabular-nums">{s.hours}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Weather Widget */}
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current weather conditions" style={{ minWidth: 260 }}>
+          <PanelTitleBar title="WEATHER — SALT LAKE CITY" icon={Cloud} />
+          <div className="p-3">
+            {weather ? (() => {
+              const WeatherIcon = weather.icon;
+              const isFreezing = weather.temperature < 32;
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#222222] shadow-inner">
+                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#aaaaaa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#888888' }} />
+                    </div>
+                    <div>
+                      <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums" aria-label={`${weather.temperature} degrees Fahrenheit`}>{weather.temperature}<span className="text-lg text-rmpg-400 ml-0.5">&deg;F</span></div>
+                      <div className="text-xs text-rmpg-400 mt-0.5 font-medium">{weather.description}</div>
+                    </div>
+                  </div>
+                  {/* Humidity & Wind */}
+                  {(weather.humidity != null || weather.windSpeed != null) && (
+                    <div className="flex items-center gap-4 text-[10px] text-rmpg-400 font-mono tabular-nums">
+                      {weather.humidity != null && (
+                        <span title="Relative humidity">💧 {weather.humidity}%</span>
+                      )}
+                      {weather.windSpeed != null && (
+                        <span title={`Wind direction: ${weather.windDirection ?? '—'}°`}>💨 {Math.round(weather.windSpeed)} mph</span>
+                      )}
+                    </div>
+                  )}
+                  {/* Road Conditions Warning */}
+                  {isFreezing && (
+                    <div className="flex items-center gap-2 p-2.5 bg-gray-900/20 border border-gray-700/30 rounded-sm animate-fade-in" role="alert">
+                      <Snowflake className="w-4 h-4 text-gray-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+                      <div>
+                        <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-gray-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Weather Details */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
+                    <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
+                      Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-[9px] text-rmpg-600 select-none">|</span>
+                    <span className="text-[9px] text-rmpg-600 font-mono italic">Open-Meteo</span>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status" aria-label={weatherFetched ? 'Weather unavailable' : 'Loading weather data'}>
+                {!weatherFetched ? (
+                  <>
+                    <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 animate-pulse select-none">Loading weather...</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-6 h-6 text-rmpg-500 opacity-50" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 select-none">Weather unavailable</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Action Buttons */}
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Quick actions">
+          <PanelTitleBar title="QUICK ACTIONS" icon={Zap} />
+          <div className="p-3">
+            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'} gap-2`}>
+              {[
+                { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
+                { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
+                { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: '#22c55e' },
+                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#888888' },
+                { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
+                { icon: Mail, label: 'Email', path: '/email', color: '#22c55e' },
+                { icon: Briefcase, label: 'Cases', path: '/cases', color: '#06b6d4' },
+                { icon: ClipboardList, label: 'Field Interviews', path: '/field-interviews', color: '#888888' },
+                { icon: Fingerprint, label: 'Arrest Records', path: '/arrest-records', color: '#ef4444' },
+                { icon: Gavel, label: 'Court Tracker', path: '/court', color: '#f59e0b' },
+                { icon: ShieldBan, label: 'Trespass Orders', path: '/trespass-orders', color: '#f97316' },
+                { icon: Car, label: 'Fleet', path: '/fleet', color: '#888888' },
+              ].map(({ icon: ActionIcon, label, path, color, action }) => (
+                <button type="button"
+                  key={label}
+                  onClick={() => action ? action() : navigate(path)}
+                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2e2e2e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                  aria-label={label}
+                >
+                  <ActionIcon
+                    className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} transition-transform duration-200 group-hover:scale-110 drop-shadow-sm`}
+                    style={{ color }}
+                    aria-hidden="true"
+                  />
+                  <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} font-bold text-rmpg-300 uppercase tracking-wider group-hover:text-rmpg-100 transition-colors duration-200 text-center leading-tight select-none`}>
+                    {label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* BOLO Ticker */}
@@ -2134,6 +2310,298 @@ export default function DashboardPage() {
         </div>
       </div>
       )}
+
+      {/* Feature 35: Trending Incidents + Feature 36: Officer Status Board + Feature 37: Call Volume Sparkline */}
+      {/* (Feature 36 is already represented by the Officers on Duty in Operational Status) */}
+      {/* (Feature 37: Call Volume sparkline is represented by the Calls by Hour chart above) */}
+      {/* (Feature 32: Active incidents map preview — navigates to map page) */}
+      {/* Feature 35: Trending Incidents Indicator — shown inline with shift summary above */}
+
+      {/* ═══════════════════════════════════════════════════════
+          Unified Stats Widgets: Warrants, Incident Backlog, Crime Types
+          ═══════════════════════════════════════════════════════ */}
+      {unifiedStats && (
+        <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 lg:grid-cols-3 gap-2'}`}>
+          {/* Active Warrants Summary */}
+          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/warrants')}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 bg-red-500" style={{ borderRadius: '1px' }} />
+              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Active Warrants</span>
+              <span className="ml-auto text-lg font-bold font-mono text-red-400">{unifiedStats.warrants?.active || 0}</span>
+            </div>
+            <div className="space-y-1">
+              {Object.entries(unifiedStats.warrants?.by_type || {}).map(([type, count]) => (
+                <div key={type} className="flex items-center gap-2">
+                  <span className="text-[9px] text-rmpg-400 uppercase w-14 truncate">{type}</span>
+                  <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
+                    <div className="h-full" style={{ width: `${Math.min(100, ((count as number) / Math.max(1, unifiedStats.warrants?.active || 1)) * 100)}%`, background: type === 'arrest' ? '#ef4444' : type === 'bench' ? '#f59e0b' : type === 'search' ? '#888888' : '#888888' }} />
+                  </div>
+                  <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{count as number}</span>
+                </div>
+              ))}
+              <div className="text-[8px] text-rmpg-500 pt-1 border-t border-rmpg-700">Served (30d): <span className="text-green-400 font-mono">{unifiedStats.warrants?.served_30d || 0}</span></div>
+            </div>
+          </div>
+
+          {/* Incident Backlog */}
+          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 bg-amber-500" style={{ borderRadius: '1px' }} />
+              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Incident Backlog</span>
+            </div>
+            <div className="space-y-1">
+              {(unifiedStats.incidents?.by_status || []).map((s: any) => {
+                const colorMap: Record<string, string> = { draft: '#888888', submitted: '#888888', under_review: '#f59e0b', approved: '#22c55e', closed: '#6b7280', open: '#ef4444' };
+                return (
+                  <div key={s.status} className="flex items-center gap-2">
+                    <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{(s.status || '').replace(/_/g, ' ')}</span>
+                    <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
+                      <div className="h-full" style={{ width: `${Math.min(100, (s.count / Math.max(1, (unifiedStats.incidents?.by_status || []).reduce((a: number, b: any) => a + b.count, 0))) * 100)}%`, background: colorMap[s.status] || '#888888' }} />
+                    </div>
+                    <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{s.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Crime Type Breakdown */}
+          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2" style={{ background: '#d4a017', borderRadius: '1px' }} />
+              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Top Incident Types</span>
+            </div>
+            <div className="space-y-1">
+              {(unifiedStats.incidents?.by_type || []).slice(0, 8).map((t: any, i: number) => {
+                const maxCount = (unifiedStats.incidents?.by_type || [])[0]?.count || 1;
+                return (
+                  <div key={t.incident_type || i} className="flex items-center gap-2">
+                    <span className="text-[9px] text-rmpg-400 w-24 truncate capitalize">{(t.incident_type || 'Unknown').replace(/_/g, ' ')}</span>
+                    <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
+                      <div className="h-full" style={{ width: `${(t.count / maxCount) * 100}%`, background: '#d4a017', opacity: 1 - i * 0.08 }} />
+                    </div>
+                    <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{t.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          Features 31-43: Analytics Dashboard Widgets
+          ═══════════════════════════════════════════════════════ */}
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Analytics widgets">
+        {/* Feature 31: Response Time Gauge */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+          onClick={() => navigate('/reports')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/reports'); }}
+          tabIndex={0}
+          role="button"
+          title="View response time analysis"
+          aria-label={`Average response time: ${stats.avg_response_time_minutes || 'N/A'} minutes`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Clock className="w-3 h-3 text-brand-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Avg Response</span>
+          </div>
+          <div className="relative w-16 h-16 mx-auto my-1">
+            <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+              <circle cx="18" cy="18" r="14" fill="none" stroke="#222222" strokeWidth="3" />
+              <circle
+                cx="18" cy="18" r="14" fill="none"
+                stroke={stats.avg_response_time_minutes <= 5 ? '#22c55e' : stats.avg_response_time_minutes <= 10 ? '#f59e0b' : '#ef4444'}
+                strokeWidth="3"
+                strokeDasharray={`${Math.min(100, (stats.avg_response_time_minutes / 15) * 100) * 0.88} 88`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-sm font-bold font-mono text-rmpg-100 tabular-nums">
+                {stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}` : 'N/A'}
+              </span>
+            </div>
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase">Minutes</div>
+        </div>
+
+        {/* Feature 34: Crime Category Donut (compact) */}
+        <div className="panel-beveled bg-surface-base p-2.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Shield className="w-3 h-3 text-purple-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">By Priority</span>
+          </div>
+          <ResponsiveContainer width="100%" height={76}>
+            <PieChart>
+              <Pie
+                data={[
+                  { name: 'P1', value: stats.calls_by_priority.P1, fill: '#dc2626' },
+                  { name: 'P2', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
+                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#888888' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#555555' },
+                ].filter(d => d.value > 0)}
+                cx="50%" cy="50%" innerRadius={20} outerRadius={32}
+                paddingAngle={2} dataKey="value" stroke="none"
+              >
+                {[
+                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#888888' }, { fill: '#555555' },
+                ].map((e, i) => <Cell key={i} fill={e.fill} />)}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Feature 38: Clearance Rate Widget */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150"
+          onClick={() => navigate('/reports')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/reports'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Clearance rate: ${clearanceRate?.rate ?? 0}%`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <CheckCircle className="w-3 h-3 text-green-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Clearance</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (clearanceRate?.rate || 0) >= 50 ? '#22c55e' : '#f59e0b' }}>
+            {clearanceRate?.rate ?? 0}%
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{clearanceRate?.cleared || 0}/{clearanceRate?.total || 0} cleared</div>
+        </div>
+
+        {/* Feature 39: Patrol Coverage Indicator */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150"
+          onClick={() => navigate('/patrol')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/patrol'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Patrol coverage: ${patrolCoverage?.coverage ?? 0}%`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Navigation className="w-3 h-3 text-cyan-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Coverage</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center text-cyan-400 tabular-nums">
+            {patrolCoverage?.coverage ?? 0}%
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{patrolCoverage?.coveredBeats || 0}/{patrolCoverage?.totalBeats || 0} beats</div>
+        </div>
+
+        {/* Feature 41: Evidence Pending Count */}
+        <div
+          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(evidencePending?.pending || 0) > 0 ? 'border-l-amber-500' : 'border-l-green-500'}`}
+          onClick={() => navigate('/evidence')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/evidence'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }} />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Evidence</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }}>
+            {evidencePending?.pending ?? 0}
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Pending</div>
+        </div>
+
+        {/* Feature 43: Overdue Reports Alert */}
+        <div
+          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(overdueReports?.count || 0) > 0 ? 'border-l-red-500' : 'border-l-green-500'}`}
+          onClick={() => navigate('/incidents')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/incidents'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }} />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Overdue</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+            {overdueReports?.count ?? 0}
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>
+        </div>
+      </div>
+
+      {/* Feature 33: Shift Performance Comparison + Feature 42: Upcoming Court */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-3'}`}>
+        {/* Feature 33: Shift Performance Comparison */}
+        {shiftComparison?.shifts && (
+          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Shift performance comparison">
+            <PanelTitleBar title="SHIFT PERFORMANCE COMPARISON" icon={Activity} />
+            <div className="p-3">
+              <div className="grid grid-cols-3 gap-2">
+                {shiftComparison.shifts.map((s: any) => {
+                  const isCurrentShift = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
+                  return (
+                    <div key={s.shift} className={`panel-beveled bg-surface-sunken p-2.5 transition-colors duration-300 ${isCurrentShift ? 'border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'border border-transparent'}`}>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className={`led-dot ${isCurrentShift ? 'led-green animate-led-pulse' : 'led-off'}`} />
+                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isCurrentShift ? 'text-brand-400' : 'text-rmpg-200'}`}>{s.shift}</span>
+                        <span className="text-[8px] text-rmpg-600 font-mono ml-auto tabular-nums">{s.hours}</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Calls</span>
+                          <span className="text-xs font-bold font-mono text-gray-400 tabular-nums">{s.calls}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Incidents</span>
+                          <span className="text-xs font-bold font-mono text-green-400 tabular-nums">{s.incidents}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Avg Resp</span>
+                          <span className="text-xs font-bold font-mono text-brand-400 tabular-nums">
+                            {s.avgResponseMin ? `${s.avgResponseMin}m` : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Feature 42: Upcoming Court Widget */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Upcoming court appearances">
+          <PanelTitleBar title="UPCOMING COURT — NEXT 7 DAYS" icon={Gavel} />
+          <div className="p-3">
+            {(upcomingCourt?.upcoming?.length || 0) === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-4 justify-center" role="status">
+                <Gavel className="w-5 h-5 text-rmpg-600" aria-hidden="true" />
+                <div className="flex items-center gap-1.5">
+                  <span className="led-dot led-green" aria-hidden="true" />
+                  <span className="text-xs text-rmpg-300 select-none">No upcoming court appearances</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
+                {upcomingCourt.upcoming.map((c: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
+                    <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
+                      {c.date ? new Date(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
+                      {c.officer_name && <div className="text-[9px] text-rmpg-500 truncate">{c.officer_name}</div>}
+                    </div>
+                    {c.time && <span className="text-[9px] font-mono text-rmpg-400 flex-shrink-0 tabular-nums">{c.time}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Feature 35: Trending Incidents + Feature 36: Officer Status Board + Feature 37: Call Volume Sparkline */}
       {/* (Feature 36 is already represented by the Officers on Duty in Operational Status) */}

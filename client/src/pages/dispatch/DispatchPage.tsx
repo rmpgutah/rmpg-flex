@@ -4232,6 +4232,25 @@ export default function DispatchPage() {
                         LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
                       </span>
                     )}
+                    {/* Create Citation from this call */}
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const params = new URLSearchParams();
+                          if (selectedCall.location) params.set('location', selectedCall.location);
+                          if (selectedCall.latitude) params.set('lat', String(selectedCall.latitude));
+                          if (selectedCall.longitude) params.set('lng', String(selectedCall.longitude));
+                          params.set('call_id', selectedCall.id);
+                          params.set('call_number', selectedCall.call_number);
+                          navigate(`/citations?create=true&${params.toString()}`);
+                        }}
+                        className="toolbar-btn text-[9px]"
+                        title="Create citation from this call"
+                      >
+                        <FileText style={{ width: 10, height: 10 }} /> Citation
+                      </button>
+                    )}
                     {/* Archive — available on any non-archived status */}
                     {!isEditing && selectedCall.status !== 'archived' && (
                       <button type="button" onClick={() => handleArchive(selectedCall.id)} className="toolbar-btn" title="Archive this call">

@@ -224,6 +224,26 @@ export default function LoginPage() {
     }
   }, [loginStep]);
 
+  // Last login display
+  const [lastLoginInfo, setLastLoginInfo] = useState<{ time: string; ip: string } | null>(null);
+
+  // Check for last login info stored during login flow
+  useEffect(() => {
+    if (loginStep === 'complete') {
+      const info = sessionStorage.getItem('rmpg_last_login_info');
+      if (info) {
+        try {
+          const parsed = JSON.parse(info);
+          setLastLoginInfo(parsed);
+          sessionStorage.removeItem('rmpg_last_login_info');
+          // Auto-dismiss after 8 seconds
+          const t = setTimeout(() => setLastLoginInfo(null), 8000);
+          return () => clearTimeout(t);
+        } catch { /* ignore */ }
+      }
+    }
+  }, [loginStep]);
+
   // 2FA setup state
   const [qrCodeUri, setQrCodeUri] = useState('');
   const [manualKey, setManualKey] = useState('');
@@ -534,6 +554,15 @@ export default function LoginPage() {
   };
 
   const status = stepStatus[loginStep] || stepStatus.username;
+  const isCredentialStep = !pending2FA && loginStep !== 'setup_2fa' && loginStep !== 'confirm_setup_2fa' && loginStep !== 'show_backup_codes' && loginStep !== 'password_change';
+
+  // ── Info row item ──────────────────────────────
+  const InfoRow = ({ label, value }: { label: string; value: string }) => (
+    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #050505' }}>
+      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
+      <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
+    </div>
+  );
 
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (

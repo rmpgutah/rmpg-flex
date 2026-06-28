@@ -816,6 +816,12 @@ export interface PersonPdfData {
   shoe_size?: string;
   scars_marks_tattoos?: string;
   clothing_description?: string;
+  // Detailed marks
+  tattoo_description?: string;
+  scar_description?: string;
+  piercing_description?: string;
+  identifying_marks_location?: string;
+  distinguishing_features?: string;
   // Contact
   phone?: string;
   phone_secondary?: string;
@@ -838,6 +844,15 @@ export interface PersonPdfData {
   id_state?: string;
   id_expiry?: string;
   ssn_last4?: string;
+  // Law Enforcement IDs
+  ncic_number?: string;
+  sor_number?: string;
+  fbi_number?: string;
+  state_id_number?: string;
+  // Passport / Immigration
+  passport_number?: string;
+  passport_country?: string;
+  immigration_status?: string;
   // Employment / Demographics
   employer?: string;
   occupation?: string;
@@ -947,11 +962,12 @@ export interface VehiclePdfData {
   odometer?: string;
   // Owner
   owner_name?: string;
+  registered_owner?: string;
   owner_address?: string;
   owner_phone?: string;
   commercial_vehicle?: boolean;
   hazmat?: boolean;
-  // Insurance
+  // Insurance & Registration
   insurance_company?: string;
   insurance_policy?: string;
   insurance_expiry?: string;
@@ -3525,6 +3541,29 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   y += 1; // ensure clear gap after Physical Description section border
   y = addNarrativeSection(doc, 'Scars / Marks / Tattoos', data.scars_marks_tattoos || '', y, prio);
 
+  // ── 3a. Detailed Marks Descriptions ───────────────────────
+  if (data.tattoo_description || data.scar_description || data.piercing_description || data.identifying_marks_location || data.distinguishing_features) {
+    y = checkPageBreak(doc, y, 18, prio);
+    { const sec = openAutoSection(doc, 'Identifying Marks Detail', y); y = sec.contentY;
+      if (data.tattoo_description) {
+        y = addFieldPair(doc, 'Tattoo Description', data.tattoo_description, lx, y, ffw);
+      }
+      if (data.scar_description) {
+        y = addFieldPair(doc, 'Scar Description', data.scar_description, lx, y, ffw);
+      }
+      if (data.piercing_description) {
+        y = addFieldPair(doc, 'Piercing Description', data.piercing_description, lx, y, ffw);
+      }
+      if (data.identifying_marks_location) {
+        y = addFieldPair(doc, 'Marks Location', data.identifying_marks_location, lx, y, ffw);
+      }
+      if (data.distinguishing_features) {
+        y = addFieldPair(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
   // ── 4. Clothing Description ───────────────────────────────
   y = addNarrativeSection(doc, 'Clothing Description', data.clothing_description || '', y, prio);
 
@@ -3721,6 +3760,36 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     }
 
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── 7a. Education & Military ──────────────────────────────
+  if (data.education_level || data.military_branch || data.military_status || data.tribal_affiliation) {
+    y = checkPageBreak(doc, y, 12, prio);
+    { const sec = openAutoSection(doc, 'Education & Military', y); y = sec.contentY;
+      const quarterW = ffw / 4;
+      const em1 = addFieldPair(doc, 'Education Level', data.education_level || '', lx, y, quarterW);
+      const em2 = addFieldPair(doc, 'Military Branch', data.military_branch || '', lx + quarterW, y, quarterW);
+      const em3 = addFieldPair(doc, 'Military Status', data.military_status || '', lx + quarterW * 2, y, quarterW);
+      const em4 = addFieldPair(doc, 'Tribal Affiliation', data.tribal_affiliation || '', lx + quarterW * 3, y, quarterW);
+      y = Math.max(em1, em2, em3, em4);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ── 7b. Health & Medical ──────────────────────────────────
+  if (data.disability_flags || data.mental_health_flags || data.substance_abuse || data.medication_notes) {
+    y = checkPageBreak(doc, y, 16, prio);
+    { const sec = openAutoSection(doc, 'Health & Medical', y); y = sec.contentY;
+      const thirdWh = ffw / 3;
+      const hm1 = addFieldPair(doc, 'Disabilities', data.disability_flags || '', lx, y, thirdWh);
+      const hm2 = addFieldPair(doc, 'Mental Health', data.mental_health_flags || '', lx + thirdWh, y, thirdWh);
+      const hm3 = addFieldPair(doc, 'Substance Abuse', data.substance_abuse || '', lx + thirdWh * 2, y, thirdWh);
+      y = Math.max(hm1, hm2, hm3);
+      if (data.medication_notes) {
+        y = addFieldPair(doc, 'Medication Notes', data.medication_notes, lx, y, ffw);
+      }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // ── 8. Flags & Warnings ───────────────────────────────────
@@ -6205,8 +6274,24 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   // Post Orders
   y = addNarrativeSection(doc, 'Post Orders', data.post_orders || '', y);
 
+  // Site Details
+  if (data.parking_info) {
+    y = addNarrativeSection(doc, 'Parking Info', data.parking_info, y);
+  }
+  if (data.utility_shutoffs) {
+    y = addNarrativeSection(doc, 'Utility Shutoffs', data.utility_shutoffs, y);
+  }
+
   // Hazard Notes
   y = addNarrativeSection(doc, 'Hazard Notes', data.hazard_notes || '', y);
+  if (data.known_hazards) {
+    y = addNarrativeSection(doc, 'Known Hazards', data.known_hazards, y);
+  }
+
+  // Notes
+  if (data.notes) {
+    y = addNarrativeSection(doc, 'Notes', data.notes, y);
+  }
 
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);

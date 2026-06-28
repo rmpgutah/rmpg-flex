@@ -72,6 +72,20 @@ const timeAgo = (date: string): string => {
   return `${days}d ago`;
 };
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -632,6 +646,14 @@ export default function TrespassOrdersPage() {
           </label>
         </div>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-3 h-3" /> {error}
+          <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">

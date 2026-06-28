@@ -394,6 +394,13 @@ export interface PsoServiceWindows {
   weekend: boolean;        // Any attempt on Sat/Sun
 }
 
+export interface PsoServiceWindows {
+  early_morning: boolean;  // 6AM-9AM
+  daytime: boolean;        // 9AM-6PM
+  evening: boolean;        // 6PM-9PM
+  weekend: boolean;        // Any attempt on Sat/Sun
+}
+
 export interface VisitHistory {
   id: number;
   call_id: string;

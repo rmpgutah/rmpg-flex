@@ -309,6 +309,45 @@ export default function StatuteAnalyticsPage() {
         </div>
       )}
 
+      {/* Feature 36: Penalty Lookup Bar */}
+      <div className="px-3 py-1.5 border-b border-rmpg-700/50 flex items-center gap-2 bg-surface-sunken flex-shrink-0">
+        <Search className="w-3 h-3 text-rmpg-500" />
+        <input type="text" placeholder="Penalty lookup — enter statute (e.g. 76-5-102)" className="input-dark text-xs flex-1 max-w-xs min-h-[36px]"
+          value={penaltySearch} onChange={e => setPenaltySearch(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handlePenaltyLookup()} />
+        <button type="button" onClick={handlePenaltyLookup} className="toolbar-btn text-[10px]">Lookup</button>
+        {penaltyResult && (
+          <div className="flex items-center gap-2 text-[10px] ml-2">
+            <span className="text-white font-bold">{penaltyResult.citation}</span>
+            <span className="text-rmpg-400">{penaltyResult.short_title}</span>
+            <span className="text-amber-400">{penaltyResult.offense_level?.replace(/_/g, ' ')}</span>
+            <span className="text-rmpg-400">Jail: {penaltyResult.penalty_range?.jail_max}</span>
+            <span className="text-rmpg-400">Fine: {penaltyResult.penalty_range?.fine_max}</span>
+            <button type="button" onClick={() => setPenaltyResult(null)} className="text-rmpg-500 hover:text-rmpg-300 ml-1">x</button>
+          </div>
+        )}
+      </div>
+
+      {/* Feature 37: Top Charged Panel */}
+      {topCharged.length > 0 && (
+        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs flex-shrink-0">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-gray-400 font-bold text-[10px] uppercase">Top {topCharged.length} Most Charged Statutes</span>
+            <button type="button" onClick={() => setTopCharged([])} className="text-gray-500 hover:text-gray-300 text-[10px]">Close</button>
+          </div>
+          <div className="max-h-40 overflow-y-auto space-y-0.5">
+            {topCharged.map((s, i) => (
+              <div key={i} className="text-[10px] flex gap-2 items-center">
+                <span className="text-rmpg-500 w-5">{i + 1}.</span>
+                <span className="text-white font-mono w-24">{s.citation}</span>
+                <span className="text-rmpg-300 flex-1 truncate">{s.short_title}</span>
+                <span className="text-brand-400 font-bold">{s.total_count || s.citation_count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Mobile: day selector */}
       {isMobile && (
         <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0 bg-surface-sunken border-b border-rmpg-700/50">
