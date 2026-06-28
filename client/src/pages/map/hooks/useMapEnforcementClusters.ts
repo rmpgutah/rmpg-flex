@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface EnforcementCluster {
   lat: number;
@@ -55,12 +56,7 @@ export function useMapEnforcementClusters(
       })
       .catch((err) => {
         if (!cancelled) {
-          // /api/dispatch/heatmap/enforcement is not yet implemented in the
-          // current deployment (404). This is an OPTIONAL overlay — degrade
-          // to an empty layer quietly (debug, not warn) so it doesn't spam the
-          // console on every map load. Promote back to warn once the endpoint
-          // lands server-side.
-          console.debug('[useMapEnforcementClusters] enforcement overlay unavailable:', err?.message || err);
+          console.warn('[useMapEnforcementClusters] enforcement overlay failed:', err?.message || err);
           setClusters([]);
           setLoading(false);
         }
@@ -72,8 +68,8 @@ export function useMapEnforcementClusters(
   useEffect(() => {
     if (!map) return;
 
-    if (map.getLayer(sourceId)) map.removeLayer(sourceId);
-    if (map.getSource(sourceId)) map.removeSource(sourceId);
+    safeRemoveLayer(map, sourceId);
+    safeRemoveSource(map, sourceId);
 
     if (!enabled || clusters.length === 0) return;
 
@@ -141,8 +137,8 @@ export function useMapEnforcementClusters(
     });
 
     return () => {
-      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      safeRemoveLayer(map, sourceId);
+      safeRemoveSource(map, sourceId);
     };
   }, [map, enabled, clusters, type]);
 

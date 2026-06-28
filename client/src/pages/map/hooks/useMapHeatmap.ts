@@ -4,6 +4,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { useToast } from '../../../components/ToastProvider';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 const MAX_HEATMAP_POINTS = 10000;
 
@@ -55,8 +56,8 @@ export function useMapHeatmap({ mapInstanceRef, mapLoaded }: UseMapHeatmapParams
     if (!map || !mapLoaded) return;
 
     if (!showHeatmap || heatmapData.length === 0) {
-      if (map.getLayer('heatmap-layer')) map.removeLayer('heatmap-layer');
-      if (map.getSource(heatmapSourceId)) map.removeSource(heatmapSourceId);
+      safeRemoveLayer(map, 'heatmap-layer');
+      safeRemoveSource(map, heatmapSourceId);
       return;
     }
 
@@ -80,16 +81,18 @@ export function useMapHeatmap({ mapInstanceRef, mapLoaded }: UseMapHeatmapParams
           'rgba(200,0,0,1)',
         ]
       : [
+          // Spillman pure-black theme — ZERO blue. Ramp low→high through the
+          // brand gold into amber/red (was rgba(0,128,255) cyan at the low end).
           'rgba(0,0,0,0)',
-          'rgba(0,128,255,0.2)',
-          'rgba(0,200,100,0.4)',
-          'rgba(200,200,0,0.6)',
+          'rgba(212,160,23,0.25)',
+          'rgba(230,180,40,0.45)',
+          'rgba(255,200,0,0.6)',
           'rgba(255,140,0,0.8)',
           'rgba(255,50,0,0.95)',
         ];
 
-    if (map.getSource(heatmapSourceId)) {
-      (map.getSource(heatmapSourceId) as mapboxgl.GeoJSONSource).setData({
+    if (hasSource(map, heatmapSourceId)) {
+      getSourceSafe<mapboxgl.GeoJSONSource>(map, heatmapSourceId)?.setData({
         type: 'FeatureCollection',
         features,
       });
@@ -126,8 +129,8 @@ export function useMapHeatmap({ mapInstanceRef, mapLoaded }: UseMapHeatmapParams
     }
 
     return () => {
-      if (map.getLayer('heatmap-layer')) map.removeLayer('heatmap-layer');
-      if (map.getSource(heatmapSourceId)) map.removeSource(heatmapSourceId);
+      safeRemoveLayer(map, 'heatmap-layer');
+      safeRemoveSource(map, heatmapSourceId);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showHeatmap, heatmapData, heatmapMode, mapLoaded]);

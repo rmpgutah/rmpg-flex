@@ -7,13 +7,16 @@
 // multi-source filtering (scraper / manual / CSV import).
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Database, Search, X, Loader2, UserPlus, UserX, Shield, BarChart3, Eye, Plus,
   Link2, Unlink, AlertTriangle, RefreshCw, Download, Pencil, Trash2, ArrowUpDown,
-  FileText, ShieldAlert, Calendar, Scale,
+  FileText, ShieldAlert, Calendar, Scale, Copy, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
@@ -22,8 +25,9 @@ import CollapsibleSection from '../components/CollapsibleSection';
 import CriminalHistorySection from '../components/CriminalHistorySection';
 import ArrestFormModal from '../components/ArrestFormModal';
 import type { ArrestFormData } from '../components/ArrestFormModal';
+import ConfirmDialog from '../components/ConfirmDialog';
+import PrintRecordButton from '../components/PrintRecordButton';
 import { localToday, parseTimestamp } from '../utils/dateUtils';
-import { useWebSocket } from '../context/WebSocketContext';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import ExportButton from '../components/ExportButton';
@@ -48,8 +52,8 @@ interface PopulationSummary {
   total_active: number;
   total_released: number;
   counties_with_data: number;
-  intakes_today: number;
-  releases_today: number;
+  intakes_today?: number;
+  releases_today?: number;
 }
 
 interface ArrestRecord {
@@ -98,22 +102,22 @@ interface PersonResult {
 // ── County colors ─────────────────────────────────────────
 
 const COUNTY_COLORS: Record<string, string> = {
-  weber:     'from-gray-600/20 to-gray-800/10 border-gray-500/30',
+  weber:     'from-gray-600/20 to-gray-800/10 border-rmpg-500/30',
   davis:     'from-emerald-600/20 to-emerald-800/10 border-emerald-500/30',
   iron:      'from-red-600/20 to-red-800/10 border-red-500/30',
   salt_lake: 'from-purple-600/20 to-purple-800/10 border-purple-500/30',
-  summit:    'from-gray-600/20 to-gray-800/10 border-gray-500/30',
+  summit:    'from-gray-600/20 to-gray-800/10 border-rmpg-500/30',
   uinta:     'from-amber-600/20 to-amber-800/10 border-amber-500/30',
 };
 
 const COUNTY_ACCENTS: Record<string, string> = {
-  weber: 'text-gray-400', davis: 'text-emerald-400', iron: 'text-red-400',
-  salt_lake: 'text-purple-400', summit: 'text-gray-400', uinta: 'text-amber-400',
+  weber: 'text-rmpg-400', davis: 'text-emerald-400', iron: 'text-red-400',
+  salt_lake: 'text-purple-400', summit: 'text-rmpg-400', uinta: 'text-amber-400',
 };
 
 const COUNTY_BAR_COLORS: Record<string, string> = {
-  weber: 'bg-gray-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
-  salt_lake: 'bg-purple-500', summit: 'bg-gray-500', uinta: 'bg-amber-500',
+  weber: 'bg-rmpg-500', davis: 'bg-emerald-500', iron: 'bg-red-500',
+  salt_lake: 'bg-purple-500', summit: 'bg-rmpg-500', uinta: 'bg-amber-500',
 };
 
 // ── Sort config ───────────────────────────────────────────
@@ -156,7 +160,7 @@ function statusBadge(status: string) {
   if (status === 'active') return { bg: 'bg-red-900/40 text-red-400', label: 'IN CUSTODY' };
   if (status === 'released') return { bg: 'bg-green-900/40 text-green-400', label: 'RELEASED' };
   if (status === 'transferred') return { bg: 'bg-amber-900/40 text-amber-400', label: 'TRANSFERRED' };
-  if (status === 'bonded') return { bg: 'bg-gray-900/40 text-gray-400', label: 'BONDED' };
+  if (status === 'bonded') return { bg: 'bg-surface-sunken/40 text-rmpg-400', label: 'BONDED' };
   return { bg: 'bg-rmpg-700 text-rmpg-400', label: status?.toUpperCase() || '—' };
 }
 
@@ -197,14 +201,27 @@ function exportCsv(records: ArrestRecord[]) {
   URL.revokeObjectURL(url);
 }
 
+// ── Role helpers ─────────────────────────────────────────
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 // ── Component ─────────────────────────────────────────────
 
 export default function ArrestRecordsPage() {
   // ── State ───────────────────────────────────────────────
-  const { subscribe } = useWebSocket();
+  // Note: live cross-device sync is owned by useLiveSync('arrests', …) below,
+  // which fires on the server's liveBroadcast for /api/arrests/* mutations.
+  // The previous useWebSocket().subscribe('record_update', …) listener was
+  // dead (the Worker never emitted that message type) and has been removed.
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // admin + manager + supervisor can create/edit/delete arrest records.
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  // Right-click context menu (reusable global system)
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Statistics
   const [stats, setStats] = useState<{
@@ -277,20 +294,20 @@ export default function ArrestRecordsPage() {
         ...(statusFilter ? { status: statusFilter } : {}),
       });
 
+      // Handler returns { data: rows } for both /search and /recent.
       let data: any;
       if (searchTerm.trim()) {
-        const searchQs = new URLSearchParams({
-          name: searchTerm,
-          ...(sourceFilter ? { source: sourceFilter } : {}),
-          ...(countyFilter ? { source_id: countyFilter } : {}),
-        });
+        // /arrests/search reads the `q` query param (not `name`).
+        const searchQs = new URLSearchParams({ q: searchTerm });
         data = await apiFetch<any>(`/arrests/search?${searchQs}`);
-        setRecords(data.records || []);
-        setRecordsTotal(data.resultCount || data.records?.length || 0);
+        const rows = data.data || data.records || [];
+        setRecords(rows);
+        setRecordsTotal(data.total ?? rows.length);
       } else {
         data = await apiFetch<any>(`/arrests/recent?${qs}`);
-        setRecords(data.records || []);
-        setRecordsTotal(data.total || 0);
+        const rows = data.data || data.records || [];
+        setRecords(rows);
+        setRecordsTotal(data.total ?? rows.length);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load records';
@@ -303,22 +320,6 @@ export default function ArrestRecordsPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchRecords(recordsPage); }, [fetchRecords, recordsPage]);
   useLiveSync('arrests', () => { fetchRecords(recordsPage); fetchStats(); });
-
-  // ── WebSocket live sync ─────────────────────────────────
-
-  useEffect(() => {
-    return subscribe('record_update', (msg) => {
-      const data = msg.data as any;
-      if (data?.type === 'arrest_created' || data?.type === 'arrest_updated') {
-        fetchRecords(recordsPage);
-        if (selectedRecord && data?.id === selectedRecord.id) {
-          apiFetch<ArrestRecord>(`/arrests/manual/${selectedRecord.id}`)
-            .then(fresh => setSelectedRecord(fresh))
-            .catch(() => { /* keep existing */ });
-        }
-      }
-    });
-  }, [subscribe, recordsPage, selectedRecord, fetchRecords]);
 
   // ── Person search (debounced) ───────────────────────────
 
@@ -357,8 +358,8 @@ export default function ArrestRecordsPage() {
       fetchRecords(recordsPage);
       if (selectedRecord?.id === arrestId) {
         try {
-          const fresh = await apiFetch<ArrestRecord>(`/arrests/manual/${arrestId}`);
-          setSelectedRecord(fresh);
+          const fresh = await apiFetch<{ data: ArrestRecord }>(`/arrests/manual/${arrestId}`);
+          setSelectedRecord(fresh.data);
         } catch { /* keep existing */ }
       }
       addToast('Person linked to arrest record', 'success');
@@ -370,9 +371,10 @@ export default function ArrestRecordsPage() {
     }
   };
 
-  const handleUnlinkPerson = async (arrestId: number) => {
+  const handleUnlinkPerson = async (arrestId: number, personId: number) => {
     try {
-      await apiFetch(`/arrests/${arrestId}/link-person`, { method: 'DELETE' });
+      // DELETE /:id/link-person requires the person_id query param.
+      await apiFetch(`/arrests/${arrestId}/link-person?person_id=${personId}`, { method: 'DELETE' });
       fetchRecords(recordsPage);
       if (selectedRecord?.id === arrestId) {
         setSelectedRecord(prev => prev ? { ...prev, linked_person: null, person_id: null } : null);
@@ -405,9 +407,14 @@ export default function ArrestRecordsPage() {
       setEditingRecord(undefined);
       fetchRecords(recordsPage);
       if (editingRecord && selectedRecord?.id === editingRecord.id) {
+        // /arrests/manual/:id returns { data: ArrestRecord }, NOT a bare row.
+        // The previous shape (`apiFetch<ArrestRecord>` then setSelectedRecord(fresh))
+        // wrote `{ data: {...} }` into the selectedRecord state, which then
+        // crashed on every field access (`rec.full_name` → undefined, `rec.charges`
+        // → undefined, parseCharges threw). Match the /link-person flow above.
         try {
-          const fresh = await apiFetch<ArrestRecord>(`/arrests/manual/${editingRecord.id}`);
-          setSelectedRecord(fresh);
+          const fresh = await apiFetch<{ data: ArrestRecord }>(`/arrests/manual/${editingRecord.id}`);
+          if (fresh?.data) setSelectedRecord(fresh.data);
         } catch { /* keep existing */ }
       }
       addToast(editingRecord ? 'Booking updated' : 'Booking created', 'success');
@@ -445,6 +452,33 @@ export default function ArrestRecordsPage() {
     setFormOpen(true);
   };
 
+  // ── Right-click row menu ────────────────────────────────
+  // Edit/Delete mirror the detail-panel gate (manual record OR admin);
+  // scraper/CSV-imported records are read-only for non-admins.
+
+  const buildArrestMenu = (rec: ArrestRecord): ContextMenuItem[] => {
+    const name =
+      rec.linked_person?.name ||
+      (rec.full_name && rec.full_name.trim()) ||
+      `${rec.first_name ?? ''} ${rec.last_name ?? ''}`.trim();
+    const canModify = isManualRecord(rec) || canManage;
+    return [
+      m.action('Open record', () => setSelectedRecord(rec), { icon: <Eye size={12} /> }),
+      ...(canModify
+        ? [m.action('Edit record', () => openEdit(rec), { icon: <Pencil size={12} /> })]
+        : []),
+      m.separator(),
+      m.copy('Copy name', name, <Copy size={12} />),
+      m.copyId(rec.id),
+      ...(canModify
+        ? [
+            m.separator(),
+            m.action('Delete', () => setDeleteConfirm(rec.id), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
+  };
+
   // ── Sort ────────────────────────────────────────────────
 
   const cycleSort = () => setSortIdx(i => (i + 1) % SORT_CYCLE.length);
@@ -464,6 +498,132 @@ export default function ArrestRecordsPage() {
   const maxPopulation = stats?.per_county?.length ? Math.max(...stats.per_county.map(c => c.active_count), 1) : 1;
   const isManualRecord = (rec: ArrestRecord) => rec.entry_source === 'manual';
 
+  const hasFiltersActive = useMemo(
+    () => Boolean(searchTerm.trim() || countyFilter || statusFilter || sourceFilter),
+    [searchTerm, countyFilter, statusFilter, sourceFilter],
+  );
+  const clearFilters = useCallback(() => {
+    setSearchTerm('');
+    setCountyFilter('');
+    setStatusFilter('');
+    setSourceFilter('');
+    setRecordsPage(1);
+  }, []);
+
+  // ── Hydrate selected record from the server ─────────────
+  // The list endpoint returns the same column-set as /manual/:id, but we
+  // re-fetch on selection anyway so:
+  //   1) any field that just changed via another operator's edit (live-sync
+  //      runs on the table, not on the *selected* row) catches up; and
+  //   2) the detail panel doesn't render stale `linked_person`/`charges`
+  //      when the list refresh is in-flight.
+  // Only fires when the id changes (not every list refresh).
+  const lastHydratedIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    const id = selectedRecord?.id;
+    if (id == null || lastHydratedIdRef.current === id) return;
+    lastHydratedIdRef.current = id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fresh = await apiFetch<{ data: ArrestRecord }>(`/arrests/manual/${id}`);
+        if (cancelled || !fresh?.data) return;
+        setSelectedRecord((prev) => (prev?.id === id ? fresh.data : prev));
+      } catch {
+        // Keep the list-row snapshot — the panel still renders, just without
+        // the latest server state. A red banner here would be louder than
+        // useful for a transient transient network blip.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedRecord?.id]);
+
+  // ── URL deep-link: ?arrest_id= / ?person_id= / ?county= ─
+  // Cross-page contract: dispatch / cases / persons / criminal-history can
+  // link "view booking" → /arrest-records?arrest_id=<id> and the operator
+  // lands on the row already in the auto-refresh list, with the detail panel
+  // open. ?person_id= prefilters the search to surface that subject's
+  // bookings; ?county= preselects the county filter. All one-shot — params
+  // are stripped after consumption so a refresh doesn't re-pin.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingArrestIdRef = useRef<string | null>(searchParams.get('arrest_id'));
+  const pendingPersonIdRef = useRef<string | null>(searchParams.get('person_id'));
+  const pendingCountyRef = useRef<string | null>(searchParams.get('county'));
+
+  // Apply preselect-filters immediately (before records hydrate) so the
+  // ensuing fetchRecords already hits the filtered endpoint.
+  useEffect(() => {
+    const county = pendingCountyRef.current;
+    if (county) {
+      pendingCountyRef.current = null;
+      setCountyFilter(county);
+      setRecordsPage(1);
+    }
+    const personName = pendingPersonIdRef.current;
+    if (personName) {
+      pendingPersonIdRef.current = null;
+      // No /arrests/by-person endpoint — surface the subject by name search
+      // (best-effort fallback). Real "find this person's bookings" is the
+      // linked_person panel on the person dossier; we just seed the filter.
+      // A bare numeric id won't match names; the toast tells the operator
+      // what we tried so they can hand-edit the search.
+      (async () => {
+        try {
+          const p = await apiFetch<{ first_name?: string; last_name?: string }>(`/records/persons/${encodeURIComponent(personName)}`);
+          const seed = `${p?.last_name ?? ''} ${p?.first_name ?? ''}`.trim();
+          if (seed) setSearchTerm(seed);
+        } catch {
+          // Person not resolvable — leave the search empty rather than
+          // typing a bare id into the box.
+        }
+      })();
+    }
+    if (county || personName) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('county');
+      next.delete('person_id');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Apply ?arrest_id= once the records list has hydrated (with a direct-fetch
+  // fallback when the id isn't in the current paged/filtered view).
+  useEffect(() => {
+    const target = pendingArrestIdRef.current;
+    if (!target || recordsLoading) return;
+    pendingArrestIdRef.current = null;
+    const numericId = Number(target);
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      addToast(`Invalid arrest id: ${target}`, 'error');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = records.find((r) => r.id === numericId);
+        if (hit) {
+          if (!cancelled) setSelectedRecord(hit);
+        } else {
+          const fresh = await apiFetch<{ data: ArrestRecord }>(`/arrests/manual/${numericId}`);
+          if (cancelled) return;
+          if (fresh?.data) setSelectedRecord(fresh.data);
+          else addToast(`Arrest record ${numericId} not found`, 'warning');
+        }
+      } catch {
+        if (!cancelled) addToast(`Failed to load arrest record ${numericId}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('arrest_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, recordsLoading]);
+
   // ── Render: Left Panel (List) ───────────────────────────
 
   const leftPanel = (
@@ -479,17 +639,22 @@ export default function ArrestRecordsPage() {
         </div>
       )}
 
-      {/* Summary bar */}
+      {/* Summary bar — server already returns intakes_today + releases_today
+          (jailRoster scraper getStatistics). Previously dropped on the
+          floor; surface them as 4th/5th cards so the daily activity
+          read is visible without drilling into per-county stats. */}
       {stats?.population_summary && (
-        <div className="grid grid-cols-3 gap-1 p-2 border-b border-rmpg-700/30">
+        <div className="grid grid-cols-5 gap-1 p-2 border-b border-rmpg-700/30">
           {[
             { label: 'Total', value: stats.population_summary.total_records, color: 'text-brand-400' },
             { label: 'In Custody', value: stats.population_summary.total_active, color: 'text-red-400' },
             { label: 'Released', value: stats.population_summary.total_released, color: 'text-green-400' },
+            { label: 'Intakes Today', value: stats.population_summary.intakes_today, color: 'text-amber-400' },
+            { label: 'Releases Today', value: stats.population_summary.releases_today, color: 'text-emerald-400' },
           ].map(s => (
             <div key={s.label} className="text-center py-1">
-              <div className={`text-sm font-bold tabular-nums ${s.color}`}>{s.value.toLocaleString()}</div>
-              <div className="text-[7px] text-rmpg-500 uppercase">{s.label}</div>
+              <div className={`text-sm font-bold tabular-nums ${s.color}`}>{(s.value ?? 0).toLocaleString()}</div>
+              <div className="text-[7px] text-rmpg-500 uppercase leading-tight">{s.label}</div>
             </div>
           ))}
         </div>
@@ -532,7 +697,7 @@ export default function ArrestRecordsPage() {
         {/* Search */}
         <div className="relative" role="search">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-arrestrecordspage-0"
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
@@ -548,7 +713,7 @@ export default function ArrestRecordsPage() {
 
         {/* Filter row */}
         <div className="flex items-center gap-1 flex-wrap">
-          <select
+          <select id="ff-arrestrecordspage-1"
             value={countyFilter}
             onChange={e => { setCountyFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm flex-1 min-w-0"
@@ -559,7 +724,7 @@ export default function ArrestRecordsPage() {
             ))}
           </select>
 
-          <select
+          <select id="ff-arrestrecordspage-2"
             value={statusFilter}
             onChange={e => { setStatusFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
@@ -571,7 +736,7 @@ export default function ArrestRecordsPage() {
             <option value="bonded">Bonded</option>
           </select>
 
-          <select
+          <select id="ff-arrestrecordspage-3"
             value={sourceFilter}
             onChange={e => { setSourceFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
@@ -585,9 +750,11 @@ export default function ArrestRecordsPage() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-1">
-          <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
-            <Plus className="w-3 h-3" /> New Booking
-          </button>
+          {canManage && (
+            <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
+              <Plus className="w-3 h-3" /> New Booking
+            </button>
+          )}
           <ExportButton exportUrl="/api/arrests/export/csv" exportFilename="arrests.csv" />
           <button type="button" onClick={() => exportCsv(sortedRecords)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
             <Download className="w-3 h-3" /> CSV
@@ -606,14 +773,33 @@ export default function ArrestRecordsPage() {
       </div>
 
       {/* Records list */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark" role="list" aria-label="Arrest records">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark" role="list" aria-label="Arrest records">
         {recordsLoading ? (
           <div className="flex flex-col items-center gap-3 text-[10px] text-rmpg-500 py-12 justify-center">
             <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading arrest records" />
             <span className="font-mono uppercase tracking-wider animate-pulse">Loading records...</span>
           </div>
         ) : sortedRecords.length === 0 ? (
-          <EmptyState icon={UserX} title="No records found" description="Adjust filters or create a new booking." />
+          // Distinguish "no records exist at all" from "filters are hiding
+          // matches". The combined message used to imply both options were
+          // equally relevant; a fresh empty dataset shouldn't suggest
+          // "clear your filters" (there aren't any), and a filtered miss
+          // shouldn't suggest "create a new booking" as the first move.
+          hasFiltersActive ? (
+            <EmptyState
+              icon={UserX}
+              title="No records match these filters"
+              description={`${recordsTotal.toLocaleString()} total records — adjust filters to see them.`}
+              action={{ label: 'Clear filters', onClick: clearFilters }}
+            />
+          ) : (
+            <EmptyState
+              icon={UserX}
+              title="No bookings yet"
+              description={canManage ? 'Press N (or click New Booking) to create the first record.' : 'No arrest records have been entered yet.'}
+              action={canManage ? { label: 'New Booking', onClick: openNew } : undefined}
+            />
+          )
         ) : (
           <div className="space-y-0.5 p-1">
             {sortedRecords.map(rec => {
@@ -633,6 +819,7 @@ export default function ArrestRecordsPage() {
                       : 'bg-surface-sunken hover:bg-rmpg-800/40 border-l-2 border-transparent'
                   }`}
                   onClick={() => setSelectedRecord(rec)}
+                  onContextMenu={(e) => openMenu(e, buildArrestMenu(rec))}
                   aria-selected={isSelected}
                 >
                   {/* County color indicator */}
@@ -670,9 +857,10 @@ export default function ArrestRecordsPage() {
           <button type="button"
             disabled={recordsPage <= 1}
             onClick={() => setRecordsPage(p => p - 1)}
-            className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5"
+            className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5 inline-flex items-center gap-1"
+            aria-label="Previous page"
           >
-            ← Prev
+            <ChevronLeft className="w-3 h-3" /> Prev
           </button>
           <span className="text-rmpg-500 font-mono tabular-nums">
             {recordsPage} / {totalPages}
@@ -680,9 +868,10 @@ export default function ArrestRecordsPage() {
           <button type="button"
             disabled={recordsPage >= totalPages}
             onClick={() => setRecordsPage(p => p + 1)}
-            className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5"
+            className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5 inline-flex items-center gap-1"
+            aria-label="Next page"
           >
-            Next →
+            Next <ChevronRight className="w-3 h-3" />
           </button>
         </div>
       )}
@@ -702,14 +891,14 @@ export default function ArrestRecordsPage() {
     return (
       <div className="h-full overflow-y-auto scrollbar-dark bg-surface-base">
         {/* Header */}
-        <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}>
+        <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
+              <h2 className="text-base font-bold text-rmpg-100">{rec.full_name}</h2>
               {rec.booking_number && (
                 <button
                   type="button"
-                  className="text-[9px] font-mono text-rmpg-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1 group"
+                  className="text-[9px] font-mono text-rmpg-400 hover:text-rmpg-100 transition-colors cursor-pointer flex items-center gap-1 group"
                   title="Click to copy booking number"
                   onClick={() => {
                     navigator.clipboard.writeText(rec.booking_number!).then(() => {
@@ -728,19 +917,54 @@ export default function ArrestRecordsPage() {
             </div>
           </div>
 
-          {(isManual || isAdmin) && (
-            <div className="flex items-center gap-1.5 mt-2">
-              <button type="button" onClick={() => openEdit(rec)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
-                <Pencil className="w-3 h-3" /> Edit
-              </button>
-              <button type="button"
-                onClick={() => setDeleteConfirm(rec.id)}
-                className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 text-red-400 hover:text-red-300"
-              >
-                <Trash2 className="w-3 h-3" /> Delete
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            {/* Court-ready PDF — uses the existing JAIL BOOKING SHEET
+                (Form PS-601) renderer in recordPdfGeneratorExt that
+                already handles charges parsing, caution-flag synthesis
+                (felony / violent / weapons / flight-risk), and the
+                Booking Officer signature line. PrintRecordButton drops
+                in preview / print / mobile-print / sign / email and
+                handles signature attach via the standard flow.
+                Available regardless of entry_source — scraper-imported
+                records are still legitimate documentation to print. */}
+            <PrintRecordButton
+              recordType="jail_booking"
+              recordData={{
+                id: rec.id,
+                source_id: rec.source_id,
+                source_name: rec.source_name ?? undefined,
+                full_name: rec.full_name,
+                first_name: rec.first_name,
+                last_name: rec.last_name,
+                middle_name: rec.middle_name,
+                date_of_birth: rec.date_of_birth ?? undefined,
+                booking_date: rec.booking_date ?? undefined,
+                charges: typeof rec.charges === 'string' ? rec.charges : JSON.stringify(rec.charges ?? []),
+                charge_lines: charges,
+                county: rec.county ?? undefined,
+                status: rec.status,
+              }}
+              identifier={rec.booking_number || `JB-${rec.id}`}
+              label="PDF"
+              entityType="arrest"
+              entityId={rec.id}
+            />
+            {(isManual || canManage) && (
+              <>
+                <button type="button" onClick={() => openEdit(rec)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
+                  <Pencil className="w-3 h-3" /> Edit
+                </button>
+                {canManage && (
+                  <button type="button"
+                    onClick={() => setDeleteConfirm(rec.id)}
+                    className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 text-red-400 hover:text-red-300"
+                  >
+                    <Trash2 className="w-3 h-3" /> Delete
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         <div className="p-2 space-y-1">
@@ -819,7 +1043,7 @@ export default function ArrestRecordsPage() {
                 <span className="text-brand-300 font-bold">{rec.linked_person.name}</span>
                 <span className="text-rmpg-500">(ID: {rec.linked_person.id})</span>
                 <button type="button"
-                  onClick={() => handleUnlinkPerson(rec.id)}
+                  onClick={() => handleUnlinkPerson(rec.id, rec.linked_person!.id)}
                   className="text-[8px] text-red-400 hover:text-red-300 flex items-center gap-0.5 ml-2"
                 >
                   <Unlink className="w-2.5 h-2.5" /> Unlink
@@ -829,7 +1053,7 @@ export default function ArrestRecordsPage() {
               <div className="space-y-1">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-rmpg-500" />
-                  <input
+                  <input id="ff-arrestrecordspage-4"
                     type="text"
                     value={personSearch}
                     onChange={e => setPersonSearch(e.target.value)}
@@ -926,17 +1150,49 @@ export default function ArrestRecordsPage() {
 
   // ── Main Render ─────────────────────────────────────────
 
-  // Set document title
-  useEffect(() => { document.title = 'Arrest Records \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
+  // Set document title \u2014 reflects selected booking so a tab switcher sees
+  // "Smith, J \u2014 Arrest Records" instead of an indistinguishable label.
   useEffect(() => {
+    const name = selectedRecord?.full_name?.trim();
+    document.title = name
+      ? `${name} \u2014 Arrest Records`
+      : 'Arrest Records \u2014 RMPG Flex';
+  }, [selectedRecord?.full_name]);
+
+  // Keyboard shortcuts
+  //   Esc \u2014 smart-cascade: dismiss the highest-priority open layer first.
+  //   N   \u2014 open the New Booking modal (matches Trespass/Field Interviews/
+  //         Equipment/Notifications muscle memory). Typing-suppressed.
+  // The cascade order is widest-blast-radius first (delete \u2192 form \u2192 linking
+  // \u2192 filters \u2192 selection); each branch returns so a single Esc doesn't
+  // collapse multiple layers.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setFormOpen(false); }
+      if (e.key === 'Escape') {
+        if (deleteConfirm !== null) { e.stopPropagation(); setDeleteConfirm(null); return; }
+        if (formOpen) { e.stopPropagation(); setFormOpen(false); setEditingRecord(undefined); return; }
+        if (linkingId !== null) { e.stopPropagation(); setLinkingId(null); setPersonSearch(''); setPersonResults([]); return; }
+        if (error) { e.stopPropagation(); setError(null); return; }
+        if (hasFiltersActive) { e.stopPropagation(); clearFilters(); return; }
+        if (selectedRecord) { e.stopPropagation(); setSelectedRecord(null); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && canManage) {
+        e.preventDefault();
+        openNew();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deleteConfirm, formOpen, linkingId, error, hasFiltersActive, selectedRecord, canManage]);
 
   return (
     <div className="h-full flex flex-col bg-surface-base">
@@ -968,37 +1224,41 @@ export default function ArrestRecordsPage() {
         submitError={formError}
       />
 
-      {/* Delete Confirmation */}
-      {deleteConfirm !== null && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(null)} />
-          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-fade-in">
-            <div
-              className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
-            >
-              <AlertTriangle className="w-4 h-4 text-red-400" />
-              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Delete Booking</h2>
+      {/* Delete Confirmation — shared ConfirmDialog
+          (body-scroll-lock, ARIA-titled, pre-focused Cancel, displays the
+          row's identifying context so the operator sees what they're about
+          to permanently delete). Migrated from the bespoke inline modal
+          that was missing all of the above and could be Enter-confirmed by
+          a focused submit button elsewhere on the page. */}
+      <ConfirmDialog
+        isOpen={deleteConfirm !== null}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => deleteConfirm !== null && handleDelete(deleteConfirm)}
+        title="Delete Booking"
+        message="Are you sure you want to permanently delete this booking record? This action cannot be undone."
+        details={(() => {
+          if (deleteConfirm === null) return null;
+          const target = records.find(r => r.id === deleteConfirm) ?? (selectedRecord?.id === deleteConfirm ? selectedRecord : null);
+          if (!target) return null;
+          return (
+            <div className="space-y-0.5">
+              <div><span className="text-rmpg-500">Subject:</span> <span className="font-bold text-rmpg-100">{target.full_name || '—'}</span></div>
+              {target.booking_number && (
+                <div><span className="text-rmpg-500">Booking #:</span> <span className="font-mono text-rmpg-200">{target.booking_number}</span></div>
+              )}
+              {target.booking_date && (
+                <div><span className="text-rmpg-500">Booked:</span> <span className="text-rmpg-200">{fmtDate(target.booking_date)}</span></div>
+              )}
+              {target.county && (
+                <div><span className="text-rmpg-500">County:</span> <span className="text-rmpg-200">{target.county}</span></div>
+              )}
             </div>
-            <div className="p-5">
-              <p className="text-sm text-rmpg-200 leading-relaxed">
-                Are you sure you want to permanently delete this booking record? This action cannot be undone.
-              </p>
-              <div className="flex items-center justify-end gap-3 mt-5">
-                <button type="button" onClick={() => setDeleteConfirm(null)} className="toolbar-btn">
-                  Cancel
-                </button>
-                <button type="button"
-                  onClick={() => handleDelete(deleteConfirm)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-white transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+          );
+        })()}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

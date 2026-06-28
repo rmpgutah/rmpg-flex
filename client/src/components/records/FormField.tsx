@@ -17,7 +17,7 @@ interface FormFieldProps {
   className?: string;
 }
 
-export default function FormField({ label, required = false, hint, children, className = '' }: FormFieldProps) {
+function FormField({ label, required = false, hint, children, className = '' }: FormFieldProps) {
   return (
     <div className={className}>
       <label
@@ -32,3 +32,5 @@ export default function FormField({ label, required = false, hint, children, cla
     </div>
   );
 }
+
+export default React.memo(FormField);
