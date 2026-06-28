@@ -27,22 +27,14 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Cutover 2026-05-24: /server/ is now the deployed Worker source.
-      # See memory/project_dual_worker_codebases.md.
-      - name: Install root deps (wrangler CLI)
+      # Worker source lives at /src/ with root package.json.
+      # The legacy /server/ directory is dead (moved to legacy/server-vps/).
+      # Root npm ci covers wrangler CLI + worker deps.
+      - name: Install root deps
         run: npm ci
 
-      - name: Install server deps
-        working-directory: server
-        run: npm ci --legacy-peer-deps
-
-      - name: Typecheck (server — the deployed Worker)
-        working-directory: server
+      - name: Typecheck (Worker — src/)
         run: npx tsc --noEmit
-
-      - name: Route collision guard
-        working-directory: server
-        run: npm run check:routes
 
       # Schema drift check — verifies every CREATE TABLE and ALTER TABLE from
       # migration files exists on live D1. Catches the continue-on-error trap:
