@@ -4,6 +4,9 @@ import { UNIT_STATUS_COLORS } from '../utils/mapConstants';
 import type { MapUnit as Unit, ActiveCall } from '../utils/mapConstants';
 import { whenStyleReady } from '../utils/safeAddSource';
 
+const SOURCE_ID = 'tracking-lines-source';
+const LAYER_ID = 'tracking-lines-layer';
+
 interface UseMapTrackingLinesParams {
   map: mapboxgl.Map | null;
   mapLoaded: boolean;

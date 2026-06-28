@@ -47,6 +47,8 @@ export function useMapResponseRadius(
   const showRadiusAt = useCallback((lat: number, lng: number) => {
     if (!map || !enabled) return;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    removeLayer(map);
+    setActivePoint({ lat, lng });
 
     clearRadius();
     setActivePoint({ lat, lng });

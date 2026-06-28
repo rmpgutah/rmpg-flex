@@ -371,7 +371,7 @@ export default function ServeIntakePage() {
   }, []);
 
   // Deep-link: strip ?intake_id= / ?case_id= after mount (no-ops if absent).
-  // ?case_id= redirects to /dispatch immediately; ?intake_id= just toasts the id.
+  // ?case_id= redirects to /dispatch immediately; ?intake_id= toasts the id.
   useEffect(() => {
     const intakeId = pendingIntakeIdRef.current;
     const caseId = pendingCaseIdRef.current;

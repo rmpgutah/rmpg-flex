@@ -140,7 +140,11 @@ export function useMapCoverageGaps(
           paint: {
             'circle-color': ['get', 'color'],
             'circle-radius': ['get', 'radius'],
-            'circle-opacity': ['get', 'color'],
+            // 'circle-opacity' must be a number 0..1 — was mistakenly set to
+            // ['get','color'] (a hex string), which Mapbox coerces via
+            // ['number',['get','color']] → "evaluated to string, expected
+            // number" console error on every coverage-gap render.
+            'circle-opacity': 0.35,
             'circle-stroke-color': ['get', 'color'],
             'circle-stroke-width': 1.5,
             'circle-stroke-opacity': 0.35,
@@ -297,6 +301,7 @@ export function useMapCoverageGaps(
         if (map.getSource(id)) map.removeSource(id);
       });
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, units, enabled, radiusMiles]);
 
   useEffect(() => {
@@ -306,6 +311,7 @@ export function useMapCoverageGaps(
         popupRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { coverageCount, uncoveredArea: coverageCount === 0, deadZones, repositionSuggestions };

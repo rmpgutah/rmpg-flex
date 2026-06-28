@@ -4,35 +4,20 @@ import { apiFetch } from '../../../hooks/useApi';
 import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface UnitExposureData {
-  call_sign: string;
-  lat: number;
-  lng: number;
-  high_risk_minutes: number;
-  total_minutes_on_duty: number;
+  call_sign: string; lat: number; lng: number;
+  high_risk_minutes: number; total_minutes_on_duty: number;
   current_zone_risk: 'low' | 'moderate' | 'high' | 'critical';
-  heading: number;
-  speed_mph: number;
-  shift_start: string;
+  heading: number; speed_mph: number; shift_start: string;
 }
 
 export interface CoverageGap {
-  lat: number;
-  lng: number;
-  width: number;
-  height: number;
+  lat: number; lng: number; width: number; height: number;
   gap_severity: 'low' | 'moderate' | 'high';
 }
 
-interface PerimeterCheckResult {
-  gaps: CoverageGap[];
-  coverage_percent: number;
-}
+interface PerimeterCheckResult { gaps: CoverageGap[]; coverage_percent: number; }
 
-interface UnitCluster {
-  lat: number;
-  lng: number;
-  units: string[];
-}
+interface UnitCluster { lat: number; lng: number; units: string[]; }
 
 interface UseMapUnitSafetyReturn {
   unitExposure: Map<string, UnitExposureData>;
@@ -341,9 +326,7 @@ export function useMapUnitSafety(
       renderOverlays(gaps, loneList, clusterList, newExposure);
     } catch (err) {
       console.warn('[useMapUnitSafety] Safety data fetch failed:', err);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
+    } finally { if (mountedRef.current) setLoading(false); }
   }, [enabled, units, map, computeSafetyMetrics, renderOverlays]);
 
   useEffect(() => {

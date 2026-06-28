@@ -7,7 +7,7 @@
 // Free public search — no API key required.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, LicenseRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, LicenseRecord } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const DOPL_SEARCH_URL = 'https://secure.utah.gov/llv/search/index.html';
@@ -17,7 +17,7 @@ const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement Skip Trace)';
 export default class UtahDoplSource extends BaseDataSource {
   readonly name = 'utah_dopl';
   readonly displayName = 'Utah Professional Licenses';
-  readonly category: SourceCategory = 'people';
+  readonly category: SkipTracerSourceCategory = 'people';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 5;

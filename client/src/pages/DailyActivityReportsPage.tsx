@@ -53,6 +53,10 @@ export default function DailyActivityReportsPage() {
   // initialisers for ?officer_id= and ?date= can reference it.
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // searchParams must be declared before filter state so the lazy
+  // initialisers for ?officer_id= and ?date= can reference it.
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [dars, setDars] = useState<DailyActivityReport[]>([]);
   const [selected, setSelected] = useState<DailyActivityReport | null>(null);
   const [loading, setLoading] = useState(true);

@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import config from './config';
 import { initDatabase } from './models/database';
@@ -18,6 +19,8 @@ import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
+import { startBreadcrumbDecimator } from './utils/breadcrumbDecimator';
+import { startGpsGapDetector } from './utils/gpsGapDetector';
 import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
@@ -48,6 +51,8 @@ import dispatchRoutes from './routes/dispatch';
 import nibrsRoutes from './routes/nibrs';
 import incidentSupplementsRoutes from './routes/incidentSupplements';
 import incidentRoutes from './routes/incidents';
+import nibrsRoutes from './routes/nibrs';
+import incidentSupplementsRoutes from './routes/incidentSupplements';
 import recordsRoutes from './routes/records';
 import businessVehiclesRoutes from './routes/businessVehicles';
 import subjectSearchRoutes from './routes/subjectSearch';
@@ -385,6 +390,8 @@ app.use('/owntracks', owntracksDeprecatedRouter);
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/dispatch', dispatchRoutes);
+// Supplements mount first so /:id/supplements/* doesn't get shadowed by /:id handlers in incidentRoutes.
+app.use('/api/incidents', incidentSupplementsRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/incidents', incidentSupplementsRoutes);
 app.use('/api/nibrs', nibrsRoutes);
@@ -723,6 +730,20 @@ try {
       startDailyReportScheduler();
     } catch (err: any) {
       logger.warn({ err, scheduler: 'daily-report' }, 'failed to start scheduler');
+    }
+
+    // Start hourly breadcrumb decimator (age-tiered GPS history pruning)
+    try {
+      startBreadcrumbDecimator();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'breadcrumb-decimator' }, 'failed to start scheduler');
+    }
+
+    // Start GPS gap detector (alerts when active units go silent)
+    try {
+      startGpsGapDetector();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'gps-gap-detector' }, 'failed to start scheduler');
     }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
