@@ -1,0 +1,35 @@
+# Known Bad Hash Set — Cybercrime & Hacking Tools
+# Source: CISA/FBI Cyber Division (simulated)
+# Category: known_bad
+# Hash Type: MD5
+# Description: Known hacking tools, network attack utilities, credential
+#              theft tools, DDoS kits, and unauthorized access software.
+# Last Updated: 2026-03-20
+#
+# Format: md5_hash,filename
+#
+# --- Network Attack Tools ---
+735b90b4568125ed6c3f678819b6e058,nmap_custom_scripts.nse
+a3f390d88e4c41f2747bfa2f1b5f87db,masscan_wrapper.py
+8d3bba7425e7c8c64bbf14f0eed3da0f,wifi_pineapple_modules.zip
+26657d5ff9020d2abefe558796b99584,aircrack_custom.sh
+e2b7e21e9b8c0e3e2f8e0d2c8b8c8f00,packet_sniffer_stealth.py
+# --- Credential Theft ---
+5f93f983524def3dca464469d2cf9f3e,credential_harvester.py
+698d51a19d8a121ce581499d7b701668,wifi_evil_twin.py
+b59c67bf196a4758191e42f76670ceba,phishing_framework.zip
+934b535800b1cba8f96a5d72f72f1611,social_engineering_toolkit.tar
+# --- DDoS Tools ---
+a97da629b098b75c294dff60cea6f785,loic_modified.exe
+cb7a1d775e800fd1ee4049f7dca9e041,slowloris_v3.py
+ece8687ce17c5f17e5ed2a6a3f263e1d,memcached_amplifier.py
+735f3e09a8b2b7ef6e3c2d1a7b5c8f9e,dns_reflection_tool.sh
+# --- Exploitation ---
+d67d8ab4f4c10bf22aa353e27879133c,sqlmap_custom.py
+735b90b4568125ed6c3f678819b6e058,xss_scanner_auto.py
+5d7b9adcbe1c629ec722529dd12e8ada,rce_exploit_kit.zip
+7cbbc409ec990f19c78c75bd1e06f215,zero_day_payload.bin
+# --- Ransomware Builders ---
+e6dc4f3c562c5f5e2d6f7e8a9b0c1d2e,ransomware_builder_gui.exe
+f7ed5f8a673b6c7d8e9f0a1b2c3d4e5f,locker_configurator.py
+a8fe6d7b584c9e0f1a2b3c4d5e6f7a8b,encryption_module_aes.dll

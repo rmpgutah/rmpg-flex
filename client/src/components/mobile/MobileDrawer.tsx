@@ -218,6 +218,15 @@ export default function MobileDrawer({
     return () => { window.removeEventListener('popstate', handlePopState); };
   }, [isOpen, onClose]);
 
+  // Android hardware back button — close drawer on back press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePopState = () => { onClose(); };
+    window.history.pushState({ mobileDrawer: true }, '');
+    window.addEventListener('popstate', handlePopState);
+    return () => { window.removeEventListener('popstate', handlePopState); };
+  }, [isOpen, onClose]);
+
   // ─── Swipe-to-close ────────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
