@@ -1017,6 +1017,15 @@ const API_ROUTES: RouteRule[] = [
   // .catch-degrades); legacy is the dead-code fallback. Route to env.API.
   { kind: 'regex', value: /^\/api\/dispatch\/analysis\/summary(\?.*)?$/, methods: ['GET'] },
 
+  // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
+  // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has
+  // NO handler for it, so it fell through to env.LEGACY and 404'd (console
+  // spam on the Map page). The rewrite clusters citations through their call's
+  // coordinates, fully defensive (degrades to [] on any schema drift). Scoped
+  // to /enforcement ONLY — sibling /api/dispatch/heatmap/timelapse stays on
+  // env.LEGACY (which DOES serve it; the rewrite has no timelapse handler).
+  { kind: 'prefix', value: '/api/dispatch/heatmap/enforcement' },
+
   // /api/dispatch/calls/check-duplicate — rewrite has correct route ordering
   // (literal /check-duplicate registered before parametric /:id). Legacy
   // hits the /:id handler first and 500s on NaN cast.
@@ -1105,6 +1114,12 @@ const API_ROUTES: RouteRule[] = [
   // dispatch layout). Was stubbed in proxy 2026-06-07 round 2; that stub
   // was removed once the real handler landed.
   { kind: 'prefix', value: '/api/dispatch/stats', methods: ['GET'] },
+
+  // ── Radio subsystem (PR #661) ──
+  // The new worker is the only handler — legacy has no /api/radio/*
+  // routes at all. Schema lives on the new-Worker DB (8893480a-…),
+  // not live (785de7ae-…).
+  { kind: 'prefix', value: '/api/radio' },
 
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──

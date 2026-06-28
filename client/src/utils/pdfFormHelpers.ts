@@ -157,7 +157,7 @@ export function drawFormCell(
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     // Strip numbered prefix patterns like "1. ", "12. " from labels
     const cleanLabel = cell.label.replace(/^\d+\.\s*/, '').toUpperCase();
-    doc.text(cleanLabel, x + pad, labelBaseY);
+    doc.text(fitPdfText(doc, cleanLabel, w - 2 * pad), x + pad, labelBaseY);
   }
 
   // Value area starts below label strip — 2mm gap between label and value
@@ -190,7 +190,7 @@ export function drawFormCell(
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(cell.value, cbX + cbSize + 1, cbY + cbSize - 0.3);
+      doc.text(fitPdfText(doc, cell.value, w - (cbX - x) - cbSize - 2), cbX + cbSize + 1, cbY + cbSize - 0.3);
     }
   } else if (cell.value) {
     doc.setFont(PDF_VALUE_FONT, cell.valueBold ? 'bold' : 'normal');
@@ -213,6 +213,7 @@ export function drawFormCell(
     const textH = fontSize * 0.35;  // Approximate cap height in mm
     const valueY = valueAreaTop + (valueAreaH + textH) / 2;
 
+    const displayVal = cell.value.toUpperCase();
     if (cell.align === 'center') {
       doc.text(displayVal, x + w / 2, valueY, { align: 'center' });
     } else if (cell.align === 'right') {
@@ -314,7 +315,7 @@ export function drawSideTab(
   const maxTextLen = height - 4;
   let fontSize: number = FONT.SIZE_SIDEBAR_TAB;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(fontSize);
   let textW = doc.getTextWidth(upperLabel);
 
@@ -415,7 +416,7 @@ export function drawCodeReferenceTable(
   // Title bar
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(x, y, totalW, 4, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text(title.toUpperCase(), x + 1.5, y + 2.8);
@@ -734,7 +735,6 @@ export function drawNibrsHeader(
   doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
 
   if (config.caseNumber) {
-    const caseBoxW = LAYOUT.CASE_BOX_W;
     const caseBoxH = headerH - 6;
     const caseBoxX = margin + contentW - caseBoxW - 2;
     const caseBoxY = y + 3;

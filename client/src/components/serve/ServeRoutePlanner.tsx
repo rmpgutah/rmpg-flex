@@ -314,6 +314,7 @@ export default function ServeRoutePlanner({
   // Update markers when stops change
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
+    const map = mapRef.current;
 
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
@@ -379,7 +380,7 @@ export default function ServeRoutePlanner({
   }, []);
 
   const optimizeRoute = useCallback(async () => {
-    if (!mapReady) return;
+    if (!mapReady || !mapRef.current) return;
 
     const selected = stops.filter(s => s.selected);
     if (selected.length < 2) {
