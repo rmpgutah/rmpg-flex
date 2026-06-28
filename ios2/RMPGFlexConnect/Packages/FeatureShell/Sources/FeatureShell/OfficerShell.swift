@@ -9,12 +9,13 @@ import FeatureCFS
 import FeatureRunPlate
 import FeatureRunID
 
+@MainActor
 public struct OfficerShell: View {
     public static let tabs: [TabSpec] = [
         TabSpec(id: "home",    title: "Home",    systemImage: "house.fill",            milestone: "M1"),
         TabSpec(id: "cfs",     title: "CFS",     systemImage: "list.bullet.rectangle", milestone: "M1"),
         TabSpec(id: "scan",    title: "Scan ID", systemImage: "camera.viewfinder",     milestone: "M1"),
-        TabSpec(id: "records", title: "Records", systemImage: "doc.text.magnifyingglass", milestone: "M1"),
+        TabSpec(id: "records", title: "Records", systemImage: "doc.text",              milestone: "M1"),
         TabSpec(id: "more",    title: "More",    systemImage: "ellipsis.circle",       milestone: "M1"),
     ]
 
@@ -46,7 +47,7 @@ public struct OfficerShell: View {
                 .tabItem { Label("Scan ID", systemImage: "camera.viewfinder") }
 
             RecordsTabView(client: apiClient)
-                .tabItem { Label("Records", systemImage: "doc.text.magnifyingglass") }
+                .tabItem { Label("Records", systemImage: "doc.text") }
 
             MoreTabView(session: session)
                 .tabItem { Label("More", systemImage: "ellipsis.circle") }
