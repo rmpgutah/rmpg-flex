@@ -4,6 +4,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Upload, X, Car, Loader2, MapPin, Gauge } from 'lucide-react';
+import AddressAutocomplete from './AddressAutocomplete';
 
 import RichTextArea from './RichTextArea';
 interface FleetVehicle {
@@ -197,7 +198,7 @@ export default function DashCamUploadModal({
 
           {/* File Input */}
           <div className="panel-inset p-3">
-            <label className="field-label mb-2 block">Video File <span className="text-red-400">*</span></label>
+            <label htmlFor="ff-dashcamuploadmodal-0" className="field-label mb-2 block">Video File <span className="text-red-400">*</span></label>
             {file ? (
               <div className="flex items-center gap-2">
                 <Car className="w-4 h-4 text-brand-400 flex-shrink-0" />
@@ -219,26 +220,26 @@ export default function DashCamUploadModal({
                 <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM</span>
               </button>
             )}
-            <input ref={fileRef} type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm" onChange={handleFileChange} className="hidden" />
+            <input id="ff-dashcamuploadmodal-0" ref={fileRef} type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm" onChange={handleFileChange} className="hidden" />
           </div>
 
           {/* Metadata */}
           <div className="panel-inset p-3 space-y-3">
             <div>
-              <label className="field-label">Title <span className="text-red-400">*</span></label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" />
+              <label htmlFor="ff-dashcamuploadmodal-1" className="field-label">Title <span className="text-red-400">*</span></label>
+              <input id="ff-dashcamuploadmodal-1" type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="field-label">Vehicle</label>
-                <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} className="select-dark">
+                <label htmlFor="ff-dashcamuploadmodal-2" className="field-label">Vehicle</label>
+                <select id="ff-dashcamuploadmodal-2" value={vehicleId} onChange={e => setVehicleId(e.target.value)} className="select-dark">
                   <option value="">Select vehicle...</option>
                   {vehicles.map(v => <option key={v.id} value={v.id}>#{v.vehicle_number} — {[v.year, v.make, v.model].filter(Boolean).join(' ')}</option>)}
                 </select>
               </div>
               <div>
-                <label className="field-label">Unit</label>
-                <select value={unitId} onChange={e => setUnitId(e.target.value)} className="select-dark">
+                <label htmlFor="ff-dashcamuploadmodal-3" className="field-label">Unit</label>
+                <select id="ff-dashcamuploadmodal-3" value={unitId} onChange={e => setUnitId(e.target.value)} className="select-dark">
                   <option value="">Select unit...</option>
                   {units.map(u => <option key={u.id} value={u.id}>{u.call_sign}</option>)}
                 </select>
@@ -246,12 +247,12 @@ export default function DashCamUploadModal({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="field-label">Recorded Date</label>
-                <input type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" />
+                <label htmlFor="ff-dashcamuploadmodal-4" className="field-label">Recorded Date</label>
+                <input id="ff-dashcamuploadmodal-4" type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" />
               </div>
               <div>
-                <label className="field-label">Classification</label>
-                <select value={classification} onChange={e => setClassification(e.target.value)} className="select-dark">
+                <label htmlFor="ff-dashcamuploadmodal-5" className="field-label">Classification</label>
+                <select id="ff-dashcamuploadmodal-5" value={classification} onChange={e => setClassification(e.target.value)} className="select-dark">
                   {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
@@ -264,26 +265,40 @@ export default function DashCamUploadModal({
             <p className="text-[9px] text-rmpg-500 -mt-1">Auto-populated from ClearPathGPS if unit and recorded date are set</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
-                <label className="field-label flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed (MPH)</label>
-                <input type="number" step="0.1" value={speedMph} onChange={e => setSpeedMph(e.target.value)} placeholder="e.g. 45" className="input-dark" />
+                <label htmlFor="ff-dashcamuploadmodal-6" className="field-label flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed (MPH)</label>
+                <input id="ff-dashcamuploadmodal-6" type="number" step="0.1" value={speedMph} onChange={e => setSpeedMph(e.target.value)} placeholder="e.g. 45" className="input-dark" />
               </div>
               <div>
-                <label className="field-label">Latitude</label>
-                <input type="number" step="0.0001" value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="e.g. 40.7608" className="input-dark" />
+                <label htmlFor="ff-dashcamuploadmodal-7" className="field-label">Latitude</label>
+                <input id="ff-dashcamuploadmodal-7" type="number" step="0.0001" value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="e.g. 40.7608" className="input-dark" />
               </div>
               <div>
-                <label className="field-label">Longitude</label>
-                <input type="number" step="0.0001" value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="e.g. -111.8910" className="input-dark" />
+                <label htmlFor="ff-dashcamuploadmodal-8" className="field-label">Longitude</label>
+                <input id="ff-dashcamuploadmodal-8" type="number" step="0.0001" value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="e.g. -111.8910" className="input-dark" />
               </div>
             </div>
-            <div>
-              <label className="field-label">Street Address</label>
-              <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="e.g. 123 S State St, Salt Lake City, UT" className="input-dark" />
-            </div>
+             <div>
+               <label className="field-label">Street Address</label>
+               <AddressAutocomplete
+                 value={address}
+                 onChange={(value) => setAddress(value)}
+                 placeholder="Enter address..."
+                 className="input-dark"
+                 name="address"
+                 onSelect={(addr) => {
+                   // Store the full formatted address (street + city + state + zip)
+                   // and propagate the geocoded coordinates to the GPS inputs above
+                   // so the video appears on the map after upload.
+                   setAddress(addr.formatted || addr.street);
+                   if (addr.latitude != null) setLatitude(String(addr.latitude));
+                   if (addr.longitude != null) setLongitude(String(addr.longitude));
+                 }}
+               />
+             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="field-label">Case Number</label>
-                <input type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" />
+                <label htmlFor="ff-dashcamuploadmodal-9" className="field-label">Case Number</label>
+                <input id="ff-dashcamuploadmodal-9" type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" />
               </div>
             </div>
             <div>
@@ -310,7 +325,7 @@ export default function DashCamUploadModal({
           {/* Actions */}
           <div className="flex items-center justify-end gap-2 pt-2">
             <button type="button" onClick={handleClose} disabled={uploading} className="toolbar-btn text-xs px-4 py-1.5">Cancel</button>
-            <button type="submit" disabled={uploading || !file || !title} className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
+            <button type="submit" disabled={uploading || !file || !title} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5">
               {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
               {uploading ? 'Uploading...' : 'Upload Video'}
             </button>

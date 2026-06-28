@@ -1,9 +1,8 @@
-import { useId, useEffect } from 'react';
-import { Fuel, DollarSign } from 'lucide-react';
+import React, { useId, useEffect } from 'react';
+import { Fuel, DollarSign, Clock } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FuelType } from '../../../types';
 
-import RichTextArea from '../../../components/RichTextArea';
 export interface FuelFormState {
   fuel_date: string;
   gallons: string;
@@ -13,12 +12,22 @@ export interface FuelFormState {
   fuel_type: FuelType;
   station: string;
   notes: string;
+  // Enhanced capture (2026-05-31) — these power the efficiency analytics:
+  // is_full_tank gates MPG math (partial fills don't reset the tank), and
+  // payment_method/driver/location feed the richer PDF + audit breakdowns.
+  is_full_tank: boolean;
+  payment_method: string;
+  driver_name: string;
+  location: string;
 }
 
 export const EMPTY_FUEL_FORM: FuelFormState = {
   fuel_date: '', gallons: '', cost_per_gallon: '', total_cost: '',
   odometer_reading: '', fuel_type: 'regular', station: '', notes: '',
+  is_full_tank: true, payment_method: '', driver_name: '', location: '',
 };
+
+const PAYMENT_METHODS = ['Fuel Card', 'Credit Card', 'Cash', 'Fleet Account', 'Reimbursement'];
 
 const FUEL_TYPES: { value: FuelType; label: string }[] = [
   { value: 'regular', label: 'Regular' },
@@ -40,17 +49,31 @@ interface Props {
   onSave: () => void;
   onClose: () => void;
   saving: boolean;
+  isDirty?: boolean;
+  draftRestored?: boolean;
+  onDiscardDraft?: () => void;
 }
 
-export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving }: Props) {
+export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving, isDirty, draftRestored, onDiscardDraft }: Props) {
   const titleId = useId();
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) {
+        if (isDirty) {
+          if (window.confirm('You have unsaved changes. Discard them?')) {
+            onDiscardDraft?.();
+            onClose();
+          }
+        } else {
+          onClose();
+        }
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, saving, onClose]);
+  }, [isOpen, saving, onClose, isDirty, onDiscardDraft]);
 
   if (!isOpen) return null;
 
@@ -69,23 +92,44 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
 
   const grade = FUEL_GRADE[form.fuel_type] || FUEL_GRADE.regular;
 
+  const guardedClose = () => {
+    if (isDirty && !saving) {
+      if (window.confirm('You have unsaved changes. Discard them?')) {
+        onDiscardDraft?.();
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : guardedClose}>
       <div className="panel-beveled w-[520px] max-w-full mx-4 max-h-[80vh] flex flex-col bg-surface-raised" onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT FUEL ENTRY' : 'LOG FUEL ENTRY'} icon={Fuel} id={titleId}>
-          <button type="button" className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
+          {isDirty && <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider mr-2">UNSAVED</span>}
+          <button type="button" className="toolbar-btn text-[9px]" onClick={guardedClose}>X</button>
         </PanelTitleBar>
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
+          {draftRestored && onDiscardDraft && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-3" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={onDiscardDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">Discard</button>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1"
+              <label htmlFor="ff-fuellogmodal-0" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
+              <input id="ff-fuellogmodal-0" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1"
                 value={form.fuel_date}
                 onChange={(e) => setField('fuel_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Fuel Type</label>
-              <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.fuel_type}
+              <label htmlFor="ff-fuellogmodal-1" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Fuel Type</label>
+              <select id="ff-fuellogmodal-1" className="select-dark w-full text-[11px] min-h-[36px]" value={form.fuel_type}
                 onChange={(e) => setField('fuel_type', e.target.value)}>
                 {FUEL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
@@ -95,24 +139,51 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
               </div>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Gallons *</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.001" value={form.gallons}
+              <label htmlFor="ff-fuellogmodal-2" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Gallons *</label>
+              <input id="ff-fuellogmodal-2" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.001" value={form.gallons}
                 onChange={(e) => setField('gallons', e.target.value)} placeholder="e.g. 15.500" />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Cost per Gallon ($)</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.001" value={form.cost_per_gallon}
+              <label htmlFor="ff-fuellogmodal-3" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Cost per Gallon ($)</label>
+              <input id="ff-fuellogmodal-3" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.001" value={form.cost_per_gallon}
                 onChange={(e) => setField('cost_per_gallon', e.target.value)} placeholder="e.g. 3.450" />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Total Cost ($)</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" value={form.total_cost}
+              <label htmlFor="ff-fuellogmodal-4" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Total Cost ($)</label>
+              <input id="ff-fuellogmodal-4" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" value={form.total_cost}
                 onChange={(e) => setField('total_cost', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Odometer Reading</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.1" value={form.odometer_reading}
-                onChange={(e) => setField('odometer_reading', e.target.value)} />
+              <label htmlFor="ff-fuellogmodal-5" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Odometer Reading</label>
+              <input id="ff-fuellogmodal-5" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.1" value={form.odometer_reading}
+                onChange={(e) => setField('odometer_reading', e.target.value)} placeholder="for MPG calc" />
+            </div>
+
+            {/* Full-tank toggle — drives MPG accuracy. A partial fill doesn't
+                reset the tank, so its gallons can't be attributed to the
+                odometer span; we record it but exclude it from MPG. */}
+            <div>
+              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Fill Type</label>
+              <label className="flex items-center gap-2 input-dark w-full text-[11px] min-h-[36px] px-2 cursor-pointer select-none">
+                <input id="ff-fuellogmodal-6" type="checkbox" className="accent-brand-500" checked={form.is_full_tank}
+                  onChange={(e) => onChange({ ...form, is_full_tank: e.target.checked })} />
+                <span className={form.is_full_tank ? 'text-rmpg-200' : 'text-amber-400'}>
+                  {form.is_full_tank ? 'Full Tank (counts toward MPG)' : 'Partial Fill (excluded from MPG)'}
+                </span>
+              </label>
+            </div>
+            <div>
+              <label htmlFor="ff-fuellogmodal-7" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Payment Method</label>
+              <input id="ff-fuellogmodal-7" className="input-dark w-full text-[11px] min-h-[36px]" value={form.payment_method} list="fuel-pay-methods"
+                onChange={(e) => setField('payment_method', e.target.value)} placeholder="e.g. Fuel Card" />
+              <datalist id="fuel-pay-methods">
+                {PAYMENT_METHODS.map((m) => <option key={m} value={m} />)}
+              </datalist>
+            </div>
+            <div>
+              <label htmlFor="ff-fuellogmodal-8" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Driver / Officer</label>
+              <input id="ff-fuellogmodal-8" className="input-dark w-full text-[11px] min-h-[36px]" value={form.driver_name}
+                onChange={(e) => setField('driver_name', e.target.value)} placeholder="who fueled" />
             </div>
 
             {/* Live Cost Calculator */}
@@ -130,21 +201,26 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
               </div>
             )}
 
-            <div className="col-span-2">
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Station</label>
-              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.station}
+            <div>
+              <label htmlFor="ff-fuellogmodal-9" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Station</label>
+              <input id="ff-fuellogmodal-9" className="input-dark w-full text-[11px] min-h-[36px]" value={form.station}
                 onChange={(e) => setField('station', e.target.value)} placeholder="e.g. Shell - Main St" />
             </div>
+            <div>
+              <label htmlFor="ff-fuellogmodal-10" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Location / City</label>
+              <input id="ff-fuellogmodal-10" className="input-dark w-full text-[11px] min-h-[36px]" value={form.location}
+                onChange={(e) => setField('location', e.target.value)} placeholder="e.g. Salt Lake City" />
+            </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-              <RichTextArea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
+              <label htmlFor="ff-fuellogmodal-11" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
+              <textarea id="ff-fuellogmodal-11" className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)} maxLength={2000} />
               <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
             </div>
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
-          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" className="toolbar-btn" onClick={guardedClose} disabled={saving}>Cancel</button>
           <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onSave} disabled={saving || !form.fuel_date || !form.gallons}>
             {saving ? 'Saving...' : mode === 'edit' ? 'Update Fuel' : 'Log Fuel'}
           </button>

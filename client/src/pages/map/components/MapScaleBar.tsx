@@ -1,7 +1,8 @@
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { mapboxgl } from '../../../utils/mapboxLoader';
 
 interface MapScaleBarProps {
-  mapInstance: google.maps.Map | null;
+  mapInstance: mapboxgl.Map | null;
 }
 
 /** Meters per pixel at a given latitude and zoom level */
@@ -39,7 +40,7 @@ const TARGET_BAR_WIDTH = 120; // pixels - target width for the bar
 export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
   const [barWidth, setBarWidth] = useState(0);
   const [label, setLabel] = useState('');
-  const listenerRefs = useRef<google.maps.MapsEventListener[]>([]);
+  const listenerRefs = useRef<{ map: mapboxgl.Map; onUpdate: () => void }[]>([]);
 
   useEffect(() => {
     if (!mapInstance) return;
@@ -49,15 +50,13 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
       const zoom = mapInstance.getZoom();
       if (!center || zoom == null) return;
 
-      const lat = center.lat();
+      const lat = center.lat;
       const metersPerPixel = getMetersPerPixel(lat, zoom);
       const feetPerPixel = metersPerPixel * 3.28084;
 
-      // How many feet would TARGET_BAR_WIDTH pixels represent?
       const maxFeet = feetPerPixel * TARGET_BAR_WIDTH;
       const niceFeet = pickNiceDistance(maxFeet);
 
-      // Compute exact pixel width for the nice distance
       const exactWidth = niceFeet / feetPerPixel;
 
       setBarWidth(Math.round(exactWidth));
@@ -66,13 +65,12 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
 
     update();
 
-    const zoomListener = google.maps.event.addListener(mapInstance, 'zoom_changed', update);
-    const boundsListener = google.maps.event.addListener(mapInstance, 'bounds_changed', update);
-    listenerRefs.current = [zoomListener, boundsListener];
+    mapInstance.on('zoom', update);
+    mapInstance.on('move', update);
 
     return () => {
-      listenerRefs.current.forEach((l) => google.maps.event.removeListener(l));
-      listenerRefs.current = [];
+      mapInstance.off('zoom', update);
+      mapInstance.off('move', update);
     };
   }, [mapInstance]);
 
@@ -85,15 +83,15 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
     <div
       role="img"
       aria-label={`Map scale: ${label}`}
-      className="backdrop-blur-md shadow-lg transition-all duration-200 border border-[#2b2b2b]/50 rounded-sm"
+      className="backdrop-blur-md shadow-lg transition-all duration-200 border border-rmpg-700/50 rounded-sm"
       style={{
         borderRadius: 2,
-        background: 'rgba(13, 21, 32, 0.9)',
+        background: 'rgba(10, 10, 10, 0.9)',
         padding: '4px 8px 5px',
       }}
     >
       {/* #19: Distance label with tabular-nums for stable width */}
-      <div className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider text-center mb-1 cursor-pointer hover:text-[#a0a0a0] transition-colors tabular-nums" style={{ width: barWidth }}>
+      <div className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider text-center mb-1 cursor-pointer hover:text-rmpg-400 transition-colors tabular-nums" style={{ width: barWidth }}>
         {label}
       </div>
       {/* Alternating bar segments with gradient */}

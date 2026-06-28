@@ -1,0 +1,18 @@
+-- ============================================================
+-- 0041_geography_create_columns.sql  (no-op as of 2026-05-29)
+-- ============================================================
+-- This migration originally ADDed: dispatch_areas.commander,
+-- dispatch_areas.notes, dispatch_sectors.notes, dispatch_zones.notes.
+--
+-- All four columns ALREADY EXIST on live D1 (785de7ae) — applied directly via
+-- `wrangler d1 execute` on 2026-05-29, verified via pragma_table_info().
+-- The original `ADD COLUMN`s relied on deploy.yml's migration step being
+-- continue-on-error, but that was removed 2026-05-27, so re-applying them
+-- failed with "duplicate column name" and blocked deploys. D1 has no
+-- IF NOT EXISTS on ADD COLUMN, so this migration is reduced to a no-op:
+-- the desired columns are already present.
+--
+-- (Numbering note: this shares the 0040/0041 range with
+-- 0041_calls_ext_add_held_at.sql — wrangler tracks migrations by full
+-- filename, not number, so both apply independently; the duplicate number is
+-- cosmetic only.)
