@@ -2,6 +2,9 @@
   "name": "rmpg-flex-cloudflare",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "build": "echo 'Wrangler handles bundling at deploy time'",
     "dev": "wrangler dev",
