@@ -110,18 +110,6 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
   // Monotonic click id — guards against an older nearest-address response
   // resolving after a newer click and overwriting the newer popup.
   const seqRef = useRef(0);
-  // In-flight street-image (Mapillary) request — aborted when a newer click
-  // supersedes it so we don't leave stale network requests running.
-  const streetAbortRef = useRef<AbortController | null>(null);
-  // REGRESSION-GUARD: prevent post-unmount popup rendering. Async handlers
-  // (apiFetch/Promise.allSettled) read popup/map refs that are stale after
-  // teardown; mountedRef=false in cleanup ensures no .then handler renders
-  // after the hook unmounts.
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
 
   // Warm the polygon datasets + imagery token the first time the tool is on.
   useEffect(() => {
@@ -330,25 +318,14 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
       };
 
       const myId = ++seqRef.current;
-      render(null, null, null, true);
-      // Abort any street-image fetch still running from a prior click.
-      streetAbortRef.current?.abort();
-      const ctrl = new AbortController();
-      streetAbortRef.current = ctrl;
-      Promise.allSettled([
-        apiFetch<{ results: NearestAddr[] }>(`/geo/address-nearest?lat=${lat}&lng=${lng}`),
-        apiFetch<PremiseIntel>(`/dispatch/geography/premise-intel?lat=${lat}&lng=${lng}`),
-        findStreetImage(lng, lat, 120, ctrl.signal),
-        findNearestRoadBearing(lng, lat, 90, ctrl.signal),
-      ]).then(([addrRes, premRes, streetRes, roadRes]) => {
-        if (!mountedRef.current) return; // hook unmounted before responses resolved
-        if (myId !== seqRef.current) return; // a newer click superseded this
-        const nearest = addrRes.status === 'fulfilled' ? (addrRes.value?.results?.[0] ?? null) : null;
-        const premise = premRes.status === 'fulfilled' ? premRes.value : null;
-        const street = streetRes.status === 'fulfilled' ? streetRes.value : null;
-        const roadBearing = roadRes.status === 'fulfilled' ? roadRes.value : null;
-        render(nearest, premise, street, false, roadBearing);
-      });
+      render(null, null, true);
+      apiFetch<{ results: { full_add: string; city: string; distance_m?: number }[] }>(`/geo/address-nearest?lat=${lat}&lng=${lng}`)
+        .then((d) => {
+          if (myId !== seqRef.current) return; // a newer click superseded this
+          const r = d?.results?.[0];
+          render(r ? `${r.full_add}${r.city ? ', ' + r.city : ''}` : null, r?.distance_m ?? null, false);
+        })
+        .catch(() => { if (myId === seqRef.current) render(null, null, false); });
     };
     map.on('click', handler);
     return () => { map.off('click', handler); streetAbortRef.current?.abort(); };

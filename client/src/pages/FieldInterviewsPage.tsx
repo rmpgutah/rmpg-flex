@@ -382,11 +382,9 @@ export default function FieldInterviewsPage() {
   const hardDeleteTargetRef = useRef(hardDeleteTarget);
   const formOpenRef = useRef(formOpen);
   const selectedFiRef = useRef(selectedFi);
-  const canManageRef = useRef(canManage);
   useEffect(() => { hardDeleteTargetRef.current = hardDeleteTarget; }, [hardDeleteTarget]);
   useEffect(() => { formOpenRef.current = formOpen; }, [formOpen]);
   useEffect(() => { selectedFiRef.current = selectedFi; }, [selectedFi]);
-  useEffect(() => { canManageRef.current = canManage; }, [canManage]);
 
   // Keyboard shortcuts: Escape closes modals (smart cascade — innermost first);
   // `N` opens a new FI card from anywhere on the page (mirrors Dispatch's `N`
@@ -400,9 +398,9 @@ export default function FieldInterviewsPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         // Smart cascade: dismiss innermost layer first.
-        if (hardDeleteTargetRef.current !== null) { e.stopPropagation(); setHardDeleteTarget(null); return; }
-        if (formOpenRef.current) { e.stopPropagation(); clearFormDraft(); setFormOpen(false); setEditingFi(null); return; }
-        if (selectedFiRef.current) { e.stopPropagation(); setSelectedFi(null); return; }
+        if (hardDeleteTargetRef.current !== null) { setHardDeleteTarget(null); return; }
+        if (formOpenRef.current) { clearFormDraft(); setFormOpen(false); setEditingFi(null); return; }
+        if (selectedFiRef.current) { setSelectedFi(null); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -438,9 +436,7 @@ export default function FieldInterviewsPage() {
   // ── /field-interviews?fi_id=<id> deep-link auto-select ──
   // Once `fis` hydrates, find by id and set as selectedFi; strip the query so
   // a refresh doesn't re-select. Surfaces a one-time toast if the id misses.
-  const pendingFiIdRef = useRef<string | null>(
-    searchParams.get('interview_id') ?? searchParams.get('fi_id'),
-  );
+  const pendingFiIdRef = useRef<string | null>(searchParams.get('fi_id'));
   useEffect(() => {
     const target = pendingFiIdRef.current;
     if (!target || loading) return;
