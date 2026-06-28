@@ -35,6 +35,7 @@ function meta(key: string): SourceMeta {
 function adapterReturning(key: string, hits: RawWarrantHit[]): WarrantSourceAdapter {
   return {
     meta: meta(key),
+    mode: 'per-person',
     async fetchForPerson() {
       return hits;
     },
@@ -98,6 +99,7 @@ describe('runAllSourceScans (orchestrator smoke)', () => {
     const { db, calls } = recordingDb([]);
     const boom: WarrantSourceAdapter = {
       meta: meta('ada-county-id'),
+      mode: 'per-person',
       async fetchForPerson() {
         throw new Error('upstream 500');
       },
@@ -113,8 +115,9 @@ describe('runAllSourceScans (orchestrator smoke)', () => {
     const entry = summary.scraped.find((s) => s.source_key === 'ada-county-id');
     expect(entry!.errors).toBe(1);
     expect(entry!.found).toBe(0);
-    // still cleared (per-source sweep runs even when fetches errored)
-    expect(calls.some((c) => /UPDATE scraped_warrants SET status='cleared'/i.test(c.sql))).toBe(true);
+    // The per-source sweep MUST be skipped when a fetch errored — otherwise an
+    // endpoint outage would wipe the source's active warrants (officer-safety).
+    expect(calls.some((c) => /UPDATE scraped_warrants SET status='cleared'/i.test(c.sql))).toBe(false);
     // nothing promoted (no hits)
     expect(calls.some((c) => /INSERT INTO warrants/i.test(c.sql))).toBe(false);
   });

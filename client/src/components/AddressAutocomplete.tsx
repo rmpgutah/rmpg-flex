@@ -4,7 +4,7 @@
 // Drop-in replacement for <input> with address suggestions.
 // ============================================================
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useId, useRef, useState, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 
@@ -12,6 +12,9 @@ import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 export interface ParsedAddress {
   /** Full formatted address string */
   formatted: string;
+  /** The feature's primary name (street name, city name, state, or ZIP
+   *  depending on the result type) */
+  text: string;
   /** Street number + route (e.g., "123 Main St") */
   street: string;
   /** City / locality */
@@ -54,6 +57,15 @@ interface AddressAutocompleteProps {
   country?: string;
   /** Restrict to address results only (default: true) */
   addressOnly?: boolean;
+  /** Explicit Mapbox feature types (overrides addressOnly). Use to scope a
+   *  field to one component, e.g. 'place' for a City field, 'region' for
+   *  State, 'postcode' for ZIP. */
+  types?: string;
+  /** What to write into the input when a suggestion is picked (default
+   *  'formatted'). 'street' = street line only (for forms with separate
+   *  city/state/zip fields); 'text' = the feature's primary name (city
+   *  name, state name, or ZIP — for the scoped sub-fields). */
+  fillWith?: 'formatted' | 'street' | 'text';
   /** Auto-focus on mount */
   autoFocus?: boolean;
 }
@@ -74,9 +86,10 @@ interface MapboxFeature {
   place_name: string;
   center?: [number, number];
   place_type: string[];
-  context?: Array<{ id: string; text: string }>;
+  context?: Array<{ id: string; text: string; short_code?: string }>;
   text?: string;
   address?: string;
+  properties?: { short_code?: string };
 }
 
 /** Parse Mapbox Geocoding feature into structured address components */
@@ -84,12 +97,20 @@ function parseAddressFromFeature(feature: MapboxFeature): ParsedAddress {
   const props: Record<string, string> = {};
   const ctx = feature.context || [];
 
+  // State abbreviation: region context entries carry short_code "US-UT".
+  // When the feature itself IS a region (State sub-field), it's on
+  // feature.properties instead.
+  let regionShort = '';
   for (const c of ctx) {
     const idParts = c.id.split('.');
     if (idParts.length > 1) {
       const type = idParts[0] as string;
       props[type] = c.text;
+      if (type === 'region' && c.short_code) regionShort = c.short_code.replace(/^US-/, '');
     }
+  }
+  if (!regionShort && feature.place_type?.includes('region') && feature.properties?.short_code) {
+    regionShort = feature.properties.short_code.replace(/^US-/, '');
   }
 
   const street = feature.address
@@ -98,9 +119,10 @@ function parseAddressFromFeature(feature: MapboxFeature): ParsedAddress {
 
   return {
     formatted: feature.place_name,
+    text: feature.text || feature.place_name.split(',')[0]?.trim() || '',
     street,
     city: props.place || props.locality || '',
-    state: props.region || '',
+    state: regionShort || props.region || '',
     zip: props.postcode || '',
     country: props.country || '',
     latitude: feature.center?.[1] ?? null,
@@ -177,6 +199,8 @@ export default function AddressAutocomplete({
   disabled = false,
   country = 'us',
   addressOnly = true,
+  types,
+  fillWith = 'formatted',
   autoFocus = false,
 }: AddressAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -193,6 +217,9 @@ export default function AddressAutocomplete({
   // blur handler doesn't ALSO re-resolve the same address.
   const justSelectedRef = useRef(false);
   const reqIdRef = useRef(0);
+  // True only when the latest value change came from a keystroke in this
+  // input (set in handleChange, consumed by the debounce effect).
+  const userTypedRef = useRef(false);
 
   // Fetch Mapbox token on mount + on tab-visible.
   // Previous behavior: token was tried once on mount; if the endpoint
@@ -272,7 +299,7 @@ export default function AddressAutocomplete({
       const token = await getMapboxAccessToken();
       if (!token) return;
 
-      const types = addressOnly ? 'address,place' : 'address,place,poi,neighborhood';
+      const resultTypes = types || (addressOnly ? 'address,place' : 'address,place,poi,neighborhood');
       // Utah bias for Mapbox direct calls:
       //   proximity = SLC center (-111.89, 40.76) — Mapbox ranks
       //               results closer to this point higher
@@ -282,7 +309,7 @@ export default function AddressAutocomplete({
       //               keeps Wasatch Front addresses on top
       // Without this, "South 200 East" matches Indiana grid streets
       // before SLC's identically-named arterial.
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=${country}&autocomplete=true&types=${types}&limit=5&proximity=-111.89,40.76&bbox=-114.052,36.998,-109.041,42.001`;
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=${country}&autocomplete=true&types=${resultTypes}&limit=5&proximity=-111.89,40.76&bbox=-114.052,36.998,-109.041,42.001`;
 
       const res = await fetch(url);
       if (!res.ok) {
@@ -306,10 +333,22 @@ export default function AddressAutocomplete({
     } catch {
       if (!isStale()) setUseNominatim(true);
     }
-  }, [country, addressOnly, useNominatim]);
+  }, [country, addressOnly, types, useNominatim]);
 
-  // Debounced geocoding on input change
+  // Debounced geocoding on input change — ONLY for changes the user typed
+  // into THIS input. The `value` prop also changes when a parent autofills
+  // the field programmatically (e.g. picking a street suggestion fills the
+  // sibling City/State/ZIP fields); without this gate every autofilled
+  // sibling fired its own geocode and opened a dropdown the user never
+  // asked for, stacking irrelevant suggestion panels across the form.
   useEffect(() => {
+    if (!userTypedRef.current) {
+      // Programmatic change: never open (or keep open) a dropdown for it.
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
+    userTypedRef.current = false;
     if (!tokenReady && !useNominatim) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const reqId = ++reqIdRef.current;
@@ -325,7 +364,13 @@ export default function AddressAutocomplete({
     setSuggestions([]);
     skipNextChangeRef.current = true;
     justSelectedRef.current = true;   // suppress the blur-triggered typed-resolve
-    onChange(suggestion.place_name);
+
+    // What lands in the input: the full formatted address by default, the
+    // street line for forms with separate city/state/zip fields, or the
+    // feature's primary name for scoped sub-fields (City/State/ZIP).
+    const fillValue = (parsed: ParsedAddress) =>
+      (fillWith === 'street' ? parsed.street : fillWith === 'text' ? parsed.text : parsed.formatted)
+      || parsed.formatted;
 
     if (suggestion.source === 'nominatim') {
       // Nominatim raw shape:
@@ -345,18 +390,19 @@ export default function AddressAutocomplete({
       const zip = a.postcode || '';
       const lat = raw.lat != null ? Number(raw.lat) : null;
       const lng = raw.lon != null ? Number(raw.lon) : null;
-      if (onSelect) {
-        onSelect({
-          formatted: suggestion.place_name,
-          street,
-          city,
-          state,
-          zip,
-          country: a.country || 'United States',
-          latitude: Number.isFinite(lat) ? lat : null,
-          longitude: Number.isFinite(lng) ? lng : null,
-        });
-      }
+      const parsed: ParsedAddress = {
+        formatted: suggestion.place_name,
+        text: street || suggestion.place_name.split(',')[0]?.trim() || '',
+        street,
+        city,
+        state,
+        zip,
+        country: a.country || 'United States',
+        latitude: Number.isFinite(lat) ? lat : null,
+        longitude: Number.isFinite(lng) ? lng : null,
+      };
+      onChange(fillValue(parsed));
+      if (onSelect) onSelect(parsed);
       return;
     }
 
@@ -376,14 +422,17 @@ export default function AddressAutocomplete({
     // place_name + context + center, so re-parsing from `raw` is both
     // accurate and one fewer network round-trip.
     const feature = (suggestion.raw as MapboxFeature | undefined);
-    if (onSelect) {
-      if (feature) {
-        onSelect(parseAddressFromFeature(feature));
-      } else {
-        onSelect({ formatted: suggestion.place_name, street: '', city: '', state: '', zip: '', country: '', latitude: null, longitude: null });
-      }
-    }
-  }, [onChange, onSelect]);
+    const parsed: ParsedAddress = feature
+      ? parseAddressFromFeature(feature)
+      : {
+          formatted: suggestion.place_name,
+          text: suggestion.place_name.split(',')[0]?.trim() || '',
+          street: '', city: '', state: '', zip: '', country: '',
+          latitude: null, longitude: null,
+        };
+    onChange(fillValue(parsed));
+    if (onSelect) onSelect(parsed);
+  }, [onChange, onSelect, fillWith]);
 
   // Operator typed an address and tabbed/clicked away WITHOUT picking a
   // suggestion. Prefer resolving from the best autocomplete match (Mapbox
@@ -408,6 +457,7 @@ export default function AddressAutocomplete({
         skipNextChangeRef.current = false;
         return;
       }
+      userTypedRef.current = true;
       onChange(e.target.value);
     },
     [onChange]
@@ -460,6 +510,18 @@ export default function AddressAutocomplete({
     );
   }
 
+  // ARIA combobox wiring — audit caught (2026-06-21) that the input
+  // had no role=combobox / aria-expanded / aria-activedescendant so
+  // screen readers heard "edit" with no announcement that suggestions
+  // appeared, and voice-control / Switch Control users couldn't
+  // enumerate options. Every call-intake form depends on this widget,
+  // so this fix is load-bearing for assistive-tech access to the CAD.
+  const aidPrefix = useId();
+  const listboxId = `${aidPrefix}-listbox`;
+  const optionId = (i: number) => `${aidPrefix}-opt-${i}`;
+  const activeId = selectedIdx >= 0 && selectedIdx < suggestions.length ? optionId(selectedIdx) : undefined;
+  const dropdownOpen = showDropdown && (suggestions.length > 0 || value.length >= 3);
+
   return (
     <div className="relative">
       <input
@@ -475,6 +537,12 @@ export default function AddressAutocomplete({
         required={required}
         autoFocus={autoFocus}
         autoComplete="off"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={dropdownOpen}
+        aria-controls={listboxId}
+        aria-activedescendant={activeId}
+        aria-haspopup="listbox"
       />
       {/* MapPin indicator with brand color when loaded */}
       {tokenReady && (
@@ -485,12 +553,22 @@ export default function AddressAutocomplete({
         />
       )}
 
-      {/* Custom dropdown */}
+      {/* Custom dropdown — role=listbox + role=option for screen readers
+          and voice-control assistive tech. */}
       {showDropdown && suggestions.length > 0 && (
-        <div ref={dropdownRef} className="rmpg-geocoder-dropdown">
+        <div
+          ref={dropdownRef}
+          className="rmpg-geocoder-dropdown"
+          role="listbox"
+          id={listboxId}
+          aria-label="Address suggestions"
+        >
           {suggestions.map((s, idx) => (
             <div
               key={s.id}
+              id={optionId(idx)}
+              role="option"
+              aria-selected={idx === selectedIdx}
               className={`rmpg-geocoder-item${idx === selectedIdx ? ' rmpg-geocoder-item-selected' : ''}`}
               onMouseDown={(e) => { e.preventDefault(); handleSelectSuggestion(s); }}
               onMouseEnter={() => setSelectedIdx(idx)}
@@ -502,8 +580,8 @@ export default function AddressAutocomplete({
       )}
 
       {showDropdown && suggestions.length === 0 && value.length >= 3 && (
-        <div ref={dropdownRef} className="rmpg-geocoder-dropdown">
-          <div className="rmpg-geocoder-no-results">No addresses found</div>
+        <div ref={dropdownRef} className="rmpg-geocoder-dropdown" role="listbox" id={listboxId} aria-label="Address suggestions">
+          <div className="rmpg-geocoder-no-results" role="status" aria-live="polite">No addresses found</div>
         </div>
       )}
     </div>

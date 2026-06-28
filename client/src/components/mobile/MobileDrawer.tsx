@@ -6,6 +6,7 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
   LayoutDashboard, Radio, Map, FileText, Database, Users, MessageSquare,
   BarChart3, Settings, LogOut, QrCode, ScrollText, Car, AlertTriangle, FileWarning,
@@ -65,6 +66,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Map' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
+      { path: '/nav', icon: Navigation2, label: 'Nav' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
       { path: '/geography', icon: MapPin, label: 'Geography' },
       { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
@@ -138,7 +140,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/statute-analytics', icon: Scale, label: 'Statute Analytics' },
       { path: '/reports/custom', icon: BarChart3, label: 'Report Builder' },
       { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
-      { path: '/forensics', icon: Search, label: 'Forensics' },
+      { path: '/connections', icon: Search, label: 'Connections' },
       { path: '/iped', icon: Microscope, label: 'IPED Forensics' },
       { path: '/crm', icon: Contact, label: 'Overwatch' },
       { path: '/security-dashboard', icon: Shield, label: 'Security Dashboard' },
@@ -176,7 +178,7 @@ const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/patrol', '/shift-plans', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar', '/hr',
   '/body-cameras', '/dash-cameras', '/dl-search', '/skip-tracer',
-  '/arrest-records', '/forensic-lab', '/forensics', '/training-docs',
+  '/arrest-records', '/forensic-lab', '/connections', '/training-docs',
 ]);
 
 // ─── Component ───────────────────────────────────────────────
@@ -204,13 +206,8 @@ export default function MobileDrawer({
     if (isOpen) onClose();
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Lock body scroll when open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = ''; };
-    }
-  }, [isOpen]);
+  // Lock body scroll when open (reference-counted, leak-proof)
+  useBodyScrollLock(isOpen);
 
   // Android hardware back button — close drawer on back press
   useEffect(() => {
@@ -320,7 +317,7 @@ export default function MobileDrawer({
 
           {/* Name & Info */}
           <div className="flex-1 min-w-0">
-            <div className="text-base font-bold text-white truncate">
+            <div className="text-base font-bold text-rmpg-100 truncate">
               {user?.first_name} {user?.last_name}
             </div>
             <div className="flex items-center gap-2 mt-1">
@@ -347,7 +344,7 @@ export default function MobileDrawer({
         </div>
 
         {/* ── Navigation Groups ── */}
-        <div className="flex-1 overflow-y-auto py-3" style={{ maxHeight: 'calc(100dvh - 220px)' }}>
+        <div className="flex-1 min-h-0 overflow-y-auto py-3" style={{ maxHeight: 'calc(100dvh - 220px)' }}>
           {NAV_GROUPS.map((group) => {
             const isClientViewer = user?.role === 'client_viewer';
             const visibleItems = group.items.filter((item) => {
@@ -412,7 +409,7 @@ export default function MobileDrawer({
         {/* ── Status Footer ── */}
         <div
           className="border-t px-4 py-4"
-          style={{ borderColor: 'var(--border-default)', background: '#050505' }}
+          style={{ borderColor: 'var(--border-default)', background: 'var(--surface-overlay)' }}
         >
           {/* Status indicators row */}
           <div className="flex items-center gap-4 mb-4">

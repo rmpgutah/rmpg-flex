@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Bookmark, Trash2, Play, Download } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { SectionHeader } from '../components';
-import { AudioPlayButton, transmissionAudioUrl } from './LiveTab';
+import { AudioPlayButton, transmissionAudioUrl, transmissionAudioUrlSigned } from './LiveTab';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
@@ -15,10 +15,13 @@ import type { RadioRecording } from '../types';
 let menuPlayer: RadioHazePlayer | null = null;
 function playTransmissionAudio(transmissionId: number) {
   try { menuPlayer?.stop(); } catch { /* noop */ }
-  menuPlayer = new RadioHazePlayer();
-  menuPlayer.playUrl(transmissionAudioUrl(transmissionId)).catch((err) => {
-    console.error('[radio] haze playback failed', err);
-  });
+  const player = new RadioHazePlayer();
+  menuPlayer = player;
+  transmissionAudioUrlSigned(transmissionId)
+    .then((url) => player.playUrl(url))
+    .catch((err) => {
+      console.error('[radio] haze playback failed', err);
+    });
 }
 
 export default function RecordingsTab() {

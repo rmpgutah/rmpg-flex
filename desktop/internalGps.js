@@ -264,6 +264,13 @@ class InternalGps extends EventEmitter {
 //   u-blox:       VID 1546
 //   SiRF/CSR:     VID 067B (Prolific bridge), VID 0E8D
 // We list available ports and prefer ones whose manufacturer/vendor matches.
+//
+// Returns { path, score } for the best-matching port, or null if none looked
+// like a GNSS device. The score lets callers distinguish a HARDWARE-DEFINITIVE
+// match (u-blox VID → 100, or a GNSS-named bridge → 70) from a weak name-only
+// guess (50). A definitive match is trustworthy even when the host's WMI
+// manufacturer string doesn't say "Panasonic" (some FZ-55 SKUs report a blank
+// or OEM manufacturer), so detection should NOT be gated on that string.
 async function findGpsPort() {
   if (!SerialPort) return null;
   try {
@@ -305,7 +312,7 @@ async function findGpsPort() {
 
     if (ranked.length > 0) {
       console.log('[INTERNAL-GPS] Selected GPS port:', ranked[0].p.path, '(score', ranked[0].s + ')');
-      return ranked[0].p.path;
+      return { path: ranked[0].p.path, score: ranked[0].s };
     }
     console.warn('[INTERNAL-GPS] No GPS COM port matched among', ports.length, 'enumerated port(s)');
     return null;

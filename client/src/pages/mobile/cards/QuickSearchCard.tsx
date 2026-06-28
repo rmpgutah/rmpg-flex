@@ -131,7 +131,7 @@ export default function QuickSearchCard() {
   const groupKeys = Object.keys(groups);
 
   return (
-    <section className="bg-[#141414] border border-[#222] p-3">
+    <section className="bg-surface-base border border-border-default p-3">
       <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">
         QUICK SEARCH
       </h2>
@@ -145,7 +145,7 @@ export default function QuickSearchCard() {
             value={query}
             onChange={(e) => handleChange(e.target.value)}
             placeholder="Person, plate, address…"
-            className="w-full h-11 bg-[#050505] border border-[#222] text-white text-base px-3 placeholder:text-gray-600"
+            className="w-full h-11 bg-surface-overlay border border-border-default text-rmpg-100 text-base px-3 placeholder:text-rmpg-500"
           />
           {loading && (
             <span
@@ -156,7 +156,7 @@ export default function QuickSearchCard() {
         </div>
         <button
           type="submit"
-          className="h-11 px-4 bg-[#1a1a1a] border border-[#222] text-[#d4a017] text-xs uppercase tracking-widest"
+          className="h-11 px-4 bg-surface-raised border border-border-default text-[#d4a017] text-xs uppercase tracking-widest"
         >
           Search
         </button>
@@ -168,7 +168,7 @@ export default function QuickSearchCard() {
           <button
             type="button"
             onClick={() => submittedQuery && runSearch(submittedQuery)}
-            className="h-11 px-3 bg-[#1a1a1a] border border-[#222] text-[#d4a017] text-[10px] uppercase tracking-widest"
+            className="h-11 px-3 bg-surface-raised border border-border-default text-[#d4a017] text-[10px] uppercase tracking-widest"
           >
             Retry
           </button>
@@ -176,7 +176,7 @@ export default function QuickSearchCard() {
       )}
 
       {!error && hasSearched && results.length === 0 && !loading && (
-        <div className="mt-2 text-gray-500 text-xs">
+        <div className="mt-2 text-rmpg-500 text-xs">
           No matches for &quot;{submittedQuery}&quot;.
         </div>
       )}
@@ -191,15 +191,15 @@ export default function QuickSearchCard() {
                   type="button"
                   onClick={() => handleRowClick(r)}
                   onContextMenu={(e) => openMenu(e, buildResultMenu(r))}
-                  className="py-2 border-b border-[#1a1a1a] text-white text-xs w-full text-left flex items-center"
+                  className="py-2 border-b border-border-default text-rmpg-100 text-xs w-full text-left flex items-center"
                 >
-                  <span className="bg-[#0a0a0a] border border-[#222] text-[#d4a017] text-[9px] font-bold tracking-widest px-1.5 py-0.5 mr-2">
+                  <span className="bg-surface-sunken border border-border-default text-[#d4a017] text-[9px] font-bold tracking-widest px-1.5 py-0.5 mr-2">
                     {type}
                   </span>
                   <span className="flex-1 min-w-0">
                     <span className="block truncate">{r.label || `#${r.id}`}</span>
                     {r.subtitle && (
-                      <span className="block text-gray-500 text-[10px] truncate">
+                      <span className="block text-rmpg-500 text-[10px] truncate">
                         {r.subtitle}
                       </span>
                     )}

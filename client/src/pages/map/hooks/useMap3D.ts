@@ -34,24 +34,30 @@ const PITCH_3D = 60;
 
 // Mapbox's documented default light — what a flat (3D-off) map expects. We
 // restore this on teardown so disabling 3D doesn't leave the basemap oddly lit.
-const DEFAULT_LIGHT: mapboxgl.LightSpecification = {
-  anchor: 'viewport', color: '#ffffff', intensity: 0.5, position: [1.15, 210, 30],
+// Uses the new setLights API (flat type) to avoid the setLight deprecation.
+const DEFAULT_LIGHT: mapboxgl.FlatLightSpecification = {
+  id: 'default_light',
+  type: 'flat',
+  properties: {
+    anchor: 'viewport', color: '#ffffff', intensity: 0.5, position: [1.15, 210, 30],
+  },
 };
 
 // ── Directional key light ────────────────────────────────────────────────────
 // Without this, every extruded face is the SAME flat shade and the skyline reads
 // as a gray smear. A single low key light makes each face catch light at a
-// different angle, so building massing actually reads in 3D. anchor:'viewport'
-// keeps the lit side stable as the follow-cam rotates to heading — an
-// instrument-steady look rather than a sun that swings every time you turn.
-// position is [radial, azimuth°, polar°]; polar 78 = a low, raking light that
+// different angle, so building massing actually reads in 3D.
+// direction is [azimuth°, polar°]; polar 78 = a low, raking light that
 // throws long facade shadows. Cool moonlight on the dark theme, warm key on light.
-export function sceneLight(isLight: boolean): mapboxgl.LightSpecification {
+export function sceneLight(isLight: boolean): mapboxgl.DirectionalLightSpecification {
   return {
-    anchor: 'viewport',
-    color: isLight ? '#fff4e0' : '#c8d4ff',
-    intensity: isLight ? 0.5 : 0.34,
-    position: [1.5, 205, 78],
+    id: 'scene_light',
+    type: 'directional',
+    properties: {
+      color: isLight ? '#fff4e0' : '#c8d4ff',
+      intensity: isLight ? 0.5 : 0.34,
+      direction: [205, 78],
+    },
   };
 }
 
@@ -85,7 +91,7 @@ export function buildingColorRamp(isLight: boolean): mapboxgl.ExpressionSpecific
   if (isLight) {
     return [
       'interpolate', ['linear'], ['get', 'height'],
-      0, '#cfcfcf',
+      0, 'var(--rmpg-300)',
       40, '#bdbdbd',
       120, '#a6a6a6',
       280, '#9a958a',
@@ -140,7 +146,7 @@ function apply3D(map: mapboxgl.Map, isLight: boolean): void {
     // layers), so they're set every apply and reset on teardown. Together they
     // turn the flat extrusions into a lit, hazy skyline with real perspective.
     map.setFog(sceneFog(isLight));
-    map.setLight(sceneLight(isLight));
+    map.setLights([sceneLight(isLight)]);
 
     // Extruded buildings — only where the vector building source-layer exists.
     if (!hasLayer(map, BUILDING_LAYER) && hasSource(map, 'composite')) {
@@ -190,7 +196,7 @@ function teardown3D(map: mapboxgl.Map): void {
   try {
     map.setTerrain(null);
     map.setFog(null);            // clear atmospheric haze
-    map.setLight(DEFAULT_LIGHT); // restore the flat-map default lighting
+    map.setLights([DEFAULT_LIGHT]); // restore the flat-map default lighting
     safeRemoveLayer(map, BUILDING_LAYER);
     safeRemoveLayer(map, SKY_LAYER);
     safeRemoveSource(map, DEM_SOURCE);
@@ -247,7 +253,7 @@ export function useMap3D({ map, enabled, mapLoaded, isLight }: Opts): void {
     if (!map || !mapLoaded || !enabled) return;
     try {
       map.setFog(sceneFog(isLight));
-      map.setLight(sceneLight(isLight));
+      map.setLights([sceneLight(isLight)]);
     } catch { /* style mid-swap; style.load reapply will cover it */ }
     if (hasLayer(map, BUILDING_LAYER)) {
       try {

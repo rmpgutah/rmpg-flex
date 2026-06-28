@@ -45,6 +45,40 @@ function shape(r: Record<string, unknown>) {
   return { ...r, plain_elements: plainElements, state: 'UT', state_name: 'Utah', definition: null };
 }
 
+// GET / — paginated list for the Admin panel (limit/offset/q/category).
+statutes.get('/', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = (c.req.query('q') || '').trim();
+    const category = c.req.query('category');
+    const limit = Math.min(parseInt(c.req.query('limit') || '20', 10) || 20, 100);
+    const offset = Math.max(parseInt(c.req.query('offset') || '0', 10) || 0, 0);
+
+    const where: string[] = ['is_active = 1'];
+    const binds: unknown[] = [];
+    if (q.length >= 2) {
+      where.push('(citation LIKE ? OR short_title LIKE ? OR description LIKE ?)');
+      binds.push(`${q}%`, `%${q}%`, `%${q}%`);
+    }
+    if (category && category !== 'all') { where.push('category = ?'); binds.push(category); }
+
+    const whereClause = where.join(' AND ');
+    const countRow = await queryFirst<{ cnt: number }>(db,
+      `SELECT COUNT(*) AS cnt FROM utah_statutes WHERE ${whereClause}`, ...binds);
+    const total = countRow?.cnt || 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT ${COLS} FROM utah_statutes WHERE ${whereClause}
+       ORDER BY title, chapter, CAST(section AS REAL), section LIMIT ? OFFSET ?`,
+      ...binds, limit, offset);
+    return c.json({ data: rows.map(shape), pagination: { total, totalPages, limit, offset } });
+  } catch (err) {
+    console.error('[statutes] list error', err);
+    return c.json({ data: [], pagination: { total: 0, totalPages: 1 } });
+  }
+});
+
 // GET /search — type-ahead + full-text over citation / title / body.
 statutes.get('/search', async (c) => {
   try {
@@ -54,12 +88,23 @@ statutes.get('/search', async (c) => {
     const level = c.req.query('level');
     const type = c.req.query('type'); // 'statute' | 'rule'
     const state = c.req.query('state');
+    const idParam = c.req.query('id');
     const limit = Math.min(parseInt(c.req.query('limit') || '20', 10) || 20, 50);
 
     if (!utahOnly(state)) return c.json({ data: [] });
 
     const where: string[] = ['is_active = 1'];
     const binds: unknown[] = [];
+    // Lookup by internal id — used by the law-book deep-link
+    // (/law-book?statute_id=…) to resolve a stable id back to its row when
+    // the caller doesn't have the citation. Short-circuits everything else.
+    if (idParam) {
+      const idNum = parseInt(idParam, 10);
+      if (Number.isFinite(idNum)) {
+        where.push('id = ?');
+        binds.push(idNum);
+      }
+    }
     if (q.length >= 2) {
       where.push('(citation LIKE ? OR short_title LIKE ? OR description LIKE ?)');
       binds.push(`${q}%`, `%${q}%`, `%${q}%`);

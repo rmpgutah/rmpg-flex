@@ -52,10 +52,6 @@ interface VoiceEnv {
   DB: D1Database;
   UPLOADS: R2Bucket;
   KV: KVNamespace;
-  // R2 geofence (beat.geojson) — used when the dispatcher CREATES a call
-  // from the radio and backfills sector/zone/beat. DOs share the Worker's
-  // bindings at runtime; declared here so runAction's enrichment is typed.
-  MAP_DATA: R2Bucket;
   JWT_SECRET: string;
   // Workers AI — powers the AI dispatcher (Whisper transcription,
   // Llama 4 Scout reasoning + data-entry + OCR, Aura-2 reply synthesis).
@@ -135,6 +131,16 @@ export class VoiceHubDO {
     this.conns.set(server, {
       userId: 0, username: '', fullName: '', role: '', unitLabel: null, authenticated: false,
     });
+
+    // Sockets that never authenticate must not linger — without this, an
+    // attacker can hold unauthenticated connections open indefinitely.
+    setTimeout(() => {
+      const meta = this.conns.get(server);
+      if (meta && !meta.authenticated) {
+        try { (server as any).close(4001, 'Authentication timeout'); } catch { /* already closed */ }
+        this.onClose(server);
+      }
+    }, 10_000);
 
     server.addEventListener('message', (ev: MessageEvent) => {
       this.onMessage(server, ev).catch((err) => console.error('[VoiceHubDO] msg', err));
@@ -267,7 +273,10 @@ export class VoiceHubDO {
       const finished = this.activeTx;
       this.activeTx = null;
       this.broadcast({ type: 'radio_transmit_end', user_id: finished.userId });
-      this.state.waitUntil(this.persist(finished, null).catch(() => {}));
+      this.state.waitUntil(
+        this.persist(finished, null)
+          .catch((err) => console.error('[VoiceHubDO] persist (drop)', err)),
+      );
     }
     if (meta?.authenticated) this.broadcast({ type: 'voice_presence', members: this.presenceCount() });
   }

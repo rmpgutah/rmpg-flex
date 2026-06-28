@@ -10,7 +10,13 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+
+// Tactical-dark fallback when a config color won't parse as a Mapbox color
+// (most commonly a leaked `var(--…)` string). Keeps the layer rendered while
+// the upstream value is repaired. Matches AdminMapSettingsTab default.
+const COLOR_FALLBACK_FILL = '#0d1722';
+const COLOR_FALLBACK_STROKE = '#444444';
 
 // ── Layer Configuration ──────────────────────────────────────
 
@@ -51,7 +57,10 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     file: 'county.geojson',
     visible: true,
     selectable: true,
-    style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
+    // fillColor: steel-blue tactical-dark surface. NEVER use a CSS var string
+    // here — mapbox.addLayer's style-spec validator rejects var(...) and the
+    // whole layer fails to render. Tactical map stays dark always.
+    style: { fillColor: '#0d1722', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['POP_CURRESTIMATE', 'STATEPLANE'],
@@ -378,19 +387,19 @@ export function useGeoJsonLayers({
     }
 
     inFlightLayersRef.current.add(cfg.id);
-    try {
-      let geojson = geojsonCacheRef.current[cfg.id];
-      if (!geojson) {
-        try {
-          const resp = await fetch(`/geojson/${cfg.file}`);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          geojson = await resp.json();
-          geojsonCacheRef.current[cfg.id] = geojson;
-        } catch (err) {
-          console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
-          return;
-        }
+    let geojson = geojsonCacheRef.current[cfg.id];
+    if (!geojson) {
+      try {
+        const resp = await fetch(`/geojson/${cfg.file}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        geojson = await resp.json();
+        geojsonCacheRef.current[cfg.id] = geojson;
+      } catch (err) {
+        console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
+        inFlightLayersRef.current.delete(cfg.id);
+        return;
       }
+    }
 
       // Defensive re-check before each side-effect — a sibling caller could
       // have completed between our fetch starting and finishing. Guard on
@@ -407,12 +416,18 @@ export function useGeoJsonLayers({
       // For beats specifically, use a data-driven color expression keyed
       // on city_code so each city renders in its own color (per
       // beatDistrictMap). All other layers use the static config color.
+      //
+      // safeMapboxColor is the boundary guard: a leaked `var(--…)` string
+      // or empty value here crashes the whole layer and renders nothing.
+      // 'transparent' is fine — only invalid colors fall back.
+      const safeFill = safeMapboxColor(cfg.style.fillColor, COLOR_FALLBACK_FILL);
+      const safeStroke = safeMapboxColor(cfg.style.strokeColor, COLOR_FALLBACK_STROKE);
       const fillColorExpr = cfg.id === 'beat'
-        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => e.style.fillColor, cfg.style.fillColor)
-        : cfg.style.fillColor;
+        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => safeMapboxColor(e.style.fillColor, COLOR_FALLBACK_FILL), safeFill)
+        : safeFill;
       const lineColorExpr = cfg.id === 'beat'
-        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => e.style.strokeColor, cfg.style.strokeColor)
-        : cfg.style.strokeColor;
+        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => safeMapboxColor(e.style.strokeColor, COLOR_FALLBACK_STROKE), safeStroke)
+        : safeStroke;
 
       // Add fill layer for polygon features
       if (!hasLayer(map, getFillLayerId(cfg.id))) {
@@ -500,13 +515,18 @@ export function useGeoJsonLayers({
       }
       }); // end whenStyleReady
 
+      // REGRESSION-GUARD: in-flight flag cleared INSIDE whenStyleReady (not
+      // in a finally block outside it). whenStyleReady may defer via
+      // map.once('style.load') — clearing the flag before the callback fires
+      // allows a second loadLayer() invocation to enter before the first
+      // callback's addSource/addLayer mutations complete, causing a
+      // "Layer with id '...' already exists" duplicate-layer error.
+      inFlightLayersRef.current.delete(cfg.id);
+
       setLayerStates((prev) => ({
         ...prev,
         [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
-      }));
-    } finally {
-      inFlightLayersRef.current.delete(cfg.id);
-    }
+    }));
   }, [map, popup]);
 
   // Keep the beat layer's paint in sync with beatStyleLookup. The layer's

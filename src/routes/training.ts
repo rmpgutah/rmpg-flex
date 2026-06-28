@@ -32,7 +32,7 @@ training.get('/courses', async (c) => {
     if (q('is_mandatory')) { conditions.push('is_mandatory = ?'); params.push(q('is_mandatory')); }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT c.*, u.full_name as instructor_name FROM training_courses c LEFT JOIN users u ON c.instructor_id = u.id ${where} ORDER BY c.created_at DESC`);
+      `SELECT c.*, u.full_name as instructor_name FROM training_courses c LEFT JOIN users u ON c.instructor_id = u.id ${where} ORDER BY c.created_at DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
     return c.json({ error: 'Failed to list courses' }, 500);

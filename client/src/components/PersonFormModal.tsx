@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserCircle, Eye, EyeOff, Upload, X, CreditCard } from 'lucide-react';
+import { UserCircle, Eye, EyeOff, Upload, X, CreditCard, AlertTriangle } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import type { Person } from '../types';
-import { apiUploadFiles } from '../hooks/useApi';
+import { apiUploadFiles, authedImageUrl } from '../hooks/useApi';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
@@ -50,6 +50,7 @@ export interface PersonFormData {
   scars_marks_tattoos: string;
   clothing_description: string;
   address: string;
+  address_2: string;
   city: string;
   state: string;
   zip: string;
@@ -144,6 +145,7 @@ const EMPTY_FORM: PersonFormData = {
   scars_marks_tattoos: '',
   clothing_description: '',
   address: '',
+  address_2: '',
   city: '',
   state: '',
   zip: '',
@@ -238,6 +240,7 @@ export default function PersonFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<PersonFormData>({
     storageKey: 'rmpg_person_form',
@@ -249,7 +252,16 @@ export default function PersonFormModal({
   const [idImageFile, setIdImageFile] = useState<File | null>(null);
   const [idImagePreview, setIdImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  // Warn-and-choose state for a failed ID-image upload (after auto-retry).
+  // Non-null uploadError means: hold the save, show the recovery panel.
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadRetryInfo, setUploadRetryInfo] = useState<{ attempt: number; max: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drop any stale upload-failure prompt when the modal closes.
+  useEffect(() => {
+    if (!isOpen) { setUploadError(null); setUploadRetryInfo(null); }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -273,6 +285,7 @@ export default function PersonFormModal({
           scars_marks_tattoos: editingPerson.scars_marks_tattoos || '',
           clothing_description: editingPerson.clothing_description || '',
           address: editingPerson.address || '',
+          address_2: (editingPerson as any).address_2 || '',
           city: editingPerson.city || '',
           state: editingPerson.state || '',
           zip: editingPerson.zip || '',
@@ -385,6 +398,7 @@ export default function PersonFormModal({
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) return;
+    setUploadError(null); // fresh file → clear any prior upload-failure prompt
     setIdImageFile(file);
     const reader = new FileReader();
     reader.onload = () => setIdImagePreview(reader.result as string);
@@ -395,37 +409,75 @@ export default function PersonFormModal({
     setIdImageFile(null);
     setIdImagePreview(null);
     setForm((prev) => ({ ...prev, id_image_url: '' }));
+    setUploadError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    let finalForm = { ...form };
-
-    // Compose height string from feet/inches dropdowns
+  // Pure: assemble the saveable record from current form state (height etc.).
+  const composeFinalForm = (): PersonFormData => {
+    const finalForm = { ...form };
     if (finalForm.height_feet != null && finalForm.height_feet !== '') {
       const ft = finalForm.height_feet;
       const inch = finalForm.height_inches || '0';
       finalForm.height = `${ft}'${inch.padStart(2, '0')}"`;
     }
-
-    // If there's a new image file, upload it first
-    if (idImageFile) {
-      setUploadingImage(true);
-      try {
-        const results = await apiUploadFiles([idImageFile], 'person_id_image');
-        if (results.length > 0) {
-          finalForm.id_image_url = `/api/uploads/${results[0].file_id}`;
-        }
-      } catch (err) {
-        console.error('ID image upload failed:', err);
-      } finally {
-        setUploadingImage(false);
-      }
-    }
-
-    onSubmit(finalForm);
+    return finalForm;
   };
+
+  // Upload the selected ID image (with auto-retry), THEN save. If the upload
+  // still fails after retries we STOP and surface a recoverable choice — we
+  // never silently save the record without the ID photo (the 2026-06-13 bug).
+  const uploadThenSubmit = async (finalForm: PersonFormData) => {
+    if (!idImageFile) {
+      signalSaved();
+      onSubmit(finalForm);
+      return;
+    }
+    setUploadingImage(true);
+    setUploadError(null);
+    let uploaded = false;
+    try {
+      const results = await apiUploadFiles([idImageFile], 'person_id_image', undefined, {
+        retries: 3,
+        onRetry: (attempt, max) => setUploadRetryInfo({ attempt, max }),
+      });
+      if (results.length > 0) {
+        finalForm.id_image_url = `/api/uploads/${results[0].file_id}`;
+      }
+      uploaded = true;
+    } catch (err) {
+      console.error('ID image upload failed:', err);
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingImage(false);
+      setUploadRetryInfo(null);
+    }
+    // Only save once the photo is attached. On failure we hold here and let the
+    // warn-and-choose panel drive the next step (retry / save-without / cancel).
+    if (uploaded) {
+      signalSaved();
+      onSubmit(finalForm);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await uploadThenSubmit(composeFinalForm());
+  };
+
+  // Warn-and-choose recovery actions (shown when uploadError is set).
+  // Each recomposes from the *current* form so edits made while the prompt was
+  // up are preserved.
+  const retryImageUpload = () => { void uploadThenSubmit(composeFinalForm()); };
+  const saveWithoutImage = () => {
+    // Keep whatever id_image_url already existed (the prior saved image when
+    // editing, or empty for a new person) — just don't attach the file that
+    // wouldn't upload. The officer can re-edit later to add it.
+    setUploadError(null);
+    signalSaved();
+    onSubmit(composeFinalForm());
+  };
+  const dismissUploadError = () => setUploadError(null);
 
   const sections = [
     { id: 'basic' as const, label: 'Basic Info' },
@@ -457,6 +509,51 @@ export default function PersonFormModal({
         </div>
       )}
 
+      {/* ID image upload failed (after auto-retry) — warn and let the user choose */}
+      {uploadError && (
+        <div className="px-3 py-2 -mt-2 mb-2 bg-amber-900/30 border border-amber-700 text-amber-300 text-xs space-y-2">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <div className="font-bold uppercase tracking-wider text-amber-200">ID image didn’t upload</div>
+              <div className="mt-0.5">
+                {uploadError} — the rest of the record is ready. Retry the upload, save without the
+                image for now, or cancel to stay on the form.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pl-6">
+            <button
+              type="button"
+              onClick={retryImageUpload}
+              disabled={uploadingImage}
+              className="toolbar-btn text-amber-200 border-amber-600 hover:bg-amber-900/40 disabled:opacity-50"
+              style={{ padding: '3px 12px' }}
+            >
+              {uploadingImage ? 'Retrying…' : 'Retry upload'}
+            </button>
+            <button
+              type="button"
+              onClick={saveWithoutImage}
+              disabled={uploadingImage}
+              className="toolbar-btn disabled:opacity-50"
+              style={{ padding: '3px 12px' }}
+            >
+              Save without image
+            </button>
+            <button
+              type="button"
+              onClick={dismissUploadError}
+              disabled={uploadingImage}
+              className="toolbar-btn text-rmpg-400 disabled:opacity-50"
+              style={{ padding: '3px 12px' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {sections.map((s) => (
@@ -467,7 +564,7 @@ export default function PersonFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -537,7 +634,7 @@ export default function PersonFormModal({
                  placeholder="City, State or Country"
                  value={form.place_of_birth}
                  onChange={(val) => setForm((prev) => ({ ...prev, place_of_birth: val }))}
-                 addressOnly={false}
+                 types="place,region,country"
                />
              </FormField>
              <FormField label="Citizenship">
@@ -735,7 +832,7 @@ export default function PersonFormModal({
                   <button
                     type="button"
                     onClick={() => setShowSSN(!showSSN)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors"
                     title={showSSN ? 'Hide SSN' : 'Show SSN'}
                   >
                     {showSSN ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -797,7 +894,7 @@ export default function PersonFormModal({
 
           {/* ID Image Upload */}
           <div className="border-t border-rmpg-600 pt-3 mt-3">
-            <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">ID Photo / Image</label>
+            <label htmlFor="ff-personformmodal-0" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">ID Photo / Image</label>
             <input id="ff-personformmodal-0"
               ref={fileInputRef}
               type="file"
@@ -811,7 +908,7 @@ export default function PersonFormModal({
                 {(idImagePreview || form.id_image_url) ? (
                   <>
                     <img
-                      src={idImagePreview || form.id_image_url}
+                      src={idImagePreview || authedImageUrl(form.id_image_url)}
                       alt="ID"
                       className="w-full h-full object-cover"
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -819,9 +916,9 @@ export default function PersonFormModal({
                     <button
                       type="button"
                       onClick={removeIdImage}
-                      className="absolute top-1 right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-1 right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                       title="Remove image">
-                      <X className="w-3 h-3 text-white" />
+                      <X className="w-3 h-3 text-rmpg-100" />
                     </button>
                   </>
                 ) : (
@@ -846,7 +943,11 @@ export default function PersonFormModal({
                   <p className="text-[9px] text-green-400 mt-0.5">{idImageFile.name} ({(idImageFile.size / 1024).toFixed(0)} KB)</p>
                 )}
                 {uploadingImage && (
-                  <p className="text-[9px] text-amber-400 mt-0.5 animate-pulse">Uploading image...</p>
+                  <p className="text-[9px] text-amber-400 mt-0.5 animate-pulse">
+                    {uploadRetryInfo
+                      ? `Retrying upload… (${uploadRetryInfo.attempt}/${uploadRetryInfo.max})`
+                      : 'Uploading image…'}
+                  </p>
                 )}
                 {/* Fallback: manual URL entry */}
                 <div className="mt-2">
@@ -880,24 +981,40 @@ export default function PersonFormModal({
       {/* ── CONTACT INFO ── */}
       {activeSection === 'contact' && (
         <>
-          <FormField label="Street Address">
-            <AddressAutocomplete
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+           <div className="sm:col-span-3">
+            <FormField label="Street Address">
+             <AddressAutocomplete
               name="address"
               className="input-dark mt-1"
               placeholder="Street address"
               value={form.address}
               onChange={(val) => setForm((prev) => ({ ...prev, address: val }))}
+              fillWith="street"
               onSelect={(addr: ParsedAddress) => {
+                // Street line only — city/state/zip live in their own fields.
                 setForm((prev) => ({
                   ...prev,
-                  address: addr.formatted || addr.street,
+                  address: addr.street || addr.formatted,
                   city: addr.city || prev.city,
                   state: addr.state || prev.state,
                   zip: addr.zip || prev.zip,
                 }));
               }}
-            />
-          </FormField>
+             />
+            </FormField>
+           </div>
+           <FormField label="Apt / Unit">
+             <input
+               name="address_2"
+               type="text"
+               className="input-dark mt-1 w-full"
+               placeholder="Apt 4B, Unit 12, #305..."
+               value={form.address_2}
+               onChange={(e) => setForm((prev) => ({ ...prev, address_2: e.target.value }))}
+             />
+           </FormField>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
            <FormField label="City">
              <AddressAutocomplete
@@ -906,7 +1023,13 @@ export default function PersonFormModal({
                placeholder="City"
                value={form.city}
                onChange={(val) => setForm((prev) => ({ ...prev, city: val }))}
-               addressOnly={false}
+               types="place"
+               fillWith="text"
+               onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                 ...prev,
+                 city: addr.text || prev.city,
+                 state: addr.state || prev.state,
+               }))}
              />
            </FormField>
            <FormField label="State">
@@ -916,8 +1039,12 @@ export default function PersonFormModal({
                placeholder="State (e.g., UT)"
                value={form.state}
                onChange={(val) => setForm((prev) => ({ ...prev, state: val }))}
-               addressOnly={false}
-               country="us"
+               types="region"
+               fillWith="text"
+               onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                 ...prev,
+                 state: addr.state || addr.text || prev.state,
+               }))}
              />
            </FormField>
            <FormField label="ZIP">
@@ -927,7 +1054,14 @@ export default function PersonFormModal({
                placeholder="ZIP Code"
                value={form.zip}
                onChange={(val) => setForm((prev) => ({ ...prev, zip: val }))}
-               addressOnly={false}
+               types="postcode"
+               fillWith="text"
+               onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                 ...prev,
+                 zip: addr.text || addr.zip || prev.zip,
+                 city: prev.city || addr.city,
+                 state: prev.state || addr.state,
+               }))}
              />
            </FormField>
           </div>

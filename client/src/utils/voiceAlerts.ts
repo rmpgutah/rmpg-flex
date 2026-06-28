@@ -668,6 +668,26 @@ export function announceScreeningAlerts(result: ScreeningResult): void {
 }
 
 /**
+ * Announce a Patrol Scan critical plate hit while driving:
+ * "Alert. Stolen vehicle. Plate ABC123." preceded by the alert tone.
+ *
+ * `text` is pre-built by patrolAlertText() (threat-led, plate-suffixed). The
+ * dedup key is the plate so the same wanted vehicle in frame for several
+ * seconds is announced once, not on every 4-second tick.
+ */
+export async function announcePlateHit(plate: string, text: string): Promise<void> {
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
+
+  const dedupKey = `plate-hit:${plate}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('alert');
+  await delay(TONE_GAP_MS);
+  enqueuePhrases([{ text: `Alert. ${text}` }]);
+}
+
+/**
  * Announce safety alerts from a call's flags with call reference:
  * "Caution. Call 26-CFS00110 has active flags: weapons involved, officer safety. Use caution on approach."
  */

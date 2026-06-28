@@ -16,6 +16,16 @@
 
 /api/*  https://api.rmpgutah.us/api/:splat  200
 
+# Download / update files proxy — routes /downloads/* and /updates/*
+# to the Worker (FILES) DOWNLOADS R2 bucket. Without this, relative
+# download links resolve to the Pages SPA which returns index.html
+# (HTTP 200, text/html) instead of the actual binary, breaking all
+# desktop installer downloads and electron-updater auto-update checks.
+/downloads/*  https://api.rmpgutah.us/downloads/:splat  200
+/updates/*    https://api.rmpgutah.us/updates/:splat    200
+/download      https://api.rmpgutah.us/download          200
+/rmpg-seal.png https://api.rmpgutah.us/rmpg-seal.png     200
+
 # Missing build assets must 404, NOT fall through to the SPA catch-all.
 # After a deploy the build emits new hashed chunk names and DELETES the old
 # ones. A long-lived tab still running the previous bundle then imports an

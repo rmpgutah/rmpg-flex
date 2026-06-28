@@ -51,6 +51,7 @@ export default function ScheduleFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<ScheduleFormData>({
     storageKey: 'rmpg_schedule_form',
@@ -70,6 +71,7 @@ export default function ScheduleFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit({
       officer_id: form.officer_id,
       property_id: form.property_id || undefined,
@@ -100,14 +102,14 @@ export default function ScheduleFormModal({
     >
       {/* Officer */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-scheduleformmodal-0" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Officer <span className="text-red-400">*</span>
         </label>
         <select id="ff-scheduleformmodal-0"
           required
           value={form.officer_id}
           onChange={(e) => set('officer_id', e.target.value)}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
         >
           <option value="">Select officer...</option>
           {officers.map((o) => (
@@ -120,13 +122,13 @@ export default function ScheduleFormModal({
 
       {/* Property */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-scheduleformmodal-1" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Property
         </label>
         <select id="ff-scheduleformmodal-1"
           value={form.property_id}
           onChange={(e) => set('property_id', e.target.value)}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
         >
           <option value="">None (floating)</option>
           {properties.map((p) => (
@@ -139,7 +141,7 @@ export default function ScheduleFormModal({
 
       {/* Shift Date */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-scheduleformmodal-2" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Shift Date <span className="text-red-400">*</span>
         </label>
         <input id="ff-scheduleformmodal-2"
@@ -147,14 +149,14 @@ export default function ScheduleFormModal({
           required
           value={form.shift_date}
           onChange={(e) => set('shift_date', e.target.value)}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
         />
       </div>
 
       {/* Time row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-scheduleformmodal-3" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Start Time <span className="text-red-400">*</span>
           </label>
           <input id="ff-scheduleformmodal-3"
@@ -162,11 +164,11 @@ export default function ScheduleFormModal({
             required
             value={form.start_time}
             onChange={(e) => set('start_time', e.target.value)}
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-scheduleformmodal-4" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             End Time <span className="text-red-400">*</span>
           </label>
           <input id="ff-scheduleformmodal-4"
@@ -174,14 +176,14 @@ export default function ScheduleFormModal({
             required
             value={form.end_time}
             onChange={(e) => set('end_time', e.target.value)}
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
       </div>
 
       {/* Notes */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-scheduleformmodal-5" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Notes
         </label>
         <textarea id="ff-scheduleformmodal-5"
@@ -190,7 +192,7 @@ export default function ScheduleFormModal({
           rows={3}
           placeholder="Optional shift notes..."
           maxLength={2000}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
         />
         <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
       </div>

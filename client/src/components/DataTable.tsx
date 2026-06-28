@@ -174,11 +174,11 @@ function DataTable<T>({
       aria-label={ariaLabel ? `${ariaLabel} region` : undefined}
       style={{ borderRadius: '2px' }}
     >
-      <table className={tableClass} aria-label={ariaLabel}>
+      <div className="overflow-x-auto"><table className={tableClass} aria-label={ariaLabel}>
         <thead className={spillman ? '' : 'sticky top-0 z-10'}>
           <tr
             className={spillman ? '' : 'border-b border-rmpg-600'}
-            style={spillman ? undefined : { background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
+            style={spillman ? undefined : { background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
           >
             {showRowNumbers && (
               <th className={`${headerPadding} text-[10px] font-bold uppercase tracking-wider text-rmpg-400 text-center w-8`} scope="col">#</th>
@@ -263,9 +263,11 @@ function DataTable<T>({
             })
           )}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
 
-export default React.memo(DataTable) as typeof DataTable;
+const MemoizedDataTable = React.memo(DataTable) as typeof DataTable;
+export { MemoizedDataTable as DataTable };
+export default MemoizedDataTable;

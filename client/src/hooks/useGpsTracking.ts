@@ -50,6 +50,8 @@ export interface GpsState {
   unitCallSign: string | null;
   /** The unit ID assigned to this user (if any) */
   unitId: number | null;
+  /** Whether the user has a take-home vehicle (bypasses unit requirement) */
+  hasTakeHome: boolean;
   /** Whether GPS permission was denied (blocks app usage) */
   permissionDenied: boolean;
   /** Whether we're still waiting for location permission */
@@ -127,6 +129,30 @@ interface QueuedPoint {
   speed: number | null;
   timestamp: string; // ISO 8601
   source: PositionSource;
+  activity?: string | null;
+  activity_confidence?: string | null;
+}
+
+// ── CoreMotion activity bridge (native iOS only) ─────────────
+// The Capacitor MotionActivityBridge dispatches 'rmpg-motion-activity'
+// CustomEvents into the WebView. Web/desktop browsers never fire it,
+// so points stay activity-free there. Stamped at send time: a flush
+// window (~15-30 s) is within the server's debounce granularity.
+let latestMotionActivity: { activity: string; confidence: string; at: number } | null = null;
+const MOTION_ACTIVITY_FRESH_MS = 30_000;
+if (typeof window !== 'undefined') {
+  window.addEventListener('rmpg-motion-activity', ((e: CustomEvent) => {
+    const d = e.detail || {};
+    if (typeof d.activity === 'string' && typeof d.confidence === 'string') {
+      latestMotionActivity = { activity: d.activity, confidence: d.confidence, at: Date.now() };
+    }
+  }) as EventListener);
+}
+
+function stampActivity<T extends { activity?: string | null; activity_confidence?: string | null }>(points: T[]): T[] {
+  const m = latestMotionActivity;
+  if (!m || Date.now() - m.at > MOTION_ACTIVITY_FRESH_MS) return points;
+  return points.map((p) => ({ ...p, activity: m.activity, activity_confidence: m.confidence }));
 }
 
 // ─── Network Information API ────────────────────────────────
@@ -206,7 +232,11 @@ function computeBearing(lat1: number, lng1: number, lat2: number, lng2: number):
 
 // ─── localStorage GPS Failover Queue ─────────────────────
 const LS_GPS_QUEUE_KEY = 'rmpg_gps_failover_queue';
-const LS_MAX_QUEUED_POINTS = 100;
+// Accountability requirement: never silently drop fixes over a normal field
+// outage. At the ~5s accepted cadence, 2000 fixes ≈ 2.8 h offline (was 100 ≈
+// 8 min). ~2000 × ~120 B JSON ≈ 240 KB, well within the 5 MB localStorage budget.
+// (A truly unbounded buffer would need IndexedDB — tracked as a follow-up.)
+const LS_MAX_QUEUED_POINTS = 2000;
 
 function loadFailoverQueue(): QueuedPoint[] {
   try {
@@ -221,6 +251,12 @@ function loadFailoverQueue(): QueuedPoint[] {
 
 function saveFailoverQueue(points: QueuedPoint[]): void {
   try {
+    // Overflow drops the OLDEST fixes (keep newest). Surface it rather than
+    // dropping silently, so a sustained outage that exceeds the buffer is
+    // visible in logs instead of being invisible data loss.
+    if (points.length > LS_MAX_QUEUED_POINTS) {
+      console.warn(`[gps] failover queue overflow — dropping ${points.length - LS_MAX_QUEUED_POINTS} oldest fix(es) (buffer cap ${LS_MAX_QUEUED_POINTS})`);
+    }
     localStorage.setItem(LS_GPS_QUEUE_KEY, JSON.stringify(points.slice(-LS_MAX_QUEUED_POINTS)));
   } catch {
     // localStorage full or unavailable — degrade gracefully
@@ -267,6 +303,17 @@ const IS_ELECTRON = typeof window !== 'undefined' && !!(window as any).electron?
 // See desktop/internalGps.js for the parser.
 const IS_WINDOWS_ELECTRON =
   IS_ELECTRON && (window as any).electron?.platform === 'win32';
+
+// The Toughbook internal NMEA reader is a SINGLE shared resource in the Electron
+// main process whose fixes are broadcast to every renderer. Multiple
+// useGpsTracking instances now coexist (the app-wide NavTripProvider's read-only
+// tracker + Layout's uploader + MapPage's tracker), and each one's unmount used
+// to call electron.stopInternalGps() — which destroys that shared reader for the
+// instances still mounted. Navigating Layout↔Drive-HUD (or away from /map) thus
+// stranded a Toughbook on WiFi triangulation, directly undoing the "use hardware
+// GPS" fix. Ref-count starts/stops at the module level so only the LAST live
+// instance actually stops the reader (i.e. real app teardown).
+let internalGpsRefCount = 0;
 
 /** Normalize an assigned-unit payload into a real unit or null.
  *
@@ -321,6 +368,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     isSupported: typeof navigator !== 'undefined' && 'geolocation' in navigator,
     unitCallSign: null,
     unitId: null,
+    hasTakeHome: false,
     permissionDenied: false,
     permissionPending: false,
     connectionType: getConnectionType(),
@@ -330,6 +378,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const watchIdRef = useRef<number | null>(null);
   const batchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const permWatchRef = useRef<PermissionStatus | null>(null);
+  /** Whether geolocation permission is known to be denied — prevents heartbeat
+   *  from endlessly restarting watchPosition when it will never succeed. */
+  const permissionDeniedRef = useRef(false);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /** Timestamp of last received position callback — used by heartbeat */
   const lastCallbackTimeRef = useRef<number>(Date.now());
@@ -385,8 +437,16 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         const unit = pickUnit(resp);
         if (unit && !cancelled) {
           unitIdRef.current = unit.id;
-          setState((prev) => ({ ...prev, unitCallSign: unit.call_sign ?? prev.unitCallSign, unitId: unit.id }));
           gpsSourceRef.current = unit.gps_source || 'browser';
+          setState((prev) => ({
+            ...prev,
+            unitCallSign: unit.call_sign ?? prev.unitCallSign,
+            unitId: unit.id,
+            hasTakeHome: (resp as Record<string, unknown>)?.take_home === true,
+          }));
+          gpsSourceRef.current = unit.gps_source || 'browser';
+        } else if (!unit && (resp as Record<string, unknown>)?.take_home === true) {
+          setState((prev) => ({ ...prev, hasTakeHome: true }));
         }
       })
       .catch((err) => {
@@ -438,7 +498,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       try {
         const result = await apiFetch<{ error?: unknown; unit?: unknown } | null>('/dispatch/gps', {
           method: 'POST',
-          body: JSON.stringify({ points: allPoints, device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
+          body: JSON.stringify({ points: stampActivity(allPoints), device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
         });
         // A 200 that carries an error body (e.g. D1 momentarily locked) means
         // the points were NOT persisted. apiFetch already throws on non-2xx, so
@@ -511,7 +571,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     try {
       await apiFetch('/dispatch/gps', {
         method: 'POST',
-        body: JSON.stringify({ points: [point], device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
+        body: JSON.stringify({ points: stampActivity([point]), device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
       });
       // Sent exactly once — drop this point from the batch queue so sendBatch
       // doesn't re-POST the same breadcrumb. Identity match by reference (the
@@ -664,6 +724,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
     }
+    if (permWatchRef.current !== null) {
+      permWatchRef.current.onchange = null;
+      permWatchRef.current = null;
+    }
     if (heartbeatRef.current !== null) {
       clearInterval(heartbeatRef.current);
       heartbeatRef.current = null;
@@ -786,7 +850,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // ─── Toughbook internal GPS subscription ─────────────────
   // Detect on mount; if it's a Toughbook with a live COM port, start the
-  // native NMEA reader and bypass navigator.geolocation entirely.
+  // native NMEA reader. Internal NMEA is PRIMARY; navigator.geolocation keeps
+  // running in parallel as the SECONDARY fallback (started by startTracking),
+  // so there is never a GPS outage while we probe — the only cost of a retry
+  // is re-enumerating COM ports.
   useEffect(() => {
     if (!IS_WINDOWS_ELECTRON) return;
     const electron = (window as any).electron;
@@ -795,54 +862,92 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     let unsubUpdate: (() => void) | null = null;
     let unsubError: (() => void) | null = null;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    // Did THIS instance increment the shared ref count? Guards against a
+    // double-decrement if cleanup runs without a successful start.
+    let thisInstanceStarted = false;
 
-    (async () => {
+    // The internal u-blox COM port often isn't enumerable the instant the app
+    // launches — on a cold boot or resume the GPS driver can take 10-30s to
+    // register the virtual serial port. A one-shot detect-on-mount therefore
+    // saw isToughbook=false and stranded the unit on WiFi triangulation for the
+    // ENTIRE session (until app restart). Retry on a fixed cadence until the
+    // port appears, capped so non-Toughbook machines don't poll forever.
+    const RETRY_DELAY_MS = 6000;
+    const MAX_DETECT_ATTEMPTS = 10; // ~60s window — covers cold-boot port enumeration
+
+    const startSubscriptions = () => {
+      unsubUpdate = electron.onInternalGpsUpdate((pos: any) => {
+        ingestPosition({
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          accuracy: pos.accuracy ?? null,
+          heading: pos.heading ?? null,
+          speed: pos.speed ?? null,
+          sourceHint: 'gps',
+          fromInternalGps: true,
+        });
+      });
+      unsubError = electron.onInternalGpsError((err: any) => {
+        console.warn('[useGpsTracking] Internal GPS error:', err?.message);
+        setState((prev) => ({ ...prev, error: `Internal GPS: ${err?.message || 'unknown error'}` }));
+      });
+    };
+
+    const attemptDetect = async (attempt: number) => {
+      if (cancelled || useInternalGpsRef.current) return;
       try {
         const detected = await electron.detectInternalGps();
-        if (cancelled) return;
+        if (cancelled || useInternalGpsRef.current) return;
         if (!detected?.isToughbook || !detected?.portPath) {
-          console.debug('[useGpsTracking] Not a Toughbook or no GPS port — using navigator.geolocation');
+          if (attempt + 1 < MAX_DETECT_ATTEMPTS) {
+            console.debug(`[useGpsTracking] No internal GPS yet (attempt ${attempt + 1}/${MAX_DETECT_ATTEMPTS}) — retrying in ${RETRY_DELAY_MS / 1000}s; navigator.geolocation continues`);
+            retryTimer = setTimeout(() => attemptDetect(attempt + 1), RETRY_DELAY_MS);
+          } else {
+            console.debug('[useGpsTracking] No Toughbook internal GPS after retries — staying on navigator.geolocation');
+          }
           return;
         }
         const result = await electron.startInternalGps({ portPath: detected.portPath });
-        if (cancelled) return;
+        if (cancelled || useInternalGpsRef.current) return;
         if (!result?.ok) {
-          console.warn('[useGpsTracking] Internal GPS failed to start, falling back to navigator.geolocation:', result?.error);
+          console.warn('[useGpsTracking] Internal GPS failed to start, will retry:', result?.error);
+          if (attempt + 1 < MAX_DETECT_ATTEMPTS) {
+            retryTimer = setTimeout(() => attemptDetect(attempt + 1), RETRY_DELAY_MS);
+          }
           return;
         }
-        console.debug('[useGpsTracking] Internal GPS active on', detected.portPath, '— navigator.geolocation disabled');
+        console.debug('[useGpsTracking] Internal GPS active on', detected.portPath, '— hardware GPS is now primary');
         useInternalGpsRef.current = true;
+        if (!thisInstanceStarted) { thisInstanceStarted = true; internalGpsRefCount++; }
         setIsTracking(true);
         setState((prev) => ({ ...prev, permissionPending: false, permissionDenied: false }));
-
-        unsubUpdate = electron.onInternalGpsUpdate((pos: any) => {
-          ingestPosition({
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-            accuracy: pos.accuracy ?? null,
-            heading: pos.heading ?? null,
-            speed: pos.speed ?? null,
-            sourceHint: 'gps',
-            fromInternalGps: true,
-          });
-        });
-        unsubError = electron.onInternalGpsError((err: any) => {
-          console.warn('[useGpsTracking] Internal GPS error:', err?.message);
-          setState((prev) => ({ ...prev, error: `Internal GPS: ${err?.message || 'unknown error'}` }));
-        });
-        // No need to start the batch interval here — startTracking() runs
-        // in parallel (browser fallback path) and owns the batch send timer.
+        startSubscriptions();
+        // No batch interval here — startTracking() (browser fallback path) runs
+        // in parallel and owns the batch send timer.
       } catch (err) {
         console.warn('[useGpsTracking] Internal GPS detection error:', err);
+        if (!cancelled && attempt + 1 < MAX_DETECT_ATTEMPTS) {
+          retryTimer = setTimeout(() => attemptDetect(attempt + 1), RETRY_DELAY_MS);
+        }
       }
-    })();
+    };
+
+    attemptDetect(0);
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       if (unsubUpdate) unsubUpdate();
       if (unsubError) unsubError();
-      if (useInternalGpsRef.current && electron?.stopInternalGps) {
-        electron.stopInternalGps().catch(() => { /* shutting down */ });
+      // Only the LAST instance using the shared reader stops it. A read-only
+      // tracker (NavTripProvider) or a page-scoped one (MapPage) unmounting must
+      // not tear NMEA out from under the instances still mounted.
+      if (thisInstanceStarted) {
+        internalGpsRefCount = Math.max(0, internalGpsRefCount - 1);
+        if (internalGpsRefCount === 0 && electron?.stopInternalGps) {
+          electron.stopInternalGps().catch(() => { /* shutting down */ });
+        }
       }
     };
   }, [ingestPosition]);
@@ -870,6 +975,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       (position) => {
         const { latitude, longitude, accuracy, heading, speed } = position.coords;
 
+        // Any position callback means permission is granted — clear the denied flag
+        // so the heartbeat can restart watchPosition if it goes stale again.
+        permissionDeniedRef.current = false;
         // Update heartbeat timestamp — proves watchPosition is still delivering
         lastCallbackTimeRef.current = Date.now();
         // Reset restart counter on successful callback
@@ -983,6 +1091,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           case err.PERMISSION_DENIED:
             msg = 'Location permission denied. You MUST enable location access to use RMPG Flex.';
             denied = true;
+            permissionDeniedRef.current = true;
             break;
           case err.POSITION_UNAVAILABLE:
             msg = 'Location unavailable. Check GPS/location services.';
@@ -1002,32 +1111,60 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           permissionPending: false,
         }));
 
-        // If denied, probe every 30 seconds in case user re-grants permission
-        // (non-recursive — just a probe, not a full restart cascade)
+        // Fallback: poll with getCurrentPosition (used when Permissions API
+        // is unavailable or query fails).
+        const fallbackProbePermission = () => {
+          if (!mountedRef.current) return;
+          retryTimeoutRef.current = setTimeout(() => {
+            if (!mountedRef.current) return;
+            navigator.geolocation.getCurrentPosition(
+              () => {
+                if (!mountedRef.current) return;
+                permissionDeniedRef.current = false;
+                cleanupTracking(false);
+                startTracking();
+              },
+              () => {
+                if (!mountedRef.current) return;
+                fallbackProbePermission();
+              },
+              { timeout: 5000 }
+            );
+          }, 30000);
+        };
+
+        // If denied, watch for permission changes via Permissions API (no user
+        // gesture needed, unlike getCurrentPosition which triggers violations
+        // when called from timers). Fall back to timer-based getCurrentPosition
+        // probing on browsers without Permissions API support.
         if (denied) {
           if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
-          const probePermission = () => {
-            // Guard against orphaned timers firing after unmount
-            if (!mountedRef.current) return;
-            retryTimeoutRef.current = setTimeout(() => {
+          const permApi = (navigator as any).permissions;
+          if (permApi?.query) {
+            permApi.query({ name: 'geolocation' }).then((permStatus: PermissionStatus) => {
               if (!mountedRef.current) return;
-              navigator.geolocation.getCurrentPosition(
-                () => {
-                  if (!mountedRef.current) return;
-                  // Permission restored — restart tracking (once)
+              permWatchRef.current = permStatus;
+              permStatus.onchange = () => {
+                if (!mountedRef.current) {
+                  permStatus.onchange = null;
+                  return;
+                }
+                if (permStatus.state === 'granted') {
+                  permStatus.onchange = null;
+                  permWatchRef.current = null;
+                  permissionDeniedRef.current = false;
                   cleanupTracking(false);
                   startTracking();
-                },
-                () => {
-                  if (!mountedRef.current) return;
-                  // Still denied — schedule another probe (not recursive startTracking)
-                  probePermission();
-                },
-                { timeout: 5000 }
-              );
-            }, 30000);
-          };
-          probePermission();
+                }
+              };
+            }).catch(() => {
+              // Permissions API query failed — fall back to timer-based probe
+              fallbackProbePermission();
+            });
+          } else {
+            // No Permissions API — fall back to timer polling
+            fallbackProbePermission();
+          }
         }
       },
       {
@@ -1073,6 +1210,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       const backoffFactor = Math.min(2 ** overshoot, MAX_HEARTBEAT_BACKOFF_FACTOR);
       const threshold = baseThreshold * backoffFactor;
       if (staleDuration >= threshold && watchIdRef.current !== null) {
+        // If permission is known to be denied, don't restart — the Permissions
+        // API watcher or fallback probe will re-enable when the user re-grants
+        // access. Without this guard the heartbeat triggers an endless restart
+        // loop that floods the console with violations and DevTools errors.
+        if (permissionDeniedRef.current) {
+          return;
+        }
         // Throttle log noise: warn while still in the aggressive phase, then
         // drop to debug so a perpetually-stale console doesn't flood the log.
         const log = heartbeatRestartCountRef.current >= MAX_HEARTBEAT_RESTARTS ? console.debug : console.warn;
@@ -1173,6 +1317,42 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isTracking, startTracking]);
 
+  // ─── Durable flush on background / page close ───────────────
+  // On a real tab close, hard refresh, or the OS backgrounding the app, React's
+  // unmount cleanup is unreliable and the in-memory upload queue (up to one 5s
+  // interval of fixes) would be silently lost. `pagehide` fires reliably; persist
+  // the in-memory queue into the localStorage failover queue (synchronous, so it
+  // completes before the page is frozen/killed). Those fixes then upload on the
+  // next session. We persist (not beacon-send) to avoid duplicate breadcrumbs —
+  // the server has no fix-level dedup, so a beacon that partially succeeds plus
+  // the failover re-send would double-write and inflate trip distance. Dedupe
+  // against the existing failover so a tab-switch → resume can't double-queue
+  // (sendBatch also dedupes failover+queue on resume). Accountability: the fix is
+  // durably stored either way — never dropped.
+  useEffect(() => {
+    const persistQueue = () => {
+      try {
+        const pending = queueRef.current;
+        if (!pending.length) return;
+        const seen = new Set<string>();
+        const merged = [...loadFailoverQueue(), ...pending].filter((p) => {
+          const k = `${p.timestamp}|${p.lat}|${p.lng}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        saveFailoverQueue(merged);
+      } catch { /* never block unload */ }
+    };
+    const onVisHidden = () => { if (document.visibilityState === 'hidden') persistQueue(); };
+    window.addEventListener('pagehide', persistQueue);
+    document.addEventListener('visibilitychange', onVisHidden);
+    return () => {
+      window.removeEventListener('pagehide', persistQueue);
+      document.removeEventListener('visibilitychange', onVisHidden);
+    };
+  }, []);
+
   // ─── Network change listener ────────────────────────────────
   // When the device switches between WiFi ↔ cellular (e.g., entering/leaving
   // a vehicle with in-vehicle WiFi), watchPosition may silently stop delivering
@@ -1242,9 +1422,19 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // (supported on Chrome Android, Chrome Desktop, Edge, etc.)
   useEffect(() => {
     let wakeLock: any = null;
+    let disposed = false;
+    let reacquireTimer: ReturnType<typeof setTimeout> | null = null;
     const handleWakeLockRelease = () => {
-      // Wake lock released (e.g., user switched tabs) — will re-acquire via visibilitychange
       wakeLock = null;
+      // The OS can release the lock while the page is still VISIBLE (battery
+      // saver, permission dialogs, Android power menu). Without this retry the
+      // screen would lock mid-patrol and GPS would throttle until the officer
+      // happened to tap something. Tab-hidden releases are re-acquired by the
+      // visibilitychange handler instead — the guard inside requestWakeLock
+      // makes a retry while hidden a harmless no-op.
+      if (!disposed && document.visibilityState === 'visible') {
+        reacquireTimer = setTimeout(() => { requestWakeLock(); }, 3_000);
+      }
     };
     const requestWakeLock = async () => {
       // WakeLock requires user-activation context + visible page; otherwise the
@@ -1279,6 +1469,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     window.addEventListener('keydown', handleFirstClick, { once: true });
 
     return () => {
+      disposed = true;
+      if (reacquireTimer) clearTimeout(reacquireTimer);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('click', handleFirstClick);
       window.removeEventListener('keydown', handleFirstClick);

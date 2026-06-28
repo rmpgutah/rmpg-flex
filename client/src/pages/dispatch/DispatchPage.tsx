@@ -1,21 +1,23 @@
 import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
-  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
+  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench,
 } from 'lucide-react';
+import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import { callPosture } from '../../utils/callThreat';
+import { applyFillBlanks, autofillFromClient, type ClientRecord } from '../../utils/clientAutofill';
 import { BADGE_TONES } from '../../components/records/recordVisuals';
 import CallCard from '../../components/CallCard';
+import ZsbBadge from '../../components/ZsbBadge';
 import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/DuplicateCandidatesModal';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
-import { zoneLeaf, beatLeaf, sectionPrefix, sectionZoneBeatCombined } from '../../utils/dispatchCodeParts';
-import { parseLocationParts } from '../../utils/parseLocationParts';
+import { zoneLeaf, beatLeaf, sectionPrefix } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -30,7 +32,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../../utils/caseNumbers';
-import { formatPhoneInput } from '../../utils/formatters';
+import { formatPhoneInput, toDisplayLabel } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -43,7 +45,6 @@ import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
-import MileagePromptModal from '../../components/MileagePromptModal';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
 import RecommendedUnitsInline from '../../components/RecommendedUnitsInline';
 import type { CommandAction } from '../../utils/cadCommandParser';
@@ -54,8 +55,9 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
-import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
+import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
+import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, type FilterTab,
 } from './utils/dispatchFormatters';
@@ -72,8 +74,12 @@ import {
   announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
-import { useDistrictOptions } from '../../hooks/useDistrictLookup';
+import { renderFormattedText } from '../../utils/renderFormatted';
+import NoteComposer from './components/NoteComposer';
+import CallDocumentsPanel from './components/CallDocumentsPanel';
+import { useDistrictOptions, normalizeSectorId } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
+import { useLinkOptions } from '../../hooks/useLinkOptions';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
 import {
@@ -89,9 +95,10 @@ import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
-  humanizePriority, formatDispositionCode, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
-  formatAddressDisplay, timeAgo, humanizeStatus,
+  humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
+  formatAddressDisplay, timeAgo, humanizeStatus, humanizeType,
 } from '../../utils/statusLabels';
+import { coded } from '../../utils/searchText';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -234,7 +241,7 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 
 function formatServiceType(val: string | undefined | null): string {
   if (!val) return '';
-  return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return SERVICE_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 function formatCallDuration(ms: number): string {
@@ -251,24 +258,51 @@ function formatCallDuration(ms: number): string {
 
 function formatDocumentType(val: string | undefined | null): string {
   if (!val) return '';
-  return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return DOCUMENT_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 export default function DispatchPage() {
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  // A note is editable by its author (server-stamped author_username) or any admin/manager.
+  const canEditNote = useCallback((note: { author_username?: string | null }) =>
+    isAdminOrManager || (!!note.author_username && note.author_username === user?.username),
+  [isAdminOrManager, user?.username]);
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
-  // Only senior roles may remove (soft-delete) a call from the board — mirrors
-  // the server-side guard in src/routes/dispatch/calls.ts (CALL_DELETE_ROLES).
-  const canDeleteCall = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const unitModalTitleId = useId();
   const navigate = useNavigate();
   const { addToast } = useToast();
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
+
+  // Generate + open the PSO "Notice of Communication" for a failed client-request
+  // attempt that is being re-dispatched. Autofills from the failed call; the
+  // re-dispatch call number + next window ride along when known.
+  const openPsoNotice = useCallback(async (
+    failedCall: CallForService,
+    extra?: { redispatchCallNumber?: string; nextWindow?: string },
+  ) => {
+    try {
+      const officerName = user
+        ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
+        : 'RMPG Dispatch';
+      await openNoticeOfCommunication(failedCall, {
+        officerName,
+        officerBadge: (user as any)?.badge_number || '',
+        // RMPG Dispatch direct line. Embedded as a build-time constant
+        // for now (single agency, single phone); migrate to a Worker
+        // settings row when a second tenant ever shows up.
+        dispatchPhone: '(385) 436-3370',
+        redispatchCallNumber: extra?.redispatchCallNumber,
+        nextWindow: extra?.nextWindow,
+      });
+    } catch (err: any) {
+      addToast(`Notice of Communication failed: ${err?.message || 'Unknown error'}`, 'error');
+    }
+  }, [user, addToast]);
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel } = useDistrictOptions();
-  const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
+  const { resolve: resolveAddress } = useAddressAutofill();
   const dispatchCodes = useDispatchCodes();
   const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
   const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
@@ -278,7 +312,26 @@ export default function DispatchPage() {
   // state — e.g. priority-escalation detection in the call_updated handler.
   const callsRef = useRef<CallForService[]>([]);
   useEffect(() => { callsRef.current = calls; }, [calls]);
-  const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
+  // Synchronous dedup for POST + WebSocket race (a dispatcher's own POST resolves
+  // around the same time the WS `call_created` echo arrives — without dedup the
+  // call appears twice). Cap at 500 entries via FIFO eviction so a long shift
+  // doesn't grow this Set unbounded. 500 is generous: the longest active call
+  // window the dedup needs to cover is the ~5-10s between POST resolve and the
+  // WS echo, so 500 IDs is more than a day of busy dispatch.
+  const RECENT_IDS_CAP = 500;
+  const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set());
+  const rememberRecentId = useCallback((id: string | number) => {
+    const set = recentlyCreatedIdsRef.current;
+    set.add(id);
+    if (set.size > RECENT_IDS_CAP) {
+      const overflow = set.size - RECENT_IDS_CAP;
+      let dropped = 0;
+      for (const v of set) {
+        if (dropped >= overflow) break;
+        set.delete(v); dropped++;
+      }
+    }
+  }, []);
   const [units, setUnits] = useState<Unit[]>([]);
   // Mirror `units` into a ref so the mount-only adaptive GPS-poll effect (deps
   // exclude `units` to avoid re-arming the interval on every position tick) can
@@ -286,9 +339,10 @@ export default function DispatchPage() {
   const unitsRef = useRef<Unit[]>([]);
   useEffect(() => { unitsRef.current = units; }, [units]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
-  const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
+  const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'queue' as FilterTab, ['queue', 'pending', 'active', 'hold', 'serve', 'cleared', 'archived'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
+  const [reportingIssue, setReportingIssue] = useState(false);
   // Status-bar clock is rendered via the self-ticking <LiveClock/> component
   // (bottom bar, below). It owns its own 1s interval so the per-second tick no
   // longer re-renders this entire 6,300-line page — only the clock span.
@@ -296,31 +350,13 @@ export default function DispatchPage() {
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [signalFilter, setSignalFilter] = useState<'signaled' | 'unsignaled' | null>(null);
-  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
   // Quick Dispatch templates
   const [templates, setTemplates] = useState<any[]>([]);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
   const [templateInitialData, setTemplateInitialData] = useState<Record<string, any> | undefined>(undefined);
-
-  // Deep-link: /dispatch?newCall=1&location=...&description=... opens the New
-  // Call modal pre-seeded (used by record right-click "Create call here" /
-  // "Dispatch to address"). Strips the params after so it doesn't re-fire.
-  useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
-    if (sp.get('newCall') === '1') {
-      setTemplateInitialData({
-        location: sp.get('location') || '',
-        description: sp.get('description') || '',
-        source: 'dispatch',
-      });
-      setShowNewCallModal(true);
-      navigate(window.location.pathname, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Quick Template Dialog — minimal address-only dispatch
   const [quickTemplateData, setQuickTemplateData] = useState<{ name: string; incident_type: string; priority: string; description: string; source: string } | null>(null);
   const [quickTemplateAddress, setQuickTemplateAddress] = useState('');
@@ -333,7 +369,7 @@ export default function DispatchPage() {
   const [callWarnings, setCallWarnings] = useState<WarningTag[]>([]);
   // NCIC Query Panel
   const [showNcicPanel, setShowNcicPanel] = useState(false);
-  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'flags' | 'attachments' | 'audit'>('info');
+  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'documents' | 'flags' | 'attachments' | 'audit'>('info');
   const [auditTrail, setAuditTrail] = useState<any[]>([]);
   const [auditTrailLoading, setAuditTrailLoading] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; call: CallForService } | null>(null);
@@ -351,12 +387,18 @@ export default function DispatchPage() {
   const [vehicleSearchResults, setVehicleSearchResults] = useState<any[]>([]);
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+  const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
+  const [businessQuery, setBusinessQuery] = useState('');
+  const [businessSearchResults, setBusinessSearchResults] = useState<any[]>([]);
   const personSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vehicleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const businessSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const personAbortRef = useRef<AbortController | null>(null);
   const vehicleAbortRef = useRef<AbortController | null>(null);
+  const businessAbortRef = useRef<AbortController | null>(null);
   const personDropdownRef = useRef<HTMLDivElement>(null);
   const vehicleDropdownRef = useRef<HTMLDivElement>(null);
+  const businessDropdownRef = useRef<HTMLDivElement>(null);
   const [showCreatePersonModal, setShowCreatePersonModal] = useState(false);
   const [showCreateVehicleModal, setShowCreateVehicleModal] = useState(false);
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
@@ -367,11 +409,22 @@ export default function DispatchPage() {
   const [showAiSidebar, setShowAiSidebar] = useState(false);
   const [showCodePanel, setShowCodePanel] = useState(false);
 
-  // Queue sort mode. The /user/preferences backend is currently a stub that
-  // doesn't persist dispatch_sort, so we keep the selection in localStorage
-  // (best-effort PUT to the API too, for when it becomes real). This makes the
-  // SORT toggle actually stick across reloads — it previously reverted every time.
+  // Queue sort mode. Persisted via two layers:
+  //   1. localStorage (fast first-render hint — used while the /user/preferences
+  //      fetch is in flight, and on cold-start before any prefs hydrate).
+  //   2. /api/user/preferences — `dispatch_sort` is in PREF_COLUMNS (see
+  //      src/routes/stubs.ts) so server-side is the source of truth across
+  //      devices. The reconcile effect below replaces localStorage with the
+  //      server value once prefs load, so a different workstation's saved
+  //      sort wins over this device's stale localStorage.
   const [localSort, setLocalSort] = useState<string>(() => localStorage.getItem('rmpg_dispatch_sort') || '');
+  useEffect(() => {
+    const serverSort = (userPrefs as any)?.dispatch_sort;
+    if (typeof serverSort === 'string' && serverSort && serverSort !== localSort) {
+      setLocalSort(serverSort);
+      try { localStorage.setItem('rmpg_dispatch_sort', serverSort); } catch { /* storage unavailable */ }
+    }
+  }, [userPrefs, localSort]);
 
   // ── Feature 1: Call priority sound alerts ──
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
@@ -434,21 +487,24 @@ export default function DispatchPage() {
     return () => {
       if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
       if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
+      if (businessSearchTimerRef.current) clearTimeout(businessSearchTimerRef.current);
       if (personAbortRef.current) personAbortRef.current.abort();
       if (vehicleAbortRef.current) vehicleAbortRef.current.abort();
+      if (businessAbortRef.current) businessAbortRef.current.abort();
     };
   }, []);
 
-  // Close person/vehicle dropdowns on outside click
+  // Close person/vehicle/business dropdowns on outside click
   useEffect(() => {
-    if (!showPersonDropdown && !showVehicleDropdown) return;
+    if (!showPersonDropdown && !showVehicleDropdown && !showBusinessDropdown) return;
     const handler = (e: MouseEvent) => {
       if (showPersonDropdown && personDropdownRef.current && !personDropdownRef.current.contains(e.target as Node)) setShowPersonDropdown(false);
       if (showVehicleDropdown && vehicleDropdownRef.current && !vehicleDropdownRef.current.contains(e.target as Node)) setShowVehicleDropdown(false);
+      if (showBusinessDropdown && businessDropdownRef.current && !businessDropdownRef.current.contains(e.target as Node)) setShowBusinessDropdown(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [showPersonDropdown, showVehicleDropdown]);
+  }, [showPersonDropdown, showVehicleDropdown, showBusinessDropdown]);
 
   const searchPersons = useCallback((query: string) => {
     if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
@@ -488,6 +544,9 @@ export default function DispatchPage() {
   const [callVehicles, setCallVehicles] = useState<any[]>([]);
   const [linkPersonRole, setLinkPersonRole] = useState('involved');
   const [linkVehicleRole, setLinkVehicleRole] = useState('involved');
+  const [callBusinesses, setCallBusinesses] = useState<any[]>([]);
+  const [linkBusinessRole, setLinkBusinessRole] = useState('involved');
+  const { options: linkOptions } = useLinkOptions();
 
   const fetchCallPersons = useCallback(async (callId: string | number) => {
     try {
@@ -511,8 +570,9 @@ export default function DispatchPage() {
       fetchCallPersons(callId);
     } catch (err: any) {
       console.error('Link person error:', err);
+      addToast(err?.message || 'Failed to link person', 'error');
     }
-  }, [fetchCallPersons]);
+  }, [fetchCallPersons, addToast]);
 
   const unlinkPersonFromCall = useCallback(async (callId: string | number, linkId: string | number) => {
     try {
@@ -520,8 +580,10 @@ export default function DispatchPage() {
       setCallPersons(prev => prev.filter(p => p.id !== linkId));
     } catch (err: any) {
       console.error('Unlink person error:', err);
+      addToast(err?.message || 'Failed to unlink person', 'error');
+      fetchCallPersons(callId);
     }
-  }, []);
+  }, [addToast, fetchCallPersons]);
 
   const linkVehicleToCall = useCallback(async (callId: string | number, vehicleId: string | number, role: string) => {
     try {
@@ -531,8 +593,9 @@ export default function DispatchPage() {
       fetchCallVehicles(callId);
     } catch (err: any) {
       console.error('Link vehicle error:', err);
+      addToast(err?.message || 'Failed to link vehicle', 'error');
     }
-  }, [fetchCallVehicles]);
+  }, [fetchCallVehicles, addToast]);
 
   const unlinkVehicleFromCall = useCallback(async (callId: string | number, linkId: string | number) => {
     try {
@@ -540,8 +603,71 @@ export default function DispatchPage() {
       setCallVehicles(prev => prev.filter(v => v.id !== linkId));
     } catch (err: any) {
       console.error('Unlink vehicle error:', err);
+      addToast(err?.message || 'Failed to unlink vehicle', 'error');
+      fetchCallVehicles(callId);
     }
+  }, [addToast, fetchCallVehicles]);
+
+  const fetchCallBusinesses = useCallback(async (callId: string | number) => {
+    try {
+      const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/businesses`);
+      setCallBusinesses(Array.isArray(data) ? data : []);
+    } catch { setCallBusinesses([]); }
   }, []);
+
+  const searchBusinesses = useCallback((query: string) => {
+    setBusinessQuery(query);
+    if (businessSearchTimerRef.current) clearTimeout(businessSearchTimerRef.current);
+    if (businessAbortRef.current) businessAbortRef.current.abort();
+    if (query.trim().length < 2) { setBusinessSearchResults([]); setShowBusinessDropdown(false); return; }
+    businessSearchTimerRef.current = setTimeout(async () => {
+      try {
+        const controller = new AbortController();
+        businessAbortRef.current = controller;
+        const results = await apiFetch<any[]>(`/dispatch/business-search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+        setBusinessSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
+        setShowBusinessDropdown(true);
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') setBusinessSearchResults([]);
+      }
+    }, 300);
+  }, []);
+
+  const linkBusinessToCall = useCallback(async (callId: string | number, businessId: string | number, role: string) => {
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/businesses`, {
+        method: 'POST', body: JSON.stringify({ business_id: businessId, role }),
+      });
+      fetchCallBusinesses(callId);
+    } catch (err: any) {
+      console.error('Link business error:', err);
+      addToast(err?.message || 'Failed to link business', 'error');
+    }
+  }, [fetchCallBusinesses, addToast]);
+
+  const quickAddBusiness = useCallback(async (callId: string | number, name: string, role: string) => {
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/businesses/quick-add`, {
+        method: 'POST', body: JSON.stringify({ name, role }),
+      });
+      fetchCallBusinesses(callId);
+      setBusinessQuery(''); setBusinessSearchResults([]); setShowBusinessDropdown(false);
+    } catch (err: any) {
+      console.error('Quick-add business error:', err);
+      addToast(err?.message || 'Failed to add business', 'error');
+    }
+  }, [fetchCallBusinesses, addToast]);
+
+  const unlinkBusinessFromCall = useCallback(async (callId: string | number, linkId: string | number) => {
+    try {
+      await apiFetch(`/dispatch/calls/${callId}/businesses/${linkId}`, { method: 'DELETE' });
+      setCallBusinesses(prev => prev.filter(b => b.id !== linkId));
+    } catch (err: any) {
+      console.error('Unlink business error:', err);
+      addToast(err?.message || 'Failed to unlink business', 'error');
+      fetchCallBusinesses(callId);
+    }
+  }, [addToast, fetchCallBusinesses]);
 
   // Create-from-dispatch: uses the fused /quick-add endpoints so the server
   // runs duplicate detection BEFORE creating a new persons / vehicles_records
@@ -649,11 +775,13 @@ export default function DispatchPage() {
     if (cid && cid !== ('undefined' as any) && cid !== ('null' as any) && cid !== '') {
       fetchCallPersons(cid);
       fetchCallVehicles(cid);
+      fetchCallBusinesses(cid);
     } else {
       setCallPersons([]);
       setCallVehicles([]);
+      setCallBusinesses([]);
     }
-  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles]);
+  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses]);
 
   // Auto-save unsaved call edits on component unmount (SPA navigation).
   // Shares the body assembly with the click-Save path via buildCallEditBody
@@ -694,11 +822,6 @@ export default function DispatchPage() {
     newUnitCallSign, setNewUnitCallSign,
     newUnitOfficerId, setNewUnitOfficerId,
     newUnitStatus, setNewUnitStatus,
-    newUnitVehicleId, setNewUnitVehicleId,
-    newUnitCapabilities, setNewUnitCapabilities,
-    newUnitBeat, setNewUnitBeat,
-    newUnitAudioMode, setNewUnitAudioMode,
-    resetUnitForm,
     unitCreating,
     deletingUnit, setDeletingUnit,
     unitDeleting,
@@ -761,19 +884,18 @@ export default function DispatchPage() {
       const mappedUnits = (Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit);
       setCalls(mappedCalls);
       setUnits(mappedUnits);
-      // If we had a selected call, update its reference
+      // Merge list-level fields into selectedCall rather than replacing —
+      // the list endpoint omits ext-table fields (PSO, process service,
+      // subject details) due to the D1 100-column cap.
       setSelectedCall((prev) => {
         if (!prev) return mappedCalls[0] || null;
-        const found = mappedCalls.find((c: CallForService) => c.id === prev.id);
-        if (found) return found;
-        // Call disappeared from the active list (transient: e.g. WS race,
-        // backend filter hiccup, brief archive-and-unarchive). Don't auto-
-        // substitute a different call when the user is mid-edit — that
-        // change would flip selectedCall.id, fire the cleanup useEffect,
-        // and kill their edit form mid-keystroke. Keep current call until
-        // they explicitly navigate away.
-        if (isEditingRef.current) return prev;
-        return mappedCalls[0] || null;
+        const found = callsRaw.find((r: any) => String(r.id) === prev.id);
+        if (found) return mergeCallUpdate(prev, found);
+        // Call not in the active list — it may be archived, cleared, or
+        // transiently missing. Keep current selection; never auto-substitute
+        // a different call which would flash the detail panel and lose the
+        // user's context (especially mid-edit or while viewing an archived call).
+        return prev;
       });
     } catch (err: any) {
       if (err?.name === 'AbortError') {
@@ -807,24 +929,6 @@ export default function DispatchPage() {
     }
   }, [addToast]);
 
-  // Load CLEARED/closed/cancelled calls when the Cleared tab is activated. The
-  // default call list forces status IN (active) server-side, so completed calls
-  // are NEVER in the `calls` array — without this dedicated fetch the Cleared
-  // tab was permanently empty and a closed call looked permanently deleted
-  // ("CFS delete upon completion"). The rows are intact in D1 (status='closed');
-  // this just surfaces them. Comma-status is supported by the list handler.
-  const [clearedCalls, setClearedCalls] = useState<CallForService[]>([]);
-  const fetchClearedCalls = useCallback(async () => {
-    try {
-      const res = await apiFetch<any>('/dispatch/calls?status=cleared,closed,cancelled&limit=500');
-      const raw = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-      setClearedCalls(raw.map(mapDbCall));
-    } catch (err) {
-      console.error('Failed to load cleared calls:', err);
-      addToast('Failed to load cleared calls', 'error');
-    }
-  }, [addToast]);
-
   useEffect(() => {
     fetchData();
     // Fetch quick dispatch templates
@@ -850,6 +954,66 @@ export default function DispatchPage() {
       .then((data) => setPropertiesList((Array.isArray(data) ? data : []).map((p: any) => ({ id: String(p.id), name: p.name }))))
       .catch((err) => { console.warn('[DispatchPage] fetch properties list failed:', err); });
   }, [fetchData]);
+
+  // ── Deep-link auto-select: /dispatch?call_id=<id> ──
+  // Honors the call_id URL param (used by Dashboard "Calls Near Me" deep-links,
+  // among others). Auto-selects the target call once the calls list hydrates,
+  // switching to the right filter tab if its status doesn't fit the default
+  // 'queue' tab (e.g. an already-cleared call lands the user on the Cleared
+  // tab so they actually see the row in the left rail). Falls through to the
+  // archived list and triggers its lazy fetch if the call isn't in the
+  // active set. Runs at most once per page load (pendingDeepLinkRef gates it),
+  // so manually clicking a different call after the auto-select never gets
+  // reverted on the next /calls poll.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingDeepLinkRef = useRef<string | null>(
+    searchParams.get('call_id') || searchParams.get('callId') || null,
+  );
+  useEffect(() => {
+    const targetId = pendingDeepLinkRef.current;
+    if (!targetId) return;
+    const tryFind = (list: CallForService[]) => list.find((c) => String(c.id) === String(targetId));
+    const fromActive = tryFind(calls);
+    if (fromActive) {
+      setSelectedCall(fromActive);
+      // Map status → tab so the call is visible in the left rail.
+      const statusToTab: Record<string, FilterTab> = {
+        pending: 'pending', dispatched: 'active', enroute: 'active',
+        onscene: 'active', active: 'active', hold: 'hold',
+        cleared: 'cleared', closed: 'cleared', archived: 'archived',
+      };
+      const desiredTab = statusToTab[String(fromActive.status)] ?? 'queue';
+      setFilterTab(desiredTab);
+      pendingDeepLinkRef.current = null;
+      // Strip the query so a refresh doesn't re-select after the user
+      // navigates away from this call.
+      const next = new URLSearchParams(searchParams);
+      next.delete('call_id'); next.delete('callId');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // Not in active list — try archived. Trigger its load if it hasn't yet.
+    if (!archivedLoaded) {
+      fetchArchivedCalls();
+      return; // wait for the next effect run
+    }
+    const fromArchive = tryFind(archivedCalls);
+    if (fromArchive) {
+      setSelectedCall(fromArchive);
+      setFilterTab('archived');
+      pendingDeepLinkRef.current = null;
+      const next = new URLSearchParams(searchParams);
+      next.delete('call_id'); next.delete('callId');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // Both lists hydrated, no match — surface once + give up.
+    addToast(`Call ${targetId} not found`, 'warning');
+    pendingDeepLinkRef.current = null;
+    const next = new URLSearchParams(searchParams);
+    next.delete('call_id'); next.delete('callId');
+    setSearchParams(next, { replace: true });
+  }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, searchParams, setSearchParams, addToast]);
 
   // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI).
   // Each refresh refetches the active call list + units, so on a busy shift a
@@ -915,7 +1079,7 @@ export default function DispatchPage() {
     dispositionPromptCallId, setDispositionPromptCallId,
     isGenerating,
     isBulkArchiving,
-    handleStatusChange: rawHandleStatusChange,
+    handleStatusChange,
     handleHoldCall, handleResumeCall, handleRevertStatus,
     handleClearWithDisposition, handleConfirmClear,
     handleArchive, handleUnarchive, handleBulkArchive,
@@ -925,69 +1089,6 @@ export default function DispatchPage() {
     selectedCall, setSelectedCall, setCalls, setArchivedCalls,
     setUnits, setArchivedLoaded, refetchAll: silentRefresh,
   });
-
-  // ── Mileage prompt on enroute / onscene (officer-requested) ───────────────
-  // Dispatch asks the officer's odometer when they go EN ROUTE (starting) and
-  // again ON SCENE (ending). Wrapping handleStatusChange here means EVERY entry
-  // point — call-detail buttons, keyboard shortcuts (F-keys), the status board,
-  // and the right-click context menu — funnels through the same prompt without
-  // editing each call site. The reading is persisted atomically with the status
-  // transition (POST /dispatch/calls/:id/status, extended to take mileage).
-  const [mileagePrompt, setMileagePrompt] = useState<{
-    callId: string;
-    callNumber: string;
-    vehicleId: string;
-    mode: 'starting' | 'ending';
-    startingMileage: number | null;
-    pendingStatus: CallStatus;
-  } | null>(null);
-
-  const handleStatusChange = useCallback((
-    callId: string,
-    newStatus: CallStatus,
-    extraBody?: Record<string, any>,
-  ) => {
-    if (newStatus === 'enroute' || newStatus === 'onscene') {
-      const call = calls.find((c) => c.id === callId)
-        || (selectedCall?.id === callId ? selectedCall : undefined);
-      // Responding vehicle: explicit field on the call, else the first assigned
-      // unit's vehicle id. Lets the prompt show/confirm the vehicle being driven.
-      const respondingVehicle = (() => {
-        const rv = (call as any)?.responding_vehicle_id;
-        if (rv) return String(rv);
-        const firstUnitId = call?.assigned_units?.[0];
-        const u = units.find((x) => String(x.id) === String(firstUnitId));
-        return u?.vehicle ? String(u.vehicle) : '';
-      })();
-      setMileagePrompt({
-        callId,
-        callNumber: call?.call_number || `#${callId}`,
-        vehicleId: respondingVehicle,
-        mode: newStatus === 'enroute' ? 'starting' : 'ending',
-        startingMileage: call?.starting_mileage != null ? Number(call.starting_mileage) : null,
-        pendingStatus: newStatus,
-      });
-      return;
-    }
-    return rawHandleStatusChange(callId, newStatus, extraBody);
-  }, [calls, units, selectedCall, rawHandleStatusChange]);
-
-  // Prompt submit: persist the reading (if any) with the transition. Calls the
-  // RAW handler directly so it doesn't re-open the prompt. "Skip" sends 0 →
-  // status changes with no mileage written (server ignores non-positive values).
-  const handleMileagePromptSubmit = useCallback((mileage: number, vehicleId: string) => {
-    setMileagePrompt((prompt) => {
-      if (!prompt) return null;
-      const extra: Record<string, any> = {};
-      if (mileage > 0) {
-        if (prompt.mode === 'starting') extra.starting_mileage = mileage;
-        else extra.ending_mileage = mileage;
-      }
-      if (vehicleId && vehicleId.trim()) extra.responding_vehicle_id = vehicleId.trim();
-      rawHandleStatusChange(prompt.callId, prompt.pendingStatus, extra);
-      return null;
-    });
-  }, [rawHandleStatusChange]);
 
   // Notes + timeline state + handlers (extracted alongside the unit/call
   // hooks). Owns 9 state items (note input + inline-edit, timeline input
@@ -1056,8 +1157,6 @@ export default function DispatchPage() {
         }
       } else if (data.action === 'call_updated' && data.call) {
         const mapped = mapDbCall(data.call);
-        // Detect priority escalation before updating state. Read from the ref —
-        // the plain `calls` here would be the stale mount-time snapshot.
         const prevCall = callsRef.current.find((c: any) => c.id === mapped.id);
         if (prevCall && prevCall.priority !== mapped.priority) {
           const priorities = ['P1', 'P2', 'P3', 'P4'];
@@ -1065,9 +1164,8 @@ export default function DispatchPage() {
             announceEscalation(mapped.call_number, prevCall.priority, mapped.priority);
           }
         }
-        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
-        // Update selected call if it's the one being viewed
-        setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mergeCallUpdate(c, data.call) : c)));
+        setSelectedCall((prev) => (prev?.id === mapped.id ? mergeCallUpdate(prev, data.call) : prev));
         // Voice alert: announce update if notes were added
         if (data.update_type === 'note_added') {
           // Check for @mentions in the note text
@@ -1081,8 +1179,8 @@ export default function DispatchPage() {
         }
       } else if (data.action === 'call_status_changed' && data.call) {
         const mapped = mapDbCall(data.call);
-        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
-        setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mergeCallUpdate(c, data.call) : c)));
+        setSelectedCall((prev) => (prev?.id === mapped.id ? mergeCallUpdate(prev, data.call) : prev));
         // Voice alert: announce dispatch event when call dispatched
         if (mapped.status === 'dispatched') {
           announceDispatchEvent(mapped);
@@ -1125,32 +1223,9 @@ export default function DispatchPage() {
         }
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
-      } else if (data.action === 'backup_requested') {
-        // OFFICER-SAFETY: an officer hit "request backup" (RadialMenu →
-        // /api/dispatch/request-backup → panic.ts emitAlert). This action had
-        // NO consumer here, so the request was silent on the dispatch console.
-        // Surface it loudly: alarm tone (unless muted) + a persistent toast.
-        if (!soundAlertsMutedRef.current) playTone('alarm');
-        const who = data.call_sign || data.officer_name || 'An officer';
-        const extra = data.message && data.message !== 'Backup requested' ? ` — ${data.message}` : '';
-        addToast(`BACKUP REQUESTED: ${who}${extra}`, 'error', 12000);
-        // Pull the latest roster/calls so the requesting unit's state is current.
-        fetchData({ silent: true });
       } else if (data.action === 'ai_analysis' && data.call_id && data.analysis) {
         setAiAnalyses(prev => ({ ...prev, [data.call_id]: data.analysis }));
         setShowAiSidebar(true);
-      } else if (/^call_(person|vehicle|property)_/.test(data.action || '')) {
-        // call_person_*, call_vehicle_*, call_property_* from callLinks.ts.
-        // If the action affects the currently-selected call, refresh its linked
-        // data so the detail pane stays current without a full queue refetch.
-        const cid = data.call_id ?? data.call?.id;
-        if (cid && selectedCallRef.current && String(selectedCallRef.current.id) === String(cid)) {
-          if ((data.action || '').startsWith('call_person_')) {
-            apiFetch<any[]>(`/dispatch/calls/${cid}/persons`).then(r => setCallPersons(Array.isArray(r) ? r : [])).catch(() => {});
-          } else if ((data.action || '').startsWith('call_vehicle_')) {
-            apiFetch<any[]>(`/dispatch/calls/${cid}/vehicles`).then(r => setCallVehicles(Array.isArray(r) ? r : [])).catch(() => {});
-          }
-        }
       }
       } catch (err) {
         console.error('[Dispatch] Error processing WS dispatch_update:', err);
@@ -1165,26 +1240,10 @@ export default function DispatchPage() {
     // so this handler was previously dead (the roster never updated live).
     // subscribersRef is a Map<type, Set<handler>>, so this coexists with the
     // call handler above; each ignores the other's actions.
-    // Merge a raw broadcast unit row onto the existing MAPPED unit WITHOUT
-    // corrupting it: spreading the raw row drifted types (officer_id number,
-    // capabilities JSON string) and wiped joined fields the raw row lacks
-    // (officer_name, current_call_number). Coerce the volatile scalars and keep
-    // everything else from the already-mapped unit.
-    const applyUnitPatch = (u: any, raw: any) => ({
-      ...u,
-      id: String(raw.id),
-      status: raw.status ?? u.status,
-      latitude: raw.latitude ?? u.latitude,
-      longitude: raw.longitude ?? u.longitude,
-      officer_id: raw.officer_id != null ? String(raw.officer_id) : u.officer_id,
-      officer_name: raw.officer_name ?? u.officer_name,
-      current_call_id: 'current_call_id' in raw ? (raw.current_call_id != null ? String(raw.current_call_id) : undefined) : u.current_call_id,
-      current_call_number: raw.current_call_number ?? u.current_call_number,
-    });
     const unsubUnit = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
       if (data.action === 'unit_status_changed' && data.unit) {
-        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? applyUnitPatch(u, data.unit) : u)));
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
       } else if (data.action === 'unit_position_update' && data.unit) {
         // Update unit position from GPS broadcast. (speed_mph is intentionally
         // NOT stored on the unit — no board UI reads it, and the 7s units poll
@@ -1194,7 +1253,7 @@ export default function DispatchPage() {
           ? { ...u, latitude: data.unit.latitude, longitude: data.unit.longitude }
           : u)));
       } else if (data.action === 'unit_updated' && data.unit) {
-        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? applyUnitPatch(u, data.unit) : u)));
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
       } else if (data.action === 'unit_created' && data.unit) {
         setUnits((prev) => {
           if (prev.some((u) => String(u.id) === String(data.unit.id))) return prev;
@@ -1205,18 +1264,28 @@ export default function DispatchPage() {
       }
     });
 
-    // Listen for panic alerts — play alarm tone + voice alert, switch to active
-    // tab, and immediately refetch so the auto-created P1 officer_assist call
-    // and the unit's EMERGENCY overlay flash appear at once (not on the 20s
-    // poll). Delivered live via the AlertHubDO socket (WebSocketContext).
+    // Live unit GPS glide. gps.ts fans every breadcrumb batch out as a FLAT
+    // 'unit_position' frame ({ unit_id, latitude, longitude, ... }) via AlertHubDO
+    // — NOT a 'dispatch_update'/'unit_position_update' action (that branch above
+    // never fired). Without this, the board's unit lat/lng only refreshed on the
+    // ~7s units poll while the map glided live. Mirrors MapPage's handler.
+    const unsubPos = subscribe('unit_position', (msg: any) => {
+      const data = msg.data || msg;
+      const uid = data.unit_id ?? data.unit?.id;
+      if (uid == null) return;
+      const lat = data.latitude ?? data.lat ?? data.unit?.latitude;
+      const lng = data.longitude ?? data.lng ?? data.unit?.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      setUnits((prev) => prev.map((u) => (String(u.id) === String(uid)
+        ? { ...u, latitude: lat, longitude: lng }
+        : u)));
+    });
+
+    // Listen for panic alerts — play alarm tone + voice alert, switch to active tab
     const unsubPanic = subscribe('panic_alert', (msg: any) => {
       const data = msg.data || msg;
       setFilterTab('active');
       announcePanicAlert(data.user_name || data.userName);
-      const action = data.action || data.panic?.action;
-      // Refresh on activation (new call + emergent unit) and on clears
-      // (unit returns to normal) so the board tracks the lifecycle.
-      if (action !== 'panic_acknowledged') fetchData({ silent: true });
     });
 
     // Listen for serve queue events — update gold serve status panel in real time
@@ -1237,7 +1306,12 @@ export default function DispatchPage() {
         const callId = selectedCallRef.current!.id;
         apiFetch(`/dispatch/calls/${callId}/serve-link`).then((res: any) => {
           if (res) setServeLink(res);
-        }).catch(() => {});
+        }).catch((err: any) => {
+          // Audit caught: silent .catch here left serve-queue panel stale
+          // after a serve attempt → dispatcher could re-dispatch the same
+          // officer to the same call thinking it was still pending.
+          addToast(err?.message || 'Serve link out of sync — refresh the call', 'error');
+        });
       }
       // Voice alert: announce serve completion
       if (data?.result && data?.served_to && data?.call_number) {
@@ -1268,7 +1342,7 @@ export default function DispatchPage() {
       }
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
+    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
@@ -1297,13 +1371,6 @@ export default function DispatchPage() {
       fetchArchivedCalls();
     }
   }, [filterTab, archivedLoaded, fetchArchivedCalls]);
-
-  // When the Cleared tab is active, (re)fetch cleared/closed/cancelled calls.
-  // Refetched on every activation (not gated like archived) so a call cleared
-  // moments ago shows up the next time the dispatcher opens the tab.
-  useEffect(() => {
-    if (filterTab === 'cleared') fetchClearedCalls();
-  }, [filterTab, fetchClearedCalls]);
 
   // (Template fetch consolidated into the main init useEffect above — line 296)
 
@@ -1352,16 +1419,31 @@ export default function DispatchPage() {
     setNewNote('');
     setNewTimelineText('');
     setShowAddTimeline(false);
+    setIsDetailLoading(true);
     (async () => {
       try {
         const res = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`);
         if (cancelled) return;
+        // CRITICAL FIX: Merge full call data (PSO/process fields from ext table)
+        // into selectedCall. The list endpoint doesn't include these fields due
+        // to the D1 100-column cap, so the detail panel was showing "No PSO
+        // details entered yet" even when data existed.
+        const fullCall = mapDbCall(res);
+        setSelectedCall(fullCall);
         const incidents = res?.related_incidents ?? res?.incidents ?? [];
         setLinkedIncidents(Array.isArray(incidents) ? incidents : []);
         const activity = res?.activity ?? [];
         setActivityEntries(Array.isArray(activity) ? activity : []);
-      } catch {
-        if (!cancelled) { setLinkedIncidents([]); setActivityEntries([]); }
+      } catch (err: any) {
+        // Audit caught (2026-06-21): silent failure here showed the operator
+        // the LIST-version of selectedCall (no _ext columns), so PSO fields
+        // read "No PSO details entered" even when they existed on disk. The
+        // operator could re-enter and double-write. Surface the failure now.
+        if (!cancelled) {
+          setLinkedIncidents([]);
+          setActivityEntries([]);
+          addToast(err?.message || 'Could not load full call details — showing partial data', 'error');
+        }
       }
       try {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
@@ -1376,6 +1458,7 @@ export default function DispatchPage() {
       } else {
         if (!cancelled) setServeLink(null);
       }
+      if (!cancelled) setIsDetailLoading(false);
     })();
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
@@ -1383,25 +1466,30 @@ export default function DispatchPage() {
   // PSO incident types — must be declared before filteredCalls which references it
   const PSO_INCIDENT_TYPES = ['pso_client_request'];
 
+  // When the admin-config disposition list is empty (production default),
+  // derive the correct fallback codes from the incident type so PSO calls
+  // see PS codes in the clear prompt and general calls see general codes.
+  const effectiveDispositionCodes = useMemo(() => {
+    if (dispositionCodes.length > 0) return dispositionCodes;
+    return dispositionGroupsForIncident(selectedCall?.incident_type).flatMap((g) => g.codes);
+  }, [dispositionCodes, selectedCall?.incident_type]);
+
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
   // Effective queue sort mode (server pref → local fallback → default). Hoisted
   // to component scope so both the sort memo and the render (GEO dividers) share it.
   const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
 
-  const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : filterTab === 'cleared' ? clearedCalls : calls).filter((call) => {
+  const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : calls).filter((call) => {
     switch (filterTab) {
+      case 'queue': return !['cleared', 'closed', 'cancelled'].includes(call.status);
       case 'pending': return call.status === 'pending';
-      case 'active': return ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(call.status);
+      case 'active': return ['dispatched', 'enroute', 'onscene'].includes(call.status);
+      case 'hold': return call.status === 'on_hold';
+      case 'serve': return PSO_INCIDENT_TYPES.includes(call.incident_type);
       case 'cleared': return ['cleared', 'closed', 'cancelled'].includes(call.status);
-      case 'archived': return true; // archivedCalls already filtered
-      case 'serve': return PSO_INCIDENT_TYPES.includes(call.incident_type); // Show ALL PSO calls (active + cleared/on_hold for return visits)
-      case 'mine': {
-        const myId = user?.id != null ? String(user.id) : null;
-        if (!myId) return false;
-        return String((call as any).dispatcher_id ?? (call as any).created_by ?? '') === myId;
-      }
-      default: return true; // `calls` already excludes archived from backend
+      case 'archived': return true;
+      default: return true;
     }
   }).filter((call) => {
     if (!searchQuery.trim()) return true;
@@ -1409,7 +1497,7 @@ export default function DispatchPage() {
     return (
       (call.call_number || '').toLowerCase().includes(q) ||
       (call.location || '').toLowerCase().includes(q) ||
-      (call.incident_type || '').toLowerCase().includes(q) ||
+      coded(call.incident_type, humanizeType).includes(q) ||
       (call.description || '').toLowerCase().includes(q) ||
       (call.caller_name || '').toLowerCase().includes(q) ||
       // Geography: let dispatchers filter the queue to a district by typing a
@@ -1431,11 +1519,6 @@ export default function DispatchPage() {
   }).filter((call) => {
     if (signalFilter === 'signaled' && !knownSignalCodes.has(call.incident_type)) return false;
     if (signalFilter === 'unsignaled' && knownSignalCodes.has(call.incident_type)) return false;
-    return true;
-  }).filter((call) => {
-    // Show cleared calls in 'all' tab if user preference is enabled
-    if (filterTab === 'all' && userPrefs?.dispatch_show_cleared) return true;
-    if (filterTab === 'all' && ['cleared', 'closed', 'cancelled'].includes(call.status)) return false;
     return true;
   }).sort((a, b) => {
     // Archive tab: sort by call number ascending (001, 002, 003...)
@@ -1473,7 +1556,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, clearedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Shortcut cheat-sheet overlay (toggled with "?").
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -1595,13 +1678,14 @@ export default function DispatchPage() {
         return;
       }
 
-      // 1-6: Filter tabs
-      if (e.key === '1') { setFilterTab('all'); return; }
+      // 1-7: Filter tabs (standard LE lifecycle order)
+      if (e.key === '1') { setFilterTab('queue'); return; }
       if (e.key === '2') { setFilterTab('pending'); return; }
       if (e.key === '3') { setFilterTab('active'); return; }
-      if (e.key === '4') { setFilterTab('cleared'); return; }
-      if (e.key === '5') { setFilterTab('archived'); return; }
-      if (e.key === '6') { setFilterTab('serve'); return; }
+      if (e.key === '4') { setFilterTab('hold'); return; }
+      if (e.key === '5') { setFilterTab('serve'); return; }
+      if (e.key === '6') { setFilterTab('cleared'); return; }
+      if (e.key === '7') { setFilterTab('archived'); return; }
 
       // Arrow keys: navigate call list
       if (e.key === 'ArrowDown' || e.key === 'j') {
@@ -1706,11 +1790,6 @@ export default function DispatchPage() {
         location_floor: callData.location_floor || null,
         location_room: callData.location_room || null,
         zone_beat: callData.zone_beat || null,
-        // Area — top of the A/S/Z/B hierarchy. The server also backfills this
-        // from coordinates, but sending what the form resolved keeps the value
-        // the dispatcher saw and covers manual Section picks made without coords.
-        area_code: callData.area_code || null,
-        area_name: callData.area_name || null,
         sector_id: callData.sector_id ?? null,
         zone_id: callData.zone_id ?? null,
         beat_id: callData.beat_id ?? null,
@@ -1776,7 +1855,7 @@ export default function DispatchPage() {
       const result = await apiFetch<any>('/dispatch/calls', { method: 'POST', body: JSON.stringify(body) });
       const newCall = mapDbCall(result);
       // Mark as recently-created so WebSocket handler skips the duplicate
-      recentlyCreatedIdsRef.current.add(newCall.id);
+      rememberRecentId(newCall.id);
       setTimeout(() => recentlyCreatedIdsRef.current.delete(newCall.id), 5000); // cleanup after 5s
       setCalls((prev) => [newCall, ...prev]);
       setSelectedCall(newCall);
@@ -1813,8 +1892,9 @@ export default function DispatchPage() {
       // the DB write already succeeded (or the catch below fires).
       const looksLikeFullRow = result && (result.incident_type || result.call_number);
       const apply = (c: typeof selectedCall) =>
-        looksLikeFullRow ? mapDbCall(result) : ({ ...c, [field]: value || null } as typeof c);
+        looksLikeFullRow ? mergeCallUpdate(c!, result) : ({ ...c, [field]: value || null } as typeof c);
       setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
+      setArchivedCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
       setSelectedCall(prev => (prev && prev.id === callId ? apply(prev) : prev));
       addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
     } catch (err) {
@@ -1824,62 +1904,6 @@ export default function DispatchPage() {
     }
     setEditingTimestamp(null);
   }, [selectedCall, isAdminOrManager, addToast]);
-
-  // Parse simple markdown markers into React elements for display
-  const renderFormattedText = useCallback((text: string) => {
-    if (!text) return text;
-    // Pattern: **bold**, *italic*, __underline__ (greedy shortest match)
-    const parts: React.ReactNode[] = [];
-    let keyIdx = 0;
-    const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__)/g;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(text.slice(lastIndex, match.index));
-      }
-      if (match[2]) {
-        parts.push(<span key={keyIdx++} className="font-bold">{match[2]}</span>);
-      } else if (match[3]) {
-        parts.push(<span key={keyIdx++} className="italic">{match[3]}</span>);
-      } else if (match[4]) {
-        parts.push(<span key={keyIdx++} className="underline">{match[4]}</span>);
-      }
-      lastIndex = match.index + match[0].length;
-    }
-    if (lastIndex < text.length) {
-      parts.push(text.slice(lastIndex));
-    }
-    return parts.length > 0 ? parts : text;
-  }, []);
-
-  // Wrap selected text in the note textarea with formatting markers
-  const wrapNoteSelection = useCallback((marker: string) => {
-    const el = noteTextareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const text = newNote;
-    const selected = text.slice(start, end);
-    if (selected) {
-      const wrapped = `${marker}${selected}${marker}`;
-      const updated = text.slice(0, start) + wrapped + text.slice(end);
-      setNewNote(updated);
-      // Restore cursor after marker
-      requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(start + marker.length, end + marker.length);
-      });
-    } else {
-      // No selection — insert markers at cursor and place cursor between them
-      const updated = text.slice(0, start) + `${marker}${marker}` + text.slice(start);
-      setNewNote(updated);
-      requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(start + marker.length, start + marker.length);
-      });
-    }
-  }, [newNote]);
 
   // ── Inline Editing ────────────────────────────────────────
   // Refetch the full call fresh from /dispatch/calls/:id before populating
@@ -1955,25 +1979,6 @@ export default function DispatchPage() {
       pso_billing_code: ed.pso_billing_code || null,
       pso_authorization: ed.pso_authorization || null,
       contract_id: ed.contract_id || null,
-      // Tactical flags — mirrored from Quick Flags so a form save preserves
-      // flag state when the user edits both form fields and flags before saving.
-      // Previously omitted, causing Quick Flag toggles to appear lost if the
-      // user hit Save in the edit form immediately after a toggle.
-      mental_health_crisis: ed.mental_health_crisis ?? false,
-      juvenile_involved: ed.juvenile_involved ?? false,
-      felony_in_progress: ed.felony_in_progress ?? false,
-      officer_safety_caution: ed.officer_safety_caution ?? false,
-      k9_requested: ed.k9_requested ?? false,
-      ems_requested: ed.ems_requested ?? false,
-      fire_requested: ed.fire_requested ?? false,
-      hazmat: ed.hazmat ?? false,
-      gang_related: ed.gang_related ?? false,
-      evidence_collected: ed.evidence_collected ?? false,
-      body_camera_active: ed.body_camera_active ?? false,
-      photos_taken: ed.photos_taken ?? false,
-      trespass_issued: ed.trespass_issued ?? false,
-      vehicle_pursuit: ed.vehicle_pursuit ?? false,
-      foot_pursuit: ed.foot_pursuit ?? false,
       // Process Service fields
       process_service_type: ed.process_service_type || null,
       process_served_to: ed.process_served_to || null,
@@ -1981,6 +1986,8 @@ export default function DispatchPage() {
       process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
       process_served_at: ed.process_served_at || null,
       process_service_result: ed.process_service_result || null,
+      court_name: ed.court_name || null,
+      case_number: ed.case_number || null,
     };
   };
 
@@ -2053,23 +2060,6 @@ export default function DispatchPage() {
       pso_billing_code: selectedCallForEdit.pso_billing_code || '',
       pso_authorization: selectedCallForEdit.pso_authorization || '',
       contract_id: selectedCallForEdit.contract_id || '',
-      // Tactical flags — mirror Quick Flags fields so the edit form
-      // initializes with their current state and the save body includes them.
-      mental_health_crisis: !!selectedCallForEdit.mental_health_crisis,
-      juvenile_involved: !!selectedCallForEdit.juvenile_involved,
-      felony_in_progress: !!selectedCallForEdit.felony_in_progress,
-      officer_safety_caution: !!selectedCallForEdit.officer_safety_caution,
-      k9_requested: !!selectedCallForEdit.k9_requested,
-      ems_requested: !!selectedCallForEdit.ems_requested,
-      fire_requested: !!selectedCallForEdit.fire_requested,
-      hazmat: !!selectedCallForEdit.hazmat,
-      gang_related: !!selectedCallForEdit.gang_related,
-      evidence_collected: !!selectedCallForEdit.evidence_collected,
-      body_camera_active: !!selectedCallForEdit.body_camera_active,
-      photos_taken: !!selectedCallForEdit.photos_taken,
-      trespass_issued: !!selectedCallForEdit.trespass_issued,
-      vehicle_pursuit: !!selectedCallForEdit.vehicle_pursuit,
-      foot_pursuit: !!selectedCallForEdit.foot_pursuit,
       // Process Service fields
       process_service_type: selectedCallForEdit.process_service_type || '',
       process_served_to: selectedCallForEdit.process_served_to || '',
@@ -2077,6 +2067,8 @@ export default function DispatchPage() {
       process_attempts: selectedCallForEdit.process_attempts ?? 0,
       process_served_at: selectedCallForEdit.process_served_at || '',
       process_service_result: selectedCallForEdit.process_service_result || '',
+      court_name: selectedCallForEdit.court_name || '',
+      case_number: selectedCallForEdit.case_number || '',
     });
     setIsEditing(true);
   };
@@ -2095,7 +2087,7 @@ export default function DispatchPage() {
         method: 'PUT',
         body: JSON.stringify(body),
       });
-      const updatedCall = mapDbCall(result);
+      const updatedCall = mergeCallUpdate(selectedCall, result);
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
       setSelectedCall(updatedCall);
       setIsEditing(false);
@@ -2111,6 +2103,22 @@ export default function DispatchPage() {
   const updateEditField = useCallback((field: string, value: any) => {
     setEditData((prev) => ({ ...prev, [field]: value }));
   }, []);
+
+  const handleClientChange = useCallback(async (clientId: string) => {
+    updateEditField('client_id', clientId);
+    if (!clientId) return;
+    const selectedId = clientId; // capture to detect a newer selection
+    try {
+      const full = await apiFetch<ClientRecord>(`/clients/${clientId}`);
+      setEditData((prev) => {
+        // A newer client was selected while this fetch was in flight — discard.
+        if (prev.client_id !== selectedId) return prev;
+        return applyFillBlanks(prev, autofillFromClient(full));
+      });
+    } catch (err) {
+      console.error('Client autofill failed (non-fatal):', err);
+    }
+  }, [updateEditField]);
 
   // ═══════════════════════════════════════════════════════════════
   // NEW DISPATCH FEATURES
@@ -2211,9 +2219,7 @@ export default function DispatchPage() {
     return workload;
   }, [calls]);
 
-  // Feature 14: Disposition statistics (ALL-TIME cleared/closed calls — the
-  // /dispatch/disposition-stats query has no time bound; the "DISPS:" strip is
-  // labeled neutrally, not "shift", to match).
+  // Feature 14: Disposition statistics for current shift
   const [dispositionStats, setDispositionStats] = useState<{disposition: string; count: number}[]>([]);
   useEffect(() => {
     apiFetch<any[]>('/dispatch/disposition-stats')
@@ -2245,20 +2251,6 @@ export default function DispatchPage() {
   useEffect(() => { startEditingRef.current = startEditing; }, [startEditing]);
   const cancelEditingRef = useRef(cancelEditing);
   useEffect(() => { cancelEditingRef.current = cancelEditing; }, [cancelEditing]);
-  useEffect(() => {
-    const checkAutoArchive = () => {
-      const now = Date.now();
-      const fiveMinMs = 5 * 60 * 1000;
-      calls.filter(c => ['cleared'].includes(c.status) && c.cleared_at).forEach(c => {
-        const clearedTime = parseTimestamp(c.cleared_at).getTime();
-        if (now - clearedTime > fiveMinMs) {
-          handleArchiveRef.current(c.id).catch(() => {});
-        }
-      });
-    };
-    const interval = setInterval(checkAutoArchive, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, [calls]);
 
   // ── Dispatch alarm interval — check overdue calls every 5s ──
   const alarmPlayedRef = useRef<Set<string>>(new Set());
@@ -2287,37 +2279,35 @@ export default function DispatchPage() {
 
   const tabCounts = useMemo(() => {
     const pending = calls.filter((c) => c.status === 'pending').length;
-    const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length;
-    // Cleared calls are NOT in the active-only `calls` array — count the
-    // separately-fetched clearedCalls for the badge. The in-`calls` figure
-    // (always 0) is still what the ALL math subtracts, which stays correct.
-    const clearedInActive = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
-    // ALL count: if user hides cleared calls, exclude them from the count to match the visible list
-    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - clearedInActive;
-    const myId = user?.id != null ? String(user.id) : null;
-    const mine = myId ? calls.filter((c) => String((c as any).dispatcher_id ?? (c as any).created_by ?? '') === myId).length : 0;
+    const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene'].includes(c.status)).length;
+    const hold = calls.filter((c) => c.status === 'on_hold').length;
+    const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    // Queue tab = everything still open (mirrors the filteredCalls 'queue'
+    // predicate at line ~1243). This definition was dropped in a prior
+    // squash-merge, leaving `queue` undefined and breaking client typecheck.
+    const queue = calls.filter((c) => !['cleared', 'closed', 'cancelled'].includes(c.status)).length;
     return {
-      all: allCount,
+      queue,
       pending,
       active,
-      cleared: clearedCalls.length,
+      hold,
+      cleared,
       archived: archivedCalls.length,
       serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
-      mine,
     };
-  }, [calls, clearedCalls, archivedCalls, userPrefs?.dispatch_show_cleared, user?.id]);
+  }, [calls, archivedCalls, user?.id]);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full" style={{ background: 'var(--surface-base)' }}>
         <div className="flex flex-col items-center gap-4">
           <div className="relative w-10 h-10 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-[#888888] animate-spin" />
-            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(212,160,23,0.25)' }} />
+            <Loader2 className="w-8 h-8 text-[var(--spm-text-muted)] animate-spin" />
+            <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgb(var(--brand-gold-rgb) / 0.25)' }} />
           </div>
           <div className="flex flex-col items-center gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#888888] animate-pulse">Loading Dispatch Console</span>
-            <span className="text-[8px] font-mono text-[#545454]">Connecting to dispatch services...</span>
+            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[var(--spm-text-muted)] animate-pulse">Loading Dispatch Console</span>
+            <span className="text-[8px] font-mono text-[var(--spm-text-muted)]">Connecting to dispatch services...</span>
           </div>
         </div>
       </div>
@@ -2333,9 +2323,10 @@ export default function DispatchPage() {
         {/* Filter pill tabs — min 44px touch targets */}
         <div className="mobile-pill-tabs" style={{ gap: 6, padding: '8px 12px' }}>
           {([
-            { id: 'all', label: 'All', count: tabCounts.all },
+            { id: 'queue', label: 'Queue', count: tabCounts.queue },
             { id: 'pending', label: 'Pending', count: tabCounts.pending },
             { id: 'active', label: 'Active', count: tabCounts.active },
+            { id: 'hold', label: 'Hold', count: tabCounts.hold },
             { id: 'serve', label: 'Serve', count: tabCounts.serve },
             { id: 'cleared', label: 'Cleared', count: tabCounts.cleared },
           ] as const).map((tab) => (
@@ -2389,7 +2380,7 @@ export default function DispatchPage() {
               {/* Location */}
               <div className="flex items-center gap-2 text-sm text-rmpg-300 mb-2">
                 <MapPin className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">{call.location || 'Unknown'}</span>
+                <span className="min-w-0 truncate">{call.location || 'Unknown'}</span>
               </div>
               {/* Footer */}
               <div className="flex items-center justify-between text-sm text-rmpg-400">
@@ -2447,7 +2438,7 @@ export default function DispatchPage() {
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">Response:</span>
-                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                     </div>
                   );
                 })()}
@@ -2458,7 +2449,7 @@ export default function DispatchPage() {
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">On-Scene:</span>
-                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                     </div>
                   );
                 })()}
@@ -2467,16 +2458,16 @@ export default function DispatchPage() {
               {/* Safety Flag Badges — mobile */}
               {(() => {
                 const flags: Array<{ label: string; color: string }> = [];
-                if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: '#fca5a5' });
-                if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: '#fde047' });
-                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: '#c084fc' });
-                if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: '#ef4444' });
-                if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: '#fb923c' });
+                if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: 'var(--sev-critical-soft)' });
+                if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: 'var(--sev-caution)' });
+                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: 'var(--sev-special-soft)' });
+                if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: 'var(--sev-critical)' });
+                if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: 'var(--sev-high)' });
                 if (flags.length === 0) return null;
                 return (
                   <div className="flex flex-wrap gap-1">
                     {flags.map(f => (
-                      <span key={f.label} className="text-[9px] font-bold font-mono px-1.5 py-0.5" style={{ color: f.color, background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                      <span key={f.label} className="text-[9px] font-bold font-mono px-1.5 py-0.5" style={{ color: f.color, background: 'rgb(var(--sev-critical-rgb) / 0.1)', border: '1px solid rgb(var(--sev-critical-rgb) / 0.25)' }}>
                         {f.label}
                       </span>
                     ))}
@@ -2489,8 +2480,8 @@ export default function DispatchPage() {
                 {selectedCall.status === 'pending' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
                   </button>
@@ -2498,8 +2489,8 @@ export default function DispatchPage() {
                 {selectedCall.status === 'dispatched' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
                   </button>
@@ -2507,8 +2498,8 @@ export default function DispatchPage() {
                 {selectedCall.status === 'enroute' && (
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
                   </button>
@@ -2518,21 +2509,21 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleClearWithDisposition(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#16a34a20', border: '1px solid #16a34a50', color: '#4ade80', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-ok) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-ok) 31%, transparent)', color: 'var(--sev-ok)', touchAction: 'manipulation' }}
                     >
                       <CheckCircle style={{ width: 16, height: 16 }} /> Clear
                     </button>
                     <button type="button"
                       onClick={() => handleHoldCall(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)', touchAction: 'manipulation' }}
                     >
                       ⏸ Hold
                     </button>
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#ef444420', border: '1px solid #ef444450', color: '#f87171', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)', touchAction: 'manipulation' }}
                     >
                       <XCircle style={{ width: 16, height: 16 }} /> Cancel
                     </button>
@@ -2542,7 +2533,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleResumeCall(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b', color: '#000', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--sev-warn)', color: '#000', touchAction: 'manipulation' }}
                   >
                     ▶ Resume
                   </button>
@@ -2552,15 +2543,15 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#444444', border: '1px solid #545454', color: '#cccccc', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-border)', border: '1px solid var(--spm-text-muted)', color: 'var(--spm-text)', touchAction: 'manipulation' }}
                     >
                       Close
                     </button>
                     <button type="button"
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
-                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                      style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                       Report
@@ -2571,8 +2562,8 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#888888', border: '1px solid #5a5a5a', touchAction: 'manipulation' }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                     Report
@@ -2582,7 +2573,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleRevertStatus(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)', touchAction: 'manipulation' }}
                   >
                     <Undo2 style={{ width: 16, height: 16 }} /> Back
                   </button>
@@ -2591,7 +2582,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleArchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#40404020', border: '1px solid #54545450', color: '#999999', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <Archive style={{ width: 16, height: 16 }} /> Archive
                   </button>
@@ -2600,7 +2591,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleUnarchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: '#40404020', border: '1px solid #54545450', color: '#999999', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)', touchAction: 'manipulation' }}
                   >
                     <RotateCcw style={{ width: 16, height: 16 }} /> Restore
                   </button>
@@ -2612,7 +2603,7 @@ export default function DispatchPage() {
                 <div className="px-2">
                   <DispositionPrompt
                     callNumber={selectedCall.call_number}
-                    dispositionCodes={dispositionCodes}
+                    dispositionCodes={effectiveDispositionCodes}
                     onConfirm={handleConfirmClear}
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
@@ -2640,6 +2631,7 @@ export default function DispatchPage() {
                   {selectedCall.cross_street && (
                     <div className="text-xs text-rmpg-400 mt-0.5">Near: {selectedCall.cross_street}</div>
                   )}
+                  <div className="mt-1"><ZsbBadge zoneId={selectedCall.zone_id} beatId={selectedCall.beat_id} dispatchCode={selectedCall.dispatch_code} sectionCode={getSectionCode(selectedCall.sector_id ?? '')} /></div>
                   {/* Other active calls at this same address — click to jump. */}
                   {stackedCallsForSelected.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-rmpg-700/30">
@@ -2720,12 +2712,12 @@ export default function DispatchPage() {
                   </div>
                   <div className="space-y-1.5 text-xs">
                     {([
-                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#999999' },
-                      { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
-                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
-                      { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
-                      { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
-                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#666666' },
+                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: 'var(--spm-text-muted)' },
+                      { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: 'var(--sev-warn)' },
+                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
+                      { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
+                      { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
+                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: 'var(--spm-text-muted)' },
                     ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
                       <div key={ts.field} className="flex justify-between items-center group">
                         <span className="text-rmpg-400 flex items-center gap-1.5">
@@ -2734,7 +2726,7 @@ export default function DispatchPage() {
                         </span>
                         {editingTimestamp === ts.field ? (
                           <div className="flex items-center gap-1">
-                            <input id="ff-dispatchpage-0"
+                            <input
                               type="datetime-local"
                               step="1"
                               className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
@@ -2758,7 +2750,7 @@ export default function DispatchPage() {
                         ) : (
                           <span className="flex items-center gap-1.5">
                             <span
-                              className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                              className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[var(--brand-gold)] group-hover:underline transition-colors' : ''}`}
                               onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
                               title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
                             >
@@ -2796,7 +2788,7 @@ export default function DispatchPage() {
                       return (
                         <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                           <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                          <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                          <span className="text-rmpg-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                         </div>
                       );
                     })()}
@@ -2834,14 +2826,14 @@ export default function DispatchPage() {
                             <span className="font-bold">{note.author || 'System'}</span>
                             <span className="font-mono">{formatTime(note.timestamp)}</span>
                           </div>
-                          <div className="text-rmpg-200 mt-0.5">{note.text}</div>
+                          <div className="text-rmpg-200 mt-0.5">{renderFormattedText(note.text || '')}</div>
                         </div>
                       ))}
                     </div>
                   )}
                   {/* Add note input — mobile */}
                   <div className="flex gap-2">
-                    <input id="ff-dispatchpage-1"
+                    <input
                       type="text"
                       className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded-sm"
                       style={{ minHeight: 44 }}
@@ -2854,8 +2846,8 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={handleAddNote}
                       disabled={!newNote.trim()}
-                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded-sm"
-                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#444444' : '#888888', border: '1px solid #5a5a5a' }}
+                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? 'var(--spm-border)' : 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                     >
                       <Send style={{ width: 16, height: 16 }} />
                     </button>
@@ -2867,11 +2859,11 @@ export default function DispatchPage() {
                   <div className="panel-inset p-3">
                     <div className="field-label mb-2 flex items-center gap-2">
                       PSO Details
-                      {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                      {(selectedCall.pso_attempt_number || 1) >= 1 && (selectedCall.pso_requestor_name || selectedCall.pso_service_type) && (
                         isAdminOrManager ? (
-                          <select id="ff-dispatchpage-2"
+                          <select
                             className="px-1 py-0 text-[9px] font-bold rounded-sm cursor-pointer"
-                            style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto' }}
+                            style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)', appearance: 'auto' }}
                             value={selectedCall.pso_attempt_number || 1}
                             onChange={async (e) => {
                               const val = parseInt(e.target.value, 10);
@@ -2886,7 +2878,7 @@ export default function DispatchPage() {
                             {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>VISIT #{n}</option>)}
                           </select>
                         ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
-                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)' }}>
                             VISIT #{selectedCall.pso_attempt_number}
                           </span>
                         ) : null
@@ -2898,7 +2890,7 @@ export default function DispatchPage() {
                       {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {formatPhoneDisplay(selectedCall.pso_requestor_phone)}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
                       {selectedCall.pso_authorization && <div><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</div>}
-                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> <span title={humanizeDisposition(selectedCall.disposition)}>{selectedCall.disposition}</span></div>}
+                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {formatDispositionCode(selectedCall.disposition)}</div>}
                     </div>
 
                     {/* Serve Queue Integration — Gold Status Panel */}
@@ -2908,8 +2900,8 @@ export default function DispatchPage() {
                           <div
                             className="rounded-[2px] p-2 space-y-1.5"
                             style={{
-                              border: '1px solid #d4a017',
-                              background: '#d4a01708',
+                              border: '1px solid var(--brand-gold)',
+                              background: 'rgb(var(--brand-gold-rgb) / 0.03)',
                             }}
                             role="status"
                             aria-label={`Serve status: ${serveLink.status}`}
@@ -2919,23 +2911,23 @@ export default function DispatchPage() {
                               <span
                                 className="w-2 h-2 rounded-full flex-shrink-0"
                                 style={{
-                                  background: serveLink.status === 'served' ? '#22c55e'
-                                    : serveLink.status === 'failed' ? '#ef4444'
-                                    : serveLink.status === 'in_progress' ? '#eab308'
-                                    : '#f59e0b',
+                                  background: serveLink.status === 'served' ? 'var(--sev-ok)'
+                                    : serveLink.status === 'failed' ? 'var(--sev-critical)'
+                                    : serveLink.status === 'in_progress' ? 'var(--sev-caution)'
+                                    : 'var(--sev-warn)',
                                   boxShadow: `0 0 4px ${
-                                    serveLink.status === 'served' ? '#22c55e'
-                                    : serveLink.status === 'failed' ? '#ef4444'
-                                    : serveLink.status === 'in_progress' ? '#eab308'
-                                    : '#f59e0b'
+                                    serveLink.status === 'served' ? 'var(--sev-ok)'
+                                    : serveLink.status === 'failed' ? 'var(--sev-critical)'
+                                    : serveLink.status === 'in_progress' ? 'var(--sev-caution)'
+                                    : 'var(--sev-warn)'
                                   }`,
                                 }}
                               />
-                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+                              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--brand-gold)' }}>
                                 Serve Queue
                               </span>
                               {serveLink.auto_sent && (
-                                <span className="text-[9px] font-bold px-1 py-0.5 rounded-sm" style={{ background: '#d4a01720', border: '1px solid #d4a01740', color: '#d4a017' }}>
+                                <span className="text-[9px] font-bold px-1 py-0.5 rounded-sm" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}>
                                   AUTO-SENT
                                 </span>
                               )}
@@ -2945,36 +2937,36 @@ export default function DispatchPage() {
                               <span
                                 className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-[2px] uppercase"
                                 style={{
-                                  background: serveLink.status === 'served' ? '#22c55e20'
-                                    : serveLink.status === 'failed' ? '#ef444420'
-                                    : serveLink.status === 'in_progress' ? '#eab30820'
-                                    : '#f59e0b20',
-                                  color: serveLink.status === 'served' ? '#4ade80'
-                                    : serveLink.status === 'failed' ? '#f87171'
-                                    : serveLink.status === 'in_progress' ? '#facc15'
-                                    : '#fbbf24',
+                                  background: serveLink.status === 'served' ? 'color-mix(in srgb, var(--sev-ok) 13%, transparent)'
+                                    : serveLink.status === 'failed' ? 'color-mix(in srgb, var(--sev-critical) 13%, transparent)'
+                                    : serveLink.status === 'in_progress' ? 'color-mix(in srgb, var(--sev-caution) 13%, transparent)'
+                                    : 'color-mix(in srgb, var(--sev-warn) 13%, transparent)',
+                                  color: serveLink.status === 'served' ? 'var(--sev-ok)'
+                                    : serveLink.status === 'failed' ? 'var(--sev-critical)'
+                                    : serveLink.status === 'in_progress' ? 'var(--sev-caution)'
+                                    : 'var(--sev-warn-soft)',
                                   border: `1px solid ${
-                                    serveLink.status === 'served' ? '#22c55e40'
-                                    : serveLink.status === 'failed' ? '#ef444440'
-                                    : serveLink.status === 'in_progress' ? '#eab30840'
-                                    : '#f59e0b40'
+                                    serveLink.status === 'served' ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)'
+                                    : serveLink.status === 'failed' ? 'color-mix(in srgb, var(--sev-critical) 25%, transparent)'
+                                    : serveLink.status === 'in_progress' ? 'color-mix(in srgb, var(--sev-caution) 25%, transparent)'
+                                    : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'
                                   }`,
                                 }}
                               >
                                 {serveLink.status === 'in_progress' ? 'IN PROGRESS' : serveLink.status?.toUpperCase()}
                               </span>
                               {/* Attempt counter */}
-                              <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>
+                              <span className="text-[10px] font-mono tabular-nums" style={{ color: 'var(--brand-gold)' }}>
                                 Attempts: {serveLink.attempt_count}/{serveLink.max_attempts}
                               </span>
                             </div>
                             {/* View in Process Server link */}
                             <button type="button"
-                              className="flex items-center gap-1 text-[10px] font-medium rounded-[2px] px-2 py-1 transition-all duration-150 hover:shadow-[0_0_6px_rgba(212,160,23,0.2)]"
+                              className="flex items-center gap-1 text-[10px] font-medium rounded-[2px] px-2 py-1 transition-all duration-150 hover:shadow-[0_0_6px_rgb(var(--brand-gold-rgb)_/_0.2)]"
                               style={{
-                                background: '#d4a01715',
-                                border: '1px solid #d4a01740',
-                                color: '#d4a017',
+                                background: 'rgb(var(--brand-gold-rgb) / 0.08)',
+                                border: '1px solid rgb(var(--brand-gold-rgb) / 0.25)',
+                                color: 'var(--brand-gold)',
                               }}
                               onClick={() => navigate('/serve')}
                               aria-label="View in Process Server"
@@ -2987,9 +2979,9 @@ export default function DispatchPage() {
                           <button type="button"
                             className="w-full py-2 px-3 text-xs font-semibold rounded-[2px] flex items-center justify-center gap-2 transition-colors"
                             style={{
-                              background: sendingToServe ? '#444444' : '#a855f720',
-                              border: '1px solid #a855f750',
-                              color: sendingToServe ? '#999999' : '#c084fc',
+                              background: sendingToServe ? 'var(--spm-border)' : 'color-mix(in srgb, var(--sev-special) 13%, transparent)',
+                              border: '1px solid color-mix(in srgb, var(--sev-special) 31%, transparent)',
+                              color: sendingToServe ? 'var(--spm-text-muted)' : 'var(--sev-special-soft)',
                             }}
                             disabled={sendingToServe}
                             onClick={async () => {
@@ -3029,7 +3021,7 @@ export default function DispatchPage() {
                                 <span className="font-bold text-amber-300">VISIT #{visit.visit_number}</span>
                                 <span className="text-rmpg-300">{(visit.status || '').toUpperCase()}</span>
                                 {visit.time_window && (
-                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: '#88888820', border: '1px solid #88888840', color: '#888888' }}>
+                                  <span className="px-1 rounded-sm text-[8px] font-mono" style={{ background: 'color-mix(in srgb, var(--spm-text-muted) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 25%, transparent)', color: 'var(--spm-text-muted)' }}>
                                     {visit.time_window === 'early_morning' ? '6-9AM' : visit.time_window === 'daytime' ? '9AM-6PM' : '6-9PM'}
                                     {visit.is_weekend ? ' (wknd)' : ''}
                                   </span>
@@ -3052,16 +3044,18 @@ export default function DispatchPage() {
                         ? (() => { try { return JSON.parse(selectedCall.pso_service_windows); } catch { return null; } })()
                         : selectedCall.pso_service_windows;
                       const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
-                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
                       const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
+                      // Only show when at least one window is configured
+                      if (metCount === 0) return null;
+                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
                       return (
                         <div className="mt-3 pt-2 border-t border-rmpg-600">
                           <div className="field-label mb-1.5 flex items-center gap-2">
                             Service Windows
                             <span className="text-[9px] font-mono px-1 rounded-sm" style={{
-                              background: allMet ? '#22c55e20' : '#f59e0b20',
-                              border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
-                              color: allMet ? '#4ade80' : '#fbbf24',
+                              background: allMet ? 'color-mix(in srgb, var(--sev-ok) 13%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 13%, transparent)',
+                              border: `1px solid ${allMet ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'}`,
+                              color: allMet ? 'var(--sev-ok)' : 'var(--sev-warn-soft)',
                             }}>
                               {metCount}/4
                             </span>
@@ -3074,16 +3068,16 @@ export default function DispatchPage() {
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
                               <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
-                                background: met ? '#22c55e10' : '#ef444410',
-                                border: `1px solid ${met ? '#22c55e30' : '#ef444430'}`,
+                                background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
+                                border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
                               }}>
-                                <span style={{ color: met ? '#4ade80' : '#ef4444' }}>{met ? '✓' : '✗'}</span>
-                                <span style={{ color: met ? '#86efac' : '#fca5a5' }}>{label}</span>
+                                <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>{met ? '✓' : '✗'}</span>
+                                <span style={{ color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)' }}>{label}</span>
                               </div>
                             ))}
                           </div>
                           {allMet && (
-                            <div className="mt-1.5 text-[9px] text-center font-bold uppercase tracking-wider" style={{ color: '#4ade80' }}>
+                            <div className="mt-1.5 text-[9px] text-center font-bold uppercase tracking-wider" style={{ color: 'var(--sev-ok)' }}>
                               Due Diligence Complete
                             </div>
                           )}
@@ -3099,14 +3093,14 @@ export default function DispatchPage() {
                       const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                       if (elapsed >= 72 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: '#ef444430', border: '1px solid #ef444450', color: '#f87171' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}>
                             72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
                           </div>
                         );
                       }
                       if (elapsed >= 48 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
                             {Math.floor(hoursLeft)} HOURS UNTIL 72-HR DEADLINE
                           </div>
                         );
@@ -3118,7 +3112,7 @@ export default function DispatchPage() {
                     {['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded-sm"
-                        style={{ background: '#d4a01730', border: '1px solid #d4a01760', color: '#d4a017' }}
+                        style={{ background: 'rgb(var(--brand-gold-rgb) / 0.19)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.38)', color: 'var(--brand-gold)' }}
                         onClick={async () => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                           const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
@@ -3142,11 +3136,23 @@ export default function DispatchPage() {
                       </button>
                     )}
 
+                    {/* Notice of Communication (mobile) — PSO failed attempt → re-dispatch */}
+                    {selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button type="button"
+                        className="w-full mt-2 py-2.5 px-4 text-sm font-semibold rounded-sm"
+                        style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
+                        onClick={() => openPsoNotice(selectedCall)}
+                      >
+                        <FileText style={{ width: 14, height: 14, display: 'inline', marginRight: 6 }} />
+                        Notice of Communication
+                      </button>
+                    )}
+
                     {/* Undo Return Visit button (mobile) — only on pending child calls */}
                     {(selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
                         className="w-full mt-2 py-2 px-4 text-xs font-semibold rounded-sm"
-                        style={{ background: '#ef444420', border: '1px solid #ef444450', color: '#ef4444' }}
+                        style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
                         onClick={async () => {
                           if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
                           try {
@@ -3185,8 +3191,8 @@ export default function DispatchPage() {
           aria-label="Quick PSO"
           style={{
             right: '80px',
-            background: 'linear-gradient(180deg, #a855f7 0%, #6b21a8 100%)',
-            borderColor: '#a855f7',
+            background: 'linear-gradient(180deg, var(--sev-special) 0%, var(--sev-special) 100%)',
+            borderColor: 'var(--sev-special)',
           }}
         >
           <Shield style={{ width: 20, height: 20 }} />
@@ -3221,12 +3227,12 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
-      <div className="w-[35%] min-w-[320px] border-r border-[#2b2b2b] flex flex-col" style={{ background: 'var(--surface-base)' }}>
+      <div className="w-[35%] min-w-[320px] border-r border-[var(--spm-border)] flex flex-col" style={{ background: 'var(--surface-base)' }}>
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           {/* Enhancement 27: Live sync indicator */}
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-green-400 bg-green-900/30 border border-green-700/40" title="Real-time updates active">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" style={{ boxShadow: '0 0 4px #22c55e' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" style={{ boxShadow: '0 0 4px var(--sev-ok)' }} />
             LIVE
           </span>
           <RmpgLogo height={16} iconOnly />
@@ -3259,6 +3265,31 @@ export default function DispatchPage() {
           </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
+          {/* Cleared-tab supervisor: one-click end-of-shift PDF summary.
+              Filters the live calls list to status='cleared'|'closed' inside
+              today's Mountain-Time window (00:00 MT → now) and renders a
+              single-PDF table with disposition / units / duration so a
+              closing supervisor doesn't have to print per-call. Visible only
+              on the Cleared tab where the artifact is actually wanted. */}
+          {filterTab === 'cleared' && (
+            <button type="button"
+              onClick={() => {
+                const win = todayMtWindow();
+                const inWindow = filterClearedInWindow(calls, win);
+                openClearedSummaryPdf({
+                  calls: inWindow,
+                  windowStart: win.start,
+                  windowEnd: win.end,
+                  dispatcherName: user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username : undefined,
+                });
+              }}
+              className="toolbar-btn"
+              title="Print today's cleared calls (single PDF, MT window)"
+            >
+              <Printer style={{ width: 10, height: 10 }} />
+              Print Cleared
+            </button>
+          )}
           {tabCounts.cleared > 0 && (
             <button type="button"
               onClick={handleBulkArchive}
@@ -3271,8 +3302,8 @@ export default function DispatchPage() {
             </button>
           )}
           <div className="relative flex items-center" style={{ minWidth: '100px', maxWidth: '170px' }}>
-            <Search className="absolute left-2 w-3 h-3 text-[#545454] pointer-events-none" />
-            <input id="ff-dispatchpage-3"
+            <Search className="absolute left-2 w-3 h-3 text-[var(--spm-text-muted)] pointer-events-none" />
+            <input
               type="text"
               placeholder="Search calls, address, district (SL1, Herriman)…"
               value={searchQuery}
@@ -3282,7 +3313,7 @@ export default function DispatchPage() {
             {searchQuery && (
               <button type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[#888888] hover:text-white transition-colors"
+                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-rmpg-100 transition-colors"
                 title="Clear search"
               >
                 <X style={{ width: 10, height: 10 }} />
@@ -3316,8 +3347,8 @@ export default function DispatchPage() {
                   minWidth: '220px',
                   maxHeight: '280px',
                   overflowY: 'auto',
-                  background: '#141414',
-                  border: '1px solid #2a2a2a',
+                  background: 'var(--surface-raised)',
+                  border: '1px solid var(--spm-border)',
                   borderRadius: '2px',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                 }}
@@ -3343,11 +3374,11 @@ export default function DispatchPage() {
                         setShowTemplateDropdown(false);
                       }}
                       className="w-full flex flex-col items-start px-3 py-2 text-left transition-colors"
-                      style={{ fontSize: '11px', color: '#aaaaaa', background: 'transparent', border: 'none', borderRadius: 0 }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2e2e2e'; }}
+                      style={{ fontSize: '11px', color: 'var(--spm-text)', background: 'transparent', border: 'none', borderRadius: 0 }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
-                      <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
+                      <span className="font-bold text-rmpg-100" style={{ fontSize: '11px' }}>{tpl.name || formatIncidentType(tpl.incident_type)}</span>
                       {tpl.description && <span className="text-rmpg-400 truncate w-full" style={{ fontSize: '10px' }}>{tpl.description}</span>}
                     </button>
                   ))
@@ -3360,11 +3391,11 @@ export default function DispatchPage() {
             className="toolbar-btn"
             title="Quick PSO Client Request (P)"
             style={{
-              background: 'linear-gradient(180deg, #a855f7 0%, #6b21a8 100%)',
-              borderColor: '#a855f7',
-              borderBottomColor: '#212121',
-              borderRightColor: '#212121',
-              color: '#ffffff',
+              background: 'linear-gradient(180deg, var(--sev-special) 0%, var(--sev-special) 100%)',
+              borderColor: 'var(--sev-special)',
+              borderBottomColor: 'var(--spm-border)',
+              borderRightColor: 'var(--spm-border)',
+              color: '#fff',
             }}
           >
             <Shield style={{ width: 10, height: 10 }} />
@@ -3374,10 +3405,10 @@ export default function DispatchPage() {
         <TabBar
           spillman
           tabs={[
-            { id: 'all', label: 'All', count: tabCounts.all },
-            { id: 'mine', label: 'Mine', count: tabCounts.mine },
+            { id: 'queue', label: 'Queue', count: tabCounts.queue },
             { id: 'pending', label: 'Pending', count: tabCounts.pending },
             { id: 'active', label: 'Active', count: tabCounts.active },
+            { id: 'hold', label: 'Hold', count: tabCounts.hold },
             { id: 'serve', label: 'Serve', count: tabCounts.serve },
             { id: 'cleared', label: 'Cleared', count: tabCounts.cleared },
             { id: 'archived', label: 'Archive', count: tabCounts.archived },
@@ -3386,223 +3417,161 @@ export default function DispatchPage() {
           onTabChange={(id) => setFilterTab(id as FilterTab)}
         />
 
-        {/* Dispatch Stats Strip */}
-        <div className="px-3 py-1.5 border-b border-[#2b2b2b] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#050505' }}>
+        {/* Operational Status Strip — consolidated single row */}
+        <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: 'var(--surface-deep)' }}>
           {(() => {
-            const activeCalls = calls.filter(c => ['dispatched', 'enroute', 'onscene', 'pending', 'on_hold'].includes(c.status));
-            const p1Count = activeCalls.filter(c => c.priority === 'P1').length;
-            const p2Count = activeCalls.filter(c => c.priority === 'P2').length;
-            const pendingCount = calls.filter(c => c.status === 'pending').length;
+            const workingCalls = calls.filter(c => !['cleared', 'closed', 'cancelled'].includes(c.status));
+            const p1Count = workingCalls.filter(c => c.priority === 'P1').length;
+            const p2Count = workingCalls.filter(c => c.priority === 'P2').length;
+            // Stacked calls
+            const stackedLocations = new Map<string, number>();
+            workingCalls.forEach(c => {
+              if (c.location) {
+                const loc = c.location.toLowerCase().trim();
+                stackedLocations.set(loc, (stackedLocations.get(loc) || 0) + 1);
+              }
+            });
+            const stacked = [...stackedLocations.entries()].filter(([, count]) => count > 1);
+            // Oldest pending
+            const pendingCalls = calls.filter(c => c.status === 'pending');
+            const oldestPending = pendingCalls.length > 0
+              ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => parseTimestamp(c.created_at).getTime()))) / 60000)
+              : null;
+            // Today stats
+            const todayCalls = calls.filter(c => {
+              if (!c.created_at) return false;
+              const d = parseTimestamp(c.created_at);
+              return d.toDateString() === new Date().toDateString();
+            });
+            const clearedToday = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
+            // Avg response
+            const responseTimes = todayCalls
+              .filter(c => c.onscene_at && c.created_at)
+              .map(c => (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.created_at).getTime()) / 60000)
+              .filter(m => m > 0 && m < 480);
+            const avgResponse = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
+
             return (
               <>
+                {/* P1 alert — pulsing red */}
                 {p1Count > 0 && (
-                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold animate-pulse" style={{ background: 'rgba(220,38,38,0.2)', border: '1px solid rgba(220,38,38,0.4)', color: '#f87171', boxShadow: '0 0 6px rgba(220,38,38,0.3)' }}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" style={{ boxShadow: '0 0 4px #ef4444' }} />
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold animate-pulse" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.2)', border: '1px solid rgb(var(--sev-critical-rgb) / 0.4)', color: 'var(--sev-critical)', boxShadow: '0 0 6px rgb(var(--sev-critical-rgb) / 0.3)' }}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" style={{ boxShadow: '0 0 4px var(--sev-critical)' }} />
                     P1: {p1Count}
                   </span>
                 )}
-                <span className="text-rmpg-400">P2: <strong className="text-amber-400">{p2Count}</strong></span>
-                <span className="text-rmpg-400">Pending: <strong className="text-gray-400">{pendingCount}</strong></span>
-                <span className="text-rmpg-400">Active: <strong className="text-green-400">{tabCounts.active}</strong></span>
-                {/* Stacked calls indicator */}
-                {(() => {
-                  const stackedLocations = new Map<string, number>();
-                  calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
-                    if (c.location) {
-                      const loc = c.location.toLowerCase().trim();
-                      stackedLocations.set(loc, (stackedLocations.get(loc) || 0) + 1);
-                    }
-                  });
-                  const stacked = [...stackedLocations.entries()].filter(([, count]) => count > 1);
-                  if (stacked.length > 0) {
-                    return (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] rounded-sm" style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }} title={`${stacked.length} location(s) with multiple active calls`}>
-                        <Link className="w-2.5 h-2.5" /> STACKED: {stacked.length}
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
-                {/* Busiest district — active-call load concentration. Full
-                    per-section breakdown on hover. */}
+                {p2Count > 0 && <span className="text-amber-400 font-bold">P2: {p2Count}</span>}
+                {/* Unit availability */}
+                <span className="flex items-center gap-1.5 text-[var(--spm-text-muted)]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} OOS`}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? 'var(--sev-ok)' : 'var(--sev-critical)', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? 'color-mix(in srgb, var(--sev-ok) 50%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 50%, transparent)'}` }} />
+                  <span style={{ color: unitAvailability.available > 0 ? 'var(--sev-ok)' : 'var(--sev-critical)' }}><strong>{unitAvailability.available}</strong> AVAIL</span>
+                  {unitAvailability.enroute > 0 && <span className="text-amber-400"><strong>{unitAvailability.enroute}</strong> ENR</span>}
+                  {unitAvailability.onscene > 0 && <span className="text-purple-400"><strong>{unitAvailability.onscene}</strong> OS</span>}
+                  {unitAvailability.oos > 0 && <span className="text-rmpg-500"><strong>{unitAvailability.oos}</strong> OOS</span>}
+                </span>
+                {/* Stacked calls */}
+                {stacked.length > 0 && (
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px]" style={{ background: 'rgb(var(--sev-special-rgb) / 0.15)', color: 'var(--sev-special-soft)', border: '1px solid rgb(var(--sev-special-rgb) / 0.3)' }} title={`${stacked.length} location(s) with multiple active calls`}>
+                    <Link className="w-2.5 h-2.5" /> STACKED: {stacked.length}
+                  </span>
+                )}
+                {/* Busiest district */}
                 {districtLoad.length > 0 && (() => {
                   const [topSection] = districtLoad[0];
-                  const active = searchQuery.trim() === topSection;
+                  const isFiltered = searchQuery.trim() === topSection;
                   return (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery(active ? '' : topSection)}
-                      className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] rounded-sm hover:brightness-125 transition-all"
-                      style={{ background: active ? 'rgba(212,160,23,0.3)' : 'rgba(212,160,23,0.12)', color: '#d4a017', border: '1px solid rgba(212,160,23,0.3)' }}
-                      title={`Active calls by district — ${districtLoad.map(([k, n]) => `${k}: ${n}`).join(' · ')}\nClick to ${active ? 'clear' : 'filter to'} ${topSection}`}
+                    <button type="button" onClick={() => setSearchQuery(isFiltered ? '' : topSection)}
+                      className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] hover:brightness-125 transition-all"
+                      style={{ background: isFiltered ? 'rgb(var(--brand-gold-rgb) / 0.3)' : 'rgb(var(--brand-gold-rgb) / 0.12)', color: 'var(--brand-gold)', border: '1px solid rgba(212,160,23,0.3)' }}
+                      title={`Active calls by district — ${districtLoad.map(([k, n]) => `${k}: ${n}`).join(' · ')}`}
                     >
                       <MapPin className="w-2.5 h-2.5" /> {topSection}: {districtLoad[0][1]}
                     </button>
                   );
                 })()}
-                {/* Feature 4: Unit availability counter — extended breakdown */}
-                <span className="flex items-center gap-2 text-[#888888]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute/dispatched · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} out-of-service`}>
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? '#22c55e' : '#ef4444', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? '#22c55e80' : '#ef444480'}` }} />
-                  <span style={{ color: unitAvailability.available > 0 ? '#4ade80' : '#f87171' }}><strong>{unitAvailability.available}</strong> AVAIL</span>
-                  {unitAvailability.enroute > 0 && <span className="text-amber-400"><strong>{unitAvailability.enroute}</strong> ENR</span>}
-                  {unitAvailability.onscene > 0 && <span className="text-purple-400"><strong>{unitAvailability.onscene}</strong> OS</span>}
-                  {unitAvailability.oos > 0 && <span className="text-rmpg-500"><strong>{unitAvailability.oos}</strong> OOS</span>}
-                </span>
-                {/* Sort mode toggle — cycle priority → time → status */}
+                {/* Oldest pending wait time */}
+                {oldestPending !== null && oldestPending > 0 && (
+                  <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${oldestPending <= 5 ? 'text-rmpg-400 border-rmpg-700/40' : oldestPending <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/10 animate-pulse' : 'text-red-400 border-red-700/40 bg-red-900/20 animate-pulse'}`}>
+                    WAIT: <strong>{oldestPending}m</strong>
+                  </span>
+                )}
+                {/* Avg response */}
+                {avgResponse !== null && (
+                  <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${avgResponse <= 8 ? 'text-green-400 border-green-700/40 bg-green-900/20' : avgResponse <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/20' : 'text-red-400 border-red-700/40 bg-red-900/20'}`}>
+                    RESP: <strong>{avgResponse}m</strong>
+                  </span>
+                )}
+                {/* Sort toggle */}
                 {(() => {
                   const current = (userPrefs?.dispatch_sort || localSort || 'priority') as 'priority' | 'time' | 'status' | 'geo';
                   const next: Record<string, 'priority' | 'time' | 'status' | 'geo'> = { priority: 'time', time: 'status', status: 'geo', geo: 'priority' };
                   const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA', geo: 'GEO' };
-                  const titles: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district (section › zone › beat)' };
+                  const titles: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district' };
                   return (
-                    <button
-                      type="button"
-                      title={`Sort: ${titles[current]} (click to cycle)`}
+                    <button type="button" title={`Sort: ${titles[current]} (click to cycle)`}
                       onClick={() => {
                         const target = next[current];
-                        // Persist locally (backend pref is stubbed) so it survives reloads.
                         setLocalSort(target);
                         localStorage.setItem('rmpg_dispatch_sort', target);
-                        // Best-effort server persist for when /user/preferences is real.
-                        apiFetch('/user/preferences', {
-                          method: 'PUT',
-                          body: JSON.stringify({ dispatch_sort: target }),
-                        }).then(() => reloadPrefs()).catch(() => { /* stubbed today; local state already applied */ });
+                        apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ dispatch_sort: target }) })
+                          .then(() => reloadPrefs()).catch(() => {});
                       }}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border border-rmpg-700/50 hover:brightness-125 transition-all"
-                      style={{ background: '#0d0d0d', color: '#d4a017' }}
+                      style={{ background: 'var(--surface-sunken)', color: 'var(--brand-gold)' }}
                     >
                       SORT: {labels[current]}
                     </button>
                   );
                 })()}
-                {/* Activity sparkline — calls created per 5-min over last hour */}
-                {(() => {
-                  const buckets = new Array(12).fill(0);
-                  const now = Date.now();
-                  calls.forEach(c => {
-                    if (!c.created_at) return;
-                    const t = parseTimestamp(c.created_at).getTime();
-                    const ageMin = (now - t) / 60000;
-                    if (ageMin < 0 || ageMin > 60) return;
-                    const idx = Math.min(11, Math.floor(ageMin / 5));
-                    buckets[11 - idx]++;
-                  });
-                  const max = Math.max(1, ...buckets);
-                  const total = buckets.reduce((a, b) => a + b, 0);
-                  return (
-                    <span className="flex items-center gap-1 text-rmpg-500" title={`Calls created per 5-min bucket over last hour (total: ${total})`}>
-                      <span className="text-[8px] text-rmpg-600">1HR</span>
-                      <svg width="60" height="14" viewBox="0 0 60 14" style={{ display: 'block' }}>
-                        {buckets.map((v, i) => {
-                          const h = Math.max(1, Math.round((v / max) * 12));
-                          return <rect key={i} x={i * 5} y={14 - h} width={4} height={h} fill={v > 0 ? '#d4a017' : '#2b2b2b'} />;
-                        })}
-                      </svg>
-                      <strong className="text-rmpg-300">{total}</strong>
-                    </span>
-                  );
-                })()}
-                <span className="text-rmpg-500 ml-auto">
-                  {filteredCalls.length} calls
-                </span>
+                {/* Right: today + priority filters + call count */}
+                <div className="ml-auto flex items-center gap-1.5">
+                  <span className="text-rmpg-400">
+                    <span className="text-[8px] text-rmpg-600">TODAY</span> <strong className="text-rmpg-100">{todayCalls.length}</strong>/<strong className="text-green-400">{clearedToday}</strong>
+                  </span>
+                  <span className="text-rmpg-700">|</span>
+                  {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
+                    const count = workingCalls.filter(c => c.priority === p).length;
+                    const active = priorityFilter === p;
+                    const colors: Record<string, string> = {
+                      P1: `bg-red-900/${active ? '60' : '40'} text-red-400 border-red-700/${active ? '60' : '50'}`,
+                      P2: `bg-amber-900/${active ? '60' : '40'} text-amber-400 border-amber-700/${active ? '60' : '50'}`,
+                      P3: `bg-surface-sunken/${active ? '60' : '40'} text-rmpg-400 border-border-default/${active ? '60' : '50'}`,
+                      P4: `bg-green-900/${active ? '60' : '40'} text-green-400 border-green-700/${active ? '60' : '50'}`,
+                    };
+                    return (
+                      <button key={p} type="button" onClick={() => setPriorityFilter(active ? null : p)}
+                        className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}
+                        title={`${active ? 'Clear' : 'Filter to'} ${p}`}
+                      >
+                        {p}:{count}
+                      </button>
+                    );
+                  })}
+                  {(['signaled', 'unsignaled'] as const).map(mode => {
+                    const active = signalFilter === mode;
+                    const count = mode === 'signaled'
+                      ? workingCalls.filter(c => knownSignalCodes.has(c.incident_type)).length
+                      : workingCalls.filter(c => !knownSignalCodes.has(c.incident_type)).length;
+                    return (
+                      <button key={mode} type="button" onClick={() => setSignalFilter(active ? null : mode)}
+                        className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${active ? 'bg-purple-900/60 text-purple-300 border-purple-700/60' : 'bg-purple-900/30 text-purple-400/70 border-purple-700/40'} ${count > 0 ? '' : 'opacity-30'}`}
+                        title={active ? 'Clear signal filter' : `Show only ${mode === 'signaled' ? 'signaled' : 'unsignaled'} calls`}
+                      >
+                        {mode === 'signaled' ? '✓' : '✗'}SIG:{count}
+                      </button>
+                    );
+                  })}
+                  <span className="text-rmpg-700">|</span>
+                  <span className="text-rmpg-500">{filteredCalls.length} calls</span>
+                </div>
               </>
             );
           })()}
         </div>
 
-        {/* Operational Intelligence Strip — response times + shift throughput + priority filter */}
-        {(() => {
-          const todayCalls = calls.filter(c => {
-            if (!c.created_at) return false;
-            const d = parseTimestamp(c.created_at);
-            const now = new Date();
-            return d.toDateString() === now.toDateString();
-          });
-          const clearedToday = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
-          // Avg response time (created → onscene) for calls with onscene_at today
-          const responseTimes = todayCalls
-            .filter(c => c.onscene_at && c.created_at)
-            .map(c => (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.created_at).getTime()) / 60000)
-            .filter(m => m > 0 && m < 480);
-          const avgResponse = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
-          // Oldest pending call age
-          const pendingCalls = calls.filter(c => c.status === 'pending');
-          const oldestPending = pendingCalls.length > 0
-            ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => parseTimestamp(c.created_at).getTime()))) / 60000)
-            : null;
-
-          return (
-            <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0" style={{ background: '#080808' }}>
-              {/* Shift throughput */}
-              <span className="text-rmpg-400 flex items-center gap-1">
-                <span className="text-[8px] text-rmpg-600">TODAY</span>
-                <strong className="text-white">{todayCalls.length}</strong> calls
-                <span className="text-rmpg-600">·</span>
-                <strong className="text-green-400">{clearedToday}</strong> cleared
-              </span>
-              {/* Avg response */}
-              {avgResponse !== null && (
-                <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${avgResponse <= 8 ? 'text-green-400 border-green-700/40 bg-green-900/20' : avgResponse <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/20' : 'text-red-400 border-red-700/40 bg-red-900/20'}`}>
-                  AVG RESPONSE: <strong>{avgResponse}m</strong>
-                </span>
-              )}
-              {/* Oldest pending */}
-              {oldestPending !== null && oldestPending > 0 && (
-                <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${oldestPending <= 5 ? 'text-rmpg-400 border-rmpg-700/40' : oldestPending <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/10 animate-pulse' : 'text-red-400 border-red-700/40 bg-red-900/20 animate-pulse'}`}>
-                  OLDEST WAIT: <strong>{oldestPending}m</strong>
-                </span>
-              )}
-              {/* Priority quick filters — clickable to toggle filter */}
-              <div className="ml-auto flex items-center gap-0.5">
-                <span className="text-[8px] text-rmpg-600 mr-1">PRIORITY</span>
-                {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
-                  const count = calls.filter(c => c.priority === p && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
-                  const active = priorityFilter === p;
-                  const colors: Record<string, string> = {
-                    P1: `bg-red-900/${active ? '60' : '40'} text-red-400 border-red-700/${active ? '60' : '50'}`,
-                    P2: `bg-amber-900/${active ? '60' : '40'} text-amber-400 border-amber-700/${active ? '60' : '50'}`,
-                    P3: `bg-gray-900/${active ? '60' : '40'} text-gray-400 border-gray-700/${active ? '60' : '50'}`,
-                    P4: `bg-green-900/${active ? '60' : '40'} text-green-400 border-green-700/${active ? '60' : '50'}`,
-                  };
-                  return (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setPriorityFilter(active ? null : p)}
-                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}
-                      title={`${active ? 'Clear' : 'Filter to'} ${p} calls`}
-                    >
-                      {p}:{count}
-                    </button>
-                  );
-                })}
-                {/* Signal filter toggle */}
-                {(['signaled', 'unsignaled'] as const).map(mode => {
-                  const active = signalFilter === mode;
-                  const count = mode === 'signaled'
-                    ? calls.filter(c => knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length
-                    : calls.filter(c => !knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setSignalFilter(active ? null : mode)}
-                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${active ? 'bg-purple-900/60 text-purple-300 border-purple-700/60' : 'bg-purple-900/30 text-purple-400/70 border-purple-700/40'} ${count > 0 ? '' : 'opacity-30'}`}
-                      title={active ? 'Clear signal filter' : `Show only ${mode === 'signaled' ? 'calls with a signal code' : 'calls missing a signal code'}`}
-                    >
-                      {mode === 'signaled' ? '✓' : '✗'}SIG:{count}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
-
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
-          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-shrink-0" style={{ background: '#0c0c0c80' }}>
+          <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2 flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
             {callTypeStats.map(({ type, count }) => {
               const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
               const pct = total > 0 ? (count / total * 100) : 0;
@@ -3630,7 +3599,7 @@ export default function DispatchPage() {
 
         {/* Feature 14: Disposition Statistics (collapsed by default) */}
         {dispositionStats.length > 0 && filterTab === 'cleared' && (
-          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: '#0c0c0c80' }}>
+          <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2 flex-wrap text-[8px] font-mono flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
             <span className="text-rmpg-500 font-bold">DISPS:</span>
             {dispositionStats.slice(0, 5).map(d => (
               <span key={d.disposition} className="text-rmpg-400">
@@ -3642,26 +3611,26 @@ export default function DispatchPage() {
 
         {/* Active filter tags */}
         {(priorityFilter || typeFilter || signalFilter) && (
-          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-1.5 flex-shrink-0" style={{ background: '#0a0a0a' }}>
+          <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-1.5 flex-shrink-0" style={{ background: 'var(--surface-base)' }}>
             <span className="text-[8px] text-rmpg-500 font-semibold uppercase tracking-wider mr-0.5">Filters:</span>
             {priorityFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm"
-                style={{ background: priorityFilter === 'P1' ? 'rgba(239,68,68,0.25)' : priorityFilter === 'P2' ? 'rgba(217,119,6,0.25)' : priorityFilter === 'P3' ? 'rgba(107,114,128,0.25)' : 'rgba(34,197,94,0.25)', borderColor: priorityFilter === 'P1' ? '#ef444480' : priorityFilter === 'P2' ? '#d9770680' : priorityFilter === 'P3' ? '#6b728080' : '#22c55e80', color: priorityFilter === 'P1' ? '#ef4444' : priorityFilter === 'P2' ? '#d97706' : priorityFilter === 'P3' ? '#9ca3af' : '#22c55e' }}
+                style={{ background: priorityFilter === 'P1' ? 'rgb(var(--sev-critical-rgb) / 0.25)' : priorityFilter === 'P2' ? 'rgb(var(--sev-warn-rgb) / 0.25)' : priorityFilter === 'P3' ? 'rgb(var(--spm-text-muted-rgb) / 0.25)' : 'rgb(var(--sev-ok-rgb) / 0.25)', borderColor: priorityFilter === 'P1' ? 'color-mix(in srgb, var(--sev-critical) 50%, transparent)' : priorityFilter === 'P2' ? 'color-mix(in srgb, var(--sev-warn) 50%, transparent)' : priorityFilter === 'P3' ? 'color-mix(in srgb, var(--spm-text-muted) 50%, transparent)' : 'color-mix(in srgb, var(--sev-ok) 50%, transparent)', color: priorityFilter === 'P1' ? 'var(--sev-critical)' : priorityFilter === 'P2' ? 'var(--sev-warn)' : priorityFilter === 'P3' ? 'var(--spm-text-muted)' : 'var(--sev-ok)' }}
               >
                 Priority: {priorityFilter}
-                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
               </span>
             )}
             {typeFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-brand-300 border-brand-700/50 bg-brand-900/20">
                 Type: {formatIncidentType(typeFilter)}
-                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
               </span>
             )}
             {signalFilter && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-purple-300 border-purple-700/50 bg-purple-900/20">
                 Signal: {signalFilter === 'signaled' ? 'Has code' : 'No code'}
-                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-rmpg-100 transition-colors">&times;</button>
               </span>
             )}
             <button
@@ -3675,26 +3644,27 @@ export default function DispatchPage() {
         )}
 
         {/* Call List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
+        <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-[#888888]">
-              <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0c0c0c50', border: '1px solid #2b2b2b30' }}>
+            <div className="flex flex-col items-center justify-center py-16 text-[var(--spm-text-muted)]">
+              <div className="p-3.5 rounded-sm mb-3" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 31%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 19%, transparent)' }}>
                 <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
               <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">
                 {(priorityFilter || typeFilter || signalFilter) ? 'No calls match active filters' : 'No calls in this category'}
               </p>
-              <p className="text-[10px] text-[#545454] max-w-[240px] text-center leading-relaxed">
+              <p className="text-[10px] text-[var(--spm-text-muted)] max-w-[240px] text-center leading-relaxed">
                 {(priorityFilter || typeFilter || signalFilter) ? (
                   <button type="button" onClick={() => { setPriorityFilter(null); setTypeFilter(null); setSignalFilter(null); }} className="underline hover:text-rmpg-300 transition-colors">Clear filters</button>
                 ) : filterTab === 'pending' ? 'All pending calls have been dispatched' :
                  filterTab === 'active' ? 'No units are currently on active calls' :
+                 filterTab === 'hold' ? 'No calls on hold' :
                  filterTab === 'cleared' ? 'No cleared calls to review' :
                  filterTab === 'archived' ? 'No archived calls found' :
-                 filterTab === 'serve' ? 'No PSO client requests in queue' :
+                 filterTab === 'serve' ? 'No process service requests in queue' :
                  'Press N to create a new call'}
               </p>
-              {filterTab === 'all' && (
+              {filterTab === 'queue' && (
                 <button type="button"
                   onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
                   className="mt-4 toolbar-btn toolbar-btn-primary text-[10px]"
@@ -3716,7 +3686,7 @@ export default function DispatchPage() {
               return (
                 <React.Fragment key={call.id}>
                   {showSectionDivider && (
-                    <div className="sticky top-0 z-10 flex items-center gap-1.5 px-2 py-0.5 bg-[#0d0d0d] border-y border-amber-900/30 text-[9px] font-bold uppercase tracking-wider text-amber-400/90">
+                    <div className="sticky top-0 z-10 flex items-center gap-1.5 px-2 py-0.5 bg-[var(--surface-sunken)] border-y border-amber-900/30 text-[9px] font-bold uppercase tracking-wider text-amber-400/90">
                       <MapPin className="w-3 h-3" />
                       {sectionCode ? `${sectionCode} · ${sectionLabel}` : sectionLabel}
                     </div>
@@ -3748,28 +3718,28 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         {/* TOP - Call Detail (left) + Map (right) — ~65% height */}
         {/* ------------------------------------------------------------ */}
-        <div className="flex-1 flex border-b border-[#2b2b2b] min-h-0">
+        <div className="flex-1 flex border-b border-[var(--spm-border)] min-h-0">
           {/* Call Detail Panel */}
-          <div ref={callDetailRef} className={`flex-1 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
+          <div ref={callDetailRef} className={`flex-1 min-h-0 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
           {selectedCall ? (
             <>
               {/* Detail Header — PanelTitleBar style */}
-              <div className="flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid #ef4444', background: 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid #f59e0b' } : { borderLeft: '3px solid #888888' }}>
+              <div className="flex-shrink-0" style={selectedCall.priority === 'P1' ? { borderLeft: '3px solid var(--sev-critical)', background: 'linear-gradient(90deg, rgb(var(--sev-critical-rgb) / 0.08) 0%, transparent 30%)' } : selectedCall.priority === 'P2' ? { borderLeft: '3px solid var(--sev-warn)' } : { borderLeft: '3px solid var(--spm-text-muted)' }}>
                 {/* Row 1: Call identification */}
                 <div className="panel-title-bar flex items-center gap-2" style={{ borderBottom: 'none' }}>
                   {selectedCall.priority === 'P1' && (
-                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }} />
+                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink shrink-0" style={{ filter: 'drop-shadow(0 0 4px rgb(var(--sev-critical-rgb) / 0.5))' }} />
                   )}
                   <span
                     className="text-sm font-bold text-green-400 font-mono tracking-wide tabular-nums whitespace-nowrap cursor-pointer hover:text-green-300 transition-colors"
-                    style={{ textShadow: '0 0 8px rgba(74,222,128,0.2)' }}
+                    style={{ textShadow: '0 0 8px rgb(var(--sev-ok-rgb) / 0.2)' }}
                     title="Click to copy"
                     onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(selectedCall.call_number || ''); addToast(`Copied ${selectedCall.call_number}`, 'success'); }}
                   >{selectedCall.call_number}</span>
                   {/* Case Number — editable by admin/manager */}
                   {(selectedCall.case_number || isAdminOrManager) && (
                     editingTimestamp === 'case_number' ? (
-                      <input id="ff-dispatchpage-4"
+                      <input
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={selectedCall.case_number || ''}
@@ -3781,11 +3751,13 @@ export default function DispatchPage() {
                             const val = (e.target as HTMLInputElement).value.trim();
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
-                              const updated = mapDbCall(result);
+                              const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Case number set to ${val}` : 'Case number cleared', 'success');
-                            } catch { addToast('Failed to update case number', 'error'); }
+                            } catch (err: any) {
+                              addToast(err?.message || 'Failed to update case number', 'error');
+                            }
                             setEditingTimestamp(null);
                           }
                           if (e.key === 'Escape') setEditingTimestamp(null);
@@ -3796,10 +3768,16 @@ export default function DispatchPage() {
                           if (val !== (selectedCall.case_number || '')) {
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
-                              const updated = mapDbCall(result);
+                              const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
-                            } catch { /* silent on blur */ }
+                            } catch (err: any) {
+                              // Was deliberately /* silent on blur */ but an
+                              // unreported failure on a documented audit-trail
+                              // field meant the operator believed the value
+                              // persisted when in fact it didn't.
+                              addToast(err?.message || 'Failed to update case number — change not persisted', 'error');
+                            }
                           }
                           setEditingTimestamp(null);
                         }}
@@ -3817,7 +3795,7 @@ export default function DispatchPage() {
                   {/* Incident Number — editable by admin/manager */}
                   {(selectedCall.incident_number || isAdminOrManager) && (
                     editingTimestamp === 'incident_number' ? (
-                      <input id="ff-dispatchpage-5"
+                      <input
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={(selectedCall as any).incident_number || ''}
@@ -3827,21 +3805,48 @@ export default function DispatchPage() {
                           if (e.key === 'Enter') {
                             const val = (e.target as HTMLInputElement).value.trim();
                             try {
-                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
-                              const updated = mapDbCall(result);
+                              // BUG FIX (2026-06-21 audit): this editor is the
+                              // incident_number field but the body used to send
+                              // { case_number: val }. The server overwrote
+                              // case_number with the incident value, the displayed
+                              // incident_number never updated, and the operator
+                              // saw a green "Linked to incident X" toast for an
+                              // action that silently corrupted the CAD-RMS link.
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ incident_number: val || null }) });
+                              const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
-                            } catch { addToast('Failed to update incident link', 'error'); }
+                            } catch (err: any) {
+                              addToast(err?.message || 'Failed to update incident link', 'error');
+                            }
                             setEditingTimestamp(null);
                           }
                           if (e.key === 'Escape') setEditingTimestamp(null);
                         }}
-                        onBlur={() => setEditingTimestamp(null)}
+                        onBlur={async (e) => {
+                          const val = e.target.value.trim();
+                          if (val !== ((selectedCall as any).incident_number || '')) {
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ incident_number: val || null }) });
+                              const updated = mergeCallUpdate(selectedCall, result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                              addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
+                            } catch (err: any) {
+                              // Was deliberately /* silent on blur */ — but a
+                              // silent failure on a documented audit-trail
+                              // field meant the operator tabbed away thinking
+                              // the value persisted. Audit caught this.
+                              addToast(err?.message || 'Failed to update incident link — change not persisted', 'error');
+                            }
+                          }
+                          setEditingTimestamp(null);
+                        }}
                       />
                     ) : selectedCall.incident_number ? (
                       <span
-                        className={`text-[10px] font-bold font-mono text-gray-300 bg-gray-900/30 border border-gray-700/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-gray-200 transition-colors`}
+                        className={`text-[10px] font-bold font-mono text-rmpg-300 bg-surface-sunken/30 border border-border-default/40 px-1.5 py-0.5 whitespace-nowrap cursor-pointer hover:brightness-125 hover:text-rmpg-200 transition-colors`}
                         onClick={(e) => {
                           if (isAdminOrManager && e.shiftKey) {
                             setEditingTimestamp('incident_number');
@@ -3889,7 +3894,7 @@ export default function DispatchPage() {
                   )}
                 </div>
                 {/* Row 2: Action buttons — separate row to prevent cramping */}
-                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#2b2b2b] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#050505' }}>
+                <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[var(--spm-border)] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: 'var(--surface-deep)' }}>
                   {isEditing ? (
                     // While editing, the in-form values aren't yet on selectedCall,
                     // so a print right now would generate a PDF missing whatever
@@ -3982,7 +3987,7 @@ export default function DispatchPage() {
                         onClick={() => setShowNcicPanel(true)}
                         className="toolbar-btn"
                         title="NCIC / NLETS Query Terminal"
-                        style={{ color: '#4ade80' }}
+                        style={{ color: 'var(--sev-ok)' }}
                       >
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
                       </button>
@@ -3991,7 +3996,7 @@ export default function DispatchPage() {
                     {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
-                        style={{ background: '#d4a01725', borderColor: '#d4a01750', color: '#d4a017' }}
+                        style={{ background: 'rgb(var(--brand-gold-rgb) / 0.15)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.31)', color: 'var(--brand-gold)' }}
                         onClick={async () => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                           const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
@@ -4014,11 +4019,24 @@ export default function DispatchPage() {
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
                       </button>
                     )}
+                    {/* Notice of Communication — PSO client requests with a failed attempt
+                        being re-dispatched. Autofills from this call (client, service,
+                        attempt) into a printable client notice. */}
+                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
+                        onClick={() => openPsoNotice(selectedCall)}
+                        title="Generate an autofilled Notice of Communication for the client (unsuccessful attempt → re-dispatch)"
+                      >
+                        <FileText style={{ width: 10, height: 10 }} /> Notice of Comm
+                      </button>
+                    )}
                     {/* Undo Return Visit — only on pending child calls */}
                     {!isEditing && (selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
                         className="toolbar-btn"
-                        style={{ background: '#ef444420', borderColor: '#ef444450', color: '#ef4444' }}
+                        style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
                         onClick={async () => {
                           if (!window.confirm(`Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`)) return;
                           try {
@@ -4040,7 +4058,7 @@ export default function DispatchPage() {
                     {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
                       <button type="button"
                         className="toolbar-btn"
-                        style={{ background: '#a855f720', borderColor: '#a855f750', color: '#c084fc' }}
+                        style={{ background: 'color-mix(in srgb, var(--sev-special) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', color: 'var(--sev-special-soft)' }}
                         disabled={sendingToServe}
                         onClick={async () => {
                           setSendingToServe(true);
@@ -4064,13 +4082,43 @@ export default function DispatchPage() {
                         <Briefcase style={{ width: 10, height: 10 }} /> {sendingToServe ? 'Sending...' : 'Serve Queue'}
                       </button>
                     )}
+                    {/* Report Issue — create a work order from this call */}
+                    {!isEditing && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)' }}
+                        disabled={reportingIssue}
+                        onClick={async () => {
+                          if (!window.confirm(`Report a mechanical issue from Call ${selectedCall.call_number}? This will create a work order.`)) return;
+                          setReportingIssue(true);
+                          try {
+                            const result = await apiFetch<{ data: { id: number } }>(`/dispatch/calls/${selectedCall.id}/report-issue`, {
+                              method: 'POST',
+                              body: JSON.stringify({
+                                summary: `Mechanical issue reported from Call #${selectedCall.call_number}`,
+                              }),
+                            });
+                            if (result) {
+                              addToast(`Work order #${result.data?.id ?? ''} created`, 'success');
+                            }
+                          } catch (err: any) {
+                            addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                          } finally {
+                            setReportingIssue(false);
+                          }
+                        }}
+                        title="Create a work order from this call"
+                      >
+                        <Wrench style={{ width: 10, height: 10 }} /> {reportingIssue ? 'Creating...' : 'Report Issue'}
+                      </button>
+                    )}
                     {/* Revert status button — go back one step */}
                     {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
                       <button type="button"
                         onClick={() => handleRevertStatus(selectedCall.id)}
                         className="toolbar-btn"
                         title={`Revert to previous status`}
-                        style={{ color: '#f59e0b' }}
+                        style={{ color: 'var(--sev-warn)' }}
                       >
                         <Undo2 style={{ width: 10, height: 10 }} /> Back
                       </button>
@@ -4096,16 +4144,16 @@ export default function DispatchPage() {
                         <button type="button" onClick={() => handleClearWithDisposition(selectedCall.id)} className="toolbar-btn">
                           <CheckCircle style={{ width: 10, height: 10 }} /> Clear
                         </button>
-                        <button type="button" onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                        <button type="button" onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: 'var(--sev-warn)' }}>
                           ⏸ Hold
                         </button>
-                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#f87171' }}>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: 'var(--sev-critical)' }}>
                           <XCircle style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'on_hold' && (
-                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: '#f59e0b', color: '#000' }}>
+                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: 'var(--sev-warn)', color: '#000' }}>
                         ▶ Resume
                       </button>
                     )}
@@ -4128,13 +4176,13 @@ export default function DispatchPage() {
                     )}
                     {/* LE Notification */}
                     {!isEditing && !selectedCall.le_notified && selectedCall.status !== 'archived' && (
-                      <button type="button" onClick={() => handleLeNotify(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                      <button type="button" onClick={() => handleLeNotify(selectedCall.id)} className="toolbar-btn" style={{ color: 'var(--sev-warn)' }}>
                         <Radio style={{ width: 10, height: 10 }} /> Notify LE
                       </button>
                     )}
                     {selectedCall.le_notified && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)', boxShadow: '0 0 4px rgba(34,197,94,0.1)' }}>
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e80' }} />
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm" style={{ background: 'rgb(var(--sev-ok-rgb) / 0.15)', color: 'var(--sev-ok)', border: '1px solid rgb(var(--sev-ok-rgb) / 0.3)', boxShadow: '0 0 4px rgb(var(--sev-ok-rgb) / 0.1)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-ok)', boxShadow: '0 0 3px color-mix(in srgb, var(--sev-ok) 50%, transparent)' }} />
                         LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
                       </span>
                     )}
@@ -4149,10 +4197,10 @@ export default function DispatchPage() {
                         <RotateCcw style={{ width: 10, height: 10 }} /> Restore
                       </button>
                     )}
-                    {/* Remove — soft-delete (archive); senior roles only */}
-                    {!isEditing && canDeleteCall && (
-                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Remove this call from the board (archived, admin-recoverable)">
-                        <Trash2 style={{ width: 10, height: 10 }} /> Remove
+                    {/* Delete — available on any call */}
+                    {!isEditing && (
+                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Delete this call permanently">
+                        <Trash2 style={{ width: 10, height: 10 }} /> Delete
                       </button>
                     )}
                   </div>
@@ -4160,9 +4208,9 @@ export default function DispatchPage() {
 
               {/* Warning Tags / Caution Alerts — always visible above tabs */}
               {callWarnings.length > 0 && (
-                <div className="px-4 pt-2 pb-1.5 flex-shrink-0" style={{ background: 'rgba(220,38,38,0.05)', borderBottom: '1px solid rgba(220,38,38,0.15)' }}>
+                <div className="px-4 pt-2 pb-1.5 flex-shrink-0" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.05)', borderBottom: '1px solid rgb(var(--sev-critical-rgb) / 0.15)' }}>
                   <label className="text-[9px] font-bold text-red-400 uppercase tracking-[0.1em] flex items-center gap-1.5 mb-1.5">
-                    <AlertTriangle style={{ width: 10, height: 10, filter: 'drop-shadow(0 0 3px rgba(239,68,68,0.4))' }} /> CAUTION / WARNINGS
+                    <AlertTriangle style={{ width: 10, height: 10, filter: 'drop-shadow(0 0 3px rgb(var(--sev-critical-rgb) / 0.4))' }} /> CAUTION / WARNINGS
                   </label>
                   <WarningTags warnings={callWarnings} />
                 </div>
@@ -4170,7 +4218,7 @@ export default function DispatchPage() {
 
               {/* Call Duration + Response Time + Safety Summary — always visible above tabs */}
               {!isEditing && (
-                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
+                <div className="px-4 py-1.5 flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ background: 'var(--surface-deep)', borderBottom: '1px solid var(--spm-border)' }}>
                   {/* Call duration — running timer */}
                   <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
                     <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
@@ -4189,9 +4237,9 @@ export default function DispatchPage() {
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Navigation style={{ width: 10, height: 10 }} className="text-gray-500" />
+                        <Navigation style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                         <span className="text-rmpg-400">Response:</span>
-                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                       </div>
                     );
                   })()}
@@ -4202,9 +4250,9 @@ export default function DispatchPage() {
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Clock style={{ width: 10, height: 10 }} className="text-gray-500" />
+                        <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                         <span className="text-rmpg-400">On-Scene:</span>
-                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
                       </div>
                     );
                   })()}
@@ -4224,7 +4272,7 @@ export default function DispatchPage() {
                       <div className="flex items-center gap-1 ml-auto">
                         <AlertTriangle style={{ width: 10, height: 10 }} className="text-red-400" />
                         {flags.map(f => (
-                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c084fc' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#aaaaaa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? 'var(--sev-critical-soft)' : f === 'DV' ? 'var(--sev-caution)' : f === 'MH' ? 'var(--sev-special-soft)' : f === 'PURSUIT' ? 'var(--sev-high)' : f === 'SAFETY' ? 'var(--sev-critical)' : 'var(--spm-text)', background: 'rgb(var(--sev-critical-rgb) / 0.1)', border: '1px solid rgb(var(--sev-critical-rgb) / 0.25)' }}>
                             {f}
                           </span>
                         ))}
@@ -4235,14 +4283,15 @@ export default function DispatchPage() {
               )}
 
               {/* Detail Tabs */}
-              <div className="flex border-b border-[#2b2b2b] flex-shrink-0" style={{ background: '#050505' }}>
-                {(['info', 'persons', 'timeline', 'notes', 'attachments', 'flags', 'audit'] as const).map(tab => {
-                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
+              <div className="flex border-b border-[var(--spm-border)] flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
+                {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
+                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                   const icons: Record<string, React.ReactNode> = {
                     info: <FileText style={{ width: 9, height: 9 }} />,
                     persons: <User style={{ width: 9, height: 9 }} />,
                     timeline: <Clock style={{ width: 9, height: 9 }} />,
                     notes: <MessageSquare style={{ width: 9, height: 9 }} />,
+                    documents: <FileSignature style={{ width: 9, height: 9 }} />,
                     attachments: <FileText style={{ width: 9, height: 9 }} />,
                     flags: <Shield style={{ width: 9, height: 9 }} />,
                     audit: <Shield style={{ width: 9, height: 9 }} />,
@@ -4261,17 +4310,17 @@ export default function DispatchPage() {
                       onClick={() => setDetailTab(tab)}
                       className="relative px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
                       style={{
-                        color: isActive ? '#999999' : '#666666',
-                        background: isActive ? 'rgba(42,42,42,0.6)' : 'transparent',
-                        borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
+                        color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)',
+                        background: isActive ? 'color-mix(in srgb, var(--surface-sunken) 60%, transparent)' : 'transparent',
+                        borderBottom: isActive ? '2px solid var(--brand-gold)' : '2px solid transparent',
                       }}
-                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#999999'; (e.currentTarget as HTMLElement).style.background = 'rgba(42,42,42,0.4)'; } }}
-                      onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = '#666666'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
+                      onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 40%, transparent)'; } }}
+                      onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                     >
                       <span className="flex items-center gap-1.5">
                         {icons[tab]}
                         {labels[tab]}
-                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? '#88888825' : '#2b2b2b30', color: isActive ? '#999999' : '#666666' }}>{count}</span> : ''}
+                        {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--spm-text-muted) 15%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
                       </span>
                     </button>
                   );
@@ -4279,7 +4328,7 @@ export default function DispatchPage() {
               </div>
 
               {/* Detail Body — Scrollable, tab-controlled */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 {/* ── CALL INFO SECTION (Info + Persons tab) ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 flex-shrink-0" style={{ display: detailTab === 'info' || detailTab === 'persons' ? undefined : 'none' }}>
                   {/* Left Column: Core Info */}
@@ -4287,7 +4336,7 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Type:</label>
                       {isEditing ? (
-                        <select id="ff-dispatchpage-6" className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
+                        <select className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
                           {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([cat, types]) => (
                             <optgroup key={cat} label={cat}>{types.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}</optgroup>
                           ))}
@@ -4305,10 +4354,6 @@ export default function DispatchPage() {
                           value={editData.location}
                           onChange={(val) => updateEditField('location', val)}
                           onSelect={async (addr: ParsedAddress) => {
-                            // Parse Building/Suite/Floor from the typed text (still
-                            // in editData.location) before it's replaced — the
-                            // geocoder strips sub-address tokens.
-                            const parts = parseLocationParts(editData.location || addr.formatted);
                             updateEditField('location', addr.formatted);
                             if (addr.latitude != null) {
                               // Location changed → recompute and OVERWRITE every
@@ -4325,49 +4370,14 @@ export default function DispatchPage() {
                                 beat_id: details.beat_id || prev.beat_id,
                                 dispatch_code: details.dispatch_code || prev.dispatch_code,
                                 cross_street: details.cross_street || prev.cross_street,
-                                // Bldg/Suite/Floor: fill-if-empty, never clobber.
-                                location_building: prev.location_building || parts.building,
-                                location_floor: prev.location_floor || parts.floor,
-                                location_room: prev.location_room || parts.suite,
-                              }));
-                            } else {
-                              setEditData(prev => ({
-                                ...prev,
-                                location_building: prev.location_building || parts.building,
-                                location_floor: prev.location_floor || parts.floor,
-                                location_room: prev.location_room || parts.suite,
                               }));
                             }
-                          }}
-                          // Typed an address without picking a suggestion →
-                          // forward-geocode the freehand text and fill the same
-                          // derived geo fields, so manual entries still get
-                          // cross-street + section/zone/beat. Bldg/Suite parse
-                          // from the text even when the geocode misses.
-                          onResolveTyped={async (text) => {
-                            const parts = parseLocationParts(text);
-                            const details = await resolveFromText(text);
-                            setEditData(prev => ({
-                              ...prev,
-                              location_building: prev.location_building || parts.building,
-                              location_floor: prev.location_floor || parts.floor,
-                              location_room: prev.location_room || parts.suite,
-                              ...(details ? {
-                                latitude: details.latitude ?? prev.latitude,
-                                longitude: details.longitude ?? prev.longitude,
-                                sector_id: details.sector_id || prev.sector_id,
-                                zone_id: details.zone_id || prev.zone_id,
-                                beat_id: details.beat_id || prev.beat_id,
-                                dispatch_code: details.dispatch_code || prev.dispatch_code,
-                                cross_street: details.cross_street || prev.cross_street,
-                              } : {}),
-                            }));
                           }}
                         />
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-rmpg-300" />
-                          <p className="text-sm text-white">{formatAddressDisplay(selectedCall.location)}</p>
+                          <p className="text-sm text-rmpg-100">{formatAddressDisplay(selectedCall.location)}</p>
                         </div>
                       )}
                       {!isEditing && selectedCall.property_name && (
@@ -4392,7 +4402,7 @@ export default function DispatchPage() {
                       <label className="field-label">Description:</label>
                       {isEditing ? (
                         <>
-                          <textarea id="ff-dispatchpage-7" className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                          <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
                           <NarrativeAssist
                             notes={editData.description || ''}
                             incidentType={editData.incident_type || selectedCall.incident_type}
@@ -4409,7 +4419,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Source:</label>
-                            <select id="ff-dispatchpage-8" className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
+                            <select className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
                               <option value="phone">Phone</option><option value="radio">Radio</option><option value="walk_in">Walk-In</option>
                               <option value="alarm">Alarm</option><option value="patrol">Patrol</option><option value="online">Online</option>
                               <option value="dispatch">Dispatch</option><option value="other">Other</option>
@@ -4417,7 +4427,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="field-label">Priority:</label>
-                            <select id="ff-dispatchpage-9" className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
+                            <select className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
                               <option value="P1">P1 - Emergency</option><option value="P2">P2 - Urgent</option>
                               <option value="P3">P3 - Routine</option><option value="P4">P4 - Scheduled</option>
                             </select>
@@ -4426,7 +4436,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Client:</label>
-                            <select id="ff-dispatchpage-10" className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
+                            <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => handleClientChange(e.target.value)}>
                               <option value="">— No Client —</option>
                               {clientsList.map((c) => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -4435,7 +4445,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="field-label">Property:</label>
-                            <select id="ff-dispatchpage-11" className="select-dark text-xs mt-0.5" value={editData.property_id || ''} onChange={(e) => updateEditField('property_id', e.target.value)}>
+                            <select className="select-dark text-xs mt-0.5" value={editData.property_id || ''} onChange={(e) => updateEditField('property_id', e.target.value)}>
                               <option value="">— No Property —</option>
                               {propertiesList.map((p) => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
@@ -4445,7 +4455,7 @@ export default function DispatchPage() {
                         </div>
                         <div>
                           <label className="field-label">Disposition:</label>
-                          <select id="ff-dispatchpage-12"
+                          <select
                             className="select-dark text-xs mt-0.5"
                             value={editData.disposition || ''}
                             onChange={(e) => updateEditField('disposition', e.target.value)}
@@ -4458,11 +4468,8 @@ export default function DispatchPage() {
                                 reachable. */}
                             {dispositionGroupsForIncident(selectedCall.incident_type).map((g) => (
                               <optgroup key={g.label} label={g.label}>
-                                {/* Selection shows CODE — Description so the
-                                    dispatcher picks the right code; only the
-                                    code is stored + shown on output surfaces. */}
                                 {g.codes.map((d) => (
-                                  <option key={d.code} value={d.code}>{d.code} — {d.description}</option>
+                                  <option key={d.code} value={d.code}>{d.description}</option>
                                 ))}
                               </optgroup>
                             ))}
@@ -4483,30 +4490,20 @@ export default function DispatchPage() {
                         </div>
                       </>
                     )}
-                    {!isEditing && selectedCall.disposition && (() => {
-                      // OUTPUT = code only (per the short-code contract). The
-                      // description rides along as a hover tooltip for
-                      // discoverability but is not shown inline. Badge color
-                      // comes from the chart when the code is known.
-                      const match = dispositionCodes.find((d) => d.code === selectedCall.disposition);
-                      const color = (match as any)?.color as string | undefined;
-                      return (
-                        <div>
-                          <label className="field-label">Disposition:</label>
-                          <p className="text-sm text-rmpg-200">
-                            <span
-                              className="inline-block px-2 py-0.5 text-[11px] uppercase font-bold border mr-1.5 rounded-sm tracking-wide"
-                              title={match?.description || selectedCall.disposition || ''}
-                              style={color
-                                ? { color, borderColor: `${color}66`, background: `${color}1a` }
-                                : undefined}
-                            >
-                              {selectedCall.disposition}
-                            </span>
-                          </p>
-                        </div>
-                      );
-                    })()}
+                    {!isEditing && selectedCall.disposition && (
+                      <div>
+                        <label className="field-label">Disposition:</label>
+                        <p className="text-sm text-rmpg-200">
+                          <span className="inline-block px-2 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1.5 rounded-sm tracking-wide">
+                            {selectedCall.disposition}
+                          </span>
+                          {(() => {
+                            const match = dispositionCodes.find((d) => d.code === selectedCall.disposition);
+                            return match ? <span className="text-rmpg-300">{match.description}</span> : null;
+                          })()}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Right Column: Caller, Timeline, Units */}
@@ -4516,8 +4513,8 @@ export default function DispatchPage() {
                       <label className="field-label">Caller:</label>
                       {isEditing ? (
                         <div className="space-y-1 mt-0.5">
-                          <input id="ff-dispatchpage-13" type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
-                          <input id="ff-dispatchpage-14" type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
+                          <input type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
+                          <input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
                            <AddressAutocomplete
                              className="input-dark text-xs"
                              placeholder="Caller address"
@@ -4525,12 +4522,11 @@ export default function DispatchPage() {
                              onChange={(value) => updateEditField('caller_address', value)}
                              name="caller_address"
                            />
-                          <select id="ff-dispatchpage-15" className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
+                          <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
-                            <option value="employee">Employee</option><option value="victim">Victim</option>
-                            <option value="witness">Witness</option><option value="complainant">Complainant</option>
-                            <option value="management">Management</option><option value="alarm_company">Alarm Company</option>
-                            <option value="officer">Officer</option><option value="anonymous">Anonymous</option><option value="other">Other</option>
+                            {linkOptions.caller_relationship.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
                           </select>
                         </div>
                       ) : (
@@ -4539,7 +4535,7 @@ export default function DispatchPage() {
                             <>
                               <div className="flex items-center gap-1.5">
                                 <User className="w-3.5 h-3.5 text-rmpg-300" />
-                                <p className="text-sm text-white">{selectedCall.caller_name || 'Unknown'}</p>
+                                <p className="text-sm text-rmpg-100">{selectedCall.caller_name || 'Unknown'}</p>
                                 {selectedCall.caller_relationship && <span className="text-[9px] text-rmpg-400">({selectedCall.caller_relationship})</span>}
                               </div>
                               {selectedCall.caller_phone && (
@@ -4560,22 +4556,22 @@ export default function DispatchPage() {
                         <label className="field-label">Timeline:</label>
                         {isAdminOrManager && <span className="text-[7px] text-rmpg-500 font-mono tracking-wider">ADMIN EDIT</span>}
                       </div>
-                      <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid #2b2b2b' }}>
+                      <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid var(--spm-border)' }}>
                         {([
-                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: '#666666', showElapsed: true },
-                          { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: '#f59e0b' },
-                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: '#888888' },
-                          { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: '#a855f7' },
-                          { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: '#22c55e' },
-                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: '#666666' },
-                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: '#666666' },
+                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: 'var(--spm-text-muted)', showElapsed: true },
+                          { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: 'var(--sev-warn)' },
+                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
+                          { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
+                          { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
+                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: 'var(--spm-text-muted)' },
+                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: 'var(--spm-text-muted)' },
                         ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
-                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : '#222222', border: '2px solid #0c0c0c', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
-                            <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
+                            <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : 'var(--spm-border)', border: '2px solid var(--surface-sunken)', boxShadow: ts.value ? `0 0 4px ${ts.color}60` : 'none' }} />
+                            <span className="text-rmpg-500 text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
                             {editingTimestamp === ts.field ? (
                               <div className="flex items-center gap-1">
-                                <input id="ff-dispatchpage-16"
+                                <input
                                   type="datetime-local"
                                   step="1"
                                   className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
@@ -4598,7 +4594,7 @@ export default function DispatchPage() {
                               </div>
                             ) : (
                               <span
-                                className={`text-white font-mono text-[10px] tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                                className={`text-rmpg-100 font-mono text-[10px] tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[var(--brand-gold)] group-hover:underline transition-colors' : ''}`}
                                 onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
                                 title={isAdminOrManager ? 'Click to edit' : undefined}
                               >
@@ -4606,8 +4602,8 @@ export default function DispatchPage() {
                               </span>
                             )}
                             {ts.showElapsed && ts.value && !editingTimestamp && (() => {
-                              const ageMin = Math.floor((Date.now() - new Date(ts.value).getTime()) / 60000);
-                              const ageColor = ageMin > 120 ? '#ef4444' : ageMin > 60 ? '#f97316' : ageMin > 30 ? '#eab308' : '#22c55e';
+                              const ageMin = Math.floor((Date.now() - parseTimestamp(ts.value).getTime()) / 60000);
+                              const ageColor = ageMin > 120 ? 'var(--sev-critical)' : ageMin > 60 ? 'var(--sev-high)' : ageMin > 30 ? 'var(--sev-caution)' : 'var(--sev-ok)';
                               return <span className="text-[9px] font-mono tabular-nums font-bold" style={{ color: ageColor }}>({formatElapsed(ts.value)})</span>;
                             })()}
                           </div>
@@ -4621,7 +4617,7 @@ export default function DispatchPage() {
                           return (
                             <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
                               <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                              <span className="text-gray-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
+                              <span className="text-rmpg-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
                             </div>
                           );
                         })()}
@@ -4700,7 +4696,7 @@ export default function DispatchPage() {
                           {/* Feature 19: Transfer button (only if a unit is assigned) */}
                           {(selectedCall.assigned_units || []).length > 0 && (
                             <div className="relative">
-                              <select id="ff-dispatchpage-17"
+                              <select
                                 className="input-dark text-[8px] py-0 px-1"
                                 style={{ maxWidth: 120 }}
                                 defaultValue=""
@@ -4726,11 +4722,11 @@ export default function DispatchPage() {
                             const unitObj = units.find((u) => String(u.id) === String(unitIdStr));
                             const displayName = unitObj ? unitObj.call_sign : unitIdStr;
                             const statusColor = unitObj ? (
-                              unitObj.status === 'onscene' ? '#a855f7' :
-                              unitObj.status === 'enroute' ? '#888888' :
-                              unitObj.status === 'dispatched' ? '#f59e0b' :
-                              '#22c55e'
-                            ) : '#666666';
+                              unitObj.status === 'onscene' ? 'var(--sev-special)' :
+                              unitObj.status === 'enroute' ? 'var(--spm-text-muted)' :
+                              unitObj.status === 'dispatched' ? 'var(--sev-warn)' :
+                              'var(--sev-ok)'
+                            ) : 'var(--spm-text-muted)';
                             const statusLabel = unitObj ? (
                               unitObj.status === 'onscene' ? 'OS' :
                               unitObj.status === 'enroute' ? 'ER' :
@@ -4767,13 +4763,13 @@ export default function DispatchPage() {
                       )}
                       {/* Inline ETA from route */}
                       {routeInfo && (
-                        <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgba(136, 136, 136,0.08)', border: '1px solid rgba(136, 136, 136,0.2)', boxShadow: '0 0 8px rgba(136, 136, 136,0.06)' }}>
-                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-gray-400">
+                        <div className="mt-2 flex items-center gap-2.5 px-2.5 py-1.5 rounded-sm" style={{ background: 'rgb(var(--spm-text-muted-rgb) / 0.08)', border: '1px solid rgb(var(--spm-text-muted-rgb) / 0.2)', boxShadow: '0 0 8px rgb(var(--spm-text-muted-rgb) / 0.06)' }}>
+                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-rmpg-400">
                             <Navigation style={{ width: 9, height: 9 }} /> ETA
                           </span>
-                          <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
-                          <span className="text-[9px] font-mono text-[#888888] tabular-nums">{routeInfo.distance}</span>
-                          <span className="text-[8px] font-mono text-[#545454] ml-auto">{routeInfo.unitCallSign}</span>
+                          <span className="text-[11px] font-mono font-bold text-rmpg-100 tabular-nums">{routeInfo.eta}</span>
+                          <span className="text-[9px] font-mono text-[var(--spm-text-muted)] tabular-nums">{routeInfo.distance}</span>
+                          <span className="text-[8px] font-mono text-[var(--spm-text-muted)] ml-auto">{routeInfo.unitCallSign}</span>
                         </div>
                       )}
                     </div>
@@ -4783,19 +4779,49 @@ export default function DispatchPage() {
                 {/* ── MILEAGE (primary unit) — Info tab ─── */}
                 {/* Boolean() — numeric mileage 0 would otherwise render "0". */}
                 {detailTab === 'info' && Boolean(isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Primary Unit Mileage
                     </label>
                     {isEditing ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Starting Mileage <span className="text-red-400">*</span></label>
-                          <input id="ff-dispatchpage-18" type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
+                          <div className="flex gap-1">
+                            <input type="number" step="0.1" min="0" className="input-dark text-xs flex-1" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const unitId = (() => {
+                                    const a = (selectedCall as any)?.assigned_units;
+                                    const id = Array.isArray(a) && a.length > 0 ? a[0] : null;
+                                    return id != null ? Number(id) : null;
+                                  })();
+                                  const params = new URLSearchParams();
+                                  if (user?.id) params.set('officer_id', String(user.id));
+                                  if (unitId) params.set('unit_id', String(unitId));
+                                  const r: any = await apiFetch(`/patrol/mileage/suggest?${params}`);
+                                  if (r?.suggested_mileage != null) {
+                                    updateEditField('starting_mileage', String(r.suggested_mileage));
+                                    addToast?.(`Picked up ${Number(r.suggested_mileage).toLocaleString()} mi from last entry (scope: ${r.source})`, 'success');
+                                  } else {
+                                    addToast?.(r?.message || 'No prior mileage for this scope', 'info');
+                                  }
+                                } catch (err: any) {
+                                  addToast?.(err?.message || 'Mileage suggest failed', 'error');
+                                }
+                              }}
+                              className="toolbar-btn text-[9px] px-1.5"
+                              title="Pick up from the last entered mileage for this officer + unit"
+                            >
+                              ⤴︎ Last
+                            </button>
+                          </div>
                         </div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Ending Mileage</label>
-                          <input id="ff-dispatchpage-19" type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
+                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
                         </div>
                       </div>
                     ) : (
@@ -4814,8 +4840,8 @@ export default function DispatchPage() {
 
                 {/* ── EXTENDED DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.sector_id || selectedCall.zone_id || selectedCall.beat_id || selectedCall.latitude || selectedCall.dispatch_code) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Location Details
                     </label>
                     {isEditing ? (() => {
@@ -4829,15 +4855,15 @@ export default function DispatchPage() {
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input id="ff-dispatchpage-20" type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input id="ff-dispatchpage-21" type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input id="ff-dispatchpage-22" type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input id="ff-dispatchpage-23" type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Section</label>
-                              <select id="ff-dispatchpage-24" className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
+                              <select className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, sector_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
                               }}>
@@ -4851,7 +4877,7 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Zone</label>
-                              <select id="ff-dispatchpage-25" className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
+                              <select className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, zone_id: val, beat_id: '', dispatch_code: '' }));
                               }}>
@@ -4861,7 +4887,7 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Beat</label>
-                              <select id="ff-dispatchpage-26" className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
+                              <select className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
                                 const beatVal = e.target.value;
                                 if (!beatVal) { setEditData(prev => ({ ...prev, beat_id: '', dispatch_code: '' })); return; }
                                 // Resolve the district for this beat. If a Zone is
@@ -4894,7 +4920,7 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Dispatch Code</label>
-                              <input id="ff-dispatchpage-27" type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
+                              <input type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
                             </div>
                           </div>
                         </div>
@@ -4905,39 +4931,38 @@ export default function DispatchPage() {
                         {selectedCall.location_building && <span className="text-rmpg-200"><span className="text-rmpg-400">Bldg:</span> {selectedCall.location_building}</span>}
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
-                        {selectedCall.dispatch_code && (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            title="Dispatch zone code — click to copy"
-                            onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
-                            className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
-                            style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
-                          >
-                            {selectedCall.dispatch_code}
-                          </span>
-                        )}
-                        {/* Section/Zone/Beat in SHORT-CODE form (e.g. "SL1/HER/A1")
-                            via the chart-code parser — NO long names. Dispatch shows
-                            short codes only; the full Area›Section›Zone›Beat NAMES are
-                            presented on the Map UI ("What's Here") instead. Hidden
-                            when it would merely echo the dispatch_code badge. */}
-                        {(() => {
-                          const szb = sectionZoneBeatCombined(selectedCall.sector_id, selectedCall.zone_id, selectedCall.beat_id);
-                          if (!szb || szb === selectedCall.dispatch_code) return null;
-                          return (
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              title="Section / Zone / Beat (short code) — click to copy"
-                              onClick={() => { try { navigator.clipboard?.writeText(szb); } catch { /* clipboard unavailable */ } }}
-                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(szb); } catch { /* clipboard unavailable */ } } }}
-                              className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-rmpg-300 bg-rmpg-800/60 border border-rmpg-600/50 px-2 py-0.5 rounded-sm tracking-wider"
-                            >
-                              <span className="text-rmpg-500 mr-1">S/Z/B</span>{szb}
-                            </span>
-                          );
+                        <ZsbBadge
+                          zoneId={selectedCall.zone_id}
+                          beatId={selectedCall.beat_id}
+                          dispatchCode={selectedCall.dispatch_code}
+                          sectionCode={getSectionCode(selectedCall.sector_id ?? '')}
+                        />
+                        {selectedCall.sector_id && (() => {
+                          const area = getArea(selectedCall.sector_id);
+                          return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
+                        })()}
+                        {selectedCall.sector_id && (() => {
+                          // Police format: show the Spillman sector code ("SL1"), not the
+                          // numeric dispatch_sectors.id row key. Fall back to the id only
+                          // if the districts lookup hasn't loaded / has no code.
+                          const code = getSectionCode(selectedCall.sector_id) || sectionPrefix(selectedCall.zone_id || '') || selectedCall.sector_id;
+                          const name = sectionLabels.get(normalizeSectorId(selectedCall.sector_id)) || '';
+                          return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
+                        })()}
+                        {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
+                        {selectedCall.beat_id && (() => {
+                          // Show the leaf beat code (e.g. "C", not "SL1-HER/C") prefixed
+                          // to its name. getBeatLabel falls back to the raw code, so guard
+                          // against an "C — C" echo. Lookups stay keyed by the full code.
+                          const code = beatLeaf(selectedCall.beat_id);
+                          // Beat labels are "beat_name — beat_descriptor" and beat_name
+                          // usually IS the leaf code, so prefixing blindly echoes it
+                          // ("A1 — A1 — SSL/A1"). Only prepend when the label adds info.
+                          const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
+                          const text = !label || label === selectedCall.beat_id || label === code ? code
+                            : label.startsWith(`${code} — `) ? label
+                            : `${code} — ${label}`;
+                          return <span className="text-rmpg-200" title="Beat (within zone)"><span className="text-rmpg-400">Beat:</span> {text}</span>;
                         })()}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
@@ -4952,8 +4977,8 @@ export default function DispatchPage() {
                 {/* ── SUBJECT/THREAT INFO — Persons tab ─── */}
                 {/* Boolean() — num_subjects/num_victims 0 would otherwise leak as "0". */}
                 {(detailTab === 'info' || detailTab === 'persons') && Boolean(isEditing || (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') || selectedCall.injuries_reported || selectedCall.num_subjects || selectedCall.subject_description || selectedCall.vehicle_description || selectedCall.direction_of_travel || callPersons.length > 0 || callVehicles.length > 0) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Subject / Threat Info
                     </label>
                     {/* Aggregate threat posture — rolls the call's own flags +
@@ -4961,24 +4986,19 @@ export default function DispatchPage() {
                         stolen) into one officer-safety read so a unit sees the
                         danger before responding. */}
                     {(() => {
-                      const p = callPosture(selectedCall, callPersons, callVehicles);
+                      const p = callPosture(selectedCall);
                       if (p.level === 'clear') return null;
                       const t = BADGE_TONES[p.tone];
-                      const linked = [
-                        callPersons.length ? `${callPersons.length} subject${callPersons.length === 1 ? '' : 's'}` : '',
-                        callVehicles.length ? `${callVehicles.length} vehicle${callVehicles.length === 1 ? '' : 's'}` : '',
-                      ].filter(Boolean).join(' · ');
                       return (
                         <div
                           className={`flex items-center gap-2 px-2 py-1 mb-2 rounded-[2px] ${p.pulse ? 'animate-led-pulse' : ''}`}
                           style={{ color: t.text, background: t.bg, border: `1px solid ${t.border}`, boxShadow: p.level === 'critical' ? `0 0 8px ${t.glow}` : undefined }}
-                          title="Aggregate officer-safety posture from this call + its linked subjects/vehicles"
+                          title="Officer-safety posture from this call's own threat flags"
                         >
                           <Shield className="w-3.5 h-3.5 flex-shrink-0" />
                           <span className="text-[10px] font-bold uppercase tracking-wider">
                             {p.label}{p.level === 'critical' ? ' — EXERCISE CAUTION' : ''}
                           </span>
-                          {linked && <span className="text-[9px] opacity-80 ml-auto whitespace-nowrap">{linked} linked</span>}
                         </div>
                       );
                     })()}
@@ -4987,15 +5007,15 @@ export default function DispatchPage() {
                       return (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input id="ff-dispatchpage-28" type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input id="ff-dispatchpage-29" type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Weapons</label>
-                            <select id="ff-dispatchpage-30" className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
+                            <select className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
                               {WEAPONS_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                             {(editData.weapons_involved === 'Other' || weaponsIsOther) && (
-                              <input id="ff-dispatchpage-31" type="text" className="input-dark text-xs mt-1" placeholder="Specify weapon..." value={weaponsIsOther ? editData.weapons_involved : ''} onChange={(e) => updateEditField('weapons_involved', e.target.value || 'Other')} />
+                              <input type="text" className="input-dark text-xs mt-1" placeholder="Specify weapon..." value={weaponsIsOther ? editData.weapons_involved : ''} onChange={(e) => updateEditField('weapons_involved', e.target.value || 'Other')} />
                             )}
                           </div>
                         </div>
@@ -5003,13 +5023,10 @@ export default function DispatchPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Persons</label>
-                            <select id="ff-dispatchpage-32" className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
-                              <option value="suspect">Suspect</option>
-                              <option value="victim">Victim</option>
-                              <option value="witness">Witness</option>
-                              <option value="reporting_party">Reporting Party</option>
-                              <option value="involved">Involved</option>
-                              <option value="other">Other</option>
+                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
+                              {linkOptions.person_role.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
                             </select>
                           </div>
                           {callPersons.length > 0 && (
@@ -5026,7 +5043,7 @@ export default function DispatchPage() {
                             </div>
                           )}
                           <div className="relative" ref={personDropdownRef}>
-                            <input id="ff-dispatchpage-33" type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
+                            <input type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
                             {showPersonDropdown && personSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {personSearchResults.map((p: any) => (
@@ -5036,7 +5053,7 @@ export default function DispatchPage() {
                                     updateEditField('subject_description', desc);
                                     setShowPersonDropdown(false);
                                   }}>
-                                    <span className="font-semibold text-white">{p.last_name}, {p.first_name}</span>
+                                    <span className="font-semibold text-rmpg-100">{p.last_name}, {p.first_name}</span>
                                     {p.dob && <span className="text-rmpg-400 ml-1">DOB: {p.dob}</span>}
                                     {p.address && <span className="text-rmpg-500 ml-1 text-[9px]">— {p.address}</span>}
                                   </button>
@@ -5054,13 +5071,10 @@ export default function DispatchPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Vehicles</label>
-                            <select id="ff-dispatchpage-34" className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
-                              <option value="suspect_vehicle">Suspect Vehicle</option>
-                              <option value="victim_vehicle">Victim Vehicle</option>
-                              <option value="witness_vehicle">Witness Vehicle</option>
-                              <option value="involved">Involved</option>
-                              <option value="evidence">Evidence</option>
-                              <option value="other">Other</option>
+                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
+                              {linkOptions.vehicle_role.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
                             </select>
                           </div>
                           {callVehicles.length > 0 && (
@@ -5076,7 +5090,7 @@ export default function DispatchPage() {
                             </div>
                           )}
                           <div className="relative" ref={vehicleDropdownRef}>
-                            <input id="ff-dispatchpage-35" type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
+                            <input type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
                             {showVehicleDropdown && vehicleSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {vehicleSearchResults.map((v: any) => (
@@ -5086,7 +5100,7 @@ export default function DispatchPage() {
                                     updateEditField('vehicle_description', desc);
                                     setShowVehicleDropdown(false);
                                   }}>
-                                    <span className="font-semibold text-white">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
+                                    <span className="font-semibold text-rmpg-100">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
                                     {v.plate_number && <span className="text-brand-400 ml-1">PLT: {v.plate_number}{v.plate_state ? `/${v.plate_state}` : ''}</span>}
                                     {v.owner_first_name && <span className="text-rmpg-400 ml-1 text-[9px]">Owner: {v.owner_last_name}, {v.owner_first_name}</span>}
                                   </button>
@@ -5100,15 +5114,59 @@ export default function DispatchPage() {
                             )}
                           </div>
                         </div>
+                        {/* ── Linked Businesses ── */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <label className="text-[9px] text-brand-gold-500">Linked Businesses</label>
+                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkBusinessRole} onChange={(e) => setLinkBusinessRole(e.target.value)}>
+                              {linkOptions.business_role.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {callBusinesses.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1">
+                              {callBusinesses.map((cb: any) => (
+                                <span key={cb.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cb.role || '').replace(/_/g, ' ')}</span>
+                                  {cb.name}
+                                  {cb.business_type && <span className="text-rmpg-500">{cb.business_type}</span>}
+                                  <button type="button" onClick={() => unlinkBusinessFromCall(selectedCall.id, cb.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="relative" ref={businessDropdownRef}>
+                            <input type="text" className="input-dark text-xs" placeholder="Search business records to link..." value={businessQuery} onChange={(e) => searchBusinesses(e.target.value)} onFocus={() => { if (businessSearchResults.length > 0) setShowBusinessDropdown(true); }} />
+                            {showBusinessDropdown && businessSearchResults.length > 0 && (
+                              <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
+                                {businessSearchResults.map((b: any) => (
+                                  <button type="button" key={b.id} className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0" onClick={() => {
+                                    linkBusinessToCall(selectedCall.id, b.id, linkBusinessRole);
+                                    setBusinessQuery(''); setShowBusinessDropdown(false);
+                                  }}>
+                                    <span className="font-semibold text-rmpg-100">{b.name}</span>
+                                    {b.address && <span className="text-rmpg-500 ml-1 text-[9px]">— {b.address}</span>}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {businessQuery.trim().length >= 2 && businessSearchResults.length === 0 && (
+                              <button type="button" onClick={() => quickAddBusiness(selectedCall.id, businessQuery.trim(), linkBusinessRole)} className="mt-0.5 inline-flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40 hover:bg-brand-900/50 transition-colors">
+                                <PlusCircle className="w-3 h-3" /> Add "{businessQuery.trim()}"
+                              </button>
+                            )}
+                          </div>
+                        </div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Direction of Travel</label>
-                          <select id="ff-dispatchpage-36" className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
+                          <select className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
                             {DIRECTION_OPTIONS.map(d => <option key={d} value={d}>{d || '— Select —'}</option>)}
                           </select>
                         </div>
                         <div className="flex items-center gap-4 mt-1">
                           <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer">
-                            <input id="ff-dispatchpage-37" type="checkbox" checked={editData.injuries_reported} onChange={(e) => updateEditField('injuries_reported', e.target.checked)} className="accent-red-500" />
+                            <input type="checkbox" checked={editData.injuries_reported} onChange={(e) => updateEditField('injuries_reported', e.target.checked)} className="accent-red-500" />
                             Injuries
                           </label>
                         </div>
@@ -5132,7 +5190,7 @@ export default function DispatchPage() {
                             {callPersons.map((cp: any) => (
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cp.role || '').replace(/_/g, ' ')}</span>
-                                <span className="text-white font-semibold">{cp.last_name}, {cp.first_name}</span>
+                                <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
                                 <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{cp.race}</span>}
@@ -5148,7 +5206,7 @@ export default function DispatchPage() {
                             {callVehicles.map((cv: any) => (
                               <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{(cv.role || '').replace(/_/g, ' ')}</span>
-                                <span className="text-white font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
+                                <span className="text-rmpg-100 font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
                                 {cv.plate_number && <span className="text-brand-400">PLT: {cv.plate_number}{cv.plate_state ? `/${cv.plate_state}` : ''}</span>}
                                 {cv.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(cv.stolen_status.toLowerCase()) && <span className="text-red-400 font-bold uppercase">{cv.stolen_status.replace(/_/g, ' ')}</span>}
                               </div>
@@ -5162,8 +5220,8 @@ export default function DispatchPage() {
 
                 {/* ── SCENE DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Thermometer className="w-3 h-3" /> Scene / Additional
                     </label>
                     {isEditing ? (() => {
@@ -5173,52 +5231,52 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Scene Safety</label>
-                            <select id="ff-dispatchpage-38" className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
+                            <select className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
                               {SCENE_SAFETY_OPTIONS.map(s => <option key={s} value={s}>{s || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Weather</label>
-                            <select id="ff-dispatchpage-39" className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
+                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
                               {WEATHER_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Lighting</label>
-                            <select id="ff-dispatchpage-40" className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
+                            <select className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
                               {LIGHTING_OPTIONS.map(l => <option key={l} value={l}>{l || '— Select —'}</option>)}
                             </select>
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-41" type="checkbox" checked={editData.alcohol_involved} onChange={(e) => updateEditField('alcohol_involved', e.target.checked)} className="accent-amber-500" /> Alcohol</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-42" type="checkbox" checked={editData.drugs_involved} onChange={(e) => updateEditField('drugs_involved', e.target.checked)} className="accent-red-500" /> Drugs</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-43" type="checkbox" checked={editData.domestic_violence} onChange={(e) => updateEditField('domestic_violence', e.target.checked)} className="accent-red-500" /> DV</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-44" type="checkbox" checked={editData.supervisor_notified} onChange={(e) => updateEditField('supervisor_notified', e.target.checked)} className="accent-brand-500" /> Supervisor Notified</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-45" type="checkbox" checked={editData.le_notified} onChange={(e) => updateEditField('le_notified', e.target.checked)} className="accent-brand-500" /> LE Notified</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.alcohol_involved} onChange={(e) => updateEditField('alcohol_involved', e.target.checked)} className="accent-amber-500" /> Alcohol</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.drugs_involved} onChange={(e) => updateEditField('drugs_involved', e.target.checked)} className="accent-red-500" /> Drugs</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.domestic_violence} onChange={(e) => updateEditField('domestic_violence', e.target.checked)} className="accent-red-500" /> DV</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.supervisor_notified} onChange={(e) => updateEditField('supervisor_notified', e.target.checked)} className="accent-brand-500" /> Supervisor Notified</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.le_notified} onChange={(e) => updateEditField('le_notified', e.target.checked)} className="accent-brand-500" /> LE Notified</label>
                         </div>
                         {editData.le_notified && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
                               <label className="text-[9px] text-brand-gold-500">LE Agency</label>
-                              <select id="ff-dispatchpage-46" className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
+                              <select className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
                                 {LE_AGENCY_OPTIONS.map(a => <option key={a} value={a}>{a || '— Select —'}</option>)}
                               </select>
                               {(editData.le_agency === 'Other — See Notes' || leIsOther) && (
-                                <input id="ff-dispatchpage-47" type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
+                                <input type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
                               )}
                             </div>
-                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input id="ff-dispatchpage-48" type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
                           </div>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input id="ff-dispatchpage-49" type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input id="ff-dispatchpage-50" type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
                         </div>
-                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea id="ff-dispatchpage-51" className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
+                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Responding Officer</label>
-                          <select id="ff-dispatchpage-52" className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
+                          <select className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
                             <option value="">— Select Officer —</option>
                             {officers.map(o => (
                               <option key={o.id} value={`${o.full_name}${o.badge_number ? ` (#${o.badge_number})` : ''}`}>
@@ -5250,15 +5308,15 @@ export default function DispatchPage() {
 
                 {/* ── PSO CLIENT REQUEST DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.pso_requestor_name || selectedCall.pso_service_type || selectedCall.pso_billing_code || selectedCall.pso_authorization || selectedCall.incident_type === 'pso_client_request') && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
-                        {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                        {(selectedCall.pso_attempt_number || 1) >= 1 && (selectedCall.pso_requestor_name || selectedCall.pso_service_type) && (
                           isAdminOrManager && !isEditing ? (
-                            <select id="ff-dispatchpage-53"
+                            <select
                               className="ml-1.5 px-1 py-0 text-[8px] font-bold rounded-sm cursor-pointer"
-                              style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto', minWidth: '90px' }}
+                              style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)', appearance: 'auto', minWidth: '90px' }}
                               value={selectedCall.pso_attempt_number || 1}
                               onChange={async (e) => {
                                 const newAttempt = parseInt(e.target.value, 10);
@@ -5280,7 +5338,7 @@ export default function DispatchPage() {
                               ))}
                             </select>
                           ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
-                            <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                            <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)' }}>
                               {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
                             </span>
                           ) : null
@@ -5294,14 +5352,14 @@ export default function DispatchPage() {
                         const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
                         if (elapsed >= 72 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: '#ef444440', border: '1px solid #ef444460', color: '#f87171' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 38%, transparent)', color: 'var(--sev-critical)' }}>
                               72HR OVERDUE — RE-DISPATCH REQUIRED
                             </span>
                           );
                         }
                         if (elapsed >= 48 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
                               {Math.floor(hoursLeft)}HR UNTIL DEADLINE
                             </span>
                           );
@@ -5311,7 +5369,7 @@ export default function DispatchPage() {
                       {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                         <button type="button"
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
-                          style={{ background: '#d4a01720', borderColor: '#d4a01740', color: '#d4a017' }}
+                          style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}
                           onClick={async () => {
                             const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                             const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
@@ -5336,17 +5394,33 @@ export default function DispatchPage() {
                         </button>
                       )}
                     </div>
+                    {(selectedCall.client_id || editData.client_id) && (() => {
+                      const cid = String(editData.client_id || selectedCall.client_id);
+                      const cli = clientsList.find((c) => String(c.id) === cid);
+                      const contractId = editData.contract_id || selectedCall.contract_id;
+                      const billing = editData.pso_billing_code || selectedCall.pso_billing_code;
+                      const auth = editData.pso_authorization || selectedCall.pso_authorization;
+                      return (
+                        <div className="mb-2 inline-flex flex-wrap items-center gap-2 px-2 py-1 bg-brand-900/20 border border-brand-700/40 rounded-sm text-[10px]">
+                          <span className="text-brand-gold-500 uppercase font-black text-[8px] tracking-wide">Client</span>
+                          <span className="text-rmpg-100 font-semibold">{cli?.name || `#${cid}`}</span>
+                          {contractId && <span className="text-rmpg-300">Contract: {contractId}</span>}
+                          {billing && <span className="text-rmpg-300">Billing: {billing}</span>}
+                          {auth && <span className="text-rmpg-300">Auth: {auth}</span>}
+                        </div>
+                      );
+                    })()}
                     {isEditing ? (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input id="ff-dispatchpage-54" type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input id="ff-dispatchpage-55" type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input id="ff-dispatchpage-56" type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Service Type</label>
-                            <select id="ff-dispatchpage-57" className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
+                            <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
                               <option value="">— Select Service Type —</option>
                               <optgroup label="Process Service">
                                 <option value="process_service">Process Service (General)</option>
@@ -5396,11 +5470,11 @@ export default function DispatchPage() {
                               </optgroup>
                             </select>
                           </div>
-                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input id="ff-dispatchpage-58" type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input id="ff-dispatchpage-59" type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input id="ff-dispatchpage-60" type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
                         </div>
                       </div>
                     ) : (
@@ -5408,22 +5482,22 @@ export default function DispatchPage() {
                         {/* Prominent client/requestor badges */}
                         <div className="flex flex-wrap gap-1.5">
                           {selectedCall.pso_requestor_name && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-sm" style={{ background: '#d4a01718', border: '1px solid #d4a01740', color: '#fbbf24' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-sm" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.09)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--sev-warn-soft)' }}>
                               <Building2 style={{ width: 10, height: 10 }} /> {selectedCall.pso_requestor_name}
                             </span>
                           )}
                           {selectedCall.pso_billing_code && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#22c55e15', border: '1px solid #22c55e35', color: '#86efac' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-ok) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-ok) 21%, transparent)', color: 'var(--sev-ok-soft)' }}>
                               {selectedCall.pso_billing_code}
                             </span>
                           )}
                           {selectedCall.pso_authorization && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: '#88888815', border: '1px solid #88888835', color: '#cccccc' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--spm-text-muted) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 21%, transparent)', color: 'var(--spm-text)' }}>
                               AUTH: {selectedCall.pso_authorization}
                             </span>
                           )}
                           {selectedCall.contract_id && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: '#a855f715', border: '1px solid #a855f735', color: '#c084fc' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-special) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-special) 21%, transparent)', color: 'var(--sev-special-soft)' }}>
                               Contract: {selectedCall.contract_id}
                             </span>
                           )}
@@ -5439,19 +5513,19 @@ export default function DispatchPage() {
                           const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
                           const remaining = deadline.getTime() - Date.now();
                           if (remaining <= 0) return (
-                            <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: '#f87171' }}>
+                            <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: 'var(--sev-critical)' }}>
                               72HR DEADLINE PASSED
                             </div>
                           );
                           const hrs = Math.floor(remaining / 3600000);
                           const mins = Math.floor((remaining % 3600000) / 60000);
                           return (
-                            <div className="text-[10px] font-mono" style={{ color: hrs < 12 ? '#f87171' : hrs < 24 ? '#fbbf24' : '#4ade80' }}>
+                            <div className="text-[10px] font-mono" style={{ color: hrs < 12 ? 'var(--sev-critical)' : hrs < 24 ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>
                               {hrs}h {mins}m until 72hr deadline
                             </div>
                           );
                         })()}
-                        {!selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
+                        {!isDetailLoading && !selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
                           <span className="text-rmpg-500 italic text-xs">No PSO details entered yet</span>
                         )}
                       </div>
@@ -5463,20 +5537,22 @@ export default function DispatchPage() {
                         ? (() => { try { return JSON.parse(selectedCall.pso_service_windows as string); } catch { return null; } })()
                         : selectedCall.pso_service_windows;
                       const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
-                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
                       const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
+                      // Only show when at least one window is configured
+                      if (metCount === 0) return null;
+                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
                       return (
                         <div className="mt-2 pt-2 border-t border-rmpg-700">
                           <div className="flex items-center gap-2 mb-1.5">
                             <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400">Service Windows</span>
                             <span className="text-[8px] font-mono px-1 rounded-sm" style={{
-                              background: allMet ? '#22c55e20' : '#f59e0b20',
-                              border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
-                              color: allMet ? '#4ade80' : '#fbbf24',
+                              background: allMet ? 'color-mix(in srgb, var(--sev-ok) 13%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 13%, transparent)',
+                              border: `1px solid ${allMet ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'}`,
+                              color: allMet ? 'var(--sev-ok)' : 'var(--sev-warn-soft)',
                             }}>
                               {metCount}/4
                             </span>
-                            {allMet && <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: '#4ade80' }}>✓ Due Diligence Complete</span>}
+                            {allMet && <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: 'var(--sev-ok)' }}>✓ Due Diligence Complete</span>}
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {([
@@ -5486,11 +5562,11 @@ export default function DispatchPage() {
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
                               <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
-                                background: met ? '#22c55e10' : '#ef444410',
-                                border: `1px solid ${met ? '#22c55e30' : '#ef444430'}`,
-                                color: met ? '#86efac' : '#fca5a5',
+                                background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
+                                border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
+                                color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)',
                               }}>
-                                <span style={{ color: met ? '#4ade80' : '#ef4444', fontSize: '8px' }}>{met ? '●' : '○'}</span>
+                                <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)', fontSize: '8px' }}>{met ? '●' : '○'}</span>
                                 {label}
                               </span>
                             ))}
@@ -5509,8 +5585,8 @@ export default function DispatchPage() {
                   ? ['pso_client_request', 'process_service'].includes(editData.incident_type || selectedCall.incident_type)
                   : (['pso_client_request', 'process_service'].includes(selectedCall.incident_type) || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
                 ) && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <FileText className="w-3 h-3" /> Process Service Details
                       {!isEditing && selectedCall.process_service_result && (
                         <span className={`ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm ${
@@ -5534,7 +5610,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
-                            <select id="ff-dispatchpage-61" className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
+                            <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
                               <option value="">— Select Document Type —</option>
                               <optgroup label="Civil Process — General">
                                 <option value="subpoena">Subpoena</option>
@@ -5633,25 +5709,47 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Serve To (Name)</label>
-                            <input id="ff-dispatchpage-62" type="text" className="input-dark text-xs" placeholder="Person to be served" value={editData.process_served_to || ''} onChange={(e) => updateEditField('process_served_to', e.target.value)} />
+                            <input type="text" className="input-dark text-xs" placeholder="Person to be served" value={editData.process_served_to || ''} onChange={(e) => updateEditField('process_served_to', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Attempts</label>
-                            <input id="ff-dispatchpage-63" type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
+                            <input type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="sm:col-span-2">
+                            <label className="text-[9px] text-amber-400">Court</label>
+                            <input
+                              type="text"
+                              className="input-dark text-xs w-full"
+                              placeholder="e.g., Third District Court — Salt Lake County"
+                              value={editData.court_name || ''}
+                              onChange={(e) => updateEditField('court_name', e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-amber-400">Case #</label>
+                            <input
+                              type="text"
+                              className="input-dark text-xs w-full"
+                              placeholder="Court case number"
+                              value={editData.case_number || ''}
+                              onChange={(e) => updateEditField('case_number', e.target.value)}
+                            />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div className="sm:col-span-1">
                             <label className="text-[9px] text-amber-400">Service Address</label>
-                            <input id="ff-dispatchpage-64" type="text" className="input-dark text-xs w-full" placeholder="Address for service" value={editData.process_served_address || ''} onChange={(e) => updateEditField('process_served_address', e.target.value)} />
+                            <input type="text" className="input-dark text-xs w-full" placeholder="Address for service" value={editData.process_served_address || ''} onChange={(e) => updateEditField('process_served_address', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Served At</label>
-                            <input id="ff-dispatchpage-65" type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
+                            <input type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Service Result</label>
-                            <select id="ff-dispatchpage-66" className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
+                            <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
                               <optgroup label="Successful Service">
                                 <option value="served">Personal Service</option>
@@ -5715,7 +5813,7 @@ export default function DispatchPage() {
                         {selectedCall.process_served_to && <span className="text-rmpg-200"><span className="text-rmpg-400">Serve To:</span> {selectedCall.process_served_to}</span>}
                         {selectedCall.process_served_address && <span className="text-rmpg-200"><span className="text-rmpg-400">Address:</span> {selectedCall.process_served_address}</span>}
                         {selectedCall.process_served_at && <span className="text-rmpg-200"><span className="text-rmpg-400">Served At:</span> {selectedCall.process_served_at}</span>}
-                        {!selectedCall.process_service_type && !selectedCall.process_served_to && (
+                        {!isDetailLoading && !selectedCall.process_service_type && !selectedCall.process_served_to && (
                           <span className="text-rmpg-500 italic">No process service details entered yet</span>
                         )}
                       </div>
@@ -5724,11 +5822,11 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
-                {detailTab === 'info' && !isEditing && ['pso_client_request', 'process_service'].includes(String(selectedCall.incident_type)) && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                {detailTab === 'info' && !isEditing && ['pso_client_request', 'process_service'].includes(String(selectedCall.incident_type)) && Array.isArray(selectedCall.visit_history) && selectedCall.visit_history.length > 0 && (
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History
-                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: '#88888820', border: '1px solid #88888840', color: '#aaaaaa' }}>
+                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--spm-text-muted) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 25%, transparent)', color: 'var(--spm-text)' }}>
                         {selectedCall.visit_history.length} PRIOR {selectedCall.visit_history.length === 1 ? 'VISIT' : 'VISITS'}
                       </span>
                     </label>
@@ -5736,8 +5834,13 @@ export default function DispatchPage() {
                       {selectedCall.visit_history.map((visit) => {
                         let unitsList: string[] = [];
                         try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
-                        const totalMiles = (visit.starting_mileage != null && visit.ending_mileage != null)
-                          ? (visit.ending_mileage - visit.starting_mileage).toFixed(1)
+                        // Coerce + validate: the `!= null` guard alone passes for
+                        // sentinel text ("None"/"0") that this DB stores, and
+                        // (string - string) then renders "NaN mi".
+                        const startMi = Number(visit.starting_mileage);
+                        const endMi = Number(visit.ending_mileage);
+                        const totalMiles = Number.isFinite(startMi) && Number.isFinite(endMi)
+                          ? (endMi - startMi).toFixed(1)
                           : null;
                         return (
                           <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-2.5 py-2">
@@ -5748,7 +5851,7 @@ export default function DispatchPage() {
                                 </span>
                                 <span className={`text-[8px] font-bold px-1 py-0 rounded-sm ${
                                   visit.status === 'cleared' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
-                                  : visit.status === 'closed' ? 'bg-gray-900/40 border border-gray-700/50 text-gray-400'
+                                  : visit.status === 'closed' ? 'bg-surface-sunken border border-border-default text-rmpg-400'
                                   : visit.status === 'cancelled' ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                                   : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
                                 }`}>
@@ -5786,33 +5889,33 @@ export default function DispatchPage() {
 
                 {/* ── QUICK-TOGGLE FLAGS — Flags tab ─── */}
                 {detailTab === 'flags' && !isEditing && (
-                  <div className="border-t border-[#2b2b2b] pt-3 mb-3">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Quick Flags
                     </label>
                     <div className="flex flex-wrap gap-1.5">
                       {([
-                        { field: 'alcohol_involved', label: 'Alcohol', onBg: '#f59e0b30', onBorder: '#f59e0b50', onText: '#fbbf24' },
-                        { field: 'drugs_involved', label: 'Drugs', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'domestic_violence', label: 'DV', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'injuries_reported', label: 'Injuries', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'supervisor_notified', label: 'Supervisor', onBg: '#88888830', onBorder: '#88888850', onText: '#aaaaaa' },
-                        { field: 'le_notified', label: 'LE Notified', onBg: '#88888830', onBorder: '#88888850', onText: '#aaaaaa' },
-                        { field: 'mental_health_crisis', label: 'Mental Health', onBg: '#a855f730', onBorder: '#a855f750', onText: '#c084fc' },
-                        { field: 'juvenile_involved', label: 'Juvenile', onBg: '#f9731630', onBorder: '#f9731650', onText: '#fb923c' },
-                        { field: 'felony_in_progress', label: 'Felony', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'officer_safety_caution', label: 'Officer Safety', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'gang_related', label: 'Gang', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'body_camera_active', label: 'Body Cam', onBg: '#22c55e30', onBorder: '#22c55e50', onText: '#4ade80' },
-                        { field: 'k9_requested', label: 'K9', onBg: '#88888830', onBorder: '#88888850', onText: '#22c55e' },
-                        { field: 'ems_requested', label: 'EMS', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'fire_requested', label: 'Fire', onBg: '#f9731630', onBorder: '#f9731650', onText: '#fb923c' },
-                        { field: 'hazmat', label: 'HazMat', onBg: '#eab30830', onBorder: '#eab30850', onText: '#fbbf24' },
-                        { field: 'evidence_collected', label: 'Evidence', onBg: '#10b98130', onBorder: '#10b98150', onText: '#34d399' },
-                        { field: 'photos_taken', label: 'Photos', onBg: '#88888830', onBorder: '#88888850', onText: '#aaaaaa' },
-                        { field: 'trespass_issued', label: 'Trespass', onBg: '#f59e0b30', onBorder: '#f59e0b50', onText: '#fbbf24' },
-                        { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
-                        { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: '#ef444430', onBorder: '#ef444450', onText: '#f87171' },
+                        { field: 'alcohol_involved', label: 'Alcohol', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
+                        { field: 'drugs_involved', label: 'Drugs', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'domestic_violence', label: 'DV', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'injuries_reported', label: 'Injuries', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'supervisor_notified', label: 'Supervisor', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
+                        { field: 'le_notified', label: 'LE Notified', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
+                        { field: 'mental_health_crisis', label: 'Mental Health', onBg: 'color-mix(in srgb, var(--sev-special) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', onText: 'var(--sev-special-soft)' },
+                        { field: 'juvenile_involved', label: 'Juvenile', onBg: 'color-mix(in srgb, var(--sev-high) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-high) 31%, transparent)', onText: 'var(--sev-high)' },
+                        { field: 'felony_in_progress', label: 'Felony', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'officer_safety_caution', label: 'Officer Safety', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'gang_related', label: 'Gang', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'body_camera_active', label: 'Body Cam', onBg: 'color-mix(in srgb, var(--sev-ok) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', onText: 'var(--sev-ok)' },
+                        { field: 'k9_requested', label: 'K9', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--sev-ok)' },
+                        { field: 'ems_requested', label: 'EMS', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'fire_requested', label: 'Fire', onBg: 'color-mix(in srgb, var(--sev-high) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-high) 31%, transparent)', onText: 'var(--sev-high)' },
+                        { field: 'hazmat', label: 'HazMat', onBg: 'color-mix(in srgb, var(--sev-caution) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-caution) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
+                        { field: 'evidence_collected', label: 'Evidence', onBg: 'color-mix(in srgb, var(--sev-ok) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', onText: 'var(--sev-ok-soft)' },
+                        { field: 'photos_taken', label: 'Photos', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
+                        { field: 'trespass_issued', label: 'Trespass', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
+                        { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+                        { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
                       ] as const).map(({ field, label, onBg, onBorder, onText }) => {
                         const isOn = !!(selectedCall as any)[field];
                         return (
@@ -5821,7 +5924,14 @@ export default function DispatchPage() {
                             className="px-2 py-0.5 text-[9px] font-semibold rounded-sm transition-colors border"
                             style={isOn
                               ? { background: onBg, borderColor: onBorder, color: onText }
-                              : { background: 'var(--color-rmpg-700, #1c1c1c)', borderColor: 'var(--color-rmpg-600, #2c2c2c)', color: 'var(--color-rmpg-400, #888)' }
+                              // Off-state for Quick Flags chips. The previous
+                              // var(--color-rmpg-*) tokens DON'T EXIST (the
+                              // canonical names are --rmpg-*-rgb for Tailwind
+                              // opacity; --color-rmpg-* was never defined), so
+                              // every chip was silently falling back to the
+                              // off-palette '#888' default. Routed through the
+                              // real spillman muted token now.
+                              : { background: 'var(--spm-border)', borderColor: 'var(--spm-border)', color: 'var(--spm-text-muted)' }
                             }
                             onClick={async () => {
                               const newVal = !isOn;
@@ -5855,9 +5965,9 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── ACTIVITY LOG / TIMELINE — Timeline tab ─── */}
-                <div className="border-t border-[#2b2b2b] pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
+                <div className="border-t border-[var(--spm-border)] pt-3 mb-3" style={{ display: detailTab === 'timeline' ? undefined : 'none' }}>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="field-label !flex items-center gap-1.5" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                    <label className="field-label !flex items-center gap-1.5" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Activity Log
                     </label>
                     <button type="button" onClick={() => setShowAddTimeline(!showAddTimeline)} className="toolbar-btn" style={{ padding: '1px 6px', fontSize: '9px' }}>
@@ -5866,7 +5976,7 @@ export default function DispatchPage() {
                   </div>
                   {showAddTimeline && (
                     <div className="flex gap-2 mb-2">
-                      <input id="ff-dispatchpage-67" type="text" className="input-dark flex-1 text-xs" placeholder="New timeline entry..." spellCheck={true} value={newTimelineText}
+                      <input type="text" className="input-dark flex-1 text-xs" placeholder="New timeline entry..." spellCheck={true} value={newTimelineText}
                         onChange={(e) => setNewTimelineText(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleAddTimeline(); }}
                       />
@@ -5876,22 +5986,22 @@ export default function DispatchPage() {
                   {activityEntries.length > 0 ? (
                     <div className="space-y-1.5 max-h-60 overflow-y-auto">
                       {activityEntries.map((entry: any, idx: number) => {
-                        const actionColor = (entry.action || '').includes('dispatch') ? '#f59e0b' :
-                          (entry.action || '').includes('enroute') ? '#888888' :
-                          (entry.action || '').includes('onscene') || (entry.action || '').includes('on_scene') ? '#a855f7' :
-                          (entry.action || '').includes('clear') ? '#22c55e' :
-                          (entry.action || '').includes('note') ? '#666666' :
-                          '#888888';
+                        const actionColor = (entry.action || '').includes('dispatch') ? 'var(--sev-warn)' :
+                          (entry.action || '').includes('enroute') ? 'var(--spm-text-muted)' :
+                          (entry.action || '').includes('onscene') || (entry.action || '').includes('on_scene') ? 'var(--sev-special)' :
+                          (entry.action || '').includes('clear') ? 'var(--sev-ok)' :
+                          (entry.action || '').includes('note') ? 'var(--spm-text-muted)' :
+                          'var(--spm-text-muted)';
                         return (
-                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#18181820] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #2b2b2b' }}>
+                        <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[color-mix(in_srgb,var(--surface-sunken)_13%,transparent)] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid var(--border-default)' }}>
                           {/* Step connector dot */}
-                          <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0c0c0c' }} />
-                          <span className="text-[#888888] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
+                          <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid var(--surface-sunken)' }} />
+                          <span className="text-[var(--spm-text-muted)] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
                             {entry.created_at ? `${formatTime(entry.created_at)} (${timeAgo(entry.created_at)})` : '--'}
                           </span>
                           {editingTimelineId === String(entry.id) ? (
                             <div className="flex-1 flex gap-1">
-                              <input id="ff-dispatchpage-68" type="text" className="input-dark text-xs flex-1" value={editTimelineText}
+                              <input type="text" className="input-dark text-xs flex-1" value={editTimelineText}
                                 onChange={(e) => setEditTimelineText(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditTimeline(String(entry.id)); if (e.key === 'Escape') setEditingTimelineId(null); }}
                                 autoFocus
@@ -5905,12 +6015,12 @@ export default function DispatchPage() {
                             </div>
                           ) : (
                             <>
-                              <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
-                              <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#d4a017] text-[#888888] transition-colors" title="Edit">
+                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
+                              <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 flex items-center gap-0.5 transition-opacity">
+                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[var(--brand-gold)] text-[var(--spm-text-muted)] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
-                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[#888888] transition-colors" title="Delete">
+                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[var(--spm-text-muted)] transition-colors" title="Delete">
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
@@ -5921,38 +6031,43 @@ export default function DispatchPage() {
                       })}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center py-8 text-[#545454]">
-                      <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0c0c0c40', border: '1px solid #2b2b2b30' }}>
+                    <div className="flex flex-col items-center py-8 text-[var(--spm-text-muted)]">
+                      <div className="p-2.5 rounded-sm mb-2.5" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 19%, transparent)' }}>
                         <Clock className="w-5 h-5" style={{ opacity: 0.3 }} />
                       </div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Activity Recorded</p>
-                      <p className="text-[9px] text-[#404040]">Click "Add Entry" to start the activity log</p>
+                      <p className="text-[9px] text-[var(--spm-border)]">Click "Add Entry" to start the activity log</p>
                     </div>
                   )}
                 </div>
 
                 {/* Notes — fills remaining vertical space — Notes tab */}
-                <div className="border-t border-[#2b2b2b] pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
-                  <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                <div className="border-t border-[var(--spm-border)] pt-3 flex-1 flex flex-col min-h-0" style={{ display: detailTab === 'notes' ? undefined : 'none' }}>
+                  <label className="field-label !flex items-center gap-1.5 mb-2 flex-shrink-0" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                     <MessageSquare className="w-3 h-3" /> Notes
                   </label>
-                  <div className="space-y-1 mb-3 flex-1 overflow-y-auto">
+                  <div className="space-y-1 mb-3 flex-1 min-h-0 overflow-y-auto">
                     {(Array.isArray(selectedCall.notes) ? selectedCall.notes : []).length === 0 ? (
-                      <div className="flex flex-col items-center py-8 text-[#545454]">
-                        <div className="p-2.5 rounded-sm mb-2.5" style={{ background: '#0c0c0c40', border: '1px solid #2b2b2b30' }}>
+                      <div className="flex flex-col items-center py-8 text-[var(--spm-text-muted)]">
+                        <div className="p-2.5 rounded-sm mb-2.5" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 19%, transparent)' }}>
                           <MessageSquare className="w-5 h-5" style={{ opacity: 0.3 }} />
                         </div>
                         <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5">No Notes Yet</p>
-                        <p className="text-[9px] text-[#404040]">Add a note below to get started</p>
+                        <p className="text-[9px] text-[var(--spm-border)]">Add a note below to get started</p>
                       </div>
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
-                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#18181820]" style={{ borderLeft: '2px solid #88888840' }}>
-                        <span className="text-[#888888] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
-                        <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
+                      <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[color-mix(in_srgb,var(--surface-sunken)_13%,transparent)]" style={{ borderLeft: '2px solid var(--border-default)' }}>
+                        <span className="text-[var(--spm-text-muted)] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
+                        <span className="text-[var(--brand-gold)] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
-                            <textarea id="ff-dispatchpage-69" className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
+                            <NoteComposer
+                              value={editingNoteText}
+                              onChange={setEditingNoteText}
+                              onSubmit={() => handleEditNote(note.id, editingNoteText)}
+                              autoFocus
+                            />
                             <div className="flex gap-1">
                               <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] px-2 py-0.5" onClick={() => handleEditNote(note.id, editingNoteText)}>Save</button>
                               <button type="button" className="toolbar-btn text-[9px] px-2 py-0.5" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
@@ -5960,11 +6075,15 @@ export default function DispatchPage() {
                           </div>
                         ) : (
                           <>
-                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
-                            {isAdminOrManager && (
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                            <span className="text-rmpg-200 leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[var(--spm-text-muted)] text-[8px] ml-1">(edited)</span>}</span>
+                            {(canEditNote(note) || isAdminOrManager) && (
+                              <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex gap-0.5 shrink-0">
+                                {canEditNote(note) && (
+                                  <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-[var(--spm-text)] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                )}
+                                {isAdminOrManager && (
+                                  <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-[var(--sev-critical)] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                )}
                               </div>
                             )}
                           </>
@@ -5974,38 +6093,20 @@ export default function DispatchPage() {
                     )}
                   </div>
                   <div className="flex-shrink-0">
-                    {/* Formatting toolbar */}
-                    <div className="flex items-center gap-1 mb-1.5">
-                      <button type="button" title="Bold (Ctrl+B)" className="w-6 h-5 flex items-center justify-center text-[10px] font-black text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('**')}>B</button>
-                      <button type="button" title="Italic (Ctrl+I)" className="w-6 h-5 flex items-center justify-center text-[10px] italic font-semibold text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('*')}>I</button>
-                      <button type="button" title="Underline (Ctrl+U)" className="w-6 h-5 flex items-center justify-center text-[10px] underline text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]" onClick={() => wrapNoteSelection('__')}>U</button>
-                      <span className="text-[8px] text-[#545454] ml-2 font-mono select-none">Shift+Enter to submit</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <textarea id="ff-dispatchpage-70"
-                        ref={noteTextareaRef}
-                        className="input-dark flex-1 text-xs resize-none"
-                        rows={2}
-                        placeholder="Add note..."
-                        maxLength={2000}
-                        spellCheck={true}
-                        value={newNote}
-                        onChange={(e) => setNewNote(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); handleAddNote(); }
-                          if (e.key === 'b' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('**'); }
-                          if (e.key === 'i' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('*'); }
-                          if (e.key === 'u' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); wrapNoteSelection('__'); }
-                        }}
-                      />
-                      <button type="button" onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary self-end" disabled={!newNote.trim()}>
+                    <NoteComposer
+                      value={newNote}
+                      onChange={setNewNote}
+                      onSubmit={handleAddNote}
+                    />
+                    <div className="flex justify-end mt-1">
+                      <button type="button" onClick={handleAddNote} className="toolbar-btn toolbar-btn-primary" disabled={!newNote.trim()}>
                         Add
                       </button>
                     </div>
                     {/* Feature 20: Broadcast Note to all assigned units */}
                     {(selectedCall.assigned_units || []).length > 0 && (
                       <div className="flex gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
-                        <input id="ff-dispatchpage-71"
+                        <input
                           type="text"
                           className="input-dark flex-1 text-xs"
                           placeholder="Broadcast to all units on call..."
@@ -6018,7 +6119,7 @@ export default function DispatchPage() {
                           onClick={handleBroadcastNote}
                           className="toolbar-btn self-end"
                           disabled={!broadcastNoteText.trim()}
-                          style={{ background: '#a855f720', borderColor: '#a855f750', color: '#c084fc', padding: '2px 8px', fontSize: '9px' }}
+                          style={{ background: 'color-mix(in srgb, var(--sev-special) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', color: 'var(--sev-special-soft)', padding: '2px 8px', fontSize: '9px' }}
                           title="Send note to all assigned unit officers"
                         >
                           <Radio style={{ width: 9, height: 9 }} /> Broadcast
@@ -6030,8 +6131,8 @@ export default function DispatchPage() {
 
                 {/* Linked Incidents — Notes tab */}
                 {detailTab === 'notes' && linkedIncidents.length > 0 && (
-                  <div className="border-t border-[#2b2b2b] pt-3 flex-shrink-0">
-                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+                  <div className="border-t border-[var(--spm-border)] pt-3 flex-shrink-0">
+                    <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: 'var(--brand-gold)', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Link className="w-3 h-3" /> Linked Incidents
                     </label>
                     <div className="space-y-1 mt-1">
@@ -6041,11 +6142,11 @@ export default function DispatchPage() {
                           className="flex items-center gap-3 px-2.5 py-1.5 cursor-pointer transition-all duration-100 rounded-sm"
                           style={{ border: '1px solid transparent' }}
                           onClick={() => navigate(`/incidents/${inc.id}`)}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#18181830'; (e.currentTarget as HTMLElement).style.borderColor = '#2b2b2b40'; }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 19%, transparent)'; (e.currentTarget as HTMLElement).style.borderColor = 'color-mix(in srgb, var(--spm-border) 25%, transparent)'; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}
                         >
-                          <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgba(74,222,128,0.15)' }}>{inc.incident_number}</span>
-                          <span className="text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
+                          <span className="font-mono text-green-400 text-xs font-bold tabular-nums" style={{ textShadow: '0 0 6px rgb(var(--sev-ok-rgb) / 0.15)' }}>{inc.incident_number}</span>
+                          <span className="min-w-0 text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
                           <span className="text-xs text-rmpg-400 uppercase font-semibold">{(inc.status || '--').replace(/_/g, ' ')}</span>
                           {inc.officer_name && (
                             <span className="text-xs text-rmpg-300 ml-auto flex items-center gap-1">
@@ -6056,6 +6157,11 @@ export default function DispatchPage() {
                       ))}
                     </div>
                   </div>
+                )}
+
+                {/* ── DOCUMENTS TAB ─── */}
+                {detailTab === 'documents' && selectedCall.id && (
+                  <CallDocumentsPanel callId={Number(selectedCall.id)} />
                 )}
 
                 {/* ── ATTACHMENTS TAB ─── */}
@@ -6078,10 +6184,10 @@ export default function DispatchPage() {
                     ) : (
                       <div className="space-y-1">
                         {auditTrail.map((ev: any) => (
-                          <div key={ev.id} className="flex items-start gap-2 text-[10px] font-mono py-1 border-b border-[#1a1a1a]">
+                          <div key={ev.id} className="flex items-start gap-2 text-[10px] font-mono py-1 border-b border-[var(--spm-border)]">
                             <span className="text-rmpg-500 tabular-nums whitespace-nowrap">{(ev.created_at || '').slice(5, 16).replace('T', ' ')}</span>
                             <span className="text-amber-300 font-bold uppercase whitespace-nowrap">{ev.action}</span>
-                            <span className="text-rmpg-300 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
+                            <span className="text-rmpg-300 min-w-0 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
                             <span className="text-rmpg-400 whitespace-nowrap">{ev.user_name || ev.username || `#${ev.user_id ?? '?'}`}</span>
                           </div>
                         ))}
@@ -6096,7 +6202,7 @@ export default function DispatchPage() {
                 <div className="px-3">
                   <DispositionPrompt
                     callNumber={selectedCall.call_number}
-                    dispositionCodes={dispositionCodes}
+                    dispositionCodes={effectiveDispositionCodes}
                     onConfirm={handleConfirmClear}
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
@@ -6116,24 +6222,24 @@ export default function DispatchPage() {
 
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-[#888888]">
+            <div className="flex-1 flex items-center justify-center text-[var(--spm-text-muted)]">
               <div className="text-center">
-                <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0c0c0c60', border: '1px solid #2b2b2b40' }}>
+                <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 38%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-border) 25%, transparent)' }}>
                   <Radio className="w-7 h-7" style={{ opacity: 0.3 }} />
                 </div>
                 <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">Select a call to view details</p>
-                <p className="text-[10px] text-[#545454] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
-                <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[#545454]">
+                <p className="text-[10px] text-[var(--spm-text-muted)] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
+                <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[var(--spm-text-muted)]">
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">N</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[var(--spm-border)] rounded-sm bg-[color-mix(in_srgb,var(--surface-sunken)_25%,transparent)] text-[var(--spm-text-muted)]">N</kbd>
                     <span>New Call</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">P</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[var(--spm-border)] rounded-sm bg-[color-mix(in_srgb,var(--surface-sunken)_25%,transparent)] text-[var(--spm-text-muted)]">P</kbd>
                     <span>Quick PSO</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">R</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[var(--spm-border)] rounded-sm bg-[color-mix(in_srgb,var(--surface-sunken)_25%,transparent)] text-[var(--spm-text-muted)]">R</kbd>
                     <span>Refresh</span>
                   </div>
                 </div>
@@ -6172,7 +6278,7 @@ export default function DispatchPage() {
           )}
 
           {/* Dispatch Map Panel (right side, always visible) */}
-          <div className="w-[35%] border-l border-[#2b2b2b] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
+          <div className="w-[35%] border-l border-[var(--spm-border)] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
             {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
               <DispatchMiniMap
                 call={selectedCall}
@@ -6181,13 +6287,13 @@ export default function DispatchPage() {
                 onRouteUpdate={setRouteInfo}
               />
             ) : (
-              <div className="flex-1 flex items-center justify-center text-[#545454]">
+              <div className="flex-1 flex items-center justify-center text-[var(--spm-text-muted)]">
                 <div className="text-center">
-                  <div className="mx-auto mb-3 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0c0c0c50', border: '1px dashed #2b2b2b40' }}>
+                  <div className="mx-auto mb-3 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: 'color-mix(in srgb, var(--surface-sunken) 31%, transparent)', border: '1px dashed color-mix(in srgb, var(--spm-border) 25%, transparent)' }}>
                     <MapPin className="w-6 h-6" style={{ opacity: 0.25 }} />
                   </div>
                   <p className="text-[10px] font-mono font-bold uppercase tracking-widest mb-1">No Location Data</p>
-                  <p className="text-[8px] text-[#404040] leading-relaxed max-w-[160px] mx-auto">Select a geolocated call to display the dispatch map</p>
+                  <p className="text-[8px] text-[var(--spm-border)] leading-relaxed max-w-[160px] mx-auto">Select a geolocated call to display the dispatch map</p>
                 </div>
               </div>
             )}
@@ -6199,12 +6305,12 @@ export default function DispatchPage() {
         {/* ------------------------------------------------------------ */}
         <div className="h-[35%] flex flex-col overflow-hidden flex-shrink-0">
           <PanelTitleBar title="UNIT STATUS BOARD" icon={Radio}>
-            <span className="flex items-center gap-1 text-[9px] font-mono font-bold tabular-nums" style={{ color: '#4ade80' }}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
+            <span className="flex items-center gap-1 text-[9px] font-mono font-bold tabular-nums" style={{ color: 'var(--sev-ok)' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-ok)', boxShadow: '0 0 4px color-mix(in srgb, var(--sev-ok) 50%, transparent)' }} />
               {units.filter((u) => u.status === 'available').length} AVAIL
             </span>
             <span className="toolbar-separator" />
-            <span className="text-[9px] font-mono tabular-nums" style={{ color: '#666666' }}>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--spm-text-muted)' }}>
               {units.filter((u) => u.status !== 'off_duty').length} ON DUTY
             </span>
             <span className="toolbar-separator" />
@@ -6223,7 +6329,7 @@ export default function DispatchPage() {
               }}
               onCreateUnit={() => setShowCreateUnitModal(true)}
               onEditUnit={openEditUnit}
-              onDeleteUnit={isAdminOrManager ? (unit) => setDeletingUnit(unit) : undefined}
+              onDeleteUnit={(unit) => setDeletingUnit(unit)}
               selectedCallId={selectedCall?.id ?? null}
               assignedUnitIds={selectedCall?.assigned_units ?? []}
               onAssignUnit={selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? handleAssignUnit : undefined}
@@ -6239,14 +6345,14 @@ export default function DispatchPage() {
           onClick={() => setShowShortcutHelp(false)}
         >
           <div
-            className="bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm max-w-2xl w-[92%] max-h-[85vh] overflow-auto scrollbar-dark"
+            className="bg-surface-base border border-[var(--spm-border)] rounded-sm max-w-2xl w-[92%] max-h-[85vh] overflow-auto scrollbar-dark"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e2e] sticky top-0 bg-[#0a0a0a]">
-              <div className="flex items-center gap-2 text-[#d4a017] text-xs font-bold uppercase tracking-wider">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--spm-border)] sticky top-0 bg-surface-base">
+              <div className="flex items-center gap-2 text-[var(--brand-gold)] text-xs font-bold uppercase tracking-wider">
                 <Terminal className="w-3.5 h-3.5" /> Keyboard Shortcuts
               </div>
-              <button type="button" aria-label="Close" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-400 hover:text-white">
+              <button type="button" aria-label="Close" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -6293,7 +6399,7 @@ export default function DispatchPage() {
         >
           <div
             className="py-1 min-w-[190px] rounded-sm"
-            style={{ background: '#141414', border: '1px solid #2a2a2a', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--spm-border)', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
@@ -6341,7 +6447,7 @@ export default function DispatchPage() {
               {(['P1', 'P2', 'P3', 'P4'] as const).map(pri => (
                 <button key={pri} type="button" onClick={() => { handlePriorityChange(contextMenu.call.id, pri); setContextMenu(null); }}
                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${contextMenu.call.priority === pri ? 'ring-1 ring-white' : 'opacity-60 hover:opacity-100'}`}
-                  style={{ background: pri === 'P1' ? '#ef4444' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#888888' : '#555555', color: '#fff' }}>
+                  style={{ background: pri === 'P1' ? 'var(--sev-critical)' : pri === 'P2' ? 'var(--sev-warn)' : pri === 'P3' ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)', color: '#fff' }}>
                   {pri}
                 </button>
               ))}
@@ -6373,14 +6479,10 @@ export default function DispatchPage() {
                 <Copy style={{ width: 12, height: 12 }} /> Duplicate as New
               </button>
             )}
-            {canDeleteCall && (
-              <>
-                <div className="border-t border-rmpg-600 my-1" />
-                <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
-                  <Trash2 style={{ width: 12, height: 12 }} /> Remove
-                </button>
-              </>
-            )}
+            <div className="border-t border-rmpg-600 my-1" />
+            <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
+              <Trash2 style={{ width: 12, height: 12 }} /> Delete
+            </button>
           </div>
         </div>
       )}
@@ -6390,7 +6492,7 @@ export default function DispatchPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
             className="panel-beveled bg-surface-raised animate-in rounded-sm"
-            style={{ width: '440px', border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
+            style={{ width: '440px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (!quickTemplateAddress.trim() || quickTemplateSubmitting) return;
@@ -6415,23 +6517,23 @@ export default function DispatchPage() {
             <div className="panel-title-bar flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Send className="w-3.5 h-3.5 text-brand-400" />
-                <span className="text-xs font-bold text-white uppercase tracking-wider">Quick Dispatch</span>
+                <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Quick Dispatch</span>
               </div>
-              <button type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-white">
+              <button type="button" onClick={() => setQuickTemplateData(null)} className="text-rmpg-400 hover:text-rmpg-100">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="p-4 space-y-4">
               {/* Template banner */}
-              <div className="flex items-center gap-3 p-2 border border-rmpg-600" style={{ background: '#050505' }}>
+              <div className="flex items-center gap-3 p-2 border border-rmpg-600" style={{ background: 'var(--surface-sunken)' }}>
                 <span className={`text-xs font-bold px-2 py-0.5 border ${
                   quickTemplateData.priority === 'P1' ? 'border-red-500 text-red-400 bg-red-900/30' :
                   quickTemplateData.priority === 'P2' ? 'border-amber-500 text-amber-400 bg-amber-900/30' :
                   quickTemplateData.priority === 'P4' ? 'border-rmpg-500 text-rmpg-300 bg-rmpg-700/30' :
                   'border-brand-500 text-brand-400 bg-brand-900/30'
                 }`}>{quickTemplateData.priority}</span>
-                <span className="text-xs font-bold text-white">{quickTemplateData.name}</span>
+                <span className="text-xs font-bold text-rmpg-100">{quickTemplateData.name}</span>
                 <span className="text-[10px] text-rmpg-400 ml-auto">{formatIncidentType(quickTemplateData.incident_type)}</span>
               </div>
 
@@ -6519,20 +6621,20 @@ export default function DispatchPage() {
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
-          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
+          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
-                <span id={unitModalTitleId} className="text-sm font-bold text-white tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
+                <span id={unitModalTitleId} className="text-sm font-bold text-rmpg-100 tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
-              <button type="button" onClick={() => { setShowCreateUnitModal(false); resetUnitForm(); }} className="toolbar-btn ml-auto">
+              <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
                 <X style={{ width: 12, height: 12 }} />
               </button>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Call Sign *</label>
-                <input id="ff-dispatchpage-72"
+                <input
                   type="text"
                   className="input-dark text-sm w-full mt-1"
                   placeholder="e.g. PATROL-01, K9-01, SUPER-01"
@@ -6544,7 +6646,7 @@ export default function DispatchPage() {
               </div>
               <div>
                 <label className="field-label">Assigned Officer</label>
-                <select id="ff-dispatchpage-73"
+                <select
                   className="select-dark text-sm w-full mt-1"
                   value={newUnitOfficerId}
                   onChange={(e) => setNewUnitOfficerId(e.target.value)}
@@ -6559,7 +6661,7 @@ export default function DispatchPage() {
               </div>
               <div>
                 <label className="field-label">Status</label>
-                <select id="ff-dispatchpage-74"
+                <select
                   className="select-dark text-sm w-full mt-1"
                   value={newUnitStatus}
                   onChange={(e) => setNewUnitStatus(e.target.value)}
@@ -6570,69 +6672,10 @@ export default function DispatchPage() {
                   {editingUnit && <option value="dispatched">Dispatched</option>}
                   {editingUnit && <option value="enroute">En Route</option>}
                   {editingUnit && <option value="onscene">On Scene</option>}
-                  {editingUnit && <option value="out_of_service">Out of Service</option>}
                 </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="field-label">Vehicle</label>
-                  <input id="ff-dispatchpage-unit-vehicle"
-                    type="text"
-                    className="input-dark text-sm w-full mt-1"
-                    placeholder="Unit / plate #"
-                    value={newUnitVehicleId}
-                    onChange={(e) => setNewUnitVehicleId(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="field-label">Default Beat</label>
-                  <input id="ff-dispatchpage-unit-beat"
-                    type="text"
-                    className="input-dark text-sm w-full mt-1"
-                    placeholder="e.g. SL1-HER/C"
-                    value={newUnitBeat}
-                    onChange={(e) => setNewUnitBeat(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="field-label">Audio Mode</label>
-                <select id="ff-dispatchpage-unit-audio"
-                  className="select-dark text-sm w-full mt-1"
-                  value={newUnitAudioMode}
-                  onChange={(e) => setNewUnitAudioMode(e.target.value)}
-                >
-                  <option value="audible">Audible</option>
-                  <option value="silent">Silent</option>
-                  <option value="vibrate">Vibrate</option>
-                </select>
-              </div>
-              <div>
-                <label className="field-label">Capabilities</label>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {['K9', 'SWAT', 'Supervisor', 'FTO', 'Traffic', 'Detective', 'Patrol'].map((cap) => {
-                    const active = newUnitCapabilities.includes(cap);
-                    return (
-                      <button type="button"
-                        key={cap}
-                        onClick={() => setNewUnitCapabilities((prev) => active ? prev.filter((x) => x !== cap) : [...prev, cap])}
-                        className="text-[10px] font-bold uppercase px-2 py-1 tracking-wide transition-colors"
-                        style={{
-                          borderRadius: 2,
-                          border: `1px solid ${active ? '#d4a017' : '#2e2e2e'}`,
-                          background: active ? 'rgba(212,160,23,0.15)' : '#0a0a0a',
-                          color: active ? '#d4a017' : '#888888',
-                        }}
-                        aria-pressed={active}
-                      >
-                        {cap}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button type="button" onClick={() => { setShowCreateUnitModal(false); resetUnitForm(); }} className="toolbar-btn">
+                <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn">
                   Cancel
                 </button>
                 <button type="button"
@@ -6649,53 +6692,26 @@ export default function DispatchPage() {
         </div>
       )}
 
-      {/* Dispose Unit — Retire (soft) or Delete (permanent). Both server-side
-          force-clear any stale call assignment, so a unit stuck on a call can
-          still be disposed (the plain DELETE refused those). */}
-      {deletingUnit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Dispose unit" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
-          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
-            <div className="panel-title-bar">
-              <div className="flex items-center gap-2">
-                <Trash2 className="w-4 h-4 text-red-400" />
-                <span className="text-sm font-bold text-white tracking-wide">Dispose Unit “{deletingUnit.call_sign}”</span>
-              </div>
-              <button type="button" onClick={() => !unitDeleting && setDeletingUnit(null)} className="toolbar-btn ml-auto" aria-label="Cancel">
-                <X style={{ width: 12, height: 12 }} />
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              <p className="text-xs text-rmpg-300 leading-relaxed">
-                {deletingUnit.current_call_id
-                  ? <>This unit is still attached to a call — disposal will <span className="text-[#d4a017]">automatically clear that assignment</span> first.</>
-                  : 'Choose how to dispose of this unit.'}
-              </p>
-              <div className="space-y-2 text-[11px] text-rmpg-400">
-                <div><span className="text-amber-400 font-bold">Retire</span> — mark Out of Service and free it from any call. Keeps the unit + its history; reversible (set it back to Available later).</div>
-                <div><span className="text-red-400 font-bold">Delete</span> — permanently remove the unit row. Cannot be undone.</div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button type="button" onClick={() => setDeletingUnit(null)} disabled={unitDeleting} className="toolbar-btn">Cancel</button>
-                <button type="button" onClick={() => handleDisposeUnit('retire')} disabled={unitDeleting} className="toolbar-btn" style={{ borderColor: '#92710f', color: '#d4a017' }}>
-                  {unitDeleting ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Archive style={{ width: 12, height: 12 }} />} Retire
-                </button>
-                <button type="button" onClick={() => handleDisposeUnit('delete')} disabled={unitDeleting} className="toolbar-btn toolbar-btn-danger">
-                  {unitDeleting ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Trash2 style={{ width: 12, height: 12 }} />} Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Delete Unit Confirmation */}
+      <ConfirmDialog
+        isOpen={deletingUnit !== null}
+        onClose={() => setDeletingUnit(null)}
+        onConfirm={() => handleDisposeUnit('delete')}
+        title="Delete Dispatch Unit"
+        message={`Are you sure you want to permanently delete unit "${deletingUnit?.call_sign || ''}"? This action cannot be undone.`}
+        confirmLabel="Delete Unit"
+        confirmVariant="danger"
+        isLoading={unitDeleting}
+      />
 
       {/* Delete Call Confirmation */}
       <ConfirmDialog
         isOpen={deleteCallTarget !== null}
         onClose={() => setDeleteCallTarget(null)}
         onConfirm={handleDeleteAnyCall}
-        title="Remove Call"
-        message={`Remove call "${deleteCallTarget?.call_number || ''}" from the board? It will be archived and recoverable by an admin. Any assigned units will be freed.`}
-        confirmLabel="Remove Call"
+        title="Delete Call"
+        message={`Are you sure you want to permanently delete call "${deleteCallTarget?.call_number || ''}"? This will also free any assigned units. This action cannot be undone.`}
+        confirmLabel="Delete Call"
         confirmVariant="danger"
         isLoading={isDeletingCall}
       />
@@ -6996,19 +7012,6 @@ export default function DispatchPage() {
         initialQuery={ncicInitialQuery}
       />
 
-      {/* Mileage prompt on enroute (starting) / onscene (ending). Cancel aborts
-          the transition; Skip proceeds with no reading. */}
-      {mileagePrompt && (
-        <MileagePromptModal
-          mode={mileagePrompt.mode}
-          callNumber={mileagePrompt.callNumber}
-          vehicleId={mileagePrompt.vehicleId}
-          startingMileage={mileagePrompt.startingMileage}
-          onSubmit={handleMileagePromptSubmit}
-          onCancel={() => setMileagePrompt(null)}
-        />
-      )}
-
       {/* Create Person from Dispatch */}
       <PersonFormModal
         isOpen={showCreatePersonModal}
@@ -7088,13 +7091,13 @@ export default function DispatchPage() {
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
-          <div className="bg-surface-raised w-[500px] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: '#050505' }}>
+          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: 'var(--surface-deep)' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />
-                <h3 className="text-sm font-bold text-white">Shift Handoff Notes</h3>
+                <h3 className="text-sm font-bold text-rmpg-100">Shift Handoff Notes</h3>
               </div>
-              <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-rmpg-100 transition-colors"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-3 flex-1 overflow-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
               {handoffMeta.updated_by && (
@@ -7103,7 +7106,7 @@ export default function DispatchPage() {
                   {handoffMeta.updated_at && ` at ${safeDateTimeStr(handoffMeta.updated_at)}`}
                 </p>
               )}
-              <textarea id="ff-dispatchpage-75"
+              <textarea
                 value={handoffNotes}
                 onChange={e => setHandoffNotes(e.target.value)}
                 className="input-dark w-full h-48 text-sm resize-none"
@@ -7125,27 +7128,27 @@ export default function DispatchPage() {
       {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[40]"
-        style={{ background: '#050505', borderColor: '#141414', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
+        style={{ background: 'var(--surface-deep)', borderColor: 'var(--surface-raised)', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
         {/* Left: Call metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
           <span className="text-rmpg-500 uppercase tracking-wider font-bold">CAD</span>
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ef4444', boxShadow: calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length > 0 ? '0 0 6px #ef4444' : 'none' }} />
-            <span style={{ color: '#fca5a5' }}>P1: {calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-critical)', boxShadow: calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length > 0 ? '0 0 6px var(--sev-critical)' : 'none' }} />
+            <span style={{ color: 'var(--sev-critical-soft)' }}>P1: {calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span style={{ color: '#fcd34d' }}>P2: {calls.filter(c => c.priority === 'P2' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+            <span style={{ color: 'var(--sev-caution)' }}>P2: {calls.filter(c => c.priority === 'P2' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
           </span>
-          <span style={{ color: '#666666' }}>|</span>
-          <span style={{ color: '#999999' }}>
-            PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? '#fbbf24' : '#4ade80' }}>{calls.filter(c => c.status === 'pending').length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>|</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>
+            PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>{calls.filter(c => c.status === 'pending').length}</span>
           </span>
-          <span style={{ color: '#999999' }}>
-            ACTIVE: <span style={{ color: '#aaaaaa' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>
+            ACTIVE: <span style={{ color: 'var(--spm-text)' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
           </span>
-          <span style={{ color: '#999999' }}>
-            HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? '#f97316' : '#555555' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>
+            HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? 'var(--sev-high)' : 'var(--spm-text-muted)' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
           </span>
           {(() => {
             const stacked = new Map<string, number>();
@@ -7155,7 +7158,7 @@ export default function DispatchPage() {
             });
             const stackedCount = Array.from(stacked.values()).filter(v => v > 1).length;
             return stackedCount > 0 ? (
-              <span style={{ color: '#f97316' }}>STACKED: {stackedCount}</span>
+              <span style={{ color: 'var(--sev-high)' }}>STACKED: {stackedCount}</span>
             ) : null;
           })()}
         </div>
@@ -7163,30 +7166,30 @@ export default function DispatchPage() {
         {/* Center: Unit metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }} />
-            <span style={{ color: '#86efac' }}>AVAIL: {units.filter(u => u.status === 'available').length}</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-ok)', boxShadow: '0 0 4px color-mix(in srgb, var(--sev-ok) 50%, transparent)' }} />
+            <span style={{ color: 'var(--sev-ok-soft)' }}>AVAIL: {units.filter(u => u.status === 'available').length}</span>
           </span>
-          <span style={{ color: '#aaaaaa' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
-          <span style={{ color: '#c084fc' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
-          <span style={{ color: '#c084fc' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
-          <span style={{ color: '#666666' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
-          <span style={{ color: '#666666' }}>|</span>
-          <span style={{ color: '#999999' }}>
-            TOTAL: <span style={{ color: '#cccccc' }}>{units.length}</span>
+          <span style={{ color: 'var(--spm-text)' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
+          <span style={{ color: 'var(--sev-special-soft)' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
+          <span style={{ color: 'var(--sev-special-soft)' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>|</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>
+            TOTAL: <span style={{ color: 'var(--spm-text)' }}>{units.length}</span>
           </span>
         </div>
 
         {/* Right: F-key hints + clock */}
         <div className="flex items-center gap-2 text-[8px] tabular-nums">
-          <span style={{ color: '#555555' }}>F2:New</span>
-          <span style={{ color: '#555555' }}>F3:Disp</span>
-          <span style={{ color: '#555555' }}>F5:EnR</span>
-          <span style={{ color: '#555555' }}>F6:OnS</span>
-          <span style={{ color: '#555555' }}>F7:Clr</span>
-          <span style={{ color: '#555555' }}>F8:CMD</span>
-          <span style={{ color: '#555555' }}>F12:NCIC</span>
-          <span style={{ color: '#444444' }}>|</span>
-          <LiveClock style={{ color: '#999999' }} />
+          <span style={{ color: 'var(--spm-text-muted)' }}>F2:New</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F3:Disp</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F5:EnR</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F6:OnS</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F7:Clr</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F8:CMD</span>
+          <span style={{ color: 'var(--spm-text-muted)' }}>F12:NCIC</span>
+          <span style={{ color: 'var(--spm-border)' }}>|</span>
+          <LiveClock style={{ color: 'var(--spm-text-muted)' }} />
         </div>
       </div>
     </div>

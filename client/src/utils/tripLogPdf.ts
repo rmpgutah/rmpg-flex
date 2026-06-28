@@ -11,6 +11,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { registerArialFont } from './pdf/fonts/registerArial';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import {
   fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText,
@@ -82,6 +83,7 @@ export async function generateTripLogPdf(trips: Trip[], opts: TripLogPdfOptions 
 
     const title = (opts.title || 'TRIP LOG').toUpperCase();
     const doc = new jsPDF('landscape', 'mm', 'letter');
+    registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
     applyPrintTarget(doc, opts.printTarget ?? 'office');
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
@@ -284,7 +286,7 @@ export async function generateTripLogPdf(trips: Trip[], opts: TripLogPdfOptions 
         (t.call_number || '—').toUpperCase(),
         fmtClock(t.start_time).toUpperCase(),
         endLabel,
-        mi.toFixed(1),
+        Number.isFinite(mi) ? mi.toFixed(1) : '—',
         durMin != null ? String(durMin) : '—',
         mileageDelta(t),
         String(tripMaxMph(t)),

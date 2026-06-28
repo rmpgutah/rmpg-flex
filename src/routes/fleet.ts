@@ -1,6 +1,12 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { requireRole } from '../middleware/auth';
+import { verifySignedResource } from '../utils/signedAccess';
+import { summarizeInspection } from '../utils/vehicleInspection';
+import { isEvidenceLocked } from '../utils/evidenceLock';
+import { recordAudit } from '../utils/auditLog';
+import { emitFleetioEvent } from '../utils/fleetio/events';
 
 const fleet = new Hono<Env>();
 
@@ -9,6 +15,24 @@ const fleet = new Hono<Env>();
 // concern, not sensitive HR/case data, and dispatch needs read access
 // from MdtPage / DispatchPage to resolve assigned_unit_id → plate.
 const MANAGER_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
+// REGRESSION-GUARD: global write gate. The core POST/PUT/DELETE handlers
+// already inline-check MANAGER_ROLES, but ~40 sub-resource mutation
+// endpoints (fuel logs, maintenance, inspections, insurance, tires,
+// damage, keys, loans, accessories, utilities, budgets, recalls,
+// warranties, archive, assign, etc.) had only authMiddleware and
+// accepted writes from any authenticated user (including client_viewer).
+// This middleware gates all POST/PUT/DELETE/PATCH methods at the router
+// level so no new un-guarded write endpoint can land.
+fleet.use('*', async (c, next) => {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(c.req.method)) {
+    const user = c.get('user') as { role?: string } | undefined;
+    if (!user?.role || !MANAGER_ROLES.has(user.role)) {
+      return c.json({ error: 'Forbidden — manager+ role required for fleet mutations', code: 'FORBIDDEN' }, 403);
+    }
+  }
+  await next();
+});
 
 // Columns a manager may write via POST/PUT. Anything outside this set
 // is silently dropped — prevents both "no such column" 500s on unknown
@@ -138,6 +162,17 @@ fleet.get('/analytics', async (c) => {
     }
   };
 
+  // ?period=30d|90d|1y|all — scopes the KPI cards (costs, pass rate).
+  // Trend charts stay 12-month regardless; the period selector reads
+  // as "the stats window" in the UI, not the chart x-axis.
+  const PERIODS: Record<string, string | null> = { '30d': '-30 days', '90d': '-90 days', '1y': '-12 months', 'all': null };
+  const periodKey = (c.req.query('period') || '90d').toLowerCase();
+  const periodMod = PERIODS[periodKey] !== undefined ? PERIODS[periodKey] : '-90 days';
+  // SQL fragments: empty string disables the filter for 'all'.
+  const maintPeriod = periodMod ? `AND performed_at >= datetime('now', '${periodMod}')` : '';
+  const fuelPeriod = periodMod ? `AND fuel_date >= date('now', '${periodMod}')` : '';
+  const inspPeriod = periodMod ? `AND inspection_date >= date('now', '${periodMod}')` : '';
+
   // maintenance_cost_trend — last 12 months bucketed by performed_at month.
   // strftime('%Y-%m', ...) groups MST-stored timestamps cleanly into months;
   // we don't shift to UTC because the dashboard's "this month" semantics
@@ -194,83 +229,75 @@ fleet.get('/analytics', async (c) => {
     return rows.map(r => ({ ...r, color: STATUS_COLORS[r.status] ?? '#888888' }));
   }, []);
 
-  // fuel_economy_trend — monthly. avg_mpg null when distance can't be
-  // derived (no consecutive odometer readings in the window).
+  // fuel_economy_trend — monthly. MPG per month = per-vehicle odometer
+  // span ÷ gallons within the month, summed across vehicles. Needs ≥2
+  // odometer readings in the month for a vehicle to contribute; months
+  // without derivable distance return null (chart connectNulls).
   const fuel_economy_trend = await safe(() => query<{
     month: string; avg_mpg: number | null; total_gallons: number; total_cost: number;
   }>(
     db,
-    `SELECT strftime('%Y-%m', fuel_date) as month,
-            AVG(NULLIF(mpg, 0)) as avg_mpg,
+    `WITH monthly AS (
+       SELECT strftime('%Y-%m', fuel_date) as month,
+              vehicle_id,
+              SUM(gallons) as gallons,
+              SUM(total_cost) as cost,
+              CASE WHEN COUNT(odometer) >= 2 THEN MAX(odometer) - MIN(odometer) END as miles
+       FROM fleet_fuel_log
+       WHERE fuel_date >= date('now', '-12 months')
+       GROUP BY month, vehicle_id
+     )
+     SELECT month,
+            CASE WHEN SUM(CASE WHEN miles > 0 THEN gallons END) > 0
+                 THEN ROUND(SUM(miles) * 1.0 / SUM(CASE WHEN miles > 0 THEN gallons END), 1)
+            END as avg_mpg,
             COALESCE(SUM(gallons), 0) as total_gallons,
-            COALESCE(SUM(total_cost), 0) as total_cost
-     FROM fleet_fuel_log
-     WHERE fuel_date >= date('now', '-12 months')
+            COALESCE(SUM(cost), 0) as total_cost
+     FROM monthly
      GROUP BY month
      ORDER BY month`,
   ), []);
 
-  // Aggregate summary — computed LIVE from the source tables, NOT from
-  // materialized total_fuel_cost/total_maintenance_cost/avg_mpg columns on
-  // fleet_vehicles. Those rollup columns are never updated when fuel/
-  // maintenance is logged, so they reported $0 / -- MPG on the dashboard even
-  // with a fully-populated fleet_fuel_log (fixed 2026-06-02). Each stat is its
-  // own safe() so one missing table doesn't zero the others. All scoped to
-  // non-archived vehicles.
-  const vehStats = await safe(() => queryFirst<{ total_vehicles: number; avg_mileage: number }>(
-    db,
-    `SELECT COUNT(*) as total_vehicles, COALESCE(AVG(current_mileage), 0) as avg_mileage
-     FROM fleet_vehicles WHERE archived_at IS NULL`,
-  ), null);
-  const fuelStats = await safe(() => queryFirst<{ total_fuel_cost: number; avg_mpg: number | null }>(
-    db,
-    `SELECT COALESCE(SUM(total_cost), 0) as total_fuel_cost, AVG(NULLIF(mpg, 0)) as avg_mpg
-     FROM fleet_fuel_log
-     WHERE vehicle_id IN (SELECT id FROM fleet_vehicles WHERE archived_at IS NULL)`,
-  ), null);
-  const maintStats = await safe(() => queryFirst<{ total_maintenance_cost: number }>(
-    db,
-    `SELECT COALESCE(SUM(cost), 0) as total_maintenance_cost
-     FROM fleet_maintenance
-     WHERE vehicle_id IN (SELECT id FROM fleet_vehicles WHERE archived_at IS NULL)`,
-  ), null);
-  const summary = {
-    total_vehicles: vehStats?.total_vehicles ?? 0,
-    avg_mileage: vehStats?.avg_mileage ?? 0,
-    avg_mpg: fuelStats?.avg_mpg ?? null,
-    total_maintenance_cost: maintStats?.total_maintenance_cost ?? 0,
-    total_fuel_cost: fuelStats?.total_fuel_cost ?? 0,
-  };
-
-  // cost_per_mile_ranking ("Top Vehicles by Cost") — per-vehicle total spend
-  // (fuel + maintenance) and cost/mile. Was hardcoded [] which showed "No cost
-  // data available" even with real spend. Joins both cost sources per vehicle.
-  const cost_per_mile_ranking = await safe(() => query<{
-    id: number; vehicle_number: string; make: string | null; model: string | null;
-    current_mileage: number | null; total_cost: number;
-  }>(
-    db,
-    `SELECT v.id, v.vehicle_number, v.make, v.model, v.current_mileage,
-            COALESCE(f.fuel, 0) + COALESCE(m.maint, 0) as total_cost
-     FROM fleet_vehicles v
-     LEFT JOIN (SELECT vehicle_id, SUM(total_cost) as fuel FROM fleet_fuel_log GROUP BY vehicle_id) f ON f.vehicle_id = v.id
-     LEFT JOIN (SELECT vehicle_id, SUM(cost) as maint FROM fleet_maintenance GROUP BY vehicle_id) m ON m.vehicle_id = v.id
-     WHERE v.archived_at IS NULL
-     ORDER BY total_cost DESC
-     LIMIT 10`,
-  ), []).then(rows => rows
-    .filter(r => (r.total_cost ?? 0) > 0)
-    .map(r => ({
-      id: r.id,
-      vehicle_number: r.vehicle_number,
-      make: r.make,
-      model: r.model,
-      total_cost: Math.round((r.total_cost ?? 0) * 100) / 100,
-      cost_per_mile: (r.current_mileage && r.current_mileage > 0)
-        ? Math.round(((r.total_cost ?? 0) / r.current_mileage) * 100) / 100
-        : null,
-    })),
-  );
+  // Aggregate summary — costs come from the SOURCE tables
+  // (fleet_maintenance / fleet_fuel_log), period-scoped. The
+  // materialized fleet_vehicles.total_* columns are NULL on live
+  // (never backfilled) and previously made this card read $0 while
+  // the trend chart (which queries the source tables) showed real
+  // bars. avg_mpg is derived from fuel-log odometer spans.
+  const summary = await safe(async () => {
+    const veh = await queryFirst<{ total_vehicles: number; avg_mileage: number }>(
+      db,
+      `SELECT COUNT(*) as total_vehicles, COALESCE(AVG(current_mileage), 0) as avg_mileage
+       FROM fleet_vehicles WHERE archived_at IS NULL`,
+    );
+    const maint = await queryFirst<{ total: number }>(
+      db, `SELECT COALESCE(SUM(cost), 0) as total FROM fleet_maintenance WHERE 1=1 ${maintPeriod}`,
+    );
+    const fuel = await queryFirst<{ total: number }>(
+      db, `SELECT COALESCE(SUM(total_cost), 0) as total FROM fleet_fuel_log WHERE 1=1 ${fuelPeriod}`,
+    );
+    // Lifetime MPG per vehicle (odometer span ÷ gallons), averaged.
+    const mpg = await queryFirst<{ avg_mpg: number | null }>(
+      db,
+      `WITH per_vehicle AS (
+         SELECT vehicle_id,
+                MAX(odometer) - MIN(odometer) as miles,
+                SUM(gallons) as gallons
+         FROM fleet_fuel_log
+         WHERE odometer IS NOT NULL AND gallons > 0
+         GROUP BY vehicle_id
+         HAVING COUNT(*) >= 2 AND miles > 0
+       )
+       SELECT ROUND(AVG(miles * 1.0 / gallons), 1) as avg_mpg FROM per_vehicle`,
+    );
+    return {
+      total_vehicles: veh?.total_vehicles ?? 0,
+      avg_mileage: veh?.avg_mileage ?? 0,
+      avg_mpg: mpg?.avg_mpg ?? null,
+      total_maintenance_cost: maint?.total ?? 0,
+      total_fuel_cost: fuel?.total ?? 0,
+    };
+  }, null);
 
   const vehicles_needing_service = (await safe(() => queryFirst<{ n: number }>(
     db,
@@ -287,110 +314,172 @@ fleet.get('/analytics', async (c) => {
        AND inspection_date >= date('now', '-90 days')`,
   ), null))?.n ?? 0;
 
-  // ── Live-computed dashboard fields (previously hardcoded empty) ──────────
-  // Oldest model year among active (non-retired) vehicles.
+  // service_compliance — overdue = the vehicles_needing_service set;
+  // compliant = remaining active vehicles.
+  const service_compliance = await safe(async () => {
+    const total = (await queryFirst<{ n: number }>(
+      db, `SELECT COUNT(*) as n FROM fleet_vehicles WHERE archived_at IS NULL AND status != 'retired'`,
+    ))?.n ?? 0;
+    const overdue = vehicles_needing_service;
+    const compliant = Math.max(0, total - overdue);
+    return { compliant, overdue, rate: total > 0 ? Math.round((compliant / total) * 1000) / 10 : 100 };
+  }, { compliant: 0, overdue: 0, rate: 100 });
+
+  // inspection_pass_rate — period-scoped pass/fail counts.
+  const inspection_pass_rate = await safe(async () => {
+    const row = await queryFirst<{ total: number; passed: number; failed: number }>(
+      db,
+      `SELECT COUNT(*) as total,
+              SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) as passed,
+              SUM(CASE WHEN overall_result = 'fail' THEN 1 ELSE 0 END) as failed
+       FROM fleet_inspections WHERE 1=1 ${inspPeriod}`,
+    );
+    const total = row?.total ?? 0;
+    const passed = row?.passed ?? 0;
+    return { total, passed, failed: row?.failed ?? 0, rate: total > 0 ? Math.round((passed / total) * 1000) / 10 : 100 };
+  }, { total: 0, passed: 0, failed: 0, rate: 100 });
+
+  // utilization — assigned = active vehicles with a unit on the
+  // authoritative link (fleet_vehicles.assigned_unit_id).
+  const utilization = await safe(async () => {
+    const row = await queryFirst<{ total: number; assigned: number }>(
+      db,
+      `SELECT COUNT(*) as total,
+              SUM(CASE WHEN assigned_unit_id IS NOT NULL THEN 1 ELSE 0 END) as assigned
+       FROM fleet_vehicles WHERE archived_at IS NULL AND status != 'retired'`,
+    );
+    const total = row?.total ?? 0;
+    const assigned = row?.assigned ?? 0;
+    return { assigned, unassigned: Math.max(0, total - assigned), rate: total > 0 ? Math.round((assigned / total) * 100) : 0 };
+  }, { assigned: 0, unassigned: 0, rate: 0 });
+
+  // daily_usage — last 30 days from gps_breadcrumbs: how many fleet
+  // vehicles (units holding an active fleet vehicle) pinged each day.
+  // moving = speed > 2 mph filters out stationary idle pings.
+  const daily_usage = await safe(() => query<{
+    date: string; active_vehicles: number; total_pings: number; moving_pings: number;
+  }>(
+    db,
+    `SELECT date(g.recorded_at) as date,
+            COUNT(DISTINCT fv.id) as active_vehicles,
+            COUNT(*) as total_pings,
+            SUM(CASE WHEN g.speed > 2 THEN 1 ELSE 0 END) as moving_pings
+     FROM gps_breadcrumbs g
+     JOIN fleet_vehicles fv ON fv.assigned_unit_id = g.unit_id AND fv.archived_at IS NULL
+     WHERE g.recorded_at >= datetime('now', '-30 days')
+     GROUP BY date(g.recorded_at)
+     ORDER BY date`,
+  ), []);
+
+  // avg_daily_miles — fleet average derived from fuel-log odometer
+  // spans (matches the client's "Fleet avg from fuel logs" caption).
+  const avg_daily_miles = await safe(async () => {
+    const row = await queryFirst<{ v: number | null }>(
+      db,
+      `WITH per_vehicle AS (
+         SELECT vehicle_id,
+                (MAX(odometer) - MIN(odometer)) * 1.0 /
+                  MAX(1, julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as daily
+         FROM fleet_fuel_log
+         WHERE odometer IS NOT NULL
+         GROUP BY vehicle_id
+         HAVING COUNT(*) >= 2 AND MAX(odometer) > MIN(odometer)
+       )
+       SELECT ROUND(AVG(daily), 1) as v FROM per_vehicle`,
+    );
+    return row?.v ?? null;
+  }, null);
+
+  // maintenance_forecast — per active vehicle with a known service
+  // target. est_days prefers the mileage runway (miles ÷ that
+  // vehicle's avg daily miles); falls back to the calendar date.
+  const maintenance_forecast = await safe(async () => {
+    const vehicles = await query<{
+      id: number; vehicle_number: string; current_mileage: number | null;
+      next_service_due: string | null; next_service_mileage: number | null;
+    }>(
+      db,
+      `SELECT id, vehicle_number, current_mileage, next_service_due, next_service_mileage
+       FROM fleet_vehicles
+       WHERE archived_at IS NULL AND status != 'retired'
+         AND (next_service_due IS NOT NULL OR next_service_mileage IS NOT NULL)
+       ORDER BY vehicle_number`,
+    );
+    const dailyByVehicle = await query<{ vehicle_id: number; daily: number }>(
+      db,
+      `SELECT vehicle_id,
+              (MAX(odometer) - MIN(odometer)) * 1.0 /
+                MAX(1, julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as daily
+       FROM fleet_fuel_log
+       WHERE odometer IS NOT NULL
+       GROUP BY vehicle_id
+       HAVING COUNT(*) >= 2 AND MAX(odometer) > MIN(odometer)`,
+    );
+    const dailyMap = new Map(dailyByVehicle.map((d) => [d.vehicle_id, d.daily]));
+    const today = Date.now();
+    return vehicles.map((v) => {
+      const daily = dailyMap.get(v.id) ?? null;
+      const milesUntil = (v.next_service_mileage != null && v.current_mileage != null)
+        ? v.next_service_mileage - v.current_mileage : null;
+      let estDays: number | null = null;
+      if (milesUntil != null && daily && daily > 0) estDays = Math.round(milesUntil / daily);
+      else if (v.next_service_due) {
+        const due = Date.parse(v.next_service_due);
+        if (!Number.isNaN(due)) estDays = Math.round((due - today) / 86_400_000);
+      }
+      return {
+        id: v.id,
+        vehicle_number: v.vehicle_number,
+        current_mileage: v.current_mileage,
+        next_service_due: v.next_service_mileage ?? v.next_service_due,
+        avg_daily_miles: daily != null ? Math.round(daily * 10) / 10 : null,
+        miles_until_service: milesUntil,
+        est_days_until_service: estDays,
+      };
+    });
+  }, []);
+
   const oldest_vehicle_year = (await safe(() => queryFirst<{ y: number | null }>(
     db,
     `SELECT MIN(year) as y FROM fleet_vehicles
-     WHERE archived_at IS NULL AND status != 'retired' AND year IS NOT NULL AND year > 1900`,
+     WHERE archived_at IS NULL AND status != 'retired' AND year IS NOT NULL`,
   ), null))?.y ?? null;
 
-  // Utilization — a vehicle counts as "assigned" if it carries a unit id OR
-  // has an open fleet_assignment (unassigned_at IS NULL).
-  const utilRow = await safe(() => queryFirst<{ total: number; assigned: number }>(
-    db,
-    `SELECT COUNT(*) as total,
-            SUM(CASE WHEN (assigned_unit_id IS NOT NULL AND assigned_unit_id != '')
-                       OR id IN (SELECT vehicle_id FROM fleet_assignments WHERE unassigned_at IS NULL)
-                     THEN 1 ELSE 0 END) as assigned
-     FROM fleet_vehicles WHERE archived_at IS NULL`,
-  ), null);
-  const utilTotal = utilRow?.total ?? 0;
-  const utilAssigned = utilRow?.assigned ?? 0;
-  const utilization = {
-    assigned: utilAssigned,
-    unassigned: Math.max(0, utilTotal - utilAssigned),
-    rate: utilTotal > 0 ? Math.round((utilAssigned / utilTotal) * 100) : 0,
-  };
-
-  // Service compliance — active vehicles not currently overdue for service.
-  const service_compliance = {
-    compliant: Math.max(0, utilTotal - vehicles_needing_service),
-    overdue: vehicles_needing_service,
-    rate: utilTotal > 0 ? Math.round(((utilTotal - vehicles_needing_service) / utilTotal) * 100) : 100,
-  };
-
-  // Inspection pass rate — all recorded inspections.
-  const inspRow = await safe(() => queryFirst<{ total: number; passed: number; failed: number }>(
-    db,
-    `SELECT COUNT(*) as total,
-            SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) as passed,
-            SUM(CASE WHEN overall_result = 'fail' THEN 1 ELSE 0 END) as failed
-     FROM fleet_inspections`,
-  ), null);
-  const inspTotal = inspRow?.total ?? 0;
-  const inspPassed = inspRow?.passed ?? 0;
-  const inspection_pass_rate = {
-    total: inspTotal,
-    passed: inspPassed,
-    failed: inspRow?.failed ?? 0,
-    rate: inspTotal > 0 ? Math.round((inspPassed / inspTotal) * 100) : 100,
-  };
-
-  // Avg daily miles — fleet-wide, derived from the odometer span across all
-  // fuel fills over the elapsed day span (no GPS telematics needed).
-  const adm = await safe(() => queryFirst<{ span_miles: number | null; span_days: number | null }>(
-    db,
-    `SELECT (MAX(odometer) - MIN(odometer)) as span_miles,
-            (julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as span_days
-     FROM fleet_fuel_log WHERE odometer IS NOT NULL AND odometer > 0`,
-  ), null);
-  const avg_daily_miles = (adm?.span_days && adm.span_days > 0 && (adm.span_miles ?? 0) > 0)
-    ? Math.round(((adm.span_miles as number) / adm.span_days) * 10) / 10
-    : null;
-
-  // Maintenance forecast — active vehicles with their current mileage + any
-  // scheduled next service; est_days from next_service_due when set.
-  const maintenance_forecast = await safe(() => query<{
-    id: number; vehicle_number: string; current_mileage: number | null;
-    next_service_due: string | null; next_service_mileage: number | null;
+  // cost_per_mile_ranking — period costs ÷ miles driven (fuel-log
+  // odometer span in the same window); null when distance unknown.
+  const cost_per_mile_ranking = await safe(() => query<{
+    id: number; vehicle_number: string; make: string; model: string; year: number;
+    current_mileage: number; maintenance_cost: number; fuel_cost: number;
+    total_cost: number; cost_per_mile: number | null;
   }>(
     db,
-    `SELECT id, vehicle_number, current_mileage, next_service_due, next_service_mileage
-     FROM fleet_vehicles
-     WHERE archived_at IS NULL AND status != 'retired'
-     ORDER BY (next_service_due IS NULL), date(next_service_due) ASC
-     LIMIT 15`,
-  ), []).then(rows => rows.map(r => ({
-    id: r.id,
-    vehicle_number: r.vehicle_number,
-    current_mileage: r.current_mileage ?? null,
-    next_service_due: r.next_service_due ?? null,
-    next_service_mileage: r.next_service_mileage ?? null,
-    est_days_until_service: r.next_service_due
-      ? Math.round((new Date(r.next_service_due).getTime() - Date.now()) / 86400000)
-      : null,
-  })));
+    `SELECT v.id, v.vehicle_number, v.make, v.model, v.year, v.current_mileage,
+            COALESCE(m.cost, 0) as maintenance_cost,
+            COALESCE(f.cost, 0) as fuel_cost,
+            COALESCE(m.cost, 0) + COALESCE(f.cost, 0) as total_cost,
+            CASE WHEN f.miles > 0
+                 THEN ROUND((COALESCE(m.cost, 0) + COALESCE(f.cost, 0)) / f.miles, 2)
+            END as cost_per_mile
+     FROM fleet_vehicles v
+     LEFT JOIN (SELECT vehicle_id, SUM(cost) as cost FROM fleet_maintenance WHERE 1=1 ${maintPeriod} GROUP BY vehicle_id) m
+       ON m.vehicle_id = v.id
+     LEFT JOIN (SELECT vehicle_id, SUM(total_cost) as cost,
+                       CASE WHEN COUNT(odometer) >= 2 THEN MAX(odometer) - MIN(odometer) END as miles
+                FROM fleet_fuel_log WHERE 1=1 ${fuelPeriod} GROUP BY vehicle_id) f
+       ON f.vehicle_id = v.id
+     WHERE v.archived_at IS NULL
+     ORDER BY cost_per_mile IS NULL, cost_per_mile DESC`,
+  ), []);
 
-  // daily_usage — GPS telematics derived from gps_breadcrumbs.
-  const periodParam = c.req.query('period') || '90d';
-  const dayRange = periodParam === '30d' ? '-30 days'
-    : periodParam === '1y' ? '-365 days'
-    : periodParam === 'all' ? '-3650 days'
-    : '-90 days';
-  const daily_usage = await safe(async () => {
-    const rows = await db.prepare(
-      `SELECT date(recorded_at) as date,
-              COUNT(DISTINCT unit_id) as active_vehicles,
-              COUNT(*) as total_pings,
-              COALESCE(SUM(CASE WHEN speed IS NOT NULL AND speed > 0 THEN 1 ELSE 0 END), 0) as moving_pings
-       FROM gps_breadcrumbs
-       WHERE recorded_at >= datetime('now', ?)
-       GROUP BY date(recorded_at)
-       ORDER BY date`,
-    ).bind(dayRange).all();
-    return (rows.results ?? []) as Array<{ date: string; active_vehicles: number; total_pings: number; moving_pings: number }>;
-  }, []);
+  // top_issues — maintenance grouped by type, period-scoped.
+  const top_issues = await safe(() => query<{ type: string; count: number; total_cost: number }>(
+    db,
+    `SELECT COALESCE(type, 'other') as type, COUNT(*) as count, COALESCE(SUM(cost), 0) as total_cost
+     FROM fleet_maintenance WHERE 1=1 ${maintPeriod}
+     GROUP BY COALESCE(type, 'other')
+     ORDER BY count DESC
+     LIMIT 10`,
+  ), []);
 
   return c.json({
     maintenance_cost_trend,
@@ -410,11 +499,11 @@ fleet.get('/analytics', async (c) => {
     service_compliance,
     inspection_pass_rate,
     utilization,
+    daily_usage,
     maintenance_forecast,
     oldest_vehicle_year,
     avg_daily_miles,
-    daily_usage,
-    top_issues: [],
+    top_issues,
   });
 });
 
@@ -473,6 +562,370 @@ fleet.get('/dashcam-videos', async (c) => {
     }
   } catch (err) {
     console.error('GET /fleet/dashcam-videos failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// DASHCAM VIDEO detail / edit / delete / neighbors / burn / links (F2 audit
+// follow-up). These were all 404 — the detail page (/dash-cameras/:id), the
+// list-page row actions, and the link modal were fully built client-side with
+// no backend. dashcam_videos exists on live D1; dashcam_video_links was created
+// (migration 0086). Every handler degrades on a missing table rather than 500,
+// matching the list handler above. ALL routes are registered BEFORE the bare
+// vehicle `/:id` routes by file position, and use the static `dashcam-videos`
+// segment so Hono never confuses them with the numeric `:id` vehicle routes.
+const DC_CLASSIFICATIONS = ['routine', 'evidence', 'flagged', 'restricted'];
+const DC_LINK_ENTITIES = ['call', 'incident', 'case', 'warrant', 'citation'];
+
+// GET /dashcam-videos/:id — full detail with vehicle/unit/officer joins + links.
+fleet.get('/dashcam-videos/:id{[0-9]+}', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const video = await queryFirst<Record<string, unknown>>(db, `
+      SELECT v.*,
+             fv.vehicle_number, fv.year AS vehicle_year, fv.make AS vehicle_make,
+             fv.model AS vehicle_model, fv.color AS vehicle_color,
+             fv.plate_number AS vehicle_plate, fv.plate_state AS vehicle_plate_state,
+             u.call_sign AS unit_call_sign, u.status AS unit_status,
+             usr.full_name AS officer_name, usr.badge_number AS officer_badge, usr.rank AS officer_rank
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON fv.id = v.vehicle_id
+      LEFT JOIN units u ON u.id = v.unit_id
+      LEFT JOIN users usr ON usr.id = u.officer_id
+      WHERE v.id = ?`, id);
+    if (!video) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+    // Links, with call-type links enriched with the call fields the Incident panel reads.
+    let links: Record<string, unknown>[] = [];
+    try {
+      links = await query<Record<string, unknown>>(db, `
+        SELECT l.id, l.video_id, l.entity_type, l.entity_id, l.linked_by, l.notes, l.created_at,
+               cfs.priority, cfs.incident_type, cfs.status, cfs.disposition
+        FROM dashcam_video_links l
+        LEFT JOIN calls_for_service cfs ON l.entity_type = 'call' AND cfs.id = l.entity_id
+        WHERE l.video_id = ? ORDER BY l.created_at DESC`, id);
+    } catch { links = []; }
+    return c.json({ ...video, links });
+  } catch (err) {
+    console.error('GET /fleet/dashcam-videos/:id failed:', err);
+    return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+  }
+});
+
+// GET /dashcam-videos/:id/neighbors — prev (newer) / next (older) ids in the
+// list's recorded_at DESC, id DESC ordering, for the detail-page nav arrows.
+fleet.get('/dashcam-videos/:id{[0-9]+}/neighbors', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const cur = await queryFirst<{ recorded_at: string | null }>(db, 'SELECT recorded_at FROM dashcam_videos WHERE id = ?', id);
+    if (!cur) return c.json({});
+    const ra = cur.recorded_at ?? '';
+    // prev = the row just ABOVE current in DESC order (newer); next = just below (older).
+    const prev = await queryFirst<{ id: number }>(db,
+      `SELECT id FROM dashcam_videos WHERE (COALESCE(recorded_at,''), id) > (?, ?) ORDER BY COALESCE(recorded_at,'') ASC, id ASC LIMIT 1`, ra, id);
+    const next = await queryFirst<{ id: number }>(db,
+      `SELECT id FROM dashcam_videos WHERE (COALESCE(recorded_at,''), id) < (?, ?) ORDER BY COALESCE(recorded_at,'') DESC, id DESC LIMIT 1`, ra, id);
+    return c.json({ prev: prev?.id, next: next?.id });
+  } catch { return c.json({}); }
+});
+
+// POST /dashcam-videos — multipart upload (mirrors the bodycam single-shot
+// upload in personnel/bodyCameraUploads.ts; storage prefix dashcam-videos/
+// in env.UPLOADS, referenced by dashcam_videos.file_path). Write access is
+// already gated to manager-tier by the router-level write middleware above.
+fleet.post('/dashcam-videos', async (c) => {
+  try {
+    const ct = c.req.header('content-type') || '';
+    if (!ct.startsWith('multipart/form-data')) {
+      return c.json({ error: 'multipart/form-data required' }, 400);
+    }
+    const form = await c.req.formData();
+    // workers-types types FormData.get() as `string | null`; at runtime file
+    // fields return File. Same cast as bodyCameraUploads.ts.
+    const file = form.get('video') as unknown as File | string | null;
+    if (!file || typeof file === 'string' || !(file instanceof Blob)) {
+      return c.json({ error: 'video file is required' }, 400);
+    }
+    const title = String(form.get('title') || '').trim();
+    if (!title) return c.json({ error: 'title is required' }, 400);
+
+    // Live schema: vehicle_id and camera_id are both NOT NULL with enforced
+    // FKs (fleet_vehicles / dash_cameras) — require and validate both.
+    const vehicleId = Number(form.get('vehicle_id'));
+    const cameraId = Number(form.get('camera_id'));
+    if (!Number.isInteger(vehicleId) || vehicleId <= 0) {
+      return c.json({ error: 'vehicle_id is required' }, 400);
+    }
+    if (!Number.isInteger(cameraId) || cameraId <= 0) {
+      return c.json({ error: 'camera_id is required' }, 400);
+    }
+    const classification = String(form.get('classification') || 'routine');
+    if (!DC_CLASSIFICATIONS.includes(classification)) {
+      return c.json({ error: 'Invalid classification', code: 'INVALID_CLASSIFICATION' }, 400);
+    }
+    const durationRaw = form.get('duration_seconds');
+    const duration = durationRaw != null && durationRaw !== '' ? Number(durationRaw) : null;
+
+    const r2Key = `dashcam-videos/${crypto.randomUUID()}`;
+    const mimeType = file.type || 'video/mp4';
+    await c.env.UPLOADS.put(r2Key, file.stream(), {
+      httpMetadata: { contentType: mimeType },
+    });
+
+    const db = getDb(c.env);
+    const actor = c.get('user') as { id?: number; full_name?: string } | undefined;
+    const result = await execute(db, `
+      INSERT INTO dashcam_videos
+        (camera_id, vehicle_id, title, case_number, notes, classification,
+         file_path, mime_type, file_size, duration_seconds, recorded_at, uploaded_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      cameraId, vehicleId, title,
+      form.get('case_number') || null,
+      form.get('notes') || null,
+      classification,
+      r2Key, mimeType, file.size, duration,
+      form.get('recorded_at') || null,
+      actor?.full_name || String(actor?.id ?? ''),
+    );
+    const newId = result.meta?.last_row_id;
+    if (!newId) {
+      // R2 succeeded but the DB didn't — leaves an orphan R2 object;
+      // cleanup is a follow-up sweep, same trade-off as bodycam uploads.
+      return c.json({ error: 'Insert succeeded but no id returned' }, 500);
+    }
+    const created = await queryFirst<Record<string, unknown>>(db,
+      'SELECT * FROM dashcam_videos WHERE id = ?', newId);
+    return c.json(created, 201);
+  } catch (err) {
+    console.error('POST /fleet/dashcam-videos failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dashcam-videos/:id/stream — range-supporting playback.
+//
+// Auth: <video src> can't carry an Authorization header. Preferred path is
+// the HMAC-signed URL (?sig=&exp=&nonce= issued by POST /api/auth/sign-urls,
+// verified here via verifySignedResource — authMiddleware forwards header-less
+// requests matching this path when sig+exp are present). A plain JWT (header,
+// cookie, or legacy ?token=) also works since authMiddleware sets `user`.
+fleet.get('/dashcam-videos/:id{[0-9]+}/stream', async (c) => {
+  try {
+    const idStr = c.req.param('id');
+    const id = Number(idStr);
+    const user = c.get('user') as { id?: number } | undefined;
+    if (!user) {
+      const ok = await verifySignedResource(c.env.JWT_SECRET, 'dashcam', idStr, {
+        sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+      });
+      if (!ok) return c.json({ error: 'Authentication required' }, 401);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{ file_path: string | null; mime_type: string | null }>(
+      db, 'SELECT file_path, mime_type FROM dashcam_videos WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+    if (!row.file_path) return c.json({ error: 'No file attached', code: 'NO_FILE' }, 404);
+
+    // Range: only "bytes=START-END" / "bytes=START-" supported; anything else
+    // falls through to a full 200 (same policy as the bodycam stream).
+    const rangeHeader = c.req.header('Range');
+    let r2Range: R2Range | undefined;
+    let rangeStart = 0;
+    let rangeEnd = -1;
+    if (rangeHeader) {
+      const m = rangeHeader.trim().match(/^bytes=(\d+)-(\d*)$/);
+      if (m) {
+        rangeStart = Number(m[1]);
+        rangeEnd = m[2] ? Number(m[2]) : -1;
+        r2Range = rangeEnd >= 0
+          ? { offset: rangeStart, length: rangeEnd - rangeStart + 1 }
+          : { offset: rangeStart };
+      }
+    }
+
+    const obj = r2Range
+      ? await c.env.UPLOADS.get(row.file_path, { range: r2Range })
+      : await c.env.UPLOADS.get(row.file_path);
+    if (!obj) return c.json({ error: 'File not in storage' }, 404);
+
+    const totalSize = obj.size;
+    const headers: Record<string, string> = {
+      'Content-Type': row.mime_type || obj.httpMetadata?.contentType || 'video/mp4',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=0, no-store',
+    };
+    if (r2Range) {
+      const end = rangeEnd >= 0 ? Math.min(rangeEnd, totalSize - 1) : totalSize - 1;
+      headers['Content-Range'] = `bytes ${rangeStart}-${end}/${totalSize}`;
+      headers['Content-Length'] = String(end - rangeStart + 1);
+      return new Response(obj.body, { status: 206, headers });
+    }
+    headers['Content-Length'] = String(totalSize);
+    return new Response(obj.body, { status: 200, headers });
+  } catch (err) {
+    console.error('GET /fleet/dashcam-videos/:id/stream failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// PUT /dashcam-videos/:id — accepts a PARTIAL body. Quick-classify sends only
+// { classification }; the full edit modal sends title/case_number/notes/address
+// plus speed_mph/latitude/longitude as STRINGS (coerced to numbers here).
+fleet.put('/dashcam-videos/:id{[0-9]+}', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json<Record<string, unknown>>();
+    const sets: string[] = [];
+    const binds: unknown[] = [];
+    const num = (v: unknown) => { if (v == null || v === '') return null; const n = Number(v); return Number.isFinite(n) ? n : null; };
+    const textCols = ['title', 'case_number', 'address', 'notes'] as const;
+    for (const col of textCols) {
+      if (col in body) { sets.push(`${col} = ?`); binds.push(body[col] == null ? null : String(body[col])); }
+    }
+    if ('classification' in body) {
+      const cls = String(body.classification);
+      if (!DC_CLASSIFICATIONS.includes(cls)) return c.json({ error: 'Invalid classification', code: 'INVALID_CLASSIFICATION' }, 400);
+      sets.push('classification = ?'); binds.push(cls);
+    }
+    for (const col of ['speed_mph', 'latitude', 'longitude'] as const) {
+      if (col in body) { sets.push(`${col} = ?`); binds.push(num(body[col])); }
+    }
+    if (!sets.length) return c.json({ error: 'No updatable fields provided' }, 400);
+    sets.push(`updated_at = datetime('now','localtime')`);
+    binds.push(id);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM dashcam_videos WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+    await execute(db, `UPDATE dashcam_videos SET ${sets.join(', ')} WHERE id = ?`, ...binds);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM dashcam_videos WHERE id = ?', id);
+    return c.json(updated ?? { success: true });
+  } catch (err) {
+    console.error('PUT /fleet/dashcam-videos/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE /dashcam-videos/:id — hard delete (UI labels it "permanently"). Gated
+// to admin/manager; also clears the video's links so none are orphaned.
+fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const existing = await queryFirst<{ id: number; file_path?: string | null; retention_status?: string | null; classification?: string | null; case_number?: string | null }>(
+      db,
+      'SELECT id, file_path, retention_status, classification, case_number FROM dashcam_videos WHERE id = ?',
+      id,
+    );
+    if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+
+    // Server-side evidence-lock with admin override. See bodyCameras.ts
+    // for the matching pattern. Non-admin (manager only on this route)
+    // still gets 409; admin can pass ?force=true with audit_log entry.
+    const user = c.get('user') as { role?: string; id?: number } | undefined;
+    const force = c.req.query('force') === 'true';
+    const canForce = force && user?.role === 'admin';
+    const locked = isEvidenceLocked(existing.retention_status);
+    if (locked && !canForce) {
+      return c.json({
+        error: 'Video under hold',
+        detail: `Retention status "${existing.retention_status}" indicates an active hold. Release the hold before deleting, OR pass ?force=true as admin.`,
+        canOverride: user?.role === 'admin',
+        retention_status: existing.retention_status,
+      }, 409);
+    }
+
+    try { await execute(db, 'DELETE FROM dashcam_video_links WHERE video_id = ?', id); } catch { /* links table may be absent */ }
+    await execute(db, 'DELETE FROM dashcam_videos WHERE id = ?', id);
+    if (existing.file_path) {
+      // Best-effort R2 cleanup — the row is already gone; an orphan object
+      // is preferable to a 500 after a successful delete.
+      await c.env.UPLOADS.delete(existing.file_path).catch(() => undefined);
+    }
+
+    try {
+      await recordAudit(c, {
+        action: locked && canForce ? 'dashcam_video_force_deleted' : 'dashcam_video_deleted',
+        entityType: 'dashcam_video',
+        entityId: id,
+        details: locked && canForce
+          ? `ADMIN OVERRIDE: held video destroyed (retention=${existing.retention_status}; classification=${existing.classification ?? 'n/a'}; case=${existing.case_number ?? 'n/a'})`
+          : `Classification=${existing.classification ?? 'n/a'}; case=${existing.case_number ?? 'n/a'}; retention=${existing.retention_status ?? 'n/a'}`,
+      });
+    } catch { /* best-effort audit */ }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /fleet/dashcam-videos/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /dashcam-videos/:id/burn — queue a HUD/redaction burn. Marks the row
+// 'pending' (the client disables the button while pending/processing and polls
+// for it to flip). The actual transcode is an external/async job (out of scope).
+fleet.post('/dashcam-videos/:id{[0-9]+}/burn', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const existing = await queryFirst<{ burn_status: string | null }>(db, 'SELECT burn_status FROM dashcam_videos WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+    if (existing.burn_status === 'pending' || existing.burn_status === 'processing') {
+      return c.json({ success: true, burn_status: existing.burn_status, already_queued: true });
+    }
+    await execute(db, `UPDATE dashcam_videos SET burn_status = 'pending', updated_at = datetime('now','localtime') WHERE id = ?`, id);
+    return c.json({ success: true, burn_status: 'pending' });
+  } catch (err) {
+    console.error('POST /fleet/dashcam-videos/:id/burn failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dashcam-videos/:id/links — bare array of links for the link modal.
+fleet.get('/dashcam-videos/:id{[0-9]+}/links', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT id, video_id, entity_type, entity_id, linked_by, notes, created_at FROM dashcam_video_links WHERE video_id = ? ORDER BY created_at DESC', id);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// POST /dashcam-videos/:id/links — link a video to a call/incident/case/warrant/citation.
+fleet.post('/dashcam-videos/:id{[0-9]+}/links', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json<{ entity_type?: string; entity_id?: number; notes?: string }>();
+    const entityType = String(body.entity_type ?? '');
+    const entityId = Number(body.entity_id);
+    if (!DC_LINK_ENTITIES.includes(entityType)) return c.json({ error: 'Invalid entity_type', code: 'INVALID_ENTITY_TYPE' }, 400);
+    if (!Number.isFinite(entityId) || entityId < 1) return c.json({ error: 'Invalid entity_id', code: 'INVALID_ENTITY_ID' }, 400);
+    const linkedBy = (c.get('user') as { full_name?: string } | undefined)?.full_name ?? 'Unknown';
+    const r = await execute(db,
+      `INSERT INTO dashcam_video_links (video_id, entity_type, entity_id, linked_by, notes) VALUES (?, ?, ?, ?, ?)`,
+      id, entityType, entityId, linkedBy, body.notes ?? null);
+    return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /fleet/dashcam-videos/:id/links failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE /dashcam-videos/:id/links/:linkId — remove a single link.
+fleet.delete('/dashcam-videos/:id{[0-9]+}/links/:linkId{[0-9]+}', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const linkId = Number(c.req.param('linkId'));
+    await execute(db, 'DELETE FROM dashcam_video_links WHERE id = ? AND video_id = ?', linkId, id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /fleet/dashcam-videos/:id/links/:linkId failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
   }
 });
@@ -667,6 +1120,22 @@ fleet.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM fleet_vehicles WHERE id = ?', newId,
     );
+
+    // Fleet.io outbound (PR 3 catalog kind 'vehicle.create'). New vehicles
+    // need to land in Fleet.io so PM schedules / inspections / fuel entries
+    // can attach to them on the Fleet.io side. waitUntil keeps the response
+    // latency unchanged; try/catch guards the test runtime where executionCtx
+    // is undefined.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'vehicle.create', created, {
+          rmpgTable: 'fleet_vehicles',
+          rmpgId: Number(newId),
+          versionToken: `create:${newId}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests — emit is best-effort */ }
+
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /fleet failed:', err);
@@ -726,6 +1195,23 @@ fleet.put('/:id{[0-9]+}', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM fleet_vehicles WHERE id = ?', id,
     );
+
+    // Fleet.io outbound queue (PR 3). One call site per write path; the
+    // 30-min reconciliation cron (today a stub from PR 1, real consumer
+    // in PR 4) drains pending events into Fleet.io. We pass the row's
+    // updated_at as the versionToken so a second identical PUT in the
+    // same tick dedupes via the UNIQUE (direction, event_id) constraint.
+    // waitUntil keeps the request reply fast (<no network on the hot path).
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'vehicle.update', updated, {
+          rmpgTable: 'fleet_vehicles',
+          rmpgId: id,
+          versionToken: String(updated?.updated_at ?? new Date().toISOString()),
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests — emit is best-effort */ }
+
     return c.json(updated);
   } catch (err) {
     console.error('PUT /fleet/:id failed:', err);
@@ -768,6 +1254,21 @@ fleet.delete('/:id{[0-9]+}', async (c) => {
        WHERE id = ?`,
       id,
     );
+
+    // Fleet.io outbound 'vehicle.delete' — Fleet.io should mirror our archive
+    // by archiving its own vehicle row (the sync engine maps this to the
+    // Fleet.io PATCH endpoint with archived: true). We send a tombstone-shape
+    // payload because the row is already archived locally.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'vehicle.delete', { id, archived: true }, {
+          rmpgTable: 'fleet_vehicles',
+          rmpgId: id,
+          versionToken: `delete:${id}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json({ success: true, id });
   } catch (err) {
     console.error('DELETE /fleet/:id failed:', err);
@@ -914,6 +1415,21 @@ fleet.post('/:id/fuel', async (c) => {
     const isFullTank = body.is_full_tank == null ? 1 : (body.is_full_tank ? 1 : 0);
     const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location, mpg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null, isFullTank, body.payment_method ?? null, body.driver_name ?? null, body.location ?? null, body.mpg ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', result.meta.last_row_id);
+
+    // Fleet.io outbound queue (PR 3) — see the equivalent emit on PUT /:id
+    // (vehicle update) for the rationale. Token = last_row_id (immutable for
+    // this fuel row) so a second POST that lands with the same id (would
+    // only happen if a write got replayed at the framework level) dedupes.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'fuel.create', created, {
+          rmpgTable: 'fleet_fuel_log',
+          rmpgId: Number(result.meta.last_row_id),
+          versionToken: `create:${result.meta.last_row_id}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/fuel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
@@ -944,6 +1460,20 @@ fleet.put('/fuel/:id', async (c) => {
     bindings.push(fuelId);
     await execute(db, `UPDATE fleet_fuel_log SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', fuelId);
+
+    // Fleet.io outbound 'fuel.update' — Fleet.io edits the corresponding
+    // fuel_entry. versionToken uses updated_at if present so retries against
+    // the same shape dedupe.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'fuel.update', updated, {
+          rmpgTable: 'fleet_fuel_log',
+          rmpgId: fuelId,
+          versionToken: String(updated?.updated_at ?? `update:${Date.now()}:${fuelId}`),
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json(updated);
   } catch (err) { console.error('PUT /fleet/fuel/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
@@ -955,6 +1485,19 @@ fleet.delete('/fuel/:id', async (c) => {
     if (!Number.isInteger(fuelId) || fuelId <= 0) return c.json({ error: 'Invalid fuel log id' }, 400);
     const db = getDb(c.env);
     await execute(db, 'DELETE FROM fleet_fuel_log WHERE id = ?', fuelId);
+
+    // Fleet.io outbound 'fuel.delete' — tombstone shape (id + deleted flag);
+    // the row is gone locally so a SELECT would return undefined.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'fuel.delete', { id: fuelId, deleted: true }, {
+          rmpgTable: 'fleet_fuel_log',
+          rmpgId: fuelId,
+          versionToken: `delete:${fuelId}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json({ success: true });
   } catch (err) { console.error('DELETE /fleet/fuel/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
@@ -984,7 +1527,7 @@ fleet.post('/:id/maintenance', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.type || !body.performed_at) return c.json({ error: 'type and performed_at required' }, 400);
-    const result = await execute(db, `INSERT INTO fleet_maintenance (vehicle_id, type, description, mileage_at_service, cost, vendor, performed_by, performed_at, next_due_date, next_due_mileage) VALUES (?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.type, body.description ?? null, body.mileage_at_service ?? null, body.cost ?? null, body.vendor ?? null, body.performed_by ?? null, body.performed_at, body.next_due_date ?? null, body.next_due_mileage ?? null);
+    const result = await execute(db, `INSERT INTO fleet_maintenance (vehicle_id, type, description, mileage_at_service, cost, labor_cost, vendor, performed_by, performed_at, next_due_date, next_due_mileage, service_tasks, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.type, body.description ?? null, body.mileage_at_service ?? null, body.cost ?? null, body.labor_cost ?? null, body.vendor ?? null, body.performed_by ?? null, body.performed_at, body.next_due_date ?? null, body.next_due_mileage ?? null, body.service_tasks ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_maintenance WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/maintenance failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -998,7 +1541,7 @@ fleet.put('/maintenance/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_maintenance WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Maintenance record not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
-    const cols = ['type', 'description', 'mileage_at_service', 'cost', 'vendor', 'performed_by', 'performed_at', 'next_due_date', 'next_due_mileage'];
+    const cols = ['type', 'description', 'mileage_at_service', 'cost', 'labor_cost', 'vendor', 'performed_by', 'performed_at', 'next_due_date', 'next_due_mileage', 'service_tasks', 'notes'];
     const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of cols) { if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); } }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
@@ -1072,7 +1615,20 @@ fleet.post('/:id/inspections', async (c) => {
       inspectorId ?? null, body.inspector_name ?? null, mileage, checklist, body.notes ?? null,
     );
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_inspections WHERE id = ?', result.meta.last_row_id);
-    return c.json(mapInspectionRow(created), 201);
+
+    // ADVANCED: a critical-severity defect takes the vehicle OUT OF SERVICE
+    // automatically — derived server-side from the checklist (never trust a
+    // client flag). Best-effort: a failed status update must not fail the
+    // inspection write itself.
+    const summary = summarizeInspection(Array.isArray(body.items) ? (body.items as Parameters<typeof summarizeInspection>[0]) : []);
+    if (summary.oos) {
+      try {
+        await execute(db, `UPDATE fleet_vehicles SET status = 'out_of_service' WHERE id = ?`, vehicleId);
+      } catch (oosErr) {
+        console.warn('[fleet] OOS status update degraded:', (oosErr as Error)?.message);
+      }
+    }
+    return c.json({ ...mapInspectionRow(created), out_of_service: summary.oos, defect_count: summary.defects }, 201);
   } catch (err) { console.error('POST /fleet/:id/inspections failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1119,6 +1675,27 @@ fleet.get('/:id/assignments', async (c) => {
   } catch (err) { console.error('GET /fleet/:id/assignments failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
+// PUT /:id/assign — assign or unassign a vehicle to/from a unit.
+//
+// CROSS-INTEGRATION NOTE (Claude Opus 4.8 — ed5d0e99 / PR #1025 follow-on):
+//   units.vehicle_id is a TEXT column holding the denormalized
+//   vehicle_NUMBER string (e.g. "PS-D19"), NOT fleet_vehicles.id. The
+//   authoritative unit↔vehicle link is fleet_vehicles.assigned_unit_id
+//   → units.id; units.vehicle_id is a denormalized display field that
+//   the NAV side reads via /dispatch/gps/my-unit + Duty.ts stateFor()
+//   to render the assigned vehicle card. Without the back-link, the
+//   NAV panel shows "No vehicle" even after a successful assign.
+//   Discovered by runtime verification of the live duty/me read path.
+//
+//   The pre-Claude version wrote the integer vehicle id into
+//   units.vehicle_id, which then failed JSON lookup on the read side
+//   (numeric string vs. alphanumeric vehicle_number). This rewrite:
+//     1. Assign: back-link units.vehicle_id = (SELECT vehicle_number
+//        FROM fleet_vehicles WHERE id = ?). One subquery = no separate
+//        SELECT + race-free read.
+//     2. Unassign: read the previous owner BEFORE clearing
+//        fleet_vehicles.assigned_unit_id, then NULL units.vehicle_id
+//        on that previous owner (no more orphan strings after a swap).
 fleet.put('/:id/assign', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
@@ -1127,24 +1704,61 @@ fleet.put('/:id/assign', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     const { unit_id, unit_call_sign, officer_name } = body;
     if (unit_id) {
+      // ── Assign ──
+      // Idempotent: close any prior OPEN fleet_assignments row for this
+      // (vehicle, unit) pair first so we never accumulate stale-open
+      // assignment rows across re-assigns (audit-trail leak).
       const uid = Number(unit_id);
-      // Idempotent assign: close the unit's AND the vehicle's prior OPEN
-      // assignment rows first (without this, repeated assigns leak duplicate
-      // open rows — observed live: 7 open rows for one vehicle), then detach the
-      // vehicle from any other unit, write the fresh audit row, and set BOTH
-      // directional links (fleet_vehicles.assigned_unit_id + units.vehicle_id).
-      await execute(db, `UPDATE fleet_assignments SET unassigned_at = datetime('now') WHERE (unit_id = ? OR vehicle_id = ?) AND unassigned_at IS NULL`, uid, vehicleId);
-      await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE assigned_unit_id = ? AND id != ?`, uid, vehicleId);
-      await execute(db, `INSERT INTO fleet_assignments (vehicle_id, unit_id, unit_call_sign, officer_name, assigned_at) VALUES (?,?,?,?,datetime('now'))`, vehicleId, uid, unit_call_sign ?? null, officer_name ?? null);
-      await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = ?, updated_at = datetime('now') WHERE id = ?`, uid, vehicleId);
-      // units.vehicle_id is the denormalized vehicle_NUMBER string (not the id).
-      await execute(db, `UPDATE units SET vehicle_id = (SELECT vehicle_number FROM fleet_vehicles WHERE id = ?) WHERE id = ?`, vehicleId, uid);
+      if (!Number.isInteger(uid) || uid <= 0) return c.json({ error: 'Invalid unit_id' }, 400);
+      await execute(db,
+        `UPDATE fleet_assignments SET unassigned_at = datetime('now')
+          WHERE vehicle_id = ? AND unit_id = ? AND unassigned_at IS NULL`,
+        vehicleId, uid);
+      // Defensive: clear any OTHER vehicle currently pointing at this unit
+      // so the unit owns exactly one vehicle on the back-link side.
+      await execute(db,
+        `UPDATE fleet_assignments SET unassigned_at = datetime('now')
+          WHERE unit_id = ? AND unassigned_at IS NULL AND vehicle_id != ?`,
+        uid, vehicleId);
+      await execute(db,
+        `INSERT INTO fleet_assignments (vehicle_id, unit_id, unit_call_sign, officer_name, assigned_at)
+         VALUES (?,?,?,?,datetime('now'))`,
+        vehicleId, uid, unit_call_sign ?? null, officer_name ?? null);
+      // fleet_vehicles.assigned_unit_id is the AUTHORITATIVE link
+      // (units.id, integer FK). Read by the dispatch list view, the
+      // fleet LIST LEFT JOIN, and every "who has the car" question.
+      await execute(db,
+        `UPDATE fleet_vehicles SET assigned_unit_id = ?, updated_at = datetime('now') WHERE id = ?`,
+        uid, vehicleId);
+      // units.vehicle_id is the DENORMALIZED vehicle_number string for
+      // the NAV read path (see CROSS-INTEGRATION NOTE above). Subquery
+      // resolves to the same number on both sides; survives a later
+      // vehicle_number rename as long as it propagates here.
+      await execute(db,
+        `UPDATE units SET vehicle_id = (SELECT vehicle_number FROM fleet_vehicles WHERE id = ?),
+                          updated_at = datetime('now')
+          WHERE id = ?`,
+        vehicleId, uid);
     } else {
-      // Unassign: close open rows for this vehicle + clear both directional links.
-      const prev = await queryFirst<{ assigned_unit_id: number | null }>(db, `SELECT assigned_unit_id FROM fleet_vehicles WHERE id = ?`, vehicleId);
-      await execute(db, `UPDATE fleet_assignments SET unassigned_at = datetime('now') WHERE vehicle_id = ? AND unassigned_at IS NULL`, vehicleId);
-      await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE id = ?`, vehicleId);
-      if (prev?.assigned_unit_id) await execute(db, `UPDATE units SET vehicle_id = NULL WHERE id = ?`, prev.assigned_unit_id);
+      // ── Unassign ──
+      // Read the previous owner BEFORE clearing the link — we need its
+      // id to null out the back-link (units.vehicle_id) on the right
+      // unit. Without this read, the unit keeps the stale vehicle_number
+      // string after the car moves on (NAV keeps showing the old car).
+      const prev = await queryFirst<{ assigned_unit_id: number | null }>(
+        db, `SELECT assigned_unit_id FROM fleet_vehicles WHERE id = ?`, vehicleId);
+      await execute(db,
+        `UPDATE fleet_assignments SET unassigned_at = datetime('now')
+          WHERE vehicle_id = ? AND unassigned_at IS NULL`,
+        vehicleId);
+      await execute(db,
+        `UPDATE fleet_vehicles SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE id = ?`,
+        vehicleId);
+      if (prev?.assigned_unit_id) {
+        await execute(db,
+          `UPDATE units SET vehicle_id = NULL, updated_at = datetime('now') WHERE id = ?`,
+          prev.assigned_unit_id);
+      }
     }
     const updated = await queryFirst<Record<string, unknown>>(db, `SELECT v.*, u.call_sign as assigned_unit_call_sign FROM fleet_vehicles v LEFT JOIN units u ON u.id = v.assigned_unit_id WHERE v.id = ?`, vehicleId);
     return c.json(updated);
@@ -1259,7 +1873,14 @@ fleet.get('/cost-per-mile/:id', async (c) => {
     const totalMiles = fuel?.total_distance ?? 0;
     const fuelCostPerMile = totalMiles > 0 ? (fuel?.total_cost ?? 0) / totalMiles : 0;
     const maintCostPerMile = totalMiles > 0 ? (maint?.total_cost ?? 0) / totalMiles : 0;
-    return c.json({ fuel_cost_per_mile: Math.round(fuelCostPerMile * 100) / 100, maintenance_cost_per_mile: Math.round(maintCostPerMile * 100) / 100, total_cost_per_mile: Math.round((fuelCostPerMile + maintCostPerMile) * 100) / 100, total_miles: totalMiles, total_fuel_cost: fuel?.total_cost ?? 0, total_maintenance_cost: maint?.total_cost ?? 0, total_gallons: fuel?.total_gallons ?? 0 });
+    const totalCost = (fuel?.total_cost ?? 0) + (maint?.total_cost ?? 0);
+    const costPerMile = Math.round((fuelCostPerMile + maintCostPerMile) * 100) / 100;
+    // vehicle_number, total_cost and cost_per_mile are the exact keys the Cost
+    // Analysis modal (FleetPage) reads for its title, "Total Cost" and "Cost/Mile"
+    // tiles. They were never returned, so the title was blank, Total Cost rendered
+    // an empty "$" and Cost/Mile always showed "N/A". Returned as aliases here.
+    const veh = await queryFirst<{ vehicle_number: string }>(db, 'SELECT vehicle_number FROM fleet_vehicles WHERE id = ?', vehicleId);
+    return c.json({ vehicle_number: veh?.vehicle_number ?? '', fuel_cost_per_mile: Math.round(fuelCostPerMile * 100) / 100, maintenance_cost_per_mile: Math.round(maintCostPerMile * 100) / 100, total_cost_per_mile: costPerMile, cost_per_mile: costPerMile, total_miles: totalMiles, total_fuel_cost: fuel?.total_cost ?? 0, total_maintenance_cost: maint?.total_cost ?? 0, total_cost: Math.round(totalCost * 100) / 100, total_gallons: fuel?.total_gallons ?? 0 });
   } catch (err) { console.error('GET /fleet/cost-per-mile/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1278,9 +1899,9 @@ fleet.get('/:id{[0-9]+}/maintenance-costs', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     const db = getDb(c.env);
-    const totals = await queryFirst<{ total_cost: number; total_labor_cost: number }>(
+    const totals = await queryFirst<{ total_cost: number }>(
       db,
-      'SELECT COALESCE(SUM(cost),0) AS total_cost, COALESCE(SUM(labor_cost),0) AS total_labor_cost FROM fleet_maintenance WHERE vehicle_id = ?',
+      'SELECT COALESCE(SUM(cost),0) AS total_cost FROM fleet_maintenance WHERE vehicle_id = ?',
       vehicleId,
     );
     // Parts cost comes from the line-item table when present; degrade to 0.
@@ -1299,7 +1920,7 @@ fleet.get('/:id{[0-9]+}/maintenance-costs', async (c) => {
     );
     return c.json({
       total_cost: totals?.total_cost ?? 0,
-      total_labor_cost: totals?.total_labor_cost ?? 0,
+      total_labor_cost: 0,
       total_parts_cost: parts?.total_parts_cost ?? 0,
       by_type: byType,
     });
@@ -1544,11 +2165,9 @@ fleet.put('/insurance/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_insurance SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_insurance WHERE id = ?', id);
-    return c.json(updated ?? { success: true });
+    return c.json({ success: true });
   } catch (err) { console.error('PUT /fleet/insurance/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
-
 
 fleet.delete('/insurance/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_insurance WHERE id = ?', id); return c.json({ success: true }); }
@@ -1641,8 +2260,7 @@ fleet.put('/loans/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_loans SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_loans WHERE id = ?', id);
-    return c.json(updated ?? { success: true });
+    return c.json({ success: true });
   } catch (err) { console.error('PUT /fleet/loans/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1702,8 +2320,7 @@ fleet.put('/accessories/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_accessories SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_accessories WHERE id = ?', id);
-    return c.json(updated ?? { success: true });
+    return c.json({ success: true });
   } catch (err) { console.error('PUT /fleet/accessories/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1743,8 +2360,7 @@ fleet.put('/utilities/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_utility_costs SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_utility_costs WHERE id = ?', id);
-    return c.json(updated ?? { success: true });
+    return c.json({ success: true });
   } catch (err) { console.error('PUT /fleet/utilities/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1784,8 +2400,7 @@ fleet.put('/other-costs/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_other_costs SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_other_costs WHERE id = ?', id);
-    return c.json(updated ?? { success: true });
+    return c.json({ success: true });
   } catch (err) { console.error('PUT /fleet/other-costs/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1838,7 +2453,7 @@ fleet.post('/:id/tires', async (c) => {
     const vehicleId = Number(c.req.param('id'));
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_tires (vehicle_id, tire_position, brand, model, size, dot_code, tread_depth, pressure_psi, installed_date, installed_mileage, cost, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.tire_position, body.brand, body.model, body.size, body.dot_code, body.tread_depth, body.pressure_psi, body.installed_date ?? null, body.installed_mileage, body.cost, body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_tires (vehicle_id, tire_position, brand, model, size, dot_code, tread_depth, pressure_psi, installed_date, installed_mileage, cost, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, body.tire_position ?? null, body.brand ?? null, body.model ?? null, body.size ?? null, body.dot_code ?? null, body.tread_depth ?? null, body.pressure_psi ?? null, body.installed_date ?? null, body.installed_mileage ?? null, body.cost ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_tires WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/tires failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -1849,7 +2464,7 @@ fleet.put('/tires/:id', async (c) => {
     const id = Number(c.req.param('id'));
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const cols = ['tire_position', 'brand', 'model', 'size', 'dot_code', 'tread_depth', 'pressure_psi', 'cost', 'notes', 'removed_date', 'removed_mileage'];
+    const cols = ['tire_position', 'brand', 'model', 'size', 'dot_code', 'tread_depth', 'pressure_psi', 'installed_date', 'installed_mileage', 'cost', 'notes', 'removed_date', 'removed_mileage'];
     const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of cols) { if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); } }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
@@ -1881,7 +2496,7 @@ fleet.post('/:id/damage', async (c) => {
     const vehicleId = Number(c.req.param('id'));
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, repair_date, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?,?)`, vehicleId, body.damage_type, body.location, body.severity, body.description, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost, body.repair_status ?? 'pending', body.repair_date ?? null, body.photo_urls ?? null, body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, repair_date, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?,?)`, vehicleId, body.damage_type ?? null, body.location ?? null, body.severity ?? null, body.description ?? null, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost ?? null, body.repair_status ?? 'pending', body.repair_date ?? null, body.photo_urls ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_damage WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/damage failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -1911,7 +2526,7 @@ fleet.post('/:id/damage-reports', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id')); if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
     const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?)`, vehicleId, body.damage_type, body.location, body.severity, body.description, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost, body.repair_status ?? 'pending', body.photo_urls ?? null, body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_damage (vehicle_id, damage_type, location, severity, description, reported_by, reported_date, repair_cost, repair_status, photo_urls, notes) VALUES (?,?,?,?,?,?,datetime('now'),?,?,?,?)`, vehicleId, body.damage_type ?? null, body.location ?? null, body.severity ?? null, body.description ?? null, (c.get('user') as { full_name: string } | undefined)?.full_name ?? null, body.repair_cost ?? null, body.repair_status ?? 'pending', body.photo_urls ?? null, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_damage WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/damage-reports failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -1920,7 +2535,7 @@ fleet.put('/damage-reports/:id', async (c) => {
   try {
     const id = Number(c.req.param('id')); if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>();
-    const cols = ['repair_status']; const setCols: string[] = []; const bindings: unknown[] = [];
+    const cols = ['damage_type', 'location', 'severity', 'description', 'repair_cost', 'repair_status', 'repair_date', 'photo_urls', 'notes']; const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of cols) { if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); } }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id); await execute(db, `UPDATE fleet_damage SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
@@ -1955,7 +2570,7 @@ fleet.post('/recalls', async (c) => {
   try {
     const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>();
     if (!body.vehicle_id) return c.json({ error: 'vehicle_id required' }, 400);
-    const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, body.vehicle_id, body.nhtsa_number, body.description, body.severity ?? 'medium', body.issue_date, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, body.vehicle_id, body.nhtsa_number ?? null, body.description ?? null, body.severity ?? 'medium', body.issue_date ?? null, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_recalls WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/recalls failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -1990,7 +2605,7 @@ fleet.post('/:id/recalls', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, vehicleId, body.nhtsa_number, body.description, body.severity ?? 'medium', body.issue_date, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
+    const result = await execute(db, `INSERT INTO fleet_recalls (vehicle_id, nhtsa_number, description, severity, issue_date, remedy_date, status, notes) VALUES (?,?,?,?,?,?,?,?)`, vehicleId, body.nhtsa_number ?? null, body.description ?? null, body.severity ?? 'medium', body.issue_date ?? null, body.remedy_date ?? null, body.status ?? 'open', body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_recalls WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/recalls failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -2017,7 +2632,7 @@ fleet.post('/parts', async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_parts (part_number, name, category, description, unit_cost, quantity_on_hand, reorder_point, supplier, compatible_vehicles, location) VALUES (?,?,?,?,?,?,?,?,?,?)`, body.part_number, body.name, body.category, body.description ?? null, body.unit_cost, body.quantity_on_hand ?? 0, body.reorder_point ?? 0, body.supplier ?? null, body.compatible_vehicles ?? null, body.location ?? null);
+    const result = await execute(db, `INSERT INTO fleet_parts (part_number, name, category, description, unit_cost, quantity_on_hand, reorder_point, supplier, compatible_vehicles, location) VALUES (?,?,?,?,?,?,?,?,?,?)`, body.part_number ?? null, body.name ?? null, body.category ?? null, body.description ?? null, body.unit_cost ?? null, body.quantity_on_hand ?? 0, body.reorder_point ?? 0, body.supplier ?? null, body.compatible_vehicles ?? null, body.location ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_parts WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/parts failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -2380,7 +2995,15 @@ fleet.get('/emissions', async (c) => {
 fleet.get('/fleet-lifecycle', async (c) => {
   try {
     const db = getDb(c.env);
-    const vehicles = await query<Record<string, unknown>>(db, `SELECT v.*, COALESCE(SUM(m.cost),0) as lifetime_maintenance, COALESCE(SUM(f.total_cost),0) as lifetime_fuel, (COALESCE(SUM(m.cost),0) + COALESCE(SUM(f.total_cost),0)) as total_cost_of_ownership FROM fleet_vehicles v LEFT JOIN fleet_maintenance m ON m.vehicle_id = v.id LEFT JOIN fleet_fuel_log f ON f.vehicle_id = v.id GROUP BY v.id ORDER BY v.year, v.vehicle_number`);
+    const vehicles = await query<Record<string, unknown>>(db,
+      `SELECT v.*,
+              COALESCE(mc.total, 0) AS lifetime_maintenance,
+              COALESCE(fc.total, 0) AS lifetime_fuel,
+              (COALESCE(mc.total, 0) + COALESCE(fc.total, 0)) AS total_cost_of_ownership
+       FROM fleet_vehicles v
+       LEFT JOIN (SELECT vehicle_id, SUM(cost) AS total FROM fleet_maintenance GROUP BY vehicle_id) mc ON mc.vehicle_id = v.id
+       LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS total FROM fleet_fuel_log GROUP BY vehicle_id) fc ON fc.vehicle_id = v.id
+       ORDER BY v.year, v.vehicle_number`);
     return c.json(vehicles);
   } catch (err) { console.error('GET /fleet/fleet-lifecycle failed:', err); return c.json([]); }
 });
@@ -2414,8 +3037,14 @@ fleet.get('/inspection-stats', async (c) => {
     const passCount = (await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM fleet_inspections WHERE overall_result = 'pass'"))?.n ?? 0;
     const failCount = (await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM fleet_inspections WHERE overall_result = 'fail'"))?.n ?? 0;
     const total = passCount + failCount;
-    return c.json({ total, pass: passCount, fail: failCount, pass_rate: total > 0 ? Math.round((passCount / total) * 100) : 0, recent: [] });
-  } catch (err) { console.error('GET /fleet/inspection-stats failed:', err); return c.json({ total: 0, pass: 0, fail: 0, pass_rate: 0, recent: [] }); }
+    const pass_rate = total > 0 ? Math.round((passCount / total) * 100) : 0;
+    // FleetAnalyticsTab reads total_inspections/pass_count/fail_count;
+    // keep the short keys too for any older consumer.
+    return c.json({
+      total, pass: passCount, fail: failCount, pass_rate, recent: [],
+      total_inspections: total, pass_count: passCount, fail_count: failCount,
+    });
+  } catch (err) { console.error('GET /fleet/inspection-stats failed:', err); return c.json({ total: 0, pass: 0, fail: 0, pass_rate: 0, recent: [], total_inspections: 0, pass_count: 0, fail_count: 0 }); }
 });
 
 fleet.get('/cost-trends', async (c) => {
@@ -2431,45 +3060,59 @@ fleet.get('/cost-trends', async (c) => {
 fleet.get('/driver-performance', async (c) => {
   try {
     const db = getDb(c.env);
-    // Aggregate per driver from the fuel log (driver_name is captured per fill
-    // and IS populated), not from fleet_assignments — most vehicles have fuel
-    // history but no formal assignment rows, so the assignment-join version
-    // always came back empty. total_miles from the odometer span; avg_mpg from
-    // the per-fill MPG. GPS-only telematics fields (hours/idle/speed) stay 0
-    // until breadcrumb data exists; overall_score is a simple MPG-based proxy.
-    const rows = await query<{
-      officer_name: string; total_miles: number; avg_mpg: number | null;
-      fills: number; total_cost: number;
-    }>(
-      db,
-      `SELECT driver_name as officer_name,
-              COALESCE(MAX(odometer) - MIN(odometer), 0) as total_miles,
-              AVG(NULLIF(mpg, 0)) as avg_mpg,
-              COUNT(*) as fills,
-              COALESCE(SUM(total_cost), 0) as total_cost
-       FROM fleet_fuel_log
-       WHERE driver_name IS NOT NULL AND driver_name != '' AND driver_name != 'None'
-       GROUP BY driver_name
-       ORDER BY total_miles DESC
-       LIMIT 50`,
-    );
-    const drivers = rows.map(r => {
-      const mpg = (typeof r.avg_mpg === 'number' && r.avg_mpg > 0) ? Math.round(r.avg_mpg * 10) / 10 : null;
-      // Lightweight score: scale MPG into 0-100 (25 mpg ≈ 100). Purely a
-      // fuel-economy proxy until real telematics scoring exists.
-      const overall_score = mpg != null ? Math.min(100, Math.round((mpg / 25) * 100)) : 0;
+    // Fuel/odometer stats per officer from assignment windows.
+    const fuelRows = await query<{
+      officer_name: string; trips: number; gallons: number; cost: number; miles: number;
+      call_sign: string | null; unit_id: number | null;
+    }>(db, `SELECT a.officer_name, MAX(a.unit_call_sign) as call_sign, MAX(a.unit_id) as unit_id, COUNT(*) as trips,
+              COALESCE(SUM(f.gallons),0) as gallons, COALESCE(SUM(f.total_cost),0) as cost,
+              COALESCE(MAX(f.odometer)-MIN(f.odometer),0) as miles
+            FROM fleet_assignments a
+            LEFT JOIN fleet_fuel_log f ON f.vehicle_id = a.vehicle_id
+              AND f.fuel_date >= a.assigned_at AND (a.unassigned_at IS NULL OR f.fuel_date <= a.unassigned_at)
+            WHERE a.officer_name IS NOT NULL AND a.assigned_at >= datetime('now', '-90 days')
+            GROUP BY a.officer_name ORDER BY miles DESC LIMIT 50`);
+    // GPS-derived behavior — gps_breadcrumbs.officer_name is NULL on live,
+    // but unit_id is always set, so aggregate per UNIT (idle %, average
+    // moving speed, max speed, active minutes) and map to each officer via
+    // their assignment's unit.
+    const gpsRows = await query<{
+      unit_id: number; total_pings: number; idle_pings: number;
+      avg_speed: number | null; max_speed: number | null; active_minutes: number;
+    }>(db, `SELECT unit_id,
+              COUNT(*) as total_pings,
+              SUM(CASE WHEN COALESCE(speed, 0) <= 2 THEN 1 ELSE 0 END) as idle_pings,
+              AVG(CASE WHEN speed > 2 THEN speed END) as avg_speed,
+              MAX(speed) as max_speed,
+              COUNT(DISTINCT strftime('%Y-%m-%d %H:%M', recorded_at)) as active_minutes
+            FROM gps_breadcrumbs
+            WHERE unit_id IS NOT NULL AND recorded_at >= datetime('now', '-90 days')
+            GROUP BY unit_id`);
+    const gpsMap = new Map(gpsRows.map((g) => [g.unit_id, g]));
+    const drivers = fuelRows.map((r) => {
+      const g = r.unit_id != null ? gpsMap.get(r.unit_id) : undefined;
+      const idle_pct = g && g.total_pings > 0 ? Math.round((g.idle_pings / g.total_pings) * 100) : null;
+      const avg_mpg = r.miles > 0 && r.gallons > 0 ? Math.round((r.miles / r.gallons) * 10) / 10 : null;
+      // Composite 0-100: start at 100, penalize excessive idle (>50%)
+      // and hard speed (>80 mph observed). Coarse but consistent.
+      let score = 100;
+      if (idle_pct != null && idle_pct > 50) score -= Math.min(30, idle_pct - 50);
+      if (g?.max_speed != null && g.max_speed > 80) score -= Math.min(20, Math.round(g.max_speed - 80));
       return {
+        // legacy keys
+        driver: r.officer_name, trips: r.trips, gallons: r.gallons, cost: r.cost, miles: r.miles,
+        // DriverPerformanceItem contract
         officer_name: r.officer_name,
-        call_sign: '',
-        total_miles: Math.max(0, Math.round(r.total_miles ?? 0)),
-        total_hours: 0,
-        idle_pct: 0,
-        avg_speed: 0,
-        max_speed: 0,
-        avg_mpg: mpg,
-        inspection_score: 0,
+        call_sign: r.call_sign,
+        total_miles: r.miles,
+        total_hours: g ? Math.round((g.active_minutes / 60) * 10) / 10 : null,
+        idle_pct,
+        avg_speed: g?.avg_speed != null ? Math.round(g.avg_speed) : null,
+        max_speed: g?.max_speed != null ? Math.round(g.max_speed) : null,
+        avg_mpg,
+        inspection_score: null,
         damage_count: 0,
-        overall_score,
+        overall_score: Math.max(0, score),
       };
     });
     return c.json({ drivers });
@@ -2552,8 +3195,42 @@ fleet.get('/health-scores', async (c) => {
 fleet.get('/maintenance-schedule', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, `SELECT m.*, v.vehicle_number, v.current_mileage FROM fleet_maintenance m LEFT JOIN fleet_vehicles v ON v.id = m.vehicle_id WHERE m.next_due_date IS NOT NULL AND date(m.next_due_date) >= date('now') ORDER BY m.next_due_date LIMIT 100`);
-    return c.json({ schedule: rows });
+    // Include overdue items (date < now) — that's the whole point of an
+    // urgency column. Client contract (MaintenanceScheduleItem): service_type,
+    // due_date, due_mileage, days_until, miles_until, urgency
+    // (overdue|critical|upcoming|ok).
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT m.id, m.vehicle_id, m.type, m.next_due_date, m.next_due_mileage,
+             v.vehicle_number, v.current_mileage
+      FROM fleet_maintenance m
+      LEFT JOIN fleet_vehicles v ON v.id = m.vehicle_id
+      WHERE v.archived_at IS NULL
+        AND (m.next_due_date IS NOT NULL OR m.next_due_mileage IS NOT NULL)
+      ORDER BY m.next_due_date IS NULL, m.next_due_date
+      LIMIT 100`);
+    const today = Date.now();
+    const schedule = rows.map((m) => {
+      const dueDate = m.next_due_date as string | null;
+      const dueMileage = m.next_due_mileage as number | null;
+      const currentMileage = m.current_mileage as number | null;
+      const days_until = dueDate && !Number.isNaN(Date.parse(dueDate))
+        ? Math.round((Date.parse(dueDate) - today) / 86_400_000) : null;
+      const miles_until = (dueMileage != null && currentMileage != null)
+        ? dueMileage - currentMileage : null;
+      const overdue = (days_until != null && days_until < 0) || (miles_until != null && miles_until < 0);
+      const critical = (days_until != null && days_until <= 7) || (miles_until != null && miles_until <= 500);
+      const upcoming = (days_until != null && days_until <= 30) || (miles_until != null && miles_until <= 2000);
+      return {
+        ...m,
+        service_type: m.type ?? 'service',
+        due_date: dueDate,
+        due_mileage: dueMileage,
+        days_until,
+        miles_until,
+        urgency: overdue ? 'overdue' : critical ? 'critical' : upcoming ? 'upcoming' : 'ok',
+      };
+    });
+    return c.json({ schedule });
   } catch (err) { console.error('GET /fleet/maintenance-schedule failed:', err); return c.json({ schedule: [] }); }
 });
 
@@ -2562,7 +3239,14 @@ fleet.get('/vehicle-comparison', async (c) => {
     const db = getDb(c.env); const ids = (c.req.query('ids') || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
     if (ids.length === 0) return c.json({ vehicles: [] });
     const placeholders = ids.map(() => '?').join(',');
-    const vehicles = await query<Record<string, unknown>>(db, `SELECT v.*, COALESCE(SUM(m.cost),0) as maint_cost, COALESCE(SUM(f.total_cost),0) as fuel_cost FROM fleet_vehicles v LEFT JOIN fleet_maintenance m ON m.vehicle_id = v.id LEFT JOIN fleet_fuel_log f ON f.vehicle_id = v.id WHERE v.id IN (${placeholders}) GROUP BY v.id`, ...ids);
+    // Pre-aggregate per table — a direct double JOIN fans out rows and
+    // multiplies both SUMs (maint × fuel-log row counts).
+    const vehicles = await query<Record<string, unknown>>(db, `
+      SELECT v.*, COALESCE(m.cost, 0) as maint_cost, COALESCE(f.cost, 0) as fuel_cost
+      FROM fleet_vehicles v
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) as cost FROM fleet_maintenance GROUP BY vehicle_id) m ON m.vehicle_id = v.id
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) as cost FROM fleet_fuel_log GROUP BY vehicle_id) f ON f.vehicle_id = v.id
+      WHERE v.id IN (${placeholders})`, ...ids);
     return c.json({ vehicles });
   } catch (err) { console.error('GET /fleet/vehicle-comparison failed:', err); return c.json({ vehicles: [] }); }
 });
@@ -2570,8 +3254,44 @@ fleet.get('/vehicle-comparison', async (c) => {
 fleet.get('/vehicle-lifecycle', async (c) => {
   try {
     const db = getDb(c.env);
-    const vehicles = await query<Record<string, unknown>>(db, `SELECT v.*, COALESCE(SUM(m.cost),0) as maint_cost, COALESCE(SUM(f.total_cost),0) as fuel_cost, COALESCE(SUM(m.cost)+SUM(f.total_cost),0) as total_cost FROM fleet_vehicles v LEFT JOIN fleet_maintenance m ON m.vehicle_id = v.id LEFT JOIN fleet_fuel_log f ON f.vehicle_id = v.id GROUP BY v.id ORDER BY total_cost DESC`);
-    return c.json({ lifecycle: vehicles });
+    // NOTE: the naive double-LEFT-JOIN here multiplied SUM(m.cost) by the
+    // fuel-log row count (and vice versa) — pre-aggregate per table instead.
+    const vehicles = await query<Record<string, unknown>>(db, `
+      SELECT v.*, COALESCE(m.cost, 0) as maint_cost, COALESCE(f.cost, 0) as fuel_cost,
+             COALESCE(m.cost, 0) + COALESCE(f.cost, 0) as total_cost
+      FROM fleet_vehicles v
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) as cost FROM fleet_maintenance GROUP BY vehicle_id) m ON m.vehicle_id = v.id
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) as cost FROM fleet_fuel_log GROUP BY vehicle_id) f ON f.vehicle_id = v.id
+      WHERE v.archived_at IS NULL
+      ORDER BY total_cost DESC`);
+    // Client contract (LifecycleItem): age_years, avg_annual_mileage,
+    // total_lifetime_cost, cost_per_year, estimated_remaining_life_years.
+    // Remaining life = the tighter of a 150k-mile or 15-year planning
+    // horizon for patrol trucks; null when year/mileage unknown.
+    const nowYear = new Date().getFullYear();
+    const lifecycle = vehicles.map((v) => {
+      const year = v.year as number | null;
+      const mileage = v.current_mileage as number | null;
+      const totalCost = (v.total_cost as number) ?? 0;
+      const age_years = year != null ? Math.max(1, nowYear - year) : null;
+      const avg_annual_mileage = (mileage != null && age_years) ? Math.round(mileage / age_years) : null;
+      let estLife: number | null = null;
+      if (age_years != null) {
+        const byAge = 15 - age_years;
+        const byMiles = (mileage != null && avg_annual_mileage && avg_annual_mileage > 0)
+          ? (150_000 - mileage) / avg_annual_mileage : null;
+        estLife = Math.max(0, Math.round((byMiles != null ? Math.min(byAge, byMiles) : byAge) * 10) / 10);
+      }
+      return {
+        ...v,
+        age_years,
+        avg_annual_mileage,
+        total_lifetime_cost: totalCost,
+        cost_per_year: age_years ? Math.round(totalCost / age_years) : null,
+        estimated_remaining_life_years: estLife,
+      };
+    });
+    return c.json({ lifecycle });
   } catch (err) { console.error('GET /fleet/vehicle-lifecycle failed:', err); return c.json({ lifecycle: [] }); }
 });
 
@@ -2600,134 +3320,183 @@ fleet.get('/fleet-cost-analytics', async (c) => {
     const maintTotal = (await queryFirst<{ cost: number }>(db, "SELECT COALESCE(SUM(cost),0) as cost FROM fleet_maintenance"))?.cost ?? 0;
     const fuelByMonth = await query<Record<string, unknown>>(db, "SELECT strftime('%Y-%m', fuel_date) as month, COALESCE(SUM(total_cost),0) as fuel, COALESCE(SUM(gallons),0) as gallons FROM fleet_fuel_log GROUP BY month ORDER BY month DESC LIMIT 12");
     const maintByMonth = await query<Record<string, unknown>>(db, "SELECT strftime('%Y-%m', performed_at) as month, COALESCE(SUM(cost),0) as maintenance, COUNT(*) as count FROM fleet_maintenance GROUP BY month ORDER BY month DESC LIMIT 12");
-    return c.json({ total_fuel: fuelTotal, total_maintenance: maintTotal, total: fuelTotal + maintTotal, fuel_by_month: fuelByMonth.reverse(), maintenance_by_month: maintByMonth.reverse() });
+    // FleetAnalyticsTab "FLEET COST PER MILE" card reads fleet_total_cost /
+    // fleet_total_miles / fleet_avg_cost_per_mile / vehicles[]. Miles driven
+    // come from per-vehicle fuel-log odometer spans (the only reliable
+    // distance source — current_mileage alone has no baseline).
+    const perVehicle = await query<{
+      id: number; vehicle_number: string; make: string | null; model: string | null;
+      maint_cost: number; fuel_cost: number; miles: number | null;
+    }>(db, `
+      SELECT v.id, v.vehicle_number, v.make, v.model,
+             COALESCE(m.cost, 0) as maint_cost,
+             COALESCE(f.cost, 0) as fuel_cost,
+             f.miles as miles
+      FROM fleet_vehicles v
+      LEFT JOIN (SELECT vehicle_id, SUM(cost) as cost FROM fleet_maintenance GROUP BY vehicle_id) m ON m.vehicle_id = v.id
+      LEFT JOIN (SELECT vehicle_id, SUM(total_cost) as cost,
+                        CASE WHEN COUNT(odometer) >= 2 THEN MAX(odometer) - MIN(odometer) END as miles
+                 FROM fleet_fuel_log GROUP BY vehicle_id) f ON f.vehicle_id = v.id
+      WHERE v.archived_at IS NULL`);
+    const vehicles = perVehicle.map((v) => ({
+      ...v,
+      total_cost: v.maint_cost + v.fuel_cost,
+      cost_per_mile: v.miles && v.miles > 0 ? Math.round(((v.maint_cost + v.fuel_cost) / v.miles) * 100) / 100 : null,
+    }));
+    const fleetMiles = perVehicle.reduce((s, v) => s + (v.miles ?? 0), 0);
+    const fleetTotal = fuelTotal + maintTotal;
+    return c.json({
+      total_fuel: fuelTotal, total_maintenance: maintTotal, total: fleetTotal,
+      fuel_by_month: fuelByMonth.reverse(), maintenance_by_month: maintByMonth.reverse(),
+      fleet_total_cost: fleetTotal,
+      fleet_total_miles: fleetMiles,
+      fleet_avg_cost_per_mile: fleetMiles > 0 ? Math.round((fleetTotal / fleetMiles) * 100) / 100 : null,
+      vehicles,
+    });
   } catch (err) { console.error('GET /fleet/fleet-cost-analytics failed:', err); return c.json({}); }
 });
 
+// "Fuel Cards — Monthly Spend" table. CONTRACT (FuelAnalyticsPage by-card
+// rows + PDF): { card_id, card_number, provider, vehicle_number, vehicle_make,
+// vehicle_model, spent, monthly_limit, pct_of_limit, spend_status }. The old
+// shape (total_cost/total_gallons/transaction_count) matched none of those
+// keys, so every column rendered blank. `spent` is CURRENT-MONTH spend on the
+// card's assigned vehicle; monthly_limit maps to fleet_fuel_cards.credit_limit;
+// spend_status thresholds: >=100% 'over', >=80% 'watch', else 'ok'.
 fleet.get('/fuel/analytics/by-card', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, `SELECT fc.card_number, fc.provider, COALESCE(SUM(f.total_cost),0) as total_cost, COALESCE(SUM(f.gallons),0) as total_gallons, COUNT(f.id) as transaction_count FROM fleet_fuel_cards fc LEFT JOIN fleet_fuel_log f ON f.vehicle_id = fc.assigned_vehicle_id GROUP BY fc.id ORDER BY total_cost DESC`);
-    return c.json({ data: rows });
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT fc.id AS card_id, fc.card_number, fc.provider,
+             fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model,
+             COALESCE(SUM(CASE WHEN f.fuel_date >= datetime('now','start of month') THEN f.total_cost END), 0) AS spent,
+             fc.credit_limit AS monthly_limit
+      FROM fleet_fuel_cards fc
+      LEFT JOIN fleet_vehicles fv ON fv.id = fc.assigned_vehicle_id
+      LEFT JOIN fleet_fuel_log f ON f.vehicle_id = fc.assigned_vehicle_id
+      WHERE COALESCE(fc.status, 'active') != 'cancelled'
+      GROUP BY fc.id ORDER BY spent DESC`);
+    const data = rows.map((r) => {
+      const spent = Number(r.spent) || 0;
+      const limit = r.monthly_limit != null && Number(r.monthly_limit) > 0 ? Number(r.monthly_limit) : null;
+      const pct = limit != null ? Math.round((spent / limit) * 100) : null;
+      return { ...r, monthly_limit: limit, pct_of_limit: pct, spend_status: pct == null ? 'ok' : pct >= 100 ? 'over' : pct >= 80 ? 'watch' : 'ok' };
+    });
+    return c.json({ data });
   } catch (err) { console.error('GET /fleet/fuel/analytics/by-card failed:', err); return c.json({ data: [] }); }
 });
 
-// ── Fuel analytics: overview + by-officer ──────────────────────────────────
-// FuelAnalyticsPage fires three requests in parallel; previously only the
-// by-card handler above existed, so /overview and /by-officer 404'd and (via
-// the page's old Promise.all) blanked the WHOLE dashboard. These two handlers
-// aggregate ONLY from columns proven present on live D1: fleet_fuel_log
-// (gallons, total_cost/cost, cost_per_gallon, odometer, mpg, station, location,
-// driver_name, fuel_date) joined to fleet_vehicles. A "flagged" fill is one
-// that is oversized/expensive or lacks an odometer reading (can't validate MPG)
-// — the same heuristic used for both flag_rate and the flagged leaderboard.
-const FUEL_FLAG = `(COALESCE(f.gallons,0) > 50 OR COALESCE(f.total_cost, f.cost, 0) > 200 OR f.odometer IS NULL)`;
+// ════════════════════════════════════════════════════════════════════════
+// FUEL ANALYTICS — overview + by-officer (F2 audit follow-up). FuelAnalyticsPage
+// uses Promise.allSettled, but the overview render does NOT guard `totals`
+// (object) or `monthly_trend` (array) — so a 200 MUST include both. The PDF
+// reads totals.flag_rate.toFixed(1) + overview.days/since unguarded.
+// ════════════════════════════════════════════════════════════════════════
+
+// FLAG RULE — fleet_fuel_log has NO stored "flagged" column, so we derive it.
+// A fill is flagged (needs review) when ANY threshold below trips. These are
+// the one piece of real business judgment here — tune them to RMPG's fleet:
+//   • effective cost-per-gallon outside a plausible band (data-entry / fraud)
+//   • a single fill larger than a typical cruiser tank (possible off-vehicle fill)
+//   • implausibly low MPG (excessive consumption / possible siphoning)
+//   • a fill with gallons but no recorded cost (data quality)
+// flag_rate = flagged_fills / total_fills * 100 (a percentage); the UI ambers
+// it above 10. effective cpg falls back to total_cost/gallons when the per-gallon
+// price wasn't recorded.
+const CPG_MIN = 1.5;        // $/gal floor — below this is almost certainly bad data
+const CPG_MAX = 7.0;        // $/gal ceiling
+const GALLONS_MAX = 40;     // a Tahoe/Explorer PPV tank is ~24-28 gal
+const MPG_MIN = 5;          // below this (and > 0) is suspicious for a road fill
+const EFF_CPG = `COALESCE(f.cost_per_gallon, CASE WHEN f.gallons > 0 THEN f.total_cost * 1.0 / f.gallons END)`;
+const FLAG_EXPR = `(CASE WHEN
+    (${EFF_CPG} IS NOT NULL AND (${EFF_CPG} < ${CPG_MIN} OR ${EFF_CPG} > ${CPG_MAX}))
+    OR (f.gallons IS NOT NULL AND f.gallons > ${GALLONS_MAX})
+    OR (f.mpg IS NOT NULL AND f.mpg > 0 AND f.mpg < ${MPG_MIN})
+    OR (f.gallons > 0 AND (f.total_cost IS NULL OR f.total_cost = 0))
+  THEN 1 ELSE 0 END)`;
 
 fleet.get('/fuel/analytics/overview', async (c) => {
   try {
     const db = getDb(c.env);
-    // Clamp days to a sane integer — it is interpolated into the date() window.
-    const days = Math.max(1, Math.min(3650, Math.floor(Number(c.req.query('days')) || 90)));
-    const since = `f.fuel_date >= date('now', '-${days} days')`;
+    const days = Math.min(365, Math.max(1, parseInt(c.req.query('days') || '90', 10) || 90));
+    const sinceMod = `-${days} days`;
+    const since = (await queryFirst<{ since: string }>(db, `SELECT date('now', ?) AS since`, sinceMod))?.since ?? '';
 
-    const totals = await queryFirst<Record<string, number>>(db,
-      `SELECT COUNT(*) AS fill_count,
-              COALESCE(SUM(f.gallons),0) AS total_gallons,
-              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS total_cost,
-              SUM(CASE WHEN ${FUEL_FLAG} THEN 1 ELSE 0 END) AS flagged
-       FROM fleet_fuel_log f WHERE ${since}`);
-    const fillCount = Number(totals?.fill_count || 0);
-    const totalGallons = Number(totals?.total_gallons || 0);
-    const totalCost = Number(totals?.total_cost || 0);
-    const flagged = Number(totals?.flagged || 0);
+    const totals = (await queryFirst<Record<string, unknown>>(db, `
+      SELECT COUNT(*) AS fill_count,
+             COALESCE(SUM(f.gallons), 0) AS total_gallons,
+             COALESCE(SUM(f.total_cost), 0) AS total_cost,
+             ROUND(AVG(${EFF_CPG}), 3) AS avg_cpg,
+             COALESCE(ROUND(100.0 * SUM(${FLAG_EXPR}) / NULLIF(COUNT(*), 0), 1), 0) AS flag_rate
+      FROM fleet_fuel_log f WHERE f.fuel_date >= date('now', ?)`, sinceMod))
+      ?? { fill_count: 0, total_gallons: 0, total_cost: 0, avg_cpg: null, flag_rate: 0 };
 
-    const monthly = await query<Record<string, unknown>>(db,
-      `SELECT strftime('%Y-%m', f.fuel_date) AS month,
-              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS cost,
-              COALESCE(SUM(f.gallons),0) AS gallons,
-              COUNT(*) AS fills
-       FROM fleet_fuel_log f WHERE ${since} AND f.fuel_date IS NOT NULL
-       GROUP BY month ORDER BY month ASC`);
+    const monthly_trend = await query<Record<string, unknown>>(db, `
+      SELECT strftime('%Y-%m', f.fuel_date) AS month,
+             COALESCE(SUM(f.total_cost), 0) AS cost,
+             COALESCE(SUM(f.gallons), 0) AS gallons,
+             COUNT(*) AS fills
+      FROM fleet_fuel_log f WHERE f.fuel_date >= date('now', ?)
+      GROUP BY month ORDER BY month`, sinceMod);
 
-    const vehicles = await query<Record<string, unknown>>(db,
-      `SELECT v.id, v.vehicle_number, v.year, v.make, v.model,
-              COUNT(f.id) AS fill_count,
-              COALESCE(SUM(f.gallons),0) AS total_gallons,
-              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS total_cost,
-              AVG(NULLIF(f.mpg,0)) AS avg_mpg,
-              ROUND(100.0 * SUM(CASE WHEN ${FUEL_FLAG} THEN 1 ELSE 0 END) / NULLIF(COUNT(f.id),0), 1) AS flag_rate
-       FROM fleet_vehicles v
-       LEFT JOIN fleet_fuel_log f ON f.vehicle_id = v.id AND ${since}
-       WHERE v.archived_at IS NULL
-       GROUP BY v.id ORDER BY total_cost DESC`);
+    const vehicles = await query<Record<string, unknown>>(db, `
+      SELECT fv.id, fv.vehicle_number, fv.year, fv.make, fv.model,
+             COUNT(f.id) AS fill_count,
+             COALESCE(SUM(f.gallons), 0) AS total_gallons,
+             COALESCE(SUM(f.total_cost), 0) AS total_cost,
+             ROUND(AVG(NULLIF(f.mpg, 0)), 1) AS avg_mpg,
+             COALESCE(ROUND(100.0 * SUM(${FLAG_EXPR}) / NULLIF(COUNT(f.id), 0), 1), 0) AS flag_rate
+      FROM fleet_fuel_log f JOIN fleet_vehicles fv ON fv.id = f.vehicle_id
+      WHERE f.fuel_date >= date('now', ?)
+      GROUP BY fv.id HAVING fill_count > 0 ORDER BY total_cost DESC`, sinceMod);
 
-    const stations = await query<Record<string, unknown>>(db,
-      `SELECT COALESCE(NULLIF(TRIM(f.station),''), NULLIF(TRIM(f.location),''), '(unknown)') AS station,
-              COUNT(*) AS fill_count,
-              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS total_spent,
-              CASE WHEN SUM(f.gallons) > 0 THEN SUM(COALESCE(f.total_cost, f.cost)) / SUM(f.gallons) ELSE NULL END AS avg_cpg
-       FROM fleet_fuel_log f WHERE ${since}
-       GROUP BY station ORDER BY total_spent DESC LIMIT 15`);
+    const top_stations = await query<Record<string, unknown>>(db, `
+      SELECT f.station,
+             COUNT(*) AS fill_count,
+             COALESCE(SUM(f.total_cost), 0) AS total_spent,
+             ROUND(AVG(${EFF_CPG}), 3) AS avg_cpg
+      FROM fleet_fuel_log f
+      WHERE f.fuel_date >= date('now', ?) AND f.station IS NOT NULL AND f.station != ''
+      GROUP BY f.station ORDER BY total_spent DESC LIMIT 10`, sinceMod);
 
-    const flaggedLeaders = await query<Record<string, unknown>>(db,
-      `SELECT v.id, v.vehicle_number, v.make, v.model,
-              SUM(CASE WHEN ${FUEL_FLAG} THEN 1 ELSE 0 END) AS flagged_count
-       FROM fleet_vehicles v JOIN fleet_fuel_log f ON f.vehicle_id = v.id AND ${since}
-       WHERE v.archived_at IS NULL
-       GROUP BY v.id HAVING flagged_count > 0 ORDER BY flagged_count DESC LIMIT 10`);
+    const flagged_leaderboard = await query<Record<string, unknown>>(db, `
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model,
+             SUM(${FLAG_EXPR}) AS flagged_count
+      FROM fleet_fuel_log f JOIN fleet_vehicles fv ON fv.id = f.vehicle_id
+      WHERE f.fuel_date >= date('now', ?)
+      GROUP BY fv.id HAVING flagged_count > 0 ORDER BY flagged_count DESC LIMIT 10`, sinceMod);
 
-    return c.json({
-      totals: {
-        fill_count: fillCount,
-        total_gallons: totalGallons,
-        total_cost: totalCost,
-        avg_cpg: totalGallons > 0 ? totalCost / totalGallons : null,
-        flag_rate: fillCount > 0 ? (flagged / fillCount) * 100 : null,
-      },
-      monthly_trend: monthly.map((m) => ({
-        month: m.month,
-        cost: Number(m.cost || 0),
-        gallons: Number(m.gallons || 0),
-        fills: Number(m.fills || 0),
-      })),
-      vehicles,
-      top_stations: stations,
-      flagged_leaderboard: flaggedLeaders,
-      period_days: days,
-    });
+    return c.json({ days, since, totals, monthly_trend, vehicles, top_stations, flagged_leaderboard });
   } catch (err) {
     console.error('GET /fleet/fuel/analytics/overview failed:', err);
-    return c.json({
-      totals: { fill_count: 0, total_gallons: 0, total_cost: 0, avg_cpg: null, flag_rate: null },
-      monthly_trend: [], vehicles: [], top_stations: [], flagged_leaderboard: [],
-    });
+    // Return a SHAPE-COMPLETE empty payload — the page renders totals/monthly_trend
+    // without null-guards, so degrade to zeros rather than 500.
+    return c.json({ days: 0, since: '', totals: { fill_count: 0, total_gallons: 0, total_cost: 0, avg_cpg: null, flag_rate: 0 }, monthly_trend: [], vehicles: [], top_stations: [], flagged_leaderboard: [] });
   }
 });
 
 fleet.get('/fuel/analytics/by-officer', async (c) => {
   try {
     const db = getDb(c.env);
-    // fleet_fuel_log has no officer FK — attribute via driver_name, resolving
-    // an officer_id when the name matches a user (else officer_id stays null,
-    // and the page tags the row "(no driver recorded)").
-    const sinceDate = c.req.query('since') || '1970-01-01';
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT u.id AS officer_id,
-              COALESCE(NULLIF(TRIM(f.driver_name),''), 'Unattributed') AS display_name,
-              COUNT(f.id) AS fill_count,
-              COALESCE(SUM(f.gallons),0) AS total_gallons,
-              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS total_cost,
-              AVG(NULLIF(f.mpg,0)) AS avg_mpg,
-              ROUND(100.0 * SUM(CASE WHEN ${FUEL_FLAG} THEN 1 ELSE 0 END) / NULLIF(COUNT(f.id),0), 1) AS flag_rate
-       FROM fleet_fuel_log f
-       LEFT JOIN users u ON u.full_name = f.driver_name
-       WHERE f.fuel_date >= ?
-       GROUP BY display_name, u.id ORDER BY total_cost DESC`, sinceDate);
+    // Client sends ?since=YYYY-MM-DD (computed as now - days). Default 90d.
+    const since = c.req.query('since') || (await queryFirst<{ d: string }>(db, `SELECT date('now', '-90 days') AS d`))?.d || '1970-01-01';
+    // fleet_fuel_log has driver_name (free text), not an officer FK. Group by the
+    // name, resolve officer_id via a name match to users (null when unknown).
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT COALESCE(NULLIF(f.driver_name, ''), '(no driver recorded)') AS display_name,
+             MAX(u.id) AS officer_id,
+             COUNT(*) AS fill_count,
+             COALESCE(SUM(f.gallons), 0) AS total_gallons,
+             COALESCE(SUM(f.total_cost), 0) AS total_cost,
+             ROUND(AVG(NULLIF(f.mpg, 0)), 1) AS avg_mpg,
+             COALESCE(ROUND(100.0 * SUM(${FLAG_EXPR}) / NULLIF(COUNT(*), 0), 1), 0) AS flag_rate,
+             ROUND(AVG(${EFF_CPG}), 3) AS avg_cpg
+      FROM fleet_fuel_log f
+      LEFT JOIN users u ON u.full_name = f.driver_name AND f.driver_name IS NOT NULL AND f.driver_name != ''
+      WHERE f.fuel_date >= ?
+      GROUP BY display_name ORDER BY total_cost DESC`, since);
     return c.json({ data: rows });
-  } catch (err) {
-    console.error('GET /fleet/fuel/analytics/by-officer failed:', err);
-    return c.json({ data: [] });
-  }
+  } catch (err) { console.error('GET /fleet/fuel/analytics/by-officer failed:', err); return c.json({ data: [] }); }
 });
 
 // POST /fuel/import/preview — parse an uploaded CSV into reviewable rows.
@@ -2791,19 +3560,17 @@ fleet.post('/fuel/import/preview', async (c) => {
 fleet.post('/fuel/import/commit', async (c) => {
   try {
     const db = getDb(c.env);
+    // Client (FuelImportModal) sends { rows: [...] }; accept legacy `entries` too.
     const body = await c.req.json<{ rows?: Array<Record<string, unknown>>; entries?: Array<Record<string, unknown>> }>();
     const rows = body.rows || body.entries || [];
     let inserted = 0; const errors: any[] = [];
     for (const e of rows) {
       try {
         const odometer = e.odometer ?? e.odometer_reading ?? null;
-        const isFullTank = e.is_full_tank == null ? 1 : (e.is_full_tank ? 1 : 0);
         await execute(
           db,
-          `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location, mpg) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          e.vehicle_id, e.fuel_date, e.gallons, e.total_cost ?? null, e.cost_per_gallon ?? null,
-          e.fuel_type ?? null, e.station ?? null, odometer, e.notes ?? null, isFullTank,
-          e.payment_method ?? null, e.driver_name ?? null, e.location ?? null, e.mpg ?? null,
+          'INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, station, odometer, notes) VALUES (?,?,?,?,?,?,?,?)',
+          e.vehicle_id, e.fuel_date, e.gallons, e.total_cost ?? null, e.cost_per_gallon ?? null, e.station ?? null, odometer, e.notes ?? null,
         );
         inserted++;
       } catch (e2) { errors.push({ entry: e, error: (e2 as Error).message }); }
@@ -3166,7 +3933,7 @@ fleet.post('/procurement/orders', async (c) => { try { const db = getDb(c.env); 
 fleet.get('/procurement/orders/:id/bids', async (c) => { try { const orderId = Number(c.req.param('id')); const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_vendor_bids WHERE procurement_order_id = ? ORDER BY bid_amount', orderId); return c.json(rows); } catch (err) { return c.json([]); } });
 fleet.post('/procurement/orders/:id/bids', async (c) => { try { const orderId = Number(c.req.param('id')); const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>(); const r = await execute(db, 'INSERT INTO fleet_vendor_bids (procurement_order_id, vendor, bid_amount, delivery_days, warranty_details, notes) VALUES (?,?,?,?,?,?)', orderId, body.vendor, body.bid_amount ?? null, body.delivery_days ?? null, body.warranty_details ?? null, body.notes ?? null); return c.json({ success: true, id: r.meta.last_row_id }, 201); } catch (err) { return c.json({ error: 'Failed' }, 500); } });
 fleet.put('/procurement/bids/:id/select', async (c) => { try { const bidId = Number(c.req.param('id')); const db = getDb(c.env); const bid = await queryFirst<{ procurement_order_id: number }>(db, 'SELECT procurement_order_id FROM fleet_vendor_bids WHERE id = ?', bidId); if (!bid) return c.json({ error: 'Not found' }, 404); await execute(db, 'UPDATE fleet_vendor_bids SET selected = 0 WHERE procurement_order_id = ?', bid.procurement_order_id); await execute(db, 'UPDATE fleet_vendor_bids SET selected = 1 WHERE id = ?', bidId); return c.json({ success: true }); } catch (err) { return c.json({ error: 'Failed' }, 500); } });
-fleet.get('/procurement/acquisition-cost-analysis', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, `SELECT make, model, COUNT(*) as count, ROUND(AVG(COALESCE(cost, 0) + COALESCE(maint_cost, 0) + COALESCE(fuel_cost, 0)),0) as avg_lifetime_cost FROM (SELECT v.make, v.model, COALESCE(SUM(m.cost),0) as maint_cost, COALESCE(SUM(f.total_cost),0) as fuel_cost FROM fleet_vehicles v LEFT JOIN fleet_maintenance m ON m.vehicle_id = v.id LEFT JOIN fleet_fuel_log f ON f.vehicle_id = v.id GROUP BY v.id) GROUP BY make, model HAVING count >= 1 ORDER BY avg_lifetime_cost`); return c.json(rows); } catch (err) { return c.json([]); } });
+fleet.get('/procurement/acquisition-cost-analysis', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, `SELECT make, model, COUNT(*) as count, ROUND(AVG(COALESCE(v.cost, 0) + COALESCE(mc.total, 0) + COALESCE(fc.total, 0)),0) as avg_lifetime_cost FROM fleet_vehicles v LEFT JOIN (SELECT vehicle_id, SUM(cost) AS total FROM fleet_maintenance GROUP BY vehicle_id) mc ON mc.vehicle_id = v.id LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS total FROM fleet_fuel_log GROUP BY vehicle_id) fc ON fc.vehicle_id = v.id GROUP BY make, model HAVING count >= 1 ORDER BY avg_lifetime_cost`); return c.json(rows); } catch (err) { return c.json([]); } });
 fleet.get('/procurement/standardization', async (c) => { try { const db = getDb(c.env); const byMake = await query<Record<string, unknown>>(db, `SELECT make, COUNT(*) as count, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM fleet_vehicles WHERE archived_at IS NULL),0) as pct FROM fleet_vehicles WHERE archived_at IS NULL GROUP BY make ORDER BY count DESC`); return c.json({ by_make: byMake, recommendation: (byMake[0] as any)?.pct > 70 ? 'Fleet is well standardized' : 'Consider standardizing on fewer makes for parts/commonality savings' }); } catch (err) { return c.json({}); } });
 fleet.get('/procurement/delivery-timeline', async (c) => { try { const rows = await query<Record<string, unknown>>(getDb(c.env), `SELECT po.*, s.name as spec_name, CASE WHEN po.actual_delivery IS NOT NULL THEN ROUND(julianday(po.actual_delivery) - julianday(po.order_date),0) ELSE ROUND(julianday('now') - julianday(po.order_date),0) END as days_elapsed FROM fleet_procurement_orders po LEFT JOIN fleet_vehicle_specs s ON s.id = po.spec_id WHERE po.status != 'delivered' ORDER BY po.order_date`); return c.json(rows); } catch (err) { return c.json([]); } });
 
@@ -3181,5 +3948,632 @@ fleet.get('/decommissioning/disposal-methods', async (c) => { try { const rows =
 fleet.get('/decommissioning/reduction-analysis', async (c) => { try { const db = getDb(c.env); const active = (await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM fleet_vehicles WHERE status = 'in_service' AND archived_at IS NULL"))?.n ?? 0; const aging = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) as n FROM fleet_vehicles WHERE year < 2018 AND archived_at IS NULL'))?.n ?? 0; const highMileage = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) as n FROM fleet_vehicles WHERE current_mileage > 120000 AND archived_at IS NULL'))?.n ?? 0; const retireable = aging + highMileage; return c.json({ active_fleet: active, candidates_for_retirement: Math.min(retireable, active), aging_vehicles: aging, high_mileage: highMileage, recommended_reduction: Math.max(0, active - Math.round(active * 0.8)) }); } catch (err) { return c.json({}); } });
 fleet.get('/decommissioning/history', async (c) => { try { const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT v.vehicle_number, v.make, v.model, v.year, fd.* FROM fleet_decommissioning fd JOIN fleet_vehicles v ON v.id = fd.vehicle_id ORDER BY fd.decommission_date DESC LIMIT 100'); return c.json(rows); } catch (err) { return c.json([]); } });
 fleet.get('/decommissioning/stats', async (c) => { try { const db = getDb(c.env); const total = (await queryFirst<{ n: number; value: number }>(db, 'SELECT COUNT(*) as n, COALESCE(SUM(salvage_value),0) as value FROM fleet_decommissioning')) ?? { n: 0, value: 0 }; const completed = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) as n FROM fleet_decommissioning WHERE disposal_method IS NOT NULL'))?.n ?? 0; return c.json({ total: total.n, completed, salvage_recovered: total.value, avg_days_to_complete: 0 }); } catch (err) { return c.json({}); } });
+
+// ═══════════════════════════════════════════════════════════════
+// GPS MILEAGE + COST ANALYTICS (Claude Opus 4.8 — d3001d25)
+// These three endpoints were missing before Claude's nav-guardrails
+// PR and are consumed by FleetAnalyticsTab (Daily GPS Mileage table
+// + Monthly Spend stacked bar) and the NAV dashboard.
+// ═══════════════════════════════════════════════════════════════
+
+// ── GET /daily-gps-mileage ────────────────────────────────────
+// Returns daily odometer deltas derived from gps_breadcrumbs for
+// every vehicle that has GPS data in the last 30 days. The client
+// (FleetAnalyticsTab.DailyGpsMileageTable) renders a per-vehicle
+// table with daily totals and a sparkline-like density map.
+//
+// Haversine distance between consecutive breadcrumb points builds
+// the cumulative daily distance; gaps > 5 min between consecutive
+// points are treated as separate trips (we don't interpolate).
+// Vehicle attribution: gps_breadcrumbs.unit_id → units.id →
+// fleet_vehicles.assigned_unit_id → fleet_vehicles.vehicle_number.
+fleet.get('/daily-gps-mileage', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '30', 10)));
+    // Delegate to D1-friendly approach: pull breadcrumbs for the
+    // window, then compute haversine in the JavaScript runtime.
+    // The raw row count is bounded (~200 breadcrumbs per vehicle
+    // per day × ~10 vehicles = ~60k rows in a 30d window) which
+    // is small enough for in-flight client-side computation.
+    const rows = await query<{
+      unit_id: number; latitude: number; longitude: number;
+      recorded_at: string; vehicle_number: string | null;
+    }>(db, `
+      SELECT g.unit_id, g.latitude, g.longitude, g.recorded_at,
+             fv.vehicle_number
+      FROM gps_breadcrumbs g
+      JOIN units u ON u.id = g.unit_id
+      LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
+      WHERE g.recorded_at >= datetime('now', ?)
+        AND fv.vehicle_number IS NOT NULL
+      ORDER BY fv.vehicle_number, g.recorded_at, g.id
+    `, `-${days} days`);
+
+    // Group by vehicle + day, compute haversine distance between
+    // consecutive points of the same vehicle on the same day.
+    interface DailyTotal {
+      vehicle: string;
+      date: string;
+      miles: number;
+    }
+    const byVehDay = new Map<string, DailyTotal>();
+    const prevPt = new Map<string, { lat: number; lng: number; ts: string }>();
+
+    const toDeg = (v: number) => v * Math.PI / 180;
+    const haversineMeters = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+      const R = 6371000;
+      const dLat = toDeg(lat2 - lat1);
+      const dLng = toDeg(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toDeg(lat1)) * Math.cos(toDeg(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    // Reject teleport segments + garbage fixes. A single (0,0) breadcrumb
+    // made the Daily Mileage Run chart show ~15,000 mi on 2026-06-10 (SLC →
+    // null island and back). 80 m/s (~179 mph) implied speed mirrors the
+    // PS-211 computeBreadcrumbStats gate.
+    const MAX_PLAUSIBLE_MPS = 80;
+    const validFix = (lat: number, lng: number) =>
+      Number.isFinite(lat) && Number.isFinite(lng) &&
+      Math.abs(lat) <= 90 && Math.abs(lng) <= 180 &&
+      !(Math.abs(lat) < 0.1 && Math.abs(lng) < 0.1);
+
+    for (const r of rows) {
+      if (!validFix(r.latitude, r.longitude)) continue;
+      const day = String(r.recorded_at).slice(0, 10);
+      const key = `${r.vehicle_number}|${day}`;
+      const prev = prevPt.get(r.vehicle_number ?? '');
+
+      if (prev) {
+        const prevDay = prev.ts.slice(0, 10);
+        // Reset distance accumulation when the day changes (new trip).
+        if (prevDay !== day) { prevPt.set(r.vehicle_number ?? '', { lat: r.latitude, lng: r.longitude, ts: r.recorded_at }); continue; }
+        // Gap > 5 min = separate trip; don't bridge with a straight line.
+        const gapMs = new Date(r.recorded_at).getTime() - new Date(prev.ts).getTime();
+        let meters = gapMs <= 5 * 60_000
+          ? haversineMeters(prev.lat, prev.lng, r.latitude, r.longitude)
+          : 0;
+        // Teleport: implied speed beyond plausible driving = GPS glitch.
+        if (meters > 0 && gapMs > 0 && meters / (gapMs / 1000) > MAX_PLAUSIBLE_MPS) meters = 0;
+        if (meters > 0) {
+          const entry = byVehDay.get(key);
+          if (entry) entry.miles += meters / 1609.34;
+          else byVehDay.set(key, { vehicle: r.vehicle_number ?? '', date: day, miles: meters / 1609.34 });
+        }
+      }
+      prevPt.set(r.vehicle_number ?? '', { lat: r.latitude, lng: r.longitude, ts: r.recorded_at });
+    }
+
+    const result = Array.from(byVehDay.values())
+      .map((d) => ({ ...d, miles: Math.round(d.miles * 100) / 100 }))
+      .sort((a, b) => b.date.localeCompare(a.date) || a.vehicle.localeCompare(b.vehicle));
+    // FleetAnalyticsTab expects { daily_mileage } — a bare array left the
+    // chart permanently on "No GPS mileage data".
+    return c.json({ daily_mileage: result });
+  } catch (err) {
+    console.error('GET /fleet/daily-gps-mileage failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── GET /:id/gps-history — breadcrumb trail + dashcam events for a vehicle ──
+// Drives FleetGpsHistoryTab. A vehicle's telematics keys off its ASSIGNED
+// UNIT (fleet_vehicles.assigned_unit_id → gps_breadcrumbs.unit_id /
+// dashcam_events.unit_id), so an unassigned vehicle has no history and we
+// return unit_id:null + a message (the tab renders a "Not assigned" empty
+// state). Response shape matches the tab's Breadcrumb / DashcamEvent
+// interfaces — columns those interfaces declare but the tables don't carry
+// (odometer/ignition/driver_name/city/state_province) are aliased NULL.
+fleet.get('/:id/gps-history', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId)) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '7', 10)));
+    const limit = Math.min(5000, Math.max(1, parseInt(c.req.query('limit') || '1000', 10)));
+
+    const veh = await queryFirst<{ assigned_unit_id: number | null }>(db,
+      'SELECT assigned_unit_id FROM fleet_vehicles WHERE id = ?', vehicleId);
+    if (!veh) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    if (veh.assigned_unit_id == null) {
+      return c.json({ breadcrumbs: [], dashcam_events: [], unit_id: null, message: 'Vehicle is not assigned to a unit' });
+    }
+    const unitId = veh.assigned_unit_id;
+
+    const breadcrumbs = await query<Record<string, unknown>>(db, `
+      SELECT id, latitude, longitude, accuracy, heading, speed, unit_status,
+             call_sign, officer_name, current_call_number, current_call_type,
+             recorded_at, road_name, nearest_intersection, gps_source,
+             NULL AS odometer, NULL AS ignition
+      FROM gps_breadcrumbs
+      WHERE unit_id = ? AND recorded_at >= datetime('now', ?)
+      ORDER BY recorded_at DESC, id DESC
+      LIMIT ?
+    `, unitId, `-${days} days`, limit);
+
+    // dashcam_events arrived in migration 0117; degrade to [] if absent.
+    let dashcamEvents: Record<string, unknown>[] = [];
+    try {
+      dashcamEvents = await query<Record<string, unknown>>(db, `
+        SELECT id, event_type, event_timestamp, latitude, longitude, speed_mph,
+               address, status_code_text, video_available,
+               NULL AS odometer, NULL AS driver_name, NULL AS city, NULL AS state_province
+        FROM dashcam_events
+        WHERE unit_id = ? AND event_timestamp >= datetime('now', ?)
+        ORDER BY event_timestamp DESC, id DESC
+        LIMIT ?
+      `, unitId, `-${days} days`, Math.min(1000, limit));
+    } catch (e) {
+      console.warn('GET /fleet/:id/gps-history dashcam_events unavailable:', (e as Error)?.message);
+    }
+
+    return c.json({ breadcrumbs, dashcam_events: dashcamEvents, unit_id: unitId });
+  } catch (err) {
+    console.error('GET /fleet/:id/gps-history failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── GET /:id/gps-mileage — per-vehicle GPS odometer estimate ──────
+// Drives the FleetDetailPanel "Sync odometer from GPS" panel (fetchGpsMileage).
+// Same haversine method as /daily-gps-mileage, scoped to ONE vehicle's assigned
+// unit over the last `?days=` window. Returns the keys the panel reads:
+//   { total_miles, valid_segments, time_span_hours, unit_call_sign }
+// 400 + code:'NO_UNIT_ASSIGNED' when the vehicle has no unit — the client
+// special-cases this code and suppresses the error toast. Was never implemented
+// (404), so the panel never populated and odometer sync always failed.
+fleet.get('/:id/gps-mileage', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId)) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '30', 10)));
+
+    const veh = await queryFirst<{ assigned_unit_id: number | null }>(db,
+      'SELECT assigned_unit_id FROM fleet_vehicles WHERE id = ?', vehicleId);
+    if (!veh) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    if (veh.assigned_unit_id == null) {
+      return c.json({ error: 'Vehicle has no assigned unit — GPS mileage needs a unit to attribute breadcrumbs to', code: 'NO_UNIT_ASSIGNED' }, 400);
+    }
+    const unit = await queryFirst<{ call_sign: string | null }>(db,
+      'SELECT call_sign FROM units WHERE id = ?', veh.assigned_unit_id);
+
+    const rows = await query<{ latitude: number; longitude: number; recorded_at: string }>(db, `
+      SELECT latitude, longitude, recorded_at
+      FROM gps_breadcrumbs
+      WHERE unit_id = ? AND recorded_at >= datetime('now', ?)
+      ORDER BY recorded_at, id
+    `, veh.assigned_unit_id, `-${days} days`);
+
+    const toDeg = (v: number) => v * Math.PI / 180;
+    const haversineMeters = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+      const R = 6371000;
+      const dLat = toDeg(lat2 - lat1);
+      const dLng = toDeg(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toDeg(lat1)) * Math.cos(toDeg(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    // Sum haversine over consecutive points; a gap > 5 min is treated as a
+    // separate trip (no straight-line bridge), matching /daily-gps-mileage.
+    let totalMeters = 0;
+    let validSegments = 0;
+    let prev: { lat: number; lng: number; ts: string } | null = null;
+    // Same garbage-fix + teleport gates as /daily-gps-mileage (80 m/s).
+    const okFix = (lat: number, lng: number) =>
+      Number.isFinite(lat) && Number.isFinite(lng) &&
+      Math.abs(lat) <= 90 && Math.abs(lng) <= 180 &&
+      !(Math.abs(lat) < 0.1 && Math.abs(lng) < 0.1);
+    for (const r of rows) {
+      if (!okFix(r.latitude, r.longitude)) continue;
+      if (prev) {
+        const gapMs = new Date(r.recorded_at).getTime() - new Date(prev.ts).getTime();
+        if (gapMs > 0 && gapMs <= 5 * 60_000) {
+          const m = haversineMeters(prev.lat, prev.lng, r.latitude, r.longitude);
+          if (m > 0 && m / (gapMs / 1000) <= 80) { totalMeters += m; validSegments++; }
+        }
+      }
+      prev = { lat: r.latitude, lng: r.longitude, ts: r.recorded_at };
+    }
+
+    const timeSpanHours = rows.length >= 2
+      ? Math.max(0, (new Date(rows[rows.length - 1].recorded_at).getTime() - new Date(rows[0].recorded_at).getTime()) / 3_600_000)
+      : 0;
+
+    return c.json({
+      total_miles: Math.round((totalMeters / 1609.34) * 100) / 100,
+      valid_segments: validSegments,
+      time_span_hours: Math.round(timeSpanHours * 10) / 10,
+      unit_call_sign: unit?.call_sign ?? null,
+    });
+  } catch (err) {
+    console.error('GET /fleet/:id/gps-mileage failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── PUT /:id/gps-mileage — apply a GPS-derived delta to the odometer ──
+// Body: { miles_delta }. Adds the delta to fleet_vehicles.current_mileage and
+// returns { previous_mileage, new_mileage } for the client's success toast
+// (handleSyncGpsMileage). Was never implemented (404) so "Sync odometer from
+// GPS" always failed. Delta is clamped non-negative — odometers only move up.
+fleet.put('/:id/gps-mileage', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId)) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const body = await c.req.json<{ miles_delta?: number }>();
+    const delta = Number(body.miles_delta);
+    if (!Number.isFinite(delta) || delta < 0) {
+      return c.json({ error: 'miles_delta must be a non-negative number', code: 'INVALID_DELTA' }, 400);
+    }
+    const veh = await queryFirst<{ current_mileage: number | null }>(db,
+      'SELECT current_mileage FROM fleet_vehicles WHERE id = ?', vehicleId);
+    if (!veh) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    const previous = Math.round(veh.current_mileage ?? 0);
+    const next = Math.round(previous + delta);
+    await execute(db, "UPDATE fleet_vehicles SET current_mileage = ?, updated_at = datetime('now') WHERE id = ?", next, vehicleId);
+    return c.json({ previous_mileage: previous, new_mileage: next });
+  } catch (err) {
+    console.error('PUT /fleet/:id/gps-mileage failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── GET /combined-cost-trend ──────────────────────────────────
+// Merges fuel + maintenance + recurring costs + loans into a
+// single monthly time series (last 12 months). FleetAnalyticsTab
+// renders a combined stacked bar from this shape.
+//
+// Shape: [{ month: '2026-01', fuel, maintenance, recurring, loans, total }]
+fleet.get('/combined-cost-trend', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const months = Math.min(24, Math.max(1, parseInt(c.req.query('months') || '12', 10)));
+
+    const queryFn = <T extends Record<string, unknown>>(sql: string): Promise<T[]> =>
+      db ? query<T>(db, sql) : Promise.resolve([]);
+
+    const fuel = await queryFn<{ month: string; total_cost: number }>(`
+      SELECT strftime('%Y-%m', fuel_date) AS month,
+             COALESCE(SUM(total_cost), 0) AS total_cost
+      FROM fleet_fuel_log
+      WHERE fuel_date >= datetime('now', '-${months} months')
+      GROUP BY month ORDER BY month`);
+
+    const maint = await queryFn<{ month: string; total_cost: number }>(`
+      SELECT strftime('%Y-%m', COALESCE(performed_at, created_at)) AS month,
+             COALESCE(SUM(cost), 0) AS total_cost
+      FROM fleet_maintenance
+      WHERE COALESCE(performed_at, created_at) >= datetime('now', '-${months} months')
+      GROUP BY month ORDER BY month`);
+
+    const recurring = await queryFn<{ month: string; total_cost: number }>(`
+      SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
+             COALESCE(SUM(cost), 0) AS total_cost
+      FROM fleet_recurring_costs
+      WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
+      GROUP BY month ORDER BY month`);
+
+    const loans = await queryFn<{ month: string; total_cost: number }>(`
+      SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
+             COALESCE(SUM(payment_amount), 0) AS total_cost
+      FROM fleet_loans
+      WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
+      GROUP BY month ORDER BY month`);
+
+    // Merge by month key — every month in the union of all four sources.
+    const byMonth = new Map<string, { month: string; fuel: number; maintenance: number; recurring: number; loans: number }>();
+    const ensure = (m: string) => {
+      if (!byMonth.has(m)) byMonth.set(m, { month: m, fuel: 0, maintenance: 0, recurring: 0, loans: 0 });
+      return byMonth.get(m)!;
+    };
+    for (const r of fuel) ensure(r.month).fuel += Number(r.total_cost ?? 0);
+    for (const r of maint) ensure(r.month).maintenance += Number(r.total_cost ?? 0);
+    for (const r of recurring) ensure(r.month).recurring += Number(r.total_cost ?? 0);
+    for (const r of loans) ensure(r.month).loans += Number(r.total_cost ?? 0);
+
+    const rows = Array.from(byMonth.values())
+      .map((r) => ({
+        ...r,
+        total: Math.round((r.fuel + r.maintenance + r.recurring + r.loans) * 100) / 100,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+    // Client contract: { combined_cost_trend } wrapper.
+    return c.json({ combined_cost_trend: rows });
+  } catch (err) {
+    console.error('GET /fleet/combined-cost-trend failed:', err);
+    return c.json({ combined_cost_trend: [] });
+  }
+});
+
+// ── GET /monthly-spend ────────────────────────────────────────
+// Aggregates spend across 4 cost categories for the last 8 months.
+// FleetAnalyticsTab renders this as a stacked bar chart.
+//
+// Shape: [{ month, fuel, maintenance, recurring, loans }]
+fleet.get('/monthly-spend', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const months = Math.min(24, Math.max(1, parseInt(c.req.query('months') || '8', 10)));
+
+    const queryFn = <T extends Record<string, unknown>>(sql: string): Promise<T[]> =>
+      db ? query<T>(db, sql) : Promise.resolve([]);
+
+    const fuel = await queryFn<{ month: string; amount: number }>(`
+      SELECT strftime('%Y-%m', fuel_date) AS month,
+             COALESCE(SUM(total_cost), 0) AS amount
+      FROM fleet_fuel_log
+      WHERE fuel_date >= datetime('now', '-${months} months')
+      GROUP BY month ORDER BY month`).catch(() => []);
+
+    const maint = await queryFn<{ month: string; amount: number }>(`
+      SELECT strftime('%Y-%m', COALESCE(performed_at, created_at)) AS month,
+             COALESCE(SUM(cost), 0) AS amount
+      FROM fleet_maintenance
+      WHERE COALESCE(performed_at, created_at) >= datetime('now', '-${months} months')
+      GROUP BY month ORDER BY month`).catch(() => []);
+
+    const recurring = await queryFn<{ month: string; amount: number }>(`
+      SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
+             COALESCE(SUM(cost), 0) AS amount
+      FROM fleet_recurring_costs
+      WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
+      GROUP BY month ORDER BY month`).catch(() => []);
+
+    const loans = await queryFn<{ month: string; amount: number }>(`
+      SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
+             COALESCE(SUM(payment_amount), 0) AS amount
+      FROM fleet_loans
+      WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
+      GROUP BY month ORDER BY month`).catch(() => []);
+
+    const byMonth = new Map<string, { month: string; fuel: number; maintenance: number; recurring: number; loans: number }>();
+    const ensure = (m: string) => {
+      if (!byMonth.has(m)) byMonth.set(m, { month: m, fuel: 0, maintenance: 0, recurring: 0, loans: 0 });
+      return byMonth.get(m)!;
+    };
+    for (const r of fuel) ensure(r.month).fuel += Number(r.amount ?? 0);
+    for (const r of maint) ensure(r.month).maintenance += Number(r.amount ?? 0);
+    for (const r of recurring) ensure(r.month).recurring += Number(r.amount ?? 0);
+    for (const r of loans) ensure(r.month).loans += Number(r.amount ?? 0);
+
+    const result = Array.from(byMonth.values())
+      .map((r) => ({
+        month: r.month,
+        fuel: Math.round(r.fuel * 100) / 100,
+        maintenance: Math.round(r.maintenance * 100) / 100,
+        recurring: Math.round(r.recurring * 100) / 100,
+        loans: Math.round(r.loans * 100) / 100,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+    // Client contract: { monthly_spend } wrapper.
+    return c.json({ monthly_spend: result });
+  } catch (err) {
+    console.error('GET /fleet/monthly-spend failed:', err);
+    return c.json({ monthly_spend: [] });
+  }
+});
+
+/** Sync fleet-vehicle odometer from dispatch GPS breadcrumbs for every
+ *  assigned unit. Called by the cron sweep (index.ts:304) to derive
+ *  GPS-estimated mileage for the Fleet Analytics dashboard.
+ *  Returns stats for the cron log line. */
+export async function syncAllVehicleGpsMileage(db: D1Database): Promise<{ checked: number; with_gps: number; total_gps_miles: number }> {
+  const rows = await query<{ unit_id: number; lat: number; lng: number; recorded_at: string; call_sign?: string }>(
+    db,
+    `SELECT b.unit_id, b.latitude AS lat, b.longitude AS lng, b.recorded_at
+     FROM gps_breadcrumbs b
+     JOIN units u ON u.id = b.unit_id
+     WHERE u.vehicle_id IS NOT NULL
+       AND b.recorded_at >= datetime('now', '-24 hours')
+     ORDER BY b.unit_id, b.recorded_at`,
+  );
+
+  // Haversine distance in miles between two coordinate pairs.
+  const haversine = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 3963.0; // Earth radius in miles
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  let totalMiles = 0;
+  let prevUnitId = -1;
+  let prevLat = 0, prevLng = 0;
+  let unitsWithGps = 0;
+
+  for (const r of rows) {
+    if (r.unit_id !== prevUnitId) {
+      prevUnitId = r.unit_id;
+      prevLat = r.lat;
+      prevLng = r.lng;
+      continue; // first point for unit — no delta yet
+    }
+    // Skip implausible jumps (> 200 mi in one beacon — likely GPS glitch).
+    const d = haversine(prevLat, prevLng, r.lat, r.lng);
+    if (d <= 200) totalMiles += d;
+    prevLat = r.lat;
+    prevLng = r.lng;
+  }
+
+  // Count distinct units with GPS data
+  const distinctUnits = new Set(rows.map(r => r.unit_id));
+  unitsWithGps = distinctUnits.size;
+
+  // Also count ALL assigned units (including those w/o GPS in the window)
+  const assigned = await queryFirst<{ cnt: number }>(
+    db, 'SELECT COUNT(*) AS cnt FROM units WHERE vehicle_id IS NOT NULL',
+  );
+
+  return {
+    checked: assigned?.cnt ?? 0,
+    with_gps: unitsWithGps,
+    total_gps_miles: Math.round(totalMiles * 10) / 10,
+  };
+}
+
+// ── Top-level list endpoints (FleetAnalysisFormsTab) ──────
+fleet.get('/maintenance', async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT * FROM fleet_maintenance ORDER BY performed_at DESC LIMIT 500');
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+fleet.get('/inspections', async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT * FROM fleet_inspections ORDER BY inspection_date DESC LIMIT 500');
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+fleet.get('/fuel-logs', async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT * FROM fleet_fuel_log ORDER BY fuel_date DESC LIMIT 500');
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+fleet.get('/assignments', async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT * FROM fleet_assignments ORDER BY assigned_at DESC LIMIT 500');
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+
+// ── GET /fleet/:id/call-history — calls this vehicle responded to
+fleet.get('/:id/call-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const limit = Math.min(Number(c.req.query('limit')) || 50, 200);
+    const offset = Number(c.req.query('offset')) || 0;
+
+    const vehicle = await queryFirst<{ vehicle_number: string }>(
+      db, 'SELECT vehicle_number FROM fleet_vehicles WHERE id = ?', vehicleId);
+    if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
+
+    const calls = await query<Record<string, unknown>>(db, `
+      SELECT cv.call_id, cv.role, cv.dispatched_at, cv.arrived_at, cv.cleared_at,
+        cv.starting_mileage, cv.ending_mileage,
+        cfs.call_number, cfs.incident_type, cfs.priority, cfs.status,
+        cfs.location_address, cfs.created_at as call_created
+      FROM call_vehicles cv
+      JOIN calls_for_service cfs ON cv.call_id = cfs.id
+      WHERE cv.vehicle_id = ?
+      ORDER BY cv.dispatched_at DESC
+      LIMIT ? OFFSET ?`, vehicleId, limit, offset);
+
+    const tripHistory = await query<Record<string, unknown>>(db, `
+      SELECT ntl.id, ntl.start_time, ntl.end_time, ntl.distance_miles,
+        ntl.max_speed_mph, ntl.duration_seconds, ntl.purpose, ntl.status,
+        cfs.call_number, cfs.incident_type as call_type
+      FROM nav_trip_log ntl
+      LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
+      WHERE ntl.vehicle_id = ?
+      ORDER BY ntl.start_time DESC
+      LIMIT ? OFFSET ?`, vehicleId, limit, offset);
+
+    return c.json({ vehicle_id: vehicleId, vehicle_number: vehicle.vehicle_number, calls, trips: tripHistory });
+  } catch (err) {
+    console.error('GET /fleet/:id/call-history error:', err);
+    return c.json({ error: 'Failed to fetch call history' }, 500);
+  }
+});
+
+// ── GET /fleet/:id/readiness — operational readiness score
+fleet.get('/:id/readiness', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+
+    const vehicle = await queryFirst<Record<string, unknown>>(db, `
+      SELECT fv.*, u.call_sign as assigned_unit, u.officer_id,
+        usr.full_name as officer_name
+      FROM fleet_vehicles fv
+      LEFT JOIN units u ON fv.assigned_unit_id = u.id
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE fv.id = ?`, vehicleId);
+    if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
+
+    const [lastInspection, openRecalls, recentMaint, fuelEfficiency] = await Promise.all([
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT id, inspection_date, inspector, overall_result
+        FROM fleet_inspections
+        WHERE vehicle_id = ? ORDER BY inspection_date DESC LIMIT 1`, vehicleId),
+      queryFirst<{ cnt: number }>(db, `
+        SELECT COUNT(*) as cnt FROM fleet_recalls
+        WHERE vehicle_id = ? AND status != 'completed'`, vehicleId),
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT COUNT(*) as count_90d,
+          SUM(cost) as cost_90d
+        FROM fleet_maintenance
+        WHERE vehicle_id = ? AND COALESCE(performed_at, service_date) >= date('now', '-90 days')`, vehicleId),
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT AVG(ff.gallons) as avg_gallons,
+          AVG(ff.total_cost) as avg_cost,
+          COUNT(*) as fuel_entries
+        FROM fleet_fuel_log ff
+        WHERE ff.vehicle_id = ? AND ff.fuel_date >= date('now', '-90 days')`, vehicleId),
+    ]);
+
+    const flags: string[] = [];
+    let score = 100;
+
+    if (vehicle.status === 'out_of_service') { score -= 50; flags.push('out_of_service'); }
+    if (vehicle.status === 'maintenance') { score -= 30; flags.push('in_maintenance'); }
+
+    if (vehicle.next_service_date && new Date(vehicle.next_service_date as string) < new Date()) {
+      score -= 20; flags.push('service_overdue');
+    } else if (vehicle.next_service_date && new Date(vehicle.next_service_date as string) <= new Date(Date.now() + 7 * 86400000)) {
+      score -= 5; flags.push('service_due_soon');
+    }
+
+    if (vehicle.next_service_mileage && vehicle.current_mileage &&
+        Number(vehicle.current_mileage) >= Number(vehicle.next_service_mileage)) {
+      score -= 15; flags.push('mileage_overdue');
+    }
+
+    if (vehicle.insurance_expiry && new Date(vehicle.insurance_expiry as string) < new Date()) {
+      score -= 25; flags.push('insurance_expired');
+    }
+    if (vehicle.registration_expiry && new Date(vehicle.registration_expiry as string) < new Date()) {
+      score -= 25; flags.push('registration_expired');
+    }
+
+    if ((openRecalls?.cnt ?? 0) > 0) { score -= 10; flags.push('open_recalls'); }
+
+    score = Math.max(0, score);
+
+    return c.json({
+      vehicle_id: vehicleId,
+      vehicle_number: vehicle.vehicle_number,
+      readiness_score: score,
+      readiness_grade: score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F',
+      flags,
+      vehicle,
+      last_inspection: lastInspection,
+      open_recalls: openRecalls?.cnt ?? 0,
+      recent_maintenance: recentMaint,
+      fuel_efficiency: fuelEfficiency,
+    });
+  } catch (err) {
+    console.error('GET /fleet/:id/readiness error:', err);
+    return c.json({ error: 'Failed to compute readiness' }, 500);
+  }
+});
 
 export default fleet;

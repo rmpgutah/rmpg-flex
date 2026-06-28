@@ -1,3 +1,4 @@
+@import './styles/theme-palettes.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,49 +11,8 @@
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
-  /* Dark Mode (default) — main's pure-black Spillman palette. */
-  --surface-base: #000000;
-  --surface-raised: #0b0b0b;
-  --surface-sunken: #000000;
-  --surface-overlay: #030303;
-  --surface-deep: #000000;
-  /* RGB channels (space-separated) for Tailwind's <alpha-value> substitution.
-     Needed so bg-surface-sunken/50 etc. work. Keep in sync with the hex
-     values above — same colors, different encoding. */
-  --surface-base-rgb: 0 0 0;
-  --surface-raised-rgb: 11 11 11;
-  --surface-sunken-rgb: 0 0 0;
-  --surface-overlay-rgb: 3 3 3;
-  --surface-deep-rgb: 0 0 0;
-  --border-default: #232323;
-  --border-subtle: #121212;
-  --border-strong: #3a3a3a;
-  --border-panel: #262626;
-  --text-primary: #f2f2f2;
-  --text-secondary: #cfcfcf;
-  --text-muted: #8a8a8a;
-  --brand-blue: #9a9a9a;
-  --brand-gold: #d4a017;
-  --toolbar-gradient-start: #0b0b0b;
-  --toolbar-gradient-end: #101010;
-  --grid-header-bg: #050505;
-  --grid-row-alt: #0d0d0d;
-  --field-label-color: #d4a017;
-  --surface-panel: #101010;
-  --surface-panel-alt: #0c0c0c;
-  --surface-hover: #161616;
-  --info-text: #d0d0d0;
-  --info-bg: rgba(150, 150, 150, 0.12);
-  --info-border: rgba(150, 150, 150, 0.24);
-  --desktop-shell-start: #000000;
-  --desktop-shell-end: #0e0e0e;
-  --desktop-shell-raised-start: #050505;
-  --desktop-shell-raised-end: #111111;
-  --desktop-shell-border: #202020;
-  --desktop-shell-accent: #7d7d7d;
-  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
-  --desktop-shell-subtle-text: #b7b7b7;
-  --desktop-shell-icon: #8c8c8c;
+  /* Surface, border, text, brand-color, and app-chrome vars are now owned by
+     client/src/styles/theme-palettes.css (imported above). */
   /* Spillman module-bar (F-key nav) — beveled-tile states. Translucent so the
      sunken/raised look adapts to any shell background (black or legacy blue). */
   --toolbar-nav-text: #9a9a9a;
@@ -188,12 +148,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: var(--border-default);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: var(--border-strong);
 }
 
 /* Firefox scrollbar */
@@ -325,20 +285,19 @@ body.fx-green {
 }
 
 /* --- Global Theme Neutralization ---------------------------------
-   Existing UI code still contains blue-oriented Tailwind utilities
-   and arbitrary dark-blue hex classes. Normalize them to black/gray
-   until each screen is fully cleaned up.
+   Neutralize any remaining legacy blue Tailwind utilities that haven't
+   been migrated to rmpg-* tokens yet. The rmpg-* token classes are
+   intentional design-system tokens and MUST NOT be included here —
+   they resolve via CSS variables and adapt to day/night automatically.
    --------------------------------------------------------------- */
 html.theme-dark [class*="text-blue-"],
 html.theme-dark [class*="text-cyan-"],
 html.theme-dark [class*="text-sky-"],
 html.theme-dark [class*="text-indigo-"],
-html.theme-dark [class*="text-rmpg-"],
 html:not(.theme-light) [class*="text-blue-"],
 html:not(.theme-light) [class*="text-cyan-"],
 html:not(.theme-light) [class*="text-sky-"],
-html:not(.theme-light) [class*="text-indigo-"],
-html:not(.theme-light) [class*="text-rmpg-"] {
+html:not(.theme-light) [class*="text-indigo-"] {
   color: #c8c8c8 !important;
 }
 
@@ -346,38 +305,32 @@ html.theme-dark [class*="bg-blue-"],
 html.theme-dark [class*="bg-cyan-"],
 html.theme-dark [class*="bg-sky-"],
 html.theme-dark [class*="bg-indigo-"],
-html.theme-dark [class*="bg-rmpg-"],
 html:not(.theme-light) [class*="bg-blue-"],
 html:not(.theme-light) [class*="bg-cyan-"],
 html:not(.theme-light) [class*="bg-sky-"],
-html:not(.theme-light) [class*="bg-indigo-"],
-html:not(.theme-light) [class*="bg-rmpg-"] {
-  background-color: #111111 !important;
+html:not(.theme-light) [class*="bg-indigo-"] {
+  background-color: var(--surface-raised) !important;
 }
 
 html.theme-dark [class*="border-blue-"],
 html.theme-dark [class*="border-cyan-"],
 html.theme-dark [class*="border-sky-"],
 html.theme-dark [class*="border-indigo-"],
-html.theme-dark [class*="border-rmpg-"],
 html:not(.theme-light) [class*="border-blue-"],
 html:not(.theme-light) [class*="border-cyan-"],
 html:not(.theme-light) [class*="border-sky-"],
-html:not(.theme-light) [class*="border-indigo-"],
-html:not(.theme-light) [class*="border-rmpg-"] {
-  border-color: #4a4a4a !important;
+html:not(.theme-light) [class*="border-indigo-"] {
+  border-color: var(--border-default) !important;
 }
 
 html.theme-dark [class*="ring-blue-"],
 html.theme-dark [class*="ring-cyan-"],
 html.theme-dark [class*="ring-sky-"],
 html.theme-dark [class*="ring-indigo-"],
-html.theme-dark [class*="ring-rmpg-"],
 html:not(.theme-light) [class*="ring-blue-"],
 html:not(.theme-light) [class*="ring-cyan-"],
 html:not(.theme-light) [class*="ring-sky-"],
-html:not(.theme-light) [class*="ring-indigo-"],
-html:not(.theme-light) [class*="ring-rmpg-"] {
+html:not(.theme-light) [class*="ring-indigo-"] {
   --tw-ring-color: rgba(160, 160, 160, 0.35) !important;
 }
 
@@ -385,14 +338,12 @@ html.theme-dark [class*="from-blue-"],
 html.theme-dark [class*="from-cyan-"],
 html.theme-dark [class*="from-sky-"],
 html.theme-dark [class*="from-indigo-"],
-html.theme-dark [class*="from-rmpg-"],
 html:not(.theme-light) [class*="from-blue-"],
 html:not(.theme-light) [class*="from-cyan-"],
 html:not(.theme-light) [class*="from-sky-"],
-html:not(.theme-light) [class*="from-indigo-"],
-html:not(.theme-light) [class*="from-rmpg-"] {
-  --tw-gradient-from: #2a2a2a var(--tw-gradient-from-position) !important;
-  --tw-gradient-to: rgb(42 42 42 / 0) var(--tw-gradient-to-position) !important;
+html:not(.theme-light) [class*="from-indigo-"] {
+  --tw-gradient-from: var(--surface-raised) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(var(--surface-raised-rgb) / 0) var(--tw-gradient-to-position) !important;
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
 }
 
@@ -400,26 +351,22 @@ html.theme-dark [class*="via-blue-"],
 html.theme-dark [class*="via-cyan-"],
 html.theme-dark [class*="via-sky-"],
 html.theme-dark [class*="via-indigo-"],
-html.theme-dark [class*="via-rmpg-"],
 html:not(.theme-light) [class*="via-blue-"],
 html:not(.theme-light) [class*="via-cyan-"],
 html:not(.theme-light) [class*="via-sky-"],
-html:not(.theme-light) [class*="via-indigo-"],
-html:not(.theme-light) [class*="via-rmpg-"] {
-  --tw-gradient-stops: var(--tw-gradient-from), #1f1f1f var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+html:not(.theme-light) [class*="via-indigo-"] {
+  --tw-gradient-stops: var(--tw-gradient-from), var(--surface-base) var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
 }
 
 html.theme-dark [class*="to-blue-"],
 html.theme-dark [class*="to-cyan-"],
 html.theme-dark [class*="to-sky-"],
 html.theme-dark [class*="to-indigo-"],
-html.theme-dark [class*="to-rmpg-"],
 html:not(.theme-light) [class*="to-blue-"],
 html:not(.theme-light) [class*="to-cyan-"],
 html:not(.theme-light) [class*="to-sky-"],
-html:not(.theme-light) [class*="to-indigo-"],
-html:not(.theme-light) [class*="to-rmpg-"] {
-  --tw-gradient-to: #111111 var(--tw-gradient-to-position) !important;
+html:not(.theme-light) [class*="to-indigo-"] {
+  --tw-gradient-to: var(--surface-base) var(--tw-gradient-to-position) !important;
 }
 
 [class*="#303030"],
@@ -922,7 +869,7 @@ body.fx-noise::after {
   .table-dark thead th {
     @apply px-2 py-[3px] text-[9px] font-bold uppercase tracking-wider;
     color: #d4a017;
-    border-right: 1px solid rgba(43, 49, 58, 0.6);
+    border-right: 1px solid var(--border-default);
   }
 
   .table-dark thead th:last-child {
@@ -931,11 +878,11 @@ body.fx-noise::after {
 
   .table-dark tbody tr {
     @apply transition-colors duration-150;
-    border-bottom: 1px solid rgba(43, 49, 58, 0.45);
+    border-bottom: 1px solid var(--border-default);
   }
 
   .table-dark tbody tr:hover {
-    background: rgba(167, 177, 188, 0.1);
+    background: rgba(var(--rmpg-300-rgb) / 0.08);
   }
 
   .table-dark tbody tr:nth-child(even) {
@@ -944,7 +891,7 @@ body.fx-noise::after {
 
   .table-dark tbody td {
     @apply px-2 py-[2px];
-    color: #d2d7dd;
+    color: var(--text-secondary);
     font-size: 10px;
   }
 
@@ -1150,7 +1097,7 @@ body.fx-noise::after {
 
   /* --- Input Styles (Blocky) --- Motorola Blue focus accent */
   .input-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
+    @apply w-full px-3 py-1.5 text-sm text-rmpg-100 placeholder-rmpg-500 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: var(--surface-sunken);
@@ -1167,7 +1114,7 @@ body.fx-noise::after {
   }
 
   .select-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white focus:outline-none;
+    @apply w-full px-3 py-1.5 text-sm text-rmpg-100 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: var(--surface-sunken);
@@ -1189,7 +1136,7 @@ body.fx-noise::after {
   }
   .select-dark option {
     background: var(--surface-base);
-    color: #e0e0e0;
+    color: var(--text-secondary);
   }
 
   /* PDF editor find/search match highlighting on the transparent text layer.
@@ -1204,56 +1151,57 @@ body.fx-noise::after {
   }
 
   .textarea-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
+    @apply w-full px-3 py-1.5 text-sm text-rmpg-100 placeholder-rmpg-500 focus:outline-none resize-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: var(--surface-sunken);
     border-left-color: var(--surface-sunken);
     border-bottom-color: var(--border-strong);
     border-right-color: var(--border-strong);
-    caret-color: var(--brand-blue);
+    caret-color: var(--brand-gold);
     transition: border-color 0.1s;
   }
   .textarea-dark:focus {
-    border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(156, 164, 173, 0.35);
+    border-color: var(--brand-gold);
+    box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.55), 0 0 8px rgba(212, 160, 23, 0.22);
   }
 
   /* --- Button Styles (Blocky / Raised) --- Motorola Blue primary */
   .btn-primary {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
-    background: #444444;
-    border: 1px solid #888888;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-rmpg-100 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    background: var(--border-strong);
+    border: 1px solid var(--border-strong);
   }
   .btn-primary:hover:not(:disabled) {
-    background: #888888;
+    background: var(--rmpg-500);
+    border-color: var(--rmpg-500);
   }
 
   .btn-secondary {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
-    background: #222222;
-    border: 1px solid #2e2e2e;
-    color: #cccccc;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
   }
-  .btn-secondary:hover {
-    background: #2e2e2e;
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--surface-overlay);
   }
 
   .btn-danger {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-rmpg-100 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
     background: #991b1b;
     border: 1px solid #dc2626;
   }
-  .btn-danger:hover {
+  .btn-danger:hover:not(:disabled) {
     background: #dc2626;
   }
 
   .btn-success {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-rmpg-100 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
     background: #047857;
     border: 1px solid #059669;
   }
-  .btn-success:hover {
+  .btn-success:hover:not(:disabled) {
     background: #059669;
   }
 
@@ -1263,6 +1211,24 @@ body.fx-noise::after {
 
   .btn-xs {
     @apply px-1.5 py-0.5 text-[9px];
+  }
+
+  .btn-gold {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-black text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    background: var(--brand-gold);
+    border: 1px solid #b8880f;
+  }
+  .btn-gold:hover:not(:disabled) {
+    background: #e8b820;
+  }
+
+  button.p-0\.5,
+  a.p-0\.5 {
+    min-width: 28px;
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* ============================================================
@@ -1368,13 +1334,25 @@ body.fx-noise::after {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 12px;
-    height: 12px;
+    width: 20px;
+    height: 20px;
+    padding: 4px;
     border: 1px solid transparent;
     cursor: pointer;
     flex-shrink: 0;
     transition: filter 0.1s, border-color 0.1s;
+    box-sizing: border-box;
   }
+  .window-chrome-btn::after {
+    content: '';
+    display: block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+  }
+  .window-chrome-btn.window-chrome-close::after { background: var(--window-chrome-close); }
+  .window-chrome-btn.window-chrome-minimize::after { background: var(--window-chrome-minimize); }
+  .window-chrome-btn.window-chrome-maximize::after { background: var(--window-chrome-maximize); }
   .window-chrome-btn:hover {
     filter: brightness(1.4);
   }
@@ -1382,15 +1360,12 @@ body.fx-noise::after {
     filter: brightness(0.8);
   }
   .window-chrome-close {
-    background: var(--window-chrome-close);
     border-color: rgba(239, 68, 68, 0.6);
   }
   .window-chrome-minimize {
-    background: var(--window-chrome-minimize);
     border-color: rgba(212, 160, 23, 0.6);
   }
   .window-chrome-maximize {
-    background: var(--window-chrome-maximize);
     border-color: rgba(34, 197, 94, 0.6);
   }
 
@@ -1524,7 +1499,6 @@ body.fx-noise::after {
   .toolbar-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
-    pointer-events: none;
   }
 
   .toolbar-btn-primary {
@@ -1536,7 +1510,7 @@ body.fx-noise::after {
   }
 
   .toolbar-btn-primary:hover {
-    background: var(--surface-raised);
+    background: #aaaaaa;
   }
 
   .toolbar-btn-danger {
@@ -1546,6 +1520,63 @@ body.fx-noise::after {
   }
   .toolbar-btn-danger:hover {
     background: var(--surface-raised);
+  }
+
+  /* ── Dossier grid tiles (Windows-style desktop icon view) ── */
+  .dossier-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 88px;
+    padding: 6px 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    cursor: default;
+    transition: background 0.1s, border-color 0.1s;
+    text-align: center;
+    outline: none;
+  }
+  .dossier-tile:hover {
+    background: rgb(var(--rmpg-700-rgb) / 0.4);
+    border-color: rgb(var(--rmpg-600-rgb) / 0.5);
+  }
+  .dossier-tile:focus-visible {
+    border-color: rgb(var(--brand-400-rgb) / 0.8);
+  }
+  .dossier-tile-selected {
+    background: rgb(var(--brand-900-rgb) / 0.35);
+    border-color: rgb(var(--brand-500-rgb) / 0.6);
+  }
+  .dossier-tile-selected:hover {
+    background: rgb(var(--brand-900-rgb) / 0.5);
+    border-color: rgb(var(--brand-400-rgb) / 0.7);
+  }
+  .dossier-tile-icon {
+    position: relative;
+    width: 64px;
+    height: 60px;
+    border-radius: 2px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .dossier-tile-label {
+    font-size: 10px;
+    line-height: 1.3;
+    color: rgb(var(--rmpg-200-rgb));
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    width: 100%;
+  }
+  .dossier-tile-selected .dossier-tile-label {
+    color: rgb(var(--brand-200-rgb));
   }
 
   /* Context menu items (right-click menus) */
@@ -1738,12 +1769,8 @@ body.fx-noise::after {
     z-index: 9990;
     min-width: 220px;
     background: var(--surface-base);
-    border: 1px solid #2e2e2e;
-    border-top-color: #383838;
-    border-left-color: #383838;
-    border-bottom-color: #050505;
-    border-right-color: #050505;
-    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--spm-border);
+    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2);
     padding: 2px 0;
   }
   .menu-dropdown-root {
@@ -1766,7 +1793,7 @@ body.fx-noise::after {
     width: 100%;
     padding: 4px 10px;
     font-size: 11px;
-    color: #d0d0d0;
+    color: var(--spm-text);
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
@@ -1775,8 +1802,11 @@ body.fx-noise::after {
     gap: 6px;
     white-space: nowrap;
   }
+  /* White is intentional here: --spm-select is constant steel-blue (#316ac5) in
+     all themes (night/day/legacy), so white-on-select stays legible. Do NOT
+     "tokenize" this #ffffff to a theme text var — it would go dark on the blue. */
   .menu-item:hover {
-    background: var(--surface-raised);
+    background: var(--spm-select);
     color: #ffffff;
   }
   .menu-item:hover .menu-item-shortcut {
@@ -1786,10 +1816,11 @@ body.fx-noise::after {
     color: #ffffff;
   }
   .menu-item.active {
-    color: #ffffff !important;
+    color: var(--spm-accent) !important;
   }
   .menu-item-disabled {
-    color: #505050 !important;
+    color: var(--spm-text-muted) !important;
+    opacity: 0.55;
     cursor: default;
     pointer-events: none;
   }
@@ -2116,6 +2147,7 @@ body.fx-noise::after {
   .btn-secondary,
   .btn-danger,
   .btn-success,
+  .btn-gold,
   .toolbar-btn-primary,
   .toolbar-btn-danger,
   .toolbar-btn-success {
@@ -2135,6 +2167,13 @@ body.fx-noise::after {
     min-height: 36px;
     padding: 4px 10px;
     font-size: 11px;
+  }
+
+  button.p-0\.5,
+  a.p-0\.5 {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 6px;
   }
 
   /* ── FORM INPUTS ────────────────────────────────────────
@@ -2270,18 +2309,18 @@ body.fx-noise::after {
 
   /* ── GRID LAYOUT HELPERS ───────────────────────────────── */
   /* Force 1-column on small phones for grid layouts */
-  .grid-cols-2,
-  .sm\:grid-cols-2 {
+  .grid-cols-2:not(.grid-keep),
+  .sm\:grid-cols-2:not(.grid-keep) {
     grid-template-columns: 1fr !important;
   }
-  .grid-cols-3,
-  .sm\:grid-cols-3,
-  .md\:grid-cols-3 {
+  .grid-cols-3:not(.grid-keep),
+  .sm\:grid-cols-3:not(.grid-keep),
+  .md\:grid-cols-3:not(.grid-keep) {
     grid-template-columns: 1fr !important;
   }
-  .grid-cols-4,
-  .sm\:grid-cols-4,
-  .md\:grid-cols-4 {
+  .grid-cols-4:not(.grid-keep),
+  .sm\:grid-cols-4:not(.grid-keep),
+  .md\:grid-cols-4:not(.grid-keep) {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 
@@ -2600,7 +2639,7 @@ body.fx-noise::after {
 
 .cad-command-line {
   background: var(--surface-deep);
-  border-top: 1px solid #222222;
+  border-top: 1px solid var(--border-default);
   font-family: var(--font-mono);
   padding: 0;
 }
@@ -2660,8 +2699,8 @@ body.fx-noise::after {
   color: #d4a017;
   font-size: 11px;
   line-height: 1.5;
-  border-top: 1px solid #222222;
-  background: #080808;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-deep);
 }
 
 .cad-command-output-expanded pre {
@@ -2841,55 +2880,69 @@ body.fx-noise::after {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;
-  color: #d4a017;
+  /* Base = data value text. Warm parchment-amber reads far cleaner on the
+     pure-black CRT than the old muddy #d4a017 gold (which now belongs to the
+     field-label TAGS, not the values). */
+  color: #ecdfc4;
 }
 
 /* ── NCIC Semantic Color Classes ──
    Per-line coloring so officers can instantly
    distinguish normal data from warnings. */
 
-/* System header/footer bookends — neutral light gray (was sky blue) */
+/* System header/footer bookends — warm light phosphor (neutral, no blue) */
 .ncic-c-header {
-  color: #c8c8c8;
+  color: #d8d0bd;
   font-weight: bold;
+  letter-spacing: 0.04em;
 }
-/* Section titles — bright white */
+/* Section titles — bright warm white, the brightest read on screen */
 .ncic-c-section {
-  color: #f0f0f0;
+  color: #fbf7ec;
   font-weight: bold;
+  letter-spacing: 0.03em;
 }
 /* Danger/warning lines — bright red */
 .ncic-c-danger {
-  color: #ef4444;
+  color: #ff5252;
   font-weight: bold;
 }
 /* Caution lines — orange/amber */
 .ncic-c-caution {
-  color: #f59e0b;
+  color: #ffb224;
   font-weight: bold;
 }
-/* All clear / no record — muted green */
+/* All clear / no record — phosphor green */
 .ncic-c-clear {
-  color: #22c55e;
+  color: #3ddc6b;
+  font-weight: bold;
 }
 /* Error lines — red */
 .ncic-c-error {
-  color: #ef4444;
+  color: #ff5252;
   font-weight: bold;
 }
 /* Summary lines — gold */
 .ncic-c-summary {
-  color: #fbbf24;
+  color: #ffcf45;
   font-weight: bold;
 }
-/* Dimmed dividers / search echo — muted */
+/* Dimmed dividers / search echo — recessed but now actually legible
+   (the old #5a4a2a fell below readable contrast on pure black). */
 .ncic-c-dim {
-  color: #5a4a2a;
+  color: #8a7444;
 }
-/* Field-label codes (NAM/, DOB/, etc.) — neutral gray inline highlight (was cyan) */
+/* Field-label codes (NAM/, DOB/, etc.) — brand gold tag accent. These are
+   the scannable index of a return; gold tags + parchment values give the
+   read a clear two-tone hierarchy (was flat gray, blended into the data). */
 .ncic-c-label {
-  color: #a8a8a8;
+  color: #d4a017;
   font-weight: bold;
+}
+/* Data value text after a field label — the answer the officer reads.
+   Brightest, most legible tone so values pop against the gold tags. */
+.ncic-c-value {
+  color: #f4ecd8;
 }
 
 /* ── Per-severity phosphor glow ──
@@ -2897,12 +2950,14 @@ body.fx-noise::after {
    threat color: red danger pulses hottest, amber caution warm, green clear
    calm. Overrides the base amber glow on .ncic-output. */
 .ncic-c-danger,
-.ncic-c-error { text-shadow: 0 0 6px rgba(239, 68, 68, 0.55); }
-.ncic-c-caution { text-shadow: 0 0 5px rgba(245, 158, 11, 0.45); }
-.ncic-c-summary { text-shadow: 0 0 5px rgba(251, 191, 36, 0.45); }
-.ncic-c-clear { text-shadow: 0 0 5px rgba(34, 197, 94, 0.40); }
-.ncic-c-header { text-shadow: 0 0 4px rgba(200, 200, 200, 0.35); }
-.ncic-c-section { text-shadow: 0 0 4px rgba(240, 240, 240, 0.30); }
+.ncic-c-error { text-shadow: 0 0 6px rgba(255, 82, 82, 0.55); }
+.ncic-c-caution { text-shadow: 0 0 5px rgba(255, 178, 36, 0.45); }
+.ncic-c-summary { text-shadow: 0 0 5px rgba(255, 207, 69, 0.45); }
+.ncic-c-clear { text-shadow: 0 0 6px rgba(61, 220, 107, 0.42); }
+.ncic-c-header { text-shadow: 0 0 4px rgba(216, 208, 189, 0.32); }
+.ncic-c-section { text-shadow: 0 0 5px rgba(251, 247, 236, 0.30); }
+.ncic-c-label { text-shadow: 0 0 5px rgba(212, 160, 23, 0.40); }
+.ncic-c-value { text-shadow: 0 0 3px rgba(244, 236, 216, 0.22); }
 .ncic-c-dim { text-shadow: none; }
 
 /* The CRITICAL subject-status banner gets a steady LED-style pulse so it's
@@ -2923,6 +2978,52 @@ body.fx-noise::after {
   font-size: 11px;
   padding: 8px 0;
   letter-spacing: 0.1em;
+}
+
+/* Quick-query button row — sits just above the input. Compact, terminal-
+   styled buttons that populate the input field with a verb prefix so the
+   operator only has to type the search term. The verb is shown in a bright
+   monospace pill; the descriptive label is the muted secondary text. */
+.ncic-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 0;
+  background: #080808;
+  border-top: 2px solid #222222;
+}
+
+.ncic-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid rgb(var(--brand-gold-rgb) / 0.25);
+  color: rgb(var(--brand-gold-rgb) / 0.9);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 120ms, border-color 120ms;
+}
+.ncic-quick-btn:hover:not(:disabled) {
+  background: rgb(var(--brand-gold-rgb) / 0.12);
+  border-color: rgb(var(--brand-gold-rgb) / 0.55);
+}
+.ncic-quick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ncic-quick-verb {
+  font-weight: 700;
+  color: var(--brand-gold);
+}
+.ncic-quick-label {
+  color: rgb(var(--brand-gold-rgb) / 0.7);
 }
 
 .ncic-input-row {
@@ -3065,12 +3166,12 @@ body.fx-noise::after {
 
   /* --- Page Setup --- */
   @page {
-    margin: 0.4in 0.5in;
-    size: letter;
+    margin: 0.25in 0.3in;
+    size: letter portrait;
   }
 
   @page :first {
-    margin-top: 0.3in;
+    margin-top: 0.2in;
   }
 
   /* --- Global Reset: Dark → White --- */
@@ -3088,6 +3189,61 @@ body.fx-noise::after {
     --text-muted: #666666 !important;
     --brand-blue: #333333 !important;
     --brand-gold: #8a6b0a !important;
+
+    /* --- RGB channel overrides for Tailwind token classes (bg-surface-*, text-rmpg-*, etc.)
+         The night palette leaves these at dark values; without these overrides, any component
+         using `bg-surface-overlay` or `text-rmpg-50` prints dark on white. --- */
+
+    /* Surface channels — all white for print */
+    --surface-base-rgb: 255 255 255 !important;
+    --surface-raised-rgb: 255 255 255 !important;
+    --surface-sunken-rgb: 255 255 255 !important;
+    --surface-overlay-rgb: 255 255 255 !important;
+    --surface-deep-rgb: 255 255 255 !important;
+
+    /* rmpg scale — INVERTED: low index = dark ink, high index = white/near-white paper */
+    --rmpg-50-rgb: 20 20 20 !important;
+    --rmpg-100-rgb: 40 40 40 !important;
+    --rmpg-200-rgb: 60 60 60 !important;
+    --rmpg-300-rgb: 80 80 80 !important;
+    --rmpg-400-rgb: 100 100 100 !important;
+    --rmpg-500-rgb: 130 130 130 !important;
+    --rmpg-600-rgb: 170 170 170 !important;
+    --rmpg-700-rgb: 210 210 210 !important;
+    --rmpg-800-rgb: 232 232 232 !important;
+    --rmpg-900-rgb: 245 245 245 !important;
+    --rmpg-950-rgb: 255 255 255 !important;
+
+    /* brand scale — INVERTED (mirrors rmpg) */
+    --brand-50-rgb: 20 20 20 !important;
+    --brand-100-rgb: 40 40 40 !important;
+    --brand-200-rgb: 60 60 60 !important;
+    --brand-300-rgb: 80 80 80 !important;
+    --brand-400-rgb: 100 100 100 !important;
+    --brand-500-rgb: 130 130 130 !important;
+    --brand-600-rgb: 170 170 170 !important;
+    --brand-700-rgb: 210 210 210 !important;
+    --brand-800-rgb: 232 232 232 !important;
+    --brand-900-rgb: 245 245 245 !important;
+
+    /* blue scale — INVERTED (mirrors rmpg) */
+    --blue-50-rgb: 20 20 20 !important;
+    --blue-100-rgb: 40 40 40 !important;
+    --blue-200-rgb: 60 60 60 !important;
+    --blue-300-rgb: 80 80 80 !important;
+    --blue-400-rgb: 100 100 100 !important;
+    --blue-500-rgb: 130 130 130 !important;
+    --blue-600-rgb: 170 170 170 !important;
+    --blue-700-rgb: 210 210 210 !important;
+    --blue-800-rgb: 232 232 232 !important;
+    --blue-900-rgb: 245 245 245 !important;
+
+    /* brand-gold — darkened for legibility on white paper */
+    --brand-gold-300-rgb: 138 107 10 !important;
+    --brand-gold-400-rgb: 120 93 8 !important;
+    --brand-gold-500-rgb: 100 77 6 !important;
+    --brand-gold-600-rgb: 82 63 5 !important;
+    --brand-gold-700-rgb: 65 50 3 !important;
   }
 
   html {
@@ -3777,6 +3933,7 @@ body.fx-noise::after {
 
 .timer-bar-fill {
   height: 100%;
+  width: 0;
   transition: width 1s linear, background 0.3s ease;
   border-radius: 0 1px 1px 0;
 }
@@ -4007,49 +4164,12 @@ html.font-large { font-size: 19px; }
    pure-black default).
    ============================================================ */
 html.theme-light {
-  --surface-base: #0d2a4d;
-  --surface-raised: #153a6a;
-  --surface-sunken: #081e3d;
-  --surface-overlay: #061630;
-  --surface-deep: #041022;
-  /* Light-mode RGB channels for Tailwind's <alpha-value> — same colors as
-     the hex values above, different encoding. */
-  --surface-base-rgb: 13 42 77;
-  --surface-raised-rgb: 21 58 106;
-  --surface-sunken-rgb: 8 30 61;
-  --surface-overlay-rgb: 6 22 48;
-  --surface-deep-rgb: 4 16 34;
-  --border-default: #2a5a9e;
-  --border-subtle: #234d87;
-  --border-strong: #3a75c2;
-  --border-panel: #2a5a9e;
-  --text-primary: #e5e7eb;
-  --text-secondary: #c4d3e6;
-  --text-muted: #9bb4d0;
-  --brand-blue: #2a75c2;
-  --toolbar-gradient-start: #2a75c2;
-  --toolbar-gradient-end: #3a8fd9;
-  --grid-header-bg: #102f55;
-  --grid-row-alt: #123560;
-  --surface-panel: #102f55;
-  --surface-panel-alt: #0d2644;
-  --surface-hover: #163d70;
-  --info-text: #c4d3e6;
-  --info-bg: rgba(42, 117, 194, 0.18);
-  --info-border: rgba(58, 117, 194, 0.36);
-  --desktop-shell-start: #0d2a4d;
-  --desktop-shell-end: #153a6a;
-  --desktop-shell-raised-start: #0d2a4d;
-  --desktop-shell-raised-end: #153a6a;
-  --desktop-shell-border: #2a5a9e;
-  --desktop-shell-accent: #3a75c2;
-  --desktop-shell-accent-shadow: rgba(42, 90, 158, 0.28);
-  --desktop-shell-subtle-text: #9bb4d0;
-  --desktop-shell-icon: #9bb4d0;
-  --bevel-highlight: #4a7bbf;
-  --titlebar-gradient: linear-gradient(180deg, #2a5a9e 0%, #1e4a8a 50%, #153a6a 100%);
-  color-scheme: dark;  /* still white-on-dark; blue is just hue-shifted */
-  background-color: #0d2a4d;
+  /* --surface-*, --border-*, --text-*, --brand-blue/gold, and app-chrome vars
+     are now in theme-palettes.css (imported at top of this file). */
+  --bevel-highlight: #c3cdd8;
+  --titlebar-gradient: linear-gradient(180deg, #ece9dd 0%, #d6d3c8 50%, #c9c5b8 100%);
+  color-scheme: light;
+  background-color: #ece9dd;
 }
 
 html.theme-dark,
@@ -4057,25 +4177,6 @@ html:not(.theme-light) {
   color-scheme: dark;
   background-color: #000000;
 }
-
-html.theme-light .bg-surface-base { background: var(--surface-base) !important; }
-html.theme-light .bg-surface-raised { background: var(--surface-raised) !important; }
-html.theme-light .bg-surface-sunken { background: var(--surface-sunken) !important; }
-html.theme-light .bg-surface-base.text-white,
-html.theme-light .bg-surface-raised.text-white,
-html.theme-light .bg-surface-sunken.text-white,
-html.theme-light .panel-beveled.text-white,
-html.theme-light .panel-surface.text-white,
-html.theme-light .panel-surface.text-white {
-  color: var(--text-primary) !important;
-}
-html.theme-light .text-rmpg-300 { color: var(--text-secondary) !important; }
-html.theme-light .text-rmpg-400 { color: var(--text-secondary) !important; }
-html.theme-light .text-rmpg-500 { color: var(--text-muted) !important; }
-html.theme-light .border-rmpg-700 { border-color: var(--border-default) !important; }
-html.theme-light .border-rmpg-800 { border-color: var(--border-subtle) !important; }
-html.theme-light .panel-beveled { background: var(--surface-raised) !important; border-color: var(--border-default) !important; }
-html.theme-light .panel-surface { background: var(--surface-raised) !important; }
 
 /* ============================================================
    Feature 39: Enhanced Print Stylesheet for Detail Views
@@ -4696,6 +4797,13 @@ textarea {
   ::-webkit-scrollbar { display: none; }
   .scrollbar-dark::-webkit-scrollbar { display: block; width: 4px; }
   .scrollbar-dark::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+  /* Keep the thin tab-strip bar visible on iOS too (see rule 5b). */
+  [role="tablist"]::-webkit-scrollbar,
+  .tab-bar::-webkit-scrollbar,
+  .tab-scroll::-webkit-scrollbar { display: block; width: 5px; height: 5px; }
+  [role="tablist"]::-webkit-scrollbar-thumb,
+  .tab-bar::-webkit-scrollbar-thumb,
+  .tab-scroll::-webkit-scrollbar-thumb { background: #2e2e2e; border-radius: 2px; }
 }
 
 /* 22. Fix iOS status bar text color in standalone */
@@ -4711,11 +4819,11 @@ textarea {
   }
 }
 
-/* 24. iOS color-scheme pinning — both themes are dark-on-dark (saturated
-   blue or pure black), so we pin color-scheme to 'dark' in both modes to
-   keep native form controls and scrollbars readable on the dark surface. */
+/* 24. iOS color-scheme pinning — NIGHT/legacy themes are dark surfaces,
+   pinned to color-scheme 'dark' even under an OS light preference; the
+   DAY (theme-light) theme is a genuine light surface and uses
+   color-scheme 'light' (set by the main theme-light block above). */
 @media (prefers-color-scheme: dark) {
-  html.theme-light,
   html.theme-dark,
   html:not(.theme-light) { color-scheme: dark; }
 }
@@ -5162,6 +5270,93 @@ html, body {
 }
 ::-webkit-scrollbar-corner {
   background: var(--surface-sunken);
+}
+
+/* --- 5b. TAB-STRIP SCROLLBARS — thin, always-visible, sleek ----------
+   Horizontal tab / section / filter strips (the ones with overflow-x)
+   get a discreet 5px bar so MOUSE users have a grabbable affordance.
+   macOS renders overlay scrollbars that auto-hide when idle; defining a
+   custom ::-webkit-scrollbar with a visible-at-rest thumb forces a
+   persistent (classic) bar in Chrome — the app's primary browser.
+   Scoped to tab strips ONLY via three hooks:
+     • [role="tablist"]  — auto-covers strips already marked up as tablists
+     • .tab-bar          — the existing tab-strip class
+     • .tab-scroll       — opt-in utility added to the remaining bare strips
+   Class-level specificity (0,1,1) intentionally beats the global bare
+   ::-webkit-scrollbar (0,0,1) — including the iOS @supports display:none —
+   so these stay visible everywhere, and overrides .scrollbar-dark (6px)
+   where both classes sit on the same element. Vertical content panels,
+   lists, tables and modals are untouched. */
+[role="tablist"],
+.tab-bar,
+.tab-scroll {
+  scrollbar-width: thin;                      /* Firefox */
+  scrollbar-color: #2e2e2e transparent;        /* rest thumb / track — matches .scrollbar-dark */
+}
+[role="tablist"]::-webkit-scrollbar,
+.tab-bar::-webkit-scrollbar,
+.tab-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+[role="tablist"]::-webkit-scrollbar-track,
+.tab-bar::-webkit-scrollbar-track,
+.tab-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+[role="tablist"]::-webkit-scrollbar-thumb,
+.tab-bar::-webkit-scrollbar-thumb,
+.tab-scroll::-webkit-scrollbar-thumb {
+  background: #2e2e2e;                         /* discreet at rest (border-strong tone) */
+  border-radius: 2px;                          /* matches the 2px sharp-corner token */
+  min-width: 28px;                             /* keep the thumb grabbable on wide strips */
+}
+[role="tablist"]::-webkit-scrollbar-thumb:hover,
+.tab-bar::-webkit-scrollbar-thumb:hover,
+.tab-scroll::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;                          /* subtle brighten on hover */
+}
+
+/* --- 5c. CUSTOM ALWAYS-VISIBLE SCROLLBARS (tab strips + content panel) ----
+   macOS Chrome uses OVERLAY scrollbars that auto-hide at rest and ignore the
+   native ::-webkit-scrollbar sizing in 5b (verified live: a 14px custom bar
+   consumed 0px). So we render a JS-driven overlay bar
+   (client/src/utils/tabScrollbars.ts) that is ALWAYS visible regardless of the
+   OS setting, on two markers:
+     .tab-scroll        — horizontal bar on overflowing tab / section strips
+     .content-scroll-y  — vertical bar on the main content panel (<main>)
+   We HIDE the native bar on both to avoid a double bar. Source order: these
+   come after 5b (and the iOS @supports block), so display:none /
+   scrollbar-width:none win. [role=tablist]/.tab-bar keep 5b as graceful
+   fallback. JS sets ALL track/thumb geometry inline (both axes), so there's no
+   fixed width/height here — only the shared visual styling. */
+.tab-scroll,
+.content-scroll-y {
+  scrollbar-width: none;                       /* Firefox: hide native (overlay replaces it) */
+}
+.tab-scroll::-webkit-scrollbar,
+.content-scroll-y::-webkit-scrollbar {
+  display: none;                               /* Chrome/Safari: hide native */
+}
+#tab-scrollbar-layer .tab-scrollbar-track {
+  position: fixed;
+  pointer-events: none;                        /* clicks pass through to the content underneath */
+  display: none;                               /* JS shows it only when the container overflows */
+}
+#tab-scrollbar-layer .tab-scrollbar-thumb {
+  border-radius: 2px;                          /* matches the 2px sharp-corner token */
+  background: #2e2e2e;                         /* discreet at rest (border-strong tone) */
+  pointer-events: auto;                        /* the thumb IS grabbable */
+  cursor: grab;
+  transition: background 0.12s ease;
+  will-change: transform, width, height;
+}
+#tab-scrollbar-layer .tab-scrollbar-thumb:hover {
+  background: #3a3a3a;                         /* subtle brighten on hover */
+}
+#tab-scrollbar-layer .tab-scrollbar-thumb.dragging {
+  background: #4a4a4a;                         /* brighter while dragging */
+  cursor: grabbing;
 }
 
 /* --- 6. TABLE / GRID CONSISTENCY ---
@@ -9952,3 +10147,141 @@ td.sparkline-cell {
 .rmpg-pop-row span { color: #777777; text-transform: uppercase; letter-spacing: 0.04em; font-size: 8px; flex-shrink: 0; }
 .rmpg-pop-row b { color: #cfcfcf; font-weight: 600; text-align: right; word-break: break-word; }
 .rmpg-pop-rel { padding: 5px 9px; font-size: 9px; font-weight: 700; color: #d4a017; background: rgba(212,160,23,0.07); border-top: 1px solid var(--border-subtle, #1a1a1a); text-align: center; }
+
+/* ── Document Writer (TipTap) ── */
+.writer-content .tiptap { color: #111; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 12px; line-height: 1.7; }
+.writer-content .tiptap:focus { outline: none; }
+.writer-content .tiptap p { margin: 0 0 8px; }
+.writer-content .tiptap h1 { font-size: 20px; font-weight: 700; margin: 16px 0 8px; color: #000; }
+.writer-content .tiptap h2 { font-size: 16px; font-weight: 600; margin: 14px 0 6px; color: #111; }
+.writer-content .tiptap h3 { font-size: 13px; font-weight: 600; margin: 12px 0 4px; color: #222; }
+.writer-content .tiptap h4 { font-size: 12px; font-weight: 600; margin: 10px 0 4px; color: #333; }
+.writer-content .tiptap ul, .writer-content .tiptap ol { padding-left: 24px; margin: 4px 0; }
+.writer-content .tiptap li { margin: 2px 0; }
+.writer-content .tiptap blockquote { border-left: 3px solid #d4a017; margin: 8px 0; padding: 4px 12px; color: #444; }
+.writer-content .tiptap hr { border: none; border-top: 1px solid #ccc; margin: 16px 0; }
+.writer-content .tiptap table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.writer-content .tiptap td, .writer-content .tiptap th { border: 1px solid #333; padding: 6px 8px; vertical-align: top; }
+.writer-content .tiptap th { background: #f5f5f5; font-weight: 600; }
+.writer-content .tiptap img { max-width: 100%; height: auto; border-radius: 2px; }
+.writer-content .tiptap code { background: #f0f0f0; padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+.writer-content .tiptap mark { background: #fff3b0; padding: 1px 2px; }
+.writer-content .tiptap a { color: #1a73e8; text-decoration: underline; }
+.writer-content .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 4px; }
+.writer-content .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 6px; }
+.writer-content .tiptap ul[data-type="taskList"] li label { margin-top: 2px; }
+.writer-content .tiptap .is-empty::before { content: attr(data-placeholder); color: #999; pointer-events: none; float: left; height: 0; }
+.writer-content .tiptap .selectedCell { background: rgba(26,115,232,0.1); }
+.writer-content .tiptap .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; background: #1a73e8; cursor: col-resize; }
+
+/* ============================================================
+   MOBILE + TABLET RESPONSIVE SAFETY NET (audit 2026-06)
+   Everything below is scoped to <=1024px so the desktop dense
+   "Spillman" theme (9px headers, py-[2px] tables, F-key toolbars)
+   is 100% untouched. Goal: officers on phones AND iPads get
+   readable, tappable, non-overflowing pages on every route.
+   ============================================================ */
+
+/* A. Replaced-element overflow guard — the #1 cause of app-wide
+   horizontal scroll. Caps stray wide media to the container.
+   The Mapbox/MapLibre canvases set their own pixel size, so they
+   are excluded or the map would be squished. */
+@media (max-width: 1024px) {
+  img:not(.no-shrink),
+  svg:not(.no-shrink):not(.mapboxgl-canvas):not(.maplibregl-canvas),
+  video,
+  canvas:not(.mapboxgl-canvas):not(.maplibregl-canvas),
+  iframe:not(.no-shrink),
+  pre {
+    max-width: 100%;
+  }
+}
+
+/* B. Touch targets for the TABLET band (iPad portrait 768-1024,
+   touch only). Phones (<768) already have a 44px rule elsewhere;
+   this fills the iPad gap that previously had none. min-height
+   only (NOT min-width) so dense icon toolbars don't blow out, and
+   in-table action buttons / opt-outs stay compact. */
+@media (min-width: 768px) and (max-width: 1024px) and (pointer: coarse) {
+  button:not(.no-min-touch):not(td button):not(th button),
+  a[role="button"]:not(.no-min-touch),
+  [role="button"]:not(.no-min-touch),
+  select:not(.no-min-touch),
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.no-min-touch) {
+    min-height: 44px;
+  }
+}
+
+/* C. Readable text floor + stop iOS auto-zoom on rotate. The
+   existing rules already bump text-[8px]/[9px]/[10px]; this adds
+   the Tailwind .text-micro token and the size-adjust lock. */
+@media (max-width: 1024px) {
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  .text-micro { font-size: 12px !important; }
+}
+
+/* D. Modals / dialogs / fixed overlays never exceed the viewport.
+   Many use max-w-[NNNpx] that overflows a phone/narrow iPad. The
+   !important is required to beat the Tailwind max-w utility. */
+@media (max-width: 1024px) {
+  [role="dialog"] > div:first-child,
+  [aria-modal="true"] > div:first-child,
+  .modal-panel {
+    max-width: calc(100vw - 16px) !important;
+  }
+}
+
+/* E. Wide stat grids on phones. The 768px block above already
+   collapses grid-cols-2/3/4, but 5- and 6-column stat strips
+   (CommandCenter KPIs, Microbilt usage, fleet analytics) were
+   missed and render ~70px-wide unreadable cards. Collapse them
+   to 2-up. Components whose N-up layout is intentional on phones
+   (e.g. MobileShiftPage fuel-level buttons) opt out with
+   .grid-keep, which preserves the authored template. */
+@media (max-width: 768px) {
+  .grid-cols-5:not(.grid-keep),
+  .grid-cols-6:not(.grid-keep),
+  .sm\:grid-cols-5:not(.grid-keep),
+  .sm\:grid-cols-6:not(.grid-keep) {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* G. Radio monitoring / PTT pill sits at bottom:30 inline-styled, which
+   lands on top of the mobile bottom nav (HOME/DISPATCH/MAP/ALERTS/MORE)
+   and hides the tab labels. Lift it above the nav on phones. */
+@media (max-width: 768px) {
+  .ptt-pill {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 8px !important;
+    max-width: calc(100vw - 16px);
+  }
+}
+
+/* F. Hover-revealed controls on touch devices. ~28 places use
+   `opacity-0 group-hover:opacity-100` (attachment download/delete,
+   email row actions, doc panels, dispatch call actions, ...) which
+   makes those controls UNREACHABLE on phones/tablets — touch has no
+   hover. On coarse pointers, anything that would appear on hover is
+   simply always visible. */
+@media (pointer: coarse) {
+  .group-hover\:opacity-100,
+  .hover\:opacity-100 {
+    opacity: 1 !important;
+  }
+  .group-hover\:visible {
+    visibility: visible !important;
+  }
+}
+
+/* Evidence barcode stripe on evidence-number chip — replaces inline
+   rgba(255,255,255,0.06) with a CSS-variable-backed utility class. */
+.evidence-barcode-stripe {
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 2px,
+    rgb(var(--rmpg-100-rgb) / 0.06) 2px,
+    rgb(var(--rmpg-100-rgb) / 0.06) 4px
+  );
+}

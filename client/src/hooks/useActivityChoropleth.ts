@@ -8,7 +8,7 @@
 // changing triggers a re-bin.
 // ============================================================
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { getTaggedBeats, findBeatAt } from '../pages/map/utils/districtGeoData';
@@ -20,8 +20,11 @@ const LEVEL_PROP: Record<ChoroLevel, string> = { beat: 'beat_id', zone: '_zone',
 const SRC = 'choro-beats';
 const FILL = 'choro-fill';
 
-// Gold → red ramp (zero-blue theme). Index 0 is the near-zero bucket.
-const RAMP = ['#2a2a2a', '#d4a017', '#f59e0b', '#fb923c', '#ef4444'];
+// Gold → red ramp. Index 0 is the near-zero bucket.
+// Mapbox paint properties don't resolve CSS variables — they need literal
+// colors at parse time. Use the night-theme value of --border-default here
+// (the map surfaces stay dark always per the .tactical-dark rule).
+const RAMP = ['#2a3a4d', '#d4a017', '#f59e0b', '#fb923c', '#ef4444'];
 
 export interface ChoroLegend { level: ChoroLevel; max: number; thresholds: number[]; colors: string[]; }
 
@@ -37,7 +40,15 @@ export function useActivityChoropleth({ map, calls, level }: Opts) {
   useEffect(() => { levelRef.current = level; }, [level]);
 
   // Bin calls -> beats once (re-runs when the call set changes).
-  const callsKey = calls.map((c) => `${c.latitude},${c.longitude}`).join('|');
+  // useMemo so the expensive point-in-polygon binning in the effect
+  // below is skipped when the call set reference is stable. Even when
+  // calls is a fresh array, the string key compares by VALUE — so if the
+  // resulting "lat,lng|lat,lng|..." string is identical, React skips the
+  // effect and we avoid re-binning thousands of calls unnecessarily.
+  const callsKey = useMemo(
+    () => calls.map((c) => `${c.latitude},${c.longitude}`).join('|'),
+    [calls],
+  );
   useEffect(() => {
     let cancelled = false;
     getTaggedBeats().then((fc) => {
@@ -73,7 +84,7 @@ export function useActivityChoropleth({ map, calls, level }: Opts) {
     for (const f of tagged.features) {
       const key = String(f.properties[prop] ?? '');
       const bid = String(f.properties.beat_id ?? f.properties.beat_code ?? '');
-      const c = lvl === 'beat' ? (countByBeat.get(bid) || 0) : (countByBeat.get(bid) || 0);
+      const c = countByBeat.get(bid) || 0;
       groupTotal.set(key, (groupTotal.get(key) || 0) + c);
     }
 

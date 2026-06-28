@@ -79,12 +79,11 @@ const STUBS: StubRule[] = [
   // API_ROUTES, so leaving them shadowed the real handlers and the pages
   // showed empty data instead of real rows (e.g. Audit's login-failure rate).
   // ── Other dashboard polls ─────────────────────────────────────
-  {
-    match: /^\/api\/reports\/crime-analysis(\?.*)?$/,
-    methods: ['GET'],
-    body: { totals: {}, by_type: [], by_day: [], by_hour: [], by_property: [], generated_at: null },
-    reason: 'no crime-analysis report yet',
-  },
+  // /api/reports/crime-analysis stub REMOVED 2026-06-09 — the rewrite now has
+  // a real handler (reports.ts GET /crime-analysis + /export) returning the
+  // CrimeAnalysisPage's {data:{topOffenses,hotspots,...}} contract. The stub's
+  // flat shape never matched the client, so the page rendered a permanent
+  // "No data available". Routed via API_ROUTES below.
   // /api/records/vehicles/:id/history — PrintRecordButton + VehiclesTab
   // both fetch this when opening a vehicle detail / running a printout.
   // Empty array degrades cleanly to "no prior history".
@@ -97,7 +96,7 @@ const STUBS: StubRule[] = [
   // ── Bucket G (system review 2026-05-27) ───────────────────────
   // The following routes are listed in API_ROUTES below as going to
   // env.API, but the new worker has no matching handler (either no
-  // mount in routesConfig.ts, or the mount exists but the sub-path
+  // mount in src/index.ts, or the mount exists but the sub-path
   // isn't registered on the mounted router). All return 404 today.
   // None appeared in the original console dump that triggered this
   // session — they're dashboard polls that haven't actually fired
@@ -106,14 +105,8 @@ const STUBS: StubRule[] = [
   //
   // (2026-05-29 audit) skiptracer /status + /stats stubs removed — real
   // handlers in src/routes/skiptracer.ts (microbilt_searches + skiptracer_dossiers).
-  // IPED forensics surface — no /api/iped mount in new worker.
-  // ForensicsPage polls the status sub-path on mount.
-  {
-    match: /^\/api\/iped\/status$/,
-    methods: ['GET'],
-    body: { configured: false, last_sync: null },
-    reason: 'no /api/iped mount in new worker',
-  },
+  // IPED /status stub REMOVED 2026-06-07: iped.ts GET /status now serves
+  // real data; routed to env.API via the /api/iped/ prefix in API_ROUTES.
   // /api/iped/hash-sets stub REMOVED 2026-06-01: iped.ts GET /hash-sets now
   // serves real rows from forensic_hash_sets (returns { sets:[...] }) and is
   // routed to env.API. The stub was shadowing it → page showed no hash sets.
@@ -122,24 +115,9 @@ const STUBS: StubRule[] = [
   // shift_plans/time_entries/deployments/system_config) and reports
   // /incidents-summary, /crime-trends, /beat-activity, /citation-revenue
   // (real handlers in reports.ts; columns verified on live D1).
-  // /reports/schedules, /templates stubs KEPT below (no handler yet —
-  // return [] from a placeholder). The /statute-analytics stub was REMOVED
-  // 2026-06-01: reports.ts GET /statute-analytics now serves it (aggregates
-  // over citations + utah_statutes, wrapped in try/catch) and is routed to
-  // env.API via API_ROUTES — the stub was shadowing it and forcing the
-  // Statute Analytics page permanently empty.
-  {
-    match: /^\/api\/reports\/schedules(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /schedules in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/templates(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /templates in stubs router',
-  },
+  // /reports/schedules + /templates stubs REMOVED 2026-06-07: reports.ts has
+  // real GET /schedules and GET /templates handlers. These stubs were
+  // shadowing them and forcing those tabs permanently empty.
   // ── Surfaces flagged in 2026-05-27 second-pass console log ────
   // (PR #667 was still open / unmerged when the user opened these pages.
   //  Adding now so they degrade quietly post-merge.)
@@ -224,15 +202,12 @@ const STUBS: StubRule[] = [
   // ── CRM module — stubs removed 2026-06-01; real handlers on the rewrite
   // now own the whole /api/crm namespace (see note above + src/routes/crm.ts).
   // /api/offender-registry/stats now has a real handler in
-  // src/routes/offenderRegistry.ts. /api/sex-offender-registry/stats stays
-  // stubbed — no dedicated sex-offender table on live D1 yet (use the
-  // alert_type filter on offender_alerts when that page is rewritten).
-  {
-    match: /^\/api\/sex-offender-registry\/stats$/,
-    methods: ['GET'],
-    body: { data: {} },
-    reason: 'no sex-offender-specific table; SexOffenderRegistryPage tolerates empty',
-  },
+  // src/routes/offenderRegistry.ts. 2026-06-10: the sex-offender-registry
+  // stats/root stubs were REMOVED — src/index.ts deliberately dual-mounts
+  // offenderRegistry at BOTH /api/offender-registry AND
+  // /api/sex-offender-registry (backed by offender_alerts, which exists on
+  // live D1), and a /api/sex-offender-registry prefix rule now routes the
+  // namespace to env.API below.
   // /api/admin/shift-swaps now has a real handler in src/routes/shiftPlans.ts
   // (alias of /shift-swaps to match the client's existing path). Stub removed.
 
@@ -261,30 +236,20 @@ const STUBS: StubRule[] = [
     body: { credentials: [], total: 0 },
     reason: 'no officer_credentials table on live D1; admin training tab tolerates empty',
   },
-  // ── Sex-offender registry (CRUD subset) ─────────────────────────────
-  // `/stats` is stubbed above. Root list + /expiring-registrations also
-  // queried on page mount. Other paths (POST /, PUT /:id, /import,
-  // /export/csv) stay 404 — those are user-triggered writes that should
-  // fail loudly until the schema lands.
-  {
-    match: /^\/api\/sex-offender-registry\/?(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 50 } },
-    reason: 'no sex_offender_registry table; root list tolerates empty data',
-  },
+  // ── Sex-offender registry ────────────────────────────────────────────
+  // Root list / stats / export now route to env.API (offenderRegistry.ts is
+  // dual-mounted on this prefix). Only /expiring-registrations remains
+  // stubbed — no handler for it exists in offenderRegistry.ts, and the
+  // routed prefix would otherwise return the rewrite's 404. Listed BEFORE
+  // the API_ROUTES prefix rule (STUBS are checked first).
   {
     match: /^\/api\/(sex-)?offender-registry\/expiring-registrations(\?.*)?$/,
     methods: ['GET'],
     body: [],
-    reason: 'no sex_offender_registry table; expiring-registrations tolerates empty list',
+    reason: 'no expiring-registrations handler in offenderRegistry.ts; page tolerates empty list',
   },
-  // ── Dispatch GPS speed zones (Map page may poll) ────────────────────
-  {
-    match: /^\/api\/dispatch\/gps\/speed-zones(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no speed_zones table on live D1; map page tolerates empty array',
-  },
+  // speed-zones stub REMOVED 2026-06-07: gps.ts GET /speed-zones is a real handler;
+  // routed to env.API via the new regex rule in API_ROUTES below.
   // ── Trespass orders → violations sub-tab ────────────────────────────
   // TrespassPage detail view opens this when a card is clicked. Empty
   // list = "no violations on file" — a valid UX state.
@@ -294,13 +259,10 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no trespass_violations table; trespass detail tolerates empty list',
   },
-  // ── Dashcam video link records (DashCamera detail) ──────────────────
-  {
-    match: /^\/api\/dashcam-videos\/[^/]+\/links(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no dashcam_video_links table; detail page tolerates empty link list',
-  },
+  // Dashcam video links stub REMOVED 2026-06-10: dead — no client calls the
+  // bare /api/dashcam-videos path anymore (all callers use
+  // /api/fleet/dashcam-videos/:id/links, routed via the /api/fleet prefix),
+  // and dashcam_video_links now exists on live D1 (migration 0086).
   // ── Dispatch messages namespace (entire mount dead — no table) ──────
   // Legacy has ~7 routes under /api/dispatch-messages/ all querying
   // `dispatch_messages` (and `dispatch_units` on some) which don't
@@ -320,17 +282,10 @@ const STUBS: StubRule[] = [
     body: { top: [], total: 0 },
     reason: 'no entity_statutes table (use utah_statutes for lookup, not analytics)',
   },
-  // ── WebAuthn / TOTP MFA setup (security tab on profile page) ────────
-  // Profile page hits these on every open. Stub the read shape so the
-  // security tab renders an "MFA not enrolled" state. Enrollment POSTs
-  // (register-options, register-verify, etc.) stay 404 — enabling MFA
-  // would need real `webauthn_credentials` + `user_totp_secrets` tables.
-  {
-    match: /^\/api\/auth\/webauthn\/(credentials|status)(\?.*)?$/,
-    methods: ['GET'],
-    body: { credentials: [], enrolled: false },
-    reason: 'no webauthn_credentials table; security tab shows un-enrolled state',
-  },
+  // WebAuthn stubs REMOVED 2026-06-10 — the rewrite now implements the full
+  // surface (status/credentials/register/authenticate) backed by the
+  // webauthn_credentials table (mig 0090, created on live D1). Routed via the
+  // /api/auth/webauthn prefix in API_ROUTES below.
   // ── ServeManager job linked-records (typo in legacy handler) ────────
   // Legacy queries `FROM calls` — that table doesn't exist on live D1;
   // the actual dispatch table is `calls_for_service`. The fix can't be
@@ -375,13 +330,7 @@ const STUBS: StubRule[] = [
     body: { total: 0, this_week: 0, pending_charges: 0, last_arrest_at: null },
     reason: 'AdminPage Arrests tile — separate from /arrests/recent; new worker has /recent only',
   },
-  // ── IPED download/info (admin tile, separate from /iped/status) ─────
-  {
-    match: /^\/api\/iped\/download\/info(\?.*)?$/,
-    methods: ['GET'],
-    body: { available: false, version: null, size_bytes: 0, last_updated: null },
-    reason: 'IPED download metadata endpoint; admin tile tolerates "not available"',
-  },
+  // IPED /download/info stub REMOVED 2026-06-07: covered by /api/iped/ prefix route.
   // ── Admin → Database utilities (POST integrity-check + vacuum) ──────
   // These are admin-only db maintenance buttons. The legacy worker
   // doesn't implement them and the new worker has no admin/database
@@ -403,29 +352,11 @@ const STUBS: StubRule[] = [
     body: { status: 'not_implemented', message: 'D1 VACUUM is managed by Cloudflare, not exposed to Workers' },
     reason: 'no user VACUUM on D1; honest "not implemented" body',
   },
-  // ── Auth security login-history (ProfilePage Security tab) ──────────
-  // The proxy already routes /api/auth/security/login-history to env.API
-  // (API_ROUTES rule above), but the new worker has no handler for it,
-  // so it 404s. Stub needs to satisfy TWO consumers with different shapes:
-  //   - LoginHistoryTable.tsx reads `data.entries` + `data.total`
-  //   - SecurityDashboardPage.tsx reads `data.data` (typed as `{ data: LoginEntry[] }`)
-  // The previous stub returned only `{ data, pagination }` which crashed
-  // LoginHistoryTable with `undefined.length` on `entries.length === 0`
-  // (observed in prod 2026-05-27 ~16:00 UTC, AdminPage ErrorBoundary).
-  // Union shape below satisfies both readers — empty everywhere.
-  // The route registry will need a real handler against the `login_attempts`
-  // table (which DOES exist on live D1) in a follow-up PR.
-  {
-    match: /^\/api\/auth\/security\/login-history(\?.*)?$/,
-    methods: ['GET'],
-    body: {
-      entries: [],          // LoginHistoryTable.tsx:54
-      total: 0,             // LoginHistoryTable.tsx:55
-      data: [],             // SecurityDashboardPage.tsx:48
-      pagination: { total: 0, totalPages: 0, page: 1, limit: 15 },
-    },
-    reason: 'no handler in src/routes/auth.ts; union shape satisfies LoginHistoryTable + SecurityDashboardPage',
-  },
+  // login-history stub REMOVED 2026-06-10: auth.ts now has a real
+  // GET /security/login-history against the live `login_attempts` table,
+  // returning the union shape both consumers need (LoginHistoryTable reads
+  // entries+total; SecurityDashboardPage reads data). The pre-existing
+  // API_ROUTES rule for this path now reaches a real handler.
   // ── Skiptracer v2 (different mount from v1) ─────────────────────────
   // The v1 stubs above cover /api/skiptracer/{status,stats}. v2 is a
   // separate legacy mount at /api/skiptracer-v2/* that queries `people_index`,
@@ -456,20 +387,11 @@ const STUBS: StubRule[] = [
   // component source) so the page renders its empty state instead of
   // crashing/erroring. Remove a stub when its real backend lands.
   //
-  // DashcamAiPage: reads evRes.events (array) + fleetRes.units (array) — set
-  // straight into state with no `?? []`, so the keys MUST be arrays.
-  {
-    match: /^\/api\/driving-events(\?.*)?$/,
-    methods: ['GET'],
-    body: { events: [], total: 0, limit: 200, offset: 0 },
-    reason: 'no driving_events table; DashcamAiPage tolerates empty events',
-  },
-  {
-    match: /^\/api\/driving-events\/fleet-health(\?.*)?$/,
-    methods: ['GET'],
-    body: { units: [] },
-    reason: 'no driving_events table; DashcamAiPage fleet-health tolerates empty units',
-  },
+  // DashcamAiPage: /api/driving-events + /fleet-health now have a REAL handler
+  // in the rewrite (src/routes/drivingEvents.ts, normalizing the live ClearPath
+  // dashcam feed) — the empty-list stubs were removed 2026-06-14 and the prefix
+  // routes to env.API via API_ROUTES below. (Stubs are checked before API_ROUTES,
+  // so leaving them here permanently shadowed the real data.)
   // WebResearchPage: reads data?.connected (coerced).
   {
     match: /^\/api\/web-research\/status(\?.*)?$/,
@@ -491,12 +413,375 @@ const STUBS: StubRule[] = [
     body: { sources: 0, states_covered: 0, active_warrants: 0, state_status: {}, state_sources: {}, state_warrants: {} },
     reason: 'no national coverage data source; NationalWarrantSearchPage tolerates zeros',
   },
-  // TrainingDocsPage: expects a BARE top-level array (setDocuments(data || [])).
+  // TrainingDocsPage: company-documents now ported to rewrite (PR #1038).
+  // Stub removed — requests route to env.API via API_ROUTES below.
+
+  //
+  // ── 2026-06-07 post-deploy sweep — pages still polling 404'd paths ───
+  // After the 2026-06-06 deploy that restored the proxy as the dispatcher
+  // for rmpgutah.us/api/*, a fresh logged-in sweep showed the SPA still
+  // polling 23 paths the proxy hadn't been told how to route. Neither
+  // the rewrite nor legacy has handlers for any of these today, so they
+  // fall through to the default 404. Empty-shape stubs let the consuming
+  // page render its "no data" state instead of the prior session's
+  // repeated 404/500 noise. Each shape matches what the consuming
+  // component reads (verified by reading the page source) so the page
+  // renders cleanly.
+  //
+  // DashboardPage sub-tab cards (ReportsPage + DashboardPage). All
+  // optional-chained on the page side, so a small object / null is safe.
+  // officer-activity stub REMOVED 2026-06-10: reports.ts:330 has a real,
+  // defensive handler returning the bare array BOTH consumers expect
+  // (ReportsPage OfficerActivityData[], DashboardPage any[]) — the stub's
+  // {data:[]} object shape matched neither. Routed to env.API below.
   {
-    match: /^\/api\/company-documents(\?.*)?$/,
+    match: /^\/api\/reports\/shift-comparison(\?.*)?$/,
     methods: ['GET'],
-    body: [],
-    reason: 'no company_documents table; TrainingDocsPage tolerates empty array',
+    body: { data: null, periods: [] },
+    reason: 'no shift-comparison backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/clearance-rate(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, rate: null, by_type: [] },
+    reason: 'no clearance-rate backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/patrol-coverage(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, beats: [], hours: [] },
+    reason: 'no patrol-coverage backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/evidence-pending(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, total: 0, items: [] },
+    reason: 'no evidence-pending backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/upcoming-court(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, items: [] },
+    reason: 'no upcoming-court backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/overdue-reports(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, items: [], total: 0 },
+    reason: 'no overdue-reports backend; DashboardPage tolerates null',
+  },
+  // ReportsPage tabs
+  {
+    match: /^\/api\/reports\/daily-briefing(\?.*)?$/,
+    methods: ['GET'],
+    body: null,
+    reason: 'no daily-briefing backend; ReportsPage "Today" tab tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/weekly-digest(\?.*)?$/,
+    methods: ['GET'],
+    body: null,
+    reason: 'no weekly-digest backend; ReportsPage "Week" tab tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/patrol-tracking(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], total: 0, breadcrumbs: [] },
+    reason: 'no patrol-tracking backend; ReportsPage + MapPage tolerates empty',
+  },
+  {
+    match: /^\/api\/reports\/command-staff(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, period: null, generated_at: null },
+    reason: 'no command-staff backend; useShiftBriefing tolerates null data',
+  },
+  {
+    match: /^\/api\/reports\/shift-scorecard(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, officer_id: null, shift_date: null, score: 0, items: [] },
+    reason: 'no shift-scorecard backend; ShiftScorecard tolerates null data',
+  },
+  // Custom Report Builder POST. Returns success so the Save button
+  // doesn't 404; the real save handler can land later.
+  {
+    match: /^\/api\/reports\/custom(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: true, id: null, message: 'Custom report save is stubbed' },
+    reason: 'no custom-report persistence; CustomReportBuilder tolerates success',
+  },
+  {
+    match: /^\/api\/reports\/shift-notes(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: true, id: null, message: 'Shift notes save is stubbed' },
+    reason: 'no shift-notes persistence; RadialMenu/ShiftHandoff tolerates success',
+  },
+  // Dispatch geo/heatmap surfaces — no aggregation table or rewrite handler.
+  {
+    match: /^\/api\/dispatch\/heatmap(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], points: [], total: 0, generated_at: null },
+    reason: 'no dispatch heatmap aggregation; DispatchPage tolerates empty',
+  },
+  // heatmap/types stub REMOVED 2026-06-10: aggregates.ts has a real handler
+  // returning the bare {incident_type,count}[] array BOTH consumers expect
+  // (useMapHeatmap.ts:48, MapPage.tsx:1231) — the stub's {data,types} object
+  // shape matched neither. Routed to env.API below.
+  // /api/dispatch/gps/trails stub REMOVED 2026-06-09 — real per-unit trail
+  // aggregation now lives in the rewrite (gps.ts GET /trails). The stub's
+  // empty {trails:[]} shape is why the Map's Breadcrumbs layer rendered
+  // nothing despite 60k+ live breadcrumb rows. Routed in API_ROUTES below.
+  // Weather stub REMOVED 2026-06-10: it was SHADOWING the real, already-routed
+  // weather handler (src/routes/weather.ts, open-meteo + KV cache, /api/weather
+  // prefix rule below) — the route was added but this stub fired first.
+  //
+  // Auth signature stub REMOVED 2026-06-10: it was the cause of "my saved
+  // signature disappeared" — PUT /api/auth/signature fell through to a worker
+  // that persisted it, but this stubbed GET always returned {signature:null},
+  // so the saved image never came back (UserProfileModal, PrintRecordButton,
+  // IncidentsPage all read it). auth.ts has real GET+PUT handlers against
+  // users.digital_signature (exists on live D1); routed to env.API below.
+  // Comms messaging — the broadcast channel is the live surface; this
+  // sub-path is a polling endpoint the rewrite doesn't implement.
+  {
+    match: /^\/api\/comms\/messages(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], messages: [], total: 0 },
+    reason: 'no /comms/messages sub-path in rewrite; CommsPage tolerates empty',
+  },
+  // Admin surface stubs. Empty objects / arrays so the Settings tab
+  // renders its empty state instead of 404'ing on every keystroke.
+  {
+    match: /^\/api\/admin\/shift-plans(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], plans: [], total: 0 },
+    reason: 'no admin shift-plans sub-handler; AdminPage tolerates empty',
+  },
+  // map-config stub REMOVED 2026-06-10: admin.ts has real GET+PUT handlers
+  // (system_config key 'map_config', defensive defaults) and the clients
+  // (AdminMapSettingsTab, useMapConfig) read the returned object directly —
+  // the stub's null shape kept map settings from ever loading/persisting.
+  // PUT fixed for the live composite unique index. Routed below.
+  {
+    match: /^\/api\/admin\/mapbox-config(\?.*)?$/,
+    methods: ['GET'],
+    body: { token: null, style: null, default_center: null, default_zoom: null },
+    reason: 'no mapbox-config surface; Settings tab tolerates empty object',
+  },
+  // ── 2026-06-07 round 3 — admin sub-paths that 4xx in browser ──
+  // Verified by greping src/routes/<file>.ts for each path string. None
+  // matched. Both legacy and rewrite return 4xx; stub so admin pages
+  // render empty state.
+  {
+    match: /^\/api\/admin\/audit\/export(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { url: null, count: 0, message: 'audit export stubbed' },
+    reason: 'no /admin/audit/export; AdminPage tolerates null url',
+  },
+  {
+    match: /^\/api\/admin\/export\/full(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { url: null, count: 0, message: 'full export stubbed' },
+    reason: 'no /admin/export/full; AdminPage tolerates null url',
+  },
+  // client-error stub REMOVED 2026-06-10: it was SWALLOWING ErrorBoundary's
+  // crash telemetry (every client-side crash report POSTed here and got a
+  // fake 200). admin.ts now has a real POST (persists to client_errors,
+  // created on live D1 + migration 0088) and GET (recent errors). Routed below.
+  {
+    match: /^\/api\/admin\/shift-plans\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'shift-plans export stubbed' },
+    reason: 'no /admin/shift-plans/export; AdminPage tolerates null url',
+  },
+  // system-settings stub REMOVED 2026-06-10: admin.ts has real GET (flat
+  // key→value map from system_config — what pdfGenerator's branding fetch
+  // reads) + PUT (fixed for the live composite unique index — the old
+  // ON CONFLICT(config_key) threw because the only unique index is
+  // (config_key, config_value)). Routed below.
+  // ── 2026-06-07 round 3 — auth sub-paths (2FA, forgot, reset, webauthn, sign-urls) ──
+  // Verified: auth.ts has /login, /me, /logout, /refresh, /password, /change-password,
+  // /login/change-password, /2fa/status, /security/*, /profile, /profile-image,
+  // /sessions, /totp/status. NO /2fa/setup, /forgot-password/*, /reset-password/*,
+  // /sign-urls, /webauthn/*, /login/verify-{2fa,backup-code}. Stub the unhandled
+  // ones. Most are 404s only when the user actively clicks the feature
+  // (forgot-password link, 2FA setup, etc.) — the page still loads.
+  // 2fa/setup + 2fa/setup/verify stubs REMOVED 2026-06-09 — real TOTP
+  // enrollment now lives in the rewrite (src/routes/auth.ts; RFC 6238 via
+  // WebCrypto, AES-GCM secret at rest, hashed single-use backup codes).
+  // Routed to env.API in API_ROUTES below.
+  {
+    match: /^\/api\/auth\/forgot-password(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: true, message: 'If that email exists, a reset link has been sent' },
+    reason: 'no /auth/forgot-password in rewrite; form is a no-op',
+  },
+  {
+    match: /^\/api\/auth\/forgot-password\/reset(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'password reset is not yet ported' },
+    reason: 'no /auth/forgot-password/reset in rewrite',
+  },
+  {
+    match: /^\/api\/auth\/forgot-password\/verify(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'password reset is not yet ported' },
+    reason: 'no /auth/forgot-password/verify in rewrite',
+  },
+  // login/verify-2fa + login/verify-backup-code stubs REMOVED 2026-06-09 —
+  // the rewrite implements the full pending-2FA login exchange (tempToken →
+  // tokens). Routed to env.API with the /api/auth/login prefix below.
+  {
+    match: /^\/api\/auth\/reset-password(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'password reset is not yet ported' },
+    reason: 'no /auth/reset-password in rewrite',
+  },
+  {
+    match: /^\/api\/auth\/reset-password\/validate(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { valid: false, error: 'password reset is not yet ported' },
+    reason: 'no /auth/reset-password/validate in rewrite',
+  },
+  // sign-urls stub REMOVED 2026-06-10: the rewrite now implements
+  // POST /api/auth/sign-urls (per-resource HMAC media signatures) —
+  // routed to env.API via the prefix rule below.
+  // WebAuthn — proxy already stubs /credentials + /status. Add the OPTIONS
+  // + verify endpoints. These are no-op stubs since the rewrite doesn't
+  // implement WebAuthn; the user's security settings page renders empty.
+  {
+    match: /^\/api\/auth\/webauthn\/(authenticate-options|authenticate-verify|register-options|register-verify)(\?.*)?$/,
+    methods: ['POST', 'GET'],
+    body: { success: false, error: 'WebAuthn is not yet ported', options: null, credential: null },
+    reason: 'no /auth/webauthn/* in rewrite; security settings show disabled',
+  },
+  // ── 2026-06-07 round 3 — personnel sub-paths not in rewrite ──
+  // personnel.ts has /training, /training-requirements, /training-completion,
+  // /training-alerts, /training-materials, /duty-hours, /schedules, /time,
+  // /deployments, /coverage-gaps, /equipment. NO /cert-expiration-warnings,
+  // /export/csv, /time-entries (legacy /personnel/time-entries is a different
+  // route, was on rmpg-flex-api not legacy).
+  {
+    match: /^\/api\/personnel\/cert-expiration-warnings(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], warnings: [], total: 0 },
+    reason: 'no /personnel/cert-expiration-warnings; PersonnelPage tolerates empty',
+  },
+  {
+    match: /^\/api\/personnel\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'personnel export stubbed' },
+    reason: 'no /personnel/export/csv; ExportButton tolerates null url',
+  },
+  {
+    match: /^\/api\/personnel\/time-entries(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], entries: [], total: 0 },
+    reason: 'no /personnel/time-entries; PayrollTab tolerates empty',
+  },
+  // ── 2026-06-07 round 3 — exports & CSV endpoints ──
+  // Each shape matches what ExportButton + ReportsPage read. Verified no
+  // handler in the corresponding src/routes/<area>.ts.
+  // (code-enforcement export stub removed 2026-06-09 — real handler now in
+  // src/routes/codeEnforcement.ts; /api/code-enforcement routes to env.API.)
+  {
+    match: /^\/api\/comms\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'comms export stubbed' },
+    reason: 'no /comms/export/csv; CommsPage tolerates null url',
+  },
+  // dar/export stub REMOVED 2026-06-10: /api/dar is routed to env.API and
+  // stubs.ts serves /export/csv as an actual (empty) CSV attachment — better
+  // for ExportButton than this stub's {url:null} JSON.
+  // forensic-lab/export stub REMOVED 2026-06-10: it was SHADOWING the real
+  // CSV export in forensics.ts (/api/forensic-lab is routed to env.API below;
+  // forensic_cases/exhibits/analyses exist on live D1).
+  // (offender-registry export stub removed 2026-06-09 — real handler now in
+  // src/routes/offenderRegistry.ts; /api/offender-registry routes to env.API.)
+  // sex-offender-registry export stub REMOVED 2026-06-10: offenderRegistry.ts
+  // is dual-mounted on /api/sex-offender-registry (now routed below) and has
+  // a real /export/csv.
+  {
+    match: /^\/api\/skiptracer\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'skiptracer export stubbed' },
+    reason: 'no /skiptracer/export/csv in rewrite; tolerates null url',
+  },
+  {
+    match: /^\/api\/skiptracer-v2\/dossiers\/\d+\/pdf(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, message: 'dossier PDF generation stubbed' },
+    reason: 'no /skiptracer-v2/dossiers/:id/pdf; SkiptracerPage tolerates null',
+  },
+  // ── 2026-06-07 round 3 — feature surfaces with no rewrite handler ──
+  // diagnostics/ui-trap stub REMOVED 2026-06-10: redundant — /api/diagnostics
+  // is routed to env.API and stubs.ts serves POST /ui-trap equivalently.
+  // dl-records/ocr-scan stub REMOVED 2026-06-11: real Workers AI vision
+  // OCR now lives in src/routes/dlRecords.ts (routed to env.API below).
+  // /downloads/info stub REMOVED 2026-06-07: downloads.ts has real handler.
+  {
+    match: /^\/api\/evidence$/,
+    methods: ['GET'],
+    body: { data: [], items: [], total: 0 },
+    reason: 'no evidence router; EvidencePage tolerates empty',
+  },
+  // Firecrawl — no file in src/routes/; everything is a stub.
+  {
+    match: /^\/api\/firecrawl-tools\/[^/]+\/upload(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'firecrawl-tools is not yet ported', job_id: null },
+    reason: 'no firecrawl-tools in rewrite; UploadButton tolerates error',
+  },
+  // Email — Phase 1 (admin connection) handlers live on env.API at
+  // /api/email/* (see src/routes/email.ts). Stubs kept ONLY for Phase 2+
+  // endpoints (messages, attachments, image proxy, rules). /status,
+  // /admin/*, and /oauth/* are real handlers — do NOT re-stub them.
+  // Phase 2 LIVE — image-proxy and attachment binary proxy now have real
+  // handlers in src/routes/email.ts. Stubs removed.
+  // Phase 3 LIVE — rules CRUD + test-match now have real handlers in
+  // src/routes/email.ts. Stubs removed.
+  // Mobile / CFS — no file in src/routes/.
+  {
+    match: /^\/api\/mobile\/cfs\/\d+\/(auth|challenge|narrative|pso|status)(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: null, items: [], message: 'mobile endpoint stubbed' },
+    reason: 'no /mobile/cfs/*; MobilePage tolerates empty',
+  },
+  // PDF — pdfTools.ts has /encrypt only; pdf-artifacts + pdf-engine/email
+  // aren't implemented.
+  {
+    match: /^\/api\/pdf-artifacts(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], artifacts: [], total: 0 },
+    reason: 'no /pdf-artifacts; tolerates empty',
+  },
+  {
+    match: /^\/api\/pdf-engine\/email(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'pdf-engine email is not yet ported' },
+    reason: 'no /pdf-engine/email; tolerates error',
+  },
+  // Sex offender registry — only /stats in rewrite. The :id list endpoint
+  // is on legacy (rmpg-flex). Stub the export + :id so the page doesn't
+  // spam the console on every navigation.
+  {
+    match: /^\/api\/sex-offender-registry\/\d+(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, registry: null, items: [] },
+    reason: 'no /sex-offender-registry/:id; tolerates null',
+  },
+  // updates/check stub REMOVED 2026-06-10: redundant AND wrong-shaped —
+  // /api/updates is routed to env.API where stubs.ts GET /check returns the
+  // camelCase keys AndroidUpdateChecker actually reads (this stub's
+  // snake_case update_available matched nothing).
+  // voice-persona stub REMOVED 2026-06-10: redundant — /api/voice-persona is
+  // routed to env.API; stubs.ts serves GET / equivalently.
+  // Warrants — warrants.ts has /utah-search, /scraped/*, /national-coverage
+  // (stubbed), but not /national-search.
+  {
+    match: /^\/api\/warrants\/national-search(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: [], results: [], total: 0, message: 'national-search stubbed' },
+    reason: 'no /warrants/national-search; WarrantsPage tolerates empty',
   },
 
   //
@@ -514,6 +799,37 @@ const STUBS: StubRule[] = [
 ];
 
 const API_ROUTES: RouteRule[] = [
+  // ── ALPR Vehicle Details Capture (rewrite-only; Roboflow) ──
+  // /api/alpr/* (capture, captures, image, health) lives only in the rewrite
+  // (src/routes/alpr.ts) and needs the ROBOFLOW_API_KEY secret, set on
+  // rmpg-flex-api (env.API) — NOT on legacy rmpg-flex. Without this rule the
+  // path fell through to env.LEGACY, whose identical /src/ bundle has the code
+  // but not the secret, so every capture 503'd "ALPR not configured".
+  { kind: 'prefix', value: '/api/alpr' },
+
+  // ── AUTH CUTOVER (Phase 2, 2026-06-12) ──
+  // Login/refresh/me/logout/password/profile now served by the rewrite
+  // (src/routes/auth.ts). Pre-flight (cutover-artifacts/, Task 2.1) confirmed
+  // FULL 43/43 route parity legacy↔rewrite, all newly-moved handlers (me,
+  // refresh, password-policy, session-timeout, profile) returning 200 live,
+  // and every touched users/sessions column present on live D1. The 2FA login
+  // flow (/login + /login/verify-2fa) and refresh were ALREADY on the rewrite
+  // and proven (Phase 1 token proof) — so this flip cannot cause a 2FA lockout.
+  // Issues dual-claim {userId, user_id} tokens verifiable by BOTH workers.
+  // The /api/auth/forgot-password STUB still wins (STUBS are checked first).
+  // /api/email-oauth/callback is a SEPARATE prefix — unaffected.
+  // The redundant specific /api/auth/* rules below are now covered by this
+  // prefix but harmless; they are intentionally LEFT so that deleting THIS one
+  // line restores the exact prior routing.
+  // ROLLBACK: delete this rule, push to main (deploy.yml redeploys ≤3 min).
+  { kind: 'prefix', value: '/api/auth' },
+
+  // ── Officer Wallet ID (new in rewrite, 2026-06-12) ──
+  // Digital badge / QR-verifiable officer ID — only the rewrite has these
+  // handlers (src/routes/wallet.ts); legacy 404s. Route the whole prefix to
+  // env.API.
+  { kind: 'prefix', value: '/api/wallet' },
+
   // ── Crime layers (new in rewrite) ──
   // /api/crime/slc (cached SLCPD public-crime proxy) + /api/crime/local (our
   // own recent CFS). Only the rewrite has these handlers; legacy 404s.
@@ -524,9 +840,14 @@ const API_ROUTES: RouteRule[] = [
   // The legacy port of POST /dl-records 500s on live D1 (manual saves
   // never persisted — live dl_records had 0 rows), so the rewrite owns
   // the data layer. CRITICAL: the /\d+/ anchor means /dl-records/verify
-  // and /dl-records/ocr-scan (external RapidAPI / OCR round-trips) do NOT
-  // match and correctly fall through to env.LEGACY.
+  // (external RapidAPI round-trip) does NOT match and correctly falls
+  // through to env.LEGACY. ocr-scan moved to the rewrite 2026-06-11
+  // (Workers-AI vision in src/routes/dlRecords.ts) — explicit rule below.
   { kind: 'regex', value: /^\/api\/dl-records(\/\d+)?(\?.*)?$/ },
+  // Phone → desktop scan relay, deep sweep, scan log, vision OCR, SOR (rewrite-only).
+  { kind: 'regex', value: /^\/api\/dl-records\/(scan-relay(\/poll)?|deep-sweep|scan-log|ocr-scan|court-lookup|fbi-lookup|sources-config|sor\/(status|import|poll))(\?.*)?$/ },
+  // Admin Cloudflare platform integration (rewrite-only; no legacy handler).
+  { kind: 'prefix', value: '/api/cloudflare' },
 
   // ── More specific dispatch sub-paths (new in rewrite) ──
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,
@@ -637,12 +958,35 @@ const API_ROUTES: RouteRule[] = [
   //   GET  /api/dispatch/gps/my-unit   (caller's own unit row)
   // The bare path is POST-only (the rewrite has no GET '/' handler) and the
   // GET sub-paths are anchored to (current|my-unit). This deliberately does
-  // NOT match /api/dispatch/gps/speed-zones or /api/dispatch/gps/zone-speed-stats
-  // (both are STUBbed above and have no rewrite handler — routing them to
-  // env.API would 404). STUBS are evaluated before API_ROUTES, so those two are
-  // already short-circuited, but the tight anchors keep this rule honest.
+  // speed-zones and zone-speed-stats now have real handlers in gps.ts.
   { kind: 'regex', value: /^\/api\/dispatch\/gps\/?(\?.*)?$/, methods: ['POST'] },
-  { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit)(\?.*)?$/, methods: ['GET'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit|speed-zones|zone-speed-stats)(\?.*)?$/, methods: ['GET'] },
+  // Breadcrumb trail UI (2026-06-09): /trails was a proxy stub and /history
+  // 404'd on BOTH workers — the Map breadcrumbs layer + replay panel never
+  // had a backend. units-with-trails moves here too: the legacy copy returns
+  // { id } where the panel reads { unit_id, officer_name, earliest, ... },
+  // so its picker queried unit_id=undefined.
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/(trails|history|units-with-trails)(\?.*)?$/, methods: ['GET'] },
+  // The OTHER gps.ts GET reads (my-vehicle, dwell-times, units-with-trails,
+  // speed-violations[/:id/acknowledge], pursuit-segments, speed-heatmap) are
+  // deliberately NOT routed here and DELIBERATELY fall to env.LEGACY. Verified
+  // 2026-06-09 by reading the deployed `rmpg-flex` bundle: legacy carries
+  // BYTE-IDENTICAL handlers for all of them (same SQL, same defensive catch→[],
+  // same live D1), so the fall-through serves correct data. They were only
+  // routed to env.API for the POST write + the two time-sensitive reads (current/
+  // my-unit) above, where the legacy bug (Denver-as-UTC gps_updated_at, no
+  // heading/speed) actually mattered. Do NOT "fix" the unrouted reads — that is a
+  // no-op cutover with added risk. (history-map handled by the next rule.)
+
+  // /api/dispatch/history-map — historical CALL locations for the Map overlay
+  // (useMapboxHistoryCalls / useMapCallHistory). The client calls this bare
+  // path, but legacy mounts its only `history-map` handler under /dispatch/gps
+  // (a per-UNIT breadcrumb trail, a DIFFERENT feature), so the bare path fell
+  // through and 404'd — the historical-call overlay was always empty. The
+  // rewrite now serves the real calls-history aggregate (aggregates.ts), fully
+  // defensive (degrades to []). Route the bare path to env.API. The gps trail
+  // path (/dispatch/gps/history-map) deliberately stays on legacy above.
+  { kind: 'regex', value: /^\/api\/dispatch\/history-map(\?.*)?$/, methods: ['GET'] },
 
   // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
   // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has
@@ -652,6 +996,11 @@ const API_ROUTES: RouteRule[] = [
   // to /enforcement ONLY — sibling /api/dispatch/heatmap/timelapse stays on
   // env.LEGACY (which DOES serve it; the rewrite has no timelapse handler).
   { kind: 'prefix', value: '/api/dispatch/heatmap/enforcement' },
+  // /api/dispatch/heatmap/types — incident-type counts for the Map heatmap
+  // legend (useMapHeatmap + MapPage). Real handler in aggregates.ts returns
+  // the bare {incident_type,count}[] array the clients read; its wrong-shaped
+  // proxy stub was removed 2026-06-10.
+  { kind: 'prefix', value: '/api/dispatch/heatmap/types', methods: ['GET'] },
   // /api/dispatch/heatmap/predictions — predicted-hotspots overlay (MapPage
   // useMapPredictions). Sibling of /enforcement; the rewrite handler
   // (aggregates.ts) is fully defensive (degrades to {hotspots:[]}). Route to
@@ -751,10 +1100,24 @@ const API_ROUTES: RouteRule[] = [
   // it, so every run-card read/write fell through to env.LEGACY.
   { kind: 'prefix', value: '/api/dispatch/run-cards' },
 
+  // /api/dispatch/stats — top-level dispatch stats rollup. Rewrite handler
+  // in src/routes/stubs.ts (bare-mount GET '/' — polled every 30s by the
+  // dispatch layout). Was stubbed in proxy 2026-06-07 round 2; that stub
+  // was removed once the real handler landed.
+  { kind: 'prefix', value: '/api/dispatch/stats', methods: ['GET'] },
+
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
   { kind: 'prefix', value: '/api/records/vehicles/search' },
+  // /api/records/persons (bare, GET) + /api/records/vehicles (bare, GET) —
+  // bulk record lists for the SYNC layer (RecordsPage tab loads, PinRecord
+  // autocompletes). Rewrite handlers in src/routes/records.ts. Were falling
+  // through to env.LEGACY (no handler) → 404. Regex anchored to bare path
+  // with optional query string so it can't shadow /persons/:id, /persons/search,
+  // /vehicles/:id, /vehicles/search, or /vehicles/stolen-check.
+  { kind: 'regex', value: /^\/api\/records\/persons(\?.*)?$/, methods: ['GET'] },
+  { kind: 'regex', value: /^\/api\/records\/vehicles(\?.*)?$/, methods: ['GET'] },
   // POST /api/records/vehicles/stolen-check — NCIC-style stolen-vehicle check.
   // The handler exists in src/routes/records.ts but was never routed, so the
   // path fell through to env.LEGACY which has no handler → 404 (VehiclesTab +
@@ -890,16 +1253,17 @@ const API_ROUTES: RouteRule[] = [
   // /evidence handler in src/routes/records.ts, so the prefix sent every
   // GET to a 404. Removed 2026-05-26 so it falls through to legacy, which
   // has the full handler and a populated evidence table on live D1.
+  { kind: 'prefix', value: '/api/records/client-persons' },
   { kind: 'prefix', value: '/api/records/businesses' },
   { kind: 'prefix', value: '/api/records/reports/approval-queue' },
   // Audit — entire namespace lives in src/routes/audit.ts (logs, stats,
   // index-stats, compliance-report). Legacy never had any of these so
-  // requests were 404ing on the AuditLogPage. Mounted in routesConfig.ts
+  // requests were 404ing on the AuditLogPage. Mounted in src/index.ts
   // at /api/audit; this rule routes the prefix to env.API.
   { kind: 'prefix', value: '/api/audit' },
   // Admin extras the legacy worker doesn't implement
   // Console/System Settings — entire CRUD lives in src/routes/adminSettings.ts
-  // (mounted at /api/admin/settings in routesConfig.ts) backed by the
+  // (mounted at /api/admin/settings in src/index.ts) backed by the
   // system_settings table on live D1 (seeded via migrations 0049/0050).
   // Legacy never had this surface, so requests were falling through and
   // 500ing on the AdminSettingsTab "Failed to load settings" screen.
@@ -907,20 +1271,29 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/retention' },
   { kind: 'prefix', value: '/api/admin/departments' },
   { kind: 'prefix', value: '/api/admin/notification-rules' },
-  { kind: 'prefix', value: '/api/admin/announcements' },
+  // /api/admin/third-party-keys[/...] — admin key vault (GET list, GET :key,
+  // PUT, DELETE). Rewrite handlers in src/routes/admin.ts over the
+  // system_config allowlist (~60 keys). Was never routed, so the Admin
+  // Integrations tab's bulk GET 404'd and the page fell back to per-key
+  // fetch (N+1). Prefix covers /third-party-keys and /third-party-keys/:key.
+  { kind: 'prefix', value: '/api/admin/third-party-keys' },
+  // /api/admin/users[/...] — officer list (GET /users, /users/presence)
+  // for the PatrolPage assignment picker. Rewrite handler in
+  // src/routes/admin.ts. Was stubbed in proxy 2026-06-07; that stub was
+  // removed once the real handler landed. Prefix covers /users and
+  // /users/presence. Sibling /api/admin/users-activity-summary already has
+  // its own explicit rule; /api/admin/users- would not match /users$
+  // here so there's no overlap.
+  { kind: 'prefix', value: '/api/admin/users' },
   // Officer-facing announcements reader (src/routes/announcements.ts).
   // Legacy has no /api/announcements surface, so route to env.API.
   { kind: 'prefix', value: '/api/announcements' },
   // Console Settings — real handler lives in src/routes/adminSettings.ts
-  // (mounted at /api/admin/settings in routesConfig.ts) backed by the
+  // (mounted at /api/admin/settings in src/index.ts) backed by the
   // system_settings table on live D1 (428 rows, rich schema). Legacy never
   // had this surface, so without this rule requests fall through to
   // env.LEGACY and 500, producing the "Failed to load settings" screen on
-  // AdminSettingsTab. This route already exists in the DEPLOYED proxy but
-  // was missing from this repo file — committing it here prevents the next
-  // deploy-from-main from reverting the deployed fix. Covers /settings,
-  // /settings/values, /settings/reset, and /settings/:key.
-  { kind: 'prefix', value: '/api/admin/settings' },
+  // /api/admin/settings duplicate removed — already listed above (~line 1352).
   // AdminHealthTab observability — currently stubs in the new
   // Worker (src/routes/admin.ts). Listed individually rather than
   // a broad /api/admin prefix because most /api/admin/* still
@@ -936,7 +1309,16 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/user-activity-heatmap' },
   { kind: 'prefix', value: '/api/admin/backup-status' },
   { kind: 'prefix', value: '/api/admin/maintenance-mode' },
-  { kind: 'prefix', value: '/api/admin/notification-rules' },
+  // ── 2026-06-10 un-stub batch — real handlers in src/routes/admin.ts ──
+  // system-settings: GET (flat config map — pdfGenerator branding) + PUT
+  // (save, fixed for the live composite (config_key,config_value) unique
+  // index). map-config: GET/PUT map defaults (AdminMapSettingsTab +
+  // useMapConfig). health/client-error: POST = ErrorBoundary crash telemetry
+  // (was swallowed by a stub), GET = recent errors for the admin console.
+  { kind: 'prefix', value: '/api/admin/system-settings' },
+  { kind: 'prefix', value: '/api/admin/map-config' },
+  { kind: 'prefix', value: '/api/admin/health/client-error' },
+  // /api/admin/notification-rules duplicate removed — already listed above (~line 1355).
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
   // Auth: profile photo + active sessions + MFA status — handlers in
@@ -948,8 +1330,32 @@ const API_ROUTES: RouteRule[] = [
   // The /sessions prefix also carries DELETE /sessions/:id (the "Revoke" button).
   { kind: 'prefix', value: '/api/auth/profile-image' },
   { kind: 'prefix', value: '/api/auth/sessions' },
+  // ── Login + two-factor subtree → rewrite (2026-06-09) ──────
+  // /api/auth/login prefix covers /login, /login/verify-2fa,
+  // /login/verify-backup-code, and /login/change-password — ALL of which
+  // exist in the rewrite (src/routes/auth.ts). The rewrite's login is the
+  // SAME code lineage as the deployed legacy login (token claims, session
+  // row contract, bcrypt compare verified identical via
+  // workers_get_worker_code), so tokens/sessions stay interchangeable —
+  // and it adds the TOTP gate (requires2FA + tempToken) that legacy lacks.
+  { kind: 'prefix', value: '/api/auth/login' },
+  { kind: 'prefix', value: '/api/auth/totp/setup' },
+  { kind: 'prefix', value: '/api/auth/totp/verify-setup' },
+  { kind: 'prefix', value: '/api/auth/totp/disable' },
+  { kind: 'prefix', value: '/api/auth/2fa/setup' },
+  { kind: 'prefix', value: '/api/auth/2fa/backup-codes' },
   { kind: 'prefix', value: '/api/auth/totp/status' },
+  { kind: 'prefix', value: '/api/auth/sign-urls' },
+  { kind: 'prefix', value: '/api/auth/webauthn' },
   { kind: 'prefix', value: '/api/auth/2fa/status' },
+  // /api/auth/signature GET+PUT (UserProfileModal, PrintRecordButton,
+  // IncidentsPage) — auth.ts persists/reads users.digital_signature. The GET
+  // was stubbed null in this proxy for months while PUT fell through to a
+  // worker that saved it: signatures were being stored but never displayed.
+  { kind: 'prefix', value: '/api/auth/signature' },
+  // Signed media URLs (sig/exp/nonce for <video>/<audio> tags) — rewrite-only
+  // endpoint (src/routes/auth.ts POST /sign-urls); legacy never had it.
+  { kind: 'prefix', value: '/api/auth/sign-urls' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
   // lives on the new Worker: /sync/pull, /sync/push, /secrets,
   // /my-secret, /secrets/generate. Legacy never implemented any of
@@ -970,23 +1376,14 @@ const API_ROUTES: RouteRule[] = [
   // env.API (and 404s there), matching prior behavior. The legacy worker
   // never implemented /api/iped/* so falling through wouldn't help.
   { kind: 'prefix', value: '/api/iped/' },
-  // Personnel sub-paths — GET ports of the four roster/time/deployment
-  // surfaces (PR replacing the PR #667 stubs). Scoped to GET so the
-  // existing POST/PUT/DELETE on /schedules, /time, /deployments still
-  // fall through to legacy until the rewrite has matching write
-  // handlers. /coverage-gaps is read-only by nature but listed under
-  // the same GET filter for consistency.
-  { kind: 'prefix', value: '/api/personnel/schedules', methods: ['GET'] },
-  // GET /api/personnel/time[/...] (roster/payroll read) → rewrite.
-  { kind: 'prefix', value: '/api/personnel/time', methods: ['GET'] },
-  // POST /api/personnel/time (create) + PUT /api/personnel/time/:id (edit) →
-  // rewrite (src/routes/personnel.ts over time_entries + time_entry_edits).
-  // Dispatch creates/corrects officer time on radio request. These are anchored
-  // EXACTLY so the sibling clock-in/clock-out POSTs (handled only by legacy via
-  // the mobile ShiftCard) keep falling through to env.LEGACY — a broad prefix
-  // would have hijacked them to the rewrite, which has no clock-in/out handler.
-  { kind: 'regex', value: /^\/api\/personnel\/time\/?$/, methods: ['POST'] },
-  { kind: 'regex', value: /^\/api\/personnel\/time\/\d+$/, methods: ['PUT', 'DELETE'] },
+  // Personnel sub-paths — roster/time/deployment/schedules.
+  // The rewrite now has full CRUD for schedules (shift_plans) and time entries
+  // INCLUDING clock-in/out and break endpoints (POST /time/clock-in, /clock-out,
+  // /start-break, /end-break). Route ALL /schedules and /time traffic to rewrite.
+  { kind: 'prefix', value: '/api/personnel/schedules' },
+  // ALL /api/personnel/time/* → rewrite (clock-in, clock-out, start-break,
+  // end-break, GET list, POST create, PUT edit, DELETE).
+  { kind: 'prefix', value: '/api/personnel/time' },
   { kind: 'prefix', value: '/api/personnel/deployments', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/coverage-gaps', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
@@ -1026,8 +1423,16 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/shift-swaps' },
   // HR leave — handler in src/routes/hr.ts (balances + list + CRUD).
   { kind: 'prefix', value: '/api/hr/leave' },
-  // Offender registry stats — handler in src/routes/offenderRegistry.ts.
-  { kind: 'prefix', value: '/api/offender-registry/stats' },
+  // Offender registry — full CRUD + risk-score + contacts + export in
+  // src/routes/offenderRegistry.ts (widened from /stats-only, 2026-06-09
+  // 404 sweep: root list/POST, /:id/clear, /:id/risk-score, /:id/contacts).
+  { kind: 'prefix', value: '/api/offender-registry' },
+  // src/index.ts dual-mounts the SAME offenderRegistry router at
+  // /api/sex-offender-registry (root list, /stats, /export/csv, all backed by
+  // offender_alerts on live D1). Stubs for this namespace removed 2026-06-10;
+  // only /expiring-registrations (no handler) and /:id (legacy-only) remain
+  // stubbed above — STUBS are checked before this prefix rule.
+  { kind: 'prefix', value: '/api/sex-offender-registry' },
   // Arrests — handlers in src/routes/arrests.ts (manual booking subset,
   // /recent, /search, /export/csv, /:id/cross-links). Legacy doesn't
   // implement /recent so the page 500'd on first paint.
@@ -1082,6 +1487,8 @@ const API_ROUTES: RouteRule[] = [
   // present. Route the whole namespaces to env.API.
   { kind: 'prefix', value: '/api/risk' },
   { kind: 'prefix', value: '/api/jail' },
+  // System-wide unified search (rewrite-only handler).
+  { kind: 'prefix', value: '/api/knowledge-base' },
   { kind: 'prefix', value: '/api/qa' },
   { kind: 'prefix', value: '/api/victim-services' },
   // ── Rewrite-only feature namespaces (2026-06-01 audit) ──────────
@@ -1111,6 +1518,10 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/community' },
   { kind: 'prefix', value: '/api/crisis' },
   { kind: 'prefix', value: '/api/field-interviews' },
+  // Field photos — mobile camera portal uploads (src/routes/fieldPhotos.ts).
+  // New rewrite surface; legacy never had it.
+  { kind: 'prefix', value: '/api/field-photos' },
+  { kind: 'prefix', value: '/api/downloads' },
   { kind: 'prefix', value: '/api/forensics' },
   { kind: 'prefix', value: '/api/gang-intel' },
   { kind: 'prefix', value: '/api/interagency' },
@@ -1120,12 +1531,30 @@ const API_ROUTES: RouteRule[] = [
   // rewrite handler could regress a working page even on the shared DB. Route
   // them only after confirming those pages actually error on legacy.
   { kind: 'prefix', value: '/api/narcotics' },
+  // /api/nav[/*] — Navigation trip logging + take-home vehicle check
+  // (src/routes/nav.ts). The entire /api/nav/* namespace is on the rewrite;
+  // legacy never had it, so requests fall through to env.LEGACY and 404
+  // (NavPage "No current trip" / 404 toast on /nav/trip/current + /nav/trip/history
+  // + /nav/vehicle-take-home). The rewrite mounts at /api/nav in src/index.ts
+  // with full GET/POST/PUT handlers for trip lifecycle. Note this is distinct
+  // from /api/dispatch/trips (a sibling that lives under /api/dispatch and
+  // routes dispatch-side trip stats); both namespaces reach the same DB but
+  // the proxy rule is per-prefix so each gets its own line.
+  { kind: 'prefix', value: '/api/nav' },
   { kind: 'prefix', value: '/api/nibrs' },
   { kind: 'prefix', value: '/api/patrol' },
   { kind: 'prefix', value: '/api/recruitment' },
   { kind: 'prefix', value: '/api/special-ops' },
   { kind: 'prefix', value: '/api/tasks' },
   { kind: 'prefix', value: '/api/training' },
+  // /api/integrations/* — the real integrations router (src/routes/integrations.ts)
+  // owns the rmpgutahps service config pair + the integration_api_keys table CRUD
+  // + the request log query. Legacy never had this surface — requests fell through
+  // to env.LEGACY and 404'd, so the Admin Integrations tab could not read or write
+  // keys. Note: /api/integrations/mapbox/client-token is served by the geocode
+  // router (mounted at /api/geocode with a cross-mount note) — both reach the
+  // same Worker, so this prefix captures it too.
+  { kind: 'prefix', value: '/api/integrations' },
   // /api/voice/* HTTP endpoints (POST /dialogue, POST /read-aloud) are NEW
   // rewrite handlers in src/routes/voice.ts — legacy 404s on them. The TRAILING
   // SLASH is load-bearing: it routes /api/voice/dialogue + /api/voice/read-aloud
@@ -1139,13 +1568,24 @@ const API_ROUTES: RouteRule[] = [
   // Reports — analytics endpoints
   { kind: 'prefix', value: '/api/reports/incidents-summary' },
   { kind: 'prefix', value: '/api/reports/response-times' },
+  // officer-activity: real handler in reports.ts returns the bare array both
+  // ReportsPage and DashboardPage expect (its proxy stub returned a wrong
+  // {data:[]} object for months — removed 2026-06-10).
+  { kind: 'prefix', value: '/api/reports/officer-activity' },
   { kind: 'prefix', value: '/api/reports/crime-trends' },
   { kind: 'prefix', value: '/api/reports/beat-activity' },
   { kind: 'prefix', value: '/api/reports/citation-revenue' },
   { kind: 'prefix', value: '/api/reports/schedules' },
   { kind: 'prefix', value: '/api/reports/templates' },
   { kind: 'prefix', value: '/api/reports/statute-analytics' },
+  // /api/reports/crime-analysis (+ /export) — real ILP handler in the rewrite
+  // (reports.ts) as of 2026-06-09; the old proxy stub is gone.
   { kind: 'prefix', value: '/api/reports/crime-analysis' },
+  // /api/reports/dashboard — 8-tile rollup. Rewrite handler in
+  // src/routes/reports.ts (GET /dashboard, whitelisted from the
+  // requireRole(analytics) middleware). Was stubbed in proxy 2026-06-07;
+  // that stub was removed once the real handler landed.
+  { kind: 'prefix', value: '/api/reports/dashboard', methods: ['GET'] },
   // /api/reports/shift-activity/:officerId → env.API (rewrite reports.ts).
   // Officer end-of-shift report (MDT). Use [^/]+ for the id segment — the
   // client sends localStorage rmpg_user_id, which may be non-numeric.
@@ -1155,6 +1595,10 @@ const API_ROUTES: RouteRule[] = [
   // in-service↔off-duty, and assigns/releases the fleet vehicle in one atomic
   // action — it lives on the rewrite because that's where fleet management is.
   { kind: 'prefix', value: '/api/dispatch/duty' },
+  // Vehicle inspection (QR-token-authed). /api/inspections/by-token/:token/...
+  // resolves the shift via time_entries.qr_token and writes inspection rows +
+  // R2 photos. PUBLIC — token IS the credential. Rewrite-only.
+  { kind: 'prefix', value: '/api/inspections' },
   // /api/dispatch/shift-handoff — shift handoff notes. Rewrite-only handler
   // (shiftHandoff.ts) backed by a real table (migration 0077). Previously a
   // stub that acknowledged writes but never persisted.
@@ -1191,11 +1635,7 @@ const API_ROUTES: RouteRule[] = [
   // ── Audit subsystem ──
   // Live D1 `audit_log` had only id+created_at columns (an unused stump)
   // until the audit-rewrite PR added user_id/action/entity_type/entity_id/
-  // details/ip_address and pointed /src/ writes at the consolidated table.
-  // Legacy never had a working audit handler — its routes return empties
-  // against the stump schema. Routing the whole namespace at env.API is
-  // the only path that lets AuditLogPage render real data.
-  { kind: 'prefix', value: '/api/audit' },
+  // /api/audit duplicate removed — already listed above (~line 1345).
 
   // ── Radio subsystem (PR #661) ──
   // The new worker is the only handler. Legacy has no /api/radio/*
@@ -1245,6 +1685,16 @@ const API_ROUTES: RouteRule[] = [
   // /api/process-server (list, attempts, affidavit, …) stays on legacy.
   { kind: 'regex', value: /^\/api\/process-server\/deadlines$/, methods: ['GET'] },
   { kind: 'regex', value: /^\/api\/process-server\/success-rates(\?|$)/, methods: ['GET'] },
+  // /api/process-server/* — ServePage + ServeSkipTracePanel. The rewrite
+  // mounts both the full `serve` router (officer-facing workflow) and the
+  // `processServer` subset (deadlines + success-rates) at this prefix
+  // (see src/src/index.ts:330-347), so all GETs + POSTs for jobs, stats,
+  // routes, attempts, skip-trace, CSV export, and CRUD reach the rewrite
+  // instead of falling through to env.LEGACY. The two more-specific
+  // /deadlines + /success-rates regex rules above still win on those exact
+  // paths. Stubs that were short-circuiting these paths (added 2026-06-07
+  // round 2) are now removed; the real handlers run.
+  { kind: 'prefix', value: '/api/process-server' },
   // /api/ocr/scan-document is the alias URL the ServeIntakePage client
   // already calls for its in-page image preview path. The handler is
   // src/routes/ocr.ts (delegates to the same extraction utility as
@@ -1258,7 +1708,7 @@ const API_ROUTES: RouteRule[] = [
   // NO AI. Previously this whole namespace fell to legacy (which 404s: every
   // /api/document-intake/* call returned "API endpoint not found"), so the
   // DocumentIntakePage was dead in prod. The router was already registered in
-  // routesConfig.ts; it just had no proxy route. Route the prefix to env.API.
+  // src/index.ts; it just had no proxy route. Route the prefix to env.API.
   // (The container-backed /extract-text + /health on this prefix are unused by
   // any client — only /extract is called.)
   { kind: 'prefix', value: '/api/document-intake' },
@@ -1306,11 +1756,8 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/notifications' },
   // Use-of-force reports (useOfForce.ts) — new rewrite handler; legacy 500'd.
   { kind: 'prefix', value: '/api/use-of-force' },
-  // ONLY /api/invoices/stats → env.API (the path that 500'd on legacy). The
-  // rest of /api/invoices/* (list, :id, create, status, payments, line-items)
-  // is full CRUD the LEGACY worker owns and works — must stay on legacy or the
-  // whole InvoicesPage breaks. Scoped regex, not a prefix.
-  { kind: 'regex', value: /^\/api\/invoices\/stats(\?.*)?$/, methods: ['GET'] },
+  // /api/invoices — full prefix to rewrite (legacy 404s on list + stats).
+  { kind: 'prefix', value: '/api/invoices' },
   // Document folders — documentFolders.ts serves /folders; legacy 404'd.
   // Scoped to /folders only so the rest of /api/documents stays on legacy
   // (the rewrite has no document file-list handler).
@@ -1324,6 +1771,57 @@ const API_ROUTES: RouteRule[] = [
   // (the base /evidence list + writes deliberately stay on legacy, since the
   // rewrite's evidence POST/PUT reference columns absent from the live table).
   { kind: 'regex', value: /^\/api\/records\/evidence\/(stats|locations)(\?.*)?$/, methods: ['GET'] },
+  // ── File uploads (PR #1038) ──
+  // Entire /api/uploads namespace ported from legacy Express (multer + disk)
+  // to R2-backed Hono handler. All methods (GET/POST/PUT/DELETE) now live
+  // on the rewrite. Legacy had disk-based storage; rewrite uses UPLOADS R2.
+  { kind: 'prefix', value: '/api/uploads' },
+  // ── Company documents (PR #1038) ──
+  // TrainingDocsPage CRUD + CSV export. Migration 0078 creates the
+  // company_documents table. Replaces the empty-array stub that was here.
+  { kind: 'prefix', value: '/api/company-documents' },
+  // ── ClearPathGPS integration stubs ──
+  { kind: 'prefix', value: '/api/clearpathgps' },
+  // ── Dashcam AI Console — driving-events feed (normalized dashcam_events) ──
+  // New top-level prefix; route to the rewrite so the console populates (else it
+  // falls through to legacy, which returns an empty list).
+  { kind: 'prefix', value: '/api/driving-events' },
+  // Live forensic-player plate hotlist screen — rewrite-only (legacy 404s).
+  // Specific regex so the rest of /api/intel/* keeps its existing routing.
+  { kind: 'regex', value: /^\/api\/intel\/screen-plate(\?.*)?$/, methods: ['GET'] },
+  // ── Forensic lab (alias for /api/forensics) ──
+  { kind: 'prefix', value: '/api/forensic-lab' },
+
+  // ── 2026-06-08 404 elimination sweep ──────────────────────────────
+  // Client-called prefixes with no handler on either backend. Routed to
+  // env.API where the stubs router returns safe empty shapes. Without
+  // these, requests fall through to env.LEGACY which also has no handler.
+  { kind: 'prefix', value: '/api/cfs' },
+  { kind: 'prefix', value: '/api/code-enforcement' },
+  { kind: 'prefix', value: '/api/dar' },
+  { kind: 'prefix', value: '/api/diagnostics' },
+  { kind: 'prefix', value: '/api/firecrawl-tools' },
+  { kind: 'prefix', value: '/api/mobile' },
+  { kind: 'prefix', value: '/api/pdf-artifacts' },
+  { kind: 'prefix', value: '/api/pdf-engine' },
+  { kind: 'prefix', value: '/api/updates' },
+  { kind: 'prefix', value: '/api/voice-persona' },
+
+  // ── Prefixes with rewrite handlers but no proxy route ─────────────
+  // These have real handlers in src/index.ts but were falling through
+  // to legacy because the proxy never routed them.
+  // Firecrawl-backed routes: FIRECRAWL_API_KEY is set on env.API
+  // (rmpg-flex-api) only, so these MUST route there — falling through to
+  // env.LEGACY (rmpg-flex, no key) returns 503 "FIRECRAWL_API_KEY not
+  // configured" / NO_KEY. (firecrawl-tools above already routes to env.API.)
+  { kind: 'prefix', value: '/api/sor-sources' },
+  { kind: 'prefix', value: '/api/deep-research' },
+  { kind: 'prefix', value: '/api/cases' },
+  { kind: 'prefix', value: '/api/citations' },
+  { kind: 'prefix', value: '/api/court' },
+  { kind: 'prefix', value: '/api/trespass-orders' },
+  { kind: 'prefix', value: '/api/weather' },
+  { kind: 'prefix', value: '/api/email' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {
@@ -1414,6 +1912,11 @@ export default {
         return env.API.fetch(request);
       }
     }
+    // Cutover instrumentation (Phase 0, docs/superpowers/plans/2026-06-12-
+    // worker-cutover.md): every request that still reaches the legacy worker
+    // is logged so Workers Logs can produce the migration inventory. Remove
+    // after Phase 5 retirement.
+    console.log(`[legacy-fallthrough] ${method} ${pathname}`);
     return env.LEGACY.fetch(request);
   },
 };

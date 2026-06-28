@@ -4,6 +4,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { resolveDistrict } from '../../utils/districtResolver';
 import { geocodeAddress } from '../geocode';
 import { requireRole } from '../../middleware/auth';
+import { log } from '../../utils/logger';
 
 const geography = new Hono<Env>();
 
@@ -33,21 +34,21 @@ geography.get('/tree', async (c) => {
     }
     const zonesBySector = new Map<unknown, Record<string, unknown>[]>();
     for (const z of zones) {
-      (z as any).beats = beatsByZone.get(z.id) || [];
+      (z as Record<string, unknown>).beats = beatsByZone.get(z.id) || [];
       const list = zonesBySector.get(z.sector_id) || [];
       list.push(z);
       zonesBySector.set(z.sector_id, list);
     }
     const sectorsByArea = new Map<unknown, Record<string, unknown>[]>();
     for (const s of sectors) {
-      (s as any).zones = zonesBySector.get(s.id) || [];
+      (s as Record<string, unknown>).zones = zonesBySector.get(s.id) || [];
       const list = sectorsByArea.get(s.area_id) || [];
       list.push(s);
       sectorsByArea.set(s.area_id, list);
     }
     const areaIds = new Set(areas.map((a) => a.id));
     for (const area of areas) {
-      (area as any).sectors = sectorsByArea.get(area.id) || [];
+      (area as Record<string, unknown>).sectors = sectorsByArea.get(area.id) || [];
     }
     // Sectors whose area_id points at no surviving area would otherwise vanish
     // from the tree — surface them so the Geography page can still render them.
@@ -58,7 +59,7 @@ geography.get('/tree', async (c) => {
     // (the prior bug) made `tree.areas` undefined and threw on first access.
     return c.json({ areas, unassigned_sectors });
   } catch (err) {
-    console.error('GET /dispatch/geography/tree failed:', err);
+    log.error('GET /dispatch/geography/tree failed', {}, err);
     return c.json({ error: 'Failed to get geography', detail: (err as Error)?.message }, 500);
   }
 });
@@ -89,7 +90,7 @@ geography.get('/codes/lookup/:code', async (c) => {
     if (!row) return c.json({ found: false });
     return c.json({ found: true, ...row });
   } catch (err) {
-    console.error('GET /dispatch/geography/codes/lookup failed:', err);
+    log.error('GET /dispatch/geography/codes/lookup failed', {}, err);
     return c.json({ found: false });
   }
 });
@@ -128,7 +129,7 @@ geography.get('/premise-alerts', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
-    console.error('GET /dispatch/geography/premise-alerts failed:', err);
+    log.error('GET /dispatch/geography/premise-alerts failed', {}, err);
     return c.json([]);
   }
 });
@@ -187,7 +188,7 @@ geography.get('/districts/identify', async (c) => {
 
     return c.json({ found: true, ...district });
   } catch (err) {
-    console.error('GET /dispatch/geography/districts/identify failed:', err);
+    log.error('GET /dispatch/geography/districts/identify failed', {}, err);
     return c.json({ found: false, error: 'identify failed' }, 500);
   }
 });
@@ -221,7 +222,7 @@ geography.get('/premise-intel', async (c) => {
     ]);
     return c.json({ calls, incidents, callCount: calls.length, incidentCount: incidents.length });
   } catch (err) {
-    console.error('GET /dispatch/geography/premise-intel failed:', err);
+    log.error('GET /dispatch/geography/premise-intel failed', {}, err);
     return c.json({ calls: [], incidents: [], callCount: 0, incidentCount: 0 });
   }
 });
@@ -288,9 +289,88 @@ geography.post('/backfill', requireRole('admin', 'manager', 'supervisor'), async
 
     return c.json({ ok: true, ...out });
   } catch (err) {
-    console.error('POST /dispatch/geography/backfill failed:', err);
+    log.error('POST /dispatch/geography/backfill failed', {}, err);
     return c.json({ ok: false, error: (err as Error)?.message, ...out }, 500);
   }
+});
+
+// ── Geography CRUD (areas/sectors/zones/beats) ──────────────────
+
+const GEO_TABLES: Record<string, { table: string; parentCol?: string; codeCol: string; nameCol: string }> = {
+  areas:   { table: 'dispatch_areas',   codeCol: 'area_code',   nameCol: 'area_name' },
+  sectors: { table: 'dispatch_sectors', codeCol: 'sector_code', nameCol: 'sector_name', parentCol: 'area_id' },
+  zones:   { table: 'dispatch_zones',   codeCol: 'zone_code',   nameCol: 'zone_name',   parentCol: 'sector_id' },
+  beats:   { table: 'dispatch_beats',   codeCol: 'beat_code',   nameCol: 'beat_name',   parentCol: 'zone_id' },
+};
+
+for (const [path, meta] of Object.entries(GEO_TABLES)) {
+  geography.post(`/${path}`, requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    try {
+      const db = getDb(c.env);
+      const body = await c.req.json<Record<string, unknown>>();
+      if (!body[meta.codeCol] || !body[meta.nameCol]) return c.json({ error: `${meta.codeCol} and ${meta.nameCol} required` }, 400);
+      if (meta.parentCol && !body[meta.parentCol]) return c.json({ error: `${meta.parentCol} required` }, 400);
+      const cols = [meta.codeCol, meta.nameCol, 'active', "datetime('now')"];
+      const vals: unknown[] = [body[meta.codeCol], body[meta.nameCol], 1];
+      const ph = ['?', '?', '?', "datetime('now')"];
+      if (meta.parentCol) { cols.splice(2, 0, meta.parentCol); vals.splice(2, 0, body[meta.parentCol]); ph.splice(2, 0, '?'); }
+      const result = await execute(db, `INSERT INTO ${meta.table} (${cols.join(', ')}, created_at) VALUES (${ph.join(', ')})`, ...vals);
+      return c.json({ success: true, id: result.meta.last_row_id }, 201);
+    } catch (err) { return c.json({ error: 'Failed to create' }, 500); }
+  });
+
+  geography.delete(`/${path}/:id`, requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    try {
+      const db = getDb(c.env);
+      const id = c.req.param('id');
+      await execute(db, `DELETE FROM ${meta.table} WHERE id = ?`, id);
+      return c.json({ success: true });
+    } catch (err) { return c.json({ error: 'Failed to delete' }, 500); }
+  });
+
+  // PUT /:id — edit a geography row. This handler was MISSING: the Geography
+  // editor saves via PUT /dispatch/geography/{tier}s/{id}, but only POST (create)
+  // and DELETE existed, so every edit 404'd ("Save failed: ... status 404").
+  // Body keys are allowlisted against the table's REAL columns (PRAGMA) so it is
+  // injection-safe and tolerant of each tier's different field set + live schema
+  // drift. `meta.table` is a hardcoded constant, not user input, so interpolating
+  // it into the PRAGMA/UPDATE is safe.
+  geography.put(`/${path}/:id`, requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    try {
+      const db = getDb(c.env);
+      const id = c.req.param('id');
+      const body = await c.req.json<Record<string, unknown>>();
+      const colsInfo = await query<{ name: string }>(db, `PRAGMA table_info(${meta.table})`);
+      const valid = new Set(colsInfo.map((r) => r.name));
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      for (const [k, v] of Object.entries(body)) {
+        if (k === 'id' || k === 'created_at' || k === 'updated_at') continue;
+        if (valid.has(k)) { sets.push(`${k} = ?`); vals.push(v); }
+      }
+      if (sets.length === 0) return c.json({ error: 'No updatable fields' }, 400);
+      if (valid.has('updated_at')) sets.push("updated_at = datetime('now')");
+      vals.push(id);
+      await execute(db, `UPDATE ${meta.table} SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+      return c.json({ success: true });
+    } catch (err) { return c.json({ error: 'Failed to update' }, 500); }
+  });
+}
+
+// GET /dispatch/geography/zone-allocation — per-zone unit counts for patrol balancing.
+geography.get('/zone-allocation', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT dz.id AS zone_id, dz.zone_code, dz.zone_name,
+              COUNT(u.id) AS unit_count
+       FROM dispatch_zones dz
+       LEFT JOIN dispatch_beats db2 ON db2.zone_id = dz.id
+       LEFT JOIN units u ON u.assigned_beat = db2.beat_code AND u.status NOT IN ('off_duty','out_of_service')
+       WHERE dz.active = 1
+       GROUP BY dz.id ORDER BY dz.zone_code`);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
 });
 
 export default geography;
