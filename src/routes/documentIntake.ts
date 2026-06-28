@@ -14,10 +14,12 @@
 import { Hono } from 'hono';
 import { getContainer } from '@cloudflare/containers';
 import type { Env } from '../types';
+import { buildDocumentExtraction } from '../utils/documentIntakeExtract';
 
 const documentIntake = new Hono<Env>();
 
 const CONTAINER_NAME = 'shared';
+const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'];
 
 documentIntake.get('/health', async (c) => {
   try {
@@ -67,6 +69,49 @@ documentIntake.post('/extract-text', async (c) => {
     return c.json({
       error: 'Failed to extract text',
       code: 'EXTRACT_TEXT_FAILED',
+      detail: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
+});
+
+// POST /api/document-intake/extract — classify + extract structured fields.
+//
+// The client (DocumentIntakePage) extracts PDF text in-browser via pdfjs (the
+// PDF_TOOLS container is OFF in prod — see memory project-pdf-tools-container-off)
+// and POSTs { text, page_count, used_ocr, filename }. We classify the document
+// kind and pull anchored fields deterministically, returning the
+// DocumentExtraction envelope the reviewer consumes. No AI, no container.
+documentIntake.post('/extract', async (c) => {
+  const user = c.get('user');
+  if (!user || !INTAKE_ROLES.includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  let body: { text?: string; page_count?: number; used_ocr?: boolean; filename?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Expected JSON { text, page_count, used_ocr }', code: 'BAD_REQUEST' }, 400);
+  }
+  const text = typeof body.text === 'string' ? body.text : '';
+  if (!text.trim()) {
+    // No text layer (likely a scan). Surface it explicitly rather than
+    // returning an empty extraction that looks like a parse success.
+    return c.json({
+      error: 'No readable text in the document — it is likely a scan. OCR is not enabled for document intake.',
+      code: 'NO_TEXT',
+    }, 422);
+  }
+  try {
+    const extraction = buildDocumentExtraction({
+      text,
+      pageCount: Number(body.page_count) || 0,
+      usedOcr: !!body.used_ocr,
+    });
+    return c.json(extraction);
+  } catch (err) {
+    return c.json({
+      error: 'Failed to extract document fields',
+      code: 'EXTRACT_FAILED',
       detail: err instanceof Error ? err.message : String(err),
     }, 500);
   }

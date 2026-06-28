@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface LatLng {
   lat: number;
@@ -84,15 +85,15 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
 
   const clearSource = useCallback((id: string) => {
     if (!map) return;
-    if (map.getLayer(id)) map.removeLayer(id);
-    if (map.getSource(id)) map.removeSource(id);
+    safeRemoveLayer(map, id);
+    safeRemoveSource(map, id);
   }, [map]);
 
   useEffect(() => {
     return () => {
       [rallySourceId, commandRingsSourceId, k9SourceId, hospitalSourceId, fireSourceId, entrySourceId].forEach(id => {
-        if (map?.getLayer(id)) map.removeLayer(id);
-        if (map?.getSource(id)) map.removeSource(id);
+        safeRemoveLayer(map, id);
+        safeRemoveSource(map, id);
       });
       if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
     };
@@ -257,7 +258,7 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
     entryCounterRef.current += 1;
     const num = entryCounterRef.current;
 
-    const source = map.getSource(entrySourceId) as mapboxgl.GeoJSONSource | undefined;
+    const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, entrySourceId);
     if (source) {
       const data = source._data as any;
       const features = data?.features || [];

@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Eye, Copy } from 'lucide-react';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+
+// See BolosCard for why we build menus inline (useMenuActions throws without
+// ToastProvider/Router, which the bare-render tests don't mount).
 
 // Endpoint: GET /api/comms/messages?limit=5
 // Response shape: { data: [{ id, from_name, body, channel, created_at, read_at, ... }], unreadCount }
@@ -33,6 +39,7 @@ function relativeTime(iso: string): string {
 export default function MessagesCard() {
   const navigate = useNavigate();
   const { subscribe } = useWebSocket();
+  const { openMenu } = useContextMenu();
 
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,18 +94,47 @@ export default function MessagesCard() {
     return sorted.slice(0, 3);
   }, [messages]);
 
+  // Right-click menu for a message row. 'Open' reuses the inbox navigation
+  // (no per-message route exists); copy items use the standalone clipboard
+  // helper (no toast).
+  const buildMessageMenu = (m: MessageRow): ContextMenuItem[] => {
+    const sender = m.from_name || m.sender_name || 'Unknown';
+    const bodyText = (m.text || m.body || '').toString();
+    const items: ContextMenuItem[] = [
+      {
+        label: 'Open inbox',
+        icon: <Eye size={12} />,
+        onClick: () => navigate('/communications?inbox=me'),
+      },
+      separator(),
+      {
+        label: 'Copy sender',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(sender); },
+      },
+    ];
+    if (bodyText) {
+      items.push({
+        label: 'Copy message',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(bodyText); },
+      });
+    }
+    return items;
+  };
+
   if (loading) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">MESSAGES</h2>
-        <div className="h-[160px] animate-pulse bg-[#1a1a1a] border border-[#222]" />
+        <div className="h-[160px] animate-pulse bg-surface-raised border border-border-default" />
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">MESSAGES</h2>
         <div className="flex items-center justify-between gap-2">
           <span className="text-amber-400 text-xs">{error}</span>
@@ -115,18 +151,18 @@ export default function MessagesCard() {
   }
 
   return (
-    <section className="bg-[#141414] border border-[#222] p-3">
+    <section className="bg-surface-base border border-border-default p-3">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest">MESSAGES</h2>
         {unreadCount > 0 ? (
           <span className="text-[#d4a017] text-xs font-bold">Inbox · {unreadCount} new</span>
         ) : (
-          <span className="text-gray-500 text-xs">Inbox · caught up</span>
+          <span className="text-rmpg-500 text-xs">Inbox · caught up</span>
         )}
       </div>
 
       {messages.length === 0 ? (
-        <p className="text-gray-500 text-xs italic">No messages.</p>
+        <p className="text-rmpg-500 text-xs italic">No messages.</p>
       ) : (
         <ul>
           {topThree.map((m) => {
@@ -134,18 +170,18 @@ export default function MessagesCard() {
             const bodyText = (m.text || m.body || '').toString();
             const preview = bodyText.length > 60 ? `${bodyText.slice(0, 60)}…` : bodyText;
             const rowClass = [
-              'py-2 border-b border-[#1a1a1a] last:border-b-0 text-white text-xs',
+              'py-2 border-b border-border-default last:border-b-0 text-rmpg-100 text-xs',
               isUnread ? 'border-l-2 border-l-[#d4a017] pl-2' : '',
             ].join(' ');
             return (
-              <li key={m.id} className={rowClass}>
+              <li key={m.id} className={rowClass} onContextMenu={(e) => openMenu(e, buildMessageMenu(m))}>
                 <div className="flex items-baseline">
                   <span className="font-bold">{m.from_name || m.sender_name || 'Unknown'}</span>
-                  <span className="text-gray-500 text-[11px] ml-2">
+                  <span className="text-rmpg-500 text-[11px] ml-2">
                     {m.created_at ? relativeTime(m.created_at) : ''}
                   </span>
                 </div>
-                <div className="text-gray-300 text-[11px] mt-0.5 line-clamp-1">{preview}</div>
+                <div className="text-rmpg-300 text-[11px] mt-0.5 line-clamp-1">{preview}</div>
               </li>
             );
           })}
@@ -155,7 +191,7 @@ export default function MessagesCard() {
       <button
         type="button"
         onClick={() => navigate('/communications?inbox=me')}
-        className="mt-2 w-full h-11 bg-[#1a1a1a] border border-[#222] text-[#d4a017] text-xs uppercase tracking-widest"
+        className="mt-2 w-full h-11 bg-surface-raised border border-border-default text-[#d4a017] text-xs uppercase tracking-widest"
       >
         Open inbox
       </button>

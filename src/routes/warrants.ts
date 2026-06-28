@@ -7,9 +7,11 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { evaluateNotificationRules } from './notificationEngine';
 import { requireRole } from '../middleware/auth';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
+import { runAllSourceScans } from '../utils/warrantSources/runScan';
 
 const warrants = new Hono<Env>();
 
@@ -53,7 +55,7 @@ warrants.get('/watch/runs', requireRole(...READ_ROLES), async (c) => {
 warrants.post('/watch/scan', requireRole(...SCAN_ROLES), async (c) => {
   const db = getDb(c.env);
   c.executionCtx.waitUntil(
-    runUtahWarrantScan(db).catch((err) => {
+    runAllSourceScans(db).catch((err) => {
       console.error('[warrants] manual scan failed:', err);
     }),
   );
@@ -115,9 +117,9 @@ warrants.get('/utah', requireRole(...READ_ROLES), async (c) => {
 // utah_warrants table (the cron poller's cache) and returns the SPA's
 // UnifiedSearchResults shape { local, utah, scraped, meta }. Was 404 in both
 // Workers → the tab threw "API endpoint not found" and the unhandled rejection
-// surfaced in the console. `scraped` is empty: there is no separate scraped
-// table on live D1 (the rewrite synthesizes scrapers from utah_warrants), so
-// folding scraped results in would double-list the Utah hits.
+// surfaced in the console. `scraped` is now backed by the scraped_warrants
+// table populated by the multi-source orchestrator (Ada/Natrona/etc.); it
+// mirrors the utah branch (filter guard + LIKE escaping + defensive []).
 warrants.post('/search-all', requireRole(...READ_ROLES), async (c) => {
   const startedAt = Date.now();
   let body: Record<string, unknown> = {};
@@ -211,7 +213,37 @@ warrants.post('/search-all', requireRole(...READ_ROLES), async (c) => {
     utah = [];
   }
 
-  const scraped: Record<string, unknown>[] = [];
+  // ── Multi-State scraped warrants (multi-source orchestrator cache) ──
+  // Mirrors the utah branch: only run with a name/court/charge/number filter,
+  // reuse the same like() ESCAPE pattern, and defensively fall back to [] if
+  // the table is cold. Feeds the WarrantsPage "Multi-State Scraped" panel.
+  let scraped: Record<string, unknown>[] = [];
+  try {
+    const hasScrapedFilter = firstName || lastName || court || chargeKeyword || warrantNumber;
+    if (hasScrapedFilter) {
+      const f: string[] = ["status = 'active'"];
+      const p: unknown[] = [];
+      if (firstName) { f.push("first_name LIKE ? ESCAPE '\\'"); p.push(like(firstName)); }
+      if (lastName) { f.push("last_name LIKE ? ESCAPE '\\'"); p.push(like(lastName)); }
+      if (court) { f.push("court_name LIKE ? ESCAPE '\\'"); p.push(like(court)); }
+      if (chargeKeyword) { f.push("charge_description LIKE ? ESCAPE '\\'"); p.push(like(chargeKeyword)); }
+      if (warrantNumber) { f.push("(case_number LIKE ? ESCAPE '\\' OR warrant_id LIKE ? ESCAPE '\\')"); p.push(like(warrantNumber), like(warrantNumber)); }
+      scraped = await query<Record<string, unknown>>(
+        db,
+        `SELECT source_key, first_name, last_name, charge_description, court_name,
+                case_number, issue_date, bail_amount, offense_level, warrant_id,
+                city, state
+           FROM scraped_warrants
+           WHERE ${f.join(' AND ')}
+           ORDER BY last_seen_at DESC
+           LIMIT 100`,
+        ...p,
+      );
+    }
+  } catch (err) {
+    console.error('[warrants] search-all scraped query error:', (err as Error)?.message);
+    scraped = [];
+  }
 
   return c.json({
     local,
@@ -219,7 +251,7 @@ warrants.post('/search-all', requireRole(...READ_ROLES), async (c) => {
     scraped,
     meta: {
       duration: Date.now() - startedAt,
-      sources: ['local', 'utah'],
+      sources: ['local', 'utah', 'scraped'],
       utahBlocked: false,
       searchedAt: new Date().toISOString(),
       totalHits: local.length + utah.length + scraped.length,
@@ -397,19 +429,26 @@ warrants.get('/utah-search/auto-poll-status', requireRole(...READ_ROLES), async 
       db, 'SELECT * FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 10');
     const latest = runs[0] ?? null;
 
-    // Persons with ≥1 active local warrant OR a name match in the Utah feed.
-    // `warrant_severity IS NULL, ...` is the portable form of NULLS LAST.
+    // Persons with ≥1 active local warrant OR ≥1 active Utah hit linked to
+    // them by person_id. We match on person_id — the linkage the poller
+    // already resolved with age-tolerance — NOT a raw LOWER(name) compare,
+    // which cross-attributed a DIFFERENT person's warrant whenever two local
+    // records shared a name. `unverified` flags the namesake-attribution case
+    // (DOB-less person → the poller couldn't age-confirm the match); the
+    // client tags those hits so an officer treats them as leads, not
+    // confirmed warrants. `warrant_severity IS NULL, ...` = portable NULLS LAST.
     const flagged = await query<Record<string, any>>(db, `
       SELECT p.id, p.first_name, p.last_name, p.dob, p.gender, p.race, p.height,
         p.weight, p.hair_color, p.eye_color, p.address, p.photo_url,
+        CASE WHEN ${DOB_PRESENT} THEN 0 ELSE 1 END AS unverified,
         (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') AS local_warrant_count,
-        (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) AS utah_hit_count,
+        (SELECT COUNT(*) FROM utah_warrants uw WHERE uw.person_id = p.id AND uw.is_active = 1) AS utah_hit_count,
         (SELECT w2.offense_level FROM warrants w2 WHERE w2.subject_person_id = p.id AND w2.status = 'active'
           ORDER BY CASE w2.offense_level WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 ELSE 3 END LIMIT 1) AS warrant_severity
       FROM persons p
       WHERE (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') > 0
-        OR (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) > 0
-      ORDER BY warrant_severity IS NULL, warrant_severity, p.last_name
+        OR (SELECT COUNT(*) FROM utah_warrants uw WHERE uw.person_id = p.id AND uw.is_active = 1) > 0
+      ORDER BY unverified ASC, warrant_severity IS NULL, warrant_severity, p.last_name
       LIMIT 200`);
 
     // Per-person warrant detail. N+1, but bounded by LIMIT 200 and flagged sets
@@ -420,17 +459,22 @@ warrants.get('/utah-search/auto-poll-status', requireRole(...READ_ROLES), async 
                      bail_amount, issuing_court, source, created_at
                    FROM warrants WHERE subject_person_id = ? AND status = 'active'
                    ORDER BY created_at DESC`, p.id),
-        query(db, `SELECT utah_warrant_id, charges, court_name, issue_date
-                   FROM utah_warrants WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
-                   ORDER BY fetched_at DESC LIMIT 20`, p.first_name, p.last_name),
+        query(db, `SELECT utah_warrant_id, charges, court_name, issue_date, city, age
+                   FROM utah_warrants WHERE person_id = ? AND is_active = 1
+                   ORDER BY last_seen_at DESC LIMIT 20`, p.id),
       ]);
-      return { ...p, warrants: localWarrants, utahWarrants };
+      return { ...p, unverified: Number(p.unverified) === 1, warrants: localWarrants, utahWarrants };
     }));
 
-    const recentHits = await query<Record<string, any>>(db, `
-      SELECT id, person_id, person_name, event, charges, court_name, created_at
-      FROM warrant_watch_log WHERE event IN ('warrant_found', 'warrant_cleared')
-      ORDER BY created_at DESC LIMIT 50`);
+    // Isolated try/catch: warrant_watch_log may not exist on live; a missing
+    // table must not collapse the already-resolved runs/flaggedPersons into [].
+    let recentHits: Record<string, any>[] = [];
+    try {
+      recentHits = await query<Record<string, any>>(db, `
+        SELECT id, person_id, person_name, event, charges, court_name, created_at
+        FROM warrant_watch_log WHERE event IN ('warrant_found', 'warrant_cleared')
+        ORDER BY created_at DESC LIMIT 50`);
+    } catch { recentHits = []; }
 
     const totalRows = await query<{ cnt: number }>(db,
       `SELECT COUNT(*) AS cnt FROM persons WHERE first_name IS NOT NULL AND last_name IS NOT NULL`);
@@ -458,6 +502,204 @@ warrants.get('/utah-search/auto-poll-status', requireRole(...READ_ROLES), async 
   } catch (err) {
     // Pre-migration / table-missing → complete empty shape, never 500.
     return c.json(empty);
+  }
+});
+
+// ============================================================
+// /dashboard/* + /expiring — Warrants DASHBOARD tab widgets
+// ============================================================
+// Ported from legacy, where they queried the (perpetually empty on live)
+// manual `warrants` table and so returned all-zeros — making the DASHBOARD
+// tab look dead while the Watch List showed real Utah hits. These read the
+// data where it actually lives: utah_warrants (the cron poller's cache) +
+// the manual warrants table + warrant_scraper_config.
+//
+// CONFIDENCE MODEL — confirmed vs unverified, with NO schema column:
+//   The poller (utahWarrantPoller.ts:isLikelyMatch) only persists a Utah
+//   warrant for a local person when the local DOB-derived age matches the
+//   upstream age (±1) — it REJECTS age-mismatched candidates before storing.
+//   So any stored row whose linked person HAS a dob necessarily passed
+//   age-matching → CONFIRMED. A row linked to a DOB-less person came through
+//   the deliberate "attribute the namesake rather than skip" branch → it's a
+//   possible-namesake (the "8 Ryan Smiths" problem) → UNVERIFIED. We count
+//   and surface UNVERIFIED separately and NEVER fold it into the confirmed
+//   active total. Because it's derived from persons.dob at query time, a
+//   backfilled DOB upgrades the row automatically on the next scan.
+const DOB_PRESENT = "(p.dob IS NOT NULL AND TRIM(p.dob) != '')";
+
+// GET /warrants/dashboard/stats → { activeWarrants, unverifiedWarrants,
+//   hitsToday, personsFlagged, sourcesOnline, sourcesTotal }
+warrants.get('/dashboard/stats', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    // Active Utah hits split by confidence (see CONFIDENCE MODEL above).
+    const utahRow = await queryFirst<{ confirmed: number | null; unverified: number | null }>(db, `
+      SELECT
+        SUM(CASE WHEN ${DOB_PRESENT} THEN 1 ELSE 0 END) AS confirmed,
+        SUM(CASE WHEN ${DOB_PRESENT} THEN 0 ELSE 1 END) AS unverified
+      FROM utah_warrants uw
+      LEFT JOIN persons p ON uw.person_id = p.id
+      WHERE uw.is_active = 1`);
+
+    const manualRow = await queryFirst<{ active: number }>(db,
+      `SELECT COUNT(*) AS active FROM warrants WHERE status='active' AND archived_at IS NULL`);
+
+    // Distinct persons flagged across BOTH sources (manual + active Utah).
+    const flaggedRow = await queryFirst<{ n: number }>(db, `
+      SELECT COUNT(*) AS n FROM (
+        SELECT subject_person_id AS pid FROM warrants
+          WHERE status='active' AND archived_at IS NULL AND subject_person_id IS NOT NULL
+        UNION
+        SELECT person_id AS pid FROM utah_warrants
+          WHERE is_active=1 AND person_id IS NOT NULL
+      )`);
+
+    // Hits first seen today (UTC): new Utah rows + manual warrants created.
+    const hitsRow = await queryFirst<{ n: number }>(db, `
+      SELECT
+        (SELECT COUNT(*) FROM utah_warrants WHERE is_active=1 AND date(first_seen_at)=date('now'))
+        + (SELECT COUNT(*) FROM warrants WHERE status='active' AND archived_at IS NULL AND date(created_at)=date('now'))
+        AS n`);
+
+    // Sources online/total. One shared poller drives a global run history,
+    // so circuit health is global: a source is offline only when its circuit
+    // is broken (5+ trailing failed runs), mirroring the Scrapers-tab logic.
+    const total = (await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM warrant_scraper_config`))?.n ?? 0;
+    const trailing = await query<{ errors: number | null }>(db,
+      `SELECT errors FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 10`);
+    let consec = 0;
+    for (const r of trailing) { if (r.errors && r.errors > 0) consec++; else break; }
+    const sourcesOnline = consec >= 5 ? 0 : total;
+
+    return c.json({
+      activeWarrants: (utahRow?.confirmed ?? 0) + (manualRow?.active ?? 0),
+      unverifiedWarrants: utahRow?.unverified ?? 0,
+      hitsToday: hitsRow?.n ?? 0,
+      personsFlagged: flaggedRow?.n ?? 0,
+      sourcesOnline,
+      sourcesTotal: total,
+    });
+  } catch (err) {
+    console.error('[warrants] dashboard/stats error', err);
+    return c.json({ activeWarrants: 0, unverifiedWarrants: 0, hitsToday: 0, personsFlagged: 0, sourcesOnline: 0, sourcesTotal: 0 });
+  }
+});
+
+// GET /warrants/dashboard/feed?range=24h&limit=50 → { data: FeedEntry[] }
+// Synthesised from utah_warrants lifecycle timestamps: first_seen_at = a
+// FOUND event, and a cleared row's last_seen_at = a CLEARED event. (The
+// poller records run COUNTS, not per-event rows — warrant_watch_log is
+// unpopulated on live — so a log-table read would always be empty.)
+warrants.get('/dashboard/feed', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rangeRaw = (c.req.query('range') || '24h').toLowerCase().trim();
+    const m = rangeRaw.match(/^(\d+)\s*([hd])$/);
+    let hours = m ? parseInt(m[1], 10) * (m[2] === 'd' ? 24 : 1) : 24;
+    if (!Number.isFinite(hours) || hours <= 0) hours = 24;
+    hours = Math.min(hours, 24 * 90); // cap 90d
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 200);
+
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT uw.id, uw.person_id,
+             COALESCE(NULLIF(TRIM(p.first_name || ' ' || p.last_name), ''),
+                      TRIM(uw.first_name || ' ' || uw.last_name)) AS person_name,
+             CASE WHEN uw.is_active = 1 THEN 'warrant_found' ELSE 'warrant_cleared' END AS event,
+             uw.utah_warrant_id, uw.charges, uw.court_name,
+             CASE WHEN uw.is_active = 1 THEN uw.first_seen_at ELSE uw.last_seen_at END AS created_at,
+             p.photo_url
+      FROM utah_warrants uw
+      LEFT JOIN persons p ON uw.person_id = p.id
+      WHERE datetime(CASE WHEN uw.is_active = 1 THEN uw.first_seen_at ELSE uw.last_seen_at END)
+            >= datetime('now', ?)
+      ORDER BY created_at DESC
+      LIMIT ?`,
+      `-${hours} hours`, limit);
+    return c.json({ data: rows });
+  } catch (err) {
+    console.error('[warrants] dashboard/feed error', err);
+    return c.json({ data: [] });
+  }
+});
+
+// GET /warrants/dashboard/priority → { data: PriorityWarrant[] }
+// High-priority active warrants for the right-rail. Manual felonies / high
+// bail first, then active Utah hits whose charge text reads as serious.
+// Each Utah row carries `unverified` so the UI can flag namesake leads.
+warrants.get('/dashboard/priority', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    const manual = await query<Record<string, unknown>>(db, `
+      SELECT w.id, w.warrant_number, COALESCE(w.warrant_type, w.type) AS type, w.status,
+             COALESCE(w.charge_description, w.offense_description, w.offense) AS charge_description,
+             w.offense_level, p.first_name AS subject_first_name, p.last_name AS subject_last_name,
+             p.photo_url AS subject_photo_url,
+             COALESCE(w.bail_amount, w.bond_amount) AS bail_amount, w.source, w.created_at,
+             0 AS unverified
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status='active' AND w.archived_at IS NULL
+        AND (w.offense_level='felony' OR COALESCE(w.bail_amount, w.bond_amount, 0) >= 5000)
+      ORDER BY CASE w.offense_level WHEN 'felony' THEN 1 ELSE 2 END,
+               COALESCE(w.bail_amount, w.bond_amount, 0) DESC
+      LIMIT 25`);
+
+    const utahRows = await query<Record<string, any>>(db, `
+      SELECT uw.id, uw.utah_warrant_id AS warrant_number, 'arrest' AS type, 'active' AS status,
+             uw.charges AS charge_description, NULL AS offense_level,
+             uw.first_name AS subject_first_name, uw.last_name AS subject_last_name,
+             p.photo_url AS subject_photo_url, NULL AS bail_amount,
+             'utah-warrant-watch' AS source, uw.first_seen_at AS created_at,
+             CASE WHEN ${DOB_PRESENT} THEN 0 ELSE 1 END AS unverified
+      FROM utah_warrants uw
+      LEFT JOIN persons p ON uw.person_id = p.id
+      WHERE uw.is_active = 1
+        AND (UPPER(uw.charges) LIKE '%ASSAULT%' OR UPPER(uw.charges) LIKE '%BATTERY%'
+          OR UPPER(uw.charges) LIKE '%INFLUENCE%' OR UPPER(uw.charges) LIKE '%DUI%'
+          OR UPPER(uw.charges) LIKE '%WEAPON%'   OR UPPER(uw.charges) LIKE '%FIREARM%'
+          OR UPPER(uw.charges) LIKE '%FELONY%'   OR UPPER(uw.charges) LIKE '%ROBBERY%'
+          OR UPPER(uw.charges) LIKE '%BURGLARY%' OR UPPER(uw.charges) LIKE '%DOMESTIC%'
+          OR UPPER(uw.charges) LIKE '%HOMICIDE%' OR UPPER(uw.charges) LIKE '%THEFT%')
+      ORDER BY unverified ASC, uw.first_seen_at DESC
+      LIMIT 25`);
+
+    const utah = utahRows.map((w) => {
+      let chargeText = '';
+      try {
+        const arr = JSON.parse(String(w.charge_description || '[]'));
+        chargeText = Array.isArray(arr) ? arr.join('; ') : String(w.charge_description || '');
+      } catch { chargeText = String(w.charge_description || ''); }
+      return { ...w, charge_description: chargeText, unverified: Number(w.unverified) === 1 };
+    });
+
+    return c.json({ data: [...manual, ...utah].slice(0, 30) });
+  } catch (err) {
+    console.error('[warrants] dashboard/priority error', err);
+    return c.json({ data: [] });
+  }
+});
+
+// GET /warrants/expiring?days=30 → { count } — active manual warrants whose
+// expiry falls inside the window. Utah warrants have no expiry concept, so
+// this is manual-only (returns 0 until manual warrants are entered).
+warrants.get('/expiring', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const daysRaw = parseInt(c.req.query('days') || '30', 10);
+    const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 365) : 30;
+    const row = await queryFirst<{ count: number }>(db, `
+      SELECT COUNT(*) AS count FROM warrants
+      WHERE status='active' AND archived_at IS NULL
+        AND COALESCE(expiry_date, expires_at) IS NOT NULL
+        AND date(COALESCE(expiry_date, expires_at)) BETWEEN date('now') AND date('now', ?)`,
+      `+${days} days`);
+    return c.json({ count: row?.count ?? 0 });
+  } catch (err) {
+    console.error('[warrants] expiring error', err);
+    return c.json({ count: 0 });
   }
 });
 
@@ -495,6 +737,22 @@ const SOURCE_REGISTRY: Record<string, ScraperRegistryEntry> = {
     source_url: 'https://warrants.utah.gov',
     source_type: 'api',
     priority: 1,
+  },
+  'ada-county-id': {
+    display_name: 'Ada County Sheriff (ID)',
+    state: 'ID',
+    county: 'Ada',
+    source_url: 'https://apps.adacounty.id.gov/sheriff/reports/warrants.aspx',
+    source_type: 'html',
+    priority: 2,
+  },
+  'natrona-county-wy': {
+    display_name: 'Natrona County Sheriff (WY)',
+    state: 'WY',
+    county: 'Natrona',
+    source_url: 'https://warrants.natronacounty-wy.gov',
+    source_type: 'html',
+    priority: 2,
   },
 };
 
@@ -536,7 +794,9 @@ interface RunRow {
 //   - last_error_at (the started_at of the most recent failed run)
 function summarizeRuns(runs24h: RunRow[], trailingRuns: RunRow[]) {
   const total = runs24h.length;
-  const failed = runs24h.filter((r) => r.errors && r.errors > 0).length;
+  // A run's success is its STATUS, not whether it logged any per-person errors —
+  // a completed run that hit a few transient lookup errors is still a success.
+  const failed = runs24h.filter((r) => r.status === 'failed').length;
   const successful = total - failed;
   // "unchanged" runs = successful runs that found and cleared nothing —
   // the steady-state with no roster churn. Matters because the dashboard
@@ -653,7 +913,10 @@ warrants.get('/scrapers', requireRole(...READ_ROLES), async (c) => {
           county: registry.county,
           source_url: registry.source_url,
           source_type: registry.source_type,
-          enabled: 1 as const,
+          // `enabled` column added in mig 0151. Older rows / pre-migration
+          // DBs return undefined → default to 1 (the prior hardcoded value)
+          // so the UI doesn't show every source as disabled.
+          enabled: (cfg.enabled === 0 ? 0 : 1) as 0 | 1,
           circuit_broken,
           priority: registry.priority,
           consecutive_errors: metrics.consecutive_errors,
@@ -825,6 +1088,907 @@ warrants.post('/scrapers/:source_key/reset-circuit', requireRole(...SCAN_ROLES),
     console.error('[warrants] reset-circuit error', err);
     return c.json({ error: 'Failed to reset circuit' }, 500);
   }
+});
+
+// Bulk-action support: the `enabled` column was added in mig 0151. Because
+// deploy.yml applies migrations with `continue-on-error: true`, we reconcile
+// at runtime — same idiom as ensureAssessorColumns / clearpathAlpr.ts.
+async function ensureScraperEnabledColumn(db: D1Database): Promise<void> {
+  if (!(await columnExists(db, 'warrant_scraper_config', 'enabled'))) {
+    await execute(db, 'ALTER TABLE warrant_scraper_config ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+  }
+}
+
+// POST /warrants/scrapers/bulk — multi-source bulk action endpoint.
+// Backs the bulk toolbar + right-click menu in AdminWarrantScrapersTab.
+// Body: { action: 'enable'|'disable'|'reset'|'set_priority', source_keys: string[], priority?: 1..4 }
+// Response: { success: boolean, affected: number }
+warrants.post('/scrapers/bulk', requireRole(...SCAN_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{
+      action?: string;
+      source_keys?: unknown;
+      priority?: unknown;
+    }>();
+
+    const action = body.action;
+    const keys = Array.isArray(body.source_keys)
+      ? body.source_keys.filter((k): k is string => typeof k === 'string' && k.length > 0)
+      : [];
+
+    if (!action || !['enable', 'disable', 'reset', 'set_priority'].includes(action)) {
+      return c.json({ error: `Invalid action '${String(action)}'` }, 400);
+    }
+    if (keys.length === 0) {
+      return c.json({ error: 'source_keys must be a non-empty string array' }, 400);
+    }
+
+    // ?,?,?... — D1 doesn't support array bindings, so expand manually.
+    const placeholders = keys.map(() => '?').join(', ');
+
+    let sql: string;
+    let bindings: unknown[];
+
+    switch (action) {
+      case 'enable':
+      case 'disable': {
+        await ensureScraperEnabledColumn(db);
+        sql = `UPDATE warrant_scraper_config SET enabled = ? WHERE source_name IN (${placeholders})`;
+        bindings = [action === 'enable' ? 1 : 0, ...keys];
+        break;
+      }
+      case 'reset': {
+        sql = `UPDATE warrant_scraper_config SET last_error = NULL WHERE source_name IN (${placeholders})`;
+        bindings = keys;
+        break;
+      }
+      case 'set_priority': {
+        const p = Number(body.priority);
+        if (!Number.isInteger(p) || p < 1 || p > 4) {
+          return c.json({ error: 'priority must be an integer in 1..4 for set_priority' }, 400);
+        }
+        sql = `UPDATE warrant_scraper_config SET priority = ? WHERE source_name IN (${placeholders})`;
+        bindings = [p, ...keys];
+        break;
+      }
+      default:
+        // Unreachable — guarded above.
+        return c.json({ error: 'unreachable' }, 500);
+    }
+
+    const result = await db.prepare(sql).bind(...bindings).run();
+    return c.json({ success: true, affected: result.meta?.changes ?? 0 });
+  } catch (err) {
+    console.error('[warrants] /scrapers/bulk error', err);
+    return c.json({ error: 'Bulk action failed' }, 500);
+  }
+});
+
+// ============================================================
+// Warrant CRUD — ported from legacy/server-vps/src/routes/warrants.ts
+// ============================================================
+// These handlers replace the legacy POST/PUT/GET/DELETE /warrants
+// endpoints that previously fell through the proxy to env.LEGACY.
+// Two boundary invariants the legacy code didn't enforce strictly:
+//
+//   1. WRITE BOUNDARY — every nullable column normalises empty input
+//      to SQL NULL. `nullify('')`, `nullify(undefined)`, `nullify(null)`,
+//      and `nullify('  ')` all return null; non-empty strings are trimmed.
+//      This is what stops literal 'N/A' / '' from landing in D1 cells
+//      and surfacing as "N/A walls" downstream (see PR #808 and the
+//      0046_warrants_null_out_sentinels.sql cleanup).
+//
+//   2. READ JOIN — `entered_by_name` / `served_by_name` are NEVER stored
+//      on the warrants row. They're derived at SELECT time via
+//      LEFT JOIN users on the entered_by / served_by foreign keys.
+//      Storing the name was the cause of "Entered By: N/A" in PDFs
+//      (a stale snapshot of the user's display name); deriving on read
+//      means a user rename propagates everywhere automatically.
+//
+// What's NOT ported here (left on legacy via proxy fall-through):
+//   - /dashboard/stats, /dashboard/feed, /dashboard/priority
+//   - /expiring, /summary-report, /export
+//   - /batch-update, /bulk-archive, /bulk-review
+//   - /check/:personId, /person-intel, /utah-search
+// These can be ported in follow-ups; they're independent of the
+// write-boundary fix that motivated this port.
+
+const ROLES_CRUD_WRITE = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
+const ROLES_CRUD_DELETE = ['admin', 'manager'] as const;
+const ROLES_CRUD_READ = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+
+// Trim a string and treat the empty result as null. Anything non-string
+// is coerced to its string form first; null/undefined short-circuit.
+// This is the only normalisation we apply on the write boundary; using
+// ?? null directly would let an empty-string field land in D1 as ''
+// rather than NULL (the exact bug that produced the 'N/A walls').
+function nullify(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const s = typeof v === 'string' ? v : String(v);
+  const t = s.trim();
+  return t === '' ? null : t;
+}
+
+// Numeric variant — accepts numbers, numeric strings, or empty/null.
+// Returns null for unparseable input rather than NaN (which D1 would
+// store as a stringly-typed weird cell).
+function numOrNull(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function intOrNull(v: unknown): number | null {
+  const n = numOrNull(v);
+  return n === null ? null : Math.trunc(n);
+}
+
+// Validate warrant type against the schema CHECK constraint so we fail
+// at the route boundary with a clean 400 instead of a D1 constraint
+// error. Same enums as live schema (see legacy database.ts line 659).
+const WARRANT_TYPES = new Set(['arrest', 'search', 'bench', 'civil', 'fta', 'other']);
+const WARRANT_STATUSES = new Set(['active', 'served', 'recalled', 'expired', 'quashed']);
+const OFFENSE_LEVELS = new Set(['felony', 'misdemeanor', 'infraction', 'civil']);
+
+// Canonical projection used by every read endpoint. Aliased once so all
+// callers — list, detail, post-write returns — speak the same shape and
+// the client's Warrant interface gets a consistent payload.
+const WARRANT_SELECT_COLS = `
+  w.*,
+  p.first_name AS subject_first_name,
+  p.last_name  AS subject_last_name,
+  (p.first_name || ' ' || p.last_name) AS subject_name,
+  p.dob        AS subject_dob,
+  p.gender     AS subject_gender,
+  p.race       AS subject_race,
+  p.height     AS subject_height,
+  p.weight     AS subject_weight,
+  p.hair_color AS subject_hair_color,
+  p.eye_color  AS subject_eye_color,
+  p.address    AS subject_address,
+  p.photo_url  AS subject_photo_url,
+  u_entered.full_name AS entered_by_name,
+  u_served.full_name  AS served_by_name
+`;
+
+const WARRANT_FROM_JOINS = `
+  FROM warrants w
+  LEFT JOIN persons p          ON w.subject_person_id = p.id
+  LEFT JOIN users   u_entered  ON w.entered_by        = u_entered.id
+  LEFT JOIN users   u_served   ON w.served_by         = u_served.id
+`;
+
+// Derive a human warrant number from the row id. Manual entries use the
+// WRN prefix; Utah-API ingests use EXT. Both pad to 5 digits so they
+// sort lexicographically (matters for the alpha sort on the list).
+function warrantNumberFor(prefix: 'WRN' | 'EXT', id: number | bigint): string {
+  return `${prefix}-${new Date().getFullYear()}-${String(id).padStart(5, '0')}`;
+}
+
+// ── GET /warrants/check/:personId — advisory active-warrant check ──
+// Called by LinkPersonModal when a person is selected/created on an
+// incident, to flash an "ACTIVE WARRANTS" banner. Advisory only (the
+// client swallows errors), but legacy 404'd on it. Live `warrants`
+// carries BOTH person_id and subject_person_id columns (schema drift),
+// so we match either. Returns the shape the client's WarrantCheckResult
+// expects: { has_warrants, count, warrants: [...] }.
+warrants.get('/check/:personId{\\d+}', requireRole(...ROLES_CRUD_READ), async (c) => {
+  try {
+    const personId = parseInt(c.req.param('personId') || '', 10);
+    if (!Number.isFinite(personId) || personId <= 0) {
+      return c.json({ error: 'Invalid person id', code: 'INVALID_ID' }, 400);
+    }
+    const rows = await query<any>(getDb(c.env), `
+      SELECT id, warrant_number, COALESCE(warrant_type, type) AS warrant_type,
+             COALESCE(charge_description, offense_description, offense, description) AS charge_description,
+             status
+      FROM warrants
+      WHERE (person_id = ? OR subject_person_id = ?)
+        AND status = 'active' AND archived_at IS NULL
+      ORDER BY COALESCE(issued_date, created_at) DESC`,
+      personId, personId);
+    return c.json({
+      person_id: personId,
+      has_warrants: rows.length > 0,
+      count: rows.length,
+      warrants: rows,
+    });
+  } catch (err) {
+    console.error('[warrants] check error', err);
+    return c.json({ error: 'Failed to check warrants', code: 'WARRANT_CHECK_ERR' }, 500);
+  }
+});
+
+// ── GET /warrants — list with filters + pagination ──
+// Mirrors the legacy filter surface so the WarrantsPage useEffect that
+// passes ~16 query params keeps working unchanged. All optional filters
+// are AND-combined; absent filter means no clause added.
+warrants.get('/', requireRole(...ROLES_CRUD_READ), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query.bind(c.req);
+
+    const where: string[] = [];
+    const params: unknown[] = [];
+
+    const status = q('status');
+    if (status) { where.push('w.status = ?'); params.push(status); }
+    const type = q('type');
+    if (type) { where.push('w.type = ?'); params.push(type); }
+    const source = q('source');
+    if (source) { where.push('w.source = ?'); params.push(source); }
+    const personId = q('person_id');
+    if (personId) {
+      const n = parseInt(personId, 10);
+      if (Number.isFinite(n)) { where.push('w.subject_person_id = ?'); params.push(n); }
+    }
+    const subjectName = q('subject_name');
+    if (subjectName) {
+      const pat = `%${subjectName.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+      where.push("((p.first_name || ' ' || p.last_name) LIKE ? ESCAPE '\\' OR w.warrant_number LIKE ? ESCAPE '\\' OR w.charge_description LIKE ? ESCAPE '\\')");
+      params.push(pat, pat, pat);
+    }
+    const court = q('court');
+    if (court) {
+      where.push("w.issuing_court LIKE ? ESCAPE '\\'");
+      params.push(`%${court.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`);
+    }
+    const severity = q('severity');
+    if (severity && OFFENSE_LEVELS.has(severity)) {
+      where.push('w.offense_level = ?');
+      params.push(severity);
+    }
+
+    // Phase 1 chip filters from the WarrantsPage URL state.
+    const priorityMin = q('priority_min');
+    if (priorityMin) {
+      const n = parseInt(priorityMin, 10);
+      if (Number.isFinite(n)) {
+        where.push('COALESCE(w.priority_score, 0) >= ?');
+        params.push(n);
+      }
+    }
+    const sinceDays = q('since_days');
+    if (sinceDays) {
+      const n = parseInt(sinceDays, 10);
+      if (Number.isFinite(n)) {
+        where.push("julianday('now') - julianday(COALESCE(w.issued_date, w.created_at)) <= ?");
+        params.push(n);
+      }
+    }
+    if (q('matches_person') === '1') {
+      where.push('w.subject_person_id IS NOT NULL');
+    }
+    const state = q('state');
+    if (state) {
+      where.push('lower(w.source) LIKE ?');
+      params.push(`${state.toLowerCase()}_%`);
+    }
+    const statePrefix = q('state_prefix');
+    if (statePrefix) {
+      where.push('w.source LIKE ?');
+      params.push(`${statePrefix}%`);
+    }
+
+    // Archive semantics match the legacy convention:
+    //   include_archived=1     → both archived + non-archived
+    //   archived=true          → only archived
+    //   anything else (incl. unset) → only non-archived
+    if (q('include_archived') !== '1') {
+      if (q('archived') === 'true') {
+        where.push('w.archived_at IS NOT NULL');
+      } else {
+        where.push('w.archived_at IS NULL');
+      }
+    }
+
+    // Sort — pick from a whitelist so an attacker can't inject ORDER BY.
+    const sortMap: Record<string, string> = {
+      priority: 'COALESCE(w.priority_score, 0)',
+      age: "julianday('now') - julianday(COALESCE(w.issued_date, w.created_at))",
+      freshness: "julianday('now') - julianday(COALESCE(w.last_checked_at, w.updated_at))",
+      alpha: 'w.warrant_number',
+      created_at: 'w.created_at',
+    };
+    const sortKey = q('sort') ?? 'created_at';
+    const sortCol = sortMap[sortKey] ?? sortMap.created_at;
+    const order = q('order') === 'asc' ? 'ASC' : 'DESC';
+
+    const page = Math.max(1, parseInt(q('page') ?? '1', 10) || 1);
+    const perPage = Math.min(500, Math.max(1, parseInt(q('per_page') ?? '50', 10) || 50));
+    const offset = (page - 1) * perPage;
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const countRow = await queryFirst<{ total: number }>(
+      db,
+      `SELECT COUNT(*) AS total FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id ${whereSql}`,
+      ...params,
+    );
+    const total = countRow?.total ?? 0;
+
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT ${WARRANT_SELECT_COLS},
+              CASE WHEN w.subject_person_id IS NOT NULL THEN 1 ELSE 0 END AS matches_person
+       ${WARRANT_FROM_JOINS}
+       ${whereSql}
+       ORDER BY ${sortCol} ${order}
+       LIMIT ? OFFSET ?`,
+      ...params, perPage, offset,
+    );
+
+    return c.json({
+      data: rows,
+      pagination: {
+        page,
+        per_page: perPage,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / perPage)),
+      },
+    });
+  } catch (err) {
+    console.error('[warrants] list error', err);
+    return c.json({ data: [], pagination: { page: 1, per_page: 0, total: 0, totalPages: 1 } });
+  }
+});
+
+// ── POST /warrants — create ──
+// Two-step write: INSERT with __PENDING__ for warrant_number, then
+// UPDATE warrant_number = WRN-YYYY-{id5}. This is the legacy pattern
+// — it keeps the number derivable from the row id (race-safe) without
+// adding a sequence table. D1 doesn't support RETURNING on INSERT, so
+// we read the lastRowId from result.meta.
+warrants.post('/', requireRole(...ROLES_CRUD_WRITE), async (c) => {
+  try {
+    const body = await c.req.json<Record<string, unknown>>();
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+
+    const typeRaw = nullify(body.type);
+    const typeNorm = typeRaw ? typeRaw.toLowerCase() : null;
+    if (!typeNorm || !WARRANT_TYPES.has(typeNorm)) {
+      return c.json({ error: `type must be one of: ${[...WARRANT_TYPES].join(', ')}`, code: 'TYPE_INVALID' }, 400);
+    }
+
+    const charge = nullify(body.charge_description);
+    if (!charge) {
+      return c.json({ error: 'charge_description is required', code: 'CHARGE_DESCRIPTION_REQUIRED' }, 400);
+    }
+
+    const offenseLevel = nullify(body.offense_level);
+    if (offenseLevel && !OFFENSE_LEVELS.has(offenseLevel)) {
+      return c.json({ error: `offense_level must be one of: ${[...OFFENSE_LEVELS].join(', ')}`, code: 'OFFENSE_LEVEL_INVALID' }, 400);
+    }
+
+    const subjectPersonId = intOrNull(body.subject_person_id);
+    if (subjectPersonId !== null) {
+      const exists = await queryFirst<{ id: number }>(
+        db, 'SELECT id FROM persons WHERE id = ?', subjectPersonId);
+      if (!exists) {
+        return c.json({ error: 'Subject person not found', code: 'SUBJECT_PERSON_NOT_FOUND' }, 404);
+      }
+    }
+
+    // INSERT — every nullable column normalised through nullify/intOrNull/
+    // numOrNull. warrant_number lands as __PENDING__ and gets rewritten
+    // below to WRN-YYYY-NNNNN. entered_by is ALWAYS the JWT user.id.
+    const insertResult = await execute(
+      db,
+      `INSERT INTO warrants (
+         warrant_number, type, status, subject_person_id, issuing_court, issuing_judge,
+         charge_description, bail_amount, offense_level, entered_by, expires_at,
+         notes, statute_id, statute_citation, source
+       ) VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      '__PENDING__',
+      typeNorm,
+      subjectPersonId,
+      nullify(body.issuing_court),
+      nullify(body.issuing_judge),
+      charge,
+      numOrNull(body.bail_amount),
+      offenseLevel,
+      user.id,
+      nullify(body.expires_at),
+      nullify(body.notes),
+      intOrNull(body.statute_id),
+      nullify(body.statute_citation),
+      'manual',
+    );
+
+    const warrantId = Number(insertResult.meta?.last_row_id ?? 0);
+    if (!warrantId) {
+      console.error('[warrants] create: no last_row_id from D1');
+      return c.json({ error: 'Failed to create warrant', code: 'CREATE_WARRANT_ERROR' }, 500);
+    }
+
+    await execute(
+      db,
+      'UPDATE warrants SET warrant_number = ? WHERE id = ?',
+      warrantNumberFor('WRN', warrantId),
+      warrantId,
+    );
+
+    const created = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT ${WARRANT_SELECT_COLS} ${WARRANT_FROM_JOINS} WHERE w.id = ?`,
+      warrantId,
+    );
+
+    // Alert Rules engine — fire 'warrant_created' so configured rules
+    // notify their targets. Best-effort; never blocks the create.
+    await evaluateNotificationRules(db, 'warrant_created', {
+      title: 'Warrant Created',
+      message: `${created?.warrant_number ?? 'New warrant'} — ${created?.subject_name ?? created?.charge_description ?? ''}`,
+      priority: 'normal',
+      entity_type: 'warrant',
+      entity_id: warrantId as number,
+    }, c.env);
+
+    // NSOPW: every warrant subject auto-screens against the nationwide
+    // SOR. Fire-and-forget so a SOR miss / timeout never blocks the
+    // warrant create. Confirmed hits land in screening_hits and surface
+    // on the warrant detail page (NSOPW Status section).
+    if (subjectPersonId != null) {
+      c.executionCtx.waitUntil(
+        import('../utils/screening/nsopwAdapter')
+          .then(({ screenPersonForSor }) =>
+            screenPersonForSor(c.env, subjectPersonId, { triggeredBy: 'warrant_create' }))
+          .catch((err) => console.warn('[nsopw] warrant_create screen failed:', err)),
+      );
+    }
+
+    return c.json(created, 201);
+  } catch (err) {
+    console.error('[warrants] create error', err);
+    return c.json({ error: 'Failed to create warrant', code: 'CREATE_WARRANT_ERROR' }, 500);
+  }
+});
+
+// ── GET /warrants/:id — detail ──
+// Returns the full warrant row + the same JOINed person + entered_by /
+// served_by user metadata as the list, plus an `activity` log array.
+// Encounters / associates / vehicles deliberately NOT joined here —
+// those live on legacy still; the client renders them when present and
+// degrades gracefully when missing.
+warrants.get('/:id{\\d+}', requireRole(...ROLES_CRUD_READ), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') ?? '', 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return c.json({ error: 'Invalid warrant id' }, 400);
+    }
+
+    const warrant = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT ${WARRANT_SELECT_COLS} ${WARRANT_FROM_JOINS} WHERE w.id = ?`,
+      id,
+    );
+    if (!warrant) {
+      return c.json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }, 404);
+    }
+
+    // Activity is optional — pre-migration installs may not have the
+    // activity_log table. Degrade gracefully so the detail panel renders.
+    let activity: Record<string, unknown>[] = [];
+    try {
+      activity = await query<Record<string, unknown>>(
+        db,
+        `SELECT al.id, al.action, al.details, al.created_at,
+                u.full_name AS user_name
+           FROM activity_log al
+           LEFT JOIN users u ON al.user_id = u.id
+          WHERE al.entity_type = 'warrant' AND al.entity_id = ?
+          ORDER BY al.created_at DESC
+          LIMIT 200`,
+        id,
+      );
+    } catch { activity = []; }
+
+    return c.json({ ...warrant, activity });
+  } catch (err) {
+    console.error('[warrants] detail error', err);
+    return c.json({ error: 'Failed to load warrant' }, 500);
+  }
+});
+
+// ── PUT /warrants/:id — update ──
+// Sparse update: only fields present in the request body are touched.
+// Same nullify / numOrNull / intOrNull discipline as POST. Non-admins
+// can't mutate a 'served' warrant (matches legacy "God Mode" pattern);
+// non-admins also can't override warrant_number.
+warrants.put('/:id{\\d+}', requireRole(...ROLES_CRUD_WRITE), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; role: string };
+    const id = parseInt(c.req.param('id') ?? '', 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return c.json({ error: 'Invalid warrant id' }, 400);
+    }
+    const existing = await queryFirst<{ id: number; status: string }>(
+      db, 'SELECT id, status FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }, 404);
+
+    if (user.role !== 'admin' && existing.status === 'served') {
+      return c.json({ error: 'Cannot update a served warrant', code: 'CANNOT_UPDATE_SERVED' }, 403);
+    }
+
+    const body = await c.req.json<Record<string, unknown>>();
+    const provided = Object.keys(body);
+
+    // Map of editable field → its boundary normaliser. nullify for text,
+    // numOrNull for money, intOrNull for ids. Keys MUST match a real
+    // column on warrants (any unknown key is silently dropped).
+    const fieldMap: Record<string, (v: unknown) => unknown> = {
+      type: (v) => {
+        const n = nullify(v);
+        return n ? n.toLowerCase() : null;
+      },
+      subject_person_id: intOrNull,
+      issuing_court: nullify,
+      issuing_judge: nullify,
+      charge_description: nullify,
+      bail_amount: numOrNull,
+      offense_level: nullify,
+      status: nullify,
+      expires_at: nullify,
+      notes: nullify,
+      statute_id: intOrNull,
+      statute_citation: nullify,
+    };
+    if (user.role === 'admin') {
+      fieldMap.warrant_number = nullify;
+    }
+
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    for (const key of provided) {
+      if (!(key in fieldMap)) continue;
+      const norm = fieldMap[key](body[key]);
+      // Validate the enums we care about, same as POST.
+      if (key === 'type' && norm !== null && !WARRANT_TYPES.has(String(norm))) {
+        return c.json({ error: `type must be one of: ${[...WARRANT_TYPES].join(', ')}`, code: 'TYPE_INVALID' }, 400);
+      }
+      if (key === 'status' && norm !== null && !WARRANT_STATUSES.has(String(norm))) {
+        return c.json({ error: `status must be one of: ${[...WARRANT_STATUSES].join(', ')}`, code: 'STATUS_INVALID' }, 400);
+      }
+      if (key === 'offense_level' && norm !== null && !OFFENSE_LEVELS.has(String(norm))) {
+        return c.json({ error: `offense_level must be one of: ${[...OFFENSE_LEVELS].join(', ')}`, code: 'OFFENSE_LEVEL_INVALID' }, 400);
+      }
+      // charge_description NOT NULL — refuse to null it out.
+      if (key === 'charge_description' && norm === null) {
+        return c.json({ error: 'charge_description cannot be empty', code: 'CHARGE_DESCRIPTION_REQUIRED' }, 400);
+      }
+      sets.push(`${key} = ?`);
+      vals.push(norm);
+    }
+
+    if (sets.length > 0) {
+      sets.push("updated_at = datetime('now')");
+      vals.push(id);
+      await execute(db, `UPDATE warrants SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    }
+
+    const updated = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT ${WARRANT_SELECT_COLS} ${WARRANT_FROM_JOINS} WHERE w.id = ?`,
+      id,
+    );
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] update error', err);
+    return c.json({ error: 'Failed to update warrant', code: 'UPDATE_WARRANT_ERROR' }, 500);
+  }
+});
+
+// ── PUT /warrants/:id/serve — mark warrant served ──
+// Client (WarrantsPage handleServe) sends PUT with { served_location }.
+// Stamps served_by from the JWT, served_at to now, and flips status.
+// Only 'active' warrants can be served; everything else is a 400.
+warrants.put('/:id{\\d+}/serve', requireRole(...ROLES_CRUD_WRITE), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const id = parseInt(c.req.param('id') ?? '', 10);
+
+    const existing = await queryFirst<{ id: number; status: string }>(
+      db, 'SELECT id, status FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }, 404);
+    if (existing.status !== 'active') {
+      return c.json({ error: 'Only active warrants can be served', code: 'ONLY_ACTIVE_CAN_SERVE' }, 400);
+    }
+
+    // served_location column added in migration 0064 — persist the operator's
+    // typed "Location Served" (the client sends it; the detail panel + record
+    // PDF render it). Sentinel-guarded to NULL when blank.
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const servedLocation = nullify(body.served_location);
+    await execute(
+      db,
+      `UPDATE warrants
+          SET status = 'served', served_by = ?, served_at = datetime('now'),
+              served_location = ?, updated_at = datetime('now')
+        WHERE id = ?`,
+      user.id, servedLocation, id,
+    );
+
+    const updated = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT ${WARRANT_SELECT_COLS} ${WARRANT_FROM_JOINS} WHERE w.id = ?`,
+      id,
+    );
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] serve error', err);
+    return c.json({ error: 'Failed to serve warrant', code: 'SERVE_WARRANT_ERROR' }, 500);
+  }
+});
+
+// ── POST /warrants/:id/archive — soft-delete by setting archived_at ──
+warrants.post('/:id{\\d+}/archive', requireRole(...ROLES_CRUD_WRITE), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') ?? '', 10);
+    const existing = await queryFirst<{ id: number; archived_at: string | null }>(
+      db, 'SELECT id, archived_at FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }, 404);
+    if (existing.archived_at) {
+      return c.json({ error: 'Warrant is already archived', code: 'ALREADY_ARCHIVED' }, 400);
+    }
+    await execute(db, "UPDATE warrants SET archived_at = datetime('now') WHERE id = ?", id);
+    const updated = await queryFirst<Record<string, unknown>>(
+      db, `SELECT ${WARRANT_SELECT_COLS} ${WARRANT_FROM_JOINS} WHERE w.id = ?`, id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] archive error', err);
+    return c.json({ error: 'Failed to archive warrant' }, 500);
+  }
+});
+
+// ── POST /warrants/:id/unarchive — restore by nulling archived_at ──
+warrants.post('/:id{\\d+}/unarchive', requireRole(...ROLES_CRUD_WRITE), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') ?? '', 10);
+    const existing = await queryFirst<{ id: number; archived_at: string | null }>(
+      db, 'SELECT id, archived_at FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }, 404);
+    if (!existing.archived_at) {
+      return c.json({ error: 'Warrant is not archived', code: 'NOT_ARCHIVED' }, 400);
+    }
+    await execute(db, 'UPDATE warrants SET archived_at = NULL WHERE id = ?', id);
+    const updated = await queryFirst<Record<string, unknown>>(
+      db, `SELECT ${WARRANT_SELECT_COLS} ${WARRANT_FROM_JOINS} WHERE w.id = ?`, id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[warrants] unarchive error', err);
+    return c.json({ error: 'Failed to unarchive warrant' }, 500);
+  }
+});
+
+// ── DELETE /warrants/:id — hard delete (admin/manager only) ──
+// Active warrants can't be deleted (must be archived/recalled first)
+// unless the actor is admin. Mirrors the legacy "God Mode" pattern.
+warrants.delete('/:id{\\d+}', requireRole(...ROLES_CRUD_DELETE), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; role: string };
+    const id = parseInt(c.req.param('id') ?? '', 10);
+    const existing = await queryFirst<{ id: number; status: string }>(
+      db, 'SELECT id, status FROM warrants WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }, 404);
+    if (user.role !== 'admin' && existing.status === 'active') {
+      return c.json({ error: 'Cannot delete an active warrant — archive or recall first', code: 'CANNOT_DELETE_ACTIVE' }, 400);
+    }
+    await execute(db, 'DELETE FROM warrants WHERE id = ?', id);
+    return c.json({ success: true, id });
+  } catch (err) {
+    console.error('[warrants] delete error', err);
+    return c.json({ error: 'Failed to delete warrant' }, 500);
+  }
+});
+
+// ── POST /warrants/ingest-utah — bulk import from Utah API search ──
+// Body: { warrants: [{ utah_warrant_id, charges, court_name, ... }] }
+// For each row: skip if external_warrant_id already exists (dedupe key),
+// otherwise INSERT with source='utah_api', then update warrant_number
+// to EXT-YYYY-NNNNN. Returns { imported, skipped, total }.
+warrants.post('/ingest-utah', requireRole(...ROLES_CRUD_WRITE), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json<{ warrants?: unknown[] }>().catch(() => ({ warrants: [] }));
+    const incoming = Array.isArray(body.warrants) ? body.warrants : [];
+    if (incoming.length === 0) {
+      return c.json({ error: 'warrants array required', code: 'WARRANTS_ARRAY_REQUIRED' }, 400);
+    }
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (const raw of incoming) {
+      const w = (raw ?? {}) as Record<string, unknown>;
+      const utahId = nullify(w.utah_warrant_id ?? w.id);
+      if (!utahId) { skipped++; continue; }
+      const extId = `utah_api:${utahId}`;
+
+      const dupe = await queryFirst<{ id: number }>(
+        db, 'SELECT id FROM warrants WHERE external_warrant_id = ?', extId);
+      if (dupe) { skipped++; continue; }
+
+      // charges may arrive as a string OR a JSON-stringified array; collapse
+      // both to a readable single string. JSON arrays become "A; B; C".
+      let chargeText = nullify(w.charges ?? w.charge_description);
+      if (chargeText && chargeText.startsWith('[')) {
+        try {
+          const arr = JSON.parse(chargeText);
+          if (Array.isArray(arr)) chargeText = arr.join('; ') || chargeText;
+        } catch { /* keep as-is */ }
+      }
+      const charge = chargeText ?? 'Utah warrant';
+
+      const insertResult = await execute(
+        db,
+        `INSERT INTO warrants (
+           warrant_number, type, status, charge_description, issuing_court,
+           bail_amount, offense_level, entered_by, expires_at, notes,
+           source, external_warrant_id, external_source_key, auto_created,
+           subject_person_id
+         ) VALUES (?, 'arrest', 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+        '__PENDING__',
+        charge,
+        nullify(w.court_name),
+        numOrNull(w.bail_amount),
+        (() => {
+          const lv = nullify(w.offense_level);
+          return lv && OFFENSE_LEVELS.has(lv) ? lv : null;
+        })(),
+        user.id,
+        nullify(w.expires_at ?? w.issue_date),
+        'Imported from Utah warrants API',
+        'utah_api',
+        extId,
+        'utah_api',
+        intOrNull(w.subject_person_id),
+      );
+
+      const newId = Number(insertResult.meta?.last_row_id ?? 0);
+      if (newId) {
+        await execute(
+          db,
+          'UPDATE warrants SET warrant_number = ? WHERE id = ?',
+          warrantNumberFor('EXT', newId), newId,
+        );
+        imported++;
+      } else {
+        skipped++;
+      }
+    }
+
+    return c.json({ imported, skipped, total: incoming.length });
+  } catch (err) {
+    console.error('[warrants] ingest-utah error', err);
+    return c.json({ error: 'Failed to ingest utah warrants', code: 'INGEST_UTAH_WARRANTS_ERROR' }, 500);
+  }
+});
+
+// ============================================================
+// National warrant search + coverage routes
+// Backs client/src/pages/NationalWarrantSearchPage.tsx
+// ============================================================
+
+// GET /warrants/national-coverage — drives the NationalWarrantSearchPage coverage map.
+// Returns { sources, states_covered, active_warrants, state_status, state_sources, state_warrants }.
+// Falls back to safe zeros on any DB error (pre-migration / cold D1).
+warrants.get('/national-coverage', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const sources = await query<{ state: string | null; source_key: string }>(db,
+      "SELECT state, source_key FROM national_warrant_sources WHERE enabled = 1").catch(() => []);
+    // FBI (US) and Utah County (UT) are code-resident adapters — always counted.
+    const stateSources: Record<string, number> = { US: 1, UT: 1 };
+    for (const s of sources) {
+      const st = (s.state || 'US').toUpperCase();
+      stateSources[st] = (stateSources[st] ?? 0) + 1;
+    }
+    const counts = await query<{ state: string; n: number }>(db,
+      "SELECT COALESCE(state,'US') AS state, COUNT(*) n FROM scraped_warrants WHERE status='active' GROUP BY state").catch(() => []);
+    const stateWarrants: Record<string, number> = {};
+    let activeWarrants = 0;
+    for (const r of counts) {
+      const st = (r.state || 'US').toUpperCase();
+      stateWarrants[st] = (stateWarrants[st] ?? 0) + Number(r.n);
+      activeWarrants += Number(r.n);
+    }
+    const stateStatus: Record<string, 'active' | 'pending' | 'disabled'> = {};
+    for (const st of Object.keys(stateSources)) {
+      stateStatus[st] = (stateWarrants[st] ?? 0) > 0 ? 'active' : 'pending';
+    }
+    return c.json({
+      sources: Object.values(stateSources).reduce((a, b) => a + b, 0),
+      states_covered: Object.keys(stateSources).length,
+      active_warrants: activeWarrants,
+      state_status: stateStatus,
+      state_sources: stateSources,
+      state_warrants: stateWarrants,
+    });
+  } catch {
+    return c.json({ sources: 0, states_covered: 0, active_warrants: 0, state_status: {}, state_sources: {}, state_warrants: {} });
+  }
+});
+
+// POST /warrants/national-search — query the cached scraped_warrants across all sources.
+// Body: { last_name, first_name, dob, state, charge_keyword, warrant_type, offense_level }
+// Returns { total, search_time_ms, by_state, local }.
+// Field names in the SELECT are aliased to match what NationalWarrantSearchPage reads:
+//   source_key→source, date_of_birth→dob, charge_description→charges,
+//   court_name→court, bail_amount→bond_amount, issue_date→issued_date.
+//   offense_level and status are included verbatim (page reads both).
+warrants.post('/national-search', requireRole(...READ_ROLES), async (c) => {
+  const startedAt = Date.now();
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const s = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  // Escape LIKE metacharacters so user input can't accidentally widen the match.
+  const likeContains = (v: string) => `%${v.replace(/[%_\\]/g, '\\$&')}%`;
+  try {
+    const db = getDb(c.env);
+    const filters: string[] = ["status = 'active'"];
+    const params: unknown[] = [];
+    const last = s(body.last_name);
+    if (last) { filters.push("(last_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(likeContains(last), likeContains(last)); }
+    const first = s(body.first_name);
+    if (first) { filters.push("(first_name LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')"); params.push(likeContains(first), likeContains(first)); }
+    const dob = s(body.dob);
+    if (dob) { filters.push('date_of_birth = ?'); params.push(dob); }
+    const st = s(body.state);
+    if (st) { filters.push('UPPER(state) = ?'); params.push(st.toUpperCase()); }
+    const chg = s(body.charge_keyword);
+    if (chg) { filters.push("charge_description LIKE ? ESCAPE '\\'"); params.push(likeContains(chg)); }
+    const wt = s(body.warrant_type);
+    if (wt) { filters.push("warrant_type LIKE ? ESCAPE '\\'"); params.push(likeContains(wt)); }
+    const ol = s(body.offense_level);
+    if (ol) { filters.push("offense_level LIKE ? ESCAPE '\\'"); params.push(likeContains(ol)); }
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT source_key AS source, full_name, first_name, last_name,
+              date_of_birth AS dob, age, city, state,
+              charge_description AS charges, court_name AS court, case_number,
+              bail_amount AS bond_amount, issue_date AS issued_date,
+              warrant_type, offense_level, status, photo_url, detail_url, kind
+         FROM scraped_warrants WHERE ${filters.join(' AND ')} ORDER BY last_seen_at DESC LIMIT 500`,
+      ...params);
+    const byState: Record<string, Record<string, unknown>[]> = {};
+    for (const r of rows) {
+      const k = String(r.state || 'US').toUpperCase();
+      (byState[k] ??= []).push(r);
+    }
+    return c.json({ total: rows.length, search_time_ms: Date.now() - startedAt, by_state: byState, local: [] });
+  } catch (err) {
+    console.error('[warrants/national-search]', err);
+    return c.json({ total: 0, search_time_ms: Date.now() - startedAt, by_state: {}, local: [], error: 'search failed' }, 500);
+  }
+});
+
+// GET /warrants/national/sources — registry + state for the NationalWarrantSearchPage sources panel.
+warrants.get('/national/sources', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT source_key, family, display_name, state, kind, enabled FROM national_warrant_sources ORDER BY state, source_key');
+    return c.json({ data: rows });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// POST /warrants/national/scan — manual full scan across all national sources (fire-and-forget).
+// Same waitUntil pattern as /watch/scan — returns 202 immediately; poll /warrants/watch/runs.
+warrants.post('/national/scan', requireRole(...SCAN_ROLES), async (c) => {
+  c.executionCtx.waitUntil(
+    runAllSourceScans(getDb(c.env)).catch((err) => {
+      console.error('[warrants/national/scan]', err);
+    }),
+  );
+  return c.json({ success: true, started: true, message: 'National scan started; poll /warrants/watch/runs.' }, 202);
 });
 
 export default warrants;

@@ -11,6 +11,8 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -189,8 +191,8 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
           data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: drawPointsRef.current } },
         });
 
-        if (map.getLayer(layerId)) {
-          (map.getSource(sourceId) as any)?.setData?.(
+        if (hasLayer(map, layerId)) {
+          getSourceSafe<any>(map, sourceId)?.setData?.(
             { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: drawPointsRef.current } }
           );
         } else {
@@ -311,8 +313,8 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
     for (const id of overlaySourceIdsRef.current) {
       try {
         if (map) {
-          if (map.getLayer(id)) map.removeLayer(id);
-          if (map.getSource(id)) map.removeSource(id);
+          safeRemoveLayer(map, id);
+          safeRemoveSource(map, id);
         }
       } catch {}
     }
@@ -320,6 +322,9 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
 
     if (!map || !activePlan || !planVisible) return;
 
+    // Guard on STYLE readiness — addSource/addLayer throw "Style is not done
+    // loading" if this render effect fires before the basemap style finishes.
+    whenStyleReady(map, () => {
     let idx = 0;
     for (const item of activePlan.items) {
       if (item.type === 'perimeter' && item.path && item.path.length >= 3) {
@@ -403,6 +408,7 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
         overlayMarkersRef.current.push(marker);
       }
     }
+    });
   }, [map, activePlan, planVisible, popup]);
 
   // ── Cleanup on unmount ─────────────────────────────────────
@@ -414,8 +420,8 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
       for (const id of overlaySourceIdsRef.current) {
         try {
           if (map) {
-            if (map.getLayer(id)) map.removeLayer(id);
-            if (map.getSource(id)) map.removeSource(id);
+            safeRemoveLayer(map, id);
+            safeRemoveSource(map, id);
           }
         } catch {}
       }

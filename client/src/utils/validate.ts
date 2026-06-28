@@ -191,7 +191,7 @@ export function validateField(
 /** Regex pattern strings for use with HTML input `pattern` attribute */
 export const INPUT_PATTERNS = {
   /** US phone: (801) 555-1234 or 8015551234 or 801-555-1234 */
-  phone: '[0-9()\\-\\s+]{7,20}',
+  phone: '[0-9\\(\\)\\-\\s+]{7,20}',
   /** Email: simple pattern for HTML validation */
   email: '[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}',
   /** Badge number: 1-10 alphanumeric */
@@ -201,7 +201,7 @@ export const INPUT_PATTERNS = {
   /** VIN: 17 alphanumeric (no I, O, Q) */
   vin: '[A-HJ-NPR-Za-hj-npr-z0-9]{17}',
   /** License plate: 2-8 alphanumeric */
-  plate: '[A-Za-z0-9\\s-]{2,8}',
+  plate: '[A-Za-z0-9\\s\\-]{2,8}',
   /** Date: YYYY-MM-DD */
   date: '\\d{4}-\\d{2}-\\d{2}',
   /** Currency amount: optional decimals */

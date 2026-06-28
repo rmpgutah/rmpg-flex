@@ -18,6 +18,7 @@ import type { AlertSeverity } from './alertSeverity';
 import { getToneForSeverity, shouldPlayAudio } from './alertSeverity';
 import type { ToneType } from './dispatchTones';
 import { ensureRadioWorklets, buildRadioVoiceChain, createRadioNoiseBed } from './radioProcessor';
+import { normalizeForSpeech } from './speechNormalizer';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -385,6 +386,9 @@ export async function speak(
   // Passive alerts still respect the global mute.
   if (!force && !isSoundEnabled()) return;
   if (severity && !shouldPlayAudio(severity)) return;
+
+  // Normalize shorthand, abbreviations, and codes for proper speech
+  text = normalizeForSpeech(text);
 
   // Mirror every spoken line into the transcript buffer so the
   // DispatcherTranscript drawer and ARIA live regions stay in sync.

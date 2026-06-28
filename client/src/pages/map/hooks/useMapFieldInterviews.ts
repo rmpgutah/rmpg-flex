@@ -31,7 +31,7 @@ const REASON_COLORS: Record<string, string> = {
 };
 
 function getReasonColor(reason: string): string {
-  return REASON_COLORS[reason?.toLowerCase()] || '#666666';
+  return REASON_COLORS[reason?.toLowerCase()] || 'var(--rmpg-500)';
 }
 
 function buildFIInfoContent(fi: FIRecord): string {
@@ -106,7 +106,7 @@ export function useMapFieldInterviews(
             ['==', ['get', 'contact_reason'], 'trespass'], '#f59e0b',
             ['==', ['get', 'contact_reason'], 'suspicious'], '#dc2626',
             ['==', ['get', 'contact_reason'], 'welfare'], '#888888',
-            '#666666',
+            'var(--rmpg-500)',
           ],
           'circle-radius': 8,
           'circle-stroke-color': '#fff',

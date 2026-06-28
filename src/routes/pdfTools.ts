@@ -12,6 +12,7 @@
 import { Hono } from 'hono';
 import { getContainer } from '@cloudflare/containers';
 import type { Env } from '../types';
+import { getPdfSigningKey, bytesToBase64 } from '../utils/pdfSign';
 
 const pdfTools = new Hono<Env>();
 
@@ -89,10 +90,12 @@ pdfTools.post('/encrypt', async (c) => {
 // offline (court/exhibit chain-of-custody). Matches the legacy response shape
 // at legacy/server-vps/src/routes/pdfTools.ts:60.
 //
-// Until PDF_SIGNING_KEY is provisioned as a Worker secret, returns 503 with
-// the same SIGNING_NOT_CONFIGURED code the legacy server uses when its key
-// isn't set. That code path is exercised by clients already (the legacy
-// server has the same fallback), so they degrade gracefully without changes.
+// Now always signs (was a hard 503 "SIGNING_NOT_CONFIGURED"): the key is
+// derived from PDF_SIGNING_KEY when provisioned, else stably from JWT_SECRET,
+// so no secret-provisioning step is required. Returns { signature, signedAt,
+// algorithm:'Ed25519', keyId, ... } — the shape client/src/utils/pdfIntegrity.ts
+// expects. The client still tolerates a null/!signature response (older
+// graceful-unsigned fallback) if signing ever errors.
 pdfTools.post('/sign-payload', async (c) => {
   try {
     const body = await c.req.json<{ formKey?: string; caseNumber?: string; payloadHash?: string }>();
@@ -109,16 +112,25 @@ pdfTools.post('/sign-payload', async (c) => {
       return c.json({ error: 'payloadHash must be a 64-char lowercase SHA-256 hex string' }, 400);
     }
 
-    // No signing key configured on this Worker yet. Return the same 503 the
-    // legacy server returns in the not-configured branch — the client already
-    // handles this code by falling back to an unsigned PDF.
+    // Sign the (formKey | caseNumber | payloadHash) triple with the server's
+    // stable Ed25519 key. Any tamper to those three fields invalidates the
+    // signature — the chain-of-custody guarantee the trailer page relies on.
+    const { key, keyId } = await getPdfSigningKey(c.env);
+    const message = new TextEncoder().encode(`${formKey}|${caseNumber}|${payloadHash}`);
+    const sigBuf = await crypto.subtle.sign('Ed25519', key, message);
+    const signature = bytesToBase64(new Uint8Array(sigBuf));
+    // Server-minted signing timestamp (current wall-clock, not a parsed value).
+    const signedAt = new Date().toISOString(); // new-date-ok
+
     return c.json({
-      error: 'PDF signing is not configured on this server',
-      code: 'SIGNING_NOT_CONFIGURED',
+      signature,
+      signedAt,
+      algorithm: 'Ed25519',
+      keyId,
       formKey,
       caseNumber: caseNumber || '',
       payloadHash,
-    }, 503);
+    });
   } catch (err) {
     return c.json({ error: 'Signing failed', detail: (err as Error)?.message }, 500);
   }

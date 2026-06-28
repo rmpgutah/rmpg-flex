@@ -20,10 +20,12 @@ const COLS_CLASS: Record<number, string> = {
   4: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4',
 };
 
-export default function FieldGrid({ children, cols = 2, className = '' }: FieldGridProps) {
+function FieldGrid({ children, cols = 2, className = '' }: FieldGridProps) {
   return (
     <div className={`grid ${COLS_CLASS[cols]} gap-x-4 gap-y-0.5 ${className}`}>
       {children}
     </div>
   );
 }
+
+export default React.memo(FieldGrid);
