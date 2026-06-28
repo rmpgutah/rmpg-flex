@@ -4,7 +4,8 @@
 // Opens documents in an overlay instead of a secondary tab
 // ============================================================
 
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
 import {
   X,
   Download,
@@ -34,7 +35,7 @@ export default function DocumentViewer({
   type = 'auto',
 }: DocumentViewerProps) {
   // Validate src protocol to prevent javascript:/data: XSS
-  const safeSrc = src && /^(https?:|blob:|data:image\/|data:application\/pdf|\/)/i.test(src) ? src : '';
+  const safeSrcRaw = src && /^(https?:|blob:|data:image\/|data:application\/pdf|\/)/i.test(src) ? src : '';
 
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
@@ -44,14 +45,14 @@ export default function DocumentViewer({
   useEffect(() => {
     if (isOpen) {
       const scrollY = window.scrollY;
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
       document.body.style.top = `-${scrollY}px`;
     }
     return () => {
       const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       document.body.style.position = '';
       document.body.style.width = '';
       document.body.style.top = '';
@@ -81,6 +82,24 @@ export default function DocumentViewer({
           if (lower.startsWith('blob:')) return 'pdf' as const;
           return 'pdf' as const; // default to PDF
         })();
+
+  // Append PDF Open Parameters fragment to suppress Chrome PDFium's
+  // built-in chrome (left thumbnails / navigation pane). User feedback
+  // 2026-05-05: the side panel was redundant since the viewer has its
+  // own page navigation in the header. We pass a fragment because PDF
+  // Open Parameters are read by PDFium directly off the URL hash;
+  // they are inert on browsers that ignore them, so this is safe to
+  // apply unconditionally to the PDF branch only. Param glossary:
+  //   navpanes=0  — hide thumbnails / bookmarks pane
+  //   toolbar=1   — keep top page-nav toolbar visible
+  //   scrollbar=1 — keep page scrollbar
+  //   view=FitH   — fit page horizontally on initial load
+  const safeSrc = (() => {
+    if (!safeSrcRaw) return '';
+    if (detectedType !== 'pdf') return safeSrcRaw;
+    if (safeSrcRaw.includes('#')) return safeSrcRaw;
+    return `${safeSrcRaw}#toolbar=1&navpanes=0&scrollbar=1&view=FitH`;
+  })();
 
   const handleDownload = useCallback(() => {
     const a = document.createElement('a');
@@ -132,9 +151,9 @@ export default function DocumentViewer({
           {detectedType === 'pdf' ? (
             <FileText className="w-4 h-4 text-red-400" />
           ) : (
-            <ImageIcon className="w-4 h-4 text-gray-400" />
+            <ImageIcon className="w-4 h-4 text-rmpg-400" />
           )}
-          <span className="text-sm font-bold text-white truncate max-w-[300px]">{title}</span>
+          <span className="text-sm font-bold text-rmpg-100 truncate max-w-[300px]">{title}</span>
           <span className="text-[10px] text-rmpg-400 uppercase font-mono">
             {detectedType.toUpperCase()}
           </span>
@@ -224,7 +243,7 @@ export default function DocumentViewer({
           {/* Close — bright red, always visible, high z-index */}
           <button type="button"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
-            className="relative z-20 ml-2 px-3 py-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center gap-1 bg-red-700 hover:bg-red-600 text-white font-bold text-xs rounded-sm cursor-pointer"
+            className="relative z-20 ml-2 px-3 py-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center gap-1 bg-red-700 hover:bg-red-600 text-rmpg-100 font-bold text-xs rounded-sm cursor-pointer"
             style={{ touchAction: 'manipulation' }}
             title="Close viewer"
             aria-label="Close"
