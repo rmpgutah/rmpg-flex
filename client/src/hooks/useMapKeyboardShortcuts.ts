@@ -35,6 +35,8 @@ export interface MapShortcutHandlers {
   toggleIncidentReports?: () => void;
   /** E — enforcement clusters toggle */
   toggleEnforcementClusters?: () => void;
+  /** G — coordinate grid toggle */
+  toggleGrid?: () => void;
 }
 
 /** Show a toast/banner with the shortcut list. Provided by caller. */
@@ -59,7 +61,6 @@ export function useMapKeyboardShortcuts(
 
     function onKeyDown(e: KeyboardEvent) {
       if (isTypingInField(e.target)) return;
-      // Skip when modifiers are held — don't clash with Cmd+R, Ctrl+F, etc.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       const key = e.key.toLowerCase();
@@ -78,9 +79,6 @@ export function useMapKeyboardShortcuts(
         }
       })();
       if (!match) return;
-      // Prevent the default browser behavior (e.g. "/" quick-find) for
-      // any key we consume, so officers don't also get an unrelated
-      // browser side-effect.
       e.preventDefault();
       match();
     }
