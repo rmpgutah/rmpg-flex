@@ -74,8 +74,8 @@ export function CaseRelatedSection({ caseId, related, onChanged }: {
           {related.map((r) => (
             <div key={r.id} className="flex items-center gap-2 text-[10px]">
               <span className="text-[8px] font-bold uppercase px-1 py-0.5 border border-brand-600/40 text-brand-300">{r.link_type || 'related'}</span>
-              <span className="font-mono font-bold text-white">{r.case_number || `#${r.id}`}</span>
-              <span className="text-rmpg-300 truncate flex-1">{r.title || ''}</span>
+              <span className="font-mono font-bold text-rmpg-100">{r.case_number || `#${r.id}`}</span>
+              <span className="text-rmpg-300 min-w-0 truncate flex-1">{r.title || ''}</span>
               <IconButton onClick={() => unlink(r.id)} className="text-red-400 hover:text-red-300 flex-shrink-0" aria-label="Unlink case"><Unlink style={{ width: 11, height: 11 }} /></IconButton>
             </div>
           ))}
@@ -96,16 +96,16 @@ export function CaseRelatedSection({ caseId, related, onChanged }: {
                 </select>
                 <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()}
                   placeholder="Search cases (number / title)..." aria-label="Search cases"
-                  className="flex-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  className="flex-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 <button type="button" onClick={search} disabled={searching} className="toolbar-btn toolbar-btn-primary print:hidden">
                   {searching ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Searching" /> : <Search style={{ width: 11, height: 11 }} />}
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent space-y-1">
                 {results.map((r) => (
                   <button type="button" key={r.id} onClick={() => link(r.id)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
-                    <div className="text-[11px] font-bold text-white">{r.case_number} — {r.title}</div>
+                    <div className="text-[11px] font-bold text-rmpg-100">{r.case_number} — {r.title}</div>
                     <div className="text-[9px] text-rmpg-500">{(r.status || '').replace(/_/g, ' ')}</div>
                   </button>
                 ))}

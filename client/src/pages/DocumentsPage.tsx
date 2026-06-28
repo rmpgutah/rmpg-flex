@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FolderOpen, ChevronRight, Trash2, Edit2, Download, ArrowLeft, Loader2, Upload,
   X, FolderPlus, Home, Search, Eye, Info, FileText, HardDrive, Clock, Hash, Shield,
-  Film, Image, Music, Grid3X3, List, ArrowUpDown, CheckSquare, Square, Filter,
-  Pencil,
+  Film, Image as ImageIcon, Music, Grid3X3, List, ArrowUpDown, CheckSquare, Square, Filter,
+  Pencil, LayoutGrid, FileSpreadsheet, FileArchive, FileCode, FileAudio, FileVideo,
+  FileImage, File as FileIcon,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import DossierGrid from './documents/DossierGrid';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
@@ -39,12 +42,24 @@ export default function DocumentsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [breadcrumbs, setBreadcrumbs] = useState<{ id: number; name: string }[]>([]);
-  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
+  // Hydrate the initial folder from ?folder=<id> so a cross-page deep-link
+  // (e.g. Serve Intake "View case folder", Search results) lands the operator
+  // in the right directory instead of dumping them at root and forcing a
+  // manual breadcrumb climb. Same one-shot URL contract used by Equipment /
+  // FlexCam / AuditLog audits.
+  const initialFolderId = (() => {
+    const raw = searchParams.get('folder');
+    if (!raw) return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })();
+  const [currentFolderId, setCurrentFolderId] = useState<number | null>(initialFolderId);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
   // Modal state
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -52,13 +67,25 @@ export default function DocumentsPage() {
   const [renameValue, setRenameValue] = useState('');
   const [uploading, setUploading] = useState(false);
   const [infoFile, setInfoFile] = useState<FileItem | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'desktop'>('desktop');
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'date' | 'type'>('name');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [dragOver, setDragOver] = useState(false);
+  const [windowDragOver, setWindowDragOver] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<Array<{ name: string; done: boolean; error: boolean }>>([]);
   const [filterType, setFilterType] = useState<string | null>(null);
-  const uploadInputRef = React.useRef<HTMLInputElement>(null);
-  const dropZoneRef = React.useRef<HTMLDivElement>(null);
+  // ConfirmDialog state — replaces three native window.confirm() calls
+  // (deleteFolder / deleteFile / bulkDelete). Native prompts are mobile-
+  // hostile, can't show identifying detail, and were already migrated away
+  // from across the rest of the app (see CRM / Notifications / Equipment
+  // audits). All destructive flows now go through ConfirmDialog with a
+  // danger variant so Cancel is pre-focused and Enter doesn't accidentally
+  // destroy.
+  const [pendingDeleteFolder, setPendingDeleteFolder] = useState<Folder | null>(null);
+  const [pendingDeleteFile, setPendingDeleteFile] = useState<FileItem | null>(null);
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
 
   // ── Right-click context menu ──
@@ -67,44 +94,6 @@ export default function DocumentsPage() {
 
   // Clear selection when navigating
   useEffect(() => { setSelectedFiles(new Set()); }, [currentFolderId]);
-
-  const handleFileUpload = async (fileList: FileList) => {
-    if (!fileList.length) return;
-    setUploading(true);
-    const token = localStorage.getItem('rmpg_token');
-    let successCount = 0;
-    for (const file of Array.from(fileList)) {
-      const formData = new FormData();
-      formData.append('files', file);
-      if (currentFolderId) {
-        formData.append('entity_type', 'document_folder');
-        formData.append('entity_id', String(currentFolderId));
-      }
-      try {
-        const resp = await fetch('/api/uploads', {
-          method: 'POST',
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-          body: formData,
-        });
-        if (resp.ok) {
-          const results = await resp.json();
-          // Link the uploaded file to the current folder
-          if (currentFolderId && results?.[0]?.file_id) {
-            await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
-              method: 'POST',
-              body: JSON.stringify({ file_id: results[0].file_id }),
-            }).catch(() => {});
-          }
-          successCount++;
-        }
-      } catch { /* continue with next file */ }
-    }
-    setUploading(false);
-    if (successCount > 0) {
-      addToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
-      fetchContents(currentFolderId);
-    }
-  };
 
   const fetchContents = useCallback(async (folderId: number | null) => {
     setLoading(true);
@@ -121,6 +110,103 @@ export default function DocumentsPage() {
   }, [addToast]);
 
   useEffect(() => { fetchContents(currentFolderId); }, [currentFolderId, fetchContents]);
+
+  // ── URL ↔ state sync ──────────────────────────────────────────────────────
+  // Mirror the visible folder + search query into ?folder=&q= so a refresh,
+  // back-button, or shared link reproduces the exact view the operator was
+  // looking at. `replace: true` keeps the history clean (one entry per real
+  // navigation, not one per keystroke).
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (currentFolderId != null) next.set('folder', String(currentFolderId));
+    else next.delete('folder');
+    if (searchQuery.trim()) next.set('q', searchQuery.trim());
+    else next.delete('q');
+    // Avoid a no-op replace (would still bump history listeners).
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [currentFolderId, searchQuery, searchParams, setSearchParams]);
+
+  // ── Deep-link: ?file_id=<uuid> opens that file once contents are loaded.
+  // One-shot per page load — clear the param after applying so a refresh
+  // doesn't re-pop the modal on every load. Mirrors the FlexCam
+  // (?request_id=) and AuditLog row-click contracts.
+  const pendingFileIdRef = useRef<string | null>(searchParams.get('file_id'));
+  useEffect(() => {
+    const target = pendingFileIdRef.current;
+    if (!target || loading) return;
+    const match = files.find(f => f.file_id === target);
+    if (match) {
+      // PDFs / text / previewable open in their respective viewers; everything
+      // else surfaces the File Info modal so the operator at least sees the
+      // record exists, even if it can't be previewed inline.
+      openFile(match);
+      pendingFileIdRef.current = null;
+      const next = new URLSearchParams(searchParams);
+      next.delete('file_id');
+      setSearchParams(next, { replace: true });
+    }
+    // If the file isn't in the current folder, we don't have enough info
+    // here to navigate elsewhere — toast so the operator knows the link
+    // didn't resolve, then clear so we don't loop on every re-render.
+    else if (!loading) {
+      addToast(`File "${target}" not found in this folder`, 'error');
+      pendingFileIdRef.current = null;
+      const next = new URLSearchParams(searchParams);
+      next.delete('file_id');
+      setSearchParams(next, { replace: true });
+    }
+    // openFile is defined below; we intentionally close over the current
+    // closure each render and only re-run when contents arrive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files, loading, addToast]);
+
+  const handleFileUpload = useCallback(async (fileList: FileList) => {
+    if (!fileList.length) return;
+    setUploading(true);
+    const items = Array.from(fileList);
+    setUploadProgress(items.map(f => ({ name: f.name, done: false, error: false })));
+    const token = localStorage.getItem('rmpg_token');
+    let successCount = 0;
+    for (let i = 0; i < items.length; i++) {
+      const file = items[i];
+      const formData = new FormData();
+      formData.append('files', file);
+      if (currentFolderId) {
+        formData.append('entity_type', 'document_folder');
+        formData.append('entity_id', String(currentFolderId));
+      }
+      try {
+        const resp = await fetch('/api/uploads', {
+          method: 'POST',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+          body: formData,
+        });
+        if (resp.ok) {
+          const results = await resp.json();
+          if (currentFolderId && results?.[0]?.file_id) {
+            await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
+              method: 'POST',
+              body: JSON.stringify({ file_id: results[0].file_id }),
+            }).catch(() => {});
+          }
+          successCount++;
+          setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
+        } else {
+          setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
+        }
+      } catch {
+        setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
+      }
+    }
+    setUploading(false);
+    if (successCount > 0) {
+      addToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
+      fetchContents(currentFolderId);
+    }
+    setTimeout(() => setUploadProgress([]), 3000);
+  }, [currentFolderId, addToast, fetchContents]);
 
   const navigateTo = (folderId: number | null) => {
     setCurrentFolderId(folderId);
@@ -148,13 +234,19 @@ export default function DocumentsPage() {
     } catch (err: any) { addToast(err.message || 'Failed to rename', 'error'); }
   };
 
-  const deleteFolder = async (folder: Folder) => {
-    if (!confirm(`Delete folder "${folder.name}" and all subfolders? Files will be unlinked but not deleted.`)) return;
+  // Stages a folder for deletion via ConfirmDialog (replaces window.confirm).
+  const requestDeleteFolder = (folder: Folder) => setPendingDeleteFolder(folder);
+  const performDeleteFolder = async () => {
+    const folder = pendingDeleteFolder;
+    if (!folder) return;
+    setConfirmBusy(true);
     try {
       await apiFetch(`/documents/folders/${folder.id}`, { method: 'DELETE' });
       fetchContents(currentFolderId);
       addToast('Folder deleted', 'success');
+      setPendingDeleteFolder(null);
     } catch (err: any) { addToast(err.message || 'Failed to delete', 'error'); }
+    finally { setConfirmBusy(false); }
   };
 
   const formatSize = (bytes: number) => {
@@ -163,21 +255,27 @@ export default function DocumentsPage() {
     return `${(bytes / 1048576).toFixed(1)} MB`;
   };
 
-  // File delete
-  const deleteFile = async (file: FileItem) => {
-    if (!confirm(`Delete "${file.original_name}"? This cannot be undone.`)) return;
+  // Stages a file for deletion via ConfirmDialog (replaces window.confirm).
+  const requestDeleteFile = (file: FileItem) => setPendingDeleteFile(file);
+  const performDeleteFile = async () => {
+    const file = pendingDeleteFile;
+    if (!file) return;
+    setConfirmBusy(true);
     try {
       await apiFetch(`/uploads/${file.file_id}`, { method: 'DELETE' });
       fetchContents(currentFolderId);
       addToast('File deleted', 'success');
       setSelectedFiles(prev => { const n = new Set(prev); n.delete(file.file_id); return n; });
+      setPendingDeleteFile(null);
     } catch (err: any) { addToast(err.message || 'Failed to delete', 'error'); }
+    finally { setConfirmBusy(false); }
   };
 
-  // Bulk delete
-  const bulkDelete = async () => {
-    if (selectedFiles.size === 0) return;
-    if (!confirm(`Delete ${selectedFiles.size} selected file${selectedFiles.size > 1 ? 's' : ''}?`)) return;
+  // Stages a bulk delete via ConfirmDialog.
+  const requestBulkDelete = () => { if (selectedFiles.size > 0) setPendingBulkDelete(true); };
+  const performBulkDelete = async () => {
+    if (selectedFiles.size === 0) { setPendingBulkDelete(false); return; }
+    setConfirmBusy(true);
     let count = 0;
     for (const fid of selectedFiles) {
       try { await apiFetch(`/uploads/${fid}`, { method: 'DELETE' }); count++; } catch { /* continue */ }
@@ -185,6 +283,8 @@ export default function DocumentsPage() {
     setSelectedFiles(new Set());
     fetchContents(currentFolderId);
     addToast(`${count} file${count > 1 ? 's' : ''} deleted`, 'success');
+    setPendingBulkDelete(false);
+    setConfirmBusy(false);
   };
 
   // Toggle file selection
@@ -200,13 +300,89 @@ export default function DocumentsPage() {
     else setSelectedFiles(new Set(filteredFiles.map(f => f.file_id)));
   };
 
-  // Drag and drop onto file area
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); };
-  const handleDragLeave = () => setDragOver(false);
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation(); setDragOver(false);
-    if (e.dataTransfer.files.length > 0) handleFileUpload(e.dataTransfer.files);
-  };
+  // Window-level drag-and-drop: counter ref prevents child-element flicker
+  useEffect(() => {
+    const onEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.preventDefault();
+      dragCounterRef.current++;
+      setWindowDragOver(true);
+    };
+    const onLeave = () => {
+      dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+      if (dragCounterRef.current === 0) setWindowDragOver(false);
+    };
+    const onOver = (e: DragEvent) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setWindowDragOver(false);
+      if (e.dataTransfer?.files.length) handleFileUpload(e.dataTransfer.files);
+    };
+    window.addEventListener('dragenter', onEnter);
+    window.addEventListener('dragleave', onLeave);
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onEnter);
+      window.removeEventListener('dragleave', onLeave);
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [handleFileUpload]);
+
+  // ── Keyboard cascade ──────────────────────────────────────────────────────
+  // - Esc: peel one layer of state at a time, modal-first, so the operator
+  //   doesn't have to mouse-click to back out:
+  //     file-info modal → rename modal → new-folder modal → confirm dialogs
+  //     → clear search → clear selection → drop one folder breadcrumb.
+  //   Matches the page-wide audit contract (CRM, FlexCam, AuditLog).
+  //   NOTE: each individual delete-confirm dialog manages its own Esc via
+  //   ConfirmDialog's focus trap, but we still gate the cascade on its
+  //   pending state so Esc here doesn't fire two layers in one keystroke.
+  // - 'N': opens the file picker (primary "new" action for a file browser).
+  //   Skipped while typing into an input/textarea or with any modal open.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const anyModalOpen = () =>
+      !!infoFile || !!renamingFolder || showNewFolder ||
+      !!pendingDeleteFile || !!pendingDeleteFolder || pendingBulkDelete;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Delegate Esc to whichever ConfirmDialog/modal owns it first;
+        // we only intervene when none of them did.
+        if (infoFile) { setInfoFile(null); return; }
+        if (renamingFolder) { setRenamingFolder(null); return; }
+        if (showNewFolder) { setShowNewFolder(false); return; }
+        if (pendingDeleteFile) { setPendingDeleteFile(null); return; }
+        if (pendingDeleteFolder) { setPendingDeleteFolder(null); return; }
+        if (pendingBulkDelete) { setPendingBulkDelete(false); return; }
+        if (searchQuery) { setSearchQuery(''); return; }
+        if (selectedFiles.size > 0) { setSelectedFiles(new Set()); return; }
+        if (currentFolderId != null) {
+          // "Up one level" — drop to parent breadcrumb, root if none.
+          const parent = breadcrumbs.length > 1 ? breadcrumbs[breadcrumbs.length - 2].id : null;
+          setCurrentFolderId(parent);
+          return;
+        }
+        return;
+      }
+      if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (isTypingInField(e.target)) return;
+        if (anyModalOpen()) return;
+        e.preventDefault();
+        // Upload Files is the primary action on this page — same surface as
+        // the toolbar button, so muscle memory is "N = new upload".
+        uploadInputRef.current?.click();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [infoFile, renamingFolder, showNewFolder, pendingDeleteFile, pendingDeleteFolder, pendingBulkDelete, searchQuery, selectedFiles, currentFolderId, breadcrumbs]);
 
   // Storage stats
   const storageStats = React.useMemo(() => {
@@ -221,16 +397,23 @@ export default function DocumentsPage() {
     return { totalSize, totalFiles: files.length, byType };
   }, [files]);
 
-  const getFileIcon = (mime: string) => {
-    if (mime?.startsWith('image/')) return '🖼️';
-    if (mime === 'application/pdf') return '📄';
-    if (mime?.startsWith('video/')) return '🎬';
-    if (mime?.startsWith('audio/')) return '🎵';
-    if (mime?.includes('word') || mime?.includes('document')) return '📝';
-    if (mime?.includes('sheet') || mime?.includes('excel')) return '📊';
-    if (mime?.includes('zip') || mime?.includes('compressed')) return '📦';
-    if (mime?.includes('text/')) return '📃';
-    return '📎';
+  // Lucide-icon resolver for files. Replaces the previous emoji map (🖼️ 📄 🎬
+  // …) which (a) rendered inconsistently across the Spillman day/night theme —
+  // emojis don't pick up `text-rmpg-*` color — and (b) violated the page-audit
+  // rule against emoji chrome. Returns the component + a sensible tint per
+  // category so the dossier / list / grid views all look like the rest of the
+  // Records skin.
+  const getFileIconMeta = (mime: string): { Icon: React.ComponentType<{ className?: string }>; tint: string } => {
+    if (mime?.startsWith('image/')) return { Icon: FileImage, tint: 'text-blue-400' };
+    if (mime === 'application/pdf') return { Icon: FileText, tint: 'text-red-400' };
+    if (mime?.startsWith('video/')) return { Icon: FileVideo, tint: 'text-purple-400' };
+    if (mime?.startsWith('audio/')) return { Icon: FileAudio, tint: 'text-amber-400' };
+    if (mime?.includes('word') || mime?.includes('document')) return { Icon: FileText, tint: 'text-brand-400' };
+    if (mime?.includes('sheet') || mime?.includes('excel')) return { Icon: FileSpreadsheet, tint: 'text-emerald-400' };
+    if (mime?.includes('zip') || mime?.includes('compressed') || mime?.includes('archive')) return { Icon: FileArchive, tint: 'text-amber-500' };
+    if (mime?.includes('json') || mime?.includes('xml') || mime?.includes('javascript') || mime?.includes('text/x-')) return { Icon: FileCode, tint: 'text-cyan-400' };
+    if (mime?.startsWith('text/')) return { Icon: FileText, tint: 'text-rmpg-300' };
+    return { Icon: FileIcon, tint: 'text-rmpg-400' };
   };
 
   const canPreview = (mime: string) => {
@@ -262,12 +445,27 @@ export default function DocumentsPage() {
   }, [files, q, filterType, sortBy]);
 
   // Open a file the same way the row buttons do: PDFs route through the
-  // internal pdf-editor viewer, other previewables open in a new tab.
+  // internal pdf-editor viewer, other previewables open in a new tab, text files in the text editor.
+  const TEXT_MIMES = new Set([
+    'text/plain', 'text/csv', 'text/markdown', 'text/x-markdown',
+    'application/json', 'text/xml', 'application/xml',
+    'text/javascript', 'application/javascript',
+    'text/x-python', 'text/x-sh', 'text/x-yaml', 'application/x-yaml',
+  ]);
+
   const openFile = (file: FileItem) => {
     if (file.mime_type === 'application/pdf') {
       const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name, view: '1' });
       if (currentFolderId != null) params.set('folderId', String(currentFolderId));
       navigate(`/pdf-editor?${params.toString()}`);
+    } else if (file.mime_type === 'text/html') {
+      const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name });
+      if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+      navigate(`/document-writer?${params.toString()}`);
+    } else if (TEXT_MIMES.has(file.mime_type)) {
+      const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name, mime: file.mime_type });
+      if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+      navigate(`/text-editor?${params.toString()}`);
     } else if (canPreview(file.mime_type)) {
       window.open(authedImageUrl(`/api/uploads/${file.file_id}`), '_blank', 'noopener,noreferrer');
     } else {
@@ -281,7 +479,7 @@ export default function DocumentsPage() {
     m.separator(),
     m.copy('Copy name', folder.name),
     m.copyId(folder.id),
-    ...(isAdmin ? [m.separator(), m.action('Delete', () => deleteFolder(folder), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => requestDeleteFolder(folder), { icon: <Trash2 size={12} />, danger: true })] : []),
   ];
 
   const buildFileMenu = (file: FileItem): ContextMenuItem[] => [
@@ -298,7 +496,7 @@ export default function DocumentsPage() {
     m.separator(),
     m.copy('Copy name', file.original_name),
     m.copyId(file.file_id),
-    ...(isAdmin ? [m.separator(), m.action('Delete', () => deleteFile(file), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => requestDeleteFile(file), { icon: <Trash2 size={12} />, danger: true })] : []),
   ];
 
   return (
@@ -339,7 +537,7 @@ export default function DocumentsPage() {
           <input id="ff-documentspage-1" type="text" className="input-dark pl-9 w-full text-[11px]" placeholder="Search folders and files..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -349,10 +547,13 @@ export default function DocumentsPage() {
       {/* Toolbar: view toggle + sort + filter + bulk actions + stats */}
       <div className="px-4 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-2 text-[9px] flex-wrap">
         {/* View toggle */}
-        <button type="button" onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-          className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-white transition-colors" title={viewMode === 'list' ? 'Grid view' : 'List view'}>
-          {viewMode === 'list' ? <Grid3X3 className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
-        </button>
+        {(['desktop', 'grid', 'list'] as const).map(mode => (
+          <button key={mode} type="button" onClick={() => setViewMode(mode)}
+            title={mode === 'desktop' ? 'Dossier (icon) view' : mode === 'grid' ? 'Grid view' : 'List view'}
+            className={`p-1 transition-colors ${viewMode === mode ? 'text-brand-400 bg-brand-900/30' : 'text-rmpg-400 hover:bg-rmpg-600 hover:text-rmpg-100'}`}>
+            {mode === 'desktop' ? <LayoutGrid className="w-3.5 h-3.5" /> : mode === 'grid' ? <Grid3X3 className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
+          </button>
+        ))}
         <span className="w-px h-3 bg-rmpg-700" />
         {/* Sort */}
         <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
@@ -376,7 +577,7 @@ export default function DocumentsPage() {
           <>
             <span className="w-px h-3 bg-rmpg-700 ml-1" />
             <span className="text-brand-400 font-bold">{selectedFiles.size} selected</span>
-            <button type="button" onClick={bulkDelete} className="px-1.5 py-0.5 text-red-400 hover:text-red-300 border border-red-700/50 hover:bg-red-900/20 font-medium">
+            <button type="button" onClick={requestBulkDelete} className="px-1.5 py-0.5 text-red-400 hover:text-red-300 border border-red-700/50 hover:bg-red-900/20 font-medium">
               <Trash2 className="w-3 h-3 inline mr-0.5" /> Delete
             </button>
           </>
@@ -396,17 +597,51 @@ export default function DocumentsPage() {
       </div>
 
       {/* Content */}
-      <div ref={dropZoneRef} className={`flex-1 overflow-auto p-4 transition-colors ${dragOver ? 'bg-brand-900/10 ring-2 ring-brand-500/50 ring-inset' : ''}`}
-        onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-        {dragOver && (
-          <div className="flex items-center justify-center py-8 mb-4 border-2 border-dashed border-brand-500/50 bg-brand-900/5 text-brand-400 text-sm font-bold">
+      <div className={`flex-1 overflow-auto transition-colors ${windowDragOver ? 'bg-brand-900/10 ring-2 ring-brand-500/50 ring-inset' : ''}`}>
+        {windowDragOver && (
+          <div className="flex items-center justify-center py-8 m-4 border-2 border-dashed border-brand-500/50 bg-brand-900/5 text-brand-400 text-sm font-bold">
             <Upload className="w-5 h-5 mr-2" /> Drop files here to upload
           </div>
         )}
         {loading ? (
           <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-rmpg-400" /></div>
+        ) : viewMode === 'desktop' ? (
+          /* ── DOSSIER (desktop icon) VIEW ── */
+          <DossierGrid
+            folders={filteredFolders as import('./documents/DossierGrid').DossierFolder[]}
+            files={filteredFiles as import('./documents/DossierGrid').DossierFile[]}
+            selectedFiles={selectedFiles}
+            isLoading={loading}
+            searchQuery={searchQuery}
+            onFolderOpen={navigateTo}
+            onFileOpen={file => openFile(file as FileItem)}
+            onFileSelect={(fileId, multi) => {
+              if (multi) toggleSelect(fileId);
+              else setSelectedFiles(prev => prev.has(fileId) && prev.size === 1 ? new Set() : new Set([fileId]));
+            }}
+            onFolderContextMenu={(e, folder) => openMenu(e, buildFolderMenu(folder as Folder))}
+            onFileContextMenu={(e, file) => openMenu(e, buildFileMenu(file as FileItem))}
+            headerSlot={<>
+              {currentFolderId && (
+                <button type="button"
+                  onClick={() => navigateTo(breadcrumbs.length > 1 ? breadcrumbs[breadcrumbs.length - 2].id : null)}
+                  className="dossier-tile group"
+                  aria-label="Go up">
+                  <div className="dossier-tile-icon bg-rmpg-800 border border-rmpg-700 group-hover:bg-rmpg-700">
+                    <ArrowLeft size={26} className="text-rmpg-400" />
+                  </div>
+                  <span className="dossier-tile-label text-rmpg-500">Up</span>
+                </button>
+              )}
+              {!searchQuery && (
+                <div className="w-full">
+                  <DocumentsAppsShelf currentFolderId={currentFolderId} />
+                </div>
+              )}
+            </>}
+          />
         ) : (
-          <div className={viewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : 'space-y-1'}>
+          <div className={`p-4 ${viewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2' : 'space-y-1'}`}>
             {/* Back button */}
             {currentFolderId && (
               <button type="button"
@@ -417,9 +652,7 @@ export default function DocumentsPage() {
               </button>
             )}
 
-            {/* Apps shelf — integrated tools that operate on the documents
-                in this folder. The PDF Editor is the first integrated app;
-                future apps (image annotator, video reviewer) can drop in here. */}
+            {/* Apps shelf */}
             {!searchQuery && (
               <DocumentsAppsShelf currentFolderId={currentFolderId} />
             )}
@@ -435,7 +668,7 @@ export default function DocumentsPage() {
               >
                 <FolderOpen className="w-5 h-5 text-amber-400 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium text-white truncate block">{folder.name}</span>
+                  <span className="text-sm font-medium text-rmpg-100 truncate block">{folder.name}</span>
                   <span className="text-[9px] text-rmpg-500">
                     {folder.child_count > 0 ? `${folder.child_count} folder${folder.child_count !== 1 ? 's' : ''}` : ''}
                     {folder.child_count > 0 && folder.file_count > 0 ? ' · ' : ''}
@@ -443,14 +676,14 @@ export default function DocumentsPage() {
                     {!folder.child_count && !folder.file_count ? 'Empty' : ''}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                   {isAdmin && (
                     <>
                       <button type="button" onClick={() => { setRenamingFolder(folder); setRenameValue(folder.name); }}
                         className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400 transition-colors" title="Rename">
                         <Edit2 className="w-3 h-3" />
                       </button>
-                      <button type="button" onClick={() => deleteFolder(folder)}
+                      <button type="button" onClick={() => requestDeleteFolder(folder)}
                         className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -481,11 +714,11 @@ export default function DocumentsPage() {
                 onClick={() => toggleSelect(file.file_id)}
                 onContextMenu={(e) => openMenu(e, buildFileMenu(file))}
               >
-                <span className="text-3xl">{getFileIcon(file.mime_type)}</span>
+                {(() => { const { Icon, tint } = getFileIconMeta(file.mime_type); return <Icon className={`w-8 h-8 ${tint}`} />; })()}
                 <span className="text-[10px] text-rmpg-200 text-center truncate w-full font-medium">{file.original_name}</span>
                 <span className="text-[8px] text-rmpg-500">{formatSize(file.file_size)}</span>
                 {/* Hover actions */}
-                <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                   <button type="button" onClick={() => setInfoFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-amber-400"><Info className="w-3 h-3" /></button>
                   {file.mime_type === 'application/pdf' && (
                     <button type="button"
@@ -495,10 +728,10 @@ export default function DocumentsPage() {
                         if (currentFolderId != null) params.set('folderId', String(currentFolderId));
                         navigate(`/pdf-editor?${params.toString()}`);
                       }}
-                      className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-[#d4a017]"><Pencil className="w-3 h-3" /></button>
+                      className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>
                   )}
                   <a href={authedImageUrl(`/api/uploads/${file.file_id}/download`)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-green-400"><Download className="w-3 h-3" /></a>
-                  {isAdmin && <button type="button" onClick={() => deleteFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
+                  {isAdmin && <button type="button" onClick={() => requestDeleteFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
                 </div>
               </div>
             ) : (
@@ -510,7 +743,7 @@ export default function DocumentsPage() {
                 <button type="button" onClick={() => toggleSelect(file.file_id)} className="flex-shrink-0 text-rmpg-500 hover:text-brand-400">
                   {selectedFiles.has(file.file_id) ? <CheckSquare className="w-4 h-4 text-brand-400" /> : <Square className="w-4 h-4" />}
                 </button>
-                <span className="text-lg flex-shrink-0">{getFileIcon(file.mime_type)}</span>
+                {(() => { const { Icon, tint } = getFileIconMeta(file.mime_type); return <Icon className={`w-4 h-4 flex-shrink-0 ${tint}`} />; })()}
                 <div className="flex-1 min-w-0">
                   <span className="text-xs font-medium text-rmpg-200 truncate block">{file.original_name}</span>
                   <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {parseTimestamp(file.created_at).toLocaleDateString()} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
@@ -550,7 +783,7 @@ export default function DocumentsPage() {
                         if (currentFolderId != null) params.set('folderId', String(currentFolderId));
                         navigate(`/pdf-editor?${params.toString()}`);
                       }}
-                      className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-[#d4a017] transition-colors" title="Edit PDF">
+                      className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400 transition-colors" title="Edit PDF">
                       <Pencil className="w-3 h-3" />
                     </button>
                   )}
@@ -559,7 +792,7 @@ export default function DocumentsPage() {
                     <Download className="w-3 h-3" />
                   </a>
                   {isAdmin && (
-                    <button type="button" onClick={() => deleteFile(file)}
+                    <button type="button" onClick={() => requestDeleteFile(file)}
                       className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -570,25 +803,51 @@ export default function DocumentsPage() {
 
             {/* Empty state */}
             {filteredFolders.length === 0 && filteredFiles.length === 0 && !loading && (
-              <div className="text-center py-16">
+              <div className="text-center py-12">
                 <FolderOpen className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
                 <p className="text-sm text-rmpg-400 font-medium">
                   {searchQuery ? 'No results match your search' : currentFolderId ? 'This folder is empty' : 'No document folders yet'}
                 </p>
-                <p className="text-[10px] text-rmpg-600 mt-1">
-                  {!currentFolderId && !searchQuery && 'Folders are auto-created when process service documents are uploaded via Serve Intake'}
-                </p>
+                {!currentFolderId && !searchQuery && (
+                  <p className="text-[10px] text-rmpg-600 mt-1">Folders are auto-created when process service documents are uploaded via Serve Intake</p>
+                )}
+                {/* Clickable drop zone for empty folders */}
+                {!searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => uploadInputRef.current?.click()}
+                    className="mt-6 mx-auto flex flex-col items-center gap-3 px-12 py-10 border-2 border-dashed border-rmpg-700 hover:border-brand-500/60 hover:bg-brand-900/10 transition-colors group max-w-xs w-full"
+                  >
+                    <Upload className="w-8 h-8 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
+                    <span className="text-xs text-rmpg-500 group-hover:text-rmpg-300 transition-colors">Drop files here or click to browse</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
         )}
       </div>
 
+      {/* Status bar — shown in all view modes */}
+      <div className="flex items-center gap-3 px-4 py-1 border-t border-rmpg-800/50 bg-surface-sunken text-[9px] text-rmpg-500 flex-shrink-0">
+        <span>{filteredFolders.length > 0 ? `${filteredFolders.length} folder${filteredFolders.length !== 1 ? 's' : ''}` : ''}</span>
+        {filteredFolders.length > 0 && filteredFiles.length > 0 && <span className="text-rmpg-700">·</span>}
+        <span>{filteredFiles.length > 0 ? `${filteredFiles.length} file${filteredFiles.length !== 1 ? 's' : ''}` : ''}</span>
+        {selectedFiles.size > 0 && (
+          <>
+            <span className="text-rmpg-700">·</span>
+            <span className="text-brand-400">{selectedFiles.size} selected</span>
+            <button type="button" onClick={requestBulkDelete} className="text-red-400 hover:text-red-300 ml-1">Delete selected</button>
+          </>
+        )}
+        <span className="ml-auto">{storageStats.totalSize > 0 ? formatSize(storageStats.totalSize) : ''}</span>
+      </div>
+
       {/* New Folder Modal */}
       {showNewFolder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="panel-surface w-full max-w-sm mx-4 p-4 space-y-3">
-            <h3 className="text-xs font-bold text-white uppercase">New Folder</h3>
+            <h3 className="text-xs font-bold text-rmpg-100 uppercase">New Folder</h3>
             <input id="ff-documentspage-2" type="text" className="input-dark text-xs w-full" placeholder="Folder name..."
               value={newFolderName} onChange={e => setNewFolderName(e.target.value)} autoFocus
               onKeyDown={e => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') setShowNewFolder(false); }} />
@@ -604,7 +863,7 @@ export default function DocumentsPage() {
       {renamingFolder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="panel-surface w-full max-w-sm mx-4 p-4 space-y-3">
-            <h3 className="text-xs font-bold text-white uppercase">Rename Folder</h3>
+            <h3 className="text-xs font-bold text-rmpg-100 uppercase">Rename Folder</h3>
             <input id="ff-documentspage-3" type="text" className="input-dark text-xs w-full" value={renameValue} onChange={e => setRenameValue(e.target.value)} autoFocus
               onKeyDown={e => { if (e.key === 'Enter') renameFolder(); if (e.key === 'Escape') setRenamingFolder(null); }} />
             <div className="flex justify-end gap-2">
@@ -633,14 +892,14 @@ export default function DocumentsPage() {
             <div className="panel-surface w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               {/* Header */}
               <div className="flex items-center gap-3 p-4 border-b border-rmpg-700">
-                <div className="w-12 h-12 flex items-center justify-center bg-brand-900/30 border border-brand-700/50 text-2xl">
-                  {getFileIcon(f.mime_type)}
+                <div className="w-12 h-12 flex items-center justify-center bg-brand-900/30 border border-brand-700/50">
+                  {(() => { const { Icon, tint } = getFileIconMeta(f.mime_type); return <Icon className={`w-7 h-7 ${tint}`} />; })()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-bold text-white truncate">{f.original_name}</h3>
+                  <h3 className="text-sm font-bold text-rmpg-100 truncate">{f.original_name}</h3>
                   <p className="text-[10px] text-rmpg-400">{category} · .{ext}</p>
                 </div>
-                <button type="button" onClick={() => setInfoFile(null)} className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-white">
+                <button type="button" onClick={() => setInfoFile(null)} className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-rmpg-100">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -694,7 +953,7 @@ export default function DocumentsPage() {
                 {(isImage || isVideo || isAudio || isPdf) && (
                   <>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mt-4 mb-2 flex items-center gap-1">
-                      {isVideo ? <Film className="w-3 h-3" /> : isImage ? <Image className="w-3 h-3" /> : isAudio ? <Music className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                      {isVideo ? <Film className="w-3 h-3" /> : isImage ? <ImageIcon className="w-3 h-3" /> : isAudio ? <Music className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
                       Media Details
                     </div>
                     <DetailRow icon={FileText} label="Content Type" value={
@@ -733,6 +992,57 @@ export default function DocumentsPage() {
           </div>
         );
       })()}
+
+      {/* ── Destructive-action ConfirmDialogs ── */}
+      <ConfirmDialog
+        isOpen={!!pendingDeleteFolder}
+        onClose={() => { if (!confirmBusy) setPendingDeleteFolder(null); }}
+        onConfirm={performDeleteFolder}
+        title="Delete Folder"
+        message={pendingDeleteFolder
+          ? `Delete "${pendingDeleteFolder.name}" and all subfolders? Files inside will be unlinked from this folder but not deleted from storage.`
+          : ''}
+        details={pendingDeleteFolder && (
+          <>
+            {pendingDeleteFolder.child_count > 0 && (
+              <div>{pendingDeleteFolder.child_count} subfolder{pendingDeleteFolder.child_count !== 1 ? 's' : ''}</div>
+            )}
+            {pendingDeleteFolder.file_count > 0 && (
+              <div>{pendingDeleteFolder.file_count} file{pendingDeleteFolder.file_count !== 1 ? 's' : ''} (will be unlinked, not deleted)</div>
+            )}
+          </>
+        )}
+        confirmLabel="Delete folder"
+        confirmVariant="danger"
+        isLoading={confirmBusy}
+      />
+      <ConfirmDialog
+        isOpen={!!pendingDeleteFile}
+        onClose={() => { if (!confirmBusy) setPendingDeleteFile(null); }}
+        onConfirm={performDeleteFile}
+        title="Delete File"
+        message={pendingDeleteFile
+          ? `Delete "${pendingDeleteFile.original_name}"? This removes the underlying R2 object and cannot be undone.`
+          : ''}
+        details={pendingDeleteFile && (
+          <>
+            <div>{formatSize(pendingDeleteFile.file_size)} · {pendingDeleteFile.mime_type}</div>
+          </>
+        )}
+        confirmLabel="Delete file"
+        confirmVariant="danger"
+        isLoading={confirmBusy}
+      />
+      <ConfirmDialog
+        isOpen={pendingBulkDelete}
+        onClose={() => { if (!confirmBusy) setPendingBulkDelete(false); }}
+        onConfirm={performBulkDelete}
+        title="Delete Selected Files"
+        message={`Delete ${selectedFiles.size} selected file${selectedFiles.size > 1 ? 's' : ''}? Each file is removed from R2 and cannot be recovered.`}
+        confirmLabel={`Delete ${selectedFiles.size}`}
+        confirmVariant="danger"
+        isLoading={confirmBusy}
+      />
     </div>
   );
 }
@@ -743,7 +1053,7 @@ function DetailRow({ icon: Icon, label, value, mono }: { icon: React.ElementType
     <div className="flex items-center gap-2 py-1.5 border-b border-rmpg-800/30 text-[11px]">
       <Icon className="w-3 h-3 text-rmpg-500 flex-shrink-0" />
       <span className="text-rmpg-400 w-24 flex-shrink-0">{label}</span>
-      <span className={`text-rmpg-200 flex-1 truncate ${mono ? 'font-mono text-[10px]' : ''}`}>{value}</span>
+      <span className={`text-rmpg-200 min-w-0 flex-1 truncate ${mono ? 'font-mono text-[10px]' : ''}`}>{value}</span>
     </div>
   );
 }

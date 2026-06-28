@@ -10,6 +10,19 @@
 
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { COLOR } from './pdfTokens';
+
+export interface LinkedIntelEntry {
+  id: number;
+  report_number?: string | null;
+  title?: string | null;
+  threat_level?: string | null;
+  source_reliability?: string | null;
+  info_credibility?: string | null;
+  handling_code?: string | null;
+  disseminated_at?: string | null;
+  role?: string | null;
+}
 
 export interface DossierData {
   person: Record<string, any>;
@@ -19,6 +32,9 @@ export interface DossierData {
   associates: Array<{ person_id: number; name: string; shared_events: number; kinds: string[] }>;
   vehicles: Array<Record<string, any>>;
   addresses: Array<{ address: string; source: string }>;
+  // Optional — older callers may not pass these; PDF degrades gracefully.
+  linked_intel?: LinkedIntelEntry[];
+  escalation?: { recent: number; baseline: number; ratio: number; trend: string } | null;
 }
 
 const GOLD = '#d4a017';
@@ -56,8 +72,8 @@ export function generateDossierPdf(data: DossierData): void {
     y += lines.length * (size + 2.5);
   };
 
-  // Banner
-  doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 64, 'F');
+  // Banner — dark grey (matches the report-wide BG_SECTION_HDR header treatment)
+  doc.setFillColor(...COLOR.BG_SECTION_HDR); doc.rect(0, 0, W, 64, 'F');
   doc.setTextColor(GOLD); doc.setFontSize(15); doc.setFont('Arial', 'bold');
   doc.text('RMPG FLEX — PERSON DOSSIER', M, 27);
   doc.setFontSize(11); doc.setTextColor(255);
@@ -81,6 +97,14 @@ export function generateDossierPdf(data: DossierData): void {
   } catch { /* section degraded */ }
 
   try {
+    if (data.escalation && data.escalation.trend && data.escalation.trend !== 'stable') {
+      sectionHeader('ACTIVITY TREND');
+      const r = data.escalation;
+      row(`Trend: ${r.trend.toUpperCase()}    Last 30d: ${r.recent} events    90d baseline: ${r.baseline.toFixed(1)}    Ratio: ${r.ratio >= 99 ? '∞' : `${r.ratio.toFixed(1)}×`}`);
+    }
+  } catch { /* section degraded */ }
+
+  try {
     if (data.addresses.length) {
       sectionHeader('ADDRESSES');
       for (const a of data.addresses) row(`${a.address}  —  ${a.source}`);
@@ -100,6 +124,23 @@ export function generateDossierPdf(data: DossierData): void {
       sectionHeader('KNOWN ASSOCIATES');
       for (const a of data.associates)
         row(`${a.name} (#${a.person_id})  —  ${a.shared_events} shared event${a.shared_events === 1 ? '' : 's'} (${a.kinds.join(', ')})`);
+    }
+  } catch { /* section degraded */ }
+
+  try {
+    if (data.linked_intel && data.linked_intel.length) {
+      sectionHeader(`LINKED INTELLIGENCE (${data.linked_intel.length})`);
+      for (const r of data.linked_intel) {
+        const head = `${r.report_number || `IR-${r.id}`}${r.threat_level ? `  [${String(r.threat_level).toUpperCase()}]` : ''}${r.role ? `  (${r.role})` : ''}`;
+        row(head);
+        if (real(r.title)) row(String(r.title), 12);
+        const meta: string[] = [];
+        if (real(r.disseminated_at)) meta.push(`Disseminated ${String(r.disseminated_at).slice(0, 10)}`);
+        if (real(r.handling_code)) meta.push(`Handling: ${r.handling_code}`);
+        if (real(r.source_reliability)) meta.push(`Source: ${r.source_reliability}`);
+        if (real(r.info_credibility)) meta.push(`Info: ${r.info_credibility}`);
+        if (meta.length) row(meta.join('   '), 12, 7.5);
+      }
     }
   } catch { /* section degraded */ }
 

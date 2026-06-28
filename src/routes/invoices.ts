@@ -1,11 +1,20 @@
 // ============================================================
-// RMPG Flex — Invoices summary (InvoicesPage stats tile)
+// RMPG Flex — Invoices summary (InvoicesPage stats tile) + PDF data
 // ============================================================
 // InvoicesPage.tsx calls GET /api/invoices/stats on mount. Full invoice
 // CRUD lives under /api/billing/invoices (src/routes/billing.ts); this tiny
 // router only owns the /api/invoices/* namespace the page's summary tile
 // uses, computed from the live `invoices` table. Legacy 500'd this path
 // (live sweep 2026-06-02).
+//
+// 2026-06-22 (Billing audit PR #1648): added GET /:id/pdf-data — the
+// denormalized payload AdminInvoiceTab's Preview/Download PDF/Print buttons
+// pass into client/src/utils/invoicePdfGenerator.ts. The endpoint was
+// referenced from the client but never implemented on the Worker, so all
+// three PDF buttons silently 404'd. Field names match the InvoicePdfData
+// interface in invoicePdfGenerator.ts exactly; missing columns in our
+// schema (period_start/end, discount_amount, late_fee_amount, payment_terms,
+// line_type) are filled with sensible defaults via COALESCE.
 // ============================================================
 
 import { Hono } from 'hono';
@@ -46,6 +55,114 @@ invoices.get('/stats', async (c) => {
     });
   } catch {
     return c.json({ data: { total_invoices: 0, total_outstanding: 0, total_collected: 0, overdue_count: 0, draft_count: 0, by_status: {} } });
+  }
+});
+
+// GET /api/invoices/:id/pdf-data — denormalized payload for client-side PDF generator.
+//
+// Shape MUST stay aligned with InvoicePdfData in
+// client/src/utils/invoicePdfGenerator.ts. The client invokes this and
+// passes res.data.invoice (one level of unwrap) straight into
+// generateInvoicePdf / generateInvoicePdfBlobUrl / generatePrintableInvoiceHtml.
+//
+// Field mapping (live invoices schema -> InvoicePdfData):
+//   invoices.total_amount      -> total
+//   invoices.paid_amount       -> amount_paid
+//   total - paid_amount        -> balance_due
+//   invoice_line_items.line_total -> amount
+//   (no line_type column)      -> 'service' default
+//   (no period_start/end col)  -> issue_date / due_date fallback
+//   (no discount/late_fee col) -> 0
+//   clients.payment_terms      -> payment_terms (fallback 'Net 30')
+//   users.full_name (created)  -> created_by_name
+//   users.full_name (recorded) -> recorded_by_name on each payment
+invoices.get('/:id/pdf-data', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return c.json({ error: 'Invalid invoice id' }, 400);
+  }
+  try {
+    const db = getDb(c.env);
+    const tbl = await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='invoices'");
+    if (!tbl?.n) return c.json({ error: 'Invoice not found' }, 404);
+
+    // Invoice + client (LEFT JOIN — invoices may legitimately have no client row)
+    // and creator's full name (LEFT JOIN users on invoices.created_by).
+    const inv = await queryFirst<Record<string, unknown>>(db,
+      `SELECT
+         i.id,
+         i.invoice_number,
+         COALESCE(i.status, 'draft')                          AS status,
+         i.issue_date,
+         i.due_date,
+         COALESCE(i.subtotal, 0)                              AS subtotal,
+         COALESCE(i.tax_amount, 0)                            AS tax_amount,
+         COALESCE(i.total_amount, 0)                          AS total,
+         COALESCE(i.paid_amount, 0)                           AS amount_paid,
+         (COALESCE(i.total_amount, 0) - COALESCE(i.paid_amount, 0)) AS balance_due,
+         0                                                     AS discount_amount,
+         0                                                     AS late_fee_amount,
+         i.notes,
+         COALESCE(i.issue_date, '')                           AS period_start,
+         COALESCE(i.due_date,   i.issue_date, '')             AS period_end,
+         cl.name                                              AS client_name,
+         cl.address                                           AS client_address,
+         cl.contact_name                                      AS contact_name,
+         cl.contact_email                                     AS contact_email,
+         cl.contact_phone                                     AS contact_phone,
+         cl.client_code                                       AS client_code,
+         cl.tax_id                                            AS tax_id,
+         cl.billing_email                                     AS billing_email,
+         cl.billing_address                                   AS billing_address,
+         COALESCE(cl.payment_terms, 'Net 30')                 AS payment_terms,
+         u.full_name                                          AS created_by_name
+       FROM invoices i
+       LEFT JOIN clients cl ON cl.id = i.client_id
+       LEFT JOIN users   u  ON u.id  = i.created_by
+       WHERE i.id = ?`,
+      id);
+    if (!inv) return c.json({ error: 'Invoice not found' }, 404);
+
+    // Line items — `line_type` does not exist in our schema, so default to
+    // 'service' (the PDF generator only uses it for display fallback).
+    const lineItems = await query<Record<string, unknown>>(db,
+      `SELECT
+         'service'                          AS line_type,
+         description,
+         COALESCE(quantity, 0)              AS quantity,
+         COALESCE(unit_price, 0)            AS unit_price,
+         COALESCE(line_total, 0)            AS amount
+       FROM invoice_line_items
+       WHERE invoice_id = ?
+       ORDER BY sort_order, id`,
+      id);
+
+    // Payments — recorded_by_name pulled via LEFT JOIN on users.
+    const payments = await query<Record<string, unknown>>(db,
+      `SELECT
+         p.payment_date,
+         COALESCE(p.amount, 0)              AS amount,
+         p.payment_method,
+         p.reference_number,
+         u.full_name                        AS recorded_by_name
+       FROM payments p
+       LEFT JOIN users u ON u.id = p.recorded_by
+       WHERE p.invoice_id = ?
+       ORDER BY p.payment_date, p.id`,
+      id);
+
+    return c.json({
+      data: {
+        invoice: {
+          ...inv,
+          line_items: lineItems,
+          payments,
+        },
+      },
+    });
+  } catch {
+    return c.json({ error: 'Failed to load invoice PDF data' }, 500);
   }
 });
 

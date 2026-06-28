@@ -198,7 +198,7 @@ export default function Dropdown({
   return (
     <div ref={wrapperRef} className={`relative ${className}`} onKeyDown={handleKeyDown}>
       {label && (
-        <label className="field-label">
+        <label htmlFor="ff-dropdown-0" className="field-label">
           {label}
           {required && <span className="text-red-400 ml-0.5">*</span>}
         </label>
@@ -211,7 +211,7 @@ export default function Dropdown({
           w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors duration-100
           ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
           ${error ? 'border-red-500' : ''}
-          ${selectedOption ? 'text-white' : 'text-rmpg-500'}
+          ${selectedOption ? 'text-rmpg-100' : 'text-rmpg-500'}
           select-dark pr-7
         `}
         aria-haspopup="listbox"
@@ -224,7 +224,7 @@ export default function Dropdown({
           <button
             type="button"
             onClick={handleClear}
-            className="shrink-0 text-rmpg-500 hover:text-white p-0.5"
+            className="shrink-0 text-rmpg-500 hover:text-rmpg-100 p-0.5"
             aria-label="Clear selection"
             tabIndex={-1}
           >
@@ -240,11 +240,11 @@ export default function Dropdown({
       )}
       {open && (
         <div
-          className="absolute z-50 mt-1 w-full bg-surface-base border border-[#2a2a2a] shadow-xl animate-fade-in"
+          className="absolute z-50 mt-1 w-full bg-surface-base border border-border-default shadow-xl animate-fade-in"
           role="listbox"
         >
           {searchable && (
-            <div className="relative border-b border-[#2a2a2a]">
+            <div className="relative border-b border-border-default">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
               <input id="ff-dropdown-0"
                 ref={searchRef}
@@ -252,7 +252,7 @@ export default function Dropdown({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search..."
-                className="w-full bg-surface-sunken text-white text-[11px] pl-7 pr-3 py-1.5 focus:outline-none"
+                className="w-full bg-surface-sunken text-rmpg-100 text-[11px] pl-7 pr-3 py-1.5 focus:outline-none"
               />
             </div>
           )}

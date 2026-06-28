@@ -261,22 +261,22 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   return (
     <div className="space-y-4">
       {/* ─── Sub-tab nav ─── */}
-      <div className="flex gap-2 border-b border-[#222]">
+      <div className="flex gap-2 border-b border-border-default">
         <button
           onClick={() => setSubTab('config')}
-          className={`px-3 py-1 text-xs ${subTab === 'config' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-gray-400'}`}
+          className={`px-3 py-1 text-xs ${subTab === 'config' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-rmpg-400'}`}
         >
           CONFIG
         </button>
         <button
           onClick={() => setSubTab('rules')}
-          className={`px-3 py-1 text-xs ${subTab === 'rules' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-gray-400'}`}
+          className={`px-3 py-1 text-xs ${subTab === 'rules' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-rmpg-400'}`}
         >
           RULES
         </button>
         <button
           onClick={() => setSubTab('audit')}
-          className={`px-3 py-1 text-xs ${subTab === 'audit' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-gray-400'}`}
+          className={`px-3 py-1 text-xs ${subTab === 'audit' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-rmpg-400'}`}
         >
           AUDIT
         </button>
@@ -307,7 +307,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       {/* ─── Connection Status ─── */}
       <div className="panel-beveled p-3 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-white flex items-center gap-2">
+          <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
             <Mail className="w-3.5 h-3.5 text-brand-400" />
             Connection Status
           </h3>
@@ -332,15 +332,15 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           <div className="grid grid-cols-2 gap-2 text-[10px]">
             <div>
               <span className="text-rmpg-500">Mailbox:</span>
-              <span className="ml-1 text-white font-mono">{status.mailbox || '—'}</span>
+              <span className="ml-1 text-rmpg-100 font-mono">{status.mailbox || '—'}</span>
             </div>
             <div>
               <span className="text-rmpg-500">Cached:</span>
-              <span className="ml-1 text-white">{status.cachedMessages} messages</span>
+              <span className="ml-1 text-rmpg-100">{status.cachedMessages} messages</span>
             </div>
             <div>
               <span className="text-rmpg-500">Last Sync:</span>
-              <span className="ml-1 text-white">{status.lastSync || 'Never'}</span>
+              <span className="ml-1 text-rmpg-100">{status.lastSync || 'Never'}</span>
             </div>
             <div>
               <span className="text-rmpg-500">SMTP Fallback:</span>
@@ -353,8 +353,9 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       </div>
 
       {/* ─── Azure AD Credentials ─── */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled p-3 space-y-3">
-        <h3 className="text-xs font-semibold text-white flex items-center gap-2">
+        <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
           <Key className="w-3.5 h-3.5 text-brand-400" />
           Azure AD Credentials
         </h3>
@@ -370,7 +371,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         <div className="grid grid-cols-1 gap-2">
           <div>
             <div className="flex items-center justify-between mb-0.5">
-              <label className="block text-[10px] text-rmpg-400">Application (Client) ID</label>
+              <label htmlFor="ff-adminemailtab-0" className="block text-[10px] text-rmpg-400">Application (Client) ID</label>
               {clientId.trim() && (
                 AZURE_GUID.test(clientId.trim())
                   ? <span className="text-[9px] text-green-400">✓ valid GUID</span>
@@ -397,7 +398,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </div>
           <div>
             <div className="flex items-center justify-between mb-0.5">
-              <label className="block text-[10px] text-rmpg-400">Client Secret <span className="text-rmpg-600">(the VALUE, not the ID)</span></label>
+              <label htmlFor="ff-adminemailtab-1" className="block text-[10px] text-rmpg-400">Client Secret <span className="text-rmpg-600">(the VALUE, not the ID)</span></label>
               {clientSecret.trim() && (
                 AZURE_GUID.test(clientSecret.trim())
                   ? <span className="text-[9px] text-red-400">✗ looks like the Secret ID — paste the VALUE</span>
@@ -423,14 +424,14 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
                 autoComplete="off"
               />
               <button type="button" onClick={() => setShowSecret(!showSecret)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100">
                 {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
           </div>
           <div>
             <div className="flex items-center justify-between mb-0.5">
-              <label className="block text-[10px] text-rmpg-400">Directory (Tenant) ID</label>
+              <label htmlFor="ff-adminemailtab-2" className="block text-[10px] text-rmpg-400">Directory (Tenant) ID</label>
               {tenantId.trim() && (
                 (AZURE_GUID.test(tenantId.trim()) || SPECIAL_TENANTS.has(tenantId.trim().toLowerCase()))
                   ? <span className="text-[9px] text-green-400">✓ valid</span>
@@ -490,11 +491,12 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </div>
         )}
       </div>
+      </form>
 
       {/* ─── OAuth Authorization ─── */}
       {status?.configured && !status?.authorized && (
         <div className="panel-beveled p-3 space-y-3">
-          <h3 className="text-xs font-semibold text-white flex items-center gap-2">
+          <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
             <Shield className="w-3.5 h-3.5 text-brand-400" />
             Authorization Required
           </h3>
@@ -514,7 +516,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       {status?.configured && status?.authorized && (
         <div className="panel-beveled p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-white flex items-center gap-2">
+            <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
               <Clock className="w-3.5 h-3.5 text-brand-400" />
               Inbox Sync
             </h3>
@@ -529,7 +531,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </div>
 
           <div className="flex items-center gap-3">
-            <label className="text-[10px] text-rmpg-400">Poll Interval:</label>
+            <label htmlFor="ff-adminemailtab-3" className="text-[10px] text-rmpg-400">Poll Interval:</label>
             <select id="ff-adminemailtab-3"
               value={pollInterval}
               onChange={e => handlePollIntervalChange(Number(e.target.value))}
@@ -550,9 +552,10 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       )}
 
       {/* ─── SMTP Fallback ─── */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled p-3 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-white flex items-center gap-2">
+          <h3 className="text-xs font-semibold text-rmpg-100 flex items-center gap-2">
             <Send className="w-3.5 h-3.5 text-brand-400" />
             SMTP Fallback (Send-Only)
           </h3>
@@ -579,7 +582,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               className="input-dark w-full text-xs font-mono pr-8 min-h-[36px]"
             />
             <button type="button" onClick={() => setShowSmtpPassword(!showSmtpPassword)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100">
               {showSmtpPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
           </div>
@@ -590,6 +593,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </button>
         </div>
       </div>
+      </form>
       </>}
     </div>
   );

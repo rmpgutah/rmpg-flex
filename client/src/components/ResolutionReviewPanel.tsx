@@ -27,21 +27,21 @@ export default function ResolutionReviewPanel() {
 
   if (!suggestions.length) return null;
   return (
-    <div className="bg-[#141414] border border-[#d4a017]">
-      <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-[#1a1a1a]">
+    <div className="bg-surface-base border border-[#d4a017]">
+      <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default">
         POSSIBLE DUPLICATE PERSONS ({suggestions.length})
       </div>
       {suggestions.map((s) => {
         let reasons: { rule: string; detail: string }[] = [];
         try { reasons = JSON.parse(s.reasons); } catch { /* malformed reasons render empty */ }
         return (
-          <div key={s.id} className="px-2 py-[2px] text-[11px] text-gray-200 flex items-center gap-2 border-b border-[#1a1a1a] last:border-b-0">
+          <div key={s.id} className="px-2 py-[2px] text-[11px] text-rmpg-200 flex items-center gap-2 border-b border-border-default last:border-b-0">
             <span className="flex-1">
               {s.a_first} {s.a_last} {s.a_dob ? `(${s.a_dob})` : ''} ↔ {s.b_first} {s.b_last} {s.b_dob ? `(${s.b_dob})` : ''}
             </span>
             <span className="text-[9px] text-[#888888]">{reasons.map((r) => r.rule).join(', ')} · {(s.score * 100).toFixed(0)}%</span>
-            <button onClick={() => decide(s.id, 'confirm')} className="text-[9px] text-[#d4a017] border border-[#222222] px-2 py-[1px]">SAME PERSON</button>
-            <button onClick={() => decide(s.id, 'reject')} className="text-[9px] text-[#888888] border border-[#222222] px-2 py-[1px]">DIFFERENT</button>
+            <button onClick={() => decide(s.id, 'confirm')} className="text-[9px] text-[#d4a017] border border-border-default px-2 py-[1px]">SAME PERSON</button>
+            <button onClick={() => decide(s.id, 'reject')} className="text-[9px] text-[#888888] border border-border-default px-2 py-[1px]">DIFFERENT</button>
           </div>
         );
       })}

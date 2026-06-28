@@ -130,7 +130,7 @@ export default function FleetPersonnelTab({
             {/* Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white">{officer?.full_name || 'Unknown'}</span>
+                <span className="text-sm font-bold text-rmpg-100">{officer?.full_name || 'Unknown'}</span>
                 {officer?.rank && (
                   <span className="px-1.5 py-0.5 text-[8px] font-bold uppercase bg-brand-900/30 text-brand-400 border border-brand-700/40">
                     {officer.rank}
@@ -266,7 +266,7 @@ export default function FleetPersonnelTab({
                 <div key={i} className="flex items-center gap-2 text-[10px]">
                   <span className="text-rmpg-500 flex-shrink-0">{field.icon}</span>
                   <span className="text-rmpg-500 w-16 flex-shrink-0">{field.label}</span>
-                  <span className="text-rmpg-200 font-mono truncate">{field.value}</span>
+                  <span className="min-w-0 text-rmpg-200 font-mono truncate">{field.value}</span>
                 </div>
               ))}
             </div>
@@ -285,8 +285,8 @@ export default function FleetPersonnelTab({
                 <div className="space-y-1">
                   {todaySchedule.map((s) => (
                     <div key={s.id} className="flex items-center gap-2 p-1.5 bg-surface-sunken border border-rmpg-700">
-                      <Clock className="w-3 h-3 text-gray-400" />
-                      <span className="text-[10px] font-mono text-gray-400">{s.start_time} - {s.end_time}</span>
+                      <Clock className="w-3 h-3 text-rmpg-400" />
+                      <span className="text-[10px] font-mono text-rmpg-400">{s.start_time} - {s.end_time}</span>
                       {s.property_name && (
                         <span className="text-[9px] text-rmpg-400 flex items-center gap-0.5">
                           <MapPin className="w-2.5 h-2.5" />{s.property_name}
@@ -350,12 +350,12 @@ export default function FleetPersonnelTab({
           {officer.dl_number && (
             <div className="px-3 py-2 border-b border-rmpg-700">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-sm flex items-center justify-center bg-gray-900/20 border border-gray-700/40">
-                  <FileText className="w-4 h-4 text-gray-400" />
+                <div className="w-8 h-8 rounded-sm flex items-center justify-center bg-surface-sunken/20 border border-border-default/40">
+                  <FileText className="w-4 h-4 text-rmpg-400" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400">DRIVER'S LICENSE</span>
+                    <span className="text-[10px] font-bold text-rmpg-400">DRIVER'S LICENSE</span>
                     <span className="text-[10px] font-mono text-rmpg-300">{officer.dl_state} {officer.dl_number}</span>
                     {dlDays != null && (
                       <span className={`px-1 py-0.5 text-[8px] font-bold uppercase border ${
@@ -397,7 +397,7 @@ export default function FleetPersonnelTab({
                 <div key={cred.id} className="p-2 bg-surface-sunken border border-rmpg-700">
                   <div className="flex items-center gap-2 mb-1">
                     <Award className="w-3 h-3 text-rmpg-400" />
-                    <span className="text-[10px] font-bold text-rmpg-200 truncate">{toDisplayLabel(cred.type)}</span>
+                    <span className="min-w-0 text-[10px] font-bold text-rmpg-200 truncate">{toDisplayLabel(cred.type)}</span>
                     <span className={`ml-auto px-1 py-0.5 text-[7px] font-bold uppercase border ${credentialStatusColor(cred.status)}`}>
                       {cred.status.replace(/_/g, ' ')}
                     </span>

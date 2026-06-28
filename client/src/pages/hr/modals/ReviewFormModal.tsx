@@ -173,12 +173,12 @@ export default function ReviewFormModal({
       <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-700 rounded-sm shadow-md flex flex-col max-h-[80vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
-          <h2 className="text-sm font-semibold text-white">
+          <h2 className="text-sm font-semibold text-rmpg-100">
             {editReview ? 'Edit Performance Review' : 'New Performance Review'}
           </h2>
           <button type="button"
             onClick={onClose}
-            className="text-rmpg-400 hover:text-white transition-colors"
+            className="text-rmpg-400 hover:text-rmpg-100 transition-colors"
           >
             <X size={16} />
           </button>
@@ -208,7 +208,7 @@ export default function ReviewFormModal({
                   required
                   value={form.officer_id}
                   onChange={(e) => setForm(f => ({ ...f, officer_id: e.target.value }))}
-                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
                 >
                   <option value="">Select officer...</option>
                   {officers.map((o) => (
@@ -226,7 +226,7 @@ export default function ReviewFormModal({
                 <select id="ff-reviewformmodal-1"
                   value={form.type}
                   onChange={(e) => setForm(f => ({ ...f, type: e.target.value as ReviewType }))}
-                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
                 >
                   {REVIEW_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>
@@ -248,7 +248,7 @@ export default function ReviewFormModal({
                   required
                   value={form.period_start}
                   onChange={(e) => setForm(f => ({ ...f, period_start: e.target.value }))}
-                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
                 />
               </label>
               <label className="block">
@@ -260,7 +260,7 @@ export default function ReviewFormModal({
                   required
                   value={form.period_end}
                   onChange={(e) => setForm(f => ({ ...f, period_end: e.target.value }))}
-                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-rmpg-100 focus:border-brand-500 focus:outline-none"
                 />
               </label>
             </div>
@@ -273,7 +273,7 @@ export default function ReviewFormModal({
                 type="date"
                 value={form.review_date}
                 onChange={(e) => setForm(f => ({ ...f, review_date: e.target.value }))}
-                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none sm:max-w-[50%]"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-rmpg-100 focus:border-brand-500 focus:outline-none sm:max-w-[50%]"
               />
             </label>
 
@@ -335,7 +335,7 @@ export default function ReviewFormModal({
                   value={form.strengths}
                   onChange={(e) => setForm(f => ({ ...f, strengths: e.target.value }))}
                   rows={3}
-                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none resize-y"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-rmpg-100 focus:border-brand-500 focus:outline-none resize-y"
                   placeholder="Notable strengths observed during this review period..."
                 />
               </label>
@@ -347,7 +347,7 @@ export default function ReviewFormModal({
                   value={form.areas_for_improvement}
                   onChange={(e) => setForm(f => ({ ...f, areas_for_improvement: e.target.value }))}
                   rows={3}
-                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none resize-y"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-rmpg-100 focus:border-brand-500 focus:outline-none resize-y"
                   placeholder="Areas where improvement is expected..."
                 />
               </label>
@@ -357,7 +357,7 @@ export default function ReviewFormModal({
                   value={form.goals}
                   onChange={(e) => setForm(f => ({ ...f, goals: e.target.value }))}
                   rows={3}
-                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none resize-y"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-rmpg-100 focus:border-brand-500 focus:outline-none resize-y"
                   placeholder="Goals for the next review period..."
                 />
               </label>
@@ -369,14 +369,14 @@ export default function ReviewFormModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white transition-colors"
+              className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-100 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors disabled:opacity-50"
             >
               {submitting && <Loader2 size={12} className="animate-spin" />}
               {editReview ? 'Update Review' : 'Create Review'}

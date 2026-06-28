@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { invalidateMapConfigCache, type MapSettings } from '../../pages/map/hooks/useMapConfig';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -72,7 +73,10 @@ const DEFAULT_VALUES: MapSettings = {
   layer_beat_stroke_opacity: 0.6,
   layer_beat_stroke_weight: 1.2,
   layer_beat_min_zoom: 10,
-  layer_county_fill: '#141414',
+  // Mapbox paint properties don't resolve CSS variables — they need a literal
+  // color at parse time. The night-theme value of --surface-base goes here so
+  // a fresh install hits the same dark steel-blue the rest of the chrome uses.
+  layer_county_fill: '#0d1722',
   layer_county_fill_opacity: 0.15,
   layer_county_stroke: '#444444',
   layer_county_stroke_opacity: 0.5,
@@ -266,7 +270,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
         <div className="panel-beveled bg-surface-base p-4 space-y-3">
           <SectionLabel icon={Palette} label="Map Styles" />
           <div className="space-y-2">
-            <label className="text-[10px] text-rmpg-400 block mb-1">Default Style</label>
+            <label htmlFor="ff-adminmapsettingstab-1" className="text-[10px] text-rmpg-400 block mb-1">Default Style</label>
             <select id="ff-adminmapsettingstab-1"
               value={settings.default_style}
               onChange={e => updateField('default_style', e.target.value)}
@@ -287,7 +291,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
                     className={`text-[10px] px-2.5 py-1.5 text-left flex items-center gap-2 transition-colors ${
                       enabled
                         ? 'bg-brand-900/20 border border-brand-700/40 text-brand-300'
-                        : 'bg-surface-sunken border border-[#222] text-rmpg-600'
+                        : 'bg-surface-sunken border border-border-default text-rmpg-600'
                     }`}
                   >
                     {enabled ? <ToggleRight className="w-3 h-3 text-brand-400" /> : <ToggleLeft className="w-3 h-3 text-rmpg-600" />}
@@ -298,7 +302,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
             </div>
           </div>
           <div>
-            <label className="text-[10px] text-rmpg-400 block mb-1">Custom Style URL (optional, overrides default)</label>
+            <label htmlFor="ff-adminmapsettingstab-2" className="text-[10px] text-rmpg-400 block mb-1">Custom Style URL (optional, overrides default)</label>
             <input id="ff-adminmapsettingstab-2" type="text" value={settings.custom_style_url}
               onChange={e => updateField('custom_style_url', e.target.value)}
               placeholder="mapbox://styles/..." className="input-dark text-[10px] w-full min-h-[32px] font-mono"
@@ -350,12 +354,12 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
             <ToggleField label="Cross-Source Collisions" value={settings.cross_source_collisions} onChange={v => updateField('cross_source_collisions', v)} />
             <InlineInput label="Fade Duration (ms)" value={settings.fade_duration} onChange={v => updateField('fade_duration', v)} min="0" max="5000" suffix="ms" />
             <InlineInput label="Click Tolerance (px)" value={settings.click_tolerance} onChange={v => updateField('click_tolerance', v)} min="0" max="20" suffix="px" />
-            <label className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Language (BCP 47, e.g. 'es', 'fr')</label>
+            <label htmlFor="ff-adminmapsettingstab-3" className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Language (BCP 47, e.g. 'es', 'fr')</label>
             <input id="ff-adminmapsettingstab-3" type="text" value={settings.language}
               onChange={e => updateField('language', e.target.value)}
               placeholder="en" className="input-dark text-[10px] w-full min-h-[28px] font-mono"
             />
-            <label className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Local Ideograph Font Family</label>
+            <label htmlFor="ff-adminmapsettingstab-4" className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Local Ideograph Font Family</label>
             <input id="ff-adminmapsettingstab-4" type="text" value={settings.local_ideograph_font_family}
               onChange={e => updateField('local_ideograph_font_family', e.target.value)}
               placeholder="sans-serif" className="input-dark text-[10px] w-full min-h-[28px] font-mono"
@@ -379,7 +383,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
           <div className="space-y-4">
             {LAYER_IDS.map(layerId => {
               const visible = settings.default_visible_layers.includes(layerId);
-              const label = layerId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              const label = toDisplayLabel(layerId);
               const fill = (settings as any)[`layer_${layerId}_fill`] as string;
               const fillOpacity = (settings as any)[`layer_${layerId}_fill_opacity`] as number;
               const stroke = (settings as any)[`layer_${layerId}_stroke`] as string;
@@ -389,7 +393,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
               const hasFill = layerId !== 'highway' && layerId !== 'state_boundary';
 
               return (
-                <div key={layerId} className="bg-surface-sunken border border-[#1a1a1a] p-3 space-y-2">
+                <div key={layerId} className="bg-surface-sunken border border-border-default p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => {
@@ -399,7 +403,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
                           : [...current, layerId];
                         updateField('default_visible_layers', updated);
                       }}
-                        className={`text-[10px] px-2 py-1 border transition-colors ${visible ? 'bg-brand-900/20 border-brand-700/40 text-brand-300' : 'bg-[#0a0a0a] border-[#222] text-rmpg-600'}`}
+                        className={`text-[10px] px-2 py-1 border transition-colors ${visible ? 'bg-brand-900/20 border-brand-700/40 text-brand-300' : 'bg-surface-sunken border-border-default text-rmpg-600'}`}
                       >
                         {visible ? 'ON' : 'OFF'}
                       </button>
@@ -445,7 +449,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
         <div className="panel-beveled bg-surface-base p-4 space-y-3">
           <SectionLabel icon={Save} label="Map Export & Screenshot" />
           <div className="space-y-2.5">
-            <label className="text-[10px] text-rmpg-400 block mb-1">Screenshot Map Style</label>
+            <label htmlFor="ff-adminmapsettingstab-5" className="text-[10px] text-rmpg-400 block mb-1">Screenshot Map Style</label>
             <select id="ff-adminmapsettingstab-5" value={settings.screenshot_style}
               onChange={e => updateField('screenshot_style', e.target.value)}
               className="input-dark text-[10px] w-full min-h-[32px]"
@@ -482,7 +486,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
 
 function ToggleField({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-center gap-2 text-[10px] text-rmpg-400 cursor-pointer">
+    <label htmlFor="ff-adminmapsettingstab-7" className="flex items-center gap-2 text-[10px] text-rmpg-400 cursor-pointer">
       <button type="button" role="switch" aria-checked={value}
         onClick={() => onChange(!value)}
         className={`w-7 h-4 rounded-sm flex items-center transition-colors px-[2px] ${
@@ -509,7 +513,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
     <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
       <span className="w-14 shrink-0">{label}</span>
       <input id="ff-adminmapsettingstab-6" type="color" value={value} onChange={e => onChange(e.target.value)}
-        className="w-6 h-6 p-0 border border-[#333] bg-transparent cursor-pointer rounded-sm"
+        className="w-6 h-6 p-0 border border-border-subtle bg-transparent cursor-pointer rounded-sm"
       />
       <input id="ff-adminmapsettingstab-7" type="text" value={value} onChange={e => onChange(e.target.value)}
         className="input-dark text-[10px] w-20 text-center font-mono min-h-[24px]"

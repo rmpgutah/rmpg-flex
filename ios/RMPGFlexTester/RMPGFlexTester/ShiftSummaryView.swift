@@ -53,7 +53,7 @@ struct ShiftSummaryView: View {
 
     private func tile(_ v: String, _ l: String, _ c: Color) -> some View {
         VStack(spacing: 2) {
-            Text(v).font(.system(size: 20, weight: .bold)).foregroundStyle(c).lineLimit(1).minimumScaleFactor(0.5)
+            Text(v).font(Theme.Typography.title).fontWeight(.bold).foregroundStyle(c).lineLimit(1).minimumScaleFactor(0.5)
             Text(l).font(.system(size: 8, weight: .semibold)).foregroundStyle(Theme.neutral)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 10).themeCard()
@@ -63,7 +63,7 @@ struct ShiftSummaryView: View {
         VStack(alignment: .leading, spacing: 4) {
             SectionHeader(title: "Narrative")
             Text(ShiftSummary.narrative(stats))
-                .font(.system(size: 12, design: .monospaced)).foregroundStyle(.white)
+                .font(Theme.Typography.mono).foregroundStyle(.white)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .themeCard()

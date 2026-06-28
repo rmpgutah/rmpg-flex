@@ -1,22 +1,21 @@
 # RMPGFlexTester (iOS)
 
-Native iPhone field app + test console for the live RMPG Flex Cloudflare stack.
+Native iPhone field app for the live RMPG Flex Cloudflare stack.
 
-**Shell**: 5 tabs — Field Ops, ID Scan, Toolkit, Recorder, and **System**
-(a themed hub hosting My Officer ID / Settings / D1 Console / Data Viewer / Cloud / Smoke;
-iOS's stock unthemeable "More" list is deliberately avoided). Pure-black
-Spillman theme is enforced app-wide via `Theme.configureAppearance()`
+**Shell**: 5 tabs — **Home**, **Field Ops**, **ID Scan**, **Toolkit**, and **More**.
+The **More** hub groups the secondary officer surfaces into labeled sections:
+
+- **Patrol** — Duty Roster, Live Alerts, Watchlist, Fleet Readiness
+- **Reports & Records** — Daily Activity Report, Recorder
+- **Account** — My Officer ID, Settings
+
+The pure-black Spillman theme is enforced app-wide via `Theme.configureAppearance()`
 (black tab + nav bars, gold accents) and shared components in `Theme.swift`
 (`GoldButtonStyle`, `RaisedButtonStyle`, `.themeCard()`, `StatusLine`,
-`SectionHeader`) — use those instead of hand-rolling button/status styling:
+`SectionHeader`) — use those instead of hand-rolling button/status styling.
 
-- **D1 Console** — run SQL against live `rmpg-flex` D1 via the Cloudflare REST API
-  (no WAF in the way). Destructive statements require confirmation.
-- **Smoke** — hits api.rmpgutah.us routes with your RMPG login; a 403 managed
-  challenge is reported as `WAF CHALLENGE`, not an app failure.
-- **Data** — quick browse of calls_for_service / units / persons / warrants.
-- **Settings** — Cloudflare account ID + API token (D1 read/write scope) and
-  RMPG credentials; everything stored in the iOS Keychain.
+**Settings** — RMPG credentials + the Apple Verifier reader token; everything
+stored in the iOS Keychain.
 
 ## ID Scan modes
 
@@ -72,8 +71,8 @@ After any license/passport scan:
    works; the install expires after 7 days — just Run again to refresh).
 3. Plug in the iPhone, pick it as the destination, press Run.
 4. On the phone: Settings → General → VPN & Device Management → trust your cert.
-5. In the app's Settings tab, paste the Cloudflare account ID + API token and
-   tap "Test D1".
+5. In the app's Settings tab, enter your RMPG username + password and tap
+   "Test login".
 
 ## Known machine issue (2026-06-11)
 

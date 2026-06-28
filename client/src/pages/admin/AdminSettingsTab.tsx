@@ -124,7 +124,7 @@ export default function AdminSettingsTab(_props: Props) {
               className={`w-full text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider border-l-3 transition-all ${
                 activeCategory === cat
                   ? 'text-[#d4a017] border-l-[3px] border-l-[#d4a017] bg-[rgba(212,160,23,0.06)]'
-                  : 'text-rmpg-500 border-l-[3px] border-l-transparent hover:text-[#999] hover:bg-[rgba(255,255,255,0.02)]'
+                  : 'text-rmpg-500 border-l-[3px] border-l-transparent hover:text-rmpg-400 hover:bg-[rgba(255,255,255,0.02)]'
               }`}
             >
               {CATEGORY_LABELS[cat] || cat}
@@ -134,7 +134,7 @@ export default function AdminSettingsTab(_props: Props) {
         </div>
 
         {/* Settings Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
           {activeCategory && settings[activeCategory] && (
             <div className="space-y-4 max-w-2xl">
               <h2 className="text-[11px] font-bold uppercase text-[#d4a017] tracking-wider border-b border-border-subtle pb-2 mb-4">
@@ -143,7 +143,7 @@ export default function AdminSettingsTab(_props: Props) {
               {(settings[activeCategory] || []).map((setting) => (
                 <div key={setting.key} className="flex items-start gap-4 py-3 border-b border-border-subtle">
                   <div className="flex-1 min-w-0">
-                    <label className="text-[10px] font-semibold text-[#ccc] block">{setting.label}</label>
+                    <label htmlFor="ff-adminsettingstab-2" className="text-[10px] font-semibold text-rmpg-300 block">{setting.label}</label>
                     {setting.description && (
                       <p className="text-[9px] text-rmpg-500 mt-0.5">{setting.description}</p>
                     )}

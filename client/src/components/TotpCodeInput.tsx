@@ -119,8 +119,8 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
               fontSize: 22,
               fontWeight: 700,
               fontFamily: 'monospace',
-              background: '#050505',
-              border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#222222'}`,
+              background: 'var(--surface-overlay)',
+              border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#888888' : 'var(--border-subtle)'}`,
               borderRadius: 2,
               color: '#fff',
               outline: 'none',
@@ -132,7 +132,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
               e.target.select();
             }}
             onBlur={(e) => {
-              e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#888888' : '#222222';
+              e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#888888' : 'var(--border-subtle)';
             }}
           />
         ))}
@@ -144,7 +144,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
           flex: 1,
           maxWidth: 200,
           height: 3,
-          background: '#1a1a1a',
+          background: 'var(--surface-raised)',
           borderRadius: 2,
           overflow: 'hidden',
         }}>
@@ -160,7 +160,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
           fontSize: 10,
           fontFamily: 'monospace',
           fontWeight: 700,
-          color: timerUrgent ? '#ef4444' : '#666666',
+          color: timerUrgent ? '#ef4444' : 'var(--rmpg-500)',
           minWidth: 24,
           textAlign: 'right',
         }}>

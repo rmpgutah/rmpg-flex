@@ -14,6 +14,7 @@ import {
   canTransition, nextReportNumber, computeReviewDate, gradeLabel, confidenceScore,
   type IntelReport,
 } from '../../utils/intelDevelopment';
+import { recordAudit } from '../../utils/auditLog';
 
 const operational = requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher');
 const supervisorPlus = requireRole('admin', 'manager', 'supervisor');
@@ -99,13 +100,8 @@ intelReports.get('/:id', operational, async (c) => {
   });
 });
 
-async function audit(db: any, userId: number, action: string, id: number, details: unknown, entityType = 'intel_report') {
-  try {
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-      userId, action, entityType, String(id), JSON.stringify(details));
-  } catch (e: any) { console.error('[intel-dev] audit failed:', e?.message); }
+async function audit(c: any, userId: number, action: string, id: number, details: unknown, entityType = 'intel_report') {
+  await recordAudit(c, { action, entityType, entityId: String(id), details: JSON.stringify(details), actorId: userId });
 }
 
 async function loadReport(db: any, id: number): Promise<IntelReport | null> {
@@ -134,7 +130,7 @@ intelReports.post('/:id/evaluate', supervisorPlus, async (c) => {
     `UPDATE intel_reports SET source_reliability=?, info_credibility=?, handling_code=?,
        status='graded', evaluated_by=?, evaluated_at=datetime('now'), updated_at=datetime('now') WHERE id=?`,
     b.source_reliability, b.info_credibility, b.handling_code, userId, id);
-  await audit(db, userId, 'evaluate', id, { grade: `${b.source_reliability}${b.info_credibility}`, handling_code: b.handling_code });
+  await audit(c, userId,'evaluate', id, { grade: `${b.source_reliability}${b.info_credibility}`, handling_code: b.handling_code });
   return c.json({ success: true });
 });
 
@@ -153,7 +149,7 @@ intelReports.post('/:id/analyze', supervisorPlus, async (c) => {
        threat_level=COALESCE(?, threat_level), status='analyzed',
        analyzed_by=?, analyzed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`,
     b.sanitized_narrative, b.assessment, b.criminal_predicate, b.threat_level || null, userId, id);
-  await audit(db, userId, 'analyze', id, { threat_level: b.threat_level });
+  await audit(c, userId,'analyze', id, { threat_level: b.threat_level });
   return c.json({ success: true });
 });
 
@@ -194,7 +190,7 @@ intelReports.post('/:id/disseminate', supervisorPlus, async (c) => {
        VALUES ('intel_report', ?, ?, ?, ?)`,
       id, `${r.report_number} ${r.title}`, r.sanitized_narrative || '', r.report_number || '');
   } catch (e: any) { console.error('[intel-dev] fts index failed:', e?.message); }
-  await audit(db, userId, 'disseminate', id, { recipients: recipients.length, review_date: reviewDate });
+  await audit(c, userId,'disseminate', id, { recipients: recipients.length, review_date: reviewDate });
   return c.json({ success: true, recipients: recipients.length, review_date: reviewDate });
 });
 
@@ -212,7 +208,7 @@ intelReports.post('/:id/recall', supervisorPlus, async (c) => {
     `UPDATE intel_reports SET status='recalled', recalled_reason=?, updated_at=datetime('now') WHERE id=?`,
     b.reason, id);
   try { await execute(db, "DELETE FROM intel_index WHERE entity_type='intel_report' AND entity_id=?", id); } catch { /* fts optional */ }
-  await audit(db, userId, 'recall', id, { reason: b.reason });
+  await audit(c, userId,'recall', id, { reason: b.reason });
   return c.json({ success: true });
 });
 
@@ -229,7 +225,7 @@ intelReports.post('/:id/reject', supervisorPlus, async (c) => {
   await execute(db,
     `UPDATE intel_reports SET status='rejected', rejected_reason=?, updated_at=datetime('now') WHERE id=?`,
     b.reason, id);
-  await audit(db, userId, 'reject', id, { reason: b.reason });
+  await audit(c, userId,'reject', id, { reason: b.reason });
   return c.json({ success: true });
 });
 
@@ -269,7 +265,7 @@ intelReports.post('/:id/share', supervisorPlus, async (c) => {
     `INSERT INTO intel_dissemination_log (report_id, recipient_type, recipient_label, channel, reason, disseminated_by)
      VALUES (?, ?, ?, 'external_export', ?, ?)`,
     id, b.recipient_type || 'agency', b.recipient_label, b.reason || null, userId);
-  await audit(db, userId, 'share_external', id, { recipient: b.recipient_label, handling_code: r.handling_code });
+  await audit(c, userId,'share_external', id, { recipient: b.recipient_label, handling_code: r.handling_code });
   return c.json({ success: true });
 });
 
@@ -302,7 +298,7 @@ intelSources.post('/', supervisorPlus, async (c) => {
     source_code, b.source_type, b.display_label || null, b.true_identity_person_id || null,
     b.handler_user_id || null, b.reliability_grade || null,
     b.restricted === false ? 0 : 1, b.notes_restricted || null, userId);
-  await audit(db, userId, 'source_create', Number(res.meta?.last_row_id) || 0, { source_code, source_type: b.source_type, restricted: b.restricted === false ? 0 : 1 }, 'intel_source');
+  await audit(c, userId,'source_create', Number(res.meta?.last_row_id) || 0, { source_code, source_type: b.source_type, restricted: b.restricted === false ? 0 : 1 }, 'intel_source');
   return c.json({ success: true, id: res.meta?.last_row_id, source_code });
 });
 
@@ -327,7 +323,7 @@ intelSources.put('/:id', supervisorPlus, async (c) => {
   sets.push("updated_at = datetime('now')");
   args.push(id);
   await execute(db, `UPDATE intel_sources SET ${sets.join(', ')} WHERE id = ?`, ...args);
-  await audit(db, userId, 'source_update', id, { fields: Object.keys(b), restricted_changed: 'restricted' in b, status_changed: 'status' in b }, 'intel_source');
+  await audit(c, userId,'source_update', id, { fields: Object.keys(b), restricted_changed: 'restricted' in b, status_changed: 'status' in b }, 'intel_source');
   return c.json({ success: true });
 });
 
@@ -343,6 +339,6 @@ intelSources.post('/:id/reliability', supervisorPlus, async (c) => {
      VALUES (?, ?, ?, ?, ?)`, id, s.reliability_grade || null, b.new_grade, b.reason || null, userId);
   await execute(db,
     "UPDATE intel_sources SET reliability_grade = ?, updated_at = datetime('now') WHERE id = ?", b.new_grade, id);
-  await audit(db, userId, 'source_reliability', id, { new_grade: b.new_grade }, 'intel_source');
+  await audit(c, userId,'source_reliability', id, { new_grade: b.new_grade }, 'intel_source');
   return c.json({ success: true });
 });

@@ -31,14 +31,21 @@ export interface SorScrapeRow {
 
 export function stripTags(html: string): string {
   return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    // Tag-strip pass — close tags may have whitespace before the `>`
+    // (e.g. `</script >`), so allow optional \s* before the closing bracket.
+    // CodeQL js/bad-tag-filter explicitly flags the unspaced variants.
+    .replace(/<script[\s\S]*?<\/script[^>]*>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style[^>]*>/gi, ' ')
     .replace(/<br\s*\/?>(?=)/gi, '\n')
     .replace(/<\/(td|tr|p|div|li)>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
+    // Entity-decode pass — `&amp;` MUST be decoded LAST so that an
+    // already-encoded literal like `&amp;#39;` (which represents the text
+    // `&#39;`, not an apostrophe) is not double-unescaped into "'".
+    // Order matters: do every other entity first, then amp.
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
     .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, '&')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{2,}/g, '\n')
     .trim();

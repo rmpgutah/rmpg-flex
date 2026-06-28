@@ -15,7 +15,7 @@ describe('legacy escape hatch', () => {
 
 describe('chrome colors per theme', () => {
   it('night (dark) chrome is the steel-blue-charcoal base, day is the light chrome', () => {
-    expect(getThemeChromeColor('dark')).toBe('#0d1722');
+    expect(getThemeChromeColor('dark')).toBe('var(--surface-base)');
     expect(getThemeChromeColor('light')).toBe('#d6d3c8');
   });
 });

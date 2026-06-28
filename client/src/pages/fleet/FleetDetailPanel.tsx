@@ -32,6 +32,8 @@ import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import EmailedDocuments from '../../components/EmailedDocuments';
+import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 
 export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards';
 export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
@@ -46,7 +48,7 @@ const STATUS_LABEL: Record<FleetVehicleStatus, string> = {
 };
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
-  out_of_service: '#ef4444', retired: '#666666',
+  out_of_service: '#ef4444', retired: 'var(--rmpg-500)',
 };
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
@@ -270,7 +272,7 @@ export default function FleetDetailPanel({
               <Car className="w-5 h-5" style={{ color: STATUS_COLOR[detail.status] }} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white font-mono">{detail.vehicle_number}</h2>
+              <h2 className="text-lg font-bold text-rmpg-100 font-mono">{detail.vehicle_number}</h2>
               <div className="flex items-center gap-2 mt-0.5 text-xs text-rmpg-300">
                 <span>{[detail.year, detail.make, detail.model].filter(Boolean).join(' ')}</span>
                 {detail.color && <span className="text-rmpg-500">({detail.color})</span>}
@@ -396,7 +398,7 @@ export default function FleetDetailPanel({
             </button>
           )}
           <button type="button"
-            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
             onClick={onClose}
             aria-label="Close vehicle details">
             <X className="w-4 h-4" />
@@ -404,31 +406,52 @@ export default function FleetDetailPanel({
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex-shrink-0 flex items-center border-b border-rmpg-700 px-1 bg-surface-base overflow-x-auto" style={{ scrollbarWidth: 'none' }} role="tablist" aria-label="Vehicle detail tabs">
-        {TABS.map(({ key, label, icon: Icon }) => {
-          const isActive = activeTab === key;
-          return (
-          <button type="button"
-            key={key}
-            role="tab"
-            aria-selected={isActive}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider whitespace-nowrap transition-all duration-200 border-b-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
-              isActive
-                ? 'text-white border-brand-500 bg-brand-900/10'
-                : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:bg-rmpg-700/20 hover:border-rmpg-500/50'
-            }`}
-            onClick={() => onTabChange(key)}
-          >
-            <Icon className={`w-3 h-3 ${isActive ? 'text-brand-400' : ''}`} />
-            {label}
-          </button>
-          );
-        })}
-      </div>
+      {/* Tab Bar — grouped Spillman module strip */}
+      <SpillmanModuleGroup
+        groups={[
+          {
+            label: 'Status',
+            tone: 'steel',
+            tabs: [
+              { id: 'overview',   label: 'Overview' },
+              { id: 'fuel',       label: 'Fuel' },
+              { id: 'fuel_cards', label: 'Fuel Cards' },
+            ],
+          },
+          {
+            label: 'Maintenance',
+            tone: 'gold',
+            tabs: [
+              { id: 'inspections', label: 'Inspections' },
+              { id: 'tires',       label: 'Tires' },
+              { id: 'damage',      label: 'Damage' },
+              { id: 'recalls',     label: 'Recalls' },
+            ],
+          },
+          {
+            label: 'Personnel & Ops',
+            tone: 'neutral',
+            tabs: [
+              { id: 'assignments', label: 'Assignments' },
+              { id: 'personnel',   label: 'Personnel' },
+              { id: 'costs',       label: 'Costs' },
+            ],
+          },
+          {
+            label: 'Intelligence',
+            tone: 'green',
+            tabs: [
+              { id: 'analytics', label: 'Analytics' },
+              { id: 'dashcam',   label: 'Dash Cam' },
+            ],
+          },
+        ] as ModuleGroupSpec[]}
+        activeTab={activeTab}
+        onTabChange={(id) => onTabChange(id as DetailTab)}
+      />
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
+      <div className="flex-1 min-h-0 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
         {activeTab === 'overview' && (
           <>
             <FleetOverviewTab detail={detail} maintenance={maintenance} onEditMaintenance={onEditMaintenance} onDeleteMaintenance={onDeleteMaintenance} />

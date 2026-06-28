@@ -20,7 +20,8 @@ struct AlertsFeedView: View {
                     if loading && items.isEmpty {
                         ProgressView().tint(Theme.gold).padding(.top, 30)
                     } else if items.isEmpty {
-                        Text("No active alerts.").font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 24)
+                        EmptyState(icon: "bell.slash", title: "No active alerts.")
+                            .padding(.top, 24)
                     } else {
                         ForEach(items) { row($0) }
                     }
@@ -60,7 +61,7 @@ struct AlertsFeedView: View {
                 Image(systemName: a.kind.icon).font(.system(size: 15)).foregroundStyle(tone(a.severity)).frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(a.title).font(.system(size: 13, weight: a.unread ? .bold : .semibold))
+                        Text(a.title).font(Theme.Typography.body).fontWeight(a.unread ? .bold : .semibold)
                             .foregroundStyle(.white).lineLimit(1)
                         if a.unread { Circle().fill(Theme.gold).frame(width: 6, height: 6) }
                     }

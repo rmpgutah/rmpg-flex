@@ -1,6 +1,7 @@
 // Case-task due-date nudge sweep (v3 Phase 2). Mirrors serveNudgeSweep:
 // runs on the 4-hourly cron ("0 */4 * * *") and dedups via the notifications
 // table so each recipient is reminded at most once per ~20h per task.
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 
@@ -63,13 +64,23 @@ export async function sweepCaseTaskNudges(db: Bindings['DB'], _env: Bindings): P
       // Per-recipient dedup: at most one nudge per task per user per 20h. Done
       // per-recipient (not per-task) so a transient insert failure for one
       // recipient never blocks the others from being notified next sweep.
-      const recent = await queryFirst<{ one: number }>(
-        db,
-        `SELECT 1 AS one FROM notifications
-         WHERE entity_type = 'case_task' AND entity_id = ? AND user_id = ? AND created_at > datetime('now','-20 hours') LIMIT 1`,
-        t.id, uid,
-      ).catch(() => null);
-      if (recent) continue;
+      let recent: { one: number } | null = null;
+      let dedupOk = true;
+      try {
+        recent = await queryFirst<{ one: number }>(
+          db,
+          `SELECT 1 AS one FROM notifications
+           WHERE entity_type = 'case_task' AND entity_id = ? AND user_id = ? AND created_at > datetime('now','-20 hours') LIMIT 1`,
+          t.id, uid,
+        );
+      } catch (err) {
+        dedupOk = false;
+        // Fail-closed: previously this swallow-to-null treated a failed dedup
+        // SELECT as "no recent nudge" and re-inserted every 4h cron tick.
+        // Better to miss one tick than to spam the recipient.
+        log.error('dedup SELECT failed; skipping insert to avoid spam', { task_id: t.id, user_id: uid, error: String((err as Error)?.message ?? err) });
+      }
+      if (!dedupOk || recent) continue;
       try {
         await execute(
           db,
@@ -78,7 +89,11 @@ export async function sweepCaseTaskNudges(db: Bindings['DB'], _env: Bindings): P
           priority, title, message, t.id, uid,
         );
         inserted++;
-      } catch { /* per-recipient best-effort */ }
+      } catch (err) {
+        // Per-recipient best-effort: don't block the loop, but log so we can
+        // see if a specific user/task is chronically failing.
+        log.error('notification INSERT failed', { task_id: t.id, user_id: uid, error: String((err as Error)?.message ?? err) });
+      }
     }
   }
   return inserted;

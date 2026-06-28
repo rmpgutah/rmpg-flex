@@ -180,7 +180,7 @@ export interface PersonHit { person_id?: number; id?: number; full_name?: string
 export async function searchPersons(q: string): Promise<PersonHit[]> {
   if (!q.trim()) return [];
   try {
-    const data = await apiFetch<{ persons?: PersonHit[] } | PersonHit[]>(`/persons?q=${encodeURIComponent(q)}&limit=10`);
+    const data = await apiFetch<{ persons?: PersonHit[] } | PersonHit[]>(`/records/persons/search?q=${encodeURIComponent(q)}`);
     if (Array.isArray(data)) return data;
     return data.persons || [];
   } catch { return []; }

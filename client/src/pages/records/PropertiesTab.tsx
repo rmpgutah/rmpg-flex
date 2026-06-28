@@ -326,7 +326,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -358,9 +358,19 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
         {displayProperties.length === 0 && (
           <div className="text-center py-16">
             <Building2 className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No properties match.' : 'No properties found.'}</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No properties match.'
+                : showArchived
+                  ? 'No archived property records.'
+                  : 'No properties found.'}
+            </p>
             <p className="text-[10px] text-rmpg-600 mt-1">
-              {searchQuery ? 'Try broadening your search.' : 'Click "New Property" to add a record.'}
+              {searchQuery
+                ? 'Try broadening your search.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Property" to add a record.'}
             </p>
           </div>
         )}
@@ -393,7 +403,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-bold text-white truncate">{prop.name}</h4>
+                  <h4 className="text-sm font-bold text-rmpg-100 truncate">{prop.name}</h4>
                   {prop.hazard_notes && <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />}
                   <span className={`ml-auto px-1.5 py-0.5 text-[8px] font-bold border flex-shrink-0 ${
                     prop.is_active
@@ -505,7 +515,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           <div className="ml-auto flex items-center gap-1">
             {(!showArchived || user?.role === 'admin') && (
               <>
-                <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors" title="Edit">
+                <button type="button" onClick={() => openEditProperty(selectedProperty)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors" title="Edit">
                   <Pencil className="w-3 h-3" />
                 </button>
                 <button type="button" onClick={() => setDeleteTarget({ type: 'property', id: selectedProperty.id, label: selectedProperty.name })} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400 transition-colors" title="Delete">
@@ -531,7 +541,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Client ──────────────────────────── */}
         {selectedProperty.client_name && (
           <CollapsibleSection title="Client" icon={Users} defaultOpen>
-            <p className="text-sm text-white font-semibold">{selectedProperty.client_name}</p>
+            <p className="text-sm text-rmpg-100 font-semibold">{selectedProperty.client_name}</p>
           </CollapsibleSection>
         )}
 
@@ -591,14 +601,14 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Post Orders (conditional) ────────── */}
         {selectedProperty.post_orders && (
           <CollapsibleSection title="Post Orders" icon={Shield} defaultOpen>
-            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.post_orders}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.post_orders}</p>
           </CollapsibleSection>
         )}
 
         {/* ── Hazard Notes (conditional) ─────── */}
         {(selectedProperty.hazard_notes || selectedProperty.known_hazards) && (
           <CollapsibleSection title="Hazard Notes" icon={FileWarning} accent="red">
-            {selectedProperty.hazard_notes && <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.hazard_notes}</p>}
+            {selectedProperty.hazard_notes && <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.hazard_notes}</p>}
             {selectedProperty.known_hazards && (
               <div className="mt-1.5"><span className="text-[10px] text-red-400 uppercase font-semibold">Known Hazards:</span> <span className="text-xs text-red-300/80 ml-1">{selectedProperty.known_hazards}</span></div>
             )}
@@ -622,14 +632,14 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
         {/* ── Access Instructions (conditional) ── */}
         {selectedProperty.access_instructions && (
           <CollapsibleSection title="Access Instructions" icon={MapPin}>
-            <p className="text-xs text-gray-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.access_instructions}</p>
+            <p className="text-xs text-rmpg-300/80 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.access_instructions}</p>
           </CollapsibleSection>
         )}
 
         {/* ── Notes (conditional) ──────────────── */}
         {selectedProperty.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap break-words">{selectedProperty.notes}</p>
           </CollapsibleSection>
         )}
 

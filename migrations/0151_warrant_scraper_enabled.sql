@@ -1,0 +1,12 @@
+-- 0151_warrant_scraper_enabled.sql
+--
+-- Adds the long-missing `enabled` column to warrant_scraper_config so the
+-- AdminWarrantScrapersTab bulk-action UI can actually disable a scraper
+-- (previously the GET response hardcoded enabled: 1, making the toggle
+-- cosmetic). Default 1 preserves current behavior for existing rows.
+--
+-- D1 lacks `ALTER TABLE ADD COLUMN IF NOT EXISTS`, so re-applying this on a
+-- DB that already has the column will fail with "duplicate column name".
+-- The Worker reconciles via columnExists() in src/routes/warrants.ts, and
+-- deploy.yml's migration step is continue-on-error.
+ALTER TABLE warrant_scraper_config ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;

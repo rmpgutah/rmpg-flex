@@ -15,7 +15,7 @@ import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregiste
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildUnitMarker, buildCallMarker } from '../utils/mapMarkers';
+import { buildUnitMarker, buildCallMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
@@ -128,7 +128,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   useEffect(() => {
     if (!loaded || !mapContainerRef.current) return;
 
-    const hasCallLoc = call?.latitude != null && call?.longitude != null;
+    // isValidLngLat rejects NaN/Infinity and the exact (0,0) no-fix signature
+    // so a call with bad coordinates never anchors the map / drops a teardrop.
+    const hasCallLoc = isValidLngLat(call?.longitude, call?.latitude);
     // A WebGL-loss rebuild reopens at the captured view; otherwise center on the
     // call (or the SLC fallback). One-shot: cleared after the new map is built.
     const recoverCam = recoverCamRef.current;
@@ -237,14 +239,14 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       assignedVehicleMarkerRef.current = null;
     }
 
-    if (!av || av.gps_lat == null || av.gps_lon == null) return;
+    if (!av || !isValidLngLat(av.gps_lon, av.gps_lat)) return;
 
     // Take-home vehicle: no dispatch status in scope, so render the shared unit
     // pin with the vehicle number as its label (gold-ring 'onscene' tone keeps
     // the original gold-branded accent the plain neutral ring would have lost).
     const el = buildUnitMarker({ label: av.vehicle_number || 'V', status: 'onscene' });
     const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-      .setLngLat([av.gps_lon, av.gps_lat])
+      .setLngLat([av.gps_lon!, av.gps_lat!])
       .addTo(map);
     assignedVehicleMarkerRef.current = marker;
 
@@ -269,7 +271,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     const assignedUnits = units.filter(u =>
       (assignedIds.has(String(u.id)) ||
         (u.current_call_id != null && String(u.current_call_id) === String(call?.id))) &&
-      u.latitude != null && u.longitude != null
+      isValidLngLat(u.longitude, u.latitude)
     );
 
     const liveIds = new Set<string>();
@@ -412,7 +414,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141414' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid var(--border-subtle)' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -427,7 +429,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
-            className="text-rmpg-400 hover:text-white"
+            className="text-rmpg-400 hover:text-rmpg-100"
             style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
             title="Open full map"
           >
@@ -436,7 +438,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {onClose && (
             <button type="button"
               onClick={onClose}
-              className="text-rmpg-400 hover:text-white"
+              className="text-rmpg-400 hover:text-rmpg-100"
               style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
               title="Close mini-map"
             >
@@ -453,11 +455,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           background: 'rgba(0,0,0,0.9)', border: '1px solid #88888850',
           padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
         }}>
-          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: 'var(--rmpg-400)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#666666' }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 8, color: 'var(--rmpg-500)' }}>{activeRoute.distance}</span>
         </div>
       )}
 
@@ -470,20 +472,20 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {activeRoute?.steps && activeRoute.steps.length > 0 && (
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
-          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid #2e2e2e', pointerEvents: 'auto',
+          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
         }}>
           {/* ETA + miles, above */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-            padding: '2px 6px', borderBottom: '1px solid #1a1a1a', background: '#141414',
+            padding: '2px 6px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)',
           }}>
-            <span style={{ fontSize: 8, color: '#888888', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <span style={{ fontSize: 8, color: STATUS_COLORS.offline, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               {activeRoute.unitCallSign}→{activeRoute.callNumber}
             </span>
-            <span style={{ fontSize: 13, color: '#22c55e', fontWeight: 900, letterSpacing: '0.02em' }}>
+            <span style={{ fontSize: 13, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em' }}>
               {activeRoute.eta} <span style={{ fontSize: 8, color: '#16a34a' }}>ETA</span>
             </span>
-            <span style={{ fontSize: 12, color: '#d4a017', fontWeight: 900 }}>{activeRoute.distance}</span>
+            <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>{activeRoute.distance}</span>
           </div>
           {/* Current direction, one at a time */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
@@ -496,7 +498,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               {activeRoute.steps[0].instruction}
             </span>
             {activeRoute.steps[0].distanceMeters > 0 && (
-              <span style={{ fontSize: 11, color: '#aaaaaa', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--rmpg-400)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                 {activeRoute.steps[0].distanceText}
               </span>
             )}
@@ -511,9 +513,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#0a0a0a',
+          background: 'var(--surface-overlay)',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: 'var(--rmpg-500)' }} className="animate-spin" />
         </div>
       )}
 
@@ -524,11 +526,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.9)', border: '1px solid #d4a01755',
+            background: 'rgba(0,0,0,0.9)', border: `1px solid ${STATUS_COLORS.warning}55`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
           }}>
-            <RefreshCw style={{ width: 8, height: 8, color: '#d4a017' }} className="animate-spin" />
-            <span style={{ fontSize: 8, color: '#d4a017', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.warning }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.warning, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               RECONNECTING
             </span>
           </div>
@@ -542,11 +544,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
+            background: 'rgba(0,0,0,0.85)', border: `1px solid ${STATUS_COLORS.caution}40`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
           }}>
-            <RefreshCw style={{ width: 8, height: 8, color: '#f59e0b' }} className="animate-spin" />
-            <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.caution }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.caution, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               OFFLINE
             </span>
           </div>
