@@ -41,6 +41,18 @@ describe('notificationRouting', () => {
         .toBe('/arrest-records?arrest_id=250');
     });
 
+    it('builds /court-records?event_id= for court_event entity_type', () => {
+      expect(routeForEntity({ type: 'system', entity_type: 'court_event', entity_id: 7 }))
+        .toBe('/court-records?event_id=7');
+    });
+
+    it('builds /web-research?research_id= for research_result entity_type', () => {
+      expect(routeForEntity({ type: 'system', entity_type: 'research_result', entity_id: 17 }))
+        .toBe('/web-research?research_id=17');
+      expect(routeForEntity({ type: 'system', entity_type: 'web_research', entity_id: 17 }))
+        .toBe('/web-research?research_id=17');
+    });
+
     it('falls back to type-default when entity_type is unknown', () => {
       expect(routeForEntity({ type: 'warrant', entity_type: 'something_new', entity_id: 1 }))
         .toBe('/warrants');
@@ -65,6 +77,19 @@ describe('notificationRouting', () => {
 
     it('routes patrol_missed → /patrol', () => {
       expect(routeForEntity({ type: 'patrol_missed' })).toBe('/patrol');
+    });
+
+    it('builds /affairs?complaint_id= for ia_complaint entity_type', () => {
+      // IA complaint deep-link contract added v1070. Notification routing
+      // should land the supervisor directly on the complaint, not the IA
+      // landing list.
+      expect(routeForEntity({ type: 'system', entity_type: 'ia_complaint', entity_id: 17 }))
+        .toBe('/affairs?complaint_id=17');
+    });
+
+    it('builds /affairs?investigation_id= for ia_investigation entity_type', () => {
+      expect(routeForEntity({ type: 'system', entity_type: 'ia_investigation', entity_id: 8 }))
+        .toBe('/affairs?investigation_id=8');
     });
 
     it('url-encodes the entity id (guards against an id like "1/2")', () => {
