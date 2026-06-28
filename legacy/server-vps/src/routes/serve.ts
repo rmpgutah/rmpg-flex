@@ -12,6 +12,7 @@ import { auditLog } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { notifyPortalStatusUpdate } from '../utils/portalCallback';
+import { generateAffidavit } from '../utils/affidavitGenerator';
 import config from '../config';
 import { sendCsv } from '../utils/csvExport';
 
@@ -83,6 +84,58 @@ router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
   } catch (err: any) {
     console.error('[SERVE] Stats error:', err);
     res.status(500).json({ error: 'Failed to fetch stats', code: 'FAILED_TO_FETCH_STATS' });
+  }
+});
+
+// ── GET /active-routes — Today's active serve jobs + routes for map/dispatch overlays ──
+router.get('/active-routes', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    // Check that required tables exist (may not yet on fresh deployments)
+    const tableExists = (name: string) =>
+      !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name);
+    if (!tableExists('serve_queue') || !tableExists('serve_routes')) {
+      res.json({ jobs: [], routes: [] });
+      return;
+    }
+
+    // All pending/in-progress serve jobs for today (across all officers)
+    const jobs = db.prepare(`
+      SELECT sq.id, sq.officer_id, sq.recipient_name, sq.recipient_address,
+        sq.recipient_city, sq.recipient_state, sq.recipient_zip,
+        sq.recipient_lat, sq.recipient_lng, sq.status, sq.priority,
+        sq.deadline, sq.document_type, sq.sort_order, sq.call_id,
+        sq.attempt_count, sq.max_attempts,
+        un.call_sign AS officer_call_sign, u.full_name AS officer_name
+      FROM serve_queue sq
+      LEFT JOIN users u ON u.id = sq.officer_id
+      LEFT JOIN units un ON un.officer_id = sq.officer_id
+      WHERE (sq.serve_date = ? OR sq.status IN ('pending', 'in_progress'))
+        AND sq.recipient_lat IS NOT NULL AND sq.recipient_lng IS NOT NULL
+      ORDER BY sq.officer_id, sq.sort_order ASC, sq.priority DESC
+      LIMIT 2000
+    `).all(today);
+
+    // All routes for today or that have pending/in_progress jobs
+    const routes = db.prepare(`
+      SELECT sr.*, un.call_sign AS officer_call_sign, u.full_name AS officer_name
+      FROM serve_routes sr
+      LEFT JOIN users u ON u.id = sr.officer_id
+      LEFT JOIN units un ON un.officer_id = sr.officer_id
+      WHERE sr.route_date = ?
+        OR sr.officer_id IN (
+          SELECT DISTINCT sq2.officer_id FROM serve_queue sq2
+          WHERE sq2.status IN ('pending', 'in_progress')
+            AND sq2.officer_id IS NOT NULL
+        )
+    `).all(today);
+
+    res.json({ jobs, routes });
+  } catch (err: any) {
+    console.error('[SERVE] Active routes error:', err);
+    res.status(500).json({ error: 'Failed to fetch active routes', code: 'FAILED_TO_FETCH_ACTIVE' });
   }
 });
 
@@ -580,7 +633,7 @@ router.put('/:id', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req:
 });
 
 // ── POST /:id/attempt — Record service attempt ─────────────
-router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLES), async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
@@ -688,6 +741,64 @@ router.post('/:id/attempt', validateParamIdMiddleware, requireRole(...WRITE_ROLE
 
     auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Attempt #${attemptNumber}: ${result}`);
     broadcast('serve', 'serve_attempt', { job: updatedJob, attempt });
+
+    // ── Auto-generate Affidavit of Service PDF when the serve is final ──
+    // Triggers when status transitions to 'served' or 'failed' (i.e. max attempts hit).
+    // Idempotency: a call_attachments row with doc_type='affidavit' already on this
+    // call/case is treated as "done" and we skip.
+    try {
+      if (newStatus === 'served' || newStatus === 'failed') {
+        const queueRow = db.prepare(`
+          SELECT sq.*, cfs.call_number, cfs.case_id, cfs.process_served_to, cfs.location_address, cfs.caller_name
+            FROM serve_queue sq
+            LEFT JOIN calls_for_service cfs ON cfs.id = sq.call_id
+           WHERE sq.id = ?
+        `).get(req.params.id) as any;
+        if (queueRow?.call_id && queueRow?.call_number) {
+          const existing = db.prepare(
+            "SELECT id FROM call_attachments WHERE call_id = ? AND doc_type = 'affidavit' LIMIT 1"
+          ).get(queueRow.call_id) as any;
+          if (!existing) {
+            const allAttempts = db.prepare(
+              'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC'
+            ).all(req.params.id) as any[];
+            const officer = db.prepare('SELECT username, badge_number FROM users WHERE id = ?')
+              .get(queueRow.officer_id || req.user!.userId) as any;
+            const caseRow = queueRow.case_id
+              ? (db.prepare('SELECT * FROM cases WHERE id = ?').get(queueRow.case_id) as any)
+              : null;
+            const plaintiffName = caseRow?.title?.split(' v. ')?.[0] || 'Plaintiff';
+            const finalResult: 'served' | 'non-serve' =
+              newStatus === 'served' ? 'served' : 'non-serve';
+            await generateAffidavit({
+              queueId: Number(req.params.id),
+              callId: queueRow.call_id,
+              caseId: queueRow.case_id || 0,
+              callNumber: String(queueRow.call_number),
+              defendantName: queueRow.process_served_to || queueRow.recipient_name || '',
+              defendantAddress: queueRow.location_address || queueRow.recipient_address || '',
+              plaintiffName,
+              courtName: queueRow.court_name || caseRow?.court || '',
+              courtCaseNumber: caseRow?.court_case_number || caseRow?.case_number || '',
+              clientJobNumber: queueRow.case_number || '',
+              officerName: officer?.username || 'Officer',
+              officerBadge: officer?.badge_number || '',
+              attempts: allAttempts.map((a: any) => ({
+                attempt_number: a.attempt_number,
+                attempt_at: a.attempt_at,
+                result: a.result,
+                notes: a.notes,
+                latitude: a.latitude,
+                longitude: a.longitude,
+              })),
+              finalResult,
+            });
+          }
+        }
+      }
+    } catch (err: any) {
+      (req as any).log?.warn?.({ err, queueId: req.params.id }, 'affidavit generation failed');
+    }
 
     // Sync back to linked dispatch call (atomic to prevent race conditions)
     try {
