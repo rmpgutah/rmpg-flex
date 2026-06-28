@@ -156,18 +156,22 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
  * Falls back to defaults if the API is unreachable or has no branding saved.
  */
 export async function fetchPdfBranding(): Promise<PdfBranding> {
+  // Base: hardcoded defaults < Console Settings → Branding (system_settings,
+  // individual keys via the systemSettings cache) < any legacy
+  // branding_settings JSON blob (older Admin → Branding tab).
+  const fromSystem = brandingFromSystemSettings();
   try {
     const token = localStorage.getItem('rmpg_token');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch('/api/admin/system-settings', { headers });
-    if (!res.ok) return { ...DEFAULT_PDF_BRANDING };
+    if (!res.ok) return { ...DEFAULT_PDF_BRANDING, ...fromSystem };
     const settings = await res.json() as Record<string, string>;
-    if (!settings.branding_settings) return { ...DEFAULT_PDF_BRANDING };
+    if (!settings.branding_settings) return { ...DEFAULT_PDF_BRANDING, ...fromSystem };
     const parsed = JSON.parse(settings.branding_settings);
-    return { ...DEFAULT_PDF_BRANDING, ...parsed };
+    return { ...DEFAULT_PDF_BRANDING, ...fromSystem, ...parsed };
   } catch {
-    return { ...DEFAULT_PDF_BRANDING };
+    return { ...DEFAULT_PDF_BRANDING, ...fromSystem };
   }
 }
 
@@ -362,6 +366,20 @@ export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean;
   return s;
 }
 
+export function fitPdfText(doc: jsPDF, text: string, maxWidth: number): string {
+  const safeText = sanitizePdfText(text || '');
+  if (!safeText || maxWidth <= 0) return '';
+  if (doc.getTextWidth(safeText) <= maxWidth) return safeText;
+
+  const ellipsis = '...';
+  let trimmed = safeText;
+  while (trimmed.length > 0 && doc.getTextWidth(`${trimmed}${ellipsis}`) > maxWidth) {
+    trimmed = trimmed.slice(0, -1).trimEnd();
+  }
+
+  return trimmed ? `${trimmed}${ellipsis}` : ellipsis;
+}
+
 /**
  * Word-aware text wrapper — splits on spaces first, only breaking within
  * words as a last resort. Unlike jsPDF's splitTextToSize which can break
@@ -411,6 +429,12 @@ let cachedLogoDark: string | null = null;
 // Active form key for footer form numbers
 let activeFormKey = '';
 export function setActiveFormKey(key: string) { activeFormKey = key; }
+
+function resolveFormNumber(formKey?: string): string {
+  if (!formKey) return '';
+  if (FORM_NUMBERS[formKey]) return FORM_NUMBERS[formKey];
+  return /^FORM\b/i.test(formKey.trim()) ? formKey.trim() : '';
+}
 
 // Active case number for continuation headers
 let activeCaseNumber = '';
@@ -524,6 +548,15 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 }
 
+/** Enforce strict police-report typography defaults across all PDF generators. */
+export function applyPoliceReportFormatting(doc: jsPDF): void {
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  // Tighter character spacing for dense, typewriter-style report output.
+  doc.setCharSpace(-0.1);
+}
+
 export function addClassificationBar(doc: jsPDF, priority: string, yStart: number): number {
   const cw = getContentWidth(doc);
   const prio = PRIORITY_COLORS[priority?.toLowerCase()] || PRIORITY_COLORS['routine'];
@@ -598,22 +631,27 @@ export function addReportHeader(
     }
   }
 
+  const caseBoxH = LAYOUT.HEADER_HEIGHT - 2;
+  const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
+  const caseBoxY = LAYOUT.HEADER_TOP + 1;
+  const textMaxWidth = Math.max(20, caseBoxX - textStartX - SPACING.MD);
+
   // ── Line 1: Agency name ────────────────────────────────
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(headerTextColor[0], headerTextColor[1], headerTextColor[2]);
   doc.text(agencyName || brand.report_header_text, textStartX, headerY + 6.5);
 
   // ── Line 2: Subheader ──────────────────────────────────
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(subheaderColor[0], subheaderColor[1], subheaderColor[2]);
   doc.text(brand.report_subheader_text, textStartX, headerY + 11);
 
   // ── Line 3: Report type | form# | rev | date ──────────
-  const formNum = FORM_NUMBERS[activeFormKey] || '';
+  const formNum = resolveFormNumber(activeFormKey);
   const reportDate = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-  const metaParts = [reportType.toUpperCase()];
+  const metaParts = [sanitizePdfText(reportType)];
   if (formNum) metaParts.push(formNum);
   metaParts.push(FORM_REVISION);
   metaParts.push(reportDate);
@@ -639,13 +677,14 @@ export function addReportHeader(
         : pKey === 'P3' ? 'P3 - Routine' : pKey === 'P4' ? 'P4 - Low' : prio.label.replace('PRIORITY: ', ''));
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(5);
-    const prioW = doc.getTextWidth(prioLabelText) + 4;
+    const prioText = fitPdfText(doc, prioLabelText, textMaxWidth);
+    const prioW = Math.min(doc.getTextWidth(prioText) + 4, textMaxWidth);
     const prioX = textStartX;
     const prioY = headerY + 16.5;
     doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
     doc.roundedRect(prioX, prioY, prioW, 3, 0.5, 0.5, 'F');
     doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
-    doc.text(prioLabelText, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
+    doc.text(prioText, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
   }
 
   // ── Case number box (right) ────────────────────────────
@@ -662,9 +701,9 @@ export function addReportHeader(
 
   // Label
   doc.setFontSize(FONT.SIZE_SMALL_META);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setTextColor(...caseTextColor);
-  doc.text(caseBoxLabel, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 5, { align: 'center' });
+  doc.text(fitPdfText(doc, caseBoxLabel, LAYOUT.CASE_BOX_W - 4), caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 5, { align: 'center' });
 
   // Case number value
   doc.setFontSize(FONT.SIZE_CASE_NUMBER);
@@ -1095,7 +1134,7 @@ export function addFlagBadges(
     doc.setTextColor(255, 255, 255);
     const pillCapH = fontSize * 0.35;
     const textY = curY + (pillH + pillCapH) / 2;
-    doc.text(text, curX + pillPadX, textY);
+    doc.text(fitPdfText(doc, text, Math.max(6, maxWidth - pillPadX * 2)), curX + pillPadX, textY);
 
     curX += pillW + pillGapX;
   }
@@ -1144,7 +1183,7 @@ export function addCautionBlock(
   doc.rect(x, y, width, boxH);
 
   // Label
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.CAUTION_TEXT);
   doc.text('[!] CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
@@ -1285,9 +1324,9 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('PRINTED NAME', x + SPACING.MD, row2Y + 2.2);
-  doc.text('BADGE NUMBER', x + colW + SPACING.MD, row2Y + 2.2);
-  doc.text('DATE/TIME', x + colW * 2 + SPACING.MD, row2Y + 2.2);
+  doc.text(fitPdfText(doc, 'PRINTED NAME', colW - SPACING.MD * 2), x + SPACING.MD, row2Y + 2.2);
+  doc.text(fitPdfText(doc, 'BADGE NUMBER', colW - SPACING.MD * 2), x + colW + SPACING.MD, row2Y + 2.2);
+  doc.text(fitPdfText(doc, 'DATE/TIME', colW - SPACING.MD * 2), x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
   // Values — auto-fill from sigData
   const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
@@ -1296,8 +1335,8 @@ export function addSignatureBlock(
     doc.setFontSize(8);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const valY = row2Y + infoRowH - 1.5;
-    if (sigData!.printedName) doc.text(sanitizePdfText(sigData!.printedName).toUpperCase(), x + SPACING.MD, valY);
-    if (sigData!.badgeNumber) doc.text(sanitizePdfText(sigData!.badgeNumber).toUpperCase(), x + colW + SPACING.MD, valY);
+    if (sigData!.printedName) doc.text(fitPdfText(doc, sigData!.printedName, colW - SPACING.MD * 2), x + SPACING.MD, valY);
+    if (sigData!.badgeNumber) doc.text(fitPdfText(doc, sigData!.badgeNumber, colW - SPACING.MD * 2), x + colW + SPACING.MD, valY);
     const now = new Date();
     // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
     // Legal documents require the correct local timestamp — UTC drift corrupts records.
@@ -1960,7 +1999,7 @@ export function addNarrativeSection(
     doc.setTextColor(255, 255, 255);
     const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
-    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+    doc.text(fitPdfText(doc, contTitle, cw - SPACING.CONTENT_INSET * 2 - 2), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -2112,7 +2151,7 @@ export function addImageGrid(
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
-      doc.text(caption, x, y + h + 3);
+      doc.text(fitPdfText(doc, caption, imgMaxW), x, y + h + 3);
 
       maxRowH = Math.max(maxRowH, h);
     }
@@ -2182,11 +2221,12 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
     // Form number + case number on right
     const rightParts: string[] = [];
-    const formNum = FORM_NUMBERS[activeFormKey] || '';
+    const formNum = resolveFormNumber(activeFormKey);
     if (formNum) rightParts.push(formNum);
     if (activeCaseNumber) rightParts.push(activeCaseNumber);
     if (rightParts.length > 0) {
-      doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
+      const rightText = fitPdfText(doc, rightParts.join('  |  '), Math.max(20, cw * 0.42));
+      doc.text(rightText, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
     // Thin full-width rule just below the black band (was contH-0.6 —
@@ -2274,8 +2314,9 @@ export function addTableWithShading(
     const fontSize = lightHdr ? FONT.SIZE_FIELD_LABEL : FONT.SIZE_TABLE_HEADER;
     const capH = fontSize * 0.35;  // approximate cap-height in mm
     const textY = atY + (headerRowH + capH) / 2;
-    for (const h of headers) {
-      doc.text(sanitizePdfText(h.label), h.x, textY);
+    for (let i = 0; i < headers.length; i++) {
+      const h = headers[i];
+      doc.text(fitPdfText(doc, h.label, Math.max(8, colWidths[i] || 20)), h.x, textY);
     }
     return atY + headerRowH;
   };
@@ -2372,7 +2413,7 @@ export function addTableWithShading(
       const lines = cellLines[c];
       let cellY = textStartY;
       for (const line of lines) {
-        doc.text(line, colPositions[c], cellY);
+        doc.text(fitPdfText(doc, line, (colWidths[c] || 30) - 1), colPositions[c], cellY);
         cellY += cellLineH;
       }
     }
@@ -3327,7 +3368,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_INVERTED);
   doc.setLineWidth(BORDER.CASE_BOX);
   doc.rect(LAYOUT.PAGE_MARGIN + 1.5, y + 1.2, cw - 3, 7.6);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text('WARNING -- TRESPASS NOTICE', pageWidth / 2, y + 7, { align: 'center' });
@@ -3641,7 +3682,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_INVERTED);
   doc.setLineWidth(BORDER.BANNER);
   doc.rect(LAYOUT.PAGE_MARGIN + 1, y + 1, cw - 2, 6);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER_SMALL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text('MANDATORY REPORT -- MUST BE COMPLETED WITHIN 24 HOURS OF INCIDENT', pageWidth / 2, y + 5.5, { align: 'center' });
@@ -3765,7 +3806,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
     doc.line(LAYOUT.PAGE_MARGIN + 1, y + 5, LAYOUT.PAGE_MARGIN + cw - 1, y + 5);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text('TIME', lx, y + 2);

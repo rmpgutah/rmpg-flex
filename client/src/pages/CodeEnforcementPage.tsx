@@ -391,10 +391,10 @@ export default function CodeEnforcementPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (confirmOpen)      { e.stopPropagation(); setConfirmOpen(false); return; }
-        if (showReinspection) { e.stopPropagation(); setShowReinspection(false); setReinspectionDate(''); return; }
-        if (tFormOpen)        { e.stopPropagation(); clearTFormDraft(); setTFormOpen(false); return; }
-        if (vFormOpen)        { e.stopPropagation(); clearVFormDraft(); setVFormOpen(false); return; }
+        if (confirmOpen)      { setConfirmOpen(false); return; }
+        if (showReinspection) { setShowReinspection(false); setReinspectionDate(''); return; }
+        if (tFormOpen)        { clearTFormDraft(); setTFormOpen(false); return; }
+        if (vFormOpen)        { clearVFormDraft(); setVFormOpen(false); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -406,7 +406,7 @@ export default function CodeEnforcementPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [canEnforce, confirmOpen, showReinspection, tFormOpen, vFormOpen, clearTFormDraft, clearVFormDraft, handleOpenNew]);
+  }, [confirmOpen, showReinspection, tFormOpen, vFormOpen, clearTFormDraft, clearVFormDraft, handleOpenNew]);
 
   // \u2500\u2500 /code-enforcement?violation_id=\u2026 / ?case_id=\u2026 / ?tow_id=\u2026 deep-link \u2500\u2500
   // ?case_id= is an alias for ?violation_id= \u2014 inbound links from case pages

@@ -1890,7 +1890,6 @@ export default function DispatchPage() {
       // real one from the UI ("editing time destructs the call"). When the
       // response isn't a full row, patch just the edited field locally —
       // the DB write already succeeded (or the catch below fires).
-      const looksLikeFullRow = result && (result.incident_type || result.call_number);
       const apply = (c: typeof selectedCall) =>
         looksLikeFullRow ? mergeCallUpdate(c!, result) : ({ ...c, [field]: value || null } as typeof c);
       setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
