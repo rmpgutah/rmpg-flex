@@ -30,7 +30,6 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { formatHashGrouped } from './pdfIntegrity';
-import { toDisplayLabel } from './formatters';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -136,6 +135,12 @@ export function wrapText(input: string, maxChars: number): string[] {
     if (line) out.push(line);
   }
   return out;
+}
+
+/** Format snake_case → Title Case for action / status / type labels. */
+export function prettyLabel(input: string | undefined | null): string {
+  if (!input) return '—';
+  return input.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 const ellipsize = (s: string, max: number) => s.length <= max ? s : s.slice(0, max - 1) + '…';
@@ -263,8 +268,8 @@ export function generateAffairsComplaintPdf(input: IaComplaintPdfInput): jsPDF {
   doc.setFontSize(9);
 
   const headerFields: Array<[string, string]> = [
-    ['Complaint Type', toDisplayLabel(c.complaint_type)],
-    ['Status', toDisplayLabel(c.status)],
+    ['Complaint Type', prettyLabel(c.complaint_type)],
+    ['Status', prettyLabel(c.status)],
     ['Complainant', c.complainant_name || '—'],
     ['Complainant Contact', c.complainant_contact || '—'],
     ['Subject Officer', c.subject_officer_name || (c.subject_officer_id ? `Officer #${c.subject_officer_id}` : '—')],
@@ -382,7 +387,7 @@ export function generateAffairsComplaintPdf(input: IaComplaintPdfInput): jsPDF {
       doc.setFont('Arial', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(TEXT_DARK);
-      doc.text(`Investigation #${inv.id ?? '?'}  ·  ${toDisplayLabel(inv.status)}`, M + 4, y + 10);
+      doc.text(`Investigation #${inv.id ?? '?'}  ·  ${prettyLabel(inv.status)}`, M + 4, y + 10);
       doc.text(inv.investigator_name || '—', W - M - 4, y + 10, { align: 'right' });
       y += 18;
 
