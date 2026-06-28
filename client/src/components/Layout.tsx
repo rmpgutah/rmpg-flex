@@ -154,8 +154,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/code-enforcement': 'Code Enforcement',
   '/court': 'Court Tracker',
   '/dar': 'Daily Activity Reports',
-  '/offender-registry': 'Offender Registry',
-  '/sex-offender-registry': 'Sex Offender Registry',
+  // NSOPW is the canonical SOR surface; old paths redirect (see App.tsx).
+  '/nsopw': 'Sex Offender Registry',
   '/reports': 'Reports',
   '/forensic-lab': 'Forensic Lab',
   '/audit': 'Audit Log',
@@ -251,7 +251,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
     { path: '/colorado-doc', icon: UserCheck, label: 'Colorado DOC Search' },
-    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
   ]},
   { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
@@ -281,8 +281,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/court-records', icon: Gavel, label: 'Court Records' },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
     { path: '/serve', icon: FileSignature, label: 'Process Server' },
     { path: '/serve-intake', icon: FileText, label: 'Serve Intake' },
     { path: '/use-of-force', icon: Shield, label: 'Use of Force' },
@@ -944,7 +943,7 @@ export default function Layout() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">First Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-0" className="field-label">First Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-0"
                   type="text"
                   value={setupFirstName}
@@ -955,7 +954,7 @@ export default function Layout() {
                 />
               </div>
               <div>
-                <label className="field-label">Last Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-1" className="field-label">Last Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-1"
                   type="text"
                   value={setupLastName}
@@ -1190,13 +1189,13 @@ export default function Layout() {
             </div>
 
             {/* Separator */}
-            <div className="hidden lg:block w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="hidden lg:block w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* PANIC Button */}
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
@@ -1218,7 +1217,7 @@ export default function Layout() {
                     src={authedImageUrl(user.profile_image)}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover transition-shadow duration-150"
-                    style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
+                    style={{ border: '2px solid var(--border-strong)', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
                   />
                 ) : (
                   <div
@@ -1226,7 +1225,7 @@ export default function Layout() {
                     style={{
                       background: 'linear-gradient(135deg, #333333, #888888)',
                       color: '#fff',
-                      border: '2px solid #aaaaaa',
+                      border: '2px solid var(--rmpg-400)',
                       borderRadius: '50%',
                       boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none',
                     }}
@@ -1498,7 +1497,7 @@ export default function Layout() {
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #141414',
+                          borderRadius: 2, border: '1px solid var(--border-subtle)',
                           boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
                       >
@@ -1518,7 +1517,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                         }}
                       >
                         {item.shortcut}
@@ -1532,7 +1531,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1587,7 +1586,7 @@ export default function Layout() {
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#aaaaaa' : 'var(--rmpg-500)', flexShrink: 0 }} />
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--rmpg-400)' : 'var(--rmpg-500)', flexShrink: 0 }} />
                             <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );
@@ -1619,7 +1618,7 @@ export default function Layout() {
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main
           id="main-content"
-          className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
+          className="spm-page flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
           key={location.pathname}
           style={{ background: 'var(--surface-sunken)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
           // Persist scroll per-path so SW-update reloads (and any other full

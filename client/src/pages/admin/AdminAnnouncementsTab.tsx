@@ -307,7 +307,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Title</label>
+                <label htmlFor="ff-adminannouncementstab-1" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Title</label>
                 <input id="ff-adminannouncementstab-1"
                   type="text"
                   value={form.title}
@@ -327,7 +327,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Type</label>
+                  <label htmlFor="ff-adminannouncementstab-2" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Type</label>
                   <select id="ff-adminannouncementstab-2"
                     value={form.type}
                     onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as any }))}
@@ -341,7 +341,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Priority</label>
+                  <label htmlFor="ff-adminannouncementstab-3" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Priority</label>
                   <select id="ff-adminannouncementstab-3"
                     value={form.priority}
                     onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as any }))}
@@ -355,7 +355,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Starts At</label>
+                  <label htmlFor="ff-adminannouncementstab-4" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Starts At</label>
                   <input id="ff-adminannouncementstab-4"
                     type="datetime-local"
                     value={form.starts_at}
@@ -364,7 +364,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Expires At</label>
+                  <label htmlFor="ff-adminannouncementstab-5" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Expires At</label>
                   <input id="ff-adminannouncementstab-5"
                     type="datetime-local"
                     value={form.expires_at}

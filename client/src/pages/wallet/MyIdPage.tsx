@@ -99,7 +99,7 @@ export default function MyIdPage() {
             {badge.photo ? (
               <img src={badge.photo} alt={badge.full_name} className="w-full h-full object-cover" />
             ) : (
-              <span className="text-[#444] text-xs">NO PHOTO</span>
+              <span className="text-rmpg-700 text-xs">NO PHOTO</span>
             )}
           </div>
           <div className="min-w-0 flex-1 space-y-1">

@@ -34,7 +34,7 @@ const HEALTH_LABEL: Record<string, { text: string; color: string }> = {
   healthy: { text: 'ONLINE', color: '#22c55e' },
   degraded: { text: 'DEGRADED', color: '#f59e0b' },
   error: { text: 'ERROR', color: '#ef4444' },
-  unconfigured: { text: 'NOT CONFIGURED', color: '#6b7280' },
+  unconfigured: { text: 'NOT CONFIGURED', color: 'var(--rmpg-500)' },
 };
 
 // ─── Helpers ─────────────────────────────────────────────

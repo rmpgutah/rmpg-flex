@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { useToast } from '../../components/ToastProvider';
 
 import RichTextArea from '../../components/RichTextArea';
+import OfficerPicker, { type OfficerSummary } from '../../components/OfficerPicker';
 type Call = {
   id: number;
   call_number: string;
@@ -68,6 +69,10 @@ export default function MobilePsoCfsPage() {
   const [call, setCall] = useState<Call | null>(null);
   const [scansRemaining, setScansRemaining] = useState<number | null>(null);
   const [userIdInput, setUserIdInput] = useState<string>('');
+  // Selected-officer object so we can render the chosen name back to the
+  // operator BEFORE they tap "Open Dispatch" — defends against typo-style
+  // wrong-officer auth that the old free-form number input made trivial.
+  const [selectedOfficer, setSelectedOfficer] = useState<OfficerSummary | null>(null);
   const [auth, setAuth] = useState<MobileAuthState | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
@@ -250,17 +255,29 @@ export default function MobilePsoCfsPage() {
             )}
           </div>
           <div className="bg-surface-base border border-border-default p-3 space-y-3">
-            <label className="block text-[11px] font-bold text-rmpg-400 uppercase tracking-wider">Enter Your User ID</label>
-            <input id="ff-mobilepsocfspage-0"
-              type="number"
-              inputMode="numeric"
-              autoFocus
-              value={userIdInput}
-              onChange={(e) => setUserIdInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') submitAuth(); }}
-              className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 font-mono text-lg px-3 py-2 focus:border-[#d4a017] outline-none"
-              placeholder="e.g. 1572"
+            <label className="block text-[11px] font-bold text-rmpg-400 uppercase tracking-wider">Who Are You?</label>
+            <OfficerPicker
+              id="ff-mobilepsocfspage-0"
+              value={userIdInput ? Number(userIdInput) : null}
+              onChange={(id, officer) => {
+                setUserIdInput(id ? String(id) : '');
+                setSelectedOfficer(officer ?? null);
+                if (id && errorMsg) setErrorMsg('');
+              }}
+              placeholder="Search by your name, badge, unit…"
             />
+            {/* Confirmation strip — surfaces the picked officer's name + badge
+                so the guard can verify identity BEFORE the auth round-trip.
+                Without this, a wrong pick would silently authenticate them
+                as the wrong officer (the old typed-id failure mode).*/}
+            {selectedOfficer && (
+              <div className="bg-surface-overlay border border-[#d4a017]/40 px-3 py-2 text-xs">
+                <span className="text-rmpg-400">Sign in as </span>
+                <span className="text-[#d4a017] font-bold">{selectedOfficer.full_name}</span>
+                {selectedOfficer.badge_number && <span className="text-rmpg-500 ml-1.5">#{selectedOfficer.badge_number}</span>}
+                {selectedOfficer.unit_call_sign && <span className="text-rmpg-500 ml-1.5">· {selectedOfficer.unit_call_sign}</span>}
+              </div>
+            )}
             {errorMsg && <div className="text-red-400 text-xs">{errorMsg}</div>}
             <button
               disabled={busy || !userIdInput.trim()}
@@ -376,7 +393,7 @@ function statusLabel(s: string): string {
 function LabeledInput({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
   return (
     <div>
-      <label className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
+      <label htmlFor="ff-mobilepsocfspage-1" className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
       <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
     </div>
   );
@@ -384,7 +401,7 @@ function LabeledInput({ label, value, onChange, type = 'text' }: { label: string
 function LabeledSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
     <div>
-      <label className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
+      <label htmlFor="ff-mobilepsocfspage-2" className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
       <select id="ff-mobilepsocfspage-2" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>

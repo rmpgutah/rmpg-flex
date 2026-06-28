@@ -31,7 +31,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const borderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-l-green-500';
-      case 'in_progress': return 'border-l-gray-500';
+      case 'in_progress': return 'border-l-rmpg-500';
       case 'scheduled': return 'border-l-amber-500';
       case 'overdue':
       case 'expired': return 'border-l-red-500';
@@ -42,7 +42,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const topBorderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-t-green-500';
-      case 'in_progress': return 'border-t-gray-500';
+      case 'in_progress': return 'border-t-rmpg-500';
       case 'scheduled': return 'border-t-amber-500';
       case 'overdue':
       case 'expired': return 'border-t-red-500';
@@ -120,11 +120,11 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-green-500" style={{ background: '#0a1a0a' }}>
+        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-green-500 bg-green-950/30">
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="field-label text-green-400/70">Completed</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-gray-500" style={{ background:"var(--surface-sunken)" }}>
+        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-rmpg-500" style={{ background:"var(--surface-sunken)" }}>
           <p className="text-lg font-bold font-mono text-rmpg-400">{inProgress}</p>
           <p className="field-label text-rmpg-400/70">In Progress</p>
         </div>

@@ -241,7 +241,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
 
       {/* Dense table */}
       <div className="panel-raised max-h-[600px] overflow-y-auto scrollbar-dark">
-        <table className="w-full text-[10px] font-mono">
+        <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
           <thead className="bg-rmpg-900 sticky top-0 z-10">
             <tr className="border-b border-rmpg-700">
               <th className="p-2 text-left w-8">
@@ -326,7 +326,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
               })
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <div className="text-[10px] text-rmpg-600">

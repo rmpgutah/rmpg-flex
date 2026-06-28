@@ -130,7 +130,7 @@ export default function FuelAnalyticsPage() {
   useEffect(() => { load(windowDays); /* eslint-disable-next-line */ }, [windowDays]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-surface-base">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-surface-base">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
@@ -142,7 +142,7 @@ export default function FuelAnalyticsPage() {
           </h1>
         </div>
         <div className="flex items-center gap-1.5">
-          <label className="text-[9px] text-rmpg-500 uppercase mr-1">Window</label>
+          <label htmlFor="ff-fuelanalyticspage-0" className="text-[9px] text-rmpg-500 uppercase mr-1">Window</label>
           <select id="ff-fuelanalyticspage-0" className="select-dark text-[10px] min-h-[28px] py-0.5"
             value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))}>
             {WINDOW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -203,7 +203,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Vehicles by Cost" icon={Gauge} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Vehicle</th>
@@ -229,7 +229,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={6} className="text-center text-[10px] text-rmpg-500 py-4">No fills in this window</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -237,7 +237,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Top Stations" icon={MapPin} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Station</th>
@@ -259,7 +259,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={4} className="text-center text-[10px] text-rmpg-500 py-4">No stations recorded</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -267,7 +267,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Drivers" icon={Users} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Driver</th>
@@ -296,7 +296,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={6} className="text-center text-[10px] text-rmpg-500 py-4">No driver attribution recorded yet</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -304,7 +304,7 @@ export default function FuelAnalyticsPage() {
         <div className="panel-beveled bg-surface-sunken">
           <PanelTitleBar title="Fuel Cards — Monthly Spend" icon={CreditCard} />
           <div className="max-h-[360px] overflow-auto">
-            <table className="w-full text-[10px] font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-[10px] font-mono">
               <thead className="bg-surface-raised sticky top-0">
                 <tr className="text-left text-[9px] uppercase text-rmpg-500">
                   <th className="px-2 py-1.5">Card</th>
@@ -341,7 +341,7 @@ export default function FuelAnalyticsPage() {
                   <tr><td colSpan={5} className="text-center text-[10px] text-rmpg-500 py-4">No fuel cards configured</td></tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 

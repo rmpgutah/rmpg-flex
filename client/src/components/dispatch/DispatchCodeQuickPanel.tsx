@@ -128,15 +128,15 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
   };
 
   return (
-    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: '#111', borderColor: 'var(--surface-raised)' }}>
+    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: 'var(--surface-overlay)', borderColor: 'var(--surface-raised)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)', background: '#0e0e0e' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)', background: 'var(--surface-overlay)' }}>
         <div className="flex items-center gap-1.5">
           <Hash className="w-3.5 h-3.5 text-brand-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-brand-300">Dispatch Codes</span>
         </div>
         <button onClick={onDismiss} className="p-0.5 rounded hover:bg-[#ffffff10] transition-colors" title="Close codes panel">
-          <X className="w-3.5 h-3.5 text-[#6b7280]" />
+          <X className="w-3.5 h-3.5 text-rmpg-500" />
         </button>
       </div>
 
@@ -149,7 +149,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
             placeholder="Search codes or descriptions…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-100 pl-6 pr-2 py-1 placeholder-[#545454] focus:outline-none focus:border-brand-700/50"
+            className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-100 pl-6 pr-2 py-1 placeholder-rmpg-600 focus:outline-none focus:border-brand-700/50"
           />
         </div>
         <div className="flex items-center gap-1 mt-1">
@@ -163,7 +163,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
       </div>
 
       {/* Code list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-[10px] text-rmpg-500">Loading codes…</div>
         ) : grouped.length === 0 ? (

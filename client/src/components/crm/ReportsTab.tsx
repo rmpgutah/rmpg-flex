@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import { toDisplayLabel } from '../../utils/formatters';
 import type { PipelineSummary, PipelineStage } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────
@@ -77,10 +78,6 @@ const SOURCE_LABELS: Record<string, string> = {
 function formatCurrency(val: number | null | undefined): string {
   if (!val) return '$0';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-}
-
-function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ════════════════════════════════════════════════════════
@@ -266,7 +263,7 @@ export default function ReportsTab() {
           <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-3 flex items-center gap-1">
             <Target className="w-3.5 h-3.5" /> Lead Source ROI
           </div>
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full">
             <thead>
               <tr className="border-b border-rmpg-700">
                 <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Source</th>
@@ -296,7 +293,7 @@ export default function ReportsTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 

@@ -317,7 +317,7 @@ export default function IncidentDetailWindow() {
           Persons Involved ({persons.length})
         </h3>
         {persons.length > 0 ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] text-rmpg-400 uppercase">
                 <th className="text-left pb-2">Role</th>
@@ -342,7 +342,7 @@ export default function IncidentDetailWindow() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         ) : (
           <p className="text-xs text-rmpg-500">No persons linked</p>
         )}
@@ -354,7 +354,7 @@ export default function IncidentDetailWindow() {
           Vehicles Involved ({vehicles.length})
         </h3>
         {vehicles.length > 0 ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] text-rmpg-400 uppercase">
                 <th className="text-left pb-2">Role</th>
@@ -377,7 +377,7 @@ export default function IncidentDetailWindow() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         ) : (
           <p className="text-xs text-rmpg-500">No vehicles linked</p>
         )}
@@ -389,7 +389,7 @@ export default function IncidentDetailWindow() {
           Evidence ({evidence.length})
         </h3>
         {evidence.length > 0 ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] text-rmpg-400 uppercase">
                 <th className="text-left pb-2">Item #</th>
@@ -412,7 +412,7 @@ export default function IncidentDetailWindow() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         ) : (
           <p className="text-xs text-rmpg-500">No evidence recorded</p>
         )}

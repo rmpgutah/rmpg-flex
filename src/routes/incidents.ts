@@ -232,6 +232,19 @@ incidents.put('/:id/approve', requireRole(...REVIEW_ROLES), async (c) => {
       return c.json({ error: 'Can only approve submitted/under_review', code: 'INC_NOT_APPROVABLE' }, 400);
     }
     await execute(db, "UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = datetime('now'), updated_at = datetime('now') WHERE id = ?", user.id, id);
+    // Audit 2026-06-21 caught that the companion /return route logs
+    // via recordAudit but /approve did not. Approval is the
+    // consequential transition that locks the incident as NIBRS-
+    // eligible — should be the LOUDER trail, not the quieter one.
+    try {
+      await recordAudit(c, {
+        action: 'incident_approved',
+        entityType: 'incident',
+        entityId: id,
+        details: `Approved by supervisor ${user.full_name ?? user.id} (previous status=${incident.status})`,
+        actorId: user.id,
+      });
+    } catch { /* non-fatal */ }
     return c.json(await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', id));
   } catch (err) {
     console.error('[incidents] approve error', err);

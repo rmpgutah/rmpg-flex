@@ -8,6 +8,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
 import StatusBadge from './StatusBadge';
 import { safeDateTimeStr } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   FileText, Printer, Radio, AlertTriangle, StickyNote,
   MapPin, BarChart3, Plus, Clock, Car,
@@ -151,7 +152,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       )}
 
       {/* ── Report Header ── */}
-      <div className="panel-beveled bg-surface-base p-3 print:border print:border-gray-400">
+      <div className="panel-beveled bg-surface-base p-3 print:border print:border-rmpg-400">
         <h1 className="text-brand-400 text-sm font-bold tracking-wider uppercase flex items-center gap-2 mb-2">
           <FileText size={16} /> Shift Handoff Report
         </h1>
@@ -174,13 +175,13 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Open Calls ── */}
-      <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
+      <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
         <PanelTitleBar title="Open Calls" icon={Radio} />
         <div className="p-2">
           {!data?.open_calls.length ? (
             <p className="text-rmpg-400 text-xs font-mono py-2 text-center">No open calls</p>
           ) : (
-            <table className="w-full text-xs font-mono">
+            <div className="overflow-x-auto"><table className="w-full text-xs font-mono">
               <thead>
                 <tr className="text-rmpg-400 text-left border-b border-rmpg-600/40">
                   <th className="pb-1 pr-2">Call #</th>
@@ -201,13 +202,13 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>
 
       {/* ── Active BOLOs ── */}
-      <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
+      <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
         <PanelTitleBar title="Active BOLOs" icon={AlertTriangle} />
         <div className="p-2">
           {!data?.active_bolos.length ? (
@@ -230,7 +231,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       </div>
 
       {/* ── Shift Notes ── */}
-      <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
+      <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
         <PanelTitleBar title="Shift Notes" icon={StickyNote} />
         <div className="p-2 space-y-2">
           {data?.shift_notes.map(n => (
@@ -273,7 +274,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
 
       {/* ── GPS Summary & Shift Stats ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
+        <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
           <PanelTitleBar title="GPS Summary" icon={MapPin} />
           <div className="p-3 text-center">
             <Car size={28} className="mx-auto text-brand-400 mb-2" />
@@ -284,7 +285,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
           </div>
         </div>
 
-        <div className="panel-beveled bg-surface-base print:border print:border-gray-400">
+        <div className="panel-beveled bg-surface-base print:border print:border-rmpg-400">
           <PanelTitleBar title="Shift Stats" icon={BarChart3} />
           <div className="p-3 space-y-2">
             <div className="flex items-center justify-between text-xs font-mono">
@@ -297,7 +298,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
               .filter(([k]) => k !== 'avg_response_time')
               .map(([key, val]) => (
                 <div key={key} className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-rmpg-300">{key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                  <span className="text-rmpg-300">{toDisplayLabel(key)}</span>
                   <span className="text-rmpg-100 font-bold">{typeof val === 'number' ? val.toFixed(1) : val}</span>
                 </div>
               ))}

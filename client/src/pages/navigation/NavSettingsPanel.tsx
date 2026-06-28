@@ -84,7 +84,7 @@ function CloseButton({ onClick }: { onClick: () => void }) {
         height: 36,
         borderRadius: 2,
         background: 'var(--surface-base)',
-        border: '1px solid #2e2e2e',
+        border: '1px solid var(--border-default)',
         color: '#888',
       }}
     >
@@ -104,7 +104,7 @@ function Segmented<T extends string>({
   return (
     <div className="space-y-1">
       <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>{label}</div>
-      <div className="flex" style={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #2e2e2e' }}>
+      <div className="flex" style={{ borderRadius: 2, overflow: 'hidden', border: '1px solid var(--border-default)' }}>
         {options.map((opt) => {
           const active = opt.value === value;
           return (
@@ -172,8 +172,8 @@ function LayerToggle({
       className="flex items-center justify-between px-2 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
       style={{
         borderRadius: 2,
-        border: `1px solid ${checked ? '#d4a017' : '#2e2e2e'}`,
-        background: checked ? 'rgba(212,160,23,0.10)' : '#0a0a0a',
+        border: `1px solid ${checked ? '#d4a017' : 'var(--border-default)'}`,
+        background: checked ? 'rgba(212,160,23,0.10)' : 'var(--surface-overlay)',
         color: checked ? '#d4a017' : '#888',
       }}
     >
@@ -206,7 +206,7 @@ export default function NavSettingsPanel({
       aria-label="Navigation settings"
       style={{
         background: 'rgba(5,5,5,0.95)',
-        borderTop: '1px solid #2e2e2e',
+        borderTop: '1px solid var(--border-default)',
         borderTopLeftRadius: 2,
         borderTopRightRadius: 2,
         boxShadow: '0 -8px 24px rgba(0,0,0,0.6)',
@@ -254,7 +254,7 @@ export default function NavSettingsPanel({
               <span
                 style={{
                   width: 40, height: 28, borderRadius: 2,
-                  background: swatch.base, border: '1px solid #2e2e2e',
+                  background: swatch.base, border: '1px solid var(--border-default)',
                   display: 'block',
                 }}
               />

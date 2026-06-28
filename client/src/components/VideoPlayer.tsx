@@ -8,12 +8,18 @@
 // ============================================================
 
 import { useRef, useState, useEffect } from 'react';
-import { X, Video, Shield, Maximize2, Minimize2, Edit2 } from 'lucide-react';
-import type { BodyCamVideo, VideoClassification } from '../types';
+import { X, Video, Shield, Maximize2, Minimize2, Edit2, Printer } from 'lucide-react';
+import type { BodyCamVideo } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
-import VideoHudOverlay from './VideoHudOverlay';
+// Note: VideoHudOverlay was imported but never referenced — the HUD is
+// rendered inline below. Removed during the page-25 audit pass.
 import { parseTimestamp } from '../utils/dateUtils';
 import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
+import { apiFetch } from '../hooks/useApi';
+import {
+  openBodycamVideoCustodyPdf,
+  type BodycamCustodyEntry,
+} from '../utils/bodycamVideoCustodyPdf';
 
 interface Props {
   isOpen: boolean;
@@ -24,14 +30,32 @@ interface Props {
   onEditVideo?: (video: any) => void;
   onClassify?: (videoId: any, classification: any) => void;
   streamEndpoint?: string;
+  /** Optional — surfaced in the chain-of-custody PDF's "prepared by" line. */
+  preparedBy?: string;
 }
 
-export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo }: Props) {
+export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo, preparedBy }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [hudVisible, setHudVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [printing, setPrinting] = useState(false);
+
+  // Fire a chain-of-custody "viewed" event on open so the audit_log
+  // captures WHO opened the player and WHEN, even when no metadata
+  // edit follows. BWC footage access is statutory court-record
+  // material; previously a supervisor could open + re-watch any
+  // officer's footage and leave no trace. Best-effort — silent on
+  // failure so a transient 5xx never blocks playback.
+  const viewLoggedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isOpen || !video?.id) return;
+    if (viewLoggedRef.current === video.id) return;
+    viewLoggedRef.current = video.id;
+    apiFetch(`/personnel/bodycam-videos/${video.id}/view-event`, { method: 'POST' })
+      .catch((err) => { console.warn('[VideoPlayer] view-event log failed:', err); });
+  }, [isOpen, video?.id]);
 
   // Per-resource signed params (sig/exp/nonce) from /api/auth/sign-urls —
   // keeps the session JWT out of the URL (it lands in CF/proxy logs).
@@ -101,6 +125,29 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   // than a JWT-bearing URL it would immediately fetch.
   const streamUrl = signedQuery ? `${apiBase}/personnel/bodycam-videos/${video.id}/stream?${signedQuery}` : '';
 
+  // Open the court-ready chain-of-custody PDF. Fetches /custody fresh
+  // each click so a long-open player picks up newly-recorded entries
+  // (e.g. a reclassification that just landed via WebSocket sync).
+  const handlePrintCustody = async () => {
+    if (!video || printing) return;
+    setPrinting(true);
+    try {
+      let custody: BodycamCustodyEntry[] = [];
+      try {
+        const res = await apiFetch<{ entries?: BodycamCustodyEntry[] }>(`/personnel/bodycam-videos/${video.id}/custody`);
+        custody = Array.isArray(res?.entries) ? res.entries : [];
+      } catch (err) {
+        // Open the PDF anyway with an empty custody timeline — the
+        // metadata + signature block is still court-useful when the
+        // audit endpoint 5xxs or is offline.
+        console.warn('[VideoPlayer] custody fetch failed; printing with empty timeline:', err);
+      }
+      openBodycamVideoCustodyPdf({ video, custody, preparedBy });
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
@@ -143,17 +190,29 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
               </span>
             )}
           </div>
+          {/* Right-side toolbar. The previous build had TWO separate flex
+              clusters here — both rendered a Close button, producing a
+              double-X in the header. Audit caught (2026-06-22): the second
+              X was a stray copy left over when the HUD/fullscreen controls
+              were lifted out of a different ancestor. Consolidated into one
+              cluster + added the Print button (court-ready chain-of-custody
+              PDF, mirrors evidence/FI/criminal-history/cases). */}
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handlePrintCustody}
+              disabled={printing}
+              className="toolbar-btn p-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Open a printable chain-of-custody PDF for this video"
+              aria-label="Print chain-of-custody PDF"
+            >
+              <Printer className="w-3.5 h-3.5" />
+            </button>
             {onEditVideo && (
               <button type="button" onClick={() => onEditVideo(video)} className="toolbar-btn p-1" title="Edit video metadata">
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
             )}
-            <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex items-center gap-1">
             <button type="button" onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
               HUD {hudVisible ? 'ON' : 'OFF'}
             </button>

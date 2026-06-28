@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Play, GitCompare, Save, Pencil, Trash2, ArrowDownToLine } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { toDisplayLabel } from '../../../utils/formatters';
 import { asArray } from '../../../utils/asArray';
 
 import RichTextArea from '../../../components/RichTextArea';
@@ -173,36 +174,36 @@ export default function AIPromptWorkshopPanel() {
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-rmpg-400 mb-1 block">System Prompt</label>
+            <label htmlFor="ff-aipromptworkshoppanel-2" className="text-xs text-rmpg-400 mb-1 block">System Prompt</label>
             <RichTextArea
               rows={4}
               value={systemPrompt}
               onChange={e => setSystemPrompt(e.target.value)}
               placeholder="You are a law enforcement AI assistant..."
-              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500 resize-none"
+              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 resize-none"
             />
           </div>
 
           <div>
-            <label className="text-xs text-rmpg-400 mb-1 block">User Message</label>
+            <label htmlFor="ff-aipromptworkshoppanel-1" className="text-xs text-rmpg-400 mb-1 block">User Message</label>
             <RichTextArea
               rows={3}
               value={userMessage}
               onChange={e => setUserMessage(e.target.value)}
               placeholder="Summarize this incident report..."
-              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500 resize-none"
+              className="w-full px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 resize-none"
             />
           </div>
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <label className="text-[10px] text-rmpg-500">Temp override:</label>
+              <label htmlFor="ff-aipromptworkshoppanel-0" className="text-[10px] text-rmpg-500">Temp override:</label>
               <input id="ff-aipromptworkshoppanel-0"
                 type="range"
                 min={0} max={2} step={0.05}
                 value={tempOverride ?? 0.7}
                 onChange={e => setTempOverride(parseFloat(e.target.value))}
-                className="w-24 h-1 bg-rmpg-700 rounded appearance-none cursor-pointer accent-gray-500"
+                className="w-24 h-1 bg-rmpg-700 rounded appearance-none cursor-pointer accent-rmpg-500"
               />
               <span className="text-[10px] text-rmpg-400 font-mono w-8">{tempOverride?.toFixed(2) ?? '—'}</span>
               {tempOverride !== null && (
@@ -222,7 +223,7 @@ export default function AIPromptWorkshopPanel() {
               <button
                 onClick={runCompare}
                 disabled={running || comparing || (!systemPrompt.trim() && !userMessage.trim())}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-[#404040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-border-default disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {comparing ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCompare className="w-3 h-3" />}
                 Compare
@@ -269,7 +270,7 @@ export default function AIPromptWorkshopPanel() {
           <select id="ff-aipromptworkshoppanel-1"
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value)}
-            className="px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-xs text-rmpg-300 focus:outline-none focus:border-gray-500"
+            className="px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-xs text-rmpg-300 focus:outline-none focus:border-rmpg-500"
           >
             {CATEGORIES.map(c => (
               <option key={c} value={c}>{c === 'all' ? 'All Categories' : c.charAt(0).toUpperCase() + c.slice(1)}</option>
@@ -285,7 +286,7 @@ export default function AIPromptWorkshopPanel() {
                   <div className="space-y-2">
                     <input id="ff-aipromptworkshoppanel-2"
                       type="text" value={editName} onChange={e => setEditName(e.target.value)}
-                      className="w-full px-2 py-1 bg-surface-base border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
+                      className="w-full px-2 py-1 bg-surface-base border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
                     />
                     <select id="ff-aipromptworkshoppanel-3"
                       value={editCategory} onChange={e => setEditCategory(e.target.value)}
@@ -304,7 +305,7 @@ export default function AIPromptWorkshopPanel() {
                   <>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-rmpg-100 min-w-0 truncate flex-1">{t.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-rmpg-700 text-rmpg-400 rounded shrink-0">{(t.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-rmpg-700 text-rmpg-400 rounded shrink-0">{toDisplayLabel(t.category)}</span>
                     </div>
                     <p className="text-[10px] text-rmpg-500 line-clamp-2">{(t.system_prompt || '').slice(0, 80)}{(t.system_prompt || '').length > 80 ? '...' : ''}</p>
                     <div className="flex gap-2 pt-1">
@@ -335,7 +336,7 @@ export default function AIPromptWorkshopPanel() {
             <input id="ff-aipromptworkshoppanel-4"
               type="text" value={saveName} onChange={e => setSaveName(e.target.value)}
               placeholder="Template name..."
-              className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500"
+              className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500"
             />
             <select id="ff-aipromptworkshoppanel-5"
               value={saveCategory} onChange={e => setSaveCategory(e.target.value)}
@@ -353,7 +354,7 @@ export default function AIPromptWorkshopPanel() {
           </div>
         ) : (
           <button onClick={() => setShowSaveForm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-[#404040] transition-colors">
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-border-default transition-colors">
             <Save className="w-3 h-3" /> Save as Template
           </button>
         )}

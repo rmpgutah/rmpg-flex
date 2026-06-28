@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Cloud, Database, HardDrive, Box, Cpu, RefreshCw, ShieldCheck, AlertTriangle, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 interface Props {
   LoadingSpinner: React.ComponentType;
@@ -26,6 +27,9 @@ export default function AdminCloudflareTab({ setError }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [purging, setPurging] = useState(false);
+  // Zone-purge confirm is gated through ConfirmDialog (was window.confirm,
+  // which bypassed keyboard trap + day/night surface + the Esc cascade).
+  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
 
   // Form (token is write-only; blank keeps current).
   const [token, setToken] = useState('');
@@ -66,14 +70,21 @@ export default function AdminCloudflareTab({ setError }: Props) {
     finally { setSaving(false); }
   };
 
+  // Zone-purge entry point: stage the confirm dialog. The dialog's Confirm
+  // button calls `purge()` directly (no second prompt), so this is a single
+  // operator decision point gated by the same focus-trap / Esc cascade as
+  // every other destructive admin action.
+  const stagePurge = () => setPurgeConfirmOpen(true);
   const purge = async () => {
-    if (!window.confirm('Purge the ENTIRE zone cache? Users will re-fetch all assets.')) return;
     setPurging(true);
     try {
       await apiFetch('/cloudflare/purge-cache', { method: 'POST', body: JSON.stringify({}) });
       addToast('Cache purged', 'success');
     } catch (e: any) { addToast(e?.message || 'Purge failed', 'error'); }
-    finally { setPurging(false); }
+    finally {
+      setPurging(false);
+      setPurgeConfirmOpen(false);
+    }
   };
 
   if (loading) return <div className="flex items-center gap-2 text-[11px] text-rmpg-400 p-4"><Loader2 size={14} className="animate-spin" /> Loading…</div>;
@@ -88,7 +99,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
         {rows.length === 0
           ? <div className="px-3 py-2 text-[10px] text-rmpg-500">none / no read scope</div>
           : rows.map((r, i) => (
-            <div key={i} className="px-3 py-1 text-[10px] text-rmpg-300 border-t border-[#101010] flex justify-between gap-2">
+            <div key={i} className="px-3 py-1 text-[10px] text-rmpg-300 border-t border-border-subtle flex justify-between gap-2">
               <span className="truncate">{r.name || r.title || r.id}</span>
               {r.size != null && <span className="text-rmpg-500 font-mono flex-shrink-0">{(r.size / 1e6).toFixed(1)} MB</span>}
             </div>
@@ -112,6 +123,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
       </div>
 
       {/* Credentials */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className={card}>
         <div className="px-3 py-1.5 border-b border-border-default text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Credentials</div>
         <div className="p-3 space-y-2">
@@ -139,6 +151,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
           </div>
         </div>
       </div>
+      </form>
 
       {/* Status */}
       {status?.configured && (
@@ -167,12 +180,23 @@ export default function AdminCloudflareTab({ setError }: Props) {
           <div className="px-3 py-1.5 border-b border-border-default text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Cache</div>
           <div className="p-3 flex items-center justify-between gap-3">
             <span className="text-[10px] text-rmpg-400">Purge the entire zone cache (requires Zone ID + Cache Purge scope).</span>
-            <button type="button" onClick={purge} disabled={purging || !zoneId} className="flex items-center gap-1.5 px-3 py-2 bg-surface-base border border-amber-700/50 rounded-sm text-[10px] font-bold text-amber-400 hover:text-amber-300 disabled:opacity-40">
+            <button type="button" onClick={stagePurge} disabled={purging || !zoneId} className="flex items-center gap-1.5 px-3 py-2 bg-surface-base border border-amber-700/50 rounded-sm text-[10px] font-bold text-amber-400 hover:text-amber-300 disabled:opacity-40">
               {purging ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Purge Everything
             </button>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={purgeConfirmOpen}
+        onClose={() => { if (!purging) setPurgeConfirmOpen(false); }}
+        onConfirm={purge}
+        title="Purge Zone Cache"
+        message="Purge the ENTIRE Cloudflare zone cache? Every visitor will re-fetch all assets on their next request, which may briefly increase origin load. This action is audited."
+        confirmLabel="Purge Everything"
+        confirmVariant="warning"
+        isLoading={purging}
+      />
     </div>
   );
 }

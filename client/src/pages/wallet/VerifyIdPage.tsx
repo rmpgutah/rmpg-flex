@@ -105,12 +105,12 @@ export default function VerifyIdPage() {
             <div className="mt-3 flex gap-3 items-center">
               <div className="w-14 h-16 rounded-[2px] border border-border-default bg-surface-overlay overflow-hidden flex-shrink-0 flex items-center justify-center">
                 {officer.photo ? <img src={officer.photo} alt={officer.full_name} className="w-full h-full object-cover" />
-                  : <span className="text-[#444] text-[9px]">NO PHOTO</span>}
+                  : <span className="text-rmpg-700 text-[9px]">NO PHOTO</span>}
               </div>
-              <div className="text-[11px] text-[#ddd] space-y-[2px]">
+              <div className="text-[11px] text-rmpg-200 space-y-[2px]">
                 <div className="text-rmpg-100 font-semibold">{officer.full_name}</div>
                 <div>Badge {officer.badge_number || '—'} · {officer.rank || '—'}</div>
-                <div className="text-[#999]">{officer.department || '—'}</div>
+                <div className="text-rmpg-400">{officer.department || '—'}</div>
               </div>
             </div>
           )}

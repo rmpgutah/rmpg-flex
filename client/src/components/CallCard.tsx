@@ -4,6 +4,7 @@ import type { CallForService } from '../types';
 import type { DispatchCode } from '../hooks/useDispatchCodes';
 import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
+import { toDisplayLabel } from '../utils/formatters';
 import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
@@ -167,7 +168,14 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       ));
     };
 
+    // On phase reset (deps change = status/timestamps changed), snap bar to
+    // its new position instantly rather than animating backwards over 1 second.
+    // Disable transition → write → re-enable after the browser paints.
+    if (barRef.current) barRef.current.style.transition = 'none';
     update();
+    requestAnimationFrame(() => {
+      if (barRef.current) barRef.current.style.transition = '';
+    });
     // Update every second for active calls, every 30s for inactive
     const interval = setInterval(update, active ? 1000 : 30000);
     return () => clearInterval(interval);
@@ -268,7 +276,6 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             ref={barRef}
             className="timer-bar-fill"
             style={{
-              width: `${initState.progress * 100}%`,
               background: initState.color,
               opacity: initState.progress > 0 ? 1 : 0,
             }}
@@ -419,7 +426,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           {formatIncidentType(call.incident_type)}
         </span>
         {call.incident_type === 'pso_client_request' && call.pso_service_type && (
-          <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+          <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{toDisplayLabel(call.pso_service_type)}</span>
         )}
         {call.case_number && (
           <span className="text-[9px] font-mono text-rmpg-300 bg-surface-raised border border-rmpg-700 px-1">
@@ -442,7 +449,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         if ((call as any).vehicle_pursuit || (call as any).foot_pursuit) flagBadges.push({ label: 'PURSUIT', color: '#f97316', bg: 'rgba(249,115,22,0.15)', border: 'rgba(249,115,22,0.35)' });
         if ((call as any).officer_safety_caution) flagBadges.push({ label: 'SAFETY', color: '#ef4444', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.35)' });
         if ((call as any).felony_in_progress) flagBadges.push({ label: 'FELONY', color: '#ef4444', bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.5)' });
-        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: '#aaaaaa', bg: 'rgba(136,136,136,0.15)', border: 'rgba(136,136,136,0.35)' });
+        if ((call as any).ems_requested) flagBadges.push({ label: 'EMS', color: 'var(--rmpg-400)', bg: 'rgba(136,136,136,0.15)', border: 'rgba(136,136,136,0.35)' });
         if ((call as any).injuries_reported) flagBadges.push({ label: 'INJ', color: '#fb923c', bg: 'rgba(251,146,60,0.15)', border: 'rgba(251,146,60,0.35)' });
         if (flagBadges.length === 0) return null;
         return (
@@ -461,7 +468,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         {/* Source icon */}
         {call.source && (() => {
           const SourceIcon = SOURCE_ICONS[call.source] || Phone;
-          return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source?.replace(/_/g, ' ')} />;
+          return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source ? toDisplayLabel(call.source) : undefined} />;
         })()}
         {/* Feature 3: Call duration */}
         <span ref={durationRef} className="font-mono tabular-nums">{call.created_at ? formatCallDuration(call.created_at, call.status, (call as any).archived_at || call.cleared_at || call.closed_at) : ''}</span>
@@ -481,7 +488,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {/* 40: Location with improved pin icon color — coords hidden (redundant with address) */}
       <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
         <MapPin className="w-3 h-3 flex-shrink-0 text-rmpg-500" aria-hidden="true" />
-        <div className="truncate">
+        <div className="min-w-0 truncate">
           <span className="truncate">{formatAddressDisplay(call.location)}</span>
           {/* Enhancement 28: Show property name below address */}
           {call.property_name && (
@@ -489,7 +496,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           )}
           {/* Client/requestor company name */}
           {(call.client_name || (call as any).pso_requestor_name) && (
-            <div className="text-[9px] text-brand-400 truncate flex items-center gap-0.5">
+            <div className="text-[9px] text-brand-400 min-w-0 truncate flex items-center gap-0.5">
               <Globe className="w-2.5 h-2.5 flex-shrink-0" />
               {call.client_name || (call as any).pso_requestor_name}
             </div>
@@ -549,7 +556,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <div className="flex flex-wrap gap-0.5 mt-1">
             {tags.map((tag: string) => (
               <span key={tag} className={`text-[7px] font-bold uppercase px-1 py-0 border ${TAG_COLORS[tag] || 'bg-rmpg-800 text-rmpg-300 border-rmpg-600'}`}>
-                {tag.replace(/_/g, ' ')}
+                {toDisplayLabel(tag)}
               </span>
             ))}
           </div>
@@ -611,9 +618,18 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         </div>
       )}
 
-      {/* 42: Quick Status Advance Buttons with smoother reveal */}
+      {/* 42: Quick Status Advance Buttons.
+           ORIGINAL: only `opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100`. That made the
+           primary call-lifecycle action (D/ER/OS/CL/X) UNREACHABLE on:
+             • Vehicle MDT touchscreens (no hover event)
+             • Keyboard navigation (Tab focus doesn't trigger :hover)
+             • Screen readers (button is rendered but invisible)
+           Now reveal on hover OR focus-within OR on any pointer device
+           that has no hover capability (mobile / touch tablets). On touch
+           devices the buttons are permanently visible because there's no
+           way to discover them otherwise. */}
       {onStatusChange && !['closed', 'cancelled', 'archived'].includes(call.status) && (
-        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5 z-10"
+        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all duration-200 flex gap-0.5 z-10"
           onClick={(e) => e.stopPropagation()}
           style={{ WebkitBackdropFilter: 'blur(2px)', backdropFilter: 'blur(2px)' }}
         >

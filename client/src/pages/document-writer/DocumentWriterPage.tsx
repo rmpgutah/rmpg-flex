@@ -36,6 +36,7 @@ import DocPropertiesDialog from './components/DocPropertiesDialog';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import RecentDocsPanel from './components/RecentDocsPanel';
 import MergePanel from './components/MergePanel';
+import RefinersPanel from './components/RefinersPanel';
 import ProofreadPanel from './components/ProofreadPanel';
 import SectionsPanel from './components/SectionsPanel';
 import TrackChangesPanel from './components/TrackChangesPanel';
@@ -142,6 +143,7 @@ export default function DocumentWriterPage() {
   const [suggestMode, setSuggestMode] = useState(false);
   const [autocompleteOn, setAutocompleteOn] = useState(() => localStorage.getItem('rmpg_writer_autocomplete') !== 'off');
   const [appearance, setAppearance] = useState<EditorAppearance>(loadAppearance);
+  const [showRefiners, setShowRefiners] = useState(false);
   // Final wave: word-limit indicator, section reorder, macro recorder.
   const [showReorder, setShowReorder] = useState(false);
   const [showMacro, setShowMacro] = useState(false);
@@ -822,7 +824,11 @@ export default function DocumentWriterPage() {
   }, [mode, editor, suggestMode]);
 
   if (mode === 'choose') {
-    return <div className="p-3 h-[calc(100vh-140px)] overflow-auto"><TemplateChooser onSelect={handleTemplateSelect} /></div>;
+    return (
+      <div className="h-[calc(100vh-140px)] overflow-hidden border border-border-default rounded-[2px]">
+        <TemplateChooser onSelect={handleTemplateSelect} />
+      </div>
+    );
   }
 
   const dim = PAGE_SIZES[docSettings.page.size];
@@ -923,6 +929,8 @@ export default function DocumentWriterPage() {
               wordLimitOn,
               onToggleReorder: () => setShowReorder((v) => !v),
               onToggleMacro: () => setShowMacro((v) => !v),
+              onToggleRefiners: () => setShowRefiners((v) => !v),
+              refinersOpen: showRefiners,
             }}
           />
         </div>
@@ -996,6 +1004,10 @@ export default function DocumentWriterPage() {
         {showTrackChanges && !focusMode && editor && (
           <TrackChangesPanel editor={editor} suggestMode={suggestMode} onToggleMode={handleToggleSuggestMode}
             onClose={() => setShowTrackChanges(false)} flash={(msg) => flashNotice(msg)} />
+        )}
+
+        {showRefiners && !focusMode && editor && (
+          <RefinersPanel editor={editor} onClose={() => setShowRefiners(false)} flash={(msg) => flashNotice(msg)} />
         )}
 
         {showMinimap && !focusMode && editor && <Minimap editor={editor} scrollSelector=".writer-scroll" onClose={() => setShowMinimap(false)} />}

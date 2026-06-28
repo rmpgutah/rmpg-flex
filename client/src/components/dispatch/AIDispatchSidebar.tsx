@@ -1,4 +1,5 @@
 import { Brain, Shield, AlertTriangle, Check, X } from 'lucide-react';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface AIAnalysis {
   safetyBriefing?: string;
@@ -27,15 +28,15 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
   if (!selectedCall) return null;
 
   return (
-    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: '#111', borderColor: 'var(--surface-raised)' }}>
+    <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden" style={{ background: 'var(--surface-overlay)', borderColor: 'var(--surface-raised)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)', background: '#0e0e0e' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)', background: 'var(--surface-overlay)' }}>
         <div className="flex items-center gap-1.5">
           <Brain className="w-3.5 h-3.5 text-purple-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">AI Analysis</span>
         </div>
         <button onClick={onDismiss} className="p-0.5 rounded hover:bg-[#ffffff10] transition-colors" title="Close AI panel">
-          <X className="w-3.5 h-3.5 text-[#6b7280]" />
+          <X className="w-3.5 h-3.5 text-rmpg-500" />
         </button>
       </div>
 
@@ -44,14 +45,14 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
             <Brain className="w-8 h-8 mx-auto mb-2" style={{ opacity: 0.2, color: 'var(--rmpg-500)' }} />
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6b7280] mb-1">AI Unavailable</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-rmpg-500 mb-1">AI Unavailable</p>
             <p className="text-[9px] text-rmpg-500 leading-relaxed max-w-[180px] mx-auto">
               No AI analysis available for this call. Analysis runs automatically when calls are created or updated.
             </p>
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
           {/* Safety Briefing */}
           <div>
             <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#d4a017' }}>
@@ -96,7 +97,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
                       title={alreadySet ? `${flag} already set` : `Accept flag: ${flag}`}
                     >
                       {alreadySet ? <Check className="w-2.5 h-2.5" /> : <AlertTriangle className="w-2.5 h-2.5" />}
-                      {flag.replace(/_/g, ' ')}
+                      {toDisplayLabel(flag)}
                     </button>
                   );
                 })}
@@ -107,7 +108,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           {/* Confidence Meter */}
           {analysis.confidence != null && (
             <div>
-              <label className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--rmpg-500)' }}>
+              <label className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-1 text-rmpg-500">
                 <span>Confidence</span>
                 <span className="font-mono tabular-nums">{Math.round(analysis.confidence)}%</span>
               </label>

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { AlertTriangle, X, Loader2, Users } from 'lucide-react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 // Generic duplicate-candidates picker. Used by dispatch quick-add for persons,
 // vehicles, and businesses. The caller passes the candidate list returned by
@@ -34,11 +35,12 @@ export default function DuplicateCandidatesModal({
   // Reset selection whenever the candidates list changes (new dup check)
   useEffect(() => { setSelectedId(null); }, [candidates]);
 
-  // Body scroll lock + ESC to close + initial focus
+  // Body scroll lock (reference-counted, leak-proof)
+  useBodyScrollLock(isOpen);
+
+  // ESC to close + initial focus
   useEffect(() => {
     if (!isOpen) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handleKey);
     const raf = requestAnimationFrame(() => {
@@ -47,7 +49,6 @@ export default function DuplicateCandidatesModal({
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener('keydown', handleKey);
-      document.body.style.overflow = prevOverflow;
     };
   }, [isOpen, onClose]);
 
@@ -69,7 +70,7 @@ export default function DuplicateCandidatesModal({
       >
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-          style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
+          style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
         >
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-400" />

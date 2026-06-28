@@ -67,8 +67,8 @@ export default function ManeuverArrow({
         width: size,
         height: size,
         background: 'var(--surface-base)',
-        border: '1px solid #2e2e2e',
-        borderRadius: 4,
+        border: '1px solid var(--border-default)',
+        borderRadius: 2,
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.5)',
         flexShrink: 0,
       }}

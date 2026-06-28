@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2, Search, Reply,
@@ -8,17 +9,64 @@ import {
   CheckSquare, Square, CheckCircle, EyeOff, FolderPlus, Edit3, Trash,
   PanelLeftClose, PanelLeftOpen, Image, Clock, FileStack, Users, Printer, Bell,
   BellOff, Link2, CalendarClock, SlidersHorizontal, Shield, Hash, Upload, Sun, Moon,
+  FileDown,
 } from 'lucide-react';
 import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useAuth } from '../context/AuthContext';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
 import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
 import DocumentViewer from '../components/DocumentViewer';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { openEmailThreadPdf } from '../utils/emailThreadPdf';
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
+
+// ─── Per-user localStorage scoping ──────────────────────────────────────
+// The Email page used to write every preference and the compose-draft cache
+// under bare keys (`email_compose_draft`, `email_reading_theme`, …). On a
+// shared MDT/admin workstation that meant: officer A's half-typed draft to
+// the city attorney was restored under officer B's session; B's reading-
+// theme override surfaced for A; the notif/folder/list-width preferences
+// leaked across logins. Same fix the Fleet Insights route used in
+// v1041 (`rmpg_fleet_insights_period_<id>`) — suffix the key with the user
+// id and migrate the bare key once so existing operators don't lose their
+// preference. Anonymous / pre-auth callers fall back to the bare key so
+// tests + the (rare) un-logged-in render still work.
+function scopedKey(base: string, userId: string | number | undefined | null): string {
+  return userId != null && userId !== '' ? `${base}_${userId}` : base;
+}
+
+function readScoped(base: string, userId: string | number | undefined | null): string | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const k = scopedKey(base, userId);
+    let raw = window.localStorage.getItem(k);
+    // One-time migration from the bare key — copy + leave the bare key
+    // in place so OTHER not-yet-logged-in tabs don't lose state mid-flight.
+    if (raw == null && userId != null && userId !== '') {
+      const legacy = window.localStorage.getItem(base);
+      if (legacy != null) {
+        try { window.localStorage.setItem(k, legacy); } catch { /* quota — silent */ }
+        raw = legacy;
+      }
+    }
+    return raw;
+  } catch { return null; }
+}
+
+function writeScoped(base: string, userId: string | number | undefined | null, value: string): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try { window.localStorage.setItem(scopedKey(base, userId), value); } catch { /* quota — silent */ }
+}
+
+function removeScoped(base: string, userId: string | number | undefined | null): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try { window.localStorage.removeItem(scopedKey(base, userId)); } catch { /* private — silent */ }
+}
 
 // Shared sanitize-html options for email HTML content
 const EMAIL_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
@@ -37,6 +85,26 @@ const EMAIL_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   },
   disallowedTagsMode: 'discard'
 };
+
+// ─── Avatar color palette ──────────────────────────────────────────────
+// Sender-stable colors for the per-message avatar circles. Picked from the
+// content-flavor palette (NOT the brand-gold token) — these communicate
+// "different person" the same way Slack/Gmail use a per-user hash. Index
+// 0 and 7 used to both be `#888888` (a copy/paste slip in the original
+// 10-element array); the duplicate halved the effective hashing space for
+// every other color, so neutral grey appeared roughly twice as often as
+// any other shade. Replaced index 7 with `#3b82f6` (blue-500) so the
+// distribution is uniform across all 10 buckets.
+const AVATAR_COLORS = [
+  '#888888', '#8b5cf6', '#22c55e', '#10b981', '#f59e0b',
+  '#ef4444', '#ec4899', '#3b82f6', '#14b8a6', '#f97316',
+] as const;
+
+function avatarColorFor(senderKey: string): string {
+  if (!senderKey) return AVATAR_COLORS[0];
+  const hash = [...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -216,7 +284,7 @@ function ContactAutocompleteInput({
 
   return (
     <div ref={containerRef} className="relative">
-      {label && <label className="text-[10px] text-rmpg-400 block mb-0.5">{label}</label>}
+      {label && <label htmlFor="ff-emailpage-0" className="text-[10px] text-rmpg-400 block mb-0.5">{label}</label>}
       <input id="ff-emailpage-0"
         ref={inputRef}
         value={value}
@@ -414,28 +482,35 @@ interface DraftState {
   savedAt: string;
 }
 
-function saveDraft(draft: Omit<DraftState, 'savedAt'>): void {
+// User-scoped — shared-MDT pattern is real (one machine, multiple officers
+// across a shift). Without the suffix, officer A's half-typed draft (often
+// containing the recipient/subject of a sensitive case email) was restored
+// under officer B's session. See scopedKey/readScoped at the top of this
+// file. userId may be undefined during the pre-enrollment splash; we
+// preserve the legacy bare-key behavior there so existing drafts still
+// surface on first paint, and the next save promotes them.
+function saveDraft(draft: Omit<DraftState, 'savedAt'>, userId?: string | number | null): void {
   try {
     if (!draft.to && !draft.cc && !draft.subject && !draft.body) {
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      removeScoped(DRAFT_STORAGE_KEY, userId);
       return;
     }
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ ...draft, savedAt: new Date().toISOString() }));
+    writeScoped(DRAFT_STORAGE_KEY, userId, JSON.stringify({ ...draft, savedAt: new Date().toISOString() }));
   } catch { /* quota exceeded or private browsing — ignore */ }
 }
 
-function loadDraft(): DraftState | null {
+function loadDraft(userId?: string | number | null): DraftState | null {
   try {
-    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    const raw = readScoped(DRAFT_STORAGE_KEY, userId);
     if (!raw) return null;
     const draft = JSON.parse(raw) as DraftState;
     // Discard drafts older than 24 hours
-    if (Date.now() - new Date(draft.savedAt).getTime() > 24 * 60 * 60 * 1000) { localStorage.removeItem(DRAFT_STORAGE_KEY); return null; }
+    if (Date.now() - new Date(draft.savedAt).getTime() > 24 * 60 * 60 * 1000) { removeScoped(DRAFT_STORAGE_KEY, userId); return null; }
     return draft;
   } catch { return null; }
 }
 
-function clearDraft(): void { localStorage.removeItem(DRAFT_STORAGE_KEY); }
+function clearDraft(userId?: string | number | null): void { removeScoped(DRAFT_STORAGE_KEY, userId); }
 
 // ============================================================
 // Email-Incident Link Panel
@@ -538,7 +613,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
                 <Icon className="w-3 h-3 text-brand-400" />
                 <span>{getLinkLabel(link)}</span>
                 {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{link.link_type}</span>}
-                <button type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
+                <button type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -633,7 +708,7 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
               <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1">{email.subject || '(No subject)'}</span>
               {email.status === 'pending' && (
                 <button type="button" onClick={() => handleCancel(email.id)}
-                  className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity" title="Cancel">
+                  className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity" title="Cancel">
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -687,8 +762,8 @@ function proxyEmailImages(html: string): string {
 type ReadingTheme = 'dark' | 'light';
 const READING_THEME_KEY = 'email_reading_theme';
 
-function getReadingTheme(): ReadingTheme {
-  try { return localStorage.getItem(READING_THEME_KEY) === 'light' ? 'light' : 'dark'; } catch { return 'dark'; }
+function getReadingTheme(userId?: string | number | null): ReadingTheme {
+  return readScoped(READING_THEME_KEY, userId) === 'light' ? 'light' : 'dark';
 }
 
 const BODY_FRAME_CSS: Record<ReadingTheme, string> = {
@@ -860,7 +935,7 @@ function SearchFilterPanel({
       </div>
 
       <div>
-        <label className="text-[9px] text-rmpg-500 block mb-0.5">From (sender)</label>
+        <label htmlFor="ff-emailpage-7" className="text-[9px] text-rmpg-500 block mb-0.5">From (sender)</label>
         <input id="ff-emailpage-7" value={local.sender} onChange={e => setLocal(prev => ({ ...prev, sender: e.target.value }))}
           className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" placeholder="name or email" />
       </div>
@@ -885,12 +960,12 @@ function SearchFilterPanel({
 
       <div className="flex items-center gap-2">
         <div className="flex-1">
-          <label className="text-[9px] text-rmpg-500 block mb-0.5">From date</label>
+          <label htmlFor="ff-emailpage-11" className="text-[9px] text-rmpg-500 block mb-0.5">From date</label>
           <input id="ff-emailpage-11" type="date" value={local.dateFrom} onChange={e => setLocal(prev => ({ ...prev, dateFrom: e.target.value }))}
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
         <div className="flex-1">
-          <label className="text-[9px] text-rmpg-500 block mb-0.5">To date</label>
+          <label htmlFor="ff-emailpage-12" className="text-[9px] text-rmpg-500 block mb-0.5">To date</label>
           <input id="ff-emailpage-12" type="date" value={local.dateTo} onChange={e => setLocal(prev => ({ ...prev, dateTo: e.target.value }))}
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
@@ -912,12 +987,12 @@ function SearchFilterPanel({
 
 const NOTIF_PREF_KEY = 'email_notifications_enabled';
 
-function getNotificationsEnabled(): boolean {
-  try { return localStorage.getItem(NOTIF_PREF_KEY) !== 'false'; } catch { return true; }
+function getNotificationsEnabled(userId?: string | number | null): boolean {
+  return readScoped(NOTIF_PREF_KEY, userId) !== 'false';
 }
 
-function setNotificationsEnabled(enabled: boolean) {
-  try { localStorage.setItem(NOTIF_PREF_KEY, String(enabled)); } catch { /* ignore */ }
+function setNotificationsEnabled(enabled: boolean, userId?: string | number | null) {
+  writeScoped(NOTIF_PREF_KEY, userId, String(enabled));
 }
 
 async function requestNotificationPermission(): Promise<boolean> {
@@ -960,11 +1035,13 @@ interface FileAttachment {
 interface ComposeModalProps {
   mode: 'new' | 'reply' | 'reply-all' | 'forward';
   replyMessage?: EmailMessage | null;
+  /** User id for per-user draft scoping. */
+  userId?: string | number | null;
   onClose: () => void;
   onSent: () => void;
 }
 
-function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps) {
+function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeModalProps) {
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [bcc, setBcc] = useState('');
@@ -1000,7 +1077,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       }
     } else if (mode === 'new') {
       // Restore draft for new compositions
-      const draft = loadDraft();
+      const draft = loadDraft(userId);
       if (draft) {
         setTo(draft.to); setCc(draft.cc); setBcc(draft.bcc);
         setSubject(draft.subject); setBody(draft.body);
@@ -1008,18 +1085,18 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         setDraftStatus(`Draft restored from ${formatDate(draft.savedAt)}`);
       }
     }
-  }, [mode, replyMessage]);
+  }, [mode, replyMessage, userId]);
 
   // Auto-save draft on changes (debounced, only for new compositions)
   useEffect(() => {
     if (mode !== 'new') return;
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = setTimeout(() => {
-      saveDraft({ to, cc, bcc, subject, body });
+      saveDraft({ to, cc, bcc, subject, body }, userId);
       if (to || cc || subject || body) setDraftStatus('Draft saved');
     }, 2000);
     return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
-  }, [to, cc, bcc, subject, body, mode]);
+  }, [to, cc, bcc, subject, body, mode, userId]);
 
   useEffect(() => { const t = setTimeout(() => textareaRef.current?.focus(), 100); return () => clearTimeout(t); }, []);
 
@@ -1046,7 +1123,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           scheduledAt,
         }),
       });
-      clearDraft();
+      clearDraft(userId);
       onSent();
       onClose();
     } catch (err: any) { setError(err?.message || 'Operation failed'); }
@@ -1121,7 +1198,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
 
       await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(payload) });
-      clearDraft();
+      clearDraft(userId);
       onSent();
       onClose();
     } catch (err: any) { setError(err?.message || 'Operation failed'); }
@@ -1156,7 +1233,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-surface-base border border-rmpg-700 rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141414]' : ''}`}
+        className={`bg-surface-base border border-rmpg-700 rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[var(--surface-sunken)]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
@@ -1313,7 +1390,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
                     <span className="text-rmpg-600 text-[9px]">{formatSize(att.size)}</span>
-                    <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
                   </div>
                 );
               })}
@@ -1345,7 +1422,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                         subject, body, importance, attachments: fileAttachments.length ? fileAttachments : undefined,
                       }),
                     });
-                    clearDraft();
+                    clearDraft(userId);
                     setDraftStatus('Saved to Drafts folder');
                   } catch { setError('Failed to save draft to mailbox'); }
                   finally { setSavingDraft(false); }
@@ -1663,7 +1740,7 @@ function HeadersModal({ messageId, onClose }: { messageId: string; onClose: () =
           <input value={hFilter} onChange={e => setHFilter(e.target.value)} placeholder="Filter headers (e.g. spf, dkim, received)…"
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[32px]" aria-label="Filter headers" />
         </div>
-        <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading ? <Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /> : (
             <div className="space-y-1 font-mono text-[10px]">
               {internetMessageId && <div className="text-rmpg-400 break-all"><span className="text-brand-400">Message-ID:</span> {internetMessageId}</div>}
@@ -1741,11 +1818,11 @@ function AutoReplyModal({ onClose, onSnackbar }: { onClose: () => void; onSnackb
             {oofStatus === 'scheduled' && (
               <div className="flex items-center gap-2">
                 <div className="flex-1">
-                  <label className="text-[9px] text-rmpg-500 block mb-0.5">Starts</label>
+                  <label htmlFor="ff-emailpage-16" className="text-[9px] text-rmpg-500 block mb-0.5">Starts</label>
                   <input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
                 </div>
                 <div className="flex-1">
-                  <label className="text-[9px] text-rmpg-500 block mb-0.5">Ends</label>
+                  <label htmlFor="ff-emailpage-15" className="text-[9px] text-rmpg-500 block mb-0.5">Ends</label>
                   <input type="datetime-local" value={endAt} onChange={e => setEndAt(e.target.value)} className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
                 </div>
               </div>
@@ -1847,6 +1924,10 @@ interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 export default function EmailPage() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const uid = user?.id;
+  const canManage = user?.role === 'admin' || user?.role === 'manager';
   const { snackbar, show: showSnackbar, dismiss: dismissSnackbar } = useSnackbar();
 
   // Status
@@ -1862,21 +1943,81 @@ export default function EmailPage() {
       .catch(() => setEnrolled(false));
   }, []);
 
-  // Handle ?enrolled=1 callback after Microsoft consent
+  // Handle ?enrolled=1 callback after Microsoft consent. Strip ONLY the
+  // enrolled flag — earlier this used `replaceState({}, '', '/email')` and
+  // nuked every other query param, which made it impossible to land an
+  // operator on a deep-link AFTER OAuth (the auth bounce always cleared
+  // ?message_id/?thread_id/?folder).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('enrolled') === '1') {
+    if (searchParams.get('enrolled') === '1') {
       setEnrolled(true);
-      window.history.replaceState({}, '', '/email');
+      const next = new URLSearchParams(searchParams);
+      next.delete('enrolled');
+      setSearchParams(next, { replace: true });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Folders
+  // ─── URL deep-link contract ──────────────────────────────────────────
+  // /email?folder=<name>       — switch to that folder on mount (well-known
+  //                              keys like "inbox", "sentitems", "drafts",
+  //                              or the Graph folder id).
+  // /email?thread_id=<convId>  — once messages hydrate, auto-select the
+  //                              latest message in that conversation.
+  // /email?message_id=<graphId>— once messages hydrate, auto-select that
+  //                              specific message.
+  // /email?compose=1           — open the New Message modal on mount
+  //                              (useful for `mailto`-style deep-links from
+  //                              other RMPG pages).
+  // All consumed params are stripped (replaceState) so a manual refresh
+  // doesn't re-fire the deep-link. Mirrors the WarrantsPage / Cases /
+  // Communications pattern (PRs #1597 / #1604 / #1625).
+  //
+  // Refs (not state) so the value is read by the first fetch without
+  // forcing an additional render cycle.
+  const pendingFolderRef = useRef<string | null>(null);
+  const pendingComposeRef = useRef<boolean>(false);
+  const [pendingThreadId, setPendingThreadId] = useState<string | null>(null);
+  const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
+  useEffect(() => {
+    let consumedAny = false;
+
+    const folderParam = searchParams.get('folder');
+    if (folderParam) {
+      // Folder names are normalized lowercase via the well-known map. The
+      // value is honored on first fetch (the initial fetchMessages reads
+      // the ref); after that it's left null so subsequent clicks own
+      // the folder state.
+      const map: Record<string, string> = {
+        inbox: 'inbox', sent: 'sentitems', sentitems: 'sentitems',
+        drafts: 'drafts', deleted: 'deleteditems', deleteditems: 'deleteditems',
+        trash: 'deleteditems', junk: 'junkemail', junkemail: 'junkemail',
+        spam: 'junkemail', archive: 'archive',
+      };
+      pendingFolderRef.current = map[folderParam.toLowerCase()] || folderParam;
+      consumedAny = true;
+    }
+    const threadId = searchParams.get('thread_id');
+    if (threadId) { setPendingThreadId(threadId); consumedAny = true; }
+    const messageId = searchParams.get('message_id');
+    if (messageId) { setPendingMessageId(messageId); consumedAny = true; }
+    if (searchParams.get('compose') === '1') { pendingComposeRef.current = true; consumedAny = true; }
+
+    if (consumedAny) {
+      const next = new URLSearchParams(searchParams);
+      ['folder', 'thread_id', 'message_id', 'compose'].forEach((k) => next.delete(k));
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Folders. Initial value honors `?folder=` (the deep-link effect above
+  // already populated `pendingFolderRef.current` synchronously on mount).
   const [folders, setFolders] = useState<EmailFolder[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState('inbox');
+  const [selectedFolder, setSelectedFolder] = useState(() => pendingFolderRef.current || 'inbox');
   const [childFolders, setChildFolders] = useState<Map<string, EmailFolder[]>>(new Map());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [folderCollapsed, setFolderCollapsed] = useState(() => localStorage.getItem('email_folder_collapsed') === 'true');
+  const [folderCollapsed, setFolderCollapsed] = useState(() => readScoped('email_folder_collapsed', uid) === 'true');
 
   // Folder management
   const [newFolderName, setNewFolderName] = useState('');
@@ -1971,7 +2112,7 @@ export default function EmailPage() {
   const [showSearchFilters, setShowSearchFilters] = useState(false);
 
   // Notifications
-  const [notificationsOn, setNotificationsOn] = useState(getNotificationsEnabled);
+  const [notificationsOn, setNotificationsOn] = useState(() => getNotificationsEnabled(uid));
 
   // Scheduled emails panel
   const [showScheduledPanel, setShowScheduledPanel] = useState(false);
@@ -1980,11 +2121,11 @@ export default function EmailPage() {
   const [categorizing, setCategorizing] = useState(false);
 
   // Reading-pane theme (dark chrome stays; only the email body canvas flips)
-  const [readingTheme, setReadingTheme] = useState<ReadingTheme>(getReadingTheme);
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>(() => getReadingTheme(uid));
   const toggleReadingTheme = () => {
     const next: ReadingTheme = readingTheme === 'dark' ? 'light' : 'dark';
     setReadingTheme(next);
-    try { localStorage.setItem(READING_THEME_KEY, next); } catch { /* ignore */ }
+    writeScoped(READING_THEME_KEY, uid, next);
   };
 
   // Outlook-parity UI state (snooze / headers / categories / OOF / more menu)
@@ -1993,6 +2134,18 @@ export default function EmailPage() {
   const [showCategoryMenu, setShowCategoryMenu] = useState(false);
   const [showAutoReply, setShowAutoReply] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  // Confirm-dialog action union. Replaces 3 native window.confirm() calls
+  // (block sender / sweep sender / empty folder) plus the previously-bare
+  // folder-delete click. Pattern mirrors v1044 Communications + v1042
+  // Body Cameras: one state slot, one ConfirmDialog mount, branch by kind.
+  type ConfirmActionState =
+    | { kind: 'block-sender'; message: EmailMessage }
+    | { kind: 'sweep-sender'; message: EmailMessage; folder: string }
+    | { kind: 'empty-folder'; folder: string }
+    | { kind: 'delete-folder'; folder: EmailFolder };
+  const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Feature 25: Thread view mode
   const [viewMode, setViewMode] = useState<'messages' | 'threads'>('messages');
@@ -2018,9 +2171,10 @@ export default function EmailPage() {
     finally { setLoadingThreads(false); }
   }, [selectedFolder]);
 
-  // Resizable list panel
+  // Resizable list panel — user-scoped so the right MDT operator keeps their
+  // chosen list/reading-pane split across logouts.
   const [listWidth, setListWidth] = useState(() => {
-    const saved = localStorage.getItem('email_list_width');
+    const saved = readScoped('email_list_width', uid);
     return saved ? Math.max(240, Math.min(500, parseInt(saved, 10))) : 320;
   });
   const resizingRef = useRef(false);
@@ -2087,6 +2241,21 @@ export default function EmailPage() {
     if (status?.authorized) { fetchFolders(); fetchMessages(1); }
   }, [status?.authorized]); // eslint-disable-line
 
+  // Open compose on mount when `?compose=1` was deep-linked. Fires once the
+  // enrollment + authorization gates have passed so the modal lands inside
+  // the real shell, not the splash.
+  useEffect(() => {
+    if (status?.authorized && enrolled && pendingComposeRef.current) {
+      pendingComposeRef.current = false;
+      setComposing('new');
+    }
+  }, [status?.authorized, enrolled]);
+
+  // Once the folder messages hydrate, consume `?thread_id=` / `?message_id=`.
+  // The list is paginated 25 at a time — if the target isn't on page 1 a
+  // toast tells the operator (rather than silently failing the deep-link).
+  // The hydrate watcher fires once per pending target then clears it.
+
   useEffect(() => {
     const unsub = subscribe('email:new_messages', (data: any) => {
       if (selectedFolder === 'inbox') fetchMessages(1);
@@ -2141,32 +2310,83 @@ export default function EmailPage() {
     return () => clearTimeout(t);
   }, [searchQuery, selectedFolder]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts. Esc follows a smart cascade — close the top-most
+  // open layer (confirm dialog → menu/popover → modal → context menu →
+  // reading-pane → search) so a frantic operator can always back out one
+  // step at a time. `N` opens Compose (typing-suppressed); Ctrl/Cmd+N
+  // continues to work too. Matches the v1024–v1048 contract.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const tEl = e.target as HTMLElement | null;
+      const tag = tEl?.tagName;
+      const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        || !!tEl?.isContentEditable;
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key === 'n') { e.preventDefault(); setComposing('new'); return; }
-      if (mod && e.shiftKey && e.key === 'R') { e.preventDefault(); if (fullMessage) setComposing('reply-all'); return; }
-      if (mod && e.key === 'r') { e.preventDefault(); if (fullMessage) setComposing('reply'); return; }
-      if (mod && e.key === 'f') { e.preventDefault(); if (fullMessage) setComposing('forward'); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') { if (selectedMessage) { e.preventDefault(); handleDelete(selectedMessage); } return; }
+
+      if (!inField) {
+        if (mod && e.key === 'n') { e.preventDefault(); setComposing('new'); return; }
+        if (mod && e.shiftKey && e.key === 'R') { e.preventDefault(); if (fullMessage) setComposing('reply-all'); return; }
+        if (mod && e.key === 'r') { e.preventDefault(); if (fullMessage) setComposing('reply'); return; }
+        if (mod && e.key === 'f') { e.preventDefault(); if (fullMessage) setComposing('forward'); return; }
+        // Bare `N` — typing-suppressed. Don't fire when ANY modal/menu/confirm
+        // already owns the page (operator might be hunting through a list).
+        if (!mod && !e.altKey && (e.key === 'n' || e.key === 'N')) {
+          if (composing || confirmAction || contextMenu || folderContextMenu
+            || showSnoozeMenu || showCategoryMenu || showMoreMenu
+            || showHeadersModal || showAutoReply || showSearchFilters
+            || showScheduledPanel || showNewFolder || renamingFolder
+            || attViewer) return;
+          e.preventDefault();
+          setComposing('new');
+          return;
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (selectedMessage && !composing && !confirmAction) {
+            e.preventDefault();
+            handleDelete(selectedMessage);
+          }
+          return;
+        }
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          if (composing || confirmAction || contextMenu) return;
+          e.preventDefault();
+          const idx = selectedMessage ? messages.findIndex(m => m.id === selectedMessage.id) : -1;
+          const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+          if (next >= 0 && next < messages.length) handleSelectMessage(messages[next]);
+          return;
+        }
+      }
+
       if (e.key === 'Escape') {
+        // Order = top of stack → bottom. ConfirmDialog has its own Esc but
+        // ours runs first; we no-op if a confirm is loading so we don't
+        // race the API. Folder-context-menu / folder-rename / new-folder
+        // are nested inside the side panel; they close before the broader
+        // shell layers.
+        if (confirmAction) { if (!confirmLoading) setConfirmAction(null); return; }
+        if (showHeadersModal) { setShowHeadersModal(false); return; }
+        if (showAutoReply) { setShowAutoReply(false); return; }
+        if (attViewer) { closeAttViewer(); return; }
+        if (showSnoozeMenu) { setShowSnoozeMenu(false); return; }
+        if (showCategoryMenu) { setShowCategoryMenu(false); return; }
+        if (showMoreMenu) { setShowMoreMenu(false); return; }
+        if (folderContextMenu) { setFolderContextMenu(null); return; }
+        if (renamingFolder) { setRenamingFolder(null); setRenameValue(''); return; }
+        if (showNewFolder) { setShowNewFolder(false); setNewFolderName(''); return; }
+        if (showSearchFilters) { setShowSearchFilters(false); return; }
+        if (showScheduledPanel) { setShowScheduledPanel(false); return; }
         if (contextMenu) { setContextMenu(null); return; }
         if (composing) { setComposing(null); return; }
+        if (searchInput || searchQuery) { handleClearSearch(); return; }
         if (fullMessage) { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); return; }
-      }
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        const idx = selectedMessage ? messages.findIndex(m => m.id === selectedMessage.id) : -1;
-        const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
-        if (next >= 0 && next < messages.length) handleSelectMessage(messages[next]);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selectedMessage, fullMessage, composing, messages, contextMenu]); // eslint-disable-line
+  }, [selectedMessage, fullMessage, composing, messages, contextMenu, confirmAction, confirmLoading,
+      showHeadersModal, showAutoReply, attViewer, showSnoozeMenu, showCategoryMenu, showMoreMenu,
+      folderContextMenu, renamingFolder, showNewFolder, showSearchFilters, showScheduledPanel,
+      searchInput, searchQuery]); // eslint-disable-line
 
   // Resize handler
   useEffect(() => {
@@ -2176,7 +2396,7 @@ export default function EmailPage() {
       setListWidth(Math.max(240, Math.min(500, e.clientX - folderWidth)));
     };
     const handleMouseUp = () => {
-      if (resizingRef.current) { resizingRef.current = false; document.body.style.cursor = ''; document.body.style.userSelect = ''; try { localStorage.setItem('email_list_width', String(listWidth)); } catch { /* ignore */ } }
+      if (resizingRef.current) { resizingRef.current = false; document.body.style.cursor = ''; document.body.style.userSelect = ''; writeScoped('email_list_width', uid, String(listWidth)); }
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -2211,6 +2431,34 @@ export default function EmailPage() {
   const handleSelectMessage = (msg: EmailMessage) => {
     setSelectedMessage(msg); setMobileView('detail'); fetchFullMessage(msg.id);
   };
+
+  // Consume pending ?thread_id / ?message_id once the visible folder has
+  // messages. Lives down here (after handleSelectMessage) so the lookup
+  // reuses the same handler the click does — no hidden divergence.
+  useEffect(() => {
+    if (loading || messages.length === 0) return;
+    if (pendingMessageId) {
+      const hit = messages.find(m => m.id === pendingMessageId);
+      if (hit) {
+        handleSelectMessage(hit);
+      } else {
+        showSnackbar('Linked message is not on this page — try searching or switch folders', 'error');
+      }
+      setPendingMessageId(null);
+      return;
+    }
+    if (pendingThreadId) {
+      // Latest (top of the list) is what the thread group's `latest` would
+      // surface in the on-screen rollup, so we mirror that behavior here.
+      const hit = messages.find(m => (m.conversationId || m.id) === pendingThreadId);
+      if (hit) {
+        handleSelectMessage(hit);
+      } else {
+        showSnackbar('Linked thread is not on this page — try searching or switch folders', 'error');
+      }
+      setPendingThreadId(null);
+    }
+  }, [loading, messages, pendingMessageId, pendingThreadId]); // eslint-disable-line
 
   const handleClearSearch = () => {
     setSearchInput(''); setSearch(''); setSearchQuery(''); setSearchResults(null);
@@ -2334,18 +2582,24 @@ export default function EmailPage() {
     } catch { showSnackbar('Failed to download message', 'error'); }
   };
 
-  const handleBlockSender = async () => {
+  const handleBlockSender = () => {
     if (!selectedMessage) return;
-    if (!window.confirm(`Block ${selectedMessage.fromAddress}? Future mail goes straight to Junk.`)) return;
+    setConfirmAction({ kind: 'block-sender', message: selectedMessage });
+  };
+  const confirmBlockSender = async () => {
+    const target = confirmAction?.kind === 'block-sender' ? confirmAction.message : null;
+    if (!target) return;
+    setConfirmLoading(true);
     try {
       await apiFetch('/email/block-sender', {
         method: 'POST',
-        body: JSON.stringify({ address: selectedMessage.fromAddress, reason: 'blocked', messageId: selectedMessage.id }),
+        body: JSON.stringify({ address: target.fromAddress, reason: 'blocked', messageId: target.id }),
       });
-      removeFromList(selectedMessage.id);
-      showSnackbar(`Blocked ${selectedMessage.fromAddress}`);
+      removeFromList(target.id);
+      showSnackbar(`Blocked ${target.fromAddress}`);
       debouncedFolderRefresh();
     } catch { showSnackbar('Failed to block sender', 'error'); }
+    finally { setConfirmLoading(false); setConfirmAction(null); }
   };
 
   const handleReport = async (kind: 'junk-report' | 'phishing-report') => {
@@ -2361,18 +2615,24 @@ export default function EmailPage() {
     } catch { showSnackbar('Failed to report', 'error'); }
   };
 
-  const handleSweepSender = async () => {
+  const handleSweepSender = () => {
     if (!selectedMessage) return;
-    if (!window.confirm(`Sweep: archive ALL messages from ${selectedMessage.fromAddress} in this folder?`)) return;
+    setConfirmAction({ kind: 'sweep-sender', message: selectedMessage, folder: selectedFolder });
+  };
+  const confirmSweepSender = async () => {
+    const target = confirmAction?.kind === 'sweep-sender' ? confirmAction : null;
+    if (!target) return;
+    setConfirmLoading(true);
     try {
       const r = await apiFetch<{ swept: number }>('/email/sweep', {
         method: 'POST',
-        body: JSON.stringify({ fromAddress: selectedMessage.fromAddress, folder: selectedFolder, action: 'archive' }),
+        body: JSON.stringify({ fromAddress: target.message.fromAddress, folder: target.folder, action: 'archive' }),
       });
       showSnackbar(`Swept ${r.swept} message${r.swept === 1 ? '' : 's'} to Archive`);
-      fetchMessages(1, selectedFolder, search);
+      fetchMessages(1, target.folder, search);
       debouncedFolderRefresh();
     } catch { showSnackbar('Sweep failed', 'error'); }
+    finally { setConfirmLoading(false); setConfirmAction(null); }
   };
 
   const handleToggleFocused = async (focused: boolean) => {
@@ -2383,15 +2643,21 @@ export default function EmailPage() {
     } catch { showSnackbar('Failed to update Focused inbox', 'error'); }
   };
 
-  const handleEmptyFolder = async () => {
-    const label = selectedFolder === 'deleteditems' ? 'Deleted Items' : 'Junk Email';
-    if (!window.confirm(`Permanently delete everything in ${label}?`)) return;
+  const handleEmptyFolder = () => {
+    setConfirmAction({ kind: 'empty-folder', folder: selectedFolder });
+  };
+  const confirmEmptyFolder = async () => {
+    const target = confirmAction?.kind === 'empty-folder' ? confirmAction : null;
+    if (!target) return;
+    setConfirmLoading(true);
+    const label = target.folder === 'deleteditems' ? 'Deleted Items' : 'Junk Email';
     try {
-      const r = await apiFetch<{ deleted: number }>(`/email/folders/${selectedFolder}/empty`, { method: 'POST' });
+      const r = await apiFetch<{ deleted: number }>(`/email/folders/${target.folder}/empty`, { method: 'POST' });
       showSnackbar(`Emptied ${label} (${r.deleted} deleted)`);
-      fetchMessages(1, selectedFolder, search);
+      fetchMessages(1, target.folder, search);
       debouncedFolderRefresh();
     } catch { showSnackbar(`Failed to empty ${label}`, 'error'); }
+    finally { setConfirmLoading(false); setConfirmAction(null); }
   };
 
   const handleMarkAllRead = async () => {
@@ -2421,11 +2687,19 @@ export default function EmailPage() {
     } catch { showSnackbar('Failed to rename folder', 'error'); }
   };
 
-  const handleDeleteFolder = async (folderId: string) => {
+  // The user-folder Delete used to fire DELETE on click with NO confirmation
+  // (only well-known folders were filtered). A right-click slip on a deeply
+  // nested case-correspondence folder erased every message inside it without
+  // recourse. Two-stage now via ConfirmDialog.
+  const confirmDeleteFolder = async () => {
+    const target = confirmAction?.kind === 'delete-folder' ? confirmAction.folder : null;
+    if (!target) return;
+    setConfirmLoading(true);
     try {
-      await apiFetch(`/email/folders/${folderId}`, { method: 'DELETE' });
+      await apiFetch(`/email/folders/${target.id}`, { method: 'DELETE' });
       fetchFolders(); showSnackbar('Folder deleted');
     } catch { showSnackbar('Failed to delete folder', 'error'); }
+    finally { setConfirmLoading(false); setConfirmAction(null); }
   };
 
   const toggleFolderExpand = (folderId: string) => {
@@ -2439,7 +2713,7 @@ export default function EmailPage() {
   const toggleFolderCollapse = () => {
     const next = !folderCollapsed;
     setFolderCollapsed(next);
-    try { localStorage.setItem('email_folder_collapsed', String(next)); } catch { /* ignore */ }
+    writeScoped('email_folder_collapsed', uid, String(next));
   };
 
   // Context menu handler
@@ -2619,12 +2893,12 @@ export default function EmailPage() {
             {folderCollapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
           </IconButton>
           {!folderCollapsed && (
-            <button type="button" onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-rmpg-100 font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
+            <button type="button" onClick={() => setComposing('new')} title="New Message (N)" className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-rmpg-100 font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
           )}
           {folderCollapsed && (
-            <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300" title="Compose">
+            <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300" title="New Message (N)">
               <Plus className="w-3.5 h-3.5" />
             </button>
           )}
@@ -2636,7 +2910,7 @@ export default function EmailPage() {
         )}
 
         {/* Folder list */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent py-1">
           {topLevelFolders.map(f => renderFolderItem(f))}
         </div>
 
@@ -2682,7 +2956,7 @@ export default function EmailPage() {
                 const granted = await requestNotificationPermission();
                 if (!granted) { showSnackbar('Notifications blocked — click the lock icon in the address bar → Allow notifications, then reload', 'error'); return; }
               }
-              setNotificationsEnabled(newState);
+              setNotificationsEnabled(newState, uid);
               setNotificationsOn(newState);
               showSnackbar(newState ? 'Email notifications enabled' : 'Email notifications disabled');
             }}
@@ -2716,9 +2990,11 @@ export default function EmailPage() {
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Edit3 className="w-3 h-3" /> Rename</button>
             <button type="button" onClick={() => { setShowNewFolder(true); setFolderContextMenu(null); }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><FolderPlus className="w-3 h-3" /> New Subfolder</button>
-            <div className="border-t border-border-subtle my-1" />
-            <button type="button" onClick={() => { handleDeleteFolder(folderContextMenu.folder.id); setFolderContextMenu(null); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Trash className="w-3 h-3" /> Delete</button>
+            {canManage && <>
+              <div className="border-t border-border-subtle my-1" />
+              <button type="button" onClick={() => { setConfirmAction({ kind: 'delete-folder', folder: folderContextMenu.folder }); setFolderContextMenu(null); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Trash className="w-3 h-3" /> Delete</button>
+            </>}
           </div>
         </div>
       )}
@@ -2768,7 +3044,7 @@ export default function EmailPage() {
             <button type="button" onClick={() => handleBatchAction('junk')} className="p-1 text-rmpg-400 hover:text-amber-400" title="Move to Junk"><AlertTriangle className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('markRead')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Mark read"><Eye className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('markUnread')} className="p-1 text-rmpg-400 hover:text-rmpg-100" title="Mark unread"><EyeOff className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+            {canManage && <button type="button" onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>}
             <button type="button" onClick={() => setSelectedIds(new Set())} className="p-1 text-rmpg-500 hover:text-rmpg-100" title="Clear selection"><X className="w-3.5 h-3.5" /></button>
           </div>
         ) : (
@@ -2793,7 +3069,7 @@ export default function EmailPage() {
               {unreadCount > 0 && (
                 <IconButton onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm" title="Mark all as read" aria-label="Mark all as read"><Eye className="w-3.5 h-3.5" /></IconButton>
               )}
-              {(selectedFolder === 'deleteditems' || selectedFolder === 'junkemail') && messages.length > 0 && (
+              {canManage && (selectedFolder === 'deleteditems' || selectedFolder === 'junkemail') && messages.length > 0 && (
                 <IconButton onClick={handleEmptyFolder} className="p-1 text-rmpg-500 hover:text-red-400 rounded-sm" title="Empty folder" aria-label="Empty folder"><Trash className="w-3.5 h-3.5" /></IconButton>
               )}
               <IconButton onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm" title="Refresh" aria-label="Refresh">
@@ -2807,15 +3083,17 @@ export default function EmailPage() {
               >
                 <MessageSquare className="w-3.5 h-3.5" />
               </button>
-              {/* Feature 23: Auto-categorize */}
-              <button type="button"
-                onClick={handleAutoCategorize}
-                disabled={categorizing}
-                className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm"
-                title="Auto-categorize emails"
-              >
-                {categorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3.5 h-3.5" />}
-              </button>
+              {/* Feature 23: Auto-categorize (admin/manager only) */}
+              {canManage && (
+                <button type="button"
+                  onClick={handleAutoCategorize}
+                  disabled={categorizing}
+                  className="p-1 text-rmpg-500 hover:text-rmpg-100 rounded-sm"
+                  title="Auto-categorize emails"
+                >
+                  {categorizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3.5 h-3.5" />}
+                </button>
+              )}
               <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded-sm md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
             </div>
             {/* Task 2.4: FTS search result count */}
@@ -2849,13 +3127,30 @@ export default function EmailPage() {
         )}
 
         {/* Message List (threaded) */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading && displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
           ) : displayedMessages.length === 0 ? (
             <div className="text-center py-12 text-rmpg-500 text-xs">
               <Mail className="w-8 h-8 mx-auto mb-3 opacity-40" />
-              {(search || searchQuery) ? (<><div>No results for &ldquo;{searchQuery || search}&rdquo;</div><button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button></>) : 'No messages'}
+              {(search || searchQuery) ? (
+                <>
+                  <div>No results for &ldquo;{searchQuery || search}&rdquo;</div>
+                  <button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button>
+                </>
+              ) : (
+                <>
+                  <div>No messages in this folder</div>
+                  <div className="text-[10px] text-rmpg-600 mt-1">Press <kbd className="px-1 bg-surface-base/60 border border-border-subtle rounded">N</kbd> to compose</div>
+                </>
+              )}
+            </div>
+          ) : filteredMessages.length === 0 ? (
+            <div className="text-center py-12 text-rmpg-500 text-xs">
+              <Mail className="w-8 h-8 mx-auto mb-3 opacity-40" />
+              <div>No messages match the active filters</div>
+              <div className="text-[10px] text-rmpg-600 mt-1">{displayedMessages.length} message{displayedMessages.length === 1 ? '' : 's'} hidden by sender/date/flag filters</div>
+              <button type="button" onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-brand-400 hover:text-brand-300 mt-2">Clear filters</button>
             </div>
           ) : (
             <>
@@ -2877,10 +3172,9 @@ export default function EmailPage() {
                     )}
 
                     {displayMessages.map(msg => {
-                      // Generate consistent avatar color from sender
-                      const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#888888','#14b8a6','#f97316'];
+                      // Generate consistent avatar color from sender (hash → AVATAR_COLORS at top of file).
                       const senderKey = (msg.fromAddress || msg.fromName || '').toLowerCase();
-                      const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
+                      const avatarColor = avatarColorFor(senderKey);
                       const avatarInitial = (msg.fromName || msg.fromAddress || '?').charAt(0).toUpperCase();
 
                       return (
@@ -2959,7 +3253,7 @@ export default function EmailPage() {
                           </div>
 
                           {/* Hover quick actions */}
-                          <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                             <button type="button" onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
                             <button type="button" onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
                               {msg.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -2987,7 +3281,7 @@ export default function EmailPage() {
         onMouseDown={() => { resizingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }} />
 
       {/* ─── Reading Pane ─── */}
-      <div className={`flex-1 flex flex-col bg-surface-sunken overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 min-h-0 flex flex-col bg-surface-sunken overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
         {fullMessage ? (
           <>
             {/* Message Header */}
@@ -3004,8 +3298,7 @@ export default function EmailPage() {
               {/* Sender info with avatar */}
               {(() => {
                 const senderKey = (fullMessage.fromAddress || '').toLowerCase();
-                const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#888888','#14b8a6','#f97316'];
-                const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
+                const avatarColor = avatarColorFor(senderKey);
                 return (
                   <div className="flex items-start gap-3 px-4 pb-2">
                     <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5"
@@ -3070,6 +3363,43 @@ export default function EmailPage() {
                   title={readingTheme === 'dark' ? 'Light reading mode' : 'Dark reading mode'}>
                   {readingTheme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!fullMessage) return;
+                    // Court-ready PDF — banner + agency strap + summary + per-
+                    // message envelope + attachments + signature block. The
+                    // thread is whatever messages share the conversationId; if
+                    // multiple are loaded we include them all, otherwise the
+                    // single-message export still renders correctly.
+                    const convId = fullMessage.conversationId || fullMessage.id;
+                    const threadMsgs = messages.filter(m =>
+                      (m.conversationId || m.id) === convId
+                    );
+                    // If the focused message isn't in the list (e.g. opened
+                    // via deep-link to a different folder), fall back to the
+                    // one focused message.
+                    const finalList = threadMsgs.length > 0 ? threadMsgs : [fullMessage];
+                    // Substitute the hydrated `fullMessage` (it has bodyHtml,
+                    // toAddresses, ccAddresses populated) for the lighter list
+                    // entry of the same id — list rows arrive without those.
+                    const hydrated = finalList.map(m => m.id === fullMessage.id ? fullMessage : m);
+                    const folderName = folders.find(f => {
+                      const map: Record<string, string> = { 'Inbox': 'inbox', 'Sent Items': 'sentitems', 'Deleted Items': 'deleteditems', 'Drafts': 'drafts', 'Junk Email': 'junkemail', 'Archive': 'archive' };
+                      return (map[f.displayName] || f.id) === selectedFolder;
+                    })?.displayName || selectedFolder;
+                    openEmailThreadPdf({
+                      threadId: convId,
+                      folder: folderName,
+                      messages: hydrated,
+                      attachmentsByMessageId: { [fullMessage.id]: attachments },
+                      exportedBy: user?.full_name || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username || undefined,
+                    });
+                    showSnackbar('Court-ready PDF opened in new tab');
+                  }}
+                  className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors"
+                  title="Court-ready thread PDF"
+                ><FileDown className="w-3.5 h-3.5" /></button>
                 <button type="button" onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
                 <div className="relative">
                   <button type="button" onClick={() => setShowMoreMenu(!showMoreMenu)} className="p-1.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="More actions"><SlidersHorizontal className="w-3.5 h-3.5" /></button>
@@ -3079,13 +3409,13 @@ export default function EmailPage() {
                       <button type="button" onClick={() => { setShowHeadersModal(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><FileText className="w-3 h-3" /> View internet headers</button>
                       <button type="button" onClick={() => { handleDownloadEml(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Download className="w-3 h-3" /> Download as .eml</button>
                       <div className="border-t border-border-subtle my-1" />
-                      <button type="button" onClick={() => { handleSweepSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Archive className="w-3 h-3" /> Sweep sender to Archive</button>
+                      {canManage && <button type="button" onClick={() => { handleSweepSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Archive className="w-3 h-3" /> Sweep sender to Archive</button>}
                       <button type="button" onClick={() => { handleToggleFocused(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><Eye className="w-3 h-3" /> Move to Focused</button>
                       <button type="button" onClick={() => { handleToggleFocused(false); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100"><EyeOff className="w-3 h-3" /> Move to Other</button>
                       <div className="border-t border-border-subtle my-1" />
                       <button type="button" onClick={() => { handleReport('junk-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-amber-400 hover:bg-amber-500/10"><AlertTriangle className="w-3 h-3" /> Report junk</button>
                       <button type="button" onClick={() => { handleReport('phishing-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Shield className="w-3 h-3" /> Report phishing</button>
-                      <button type="button" onClick={() => { handleBlockSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><X className="w-3 h-3" /> Block sender</button>
+                      {canManage && <button type="button" onClick={() => { handleBlockSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><X className="w-3 h-3" /> Block sender</button>}
                     </div>
                   )}
                 </div>
@@ -3161,11 +3491,11 @@ export default function EmailPage() {
                 <p className="text-sm text-rmpg-400 font-medium">Select an email to read</p>
                 <p className="text-[10px] text-rmpg-600 mt-1">Click any message in the list, or compose a new one</p>
               </div>
-              <button type="button" onClick={() => setComposing('new')} className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
+              <button type="button" onClick={() => setComposing('new')} title="New Message (N)" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5" /> Compose New
               </button>
               <div className="text-[9px] text-rmpg-600 space-y-0.5 pt-2">
-                <div className="font-mono">Ctrl+N <span className="text-rmpg-500">Compose</span> • Ctrl+R <span className="text-rmpg-500">Reply</span></div>
+                <div className="font-mono">N <span className="text-rmpg-500">Compose</span> • Ctrl+R <span className="text-rmpg-500">Reply</span></div>
                 <div className="font-mono">Ctrl+F <span className="text-rmpg-500">Forward</span> • ↑↓ <span className="text-rmpg-500">Navigate</span></div>
                 <div className="font-mono">Del <span className="text-rmpg-500">Delete</span> • Right-click <span className="text-rmpg-500">More</span></div>
               </div>
@@ -3206,6 +3536,7 @@ export default function EmailPage() {
         <ComposeModal
           mode={composing}
           replyMessage={fullMessage || selectedMessage}
+          userId={uid}
           onClose={() => setComposing(null)}
           onSent={() => { showSnackbar('Email sent'); handleRefresh(); }}
         />
@@ -3215,6 +3546,69 @@ export default function EmailPage() {
       {attViewer && (
         <DocumentViewer isOpen onClose={closeAttViewer} src={attViewer.url} title={attViewer.title} type={attViewer.type} />
       )}
+
+      {/* ─── ConfirmDialog (block sender / sweep sender / empty folder / delete folder) ─── */}
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'block-sender'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmBlockSender}
+        title="Block Sender"
+        message="Future mail from this address goes straight to Junk and the current message is removed from this folder. Email rules cannot be reversed from this dialog."
+        details={confirmAction?.kind === 'block-sender' ? (
+          <>
+            <div><span className="text-rmpg-500">From:</span> {confirmAction.message.fromName || confirmAction.message.fromAddress}</div>
+            <div><span className="text-rmpg-500">Address:</span> {confirmAction.message.fromAddress}</div>
+            <div><span className="text-rmpg-500">Subject:</span> {confirmAction.message.subject || '(no subject)'}</div>
+          </>
+        ) : undefined}
+        confirmLabel="Block sender"
+        confirmVariant="danger"
+        isLoading={confirmLoading && confirmAction?.kind === 'block-sender'}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'sweep-sender'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmSweepSender}
+        title="Sweep Sender"
+        message="Archive every message from this address in the current folder. The messages move to Archive — they are not deleted, but bulk-undo is not available."
+        details={confirmAction?.kind === 'sweep-sender' ? (
+          <>
+            <div><span className="text-rmpg-500">From:</span> {confirmAction.message.fromAddress}</div>
+            <div><span className="text-rmpg-500">Folder:</span> {confirmAction.folder}</div>
+          </>
+        ) : undefined}
+        confirmLabel="Sweep to Archive"
+        confirmVariant="warning"
+        isLoading={confirmLoading && confirmAction?.kind === 'sweep-sender'}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'empty-folder'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmEmptyFolder}
+        title={`Empty ${confirmAction?.kind === 'empty-folder' && confirmAction.folder === 'deleteditems' ? 'Deleted Items' : 'Junk Email'}`}
+        message="Permanently delete every message in this folder. This action cannot be undone — the messages will no longer be recoverable from Deleted Items either."
+        confirmLabel="Permanently delete"
+        confirmVariant="danger"
+        isLoading={confirmLoading && confirmAction?.kind === 'empty-folder'}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction?.kind === 'delete-folder'}
+        onClose={() => { if (!confirmLoading) setConfirmAction(null); }}
+        onConfirm={confirmDeleteFolder}
+        title="Delete Folder"
+        message="Delete this folder. Any messages still in it move to Deleted Items; sub-folders are also removed."
+        details={confirmAction?.kind === 'delete-folder' ? (
+          <>
+            <div><span className="text-rmpg-500">Folder:</span> {confirmAction.folder.displayName}</div>
+            {confirmAction.folder.totalItemCount > 0 && (
+              <div><span className="text-rmpg-500">Contains:</span> {confirmAction.folder.totalItemCount} message{confirmAction.folder.totalItemCount === 1 ? '' : 's'}</div>
+            )}
+          </>
+        ) : undefined}
+        confirmLabel="Delete folder"
+        confirmVariant="danger"
+        isLoading={confirmLoading && confirmAction?.kind === 'delete-folder'}
+      />
     </div>
   );
 }

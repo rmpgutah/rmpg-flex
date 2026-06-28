@@ -29,6 +29,7 @@ import { CitationPdfPreview } from './CitationPdfPreview';
 import { formToData } from './citationFormAdapter';
 import { newDraft, totalFineOf, type ViolationDraft } from './violationStackHelpers';
 import type { StatuteRow } from './statuteAutofill';
+import { UTAH_JUSTICE_COURTS, courtsByCounty } from '../constants/utahJusticeCourts';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -53,6 +54,11 @@ export interface CitationAuthorForm {
   person_dob: string;
   person_dl: string;
   person_address: string;
+  // Added PR1: defendant contact for digital delivery / SMS (PR6).
+  // Optional — when set, the issued defendant copy is emailed with a
+  // presigned R2 link on signature complete.
+  person_phone: string;
+  person_email: string;
   vehicle_description: string;
   vehicle_plate: string;
   vehicle_state: string;
@@ -138,6 +144,8 @@ const EMPTY_FORM: CitationAuthorForm = {
   person_dob: '',
   person_dl: '',
   person_address: '',
+  person_phone: '',
+  person_email: '',
   vehicle_description: '',
   vehicle_plate: '',
   vehicle_state: 'UT',
@@ -356,6 +364,8 @@ export default function CitationAuthor({
       person_dob: p.dob || '',
       person_dl: p.dl_number || '',
       person_address: [p.address, p.city, p.state, p.zip].filter(Boolean).join(', '),
+      person_phone: p.phone || prev.person_phone,
+      person_email: p.email || prev.person_email,
     }));
     setPersonSearch([p.last_name, p.first_name].filter(Boolean).join(', '));
     setShowPersonDropdown(false);
@@ -364,6 +374,7 @@ export default function CitationAuthor({
   const clearPerson = () => {
     setForm(prev => ({
       ...prev, person_id: '', person_name: '', person_dob: '', person_dl: '', person_address: '',
+      person_phone: '', person_email: '',
     }));
     setPersonSearch('');
   };
@@ -501,7 +512,7 @@ export default function CitationAuthor({
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-4 space-y-5">
         {saveError && (
           <div className="bg-red-900/40 border border-red-700/50 px-3 py-2 text-xs text-red-300 flex items-center gap-2">
             <AlertTriangle size={14} /> {saveError}
@@ -664,6 +675,34 @@ export default function CitationAuthor({
               <label className="field-label">Address</label>
               <input type="text" value={form.person_address} onChange={e => updateField('person_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
+
+            {/* Contact for digital delivery of defendant copy (PR1).
+                When provided, the issued copy is emailed/SMSed on signature
+                complete with a presigned R2 link — SMS pipeline lands in PR6. */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="field-label">Phone</label>
+                <input
+                  type="tel"
+                  value={form.person_phone}
+                  onChange={e => updateField('person_phone', e.target.value)}
+                  placeholder="(801) 555-0100"
+                  className="input-dark w-full py-2 text-xs min-h-[36px]"
+                  aria-label="Defendant phone (optional)"
+                />
+              </div>
+              <div>
+                <label className="field-label">Email</label>
+                <input
+                  type="email"
+                  value={form.person_email}
+                  onChange={e => updateField('person_email', e.target.value)}
+                  placeholder="defendant@example.com"
+                  className="input-dark w-full py-2 text-xs min-h-[36px]"
+                  aria-label="Defendant email (optional)"
+                />
+              </div>
+            </div>
           </div>
         </section>
 
@@ -790,7 +829,9 @@ export default function CitationAuthor({
           </div>
         </section>
 
-        {/* Court */}
+        {/* Court — PR1: replaced plain text input with Utah Justice Courts
+            dropdown. Picking a court auto-fills the address. Officer can
+            still override either via the free-text fields below the picker. */}
         <section>
           <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
             <Scale size={12} /> Court Information
@@ -800,13 +841,64 @@ export default function CitationAuthor({
               <label className="field-label">Court Date</label>
               <input type="date" value={form.court_date} onChange={e => updateField('court_date', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label className="field-label">Court Time</label>
+                <input type="time" value={form.court_time} onChange={e => updateField('court_time', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
+              </div>
+              <div>
+                <label className="field-label">Room/Dept</label>
+                <input type="text" value={form.court_room} onChange={e => updateField('court_room', e.target.value)} placeholder="e.g. 1" className="input-dark w-full py-2 text-xs min-h-[36px]" />
+              </div>
+            </div>
             <div>
-              <label className="field-label">Court Name</label>
-              <input type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs min-h-[36px]" />
+              <label className="field-label">Court (Utah Justice Courts)</label>
+              <select
+                value={form.court_name}
+                onChange={(e) => {
+                  const selected = UTAH_JUSTICE_COURTS.find((c) => c.name === e.target.value);
+                  setForm((prev) => ({
+                    ...prev,
+                    court_name: e.target.value,
+                    // Auto-fill address when picker matches a known court. If the
+                    // officer has already typed a custom address, preserve it.
+                    court_address: selected && !prev.court_address
+                      ? selected.address
+                      : prev.court_address,
+                  }));
+                }}
+                className="input-dark w-full py-2 text-xs min-h-[36px]"
+                aria-label="Court selection"
+              >
+                <option value="">— Select a court —</option>
+                {Object.entries(courtsByCounty()).sort(([a], [b]) => a.localeCompare(b)).map(([county, list]) => (
+                  <optgroup key={county} label={`${county} County`}>
+                    {list.map((c) => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="field-label">Court Name (free-text override)</label>
+              <input type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="Override or add a new court" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             <div>
               <label className="field-label">Court Address</label>
               <input type="text" value={form.court_address} onChange={e => updateField('court_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="appearance_required"
+                checked={form.appearance_required}
+                onChange={(e) => updateField('appearance_required', e.target.checked)}
+                className="w-4 h-4"
+              />
+              <label htmlFor="appearance_required" className="field-label cursor-pointer">
+                Mandatory court appearance (Class B+ misdemeanor, DUI, criminal)
+              </label>
             </div>
           </div>
         </section>
@@ -862,6 +954,8 @@ function hydrateFormFromCitation(c: any): CitationAuthorForm {
     person_dob: c.person_dob || '',
     person_dl: c.person_dl || '',
     person_address: c.person_address || '',
+    person_phone: c.person_phone || '',
+    person_email: c.person_email || '',
     vehicle_description: c.vehicle_description || '',
     vehicle_plate: c.vehicle_plate || '',
     vehicle_state: c.vehicle_state || 'UT',

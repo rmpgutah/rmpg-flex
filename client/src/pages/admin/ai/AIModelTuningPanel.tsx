@@ -207,7 +207,7 @@ export default function AIModelTuningPanel() {
                             value={(featureParams[feature] || {})[key] ?? ''}
                             onChange={e => updateFeatureOverride(feature, key, e.target.value)}
                             placeholder="—"
-                            className="w-20 px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-700 focus:outline-none focus:border-gray-500"
+                            className="w-20 px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-600 focus:outline-none focus:border-rmpg-500"
                           />
                         </td>
                       ))}
@@ -279,12 +279,12 @@ export default function AIModelTuningPanel() {
             value={newPresetName}
             onChange={e => setNewPresetName(e.target.value)}
             placeholder="Preset name..."
-            className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500"
+            className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500"
           />
           <button
             onClick={handleSavePreset}
             disabled={!newPresetName.trim()}
-            className="px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-[#404040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-border-default disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Save Current as Preset
           </button>
@@ -313,13 +313,13 @@ function Slider({ label, description, value, min, max, step, onChange }: {
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
-        <label className="text-rmpg-300">{label}</label>
+        <label htmlFor="ff-aimodeltuningpanel-2" className="text-rmpg-300">{label}</label>
         <span className="text-rmpg-400 font-mono">{value}</span>
       </div>
       <input id="ff-aimodeltuningpanel-2" type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-rmpg-700 rounded appearance-none cursor-pointer accent-gray-500" />
-      <p className="text-[10px] text-gray-600">{description}</p>
+        className="w-full h-1.5 bg-rmpg-700 rounded appearance-none cursor-pointer accent-rmpg-500" />
+      <p className="text-[10px] text-rmpg-500">{description}</p>
     </div>
   );
 }

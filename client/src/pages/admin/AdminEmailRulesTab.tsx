@@ -129,7 +129,7 @@ export default function AdminEmailRulesTab() {
         </button>
       </div>
 
-      <table className="w-full text-xs">
+      <div className="overflow-x-auto"><table className="w-full text-xs">
         <thead>
           <tr className="text-left border-b border-border-default">
             <th className="py-1">Name</th>
@@ -171,7 +171,7 @@ export default function AdminEmailRulesTab() {
             </tr>
           )}
         </tbody>
-      </table>
+      </table></div>
 
       {editing && (
         <div className="border border-border-default p-3 space-y-2 bg-surface-base">

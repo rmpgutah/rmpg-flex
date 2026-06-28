@@ -136,8 +136,8 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
                 className="flex items-center justify-center"
                 style={{
                   position: 'relative', width: 56, height: 56, borderRadius: '50%',
-                  background: '#0a0a0a', fontFamily: 'monospace', fontSize: 18,
-                  fontWeight: 700, color: '#e2e8f0',
+                  background: 'var(--surface-overlay)', fontFamily: 'monospace', fontSize: 18,
+                  fontWeight: 700, color: 'var(--rmpg-200)',
                 }}
               >
                 {pct}

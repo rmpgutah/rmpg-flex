@@ -78,7 +78,7 @@ export default function IntelContextPanel() {
         <button aria-label="Collapse context panel" onClick={togglePanel} className="ml-auto text-rmpg-500 text-[12px]">⟨</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-[11px] py-[12px]">
+      <div className="flex-1 min-h-0 overflow-y-auto px-[11px] py-[12px]">
         {!selected && <div className="text-[10px] text-rmpg-500">Select an entity from any list to peek its dossier.</div>}
 
         {selected && panelMode === 'graph' && (

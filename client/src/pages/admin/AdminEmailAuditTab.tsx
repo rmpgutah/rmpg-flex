@@ -83,7 +83,7 @@ export default function AdminEmailAuditTab() {
         </div>
       ) : (
         <div className="border border-border-default overflow-hidden">
-          <table className="w-full text-[10px]">
+          <div className="overflow-x-auto"><table className="w-full text-[10px]">
             <thead>
               <tr className="bg-surface-base text-rmpg-400 text-[9px] uppercase tracking-wide">
                 <th className="text-left font-semibold py-[3px] px-2">When</th>
@@ -127,7 +127,7 @@ export default function AdminEmailAuditTab() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 

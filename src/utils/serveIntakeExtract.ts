@@ -1,4 +1,5 @@
-import { getAnthropicKey, getClaudeModel, callClaude, bytesToBase64 } from './anthropic';
+import { bytesToBase64 } from './anthropic';
+import { callAi } from './callAi';
 
 // ============================================================
 // RMPG Flex — Serve Intake structured-field extraction
@@ -503,26 +504,24 @@ export async function extractFromImage(
 // is identical. Returns null (NOT a failure result) when the key is absent or
 // the call errors, so callers fall back to the Workers-AI path.
 export async function extractFromImageClaude(
-  env: { DB: D1Database },
+  env: { DB: D1Database; AI: Ai },
   imageBytes: Uint8Array,
   mediaType = 'image/jpeg',
 ): Promise<ExtractionResult | null> {
   if (imageBytes.byteLength === 0 || imageBytes.byteLength > MAX_VISION_BYTES) return null;
-  const key = await getAnthropicKey(env);
-  if (!key) return null; // no Claude key — caller uses Workers AI
   const started = Date.now();
-  const model = await getClaudeModel(env);
   try {
-    const text = await callClaude(key, {
+    const r = await callAi(env, {
       system: SYSTEM_PROMPT,
       text: `${buildUserPrompt('(image-only document — OCR the visible text, then extract)')}\n\nReturn ONLY the JSON object, no prose.`,
       image: { base64: bytesToBase64(imageBytes), mediaType },
-      model, maxTokens: 2048,
+      maxTokens: 2048,
+      providers: ['claude', 'openai'], // paid only — caller falls back to Workers AI
     });
-    const parsed = tryParseModelJson({ response: text });
+    const parsed = tryParseModelJson({ response: r.text });
     const synthesized = Object.values<any>(parsed?.fields ?? {})
       .map((f) => f?.value).filter(Boolean).join(' | ');
-    return normalize(parsed, synthesized, `claude:${model}`, Date.now() - started);
+    return normalize(parsed, synthesized, `${r.provider}:${r.model}`, Date.now() - started);
   } catch {
     return null; // fall back to Workers AI
   }
@@ -533,22 +532,20 @@ export async function extractFromImageClaude(
 // Claude instead of Llama-70B. Returns null (not a failure result) when the key
 // is absent or the call errors, so callers fall back to the Workers-AI path.
 export async function extractFromTextClaude(
-  env: { DB: D1Database }, rawText: string,
+  env: { DB: D1Database; AI: Ai }, rawText: string,
 ): Promise<ExtractionResult | null> {
   const trimmed = (rawText || '').trim();
   if (trimmed.length < 20) return null;
-  const key = await getAnthropicKey(env);
-  if (!key) return null;
   const started = Date.now();
-  const model = await getClaudeModel(env);
   try {
-    const reply = await callClaude(key, {
+    const r = await callAi(env, {
       system: SYSTEM_PROMPT,
-      text: `${buildUserPrompt(trimmed.slice(0, 40000))}\n\nReturn ONLY the JSON object, no prose.`,
-      model, maxTokens: 2048,
+      text: `${buildUserPrompt(trimmed)}\n\nReturn ONLY the JSON object, no prose.`,
+      maxTokens: 2048,
+      providers: ['claude', 'openai'],
     });
-    const parsed = tryParseModelJson({ response: reply });
-    return normalize(parsed, rawText, `claude:${model}`, Date.now() - started);
+    const parsed = tryParseModelJson({ response: r.text });
+    return normalize(parsed, rawText, `${r.provider}:${r.model}`, Date.now() - started);
   } catch {
     return null;
   }

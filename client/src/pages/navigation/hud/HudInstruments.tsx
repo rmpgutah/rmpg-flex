@@ -279,7 +279,7 @@ export function HudStatTile({
 export function HudQualityPill({ accuracy }: { accuracy: number | null }) {
   const a = accuracy;
   const { color, label } = a == null
-    ? { color: '#666', label: 'NO FIX' }
+    ? { color: 'var(--rmpg-500)', label: 'NO FIX' }
     : a < 10 ? { color: '#22c55e', label: 'GOOD' }
       : a < 30 ? { color: '#f59e0b', label: 'FAIR' }
         : { color: '#ef4444', label: 'POOR' };

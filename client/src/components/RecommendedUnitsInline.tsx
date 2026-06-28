@@ -132,7 +132,7 @@ export default function RecommendedUnitsInline({
   return (
     <div
       className="border p-1.5 space-y-1"
-      style={{ background:"var(--surface-sunken)", borderColor: '#222', borderRadius: 2 }}
+      style={{ background:"var(--surface-sunken)", borderColor: 'var(--border-subtle)', borderRadius: 2 }}
       data-testid="recommended-units-inline"
     >
       <div className="flex items-center justify-between">

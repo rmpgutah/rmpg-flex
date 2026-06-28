@@ -72,8 +72,8 @@ function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange
         onClick={() => onChange(!checked)}
         className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-sm transition-colors flex-shrink-0"
         style={{
-          background: checked ? 'rgba(212,160,23,0.12)' : '#0c0c0c',
-          border: `1px solid ${checked ? '#d4a017' : '#222'}`,
+          background: checked ? 'rgba(212,160,23,0.12)' : 'var(--surface-sunken)',
+          border: `1px solid ${checked ? '#d4a017' : 'var(--border-subtle)'}`,
           color: checked ? '#d4a017' : '#888',
         }}
       >
@@ -248,7 +248,7 @@ export default function AdminRadioSettings() {
         <Toggle label="Auto-open record files" hint="When a unit asks dispatch to run a plate or person, pop the matching record into the console's side panel. Dispatch reads it back on the radio either way." checked={settings.ai_auto_open_records} onChange={(v) => set('ai_auto_open_records', v)} />
         <Toggle label="Dynamic voice delivery" hint="Shape the spoken reply to the situation: calm on routine traffic, forceful and emphatic under stress/emergency, with enforcement command weight. Off = flat, uniform delivery. Covert-duress is never voiced urgently." checked={settings.voice_dynamics_enabled} onChange={(v) => set('voice_dynamics_enabled', v)} />
         <div className="pt-1">
-          <label className="block text-[11px] text-rmpg-300 mb-1">Persona / extra directives</label>
+          <label htmlFor="ff-adminradiosettings-4" className="block text-[11px] text-rmpg-300 mb-1">Persona / extra directives</label>
           <textarea id="ff-adminradiosettings-4"
             aria-label="Persona directives"
             className={`${inputCls} w-full h-24 resize-y leading-relaxed`}
@@ -265,7 +265,7 @@ export default function AdminRadioSettings() {
         <Toggle label="Record transmissions" hint="When off, transmissions are still logged but no audio is kept." checked={settings.auto_record} onChange={(v) => set('auto_record', v)} />
         <Toggle label="Auto-transcribe (Whisper)" hint="Transcribe clips that arrive without a client transcript." checked={settings.auto_transcribe} onChange={(v) => set('auto_transcribe', v)} />
         <div className="pt-1">
-          <label className="block text-[11px] text-rmpg-300 mb-1">Recognition vocabulary</label>
+          <label htmlFor="ff-adminradiosettings-stt" className="block text-[11px] text-rmpg-300 mb-1">Recognition vocabulary</label>
           <textarea id="ff-adminradiosettings-stt"
             aria-label="Speech recognition vocabulary"
             className={`${inputCls} w-full h-24 resize-y leading-relaxed`}

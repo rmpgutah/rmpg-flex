@@ -26,6 +26,7 @@ import { usePatrolScan } from '../../hooks/usePatrolScan';
 import { PATROL_INTERVAL_MS } from '../../utils/patrolScan';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
+import TrustBadge from '../../components/TrustBadge';
 
 type GpsFix = { lat: number; lng: number; accuracy: number } | null;
 
@@ -381,13 +382,16 @@ export default function FieldCameraPage() {
   const clearScan = useCallback(() => { setScan(null); discard(); }, [discard]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div className="fixed inset-0 z-50 bg-black flex flex-col safe-pt safe-pb safe-px">
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-3 py-2 bg-surface-sunken border-b border-border-default">
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1 text-[#888] text-xs font-bold uppercase tracking-wider p-2 -ml-2"
+          // Audit caught (2026-06-21): on-scene officer touch surface — Back
+          // was effectively ~32px; gloved finger on a moving phone routinely
+          // mis-taps. Bumped to 44px minimum per WCAG 2.5.5 target size.
+          className="flex items-center gap-1 text-[#888] text-xs font-bold uppercase tracking-wider p-2 -ml-2 min-w-[44px] min-h-[44px]"
           aria-label="Back"
         >
           <ArrowLeft className="w-4 h-4" /> Back
@@ -396,7 +400,7 @@ export default function FieldCameraPage() {
         <button
           type="button"
           onClick={() => setFacing((f) => (f === 'environment' ? 'user' : 'environment'))}
-          className="text-[#888] p-2 -mr-2"
+          className="text-[#888] p-2 -mr-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
           aria-label="Flip camera"
         >
           <RefreshCw className="w-4 h-4" />
@@ -444,20 +448,20 @@ export default function FieldCameraPage() {
       <div className="relative flex-1 overflow-hidden">
         {/* Patrol Scan: critical-hit banner — full-width, dismissable */}
         {patrol.lastHit && (
-          <div className="absolute top-0 left-0 right-0 z-20 bg-red-700 text-rmpg-100 px-3 py-2 flex items-start gap-2 shadow-lg">
+          <div className="absolute top-0 left-0 right-0 z-20 bg-red-700 text-rmpg-100 px-3 py-2 flex items-start gap-2 shadow-lg safe-pt safe-px">
             <AlertTriangle className="w-5 h-5 shrink-0 mt-px animate-pulse" />
             <div className="flex-1 min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-widest">Patrol Hit</div>
               <div className="text-sm font-semibold leading-tight">{patrol.lastHit.text}</div>
             </div>
-            <button type="button" onClick={patrol.clearHit} className="p-1 -mr-1" aria-label="Dismiss hit alert">
+            <button type="button" onClick={patrol.clearHit} className="p-1 -mr-1 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Dismiss hit alert">
               <X className="w-5 h-5" />
             </button>
           </div>
         )}
         {/* Patrol Scan: live read log along the bottom */}
         {patrolRunning && patrol.log.length > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 z-10 max-h-[42%] overflow-y-auto bg-black/80 border-t border-border-default divide-y divide-[#161616]">
+          <div className="absolute bottom-0 left-0 right-0 z-10 max-h-[42%] overflow-y-auto bg-black/80 border-t border-border-default divide-y divide-[#161616] safe-pb safe-px">
             {patrol.log.map((e) => (
               <div
                 key={e.key}
@@ -466,8 +470,9 @@ export default function FieldCameraPage() {
                 <span className={`text-sm tracking-[0.12em] font-semibold ${e.critical ? 'text-red-300' : 'text-rmpg-100'}`}>
                   {e.plate}
                 </span>
-                <span className="text-[10px] text-[#888] min-w-0 truncate ml-2 flex-1 text-right">
-                  {e.vehicle}{e.confidence != null ? ` · ${Math.round(e.confidence * 100)}%` : ''}
+                <span className="text-[10px] text-[#888] min-w-0 truncate ml-2 flex-1 text-right flex items-center justify-end gap-1">
+                  {e.vehicle}
+                  {e.confidence != null && <TrustBadge trust={{ trustScore: e.confidence, readCount: 1, basis: 'patrol scan' }} />}
                   {e.critical ? ' · ⚠ HIT' : ''}
                 </span>
               </div>
@@ -489,7 +494,7 @@ export default function FieldCameraPage() {
                   </span>
                 )}
               </div>
-              <button type="button" onClick={clearScan} className="text-[#888] p-1" aria-label="Done">
+              <button type="button" onClick={clearScan} className="text-[#888] p-1 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Done">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -502,7 +507,7 @@ export default function FieldCameraPage() {
             {scan.accepted === false && scan.enrich_status !== 'pending' && (
               <div className="flex items-start gap-1.5 bg-yellow-950/60 border border-yellow-700 text-yellow-300 text-[11px] px-2 py-1.5">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
-                <span>Low-confidence read{scan.plate_confidence != null ? ` (${Math.round(scan.plate_confidence * 100)}%)` : ''} — held for review. Not recorded as confirmed until an officer verifies it.</span>
+                <span>Low-confidence read — held for review. Not recorded as confirmed until an officer verifies it.</span>
               </div>
             )}
             {(scan.vehicle_count ?? 0) === 0 && (
@@ -518,9 +523,9 @@ export default function FieldCameraPage() {
                     {v.vehicle_record_created ? 'NEW RECORD' : 'LINKED'}
                   </span>
                 </div>
-                <div className="text-[11px] text-[#888] mt-0.5">
-                  {[v.color, v.year, v.make, v.model].filter(Boolean).join(' ') || v.vehicle_type || '—'}
-                  {v.confidence != null ? ` · ${Math.round(v.confidence * 100)}%` : ''}
+                <div className="text-[11px] text-[#888] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span>{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ') || v.vehicle_type || '—'}</span>
+                  {v.confidence != null && <TrustBadge trust={{ trustScore: v.confidence, readCount: 1, basis: 'single read' }} />}
                 </div>
                 {(v.condition || v.damage_observed || (v.damage_areas && v.damage_areas.length > 0)) && (
                   <div className="mt-1 space-y-0.5">
@@ -560,14 +565,14 @@ export default function FieldCameraPage() {
             {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live viewfinder, no audio track */}
             <video ref={videoRef} playsInline muted className="absolute inset-0 w-full h-full object-cover" />
             {/* HUD — mirrors what the stamp will burn in */}
-            <div className="absolute top-0 left-0 right-0 px-3 py-2 flex items-start justify-between pointer-events-none">
+            <div className="absolute top-0 left-0 right-0 px-3 py-2 flex items-start justify-between pointer-events-none safe-pt safe-px">
               <div className="bg-black/55 px-2 py-1 font-mono text-[11px] text-rmpg-100">{clock}</div>
               <div className={`bg-black/55 px-2 py-1 font-mono text-[11px] flex items-center gap-1 ${gps ? 'text-[#d4a017]' : 'text-red-400'}`}>
                 <MapPin className="w-3 h-3" />
                 {gps ? `±${Math.round(gps.accuracy)}m` : 'NO GPS'}
               </div>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 px-3 pb-2 pointer-events-none">
+            <div className="absolute bottom-0 left-0 right-0 px-3 pb-2 pointer-events-none safe-pb safe-px">
               <div className="bg-black/55 px-2 py-1 inline-block font-mono text-[11px] text-rmpg-100">
                 {user?.full_name || user?.username || '—'}
               </div>

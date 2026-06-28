@@ -5,8 +5,10 @@
 // investigator assignment, case notes, and linked records.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatEnumValue } from '../utils/formatters';
+import ConfirmDialog from '../components/ConfirmDialog';
 import RichTextArea from '../components/RichTextArea';
 import {
   Briefcase, Search, Plus, User, X, Save, Loader2, AlertTriangle, Target,
@@ -16,7 +18,6 @@ import {
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
-import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
@@ -32,6 +33,7 @@ import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatActivity, type CaseActivityRow } from '../utils/caseActivity';
 import { CaseTasksTab, CaseMyTasksView } from '../components/CaseTasks';
 import { CaseDashboardView, SlaBadge } from '../components/CaseDashboard';
+import { InvestigationTab } from '../components/InvestigationTab';
 import { CaseRelatedSection } from '../components/CaseRelated';
 import { CaseReadinessCard, fetchCaseCompleteness } from '../components/CaseReadiness';
 import { downloadCaseReport } from '../utils/caseReportGenerator';
@@ -84,7 +86,7 @@ const EMPTY_FORM = {
   summary: '', lead_investigator_id: '',
 };
 
-type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability';
+type DetailTab = 'overview' | 'calls' | 'incidents' | 'persons' | 'vehicles' | 'properties' | 'evidence' | 'warrants' | 'citations' | 'tasks' | 'timeline' | 'notes' | 'solvability' | 'files' | 'intelligence';
 
 const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -100,6 +102,8 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'timeline', label: 'Timeline' },
   { id: 'notes', label: 'Notes', countKey: 'notes' },
   { id: 'solvability', label: 'Solvability' },
+  { id: 'files', label: 'Files', countKey: 'attachments' },
+  { id: 'intelligence', label: 'Intelligence' },
 ];
 
 // ── Reusable LinkedEntityPanel for each entity tab ──
@@ -263,7 +267,7 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
   if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Analyzing solvability...</div>;
   if (!data) return null;
 
-  const ratingColor = data.rating === 'high' ? '#22c55e' : data.rating === 'medium' ? '#f59e0b' : '#ef4444';
+  const ratingColor = data.rating === 'high' ? 'var(--sev-ok)' : data.rating === 'medium' ? 'var(--sev-warn)' : 'var(--sev-critical)';
 
   return (
     <div className="panel-beveled p-4">
@@ -271,7 +275,7 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
       <div className="flex items-center gap-4">
         <div className="relative w-16 h-16">
           <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#141414" strokeWidth="3" />
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--border-subtle)" strokeWidth="3" />
             <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={ratingColor} strokeWidth="3" strokeDasharray={`${data.score}, 100`} strokeLinecap="round" />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
@@ -294,34 +298,52 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
 }
 
 // ── Feature 40: Linked Incidents Relationship Graph ──
-function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
+// Accepts pre-fetched caseFull data to avoid double-fetching /full.
+function LinkedIncidentsGraph({ caseId, caseFull }: { caseId: string | number; caseFull?: any }) {
   const [links, setLinks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Use pre-fetched /full data when available (avoids a double-fetch and
+    // uses hydrated objects instead of the raw JSON-string legacy columns).
+    if (caseFull) {
+      const related = [
+        ...(caseFull.incidents || []).map((i: any) => ({ ...i, rel_type: 'incident' })),
+        ...(caseFull.related || []).map((c: any) => ({ ...c, rel_type: 'case' })),
+        ...(caseFull.warrants || []).map((w: any) => ({ ...w, rel_type: 'warrant' })),
+        ...(caseFull.persons || []).map((p: any) => ({ ...p, rel_type: 'person' })),
+      ];
+      setLinks(related);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    apiFetch<any>(`/cases/${caseId}`)
-      .then(data => {
+    apiFetch<any>(`/cases/${caseId}/full`)
+      .then((data: any) => {
         const related = [
-          ...(data?.linked_incidents || []).map((i: any) => ({ ...i, rel_type: 'incident' })),
-          ...(data?.linked_cases || []).map((c: any) => ({ ...c, rel_type: 'case' })),
-          ...(data?.linked_warrants || []).map((w: any) => ({ ...w, rel_type: 'warrant' })),
-          ...(data?.linked_persons || []).map((p: any) => ({ ...p, rel_type: 'person' })),
+          ...(data?.incidents || []).map((i: any) => ({ ...i, rel_type: 'incident' })),
+          ...(data?.related || []).map((c: any) => ({ ...c, rel_type: 'case' })),
+          ...(data?.warrants || []).map((w: any) => ({ ...w, rel_type: 'warrant' })),
+          ...(data?.persons || []).map((p: any) => ({ ...p, rel_type: 'person' })),
         ];
         setLinks(related);
       })
       .catch(() => setLinks([]))
       .finally(() => setLoading(false));
-  }, [caseId]);
+  }, [caseId, caseFull]);
 
   if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading relationships...</div>;
   if (links.length === 0) return null;
 
+  // Timeline / chart colors routed through semantic --sev-* tokens so the
+  // dots re-color cleanly across night / day / legacy. The `case` entry maps
+  // to --sev-special (purple) which is a shade-shift from the previous
+  // #8b5cf6 (tailwind violet-500) but stays semantically distinct.
   const typeColors: Record<string, string> = {
-    incident: '#888888',
-    case: '#8b5cf6',
-    warrant: '#ef4444',
-    person: '#22c55e',
+    incident: 'var(--spm-text-muted)',
+    case: 'var(--sev-special)',
+    warrant: 'var(--sev-critical)',
+    person: 'var(--sev-ok)',
   };
 
   const typeIcons: Record<string, string> = {
@@ -378,6 +400,12 @@ export default function CaseManagementPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const isManager = user?.role === 'manager';
+  const isSupervisor = user?.role === 'supervisor';
+  // Role gates: delete/archive → admin|manager; assign → admin|manager|supervisor
+  const canDelete = isAdmin || isManager;
+  const canArchive = isAdmin || isManager;
+  const canAssign = isAdmin || isManager || isSupervisor;
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
@@ -424,6 +452,10 @@ export default function CaseManagementPage() {
   const [solvFactors, setSolvFactors] = useState<Record<string, boolean>>({});
   const [solvSubmitting, setSolvSubmitting] = useState(false);
 
+  // Note operations
+  const [noteDeleting, setNoteDeleting] = useState<number | null>(null);
+  const [noteTogglingPin, setNoteTogglingPin] = useState<number | null>(null);
+
   // Status change
   const [statusChanging, setStatusChanging] = useState(false);
 
@@ -438,6 +470,25 @@ export default function CaseManagementPage() {
   const [personResults, setPersonResults] = useState<any[]>([]);
   const [personSearching, setPersonSearching] = useState(false);
   const [linkedPersons, setLinkedPersons] = useState<any[]>([]);
+
+  // Inline replacements for the previous native window.prompt / confirm
+  // dialogs. Each native call replaced 2026-06-22 with a state-driven modal
+  // that's a11y-correct, keyboard-friendly, and renders rich content
+  // (bulleted missing-fields lists instead of \n-joined plain text).
+  const [noteToDelete, setNoteToDelete] = useState<number | null>(null);
+  const [saveViewModalOpen, setSaveViewModalOpen] = useState(false);
+  const [saveViewName, setSaveViewName] = useState('');
+  const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
+  const [caseDeleting, setCaseDeleting] = useState(false);
+  const [pendingClose, setPendingClose] = useState<{
+    newStatus: string;
+    percent: number;
+    missing: string[];
+  } | null>(null);
+  const [pendingReview, setPendingReview] = useState<{
+    percent: number;
+    missing: string[];
+  } | null>(null);
 
   const fetchCases = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -498,7 +549,7 @@ export default function CaseManagementPage() {
       const r = await apiFetch<{ data: any[] }>(`/cases/${selected.id}/tasks`);
       tasks = Array.isArray(r) ? r : (r?.data || []);
     } catch { /* tasks optional in the report */ }
-    downloadCaseReport({
+    await downloadCaseReport({
       caseRow: cf || selected,
       calls: cf?.calls, incidents: cf?.incidents, persons: cf?.persons,
       vehicles: cf?.vehicles, properties: cf?.properties, evidence: cf?.evidence,
@@ -540,11 +591,17 @@ export default function CaseManagementPage() {
     setFilterOverdue(!!f.overdue);
     setPage(1);
   };
+  // Save-view modal trigger — opens the inline-modal name input instead of
+  // the previous window.prompt. Confirmation lands in commitSaveView() below.
   const saveCurrentView = () => {
-    const name = window.prompt('Save current filters as a view named:');
-    if (!name?.trim()) return;
+    setSaveViewName('');
+    setSaveViewModalOpen(true);
+  };
+  const commitSaveView = () => {
+    const trimmed = saveViewName.trim();
+    if (!trimmed) return;
     const view: SavedView = {
-      name: name.trim(),
+      name: trimmed,
       filters: {
         search: searchQuery || undefined, status: filterStatus || undefined,
         type: filterType || undefined, priority: filterPriority || undefined,
@@ -555,6 +612,8 @@ export default function CaseManagementPage() {
     setSavedViews(next);
     persistViews(next);
     addToast(`View "${view.name}" saved`, 'success');
+    setSaveViewModalOpen(false);
+    setSaveViewName('');
   };
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
@@ -616,6 +675,36 @@ export default function CaseManagementPage() {
     finally { setNoteSubmitting(false); }
   };
 
+  // Delete-note flow — opens ConfirmDialog instead of native confirm().
+  const handleDeleteNote = (noteId: number) => { setNoteToDelete(noteId); };
+  const confirmDeleteNote = async () => {
+    const noteId = noteToDelete;
+    if (!selected || noteId == null) return;
+    setNoteDeleting(noteId);
+    try {
+      await apiFetch(`/cases/${selected.id}/notes/${noteId}`, { method: 'DELETE' });
+      addToast('Note deleted', 'success');
+      fetchNotes(selected.id);
+      fetchFullCase(selected.id);
+    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    finally { setNoteDeleting(null); setNoteToDelete(null); }
+  };
+
+  const handleTogglePin = async (note: CaseNote) => {
+    if (!selected) return;
+    setNoteTogglingPin(note.id);
+    try {
+      await apiFetch(`/cases/${selected.id}/notes/${note.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_pinned: !note.is_pinned }),
+      });
+      addToast(note.is_pinned ? 'Note unpinned' : 'Note pinned', 'success');
+      fetchNotes(selected.id);
+      fetchFullCase(selected.id);
+    } catch (err: any) { addToast(err.message || 'Toggle failed', 'error'); }
+    finally { setNoteTogglingPin(null); }
+  };
+
   const handleStatusChange = async (newStatus: string) => {
     if (!selected || statusChanging) return;
     // Set the in-flight flag BEFORE the async readiness gate so the buttons
@@ -624,13 +713,35 @@ export default function CaseManagementPage() {
     setStatusChanging(true);
     try {
       // Advisory readiness gate on close — warn, never block (per design).
+      // The native window.confirm previously rendered the missing-fields list
+      // as a \n-joined plain-text line; now hands off to an inline modal
+      // (pendingClose state) that bullets them properly. The modal's confirm
+      // handler calls applyStatusChange() with the same newStatus.
       if (newStatus.startsWith('closed')) {
         const comp = await fetchCaseCompleteness(selected.id);
-        if (comp && comp.percent < 100 &&
-          !window.confirm(`This case is ${comp.percent}% complete.${comp.missing.length ? `\nMissing: ${comp.missing.join(', ')}.` : ''}\n\nClose it anyway?`)) {
-          return; // finally resets statusChanging
+        if (comp && comp.percent < 100) {
+          setPendingClose({ newStatus, percent: comp.percent, missing: comp.missing || [] });
+          // The modal owns continuation; clear the in-flight flag so the
+          // operator can still cancel + click another button without being
+          // locked out.
+          setStatusChanging(false);
+          return;
         }
       }
+      await applyStatusChange(newStatus);
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      setStatusChanging(false);
+    }
+  };
+
+  // Continuation of the status-change flow after the readiness modal returns.
+  // Shared by the direct-path (already-complete cases) and the modal-confirm
+  // path (operator overrode the warning) so the API call lives in one place.
+  const applyStatusChange = async (newStatus: string) => {
+    if (!selected) return;
+    setStatusChanging(true);
+    try {
       await apiFetch(`/cases/${selected.id}/status`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
       addToast(`Case status → ${newStatus.replace(/_/g, ' ')}`, 'success');
       const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
@@ -638,7 +749,7 @@ export default function CaseManagementPage() {
       fetchCases({ silent: true });
       fetchStats();
     } catch (err: any) { addToast(err.message, 'error'); }
-    finally { setStatusChanging(false); }
+    finally { setStatusChanging(false); setPendingClose(null); }
   };
 
   const handleCalculateSolvability = async () => {
@@ -661,17 +772,31 @@ export default function CaseManagementPage() {
     setReviewSubmitting(true);
     try {
       const comp = await fetchCaseCompleteness(selected.id);
-      if (comp && comp.percent < 100 &&
-        !window.confirm(`This case is ${comp.percent}% complete.${comp.missing.length ? `\nMissing: ${comp.missing.join(', ')}.` : ''}\n\nSubmit for review anyway?`)) {
-        return; // finally resets reviewSubmitting
+      if (comp && comp.percent < 100) {
+        // Hand off to the inline-modal readiness gate — same shape as
+        // handleStatusChange. Modal continuation lands in applySubmitForReview.
+        setPendingReview({ percent: comp.percent, missing: comp.missing || [] });
+        setReviewSubmitting(false);
+        return;
       }
+      await applySubmitForReview();
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      setReviewSubmitting(false);
+    }
+  };
+
+  const applySubmitForReview = async () => {
+    if (!selected) return;
+    setReviewSubmitting(true);
+    try {
       await apiFetch(`/cases/${selected.id}/submit-review`, { method: 'PUT' });
       addToast('Case submitted for supervisor review', 'success');
       const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
       setSelected(updated.data);
       fetchCases({ silent: true });
     } catch (err: any) { addToast(err.message, 'error'); }
-    finally { setReviewSubmitting(false); }
+    finally { setReviewSubmitting(false); setPendingReview(null); }
   };
 
   const handleApproveCase = async (action: 'approve' | 'return') => {
@@ -692,15 +817,19 @@ export default function CaseManagementPage() {
     finally { setReviewSubmitting(false); }
   };
 
-  // Admin God Mode — delete a case (shared by detail button + context menu)
-  const handleDeleteCase = async (c: Case) => {
-    if (!confirm(`Admin God Mode: Delete case ${c.case_number}? This cannot be undone.`)) return;
+  // Delete-case flow — opens ConfirmDialog instead of native confirm().
+  const handleDeleteCase = (c: Case) => { setCaseToDelete(c); };
+  const confirmDeleteCase = async () => {
+    const c = caseToDelete;
+    if (!c) return;
+    setCaseDeleting(true);
     try {
       await apiFetch(`/cases/${c.id}`, { method: 'DELETE' });
       addToast(`Case ${c.case_number} deleted`, 'success');
       if (selected?.id === c.id) setSelected(null);
       fetchCases();
     } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+    finally { setCaseDeleting(false); setCaseToDelete(null); }
   };
 
   // ── Right-click context menu for case list rows ──
@@ -710,7 +839,7 @@ export default function CaseManagementPage() {
     m.copy('Copy case number', c.case_number),
     m.copyId(c.id),
     ...(c.title ? [m.copy('Copy title', c.title)] : []),
-    ...(isAdmin ? [m.separator(), m.action('Delete', () => handleDeleteCase(c), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ...(canDelete ? [m.separator(), m.action('Delete', () => handleDeleteCase(c), { icon: <Trash2 size={12} />, danger: true })] : []),
   ];
 
   // ── Link Person handlers ──
@@ -727,18 +856,15 @@ export default function CaseManagementPage() {
   const handleLinkPerson = async (person: any) => {
     if (!selected) return;
     try {
-      let existing: any[] = [];
-      try { existing = selected.linked_persons ? (typeof selected.linked_persons === 'string' ? JSON.parse(selected.linked_persons) : selected.linked_persons) : []; } catch { existing = []; }
-      const already = existing.some((p: any) => p.id === person.id);
-      if (already) { addToast('Person already linked', 'error'); return; }
-      const updated = [...existing, { id: person.id, first_name: person.first_name, last_name: person.last_name, role: 'involved' }];
-      await apiFetch(`/cases/${selected.id}`, { method: 'PUT', body: JSON.stringify({ linked_persons: updated }) });
+      await apiFetch(`/cases/${selected.id}/persons`, {
+        method: 'POST',
+        body: JSON.stringify({ person_id: person.id, relationship: 'involved' }),
+      });
       addToast(`${person.first_name} ${person.last_name} linked to case`, 'success');
-      const refreshed = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
-      setSelected(refreshed.data);
       setLinkPersonOpen(false);
       setPersonSearchQuery('');
       setPersonResults([]);
+      fetchFullCase(selected.id);
     } catch (err: any) { addToast(err.message, 'error'); }
   };
 
@@ -758,14 +884,86 @@ export default function CaseManagementPage() {
   // Set document title
   useEffect(() => { document.title = 'Case Management \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // \u2500\u2500 /cases?case_id=<id> URL deep-link auto-select \u2500\u2500
+  // 11th consecutive page-pass for the cross-page contract. Falls through
+  // to a direct fetch by id when the case isn't in the current paged list.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
+  useEffect(() => {
+    const target = pendingCaseIdRef.current;
+    if (!target || loading) return;
+    pendingCaseIdRef.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = cases.find((c) => String(c.id) === String(target));
+        if (hit) {
+          if (!cancelled) { setSelected(hit); setDetailTab('overview'); }
+        } else {
+          const res = await apiFetch<any>(`/cases/${target}`);
+          if (cancelled) return;
+          const item = res?.data ?? res;
+          if (item && item.id != null) {
+            setSelected(item as Case);
+            setDetailTab('overview');
+          } else {
+            addToast(`Case ${target} not found`, 'warning');
+          }
+        }
+      } catch {
+        if (!cancelled) addToast(`Failed to load case ${target}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('case_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cases, loading]);
+
+  // Keyboard shortcuts:
+  //   N — open new case modal (only when no modal is already open and not
+  //       typing in an input/textarea).
+  //   Escape — close whichever modal is currently open (smallest-open-first
+  //       cascade). stopPropagation() prevents the event from bubbling into
+  //       nested handlers after we handle it.
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowReturnModal(false); setFormOpen(false); }
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable;
+
+      if (e.key === 'N' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditable) {
+        const anyModalOpen = saveViewModalOpen || pendingClose !== null || pendingReview !== null
+          || noteToDelete !== null || caseToDelete !== null || linkPersonOpen || showReturnModal || formOpen;
+        if (!anyModalOpen) {
+          e.preventDefault();
+          setFormOpen(true);
+          setFormData({ ...EMPTY_FORM });
+          // Focus title input after modal renders
+          requestAnimationFrame(() => { titleInputRef.current?.focus(); });
+        }
+        return;
+      }
+
+      if (e.key !== 'Escape') return;
+      // Order: confirmation modals first (most dismissible), then the
+      // entry / picker modals, finally the main form.
+      if (saveViewModalOpen) { e.stopPropagation(); setSaveViewModalOpen(false); return; }
+      if (caseToDelete !== null) { e.stopPropagation(); setCaseToDelete(null); return; }
+      if (pendingClose) { e.stopPropagation(); setPendingClose(null); return; }
+      if (pendingReview) { e.stopPropagation(); setPendingReview(null); return; }
+      if (noteToDelete != null) { e.stopPropagation(); setNoteToDelete(null); return; }
+      if (linkPersonOpen) { e.stopPropagation(); setLinkPersonOpen(false); return; }
+      if (showReturnModal) { e.stopPropagation(); setShowReturnModal(false); return; }
+      if (formOpen) { e.stopPropagation(); setFormOpen(false); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [saveViewModalOpen, caseToDelete, pendingClose, pendingReview, noteToDelete, linkPersonOpen, showReturnModal, formOpen]);
 
   return (
     <div className="h-full flex flex-col">
@@ -877,13 +1075,17 @@ export default function CaseManagementPage() {
               <option value="">Set status…</option>
               {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
-            <select aria-label="Bulk assign" value=""
-              onChange={e => { if (e.target.value) handleBulk('assign', e.target.value); }}
-              className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none">
-              <option value="">Assign to…</option>
-              {users.map(u => <option key={u.id} value={String(u.id)}>{u.full_name}</option>)}
-            </select>
-            <button type="button" onClick={() => handleBulk('archive')} className="text-[10px] px-2 py-0.5 border border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors">Archive</button>
+            {canAssign && (
+              <select aria-label="Bulk assign" value=""
+                onChange={e => { if (e.target.value) handleBulk('assign', e.target.value); }}
+                className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-0.5 outline-none">
+                <option value="">Assign to…</option>
+                {users.map(u => <option key={u.id} value={String(u.id)}>{u.full_name}</option>)}
+              </select>
+            )}
+            {canArchive && (
+              <button type="button" onClick={() => handleBulk('archive')} className="text-[10px] px-2 py-0.5 border border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors">Archive</button>
+            )}
             <button type="button" onClick={clearSelection} className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-rmpg-100 transition-colors ml-auto">Clear</button>
           </div>
         )}
@@ -892,10 +1094,17 @@ export default function CaseManagementPage() {
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span></div>
+          ) : fetchError ? null : cases.length === 0 && (searchQuery || filterStatus || filterType || filterPriority || filterOverdue || filterMine) ? (
+            <EmptyState
+              icon={Search}
+              title="No results"
+              description="No cases match the current filters."
+              action={{ label: 'Clear filters', onClick: () => { setSearchQuery(''); setFilterStatus(''); setFilterType(''); setFilterPriority(''); setFilterOverdue(false); setFilterMine(false); setPage(1); } }}
+            />
           ) : cases.length === 0 ? (
             <EmptyState
               icon={FolderOpen}
-              title="No cases found"
+              title="No cases yet"
               description="Create a new case to get started."
               action={{ label: 'New Case', onClick: () => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); } }}
             />
@@ -1042,14 +1251,14 @@ export default function CaseManagementPage() {
                     </div>
                   </div>
 
-                  {/* Admin God Mode: Delete Case */}
-                  {isAdmin && (
+                  {/* Delete Case — admin|manager only */}
+                  {canDelete && (
                     <div className="panel-beveled p-3 border-red-900/30">
                       <button type="button"
                         onClick={() => handleDeleteCase(selected)}
                         className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30 text-[10px]"
                       >
-                        <X style={{ width: 11, height: 11 }} /> Delete Case (Admin)
+                        <X style={{ width: 11, height: 11 }} /> Delete Case
                       </button>
                     </div>
                   )}
@@ -1312,11 +1521,11 @@ export default function CaseManagementPage() {
                             const f = formatActivity(a.action, a.detail);
                             return { date: a.created_at, type: a.actor_name || 'System', label: f.label, color: f.color };
                           }),
-                        // Notes (with content)
-                        ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: (n.content || '').substring(0, 100) || 'Note', color: '#8b5cf6' })),
-                        // Linked-record occurrence context
-                        ...(caseFull?.calls || []).map((c: any) => ({ date: c.created_at, type: 'Call', label: `CFS ${c.call_number || c.case_number || '#' + c.id} — ${c.incident_type || c.call_type || 'Unknown'}`, color: '#888888' })),
-                        ...(caseFull?.incidents || []).map((i: any) => ({ date: i.created_at, type: 'Incident', label: `${i.incident_number || '#' + i.id} — ${i.incident_type || 'Unknown'}`, color: '#f59e0b' })),
+                        // Notes (with content) — purple/special for "operator commentary"
+                        ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: (n.content || '').substring(0, 100) || 'Note', color: 'var(--sev-special)' })),
+                        // Linked-record occurrence context — semantic tokens
+                        ...(caseFull?.calls || []).map((c: any) => ({ date: c.created_at, type: 'Call', label: `CFS ${c.call_number || c.case_number || '#' + c.id} — ${c.incident_type || c.call_type || 'Unknown'}`, color: 'var(--spm-text-muted)' })),
+                        ...(caseFull?.incidents || []).map((i: any) => ({ date: i.created_at, type: 'Incident', label: `${i.incident_number || '#' + i.id} — ${i.incident_type || 'Unknown'}`, color: 'var(--sev-warn)' })),
                       ]
                         .sort((a, b) => (b.date ? parseTimestamp(b.date).getTime() : 0) - (a.date ? parseTimestamp(a.date).getTime() : 0))
                         .map((event, idx) => (
@@ -1355,12 +1564,36 @@ export default function CaseManagementPage() {
                   </div>
 
                   {notes.map(note => (
-                    <div key={note.id} className="panel-beveled p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-bold text-rmpg-100">{note.author_name || 'Unknown'}</span>
-                        <span className="text-[9px] font-mono text-rmpg-500">
-                          {safeDateTimeStr(note.created_at, '')}
-                        </span>
+                    <div key={note.id} className={`panel-beveled p-3 ${note.is_pinned ? 'border-brand-700/50 bg-brand-900/10' : ''}`}>
+                      <div className="flex items-center justify-between mb-1 gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {note.is_pinned && <span className="text-[8px] font-mono text-brand-400 uppercase">PINNED</span>}
+                          <span className="text-[10px] font-bold text-rmpg-100 truncate">{(note as any).author_full_name || note.author_name || 'Unknown'}</span>
+                          {note.note_type && note.note_type !== 'general' && (
+                            <span className="text-[8px] px-1 border border-rmpg-700 text-rmpg-500 uppercase">{note.note_type}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-[9px] font-mono text-rmpg-500">{safeDateTimeStr(note.created_at, '')}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePin(note)}
+                            disabled={noteTogglingPin === note.id}
+                            title={note.is_pinned ? 'Unpin note' : 'Pin note'}
+                            className={`text-[9px] px-1.5 py-0.5 border transition-colors ${note.is_pinned ? 'border-brand-700/50 text-brand-400 hover:bg-brand-900/30' : 'border-rmpg-700 text-rmpg-500 hover:text-brand-400'}`}
+                          >
+                            {noteTogglingPin === note.id ? <Loader2 className="w-2.5 h-2.5 animate-spin inline" role="status" aria-label="Loading" /> : '📌'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteNote(note.id)}
+                            disabled={noteDeleting === note.id}
+                            title="Delete note"
+                            className="text-[9px] px-1.5 py-0.5 border border-rmpg-700 text-rmpg-500 hover:text-red-400 hover:border-red-700/50 transition-colors"
+                          >
+                            {noteDeleting === note.id ? <Loader2 className="w-2.5 h-2.5 animate-spin inline" role="status" aria-label="Loading" /> : <Trash2 style={{ width: 10, height: 10, display: 'inline' }} />}
+                          </button>
+                        </div>
                       </div>
                       <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{note.content}</div>
                     </div>
@@ -1376,7 +1609,7 @@ export default function CaseManagementPage() {
                   <SolvabilityScoreCard caseId={selected.id} />
 
                   {/* Feature 40: Linked Incidents Relationship Graph */}
-                  <LinkedIncidentsGraph caseId={selected.id} />
+                  <LinkedIncidentsGraph caseId={selected.id} caseFull={caseFull} />
 
                   <div className="panel-beveled p-4">
                     <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-3">Solvability Factors</div>
@@ -1409,10 +1642,30 @@ export default function CaseManagementPage() {
                 </div>
               )}
 
-              {/* File Attachments */}
-              <div className="panel-beveled p-3 bg-surface-base">
-                <FileAttachments entityType="case" entityId={String(selected.id)} />
-              </div>
+              {/* ── Files Tab — dedicated file management ── */}
+              {detailTab === 'files' && (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-mono text-rmpg-500 uppercase">
+                    Case Files &amp; Documents
+                    {caseFull?.counts?.attachments != null && caseFull.counts.attachments > 0 && (
+                      <span className="ml-2 text-brand-400">({caseFull.counts.attachments})</span>
+                    )}
+                  </div>
+                  <FileAttachments entityType="case" entityId={String(selected.id)} />
+                </div>
+              )}
+
+              {/* ── Intelligence Tab — cross-reference engine, MO patterns, timelines ── */}
+              {detailTab === 'intelligence' && (
+                <InvestigationTab caseId={selected.id} caseNumber={selected.case_number} />
+              )}
+
+              {/* File Attachments (always visible outside tabs for quick access) */}
+              {detailTab !== 'files' && (
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <FileAttachments entityType="case" entityId={String(selected.id)} />
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -1436,7 +1689,7 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Return Reason *</label>
+                <label htmlFor="ff-casemanagementpage-5" className="field-label">Return Reason *</label>
                 <RichTextArea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
                   placeholder="Explain why this case needs additional work..."
                   className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none resize-none" />
@@ -1500,24 +1753,24 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="field-label">Title *</label>
-                <input id="ff-casemanagementpage-6" value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
+                <label htmlFor="ff-casemanagementpage-6" className="field-label">Title *</label>
+                <input id="ff-casemanagementpage-6" ref={titleInputRef} value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="field-label">Type</label>
+                  <label htmlFor="ff-casemanagementpage-7" className="field-label">Type</label>
                   <select id="ff-casemanagementpage-7" value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none">
                     {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Priority</label>
+                  <label htmlFor="ff-casemanagementpage-8" className="field-label">Priority</label>
                   <select id="ff-casemanagementpage-8" value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none">
                     {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Lead Investigator</label>
+                  <label htmlFor="ff-casemanagementpage-9" className="field-label">Lead Investigator</label>
                   <select id="ff-casemanagementpage-9" value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none disabled:opacity-60">
                     {personnelLoading ? (
                       <option value="">Loading…</option>
@@ -1541,6 +1794,140 @@ export default function CaseManagementPage() {
                   Create Case
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Inline modals — replace previous native window.prompt / confirm
+          dialogs. ConfirmDialog handles a11y + Esc-cancel for the binary
+          cases; the readiness gates use a fuller surface so the
+          missing-fields list can be rendered as a proper bullet list. */}
+      <ConfirmDialog
+        isOpen={caseToDelete !== null}
+        onClose={() => setCaseToDelete(null)}
+        onConfirm={confirmDeleteCase}
+        title="Delete case"
+        message={`Delete case ${caseToDelete?.case_number || ''}? This cannot be undone.`}
+        details={caseToDelete?.title ? <span>{caseToDelete.title}</span> : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={caseDeleting}
+      />
+
+      <ConfirmDialog
+        isOpen={noteToDelete !== null}
+        onClose={() => setNoteToDelete(null)}
+        onConfirm={confirmDeleteNote}
+        title="Delete note"
+        message="This will permanently remove this note from the case timeline."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={noteDeleting === noteToDelete}
+      />
+
+      {pendingClose && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setPendingClose(null)}
+        >
+          <div
+            className="panel-beveled bg-surface-base p-4 w-[420px] space-y-3"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="close-case-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" aria-hidden="true" />
+              <h3 id="close-case-modal-title" className="text-[12px] font-bold uppercase text-rmpg-100">Close case anyway?</h3>
+            </div>
+            <p className="text-[11px] text-rmpg-300">
+              This case is <span className="font-mono text-amber-400">{pendingClose.percent}% complete</span>.
+              Closing now will skip the standard checklist.
+            </p>
+            {pendingClose.missing.length > 0 && (
+              <div>
+                <div className="text-[9px] uppercase tracking-wider text-rmpg-500 mb-1">Missing</div>
+                <ul className="text-[11px] text-rmpg-200 list-disc list-inside space-y-0.5 max-h-[180px] overflow-y-auto">
+                  {pendingClose.missing.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setPendingClose(null)} className="toolbar-btn text-[10px]">Cancel</button>
+              <button type="button" onClick={() => applyStatusChange(pendingClose.newStatus)} className="toolbar-btn toolbar-btn-primary text-[10px]" disabled={statusChanging}>
+                Close anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingReview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setPendingReview(null)}
+        >
+          <div
+            className="panel-beveled bg-surface-base p-4 w-[420px] space-y-3"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-case-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" aria-hidden="true" />
+              <h3 id="review-case-modal-title" className="text-[12px] font-bold uppercase text-rmpg-100">Submit for review anyway?</h3>
+            </div>
+            <p className="text-[11px] text-rmpg-300">
+              This case is <span className="font-mono text-amber-400">{pendingReview.percent}% complete</span>.
+              The supervisor will see the same checklist warning.
+            </p>
+            {pendingReview.missing.length > 0 && (
+              <div>
+                <div className="text-[9px] uppercase tracking-wider text-rmpg-500 mb-1">Missing</div>
+                <ul className="text-[11px] text-rmpg-200 list-disc list-inside space-y-0.5 max-h-[180px] overflow-y-auto">
+                  {pendingReview.missing.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setPendingReview(null)} className="toolbar-btn text-[10px]">Cancel</button>
+              <button type="button" onClick={applySubmitForReview} className="toolbar-btn toolbar-btn-primary text-[10px]" disabled={reviewSubmitting}>
+                Submit anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {saveViewModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setSaveViewModalOpen(false)}
+        >
+          <div
+            className="panel-beveled bg-surface-base p-4 w-[360px] space-y-3"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="save-view-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="save-view-modal-title" className="text-[12px] font-bold uppercase text-rmpg-100">Save current view</h3>
+            <p className="text-[10px] text-rmpg-400">Saves the current filters under a name you can re-open later.</p>
+            <input
+              type="text"
+              autoFocus
+              value={saveViewName}
+              onChange={(e) => setSaveViewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') commitSaveView(); }}
+              className="w-full bg-surface-sunken border border-border-default px-2 py-1.5 text-[11px] text-rmpg-100"
+              placeholder="e.g. My overdue homicides"
+            />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setSaveViewModalOpen(false)} className="toolbar-btn text-[10px]">Cancel</button>
+              <button type="button" onClick={commitSaveView} disabled={!saveViewName.trim()} className="toolbar-btn toolbar-btn-primary text-[10px]">Save view</button>
             </div>
           </div>
         </div>

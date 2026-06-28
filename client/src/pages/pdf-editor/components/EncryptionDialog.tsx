@@ -69,7 +69,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-2">
             <div>
-              <label className={labelCls}>User password (open password)</label>
+              <label htmlFor="ff-encryptiondialog-0" className={labelCls}>User password (open password)</label>
               <div className="relative">
                 <input id="ff-encryptiondialog-0" type={showUser ? 'text' : 'password'} value={cfg.userPassword}
                   onChange={(e) => setCfg({ ...cfg, userPassword: e.target.value })}
@@ -81,7 +81,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
               </div>
             </div>
             <div>
-              <label className={labelCls}>Owner password (controls removing restrictions)</label>
+              <label htmlFor="ff-encryptiondialog-1" className={labelCls}>Owner password (controls removing restrictions)</label>
               <div className="relative">
                 <input id="ff-encryptiondialog-1" type={showOwner ? 'text' : 'password'} value={cfg.ownerPassword}
                   onChange={(e) => setCfg({ ...cfg, ownerPassword: e.target.value })}
@@ -93,7 +93,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
               </div>
             </div>
             <div>
-              <label className={labelCls}>Encryption strength</label>
+              <label htmlFor="ff-encryptiondialog-2" className={labelCls}>Encryption strength</label>
               <select id="ff-encryptiondialog-2" value={cfg.bitLength} onChange={(e) => setCfg({ ...cfg, bitLength: parseInt(e.target.value, 10) as 128 | 256 })} className={inputCls}>
                 <option value={256}>256-bit AES (PDF 2.0 — strongest, recommended)</option>
                 <option value={128}>128-bit AES (PDF 1.7 — broader compatibility)</option>
@@ -103,7 +103,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
 
           <div className="space-y-2">
             <div>
-              <label className={labelCls}>Printing</label>
+              <label htmlFor="ff-encryptiondialog-3" className={labelCls}>Printing</label>
               <select id="ff-encryptiondialog-3" value={cfg.permissions.print} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, print: e.target.value as any } })} className={inputCls}>
                 <option value="full">Allow high-resolution printing</option>
                 <option value="low">Allow low-resolution printing only</option>
@@ -111,7 +111,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
               </select>
             </div>
             <div>
-              <label className={labelCls}>Modifications</label>
+              <label htmlFor="ff-encryptiondialog-4" className={labelCls}>Modifications</label>
               <select id="ff-encryptiondialog-4" value={cfg.permissions.modify} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, modify: e.target.value as any } })} className={inputCls}>
                 <option value="all">Allow all modifications</option>
                 <option value="annotate">Allow annotation only</option>

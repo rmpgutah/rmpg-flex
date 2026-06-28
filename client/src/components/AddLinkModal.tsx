@@ -190,7 +190,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
 
       {/* Record Type */}
       <div>
-        <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Record Type</label>
+        <label htmlFor="ff-addlinkmodal-0" className="text-[10px] text-rmpg-400 uppercase font-semibold">Record Type</label>
         <select id="ff-addlinkmodal-0"
           className="select-dark mt-1 w-full"
           value={linkedType}
@@ -206,7 +206,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
       {/* Search Input */}
       {linkedType && !selected && (
         <div className="relative" ref={dropdownRef}>
-          <label className="text-[10px] text-rmpg-400 uppercase font-semibold">
+          <label htmlFor="ff-addlinkmodal-1" className="text-[10px] text-rmpg-400 uppercase font-semibold">
             Search {TYPE_OPTIONS.find(t => t.value === linkedType)?.label || 'Record'}
           </label>
           <div className="relative mt-1">
@@ -244,7 +244,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
                       <span className="text-xs text-rmpg-200 font-mono truncate">{r.label}</span>
                       {r.status && (
                         <span className={`text-[9px] font-semibold uppercase shrink-0 ${STATUS_COLORS[r.status] || 'text-rmpg-500'}`}>
-                          {r.status}
+                          {formatEnumValue(r.status)}
                         </span>
                       )}
                     </div>
@@ -279,7 +279,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
       {/* Link Reason */}
       {selected && (
         <div>
-          <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Link Reason (optional)</label>
+          <label htmlFor="ff-addlinkmodal-2" className="text-[10px] text-rmpg-400 uppercase font-semibold">Link Reason (optional)</label>
           <input id="ff-addlinkmodal-2"
             type="text"
             className="input-dark mt-1 w-full"

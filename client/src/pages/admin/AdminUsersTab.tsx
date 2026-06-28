@@ -26,6 +26,7 @@ import type { User, UserRole } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { safeDateTimeStr } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -127,6 +128,33 @@ export default function AdminUsersTab({
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [roleEditing, setRoleEditing] = useState(false);
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
+
+  // Centralized destructive-action ConfirmDialog state — replaces the four
+  // window.confirm() prompts that scattered through Suspend / Reactivate /
+  // Reset 2FA / Revoke Sessions. Each handler stores its title/message/
+  // onConfirm here; the dialog renders once at the bottom of the tab so
+  // there is a single Esc target and a single overlay (the AdminPage Esc
+  // smart-cascade does NOT see browser-native confirms; they were
+  // unreachable by keyboard cascade and broke the day/night surface).
+  interface DeleteConfirm {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    confirmVariant?: 'danger' | 'warning' | 'default';
+    onConfirm: () => Promise<void> | void;
+  }
+  const [confirmDlg, setConfirmDlg] = useState<DeleteConfirm | null>(null);
+  const [confirmDlgLoading, setConfirmDlgLoading] = useState(false);
+  const runConfirmDlg = async () => {
+    if (!confirmDlg) return;
+    setConfirmDlgLoading(true);
+    try {
+      await confirmDlg.onConfirm();
+    } finally {
+      setConfirmDlgLoading(false);
+      setConfirmDlg(null);
+    }
+  };
 
   const handleReset2FA = async (userId: string) => {
     setSecurityActionLoading('reset-2fa');
@@ -410,7 +438,13 @@ export default function AdminUsersTab({
                   if (rawStatus === 'active' && onStatusChange) {
                     return (
                       <button type="button"
-                        onClick={() => { if (window.confirm(`Suspend ${selectedUser.first_name} ${selectedUser.last_name}? Their sessions will be terminated.`)) onStatusChange(selectedUser.id, 'inactive'); }}
+                        onClick={() => setConfirmDlg({
+                          title: 'Suspend User',
+                          message: `Suspend ${selectedUser.first_name} ${selectedUser.last_name}? Their active sessions will be terminated and they will be unable to log in until reactivated.`,
+                          confirmLabel: 'Suspend',
+                          confirmVariant: 'warning',
+                          onConfirm: () => onStatusChange(selectedUser.id, 'inactive'),
+                        })}
                         className="toolbar-btn text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30"
                         title="Suspend user"
                       >
@@ -420,7 +454,13 @@ export default function AdminUsersTab({
                   } else if (rawStatus === 'inactive' && onStatusChange) {
                     return (
                       <button type="button"
-                        onClick={() => { if (window.confirm(`Reactivate ${selectedUser.first_name} ${selectedUser.last_name}?`)) onStatusChange(selectedUser.id, 'active'); }}
+                        onClick={() => setConfirmDlg({
+                          title: 'Reactivate User',
+                          message: `Reactivate ${selectedUser.first_name} ${selectedUser.last_name}? They will be able to log in again.`,
+                          confirmLabel: 'Reactivate',
+                          confirmVariant: 'default',
+                          onConfirm: () => onStatusChange(selectedUser.id, 'active'),
+                        })}
                         className="toolbar-btn text-green-400 hover:text-green-300 hover:bg-green-900/30"
                         title="Reactivate user"
                       >
@@ -432,12 +472,21 @@ export default function AdminUsersTab({
                 })()}
                 {(selectedUser as any).totpEnabled ? (
                   <button type="button"
-                    onClick={() => {
-                      if (window.confirm(`Reset 2FA for ${selectedUser.first_name} ${selectedUser.last_name}? They will need to set up 2FA again.`))
-                        apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
-                          .then(() => { setSelectedUser({ ...selectedUser, totpEnabled: false } as any); })
-                          .catch((err) => { console.warn('[AdminUsersTab] reset 2FA failed:', err); });
-                    }}
+                    onClick={() => setConfirmDlg({
+                      title: 'Reset 2FA',
+                      message: `Reset two-factor authentication for ${selectedUser.first_name} ${selectedUser.last_name}? They will be prompted to set up 2FA again on their next login. This action is audited.`,
+                      confirmLabel: 'Reset 2FA',
+                      confirmVariant: 'warning',
+                      onConfirm: () => apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
+                        .then(() => {
+                          setSelectedUser({ ...selectedUser, totpEnabled: false } as any);
+                          addToast('2FA reset', 'success');
+                        })
+                        .catch((err) => {
+                          console.warn('[AdminUsersTab] reset 2FA failed:', err);
+                          addToast(err?.message || 'Failed to reset 2FA', 'error');
+                        }),
+                    })}
                     className="toolbar-btn text-amber-400 hover:text-amber-300 hover:bg-amber-900/30"
                     title="Reset two-factor authentication"
                   >
@@ -683,7 +732,7 @@ export default function AdminUsersTab({
                       Reset 2FA
                     </button>
                   </div>
-                  <p className="text-[9px] mt-2" style={{ color: '#555555' }}>
+                  <p className="text-[9px] mt-2" style={{ color: 'var(--rmpg-500)' }}>
                     Resetting 2FA will delete the user's TOTP secret, backup codes, and trusted devices.
                   </p>
                 </div>
@@ -748,10 +797,13 @@ export default function AdminUsersTab({
                       </button>
                       {userSessions.length > 0 && (
                         <button type="button"
-                          onClick={() => {
-                            if (window.confirm(`Revoke all ${userSessions.length} active sessions for ${selectedUser.first_name} ${selectedUser.last_name}? They will be logged out from all devices.`))
-                              handleRevokeAllSessions(selectedUser.id);
-                          }}
+                          onClick={() => setConfirmDlg({
+                            title: 'Revoke All Sessions',
+                            message: `Revoke all ${userSessions.length} active session${userSessions.length === 1 ? '' : 's'} for ${selectedUser.first_name} ${selectedUser.last_name}? They will be logged out from every device immediately. This action is audited.`,
+                            confirmLabel: 'Revoke All',
+                            confirmVariant: 'danger',
+                            onConfirm: () => handleRevokeAllSessions(selectedUser.id),
+                          })}
                           disabled={securityActionLoading === 'revoke-sessions'}
                           className="toolbar-btn text-[9px] text-red-400 hover:text-red-300 hover:bg-red-900/30 flex items-center gap-1"
                         >
@@ -853,6 +905,21 @@ export default function AdminUsersTab({
           </div>
         </div>
       )}
+
+      {/* Centralized destructive-action confirm — Suspend / Reactivate /
+          Reset 2FA / Revoke Sessions all flow through here. The dialog
+          handles Esc, focus trap, and the day/night surface; the old
+          window.confirm() did none of these. */}
+      <ConfirmDialog
+        isOpen={!!confirmDlg}
+        onClose={() => { if (!confirmDlgLoading) setConfirmDlg(null); }}
+        onConfirm={runConfirmDlg}
+        title={confirmDlg?.title || ''}
+        message={confirmDlg?.message || ''}
+        confirmLabel={confirmDlg?.confirmLabel || 'Confirm'}
+        confirmVariant={confirmDlg?.confirmVariant || 'danger'}
+        isLoading={confirmDlgLoading}
+      />
     </div>
   );
 }

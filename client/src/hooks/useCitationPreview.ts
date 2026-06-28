@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { multiCopyPdfV2BlobUrl } from '../utils/pdf/v2';
 import { citationSchema } from '../utils/pdf/v2/forms/citation';
 import { CITATION_INSTRUCTIONS } from '../utils/pdf/v2/forms/citationInstructions';
+import { utahMasterBlobUrl } from '../utils/pdf/v2/utahMasterRenderer';
+import { isUtahMasterEnabled } from '../utils/citationFeatureFlag';
 
 export type PreviewMode = 'modal' | 'side' | 'full';
 
@@ -13,7 +15,13 @@ export function useCitationPreview(form: any, mode: PreviewMode) {
   const render = useCallback(async () => {
     setIsRendering(true);
     try {
-      const url = await multiCopyPdfV2BlobUrl(citationSchema, form, CITATION_INSTRUCTIONS);
+      // PR 1: Behind workspace flag. Both schemas read from the same
+      // `form` shape — CitationUtahData is a superset of CitationData,
+      // and any fields the master form expects but the legacy form
+      // doesn't have just render blank. Safe to swap.
+      const url = isUtahMasterEnabled()
+        ? await utahMasterBlobUrl(form)
+        : await multiCopyPdfV2BlobUrl(citationSchema, form, CITATION_INSTRUCTIONS);
       if (lastUrl.current) URL.revokeObjectURL(lastUrl.current);
       lastUrl.current = url;
       setBlobUrl(url);

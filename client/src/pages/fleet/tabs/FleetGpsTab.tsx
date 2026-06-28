@@ -105,7 +105,7 @@ export default function FleetGpsTab({ vehicleId }: Props) {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {/* Location Sub-Tab */}
         {subTab === 'location' && gpsVehicle && (
           <div className="space-y-4">

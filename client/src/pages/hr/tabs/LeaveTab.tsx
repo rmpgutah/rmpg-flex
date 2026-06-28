@@ -66,7 +66,7 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4 transition-all duration-200 hover:border-[#474747] hover:brightness-105" role="group" aria-label={`${label} leave balance`}>
+    <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4 transition-all duration-200 hover:border-border-default hover:brightness-105" role="group" aria-label={`${label} leave balance`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon size={14} style={{ color }} aria-hidden="true" />
         <span className="text-xs text-rmpg-400 uppercase tracking-wide font-medium">{label}</span>
@@ -336,6 +336,7 @@ export default function LeaveTab() {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-rmpg-100">My Requests</h3>
           <button type="button"
+            data-hr-new-btn
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"
           >
@@ -538,6 +539,7 @@ export default function LeaveTab() {
           </h3>
           <ExportButton exportUrl="/api/hr/leave/export/csv" exportFilename="leave-requests.csv" />
           <button type="button"
+            data-hr-new-btn
             onClick={() => { setEditRequest(null); setModalOpen(true); }}
             className="toolbar-btn toolbar-btn-primary flex items-center gap-1.5"
           >

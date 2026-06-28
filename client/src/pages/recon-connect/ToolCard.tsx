@@ -223,7 +223,8 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
   const loadCases = async () => {
     if (cases !== null) return;
     try {
-      const rows = await apiFetch<any[]>('/cases?limit=100');
+      const res = await apiFetch<{ data: any[] }>('/cases?limit=100');
+      const rows = res.data ?? [];
       setCases(rows.map((r) => ({ id: r.id, case_number: r.case_number, title: r.title, status: r.status })));
     } catch {
       setCases([]);
@@ -369,7 +370,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           const suggestions = targetHistory[arg.name] || [];
           return (
             <div key={arg.name} className="flex flex-col gap-1">
-              <label className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
+              <label htmlFor="ff-toolcard-0" className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
               <input id="ff-toolcard-0"
                 type="text"
                 placeholder={arg.placeholder}
@@ -521,7 +522,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             {cases === null && <div className="text-[11px] text-[#888]">Loading cases…</div>}
             {cases !== null && cases.length === 0 && <div className="text-[11px] text-[#888]">No cases available. Create one in Case Management first.</div>}
             {cases && cases.length > 0 && (
-              <div className="max-h-48 overflow-auto divide-y divide-[#1a1a1a]">
+              <div className="max-h-48 overflow-auto divide-y divide-[var(--border-subtle)]">
                 {cases.map((c) => (
                   <button
                     key={c.id}
@@ -538,7 +539,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           </div>
         )}
         {historyOpen && (
-          <div className="border border-rmpg-700 bg-surface-sunken divide-y divide-[#1a1a1a] max-h-48 overflow-auto">
+          <div className="border border-rmpg-700 bg-surface-sunken divide-y divide-[var(--border-subtle)] max-h-48 overflow-auto">
             {history.map((h, i) => (
               <div key={i} className="px-2 py-1.5 flex items-start gap-2 text-[10px]">
                 <button

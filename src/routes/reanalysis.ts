@@ -97,7 +97,7 @@ reanalysis.post('/backfill-confidence', adminOnly, async (c): Promise<Response> 
   try {
     const rows = await query<{ id: number; plate: string; confidence: number }>(db,
       `SELECT id, plate, confidence FROM vehicle_sightings
-       WHERE source IN ('footage','edge') AND confidence > 0.84 AND id > ?
+       WHERE confidence > 0.84 AND id > ?
        ORDER BY id ASC LIMIT ?`,
       cursor, limit + 1,
     );
@@ -172,9 +172,26 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
   await ensureReanalysisSchema(db);
 
   if (!c.env.R2_ANALYTICS_WAREHOUSE || !c.env.R2_SQL_TOKEN) {
-    return c.json({
-      error: 'Analytics warehouse not provisioned — set R2_ANALYTICS_WAREHOUSE and R2_SQL_TOKEN first',
-    }, 503);
+    // 200 with `skipped:true` instead of 503: the warehouse-missing case is
+    // a benign configuration gap, not a server outage. 503 polluted the
+    // browser console + tripped the client's error banner; the client now
+    // sees a normal no-op replay (replayed:0, has_more:false). The admin
+    // page's "Analytics warehouse not provisioned" banner remains the
+    // single visible warning.
+    const noop = {
+      skipped: true,
+      reason: 'analytics_not_provisioned' as const,
+      replayed: 0,
+      has_more: false,
+      job_id: 0,
+      next_cursor_sightings: parseInt(c.req.query('cursor_sightings') ?? '0', 10) || 0,
+      next_cursor_audit:     parseInt(c.req.query('cursor_audit')     ?? '0', 10) || 0,
+      next_cursor_gps:       parseInt(c.req.query('cursor_gps')       ?? '0', 10) || 0,
+      next_cursor_cfs:       parseInt(c.req.query('cursor_cfs')       ?? '0', 10) || 0,
+      next_cursor_citations: parseInt(c.req.query('cursor_citations') ?? '0', 10) || 0,
+      next_cursor_incidents: parseInt(c.req.query('cursor_incidents') ?? '0', 10) || 0,
+    };
+    return c.json(noop);
   }
 
   const qi = (k: string) => parseInt(c.req.query(k) ?? '0', 10) || 0;
@@ -209,10 +226,10 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
     if (c.env.ANALYTICS) {
       const rows = await query<{
         id: number; plate: string | null; state: string | null;
-        confidence: number | null; source: string | null;
+        confidence: number | null;
         lat: number | null; lng: number | null; created_at: string; unit_id: number | null;
       }>(db,
-        `SELECT id, plate, state, confidence, source, lat, lng, created_at, unit_id
+        `SELECT id, plate, state, confidence, lat, lng, created_at, unit_id
          FROM vehicle_sightings
          WHERE id > ? AND analytics_replayed_at IS NULL
          ORDER BY id ASC LIMIT ?`,
@@ -226,7 +243,7 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
         const events: AnalyticsEvent[] = batch.map(r => ({
           event_type: 'alpr_read',
           occurred_at: r.created_at,
-          source: r.source ?? 'unknown',
+          source: 'replay',
           plate: r.plate,
           state: r.state,
           trust: r.confidence,
@@ -239,11 +256,17 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
         }));
         await c.env.ANALYTICS.send(events);
         nextSightings = batch[batch.length - 1].id;
+        // If this UPDATE fails (e.g., schema drift on analytics_replayed_at),
+        // we MUST not swallow it: events already landed in Iceberg but the
+        // cursor never advances → next /replay duplicates the batch. Let the
+        // outer try/catch (line 207/443) mark job_runs.status='failed' + 500
+        // so the operator retries after fixing root cause instead of corrupting
+        // the dataset on every subsequent admin click.
         await execute(db,
           `UPDATE vehicle_sightings SET analytics_replayed_at=datetime('now')
            WHERE id > ? AND id <= ? AND analytics_replayed_at IS NULL`,
           curSightings, nextSightings,
-        ).catch(() => {});
+        );
         replayed += batch.length;
       }
     }
@@ -257,11 +280,13 @@ reanalysis.post('/replay', adminOnly, async (c): Promise<Response> => {
     ) => {
       if (!events.length || !c.env.EVENTS) return;
       await c.env.EVENTS.send(events);
+      // See vehicle_sightings UPDATE above — swallowing this corrupts
+      // analytics by duplicating events on every subsequent replay.
       await execute(db,
         `UPDATE ${table} SET analytics_replayed_at=datetime('now')
          WHERE id > ? AND id <= ? AND analytics_replayed_at IS NULL`,
         fromCursor, lastId,
-      ).catch(() => {});
+      );
       replayed += events.length;
     };
 

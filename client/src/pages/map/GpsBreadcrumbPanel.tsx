@@ -307,12 +307,12 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       {!isOpen && (
         <button type="button" onClick={onToggle}
           className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-rmpg-300 rounded-sm"
-          style={{ background: 'rgba(10, 10, 10, 0.9)', border: '1px solid #2b2b2b' }}>
+          style={{ background: 'rgba(10, 10, 10, 0.9)', border: '1px solid var(--border-default)' }}>
           <History className="w-3.5 h-3.5 text-amber-400" /> GPS History
         </button>
       )}
       {isOpen && (
-        <div className="rounded-sm shadow-xl" style={{ width: 380, maxHeight: 'calc(100vh - 200px)', background: 'rgba(10, 10, 10, 0.95)', border: '1px solid #2b2b2b' }}>
+        <div className="rounded-sm shadow-xl" style={{ width: 380, maxHeight: 'calc(100vh - 200px)', background: 'rgba(10, 10, 10, 0.95)', border: '1px solid var(--border-default)' }}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-rmpg-700">
             <div className="flex items-center gap-2">
               <History className="w-3.5 h-3.5 text-amber-400" />
@@ -341,12 +341,12 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             )}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[9px] text-rmpg-400 block mb-0.5">From</label>
+                <label htmlFor="ff-gpsbreadcrumbpanel-1" className="text-[9px] text-rmpg-400 block mb-0.5">From</label>
                 <input id="ff-gpsbreadcrumbpanel-1" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100" />
                 <input id="ff-gpsbreadcrumbpanel-2" type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 mt-1" />
               </div>
               <div>
-                <label className="text-[9px] text-rmpg-400 block mb-0.5">To</label>
+                <label htmlFor="ff-gpsbreadcrumbpanel-3" className="text-[9px] text-rmpg-400 block mb-0.5">To</label>
                 <input id="ff-gpsbreadcrumbpanel-3" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100" />
                 <input id="ff-gpsbreadcrumbpanel-4" type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 mt-1" />
               </div>

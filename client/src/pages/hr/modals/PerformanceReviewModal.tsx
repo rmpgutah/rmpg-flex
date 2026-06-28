@@ -182,7 +182,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Employee *</label>
+              <label htmlFor="ff-performancereviewmodal-0" className={labelClass}>Employee *</label>
               <select id="ff-performancereviewmodal-0" value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={inputClass}>
                 <option value="">Select employee...</option>
                 {users.map(u => (
@@ -193,7 +193,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
               </select>
             </div>
             <div>
-              <label className={labelClass}>Review Cycle</label>
+              <label htmlFor="ff-performancereviewmodal-1" className={labelClass}>Review Cycle</label>
               <select id="ff-performancereviewmodal-1" value={form.cycle_id ?? ''} onChange={e => setForm(f => ({ ...f, cycle_id: e.target.value ? Number(e.target.value) : null }))} className={inputClass}>
                 <option value="">None</option>
                 {cycles.map(c => (
@@ -205,7 +205,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Review Date *</label>
+              <label htmlFor="ff-performancereviewmodal-2" className={labelClass}>Review Date *</label>
               <input id="ff-performancereviewmodal-2"
                 type="date"
                 value={form.review_date}
@@ -234,7 +234,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           </div>
 
           <div>
-            <label className={labelClass}>Strengths</label>
+            <label htmlFor="ff-performancereviewmodal-3" className={labelClass}>Strengths</label>
             <textarea id="ff-performancereviewmodal-3"
               value={form.strengths}
               onChange={e => setForm(f => ({ ...f, strengths: e.target.value }))}
@@ -244,7 +244,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           </div>
 
           <div>
-            <label className={labelClass}>Areas for Improvement</label>
+            <label htmlFor="ff-performancereviewmodal-4" className={labelClass}>Areas for Improvement</label>
             <textarea id="ff-performancereviewmodal-4"
               value={form.areas_for_improvement}
               onChange={e => setForm(f => ({ ...f, areas_for_improvement: e.target.value }))}
@@ -254,7 +254,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           </div>
 
           <div>
-            <label className={labelClass}>Goals</label>
+            <label htmlFor="ff-performancereviewmodal-5" className={labelClass}>Goals</label>
             <textarea id="ff-performancereviewmodal-5"
               value={form.goals}
               onChange={e => setForm(f => ({ ...f, goals: e.target.value }))}
@@ -264,7 +264,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           </div>
 
           <div>
-            <label className={labelClass}>Additional Comments</label>
+            <label htmlFor="ff-performancereviewmodal-6" className={labelClass}>Additional Comments</label>
             <textarea id="ff-performancereviewmodal-6"
               value={form.comments}
               onChange={e => setForm(f => ({ ...f, comments: e.target.value }))}

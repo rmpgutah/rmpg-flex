@@ -104,8 +104,8 @@ export default function ForcePasswordChangeModal() {
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#0a0a0a',
-          border: '1px solid #2b2b2b',
+          background: 'var(--surface-overlay)',
+          border: '1px solid var(--border-default)',
           borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
@@ -132,7 +132,7 @@ export default function ForcePasswordChangeModal() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Current Password */}
             <div>
-              <label className="field-label">Current Password <span className="text-red-500">*</span></label>
+              <label htmlFor="ff-forcepasswordchangemodal-0" className="field-label">Current Password <span className="text-red-500">*</span></label>
               <div className="relative">
                 <input id="ff-forcepasswordchangemodal-0"
                   type={showCurrentPw ? 'text' : 'password'}
@@ -158,7 +158,7 @@ export default function ForcePasswordChangeModal() {
 
             {/* New Password */}
             <div>
-              <label className="field-label">New Password <span className="text-red-500">*</span></label>
+              <label htmlFor="ff-forcepasswordchangemodal-1" className="field-label">New Password <span className="text-red-500">*</span></label>
               <div className="relative">
                 <input id="ff-forcepasswordchangemodal-1"
                   type={showNewPw ? 'text' : 'password'}
@@ -183,7 +183,7 @@ export default function ForcePasswordChangeModal() {
 
             {/* Confirm Password */}
             <div>
-              <label className="field-label">Confirm New Password <span className="text-red-500">*</span></label>
+              <label htmlFor="ff-forcepasswordchangemodal-2" className="field-label">Confirm New Password <span className="text-red-500">*</span></label>
               <input id="ff-forcepasswordchangemodal-2"
                 type="password"
                 value={confirmPassword}

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
-import { formatCostAbbrev } from '../../../utils/formatters';
+import { formatCostAbbrev, toDisplayLabel } from '../../../utils/formatters';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
 
 const CHART_TOOLTIP_STYLE = {
@@ -490,7 +490,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           {maintenance_cost_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={maintenance_cost_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
                 <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `$${v}`} />
@@ -511,7 +511,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           {fuel_economy_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={fuel_economy_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
                 <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `${v} mpg`} />
@@ -583,7 +583,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     className={`flex items-center justify-between px-2 py-1.5 ${sev.bg} border ${sev.border} rounded-[2px] text-[10px]`}
                   >
                     <span className="font-mono font-bold text-rmpg-100">{alert.vehicle_number}</span>
-                    <span className={`${sev.text} truncate mx-2`}>{alert.issue}</span>
+                    <span className={`min-w-0 ${sev.text} truncate mx-2`}>{alert.issue}</span>
                     <span className="font-mono tabular-nums text-rmpg-400 shrink-0">
                       {alert.due_date ? parseTimestamp(alert.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'}
                     </span>
@@ -609,7 +609,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           {dailyMileageRun.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={dailyMileageRun}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
                   tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
@@ -702,7 +702,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <stop offset="95%" stopColor="#888888" stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
                   tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
@@ -872,7 +872,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
               <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
@@ -910,7 +910,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           </h4>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={monthlySpend.map((m: any) => ({ ...m, month: m.month.substring(5) }))}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
               <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
@@ -1277,7 +1277,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     </div>
                     <div className="relative w-16 h-16 flex-shrink-0">
                       <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-                        <circle cx="32" cy="32" r="28" fill="none" stroke="#222222" strokeWidth="4" />
+                        <circle cx="32" cy="32" r="28" fill="none" stroke="var(--border-subtle)" strokeWidth="4" />
                         <circle
                           cx="32" cy="32" r="28" fill="none"
                           stroke={scoreColor} strokeWidth="4" strokeLinecap="round"
@@ -1357,7 +1357,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   return (
                     <tr key={`${m.vehicle_id}-${m.service_type}`} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                       <td className="py-1.5 pr-3 font-mono font-bold text-rmpg-100">{m.vehicle_number}</td>
-                      <td className="py-1.5 pr-3 text-rmpg-300">{(m.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
+                      <td className="py-1.5 pr-3 text-rmpg-300">{toDisplayLabel(m.service_type || '')}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
                         {m.due_date || '--'}
                       </td>
@@ -1449,7 +1449,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             {notifications.slice(0, 10).map((n: any, i: number) => (
               <div key={i} className={`flex items-center gap-2 px-2 py-1 rounded text-[10px] ${n.severity === 'critical' ? 'bg-red-900/30 text-red-400' : 'bg-amber-900/30 text-amber-400'}`}>
                 <AlertTriangle className="w-3 h-3 shrink-0" />
-                <span className="truncate">{n.message}</span>
+                <span className="min-w-0 truncate">{n.message}</span>
               </div>
             ))}
           </div>
@@ -1466,7 +1466,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             {serviceAlerts.slice(0, 8).map((a: any) => (
               <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-surface-sunken/20 border-border-subtle/40 text-rmpg-400'}`}>
                 <span className="font-mono font-bold">{a.vehicle_number}</span>
-                <span>{(a.service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                <span>{toDisplayLabel(a.service_type || '')}</span>
                 <span className="font-mono">{a.days_until < 0 ? `${Math.abs(a.days_until)}d overdue` : `${a.days_until}d`}</span>
               </div>
             ))}

@@ -61,7 +61,7 @@ export default function DocsLibraryPage() {
       ) : items.length === 0 ? (
         <div className="text-rmpg-500 text-xs py-8 text-center">No documents. Create one to get started.</div>
       ) : (
-        <table className="w-full text-left">
+        <div className="overflow-x-auto"><table className="w-full text-left">
           <thead>
             <tr className="text-[9px] uppercase tracking-wider text-[#888] border-b border-border-default">
               <th className="py-[3px] font-semibold">Title</th>
@@ -72,15 +72,15 @@ export default function DocsLibraryPage() {
           </thead>
           <tbody>
             {items.map((d) => (
-              <tr key={d.id} className="text-[11px] border-b border-[#141414] hover:bg-surface-sunken cursor-pointer" onClick={() => setOpenId(d.id)}>
-                <td className="py-[2px] text-[#e5e7eb]">{d.title}</td>
+              <tr key={d.id} className="text-[11px] border-b border-border-subtle hover:bg-surface-sunken cursor-pointer" onClick={() => setOpenId(d.id)}>
+                <td className="py-[2px] text-rmpg-200">{d.title}</td>
                 <td className="py-[2px]"><span className={d.status === 'finalized' ? 'text-[#d4a017]' : 'text-[#888]'}>{d.status}</span></td>
                 <td className="py-[2px] text-[#888]">{d.owner_username || '—'}</td>
                 <td className="py-[2px] text-rmpg-500 font-mono">{d.updated_at || d.created_at}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {openId != null && (

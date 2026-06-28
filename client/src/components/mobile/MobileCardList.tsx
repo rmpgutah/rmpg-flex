@@ -148,8 +148,8 @@ export default function MobileCardList<T>({
         <div
           className="flex-shrink-0 px-3 py-2"
           style={{
-            background: '#0a0a0a',
-            borderBottom: '1px solid #2b2b2b',
+            background: 'var(--surface-overlay)',
+            borderBottom: '1px solid var(--border-default)',
           }}
         >
           <div
@@ -157,7 +157,7 @@ export default function MobileCardList<T>({
             style={{
               height: 40,
               background: 'var(--surface-overlay)',
-              border: '1px solid #2b2b2b',
+              border: '1px solid var(--border-default)',
             }}
           >
             <Search style={{ width: 16, height: 16, color: 'var(--rmpg-500)', flexShrink: 0 }} />
@@ -189,7 +189,7 @@ export default function MobileCardList<T>({
       {/* ── Scrollable list area ───────────────────────────── */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
         style={{
           WebkitOverflowScrolling: 'touch',
           transform: pullDistance > 0 ? `translateY(${pullDistance}px)` : undefined,

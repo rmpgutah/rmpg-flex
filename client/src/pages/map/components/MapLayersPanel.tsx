@@ -724,7 +724,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   <div className={`text-[10px] font-bold ${isActive ? 'text-brand-400' : 'text-rmpg-200'}`}>
                     {label}
                   </div>
-                  <div className="text-[7px] text-[#5a6e80] leading-tight mt-0.5">{desc}</div>
+                  <div className="text-[7px] text-rmpg-500 leading-tight mt-0.5">{desc}</div>
                 </button>
               );
             })}
@@ -1032,7 +1032,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                                           setAssignUnitIds((prev) => prev.filter((id) => id !== unit.id));
                                         }
                                       }}
-                                      className="w-2.5 h-2.5 accent-gray-500"
+                                      className="w-2.5 h-2.5 accent-rmpg-500"
                                     />
                                     <span className="text-[8px] flex-1">{unit.call_sign}</span>
                                     {unit.officer_name && (

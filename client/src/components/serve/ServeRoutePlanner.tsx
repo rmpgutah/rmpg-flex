@@ -230,7 +230,8 @@ export default function ServeRoutePlanner({
     let cancelled = false;
     (async () => {
       try {
-        const saved = await apiFetch<any>(`/process-server/routes/${routeDate}?officer_id=${officerId}`);
+        const resp = await apiFetch<any[]>(`/process-server/routes/${routeDate}?officer_id=${officerId}`);
+        const saved = Array.isArray(resp) ? resp[0] : resp;
         if (cancelled || !saved?.optimized_order_json) return;
         const orderJson = typeof saved.optimized_order_json === 'string' ? JSON.parse(saved.optimized_order_json) : saved.optimized_order_json;
         if (Array.isArray(orderJson) && orderJson.length > 0) {
@@ -489,7 +490,9 @@ export default function ServeRoutePlanner({
             total_distance_miles: totalDistance, total_time_minutes: totalDuration,
           }),
         });
-      } catch {}
+      } catch {
+        setError('Route saved locally but failed to persist to server');
+      }
     }
     onClose();
   }, [stops, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, onRouteOptimized, onClose]);
@@ -507,6 +510,11 @@ export default function ServeRoutePlanner({
             <Route size={16} className="text-[#d4a017]" />
             <h2 className="text-sm font-semibold text-rmpg-100 tracking-wider">ROUTE PLANNER</h2>
             <span className="text-[11px] text-rmpg-500 ml-2">{selectedCount} of {stops.length} stops selected</span>
+            {totalDistance > 0 && (
+              <span className="text-[10px] text-rmpg-400 ml-2 pl-2 border-l border-rmpg-700 font-mono">
+                {totalDistance.toFixed(1)} mi · {Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m
+              </span>
+            )}
             {officers && officers.length > 0 && (
               <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-rmpg-700">
                 <User size={12} className="text-rmpg-400" />
@@ -538,7 +546,7 @@ export default function ServeRoutePlanner({
             </div>
             {error && <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-[10px]">{error}</div>}
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
               {stops.map((stop, idx) => (
                 <div key={stop.job.id} className={`flex items-center gap-2 px-3 py-2 border-b border-border-default transition-colors ${stop.selected ? 'bg-surface-base' : 'opacity-50'}`}>
                   <button type="button" onClick={() => toggleStop(idx)} className="flex-shrink-0 p-0.5">

@@ -43,7 +43,7 @@ export default function PredictionsPanel({
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2">
           <Brain size={14} className="text-purple-400" />
@@ -119,7 +119,7 @@ export default function PredictionsPanel({
                     className="rounded-sm overflow-hidden transition-all duration-150 hover:bg-surface-base"
                     style={{
                       background: 'var(--surface-overlay)',
-                      border: '1px solid #282828',
+                      border: '1px solid var(--border-subtle)',
                       borderLeft: `3px solid ${color}`,
                     }}
                   >
@@ -197,7 +197,7 @@ export default function PredictionsPanel({
       {hotspots.length > 0 && (
         <div
           className="px-3 py-1.5 flex items-center justify-between"
-          style={{ borderTop: '1px solid #282828', background: 'var(--surface-overlay)' }}
+          style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--surface-overlay)' }}
         >
           <div className="flex items-center gap-1">
             <TrendingUp size={10} className="text-purple-400" />

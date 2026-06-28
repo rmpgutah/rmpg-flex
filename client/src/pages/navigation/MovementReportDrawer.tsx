@@ -98,10 +98,10 @@ function FrictionCircle({ report, liveLongG, liveLatG }: { report: MovementRepor
   return (
     <svg viewBox={`0 0 ${size} ${size}`} style={{ width: size, height: size }} aria-hidden="true">
       {[0.25, 0.5, 0.75, 1.0].map((g) => (
-        <circle key={g} cx={c} cy={c} r={ring(g)} fill="none" stroke={g === 1 ? '#3a3a3a' : '#222'} strokeWidth="1" />
+        <circle key={g} cx={c} cy={c} r={ring(g)} fill="none" stroke={g === 1 ? 'var(--border-default)' : 'var(--border-subtle)'} strokeWidth="1" />
       ))}
-      <line x1={c} y1={c - R} x2={c} y2={c + R} stroke="#222" strokeWidth="1" />
-      <line x1={c - R} y1={c} x2={c + R} y2={c} stroke="#222" strokeWidth="1" />
+      <line x1={c} y1={c - R} x2={c} y2={c + R} stroke="var(--border-subtle)" strokeWidth="1" />
+      <line x1={c - R} y1={c} x2={c + R} y2={c} stroke="var(--border-subtle)" strokeWidth="1" />
       {/* history dots */}
       {dots.map((s, i) => {
         const mag = Math.min(1, Math.hypot(s.longG, s.latG));
@@ -151,7 +151,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
         <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close movement report"><X className="w-4 h-4" /></button>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-dark px-3 py-2.5 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark px-3 py-2.5 space-y-3">
         {/* live speed + session */}
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
@@ -199,7 +199,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
           </div>
           <div className="flex h-2 overflow-hidden border border-rmpg-800" style={{ borderRadius: 2 }}>
             <div className="h-full" style={{ width: `${movePct}%`, background: '#22c55e' }} />
-            <div className="h-full" style={{ width: `${100 - movePct}%`, background: '#3a3a3a' }} />
+            <div className="h-full" style={{ width: `${100 - movePct}%`, background: 'var(--border-default)' }} />
           </div>
           <div className="flex items-center justify-between mt-1 text-[9px] font-mono">
             <span className="text-green-400">▶ {fmtDur(report.movingMs)} moving</span>

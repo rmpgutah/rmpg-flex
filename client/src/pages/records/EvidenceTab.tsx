@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { coded } from '../../utils/searchText';
-import { formatEnumValue } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import {
   Search,
   Package,
@@ -244,8 +244,20 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
         {filteredEvidence.length === 0 && (
           <div className="text-center py-16">
             <Package className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No evidence matches your search.' : 'No evidence records found.'}</p>
-            <p className="text-[10px] text-rmpg-600 mt-1">Click "New Evidence" to add a record</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No evidence matches your search.'
+                : showArchived
+                  ? 'No archived evidence records.'
+                  : 'No evidence records found.'}
+            </p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery
+                ? 'Try broadening your search.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Evidence" to add a record.'}
+            </p>
           </div>
         )}
         {filteredEvidence.map((ev: any, idx: number) => {
@@ -290,7 +302,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
                   <div className="text-[10px] text-rmpg-300 mt-0.5 truncate">{ev.description}</div>
                   <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
                     <span className="uppercase">{(ev.evidence_type || 'physical').replace(/_/g, ' ')}</span>
-                    {ev.category && <span>{ev.category.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>}
+                    {ev.category && <span>{toDisplayLabel(ev.category)}</span>}
                     {ev.incident_number && (
                       <span className="flex items-center gap-0.5">
                         <Link2 className="w-2.5 h-2.5" />{ev.incident_number}
@@ -480,7 +492,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                 {h.md5 && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">MD5:</span>
-                    <span className="text-rmpg-300 font-mono truncate">{h.md5}</span>
+                    <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.md5}</span>
                     <button type="button" onClick={() => copyToClipboard(h.md5!, `md5-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `md5-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
@@ -489,7 +501,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                 {h.sha256 && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">SHA-256:</span>
-                    <span className="text-rmpg-300 font-mono truncate">{h.sha256.slice(0, 24)}...</span>
+                    <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.sha256.slice(0, 24)}...</span>
                     <button type="button" onClick={() => copyToClipboard(h.sha256!, `sha256-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `sha256-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
@@ -498,14 +510,14 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                 {h.photodna_hash && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">PhotoDNA:</span>
-                    <span className="text-purple-400 font-mono truncate">{h.photodna_hash.slice(0, 20)}...</span>
+                    <span className="min-w-0 flex-1 text-purple-400 font-mono truncate">{h.photodna_hash.slice(0, 20)}...</span>
                     <Shield className="w-2.5 h-2.5 text-purple-400 shrink-0" />
                   </div>
                 )}
                 {h.phash && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">pHash:</span>
-                    <span className="text-rmpg-300 font-mono truncate">{h.phash}</span>
+                    <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.phash}</span>
                   </div>
                 )}
               </div>
@@ -591,7 +603,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
         {/* ── Description ─────────────────────── */}
         <CollapsibleSection title="Description" icon={FileText} defaultOpen>
-          <p className="text-sm text-rmpg-200 leading-relaxed">{selectedEvidence.description}</p>
+          <p className="text-sm text-rmpg-200 leading-relaxed break-words">{selectedEvidence.description}</p>
         </CollapsibleSection>
 
         {/* ── Collection & Storage ──────────── */}
@@ -612,7 +624,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
             <FieldGrid cols={3}>
               <RecordField label="Serial #" value={selectedEvidence.serial_number} mono copyable />
               <RecordField label="Brand/Model" value={selectedEvidence.brand ? `${selectedEvidence.brand}${selectedEvidence.model ? ` ${selectedEvidence.model}` : ''}` : undefined} />
-              <RecordField label="Est. Value" value={selectedEvidence.estimated_value ? `$${Number(selectedEvidence.estimated_value).toLocaleString()}` : undefined} valueColor="#4ade80" />
+              <RecordField label="Est. Value" value={selectedEvidence.estimated_value ? `$${Number(selectedEvidence.estimated_value).toLocaleString()}` : undefined} valueColor="var(--sev-ok-soft)" />
               <RecordField label="Dimensions" value={selectedEvidence.dimensions} />
               <RecordField label="Weight" value={selectedEvidence.weight} />
               <RecordField label="Quantity" value={selectedEvidence.quantity} />
@@ -686,7 +698,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Notes (conditional) ──────────────── */}
         {selectedEvidence.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed">{selectedEvidence.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedEvidence.notes}</p>
           </CollapsibleSection>
         )}
 

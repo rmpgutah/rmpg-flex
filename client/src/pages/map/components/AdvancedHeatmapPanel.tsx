@@ -27,6 +27,7 @@ import type {
   HeatmapResolution,
   HeatmapColorScheme,
 } from '../hooks/useMapHeatmapAdvanced';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 // ─── Props ──────────────────────────────────────────────────
 
@@ -264,7 +265,7 @@ export default function AdvancedHeatmapPanel({
         maxHeight: '85vh',
         background: 'var(--surface-base)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)',
-        border: '1px solid #282828',
+        border: '1px solid var(--border-subtle)',
       }}
       role="complementary"
       aria-label="Advanced heatmap controls"
@@ -272,7 +273,7 @@ export default function AdvancedHeatmapPanel({
       {/* ── Header Bar ────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-4 py-2.5 shrink-0"
-        style={{ background: 'var(--surface-deep)', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-deep)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2.5">
           <SlidersHorizontal size={14} className="text-rmpg-400" />
@@ -302,7 +303,7 @@ export default function AdvancedHeatmapPanel({
       </div>
 
       {/* ── Scrollable body ───────────────────────────── */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
         {/* ── Section 1: Mode Selector ──────────────── */}
         <div className="px-4 pt-3 pb-2">
           <div className="grid grid-cols-4 gap-1.5">
@@ -316,7 +317,7 @@ export default function AdvancedHeatmapPanel({
                   className="flex flex-col items-center gap-1 py-2 px-1 rounded-sm transition-all duration-150 active:scale-[0.97] hover:bg-surface-raised/50"
                   style={{
                     background: active ? m.accentBg : 'rgba(255,255,255,0.02)',
-                    border: active ? `2px solid ${m.accent}` : '1px solid #282828',
+                    border: active ? `2px solid ${m.accent}` : '1px solid var(--border-subtle)',
                     color: active ? m.accent : 'var(--rmpg-500)',
                   }}
                   aria-label={`${m.label} heatmap mode`}
@@ -332,7 +333,7 @@ export default function AdvancedHeatmapPanel({
           </div>
 
           {/* ── Quick Presets ── */}
-          <div className="mt-2.5 pt-2" style={{ borderTop: '1px solid #282828' }}>
+          <div className="mt-2.5 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
             <div className="flex items-center gap-1.5 mb-1.5">
               <Zap size={10} className="text-rmpg-500" />
               <span className="text-[8px] uppercase tracking-widest font-bold text-rmpg-500">Quick Presets</span>
@@ -388,7 +389,7 @@ export default function AdvancedHeatmapPanel({
                     const v = Number(e.target.value);
                     onHourRangeChange([Math.min(v, hourRange[1]), hourRange[1]]);
                   }}
-                  className="w-full h-1 accent-gray-500 cursor-pointer"
+                  className="w-full h-1 accent-rmpg-500 cursor-pointer"
                   style={{ accentColor: activeMode.accent }}
                 />
               </div>
@@ -403,7 +404,7 @@ export default function AdvancedHeatmapPanel({
                     const v = Number(e.target.value);
                     onHourRangeChange([hourRange[0], Math.max(v, hourRange[0])]);
                   }}
-                  className="w-full h-1 accent-gray-500 cursor-pointer"
+                  className="w-full h-1 accent-rmpg-500 cursor-pointer"
                   style={{ accentColor: activeMode.accent }}
                 />
               </div>
@@ -429,7 +430,7 @@ export default function AdvancedHeatmapPanel({
                     style={{
                       background: 'rgba(255,255,255,0.03)',
                       color: 'var(--rmpg-500)',
-                      border: '1px solid #282828',
+                      border: '1px solid var(--border-subtle)',
                     }}
                   >
                     {preset.label}
@@ -613,7 +614,7 @@ export default function AdvancedHeatmapPanel({
                 style={{
                   background: 'rgba(255,255,255,0.03)',
                   color: 'var(--rmpg-500)',
-                  border: '1px solid #282828',
+                  border: '1px solid var(--border-subtle)',
                 }}
               >
                 All
@@ -624,7 +625,7 @@ export default function AdvancedHeatmapPanel({
                 style={{
                   background: 'rgba(255,255,255,0.03)',
                   color: 'var(--rmpg-500)',
-                  border: '1px solid #282828',
+                  border: '1px solid var(--border-subtle)',
                 }}
               >
                 Clear
@@ -633,7 +634,7 @@ export default function AdvancedHeatmapPanel({
           </div>
           <div
             className="max-h-32 overflow-y-auto space-y-0.5 rounded-sm p-1"
-            style={{ background: 'var(--surface-overlay)', border: '1px solid #282828', scrollbarWidth: 'thin' }}
+            style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', scrollbarWidth: 'thin' }}
           >
             {availableTypes.map((t) => {
               const checked = types.includes(t.incident_type);
@@ -654,9 +655,9 @@ export default function AdvancedHeatmapPanel({
                   </div>
                   <span
                     className="text-[9px] min-w-0 flex-1 truncate"
-                    style={{ color: checked ? '#e0e0e0' : '#666666' }}
+                    style={{ color: checked ? 'var(--text-secondary)' : 'var(--rmpg-500)' }}
                   >
-                    {(t.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                    {toDisplayLabel(t.incident_type || '')}
                   </span>
                   <span className="text-[8px] font-mono text-rmpg-600 shrink-0">{t.count}</span>
                 </button>
@@ -680,7 +681,7 @@ export default function AdvancedHeatmapPanel({
               {/* Digital time display */}
               <div
                 className="flex items-center justify-center py-2 rounded-sm"
-                style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
+                style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
               >
                 <span className="text-[18px] font-mono font-bold" style={{ color: '#f97316' }}>
                   {formatHourCompact(temporalHour)}
@@ -797,7 +798,7 @@ export default function AdvancedHeatmapPanel({
               {/* Color legend */}
               <div
                 className="flex items-center justify-between px-3 py-2 rounded-sm"
-                style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
+                style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
               >
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#ef4444' }} />
@@ -854,7 +855,7 @@ export default function AdvancedHeatmapPanel({
               {/* Total incidents */}
               <div
                 className="flex items-center justify-between px-3 py-2.5 rounded-sm"
-                style={{ background: 'var(--surface-overlay)', border: '1px solid #282828' }}
+                style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
               >
                 <span className="text-[8px] uppercase tracking-wider text-rmpg-500 font-semibold">
                   Total Incidents
@@ -873,7 +874,7 @@ export default function AdvancedHeatmapPanel({
                   {stats.topTypes.slice(0, 3).map((t, i) => (
                     <div key={t.type} className="flex items-center gap-2">
                       <span className="text-[9px] text-rmpg-400 w-24 truncate shrink-0">
-                        {(t.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                        {toDisplayLabel(t.type || '')}
                       </span>
                       <div className="flex-1 h-3 rounded-sm overflow-hidden" style={{ background: 'var(--surface-overlay)' }}>
                         <div

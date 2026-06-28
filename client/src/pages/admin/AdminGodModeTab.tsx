@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
+import { toDisplayLabel } from '../../utils/formatters';
 import { safeDateTimeStr } from '../../utils/dateUtils';
 import RichTextArea from '../../components/RichTextArea';
 import {
@@ -471,14 +472,14 @@ export default function AdminGodModeTab() {
             value={broadcastTitle}
             onChange={e => setBroadcastTitle(e.target.value)}
             placeholder="Notification title..."
-            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600"
+            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
           />
           <RichTextArea
             value={broadcastMessage}
             onChange={e => setBroadcastMessage(e.target.value)}
             placeholder="Message body..."
             rows={3}
-            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600 resize-none"
+            className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 resize-none"
           />
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-rmpg-500">Target:</span>
@@ -557,7 +558,7 @@ export default function AdminGodModeTab() {
                 <div key={i} className="flex items-center gap-2 py-0.5 border-b border-border-subtle/50 text-[11px]" onContextMenu={(e) => openMenu(e, buildPresenceMenu(u))}>
                   <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-rmpg-700'}`} />
                   <span className="text-rmpg-300 font-mono">{u.username || u.full_name}</span>
-                  <span className="text-rmpg-500 text-[9px]">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                  <span className="text-rmpg-500 text-[9px]">{toDisplayLabel(u.role || '')}</span>
                   {u.last_seen && <span className="text-rmpg-500 text-[9px] ml-auto">{new Date(u.last_seen).toLocaleTimeString()}</span>}
                 </div>
               ))}
@@ -588,7 +589,7 @@ export default function AdminGodModeTab() {
                   <tr key={i} className="border-b border-border-subtle/50" onContextMenu={(e) => openMenu(e, buildWsClientMenu(c))}>
                     <td className="px-2 py-1 font-mono text-rmpg-400">{c.userId}</td>
                     <td className="px-2 py-1 text-rmpg-100">{c.username}</td>
-                    <td className="px-2 py-1 text-rmpg-400">{(c.role || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</td>
+                    <td className="px-2 py-1 text-rmpg-400">{toDisplayLabel(c.role || '')}</td>
                     <td className="px-2 py-1 font-mono text-rmpg-500">{c.ip}</td>
                     <td className="px-2 py-1 text-rmpg-500">{c.connectedAt ? new Date(c.connectedAt).toLocaleTimeString() : c.duration || '—'}</td>
                   </tr>
@@ -611,7 +612,7 @@ export default function AdminGodModeTab() {
               onChange={e => setReassignCallIds(e.target.value)}
               placeholder="Call IDs (comma-separated): 101, 102, 103"
               rows={2}
-              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1 text-[11px] text-rmpg-100 placeholder-gray-600 resize-none font-mono"
+              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1 text-[11px] text-rmpg-100 placeholder-rmpg-500 resize-none font-mono"
             />
             <select id="ff-admingodmodetab-5"
               value={reassignTargetId}
@@ -637,7 +638,7 @@ export default function AdminGodModeTab() {
               value={closeDisposition}
               onChange={e => setCloseDisposition(e.target.value)}
               placeholder="Disposition..."
-              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600"
+              className="w-full bg-surface-raised border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
             />
             <button onClick={handleForceCloseAll} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded-sm text-[11px] font-bold text-rmpg-100">
               Force Close ALL Open Calls
@@ -655,7 +656,7 @@ export default function AdminGodModeTab() {
           onChange={e => setSqlQuery(e.target.value)}
           placeholder="SELECT * FROM users LIMIT 10;"
           rows={4}
-          className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600 resize-y font-mono"
+          className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 resize-y font-mono"
         />
         <div className="flex items-center gap-2 mt-2">
           <button onClick={handleSqlQuery} disabled={sqlRunning || !sqlQuery.trim()} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">
@@ -718,7 +719,7 @@ export default function AdminGodModeTab() {
               value={lockdownMessage}
               onChange={e => setLockdownMessage(e.target.value)}
               placeholder="Lockdown message..."
-              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600"
+              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500"
             />
             <label className="flex items-center gap-2 text-[10px] text-rmpg-400">
               <input id="ff-admingodmodetab-8"
@@ -742,23 +743,23 @@ export default function AdminGodModeTab() {
         <p className="text-[9px] text-rmpg-500 mb-2">Merge duplicate person records. The "merge" record will be deleted and all associated records reassigned to the "keep" record.</p>
         <div className="flex items-center gap-2">
           <div className="flex-1">
-            <label className="text-[9px] text-rmpg-500 uppercase">Keep (Primary ID)</label>
+            <label htmlFor="ff-admingodmodetab-9" className="text-[9px] text-rmpg-500 uppercase">Keep (Primary ID)</label>
             <input id="ff-admingodmodetab-9"
               type="number"
               value={mergeKeepId}
               onChange={e => setMergeKeepId(e.target.value)}
               placeholder="ID to keep"
-              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600 font-mono"
+              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 font-mono"
             />
           </div>
           <div className="flex-1">
-            <label className="text-[9px] text-rmpg-500 uppercase">Merge (Duplicate ID)</label>
+            <label htmlFor="ff-admingodmodetab-10" className="text-[9px] text-rmpg-500 uppercase">Merge (Duplicate ID)</label>
             <input id="ff-admingodmodetab-10"
               type="number"
               value={mergeMergeId}
               onChange={e => setMergeMergeId(e.target.value)}
               placeholder="ID to merge"
-              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-gray-600 font-mono"
+              className="w-full bg-surface-sunken border border-border-default rounded-sm px-2 py-1.5 text-[11px] text-rmpg-100 placeholder-rmpg-500 font-mono"
             />
           </div>
           <button onClick={handleMergePersons} disabled={!mergeKeepId || !mergeMergeId} className="mt-3 px-3 py-1.5 bg-rmpg-600 hover:bg-rmpg-500 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 flex items-center gap-1">

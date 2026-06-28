@@ -260,7 +260,7 @@ export default function IntegrationWizardModal({
               <p className="text-[9px] text-rmpg-400 font-bold uppercase">Enter Credentials</p>
               {config.fields.map(field => (
                 <div key={field.key}>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-semibold block mb-0.5">
+                  <label htmlFor="ff-integrationwizardmodal-0" className="text-[9px] text-rmpg-400 uppercase font-semibold block mb-0.5">
                     {field.label} {field.required && '*'}
                   </label>
                   {field.type === 'select' ? (
