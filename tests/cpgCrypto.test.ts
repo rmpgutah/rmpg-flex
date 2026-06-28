@@ -31,13 +31,9 @@ describe('cpgCrypto', () => {
   it('throws on a tampered ciphertext', async () => {
     const enc = await encryptSecret('hunter2', KEY);
     const parts = enc.split(':');
-    // Corrupt the RAW decoded bytes of the ciphertext segment, not a base64
-    // char: flipping a single base64 char can land entirely in trailing
-    // padding bits (a no-op once decoded), so AES-GCM would still authenticate.
-    // Mutating a real byte guarantees the auth tag fails to verify every run.
-    const bytes = Uint8Array.from(atob(parts[2]), (ch) => ch.charCodeAt(0));
-    bytes[0] ^= 0xff;
-    parts[2] = btoa(String.fromCharCode(...bytes));
+    // Flip the last base64 char of the ciphertext segment.
+    const last = parts[2];
+    parts[2] = last.slice(0, -2) + (last.slice(-2, -1) === 'A' ? 'B' : 'A') + last.slice(-1);
     await expect(decryptSecret(parts.join(':'), KEY)).rejects.toBeInstanceOf(CpgCryptoError);
   });
 

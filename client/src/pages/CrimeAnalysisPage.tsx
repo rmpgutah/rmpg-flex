@@ -44,12 +44,9 @@ const GRID_PROPS = { stroke: 'var(--border-subtle)', strokeDasharray: '3 3' } as
 export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
-  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
-  const canExport = user?.role === 'admin' || user?.role === 'manager';
 
   // Deep-link seed: ?days=30|90|180|365|custom or ?date_range= alias — read
   // once on mount, then strip the param so the URL stays clean.
@@ -62,42 +59,15 @@ export default function CrimeAnalysisPage() {
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
-  // Ref for N-shortcut focus target (the date-range select).
-  const filterRef = useRef<HTMLSelectElement>(null);
-
   // Strip deep-link params after seeding so the address bar stays tidy.
   useEffect(() => {
     const hasSeedParam = searchParams.has('days') || searchParams.has('date_range')
-      || searchParams.has('start_date') || searchParams.has('end_date')
-      || searchParams.has('district');
+      || searchParams.has('start_date') || searchParams.has('end_date');
     if (!hasSeedParam) return;
     const next = new URLSearchParams(searchParams);
-    ['days', 'date_range', 'start_date', 'end_date', 'district'].forEach((k) => next.delete(k));
+    ['days', 'date_range', 'start_date', 'end_date'].forEach((k) => next.delete(k));
     setSearchParams(next, { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // N shortcut → focus the date range filter
-  // Esc cascade → blur the focused filter (no modals on this page)
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-      if (e.key === 'n' || e.key === 'N') {
-        if (editing) return;
-        e.preventDefault();
-        filterRef.current?.focus();
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        if (document.activeElement instanceof HTMLElement) {
-          document.activeElement.blur();
-        }
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -122,7 +92,7 @@ export default function CrimeAnalysisPage() {
   /* ── Derived data ──────────────────────────────────────────── */
   // filterActive = user has chosen a custom or non-default period, so "no
   // data" means the filter returned nothing rather than the system being empty.
-  const filterActive = dateRange !== '90' && (dateRange !== 'custom' || !!(startDate || endDate));
+  const filterActive = dateRange !== '90' || !!(startDate || endDate);
   const emptyHint = filterActive ? 'No data for this period' : 'No data available';
 
   const totalIncidents = data?.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0;
@@ -166,8 +136,8 @@ export default function CrimeAnalysisPage() {
   const BlueGradient = (
     <defs>
       <linearGradient id="blueBar" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="var(--rmpg-600)" />
-        <stop offset="100%" stopColor="var(--rmpg-400)" />
+        <stop offset="0%" stopColor="var(--rmpg-600, #1e4a7a)" />
+        <stop offset="100%" stopColor="var(--rmpg-400, #3a7fc1)" />
       </linearGradient>
     </defs>
   );
@@ -212,6 +182,16 @@ export default function CrimeAnalysisPage() {
       <div className="h-full flex items-center justify-center">
         <div className="text-xs text-rmpg-500">
           {filterActive ? 'No data for the selected period' : 'No data available'}
+        </div>
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" role="status" aria-label="Loading" />
+          <div className="text-xs text-rmpg-500">Loading crime analysis...</div>
         </div>
       </div>
     );
