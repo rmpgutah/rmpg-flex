@@ -2973,6 +2973,29 @@ body.fx-noise::after {
   50% { text-shadow: 0 0 12px rgba(239, 68, 68, 0.9), 0 0 18px rgba(239, 68, 68, 0.5); }
 }
 
+/* ── Per-severity phosphor glow ──
+   Each semantic class blooms in its own hue so the CRT read carries the
+   threat color: red danger pulses hottest, amber caution warm, green clear
+   calm. Overrides the base amber glow on .ncic-output. */
+.ncic-c-danger,
+.ncic-c-error { text-shadow: 0 0 6px rgba(239, 68, 68, 0.55); }
+.ncic-c-caution { text-shadow: 0 0 5px rgba(245, 158, 11, 0.45); }
+.ncic-c-summary { text-shadow: 0 0 5px rgba(251, 191, 36, 0.45); }
+.ncic-c-clear { text-shadow: 0 0 5px rgba(34, 197, 94, 0.40); }
+.ncic-c-header { text-shadow: 0 0 4px rgba(200, 200, 200, 0.35); }
+.ncic-c-section { text-shadow: 0 0 4px rgba(240, 240, 240, 0.30); }
+.ncic-c-dim { text-shadow: none; }
+
+/* The CRITICAL subject-status banner gets a steady LED-style pulse so it's
+   impossible to miss when a warrant/sanction/arrest is live. */
+.ncic-c-danger.ncic-status-critical {
+  animation: ncic-status-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ncic-status-pulse {
+  0%, 100% { text-shadow: 0 0 5px rgba(239, 68, 68, 0.45); }
+  50% { text-shadow: 0 0 12px rgba(239, 68, 68, 0.9), 0 0 18px rgba(239, 68, 68, 0.5); }
+}
+
 .ncic-loading {
   display: flex;
   align-items: center;
