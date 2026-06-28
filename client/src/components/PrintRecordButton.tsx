@@ -211,23 +211,46 @@ export default function PrintRecordButton({
       }
     }
 
-    // For person records, fetch linked vehicles and properties
+    // For person records, fetch all linked records (all entity types)
     if (recordType === 'person' && data.id) {
       try {
         const links = await apiFetch<any[]>(`/records/links?source_type=person&source_id=${data.id}`);
         if (links && links.length > 0) {
-          // The API enriches each row with the OTHER side as linked_type /
-          // linked_label (covering links where this record is source OR
-          // target). The vehicle label reads "Make Model (PLATE)" — split it
-          // so the PDF's PLATE column gets the plate, not the whole label
-          // (live PDFs printed PLATE="RAM 1500 (8JAR3)" / VEHICLE="N/A").
+          // Vehicles: split "Make Model (PLATE)" label so PDF columns populate correctly
           enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
+          // Properties (real-estate only, not businesses)
           enriched.linked_properties = links
-            .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
+            .filter((l: any) => l.linked_type === 'property')
+            .map((l: any) => ({ name: l.linked_label || '', relationship: l.relationship }));
+          // Businesses (separate table since migration 0125)
+          enriched.linked_businesses = links
+            .filter((l: any) => l.linked_type === 'business')
+            .map((l: any) => ({ name: l.linked_label || '', relationship: l.relationship }));
+          // Other persons linked to this person
+          enriched.linked_persons = links
+            .filter((l: any) => l.linked_type === 'person')
             .map((l: any) => ({
               name: l.linked_label || '',
               relationship: l.relationship,
+              dob: l.linked_meta?.dob || '',
+              flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
             }));
+          // Evidence items cross-referenced to this person
+          enriched.linked_evidence = links
+            .filter((l: any) => l.linked_type === 'evidence')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
+          // Incidents cross-referenced to this person (manual links, separate from incident history)
+          enriched.linked_incidents_xref = links
+            .filter((l: any) => l.linked_type === 'incident')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
+          // Cases cross-referenced to this person
+          enriched.linked_cases = links
+            .filter((l: any) => l.linked_type === 'case')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
+          // Warrants cross-referenced to this person (manual links, separate from active-warrants history)
+          enriched.linked_warrants_xref = links
+            .filter((l: any) => l.linked_type === 'warrant')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
         }
       } catch { /* non-fatal */ }
     }
@@ -254,7 +277,7 @@ export default function PrintRecordButton({
           enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
             name: l.linked_label || '',
             relationship: l.relationship,
-            dob: l.linked_meta?.date_of_birth || '',
+            dob: l.linked_meta?.dob || '',
             flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
           }));
           enriched.linked_properties = links
@@ -296,7 +319,7 @@ export default function PrintRecordButton({
           enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
             name: l.linked_label || '',
             relationship: l.relationship,
-            dob: l.linked_meta?.date_of_birth || '',
+            dob: l.linked_meta?.dob || '',
             flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
           }));
           enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));

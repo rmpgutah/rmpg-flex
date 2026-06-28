@@ -324,6 +324,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
       </div>
 
       {/* ═══ Section 1: Credentials ═══ */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
@@ -359,7 +360,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Client ID */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Client ID</label>
+          <label htmlFor="ff-adminmicrobilttab-0" className="text-[10px] text-rmpg-400">Client ID</label>
           <input id="ff-adminmicrobilttab-0"
             type="text"
             value={clientId}
@@ -371,7 +372,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Client Secret */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Client Secret</label>
+          <label htmlFor="ff-adminmicrobilttab-1" className="text-[10px] text-rmpg-400">Client Secret</label>
           <div className="relative">
             <input id="ff-adminmicrobilttab-1"
               type={showSecret ? 'text' : 'password'}
@@ -391,7 +392,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Subscriber ID (optional) */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Subscriber ID <span className="text-rmpg-600">(optional)</span></label>
+          <label htmlFor="ff-adminmicrobilttab-2" className="text-[10px] text-rmpg-400">Subscriber ID <span className="text-rmpg-600">(optional)</span></label>
           <input id="ff-adminmicrobilttab-2"
             type="text"
             value={subscriberId}
@@ -447,6 +448,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           </div>
         )}
       </div>
+      </form>
 
       {/* ═══ Section 2: API Products Catalog ═══ */}
       <div className="panel-beveled bg-surface-base p-3 space-y-3">

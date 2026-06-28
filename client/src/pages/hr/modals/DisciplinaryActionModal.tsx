@@ -189,7 +189,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
           )}
 
           <div>
-            <label className={labelClass}>Employee *</label>
+            <label htmlFor="ff-disciplinaryactionmodal-0" className={labelClass}>Employee *</label>
             <select id="ff-disciplinaryactionmodal-0" value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={inputClass}>
               <option value="">Select employee...</option>
               {users.map(u => (
@@ -202,7 +202,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Action Type *</label>
+              <label htmlFor="ff-disciplinaryactionmodal-1" className={labelClass}>Action Type *</label>
               <select id="ff-disciplinaryactionmodal-1" value={form.action_type} onChange={e => setForm(f => ({ ...f, action_type: e.target.value }))} className={inputClass}>
                 {ACTION_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
@@ -210,7 +210,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
               </select>
             </div>
             <div>
-              <label className={labelClass}>Severity *</label>
+              <label htmlFor="ff-disciplinaryactionmodal-2" className={labelClass}>Severity *</label>
               <select id="ff-disciplinaryactionmodal-2" value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className={inputClass}>
                 {SEVERITY_LEVELS.map(s => (
                   <option key={s.value} value={s.value}>{s.label}</option>
@@ -221,7 +221,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Incident Date *</label>
+              <label htmlFor="ff-disciplinaryactionmodal-3" className={labelClass}>Incident Date *</label>
               <input id="ff-disciplinaryactionmodal-3"
                 type="date"
                 value={form.incident_date}
@@ -230,7 +230,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
               />
             </div>
             <div>
-              <label className={labelClass}>Follow-Up Date</label>
+              <label htmlFor="ff-disciplinaryactionmodal-4" className={labelClass}>Follow-Up Date</label>
               <input id="ff-disciplinaryactionmodal-4"
                 type="date"
                 value={form.follow_up_date}
@@ -241,7 +241,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
           </div>
 
           <div>
-            <label className={labelClass}>Description *</label>
+            <label htmlFor="ff-disciplinaryactionmodal-5" className={labelClass}>Description *</label>
             <textarea id="ff-disciplinaryactionmodal-5"
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
@@ -251,7 +251,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
           </div>
 
           <div>
-            <label className={labelClass}>Corrective Action</label>
+            <label htmlFor="ff-disciplinaryactionmodal-6" className={labelClass}>Corrective Action</label>
             <textarea id="ff-disciplinaryactionmodal-6"
               value={form.corrective_action}
               onChange={e => setForm(f => ({ ...f, corrective_action: e.target.value }))}

@@ -1,15 +1,16 @@
 // src/utils/intelLlm.ts
-// Engine ladder for the Intel AI Analyst (Claude → free Workers AI), returning
-// WHICH engine produced the answer so the UI can flag a free-tier fallback.
+// Engine ladder for the Intel AI Analyst (Claude → OpenAI → free Workers AI),
+// returning whether a paid AI or the free fallback produced the answer so the
+// UI can flag a free-tier fallback.
 //
 // Why this exists: the Intel AI routes (/ask, /extract, /summarize) only guarded
 // `if (!key)`. When the Anthropic key was present but the account was out of
 // credit, callClaude threw and the route returned a hard 502 — the Intel AI
-// Analyst was simply broken, even though free Workers AI could answer. Deep
-// Research already degrades gracefully (researchEngine.runResearchLLM); this is
-// the same pattern, factored into one testable seam that also reports the engine.
+// Analyst was simply broken, even though free Workers AI could answer. The
+// callAi router handles the full fallback chain; this seam preserves the
+// pre-existing engine-reporting contract for the UI (paid vs free).
 
-import { getAnthropicKey, getClaudeModel, callClaude } from './anthropic';
+import { callAi } from './callAi';
 
 export type IntelEngine = 'claude' | 'workers-ai';
 
@@ -21,32 +22,28 @@ export interface IntelLlmOpts { system?: string; text: string; maxTokens?: numbe
 export interface IntelLlmResult { text: string; engine: IntelEngine }
 
 /**
- * Run an Intel AI prompt through Claude when a working key is configured, else
- * (no key OR a failed/empty Claude call) fall through to free Workers AI. Never
- * throws on primary-engine failure — always returns an answer + the engine used.
- * Mirrors researchEngine.runResearchLLM so the codebase has ONE fallback pattern.
+ * Run an Intel AI prompt through the callAi router (Claude → OpenAI →
+ * Workers AI). The engine field collapses callAi's provider into the
+ * legacy 'claude' | 'workers-ai' contract the UI expects: paid AI
+ * (claude or openai) reports as 'claude'; free Workers AI reports as
+ * 'workers-ai' so the free-tier-fallback badge still triggers.
  */
 export async function runIntelLLM(env: IntelLlmEnv, opts: IntelLlmOpts): Promise<IntelLlmResult> {
   const { system, text, maxTokens = 1024 } = opts;
-  const key = await getAnthropicKey(env);
-  if (key) {
-    try {
-      const model = opts.model || (await getClaudeModel(env));
-      const out = await callClaude(key, { system, text, maxTokens, model });
-      if (out && out.trim()) return { text: out, engine: 'claude' };
-      // empty Claude response → fall through to Workers AI rather than return ''
-    } catch { /* out of credit / invalid key / transient → fall through */ }
+  try {
+    const r = await callAi(env, { system, text, maxTokens });
+    // Empty paid-AI response → not useful to downstream parsers (parseExtract,
+    // citationsFrom). Retry on Workers AI explicitly. Preserves the original
+    // "engine: workers-ai when paid was empty" contract that intelAi routes
+    // depended on; otherwise an empty paid reply would silently break /ask
+    // and /extract without surfacing the free-fallback badge to the UI.
+    if (r.provider !== 'workers-ai' && (!r.text || !r.text.trim())) {
+      const free = await callAi(env, { system, text, maxTokens, providers: ['workers-ai'] });
+      return { text: free.text || '', engine: 'workers-ai' };
+    }
+    const engine: IntelEngine = r.provider === 'workers-ai' ? 'workers-ai' : 'claude';
+    return { text: r.text || '', engine };
+  } catch {
+    return { text: '', engine: 'workers-ai' };
   }
-  const messages: { role: string; content: string }[] = [];
-  if (system) messages.push({ role: 'system', content: system });
-  messages.push({ role: 'user', content: text });
-  const r: any = await env.AI.run(INTEL_WORKERS_AI_MODEL as any, { messages, max_tokens: maxTokens } as any);
-  // Workers AI auto-parses JSON when the prompt elicits it: `response` can come
-  // back as an object/array, not a string. Re-serialize so the callers' parsers
-  // (parseExtract/citationsFrom) get a string — mirrors runResearchLLM.
-  const resp = r?.response;
-  const out = typeof resp === 'string'
-    ? resp
-    : resp != null && typeof resp === 'object' ? JSON.stringify(resp) : '';
-  return { text: out, engine: 'workers-ai' };
 }

@@ -5,10 +5,11 @@ import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
-import { formatEnumValue } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import { coded } from '../../../utils/searchText';
 interface HRDocument {
   id: number;
@@ -43,6 +44,8 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
   const [form, setForm] = useState({ title: '', category: 'policy', description: '' });
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
 
@@ -83,9 +86,20 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
     try { await apiFetch('/hr/acknowledgments', { method: 'POST', body: JSON.stringify({ document_id: docId }) }); addToast('Acknowledged', 'success'); loadAcks(docId); } catch { addToast('Failed to acknowledge document', 'error'); }
   };
 
-  const handleDelete = async (docId: number) => {
-    if (!window.confirm('Delete this document? This cannot be undone.')) return;
-    try { await apiFetch<any[]>(`/hr/documents/${docId}`, { method: 'DELETE' }); addToast('Document deleted', 'success'); loadDocs(); } catch { addToast('Failed to delete document', 'error'); }
+  const handleDelete = (docId: number) => {
+    setConfirmDeleteId(docId);
+  };
+
+  const doDelete = async () => {
+    if (confirmDeleteId === null) return;
+    setConfirmDeleteLoading(true);
+    try {
+      await apiFetch<any[]>(`/hr/documents/${confirmDeleteId}`, { method: 'DELETE' });
+      addToast('Document deleted', 'success');
+      setConfirmDeleteId(null);
+      loadDocs();
+    } catch { addToast('Failed to delete document', 'error'); }
+    finally { setConfirmDeleteLoading(false); }
   };
 
   const myAcks = new Set(acks.filter(a => a.officer_id === Number(user?.id)).map(a => a.document_id));
@@ -113,7 +127,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
             <option value="all">All Categories</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
           </select>
-          {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Document</button>}
+          {isManager && <button type="button" data-hr-new-btn onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Document</button>}
         </div>
       </div>
 
@@ -121,11 +135,11 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Title *</label>
+              <label htmlFor="ff-documentstab-2" className="field-label">Title *</label>
               <input id="ff-documentstab-2" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input-field w-full text-xs" placeholder="Document title" maxLength={200} />
             </div>
             <div>
-              <label className="field-label">Category</label>
+              <label htmlFor="ff-documentstab-3" className="field-label">Category</label>
               <select id="ff-documentstab-3" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="input-field w-full text-xs">
                 {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
               </select>
@@ -157,7 +171,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                   <div className="flex items-center gap-2">
                     <FileText className="w-3.5 h-3.5 text-brand-400" />
                     <span className="text-xs font-bold text-rmpg-100">{doc.title}</span>
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{(doc.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{toDisplayLabel(doc.category)}</span>
                   </div>
                   {doc.description && <p className="text-[10px] text-rmpg-400 mt-1">{doc.description}</p>}
                   <span className="text-[10px] text-rmpg-500">Uploaded by {doc.uploaded_by_name} on {doc.created_at ? parseTimestamp(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
@@ -190,6 +204,17 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={doDelete}
+        title="Delete Document"
+        message="Delete this document? This cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={confirmDeleteLoading}
+      />
     </div>
   );
 }

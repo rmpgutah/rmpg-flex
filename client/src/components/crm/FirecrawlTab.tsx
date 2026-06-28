@@ -21,6 +21,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ── Safe Array Helper ─────────────────────────────────────────
 // Ensures a value that may be a JSON string, undefined, or already an array is always an array
@@ -553,7 +554,7 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <label htmlFor="ff-firecrawltab-0" className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
               <input id="ff-firecrawltab-0"
                 value={formName} onChange={e => setFormName(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -561,7 +562,7 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">URL *</label>
+              <label htmlFor="ff-firecrawltab-1" className="block text-[10px] text-rmpg-400 mb-0.5">URL *</label>
               <input id="ff-firecrawltab-1"
                 value={formUrl} onChange={e => setFormUrl(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -569,7 +570,7 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Search Query</label>
+              <label htmlFor="ff-firecrawltab-2" className="block text-[10px] text-rmpg-400 mb-0.5">Search Query</label>
               <input id="ff-firecrawltab-2"
                 value={formQuery} onChange={e => setFormQuery(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -577,7 +578,7 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Keywords (comma-separated)</label>
+              <label htmlFor="ff-firecrawltab-3" className="block text-[10px] text-rmpg-400 mb-0.5">Keywords (comma-separated)</label>
               <input id="ff-firecrawltab-3"
                 value={formKeywords} onChange={e => setFormKeywords(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -585,7 +586,7 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Check Interval</label>
+              <label htmlFor="ff-firecrawltab-4" className="block text-[10px] text-rmpg-400 mb-0.5">Check Interval</label>
               <select id="ff-firecrawltab-4"
                 value={formInterval} onChange={e => setFormInterval(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -598,7 +599,7 @@ function ScoutsPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
               </select>
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Notify Email</label>
+              <label htmlFor="ff-firecrawltab-5" className="block text-[10px] text-rmpg-400 mb-0.5">Notify Email</label>
               <input id="ff-firecrawltab-5"
                 value={formEmail} onChange={e => setFormEmail(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -1173,7 +1174,7 @@ function BrandMonitorPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Brand Name *</label>
+              <label htmlFor="ff-firecrawltab-8" className="block text-[10px] text-rmpg-400 mb-0.5">Brand Name *</label>
               <input id="ff-firecrawltab-8"
                 value={formBrand} onChange={e => setFormBrand(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -1181,7 +1182,7 @@ function BrandMonitorPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Keywords (comma-separated)</label>
+              <label htmlFor="ff-firecrawltab-9" className="block text-[10px] text-rmpg-400 mb-0.5">Keywords (comma-separated)</label>
               <input id="ff-firecrawltab-9"
                 value={formKeywords} onChange={e => setFormKeywords(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -1189,7 +1190,7 @@ function BrandMonitorPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Competitor URLs (one per line)</label>
+              <label htmlFor="ff-firecrawltab-11" className="block text-[10px] text-rmpg-400 mb-0.5">Competitor URLs (one per line)</label>
               <RichTextArea
                 value={formCompetitors} onChange={e => setFormCompetitors(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none resize-none"
@@ -1198,7 +1199,7 @@ function BrandMonitorPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Check Interval</label>
+              <label htmlFor="ff-firecrawltab-10" className="block text-[10px] text-rmpg-400 mb-0.5">Check Interval</label>
               <select id="ff-firecrawltab-10"
                 value={formInterval} onChange={e => setFormInterval(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -1570,7 +1571,7 @@ function WorkflowsPanel() {
       {showForm && (
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Workflow Name *</label>
+            <label htmlFor="ff-firecrawltab-13" className="block text-[10px] text-rmpg-400 mb-0.5">Workflow Name *</label>
             <input id="ff-firecrawltab-13"
               value={formName} onChange={e => setFormName(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -1665,7 +1666,7 @@ function WorkflowsPanel() {
                                 ? 'bg-amber-500/20 text-amber-400'
                                 : 'bg-emerald-500/20 text-emerald-400'
                           }`}>
-                            {(step.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                            {toDisplayLabel(step.type)}
                           </span>
                           <span className="text-rmpg-300 font-mono truncate">{step.url_or_query}</span>
                         </div>
@@ -2539,7 +2540,7 @@ function ChatbotPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <label htmlFor="ff-firecrawltab-21" className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
               <input id="ff-firecrawltab-21"
                 value={formName} onChange={e => setFormName(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -2547,7 +2548,7 @@ function ChatbotPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URL *</label>
+              <label htmlFor="ff-firecrawltab-22" className="block text-[10px] text-rmpg-400 mb-0.5">Source URL *</label>
               <input id="ff-firecrawltab-22"
                 value={formUrl} onChange={e => setFormUrl(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -2556,7 +2557,7 @@ function ChatbotPanel() {
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Description</label>
+            <label htmlFor="ff-firecrawltab-23" className="block text-[10px] text-rmpg-400 mb-0.5">Description</label>
             <input id="ff-firecrawltab-23"
               value={formDesc} onChange={e => setFormDesc(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -2825,7 +2826,7 @@ function ObserverPanel({ toolContext, setToolContext, switchTab }: PanelChainPro
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <label htmlFor="ff-firecrawltab-25" className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
               <input id="ff-firecrawltab-25"
                 value={formName} onChange={e => setFormName(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -2833,7 +2834,7 @@ function ObserverPanel({ toolContext, setToolContext, switchTab }: PanelChainPro
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">URL *</label>
+              <label htmlFor="ff-firecrawltab-26" className="block text-[10px] text-rmpg-400 mb-0.5">URL *</label>
               <input id="ff-firecrawltab-26"
                 value={formUrl} onChange={e => setFormUrl(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -2841,7 +2842,7 @@ function ObserverPanel({ toolContext, setToolContext, switchTab }: PanelChainPro
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Check Interval</label>
+              <label htmlFor="ff-firecrawltab-27" className="block text-[10px] text-rmpg-400 mb-0.5">Check Interval</label>
               <select id="ff-firecrawltab-27"
                 value={formInterval} onChange={e => setFormInterval(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -3589,7 +3590,7 @@ function GraphsPanel() {
             <>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] text-rmpg-400 mb-0.5">Title *</label>
+                  <label htmlFor="ff-firecrawltab-34" className="block text-[10px] text-rmpg-400 mb-0.5">Title *</label>
                   <input id="ff-firecrawltab-34"
                     value={formTitle} onChange={e => setFormTitle(e.target.value)}
                     className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -3597,7 +3598,7 @@ function GraphsPanel() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-rmpg-400 mb-0.5">Chart Type</label>
+                  <label htmlFor="ff-firecrawltab-35" className="block text-[10px] text-rmpg-400 mb-0.5">Chart Type</label>
                   <select id="ff-firecrawltab-35"
                     value={formChartType} onChange={e => setFormChartType(e.target.value)}
                     className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -3611,7 +3612,7 @@ function GraphsPanel() {
                 </div>
               </div>
               <div>
-                <label className="block text-[10px] text-rmpg-400 mb-0.5">Labels (comma-separated) *</label>
+                <label htmlFor="ff-firecrawltab-36" className="block text-[10px] text-rmpg-400 mb-0.5">Labels (comma-separated) *</label>
                 <input id="ff-firecrawltab-36"
                   value={formLabels} onChange={e => setFormLabels(e.target.value)}
                   className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -3852,7 +3853,7 @@ function ConnectorsPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <label htmlFor="ff-firecrawltab-40" className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
               <input id="ff-firecrawltab-40"
                 value={formName} onChange={e => setFormName(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -3860,7 +3861,7 @@ function ConnectorsPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Type</label>
+              <label htmlFor="ff-firecrawltab-41" className="block text-[10px] text-rmpg-400 mb-0.5">Type</label>
               <select id="ff-firecrawltab-41"
                 value={formType} onChange={e => setFormType(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -3872,7 +3873,7 @@ function ConnectorsPanel() {
               </select>
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">URL *</label>
+              <label htmlFor="ff-firecrawltab-42" className="block text-[10px] text-rmpg-400 mb-0.5">URL *</label>
               <input id="ff-firecrawltab-42"
                 value={formUrl} onChange={e => setFormUrl(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -3880,7 +3881,7 @@ function ConnectorsPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Schedule (hours)</label>
+              <label htmlFor="ff-firecrawltab-43" className="block text-[10px] text-rmpg-400 mb-0.5">Schedule (hours)</label>
               <input id="ff-firecrawltab-43"
                 type="number" value={formSchedule} onChange={e => setFormSchedule(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -3889,7 +3890,7 @@ function ConnectorsPanel() {
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Transform Prompt</label>
+            <label htmlFor="ff-firecrawltab-44" className="block text-[10px] text-rmpg-400 mb-0.5">Transform Prompt</label>
             <RichTextArea
               value={formPrompt} onChange={e => setFormPrompt(e.target.value)}
               rows={2}
@@ -3919,7 +3920,7 @@ function ConnectorsPanel() {
                 </button>
                 <StatusLed status={c.status} />
                 <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${typeBadgeColor(c.type)}`}>
-                  {(c.type || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}
+                  {toDisplayLabel(c.type)}
                 </span>
                 <span className="text-[10px] text-rmpg-100 font-medium min-w-0 truncate flex-1">{c.name}</span>
                 <span className="text-[9px] text-rmpg-500 font-mono shrink-0">every {c.schedule_hours}h</span>
@@ -4051,7 +4052,7 @@ function RagEvalPanel() {
 
       {/* Questions */}
       <div>
-        <label className="block text-[10px] text-rmpg-400 mb-0.5">Questions (one per line)</label>
+        <label htmlFor="ff-firecrawltab-45" className="block text-[10px] text-rmpg-400 mb-0.5">Questions (one per line)</label>
         <RichTextArea
           value={questions}
           onChange={e => setQuestions(e.target.value)}
@@ -4614,7 +4615,7 @@ function QaClusterPanel() {
 
       {/* Questions Input */}
       <div>
-        <label className="block text-[10px] text-rmpg-400 mb-0.5">Questions (one per line)</label>
+        <label htmlFor="ff-firecrawltab-50" className="block text-[10px] text-rmpg-400 mb-0.5">Questions (one per line)</label>
         <RichTextArea
           value={questionsInput}
           onChange={e => setQuestionsInput(e.target.value)}
@@ -5697,7 +5698,7 @@ function McpPanel() {
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Server URL</label>
+            <label htmlFor="ff-firecrawltab-59" className="block text-[10px] text-rmpg-400 mb-0.5">Server URL</label>
             <input id="ff-firecrawltab-59"
               value={config.server_url}
               onChange={e => setConfig(prev => ({ ...prev, server_url: e.target.value }))}
@@ -5706,7 +5707,7 @@ function McpPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">API Key</label>
+            <label htmlFor="ff-firecrawltab-60" className="block text-[10px] text-rmpg-400 mb-0.5">API Key</label>
             <div className="flex items-center gap-1">
               <input id="ff-firecrawltab-60"
                 type={showApiKey ? 'text' : 'password'}
@@ -5918,7 +5919,7 @@ function ExamplesPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <label htmlFor="ff-firecrawltab-62" className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
               <input id="ff-firecrawltab-62"
                 value={formName} onChange={e => setFormName(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -5926,7 +5927,7 @@ function ExamplesPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Category</label>
+              <label htmlFor="ff-firecrawltab-63" className="block text-[10px] text-rmpg-400 mb-0.5">Category</label>
               <select id="ff-firecrawltab-63"
                 value={formCategory} onChange={e => setFormCategory(e.target.value as FirecrawlExample['category'])}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -5941,7 +5942,7 @@ function ExamplesPanel() {
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Description</label>
+            <label htmlFor="ff-firecrawltab-64" className="block text-[10px] text-rmpg-400 mb-0.5">Description</label>
             <input id="ff-firecrawltab-64"
               value={formDesc} onChange={e => setFormDesc(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -5949,7 +5950,7 @@ function ExamplesPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URL</label>
+            <label htmlFor="ff-firecrawltab-65" className="block text-[10px] text-rmpg-400 mb-0.5">Source URL</label>
             <input id="ff-firecrawltab-65"
               value={formSourceUrl} onChange={e => setFormSourceUrl(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -5957,7 +5958,7 @@ function ExamplesPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Config JSON</label>
+            <label htmlFor="ff-firecrawltab-66" className="block text-[10px] text-rmpg-400 mb-0.5">Config JSON</label>
             <RichTextArea
               value={formConfig} onChange={e => setFormConfig(e.target.value)}
               rows={4}
@@ -5986,7 +5987,7 @@ function ExamplesPanel() {
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-rmpg-100 min-w-0 flex-1 truncate">{ex.name}</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${categoryColors[ex.category] || 'bg-rmpg-700 border-rmpg-600 text-rmpg-400'}`}>
-                  {(ex.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                  {toDisplayLabel(ex.category)}
                 </span>
               </div>
               {ex.description && <div className="text-[10px] text-rmpg-400 leading-relaxed">{ex.description}</div>}
@@ -6093,14 +6094,14 @@ function LlmsTxtV2Panel() {
           placeholder="https://example.com"
         />
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-rmpg-400">Depth:</label>
+          <label htmlFor="ff-firecrawltab-67" className="text-[10px] text-rmpg-400">Depth:</label>
           <input id="ff-firecrawltab-67"
             type="number" min={1} max={10} value={depth} onChange={e => setDepth(Number(e.target.value))}
             className="w-12 bg-surface-sunken border border-rmpg-600 rounded-sm px-1.5 py-1.5 text-xs text-rmpg-100 text-center focus:border-orange-500/50 focus:outline-none"
           />
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-rmpg-400">Max:</label>
+          <label htmlFor="ff-firecrawltab-68" className="text-[10px] text-rmpg-400">Max:</label>
           <input id="ff-firecrawltab-68"
             type="number" min={1} max={500} value={maxPages} onChange={e => setMaxPages(Number(e.target.value))}
             className="w-14 bg-surface-sunken border border-rmpg-600 rounded-sm px-1.5 py-1.5 text-xs text-rmpg-100 text-center focus:border-orange-500/50 focus:outline-none"
@@ -6316,7 +6317,7 @@ function MendablePanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <label htmlFor="ff-firecrawltab-69" className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
               <input id="ff-firecrawltab-69"
                 value={formName} onChange={e => setFormName(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -6324,7 +6325,7 @@ function MendablePanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Welcome Message</label>
+              <label htmlFor="ff-firecrawltab-70" className="block text-[10px] text-rmpg-400 mb-0.5">Welcome Message</label>
               <input id="ff-firecrawltab-70"
                 value={formWelcome} onChange={e => setFormWelcome(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -6333,7 +6334,7 @@ function MendablePanel() {
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URLs * (one per line)</label>
+            <label htmlFor="ff-firecrawltab-72" className="block text-[10px] text-rmpg-400 mb-0.5">Source URLs * (one per line)</label>
             <RichTextArea
               value={formUrls} onChange={e => setFormUrls(e.target.value)}
               rows={3}
@@ -6342,7 +6343,7 @@ function MendablePanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">System Prompt</label>
+            <label htmlFor="ff-firecrawltab-71" className="block text-[10px] text-rmpg-400 mb-0.5">System Prompt</label>
             <RichTextArea
               value={formPrompt} onChange={e => setFormPrompt(e.target.value)}
               rows={2}
@@ -6527,7 +6528,7 @@ function NewsPanel() {
             placeholder="Enter topic..."
           />
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-rmpg-400">Max:</label>
+            <label htmlFor="ff-firecrawltab-73" className="text-[10px] text-rmpg-400">Max:</label>
             <input id="ff-firecrawltab-73"
               type="number" min={1} max={50} value={maxResults} onChange={e => setMaxResults(Number(e.target.value))}
               className="w-12 bg-surface-sunken border border-rmpg-600 rounded-sm px-1.5 py-1.5 text-xs text-rmpg-100 text-center focus:border-orange-500/50 focus:outline-none"
@@ -6538,7 +6539,7 @@ function NewsPanel() {
           </SmallBtn>
         </div>
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-0.5">Sources (optional, one per line)</label>
+          <label htmlFor="ff-firecrawltab-88" className="block text-[10px] text-rmpg-400 mb-0.5">Sources (optional, one per line)</label>
           <RichTextArea
             value={sources} onChange={e => setSources(e.target.value)}
             rows={2}
@@ -6697,7 +6698,7 @@ function DraftsPanel() {
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
         <div className="grid grid-cols-3 gap-2">
           <div className="col-span-2">
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Topic *</label>
+            <label htmlFor="ff-firecrawltab-74" className="block text-[10px] text-rmpg-400 mb-0.5">Topic *</label>
             <input id="ff-firecrawltab-74"
               value={topic} onChange={e => setTopic(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && generateDraft()}
@@ -6706,7 +6707,7 @@ function DraftsPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Type</label>
+            <label htmlFor="ff-firecrawltab-75" className="block text-[10px] text-rmpg-400 mb-0.5">Type</label>
             <select id="ff-firecrawltab-75"
               value={draftType} onChange={e => setDraftType(e.target.value as Draft['draft_type'])}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -6719,7 +6720,7 @@ function DraftsPanel() {
           </div>
         </div>
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URLs (optional, one per line)</label>
+          <label htmlFor="ff-firecrawltab-87" className="block text-[10px] text-rmpg-400 mb-0.5">Source URLs (optional, one per line)</label>
           <RichTextArea
             value={sourceUrls} onChange={e => setSourceUrls(e.target.value)}
             rows={2}
@@ -6729,7 +6730,7 @@ function DraftsPanel() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-rmpg-400">Words:</label>
+            <label htmlFor="ff-firecrawltab-76" className="text-[10px] text-rmpg-400">Words:</label>
             <input id="ff-firecrawltab-76"
               type="number" min={100} max={5000} step={100} value={wordTarget} onChange={e => setWordTarget(Number(e.target.value))}
               className="w-16 bg-surface-sunken border border-rmpg-600 rounded-sm px-1.5 py-1 text-xs text-rmpg-100 text-center focus:border-orange-500/50 focus:outline-none"
@@ -6901,7 +6902,7 @@ function SlackPanel() {
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Webhook URL *</label>
+            <label htmlFor="ff-firecrawltab-77" className="block text-[10px] text-rmpg-400 mb-0.5">Webhook URL *</label>
             <input id="ff-firecrawltab-77"
               value={config.webhook_url}
               onChange={e => setConfig(prev => ({ ...prev, webhook_url: e.target.value }))}
@@ -6910,7 +6911,7 @@ function SlackPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Channel Name</label>
+            <label htmlFor="ff-firecrawltab-78" className="block text-[10px] text-rmpg-400 mb-0.5">Channel Name</label>
             <input id="ff-firecrawltab-78"
               value={config.channel_name}
               onChange={e => setConfig(prev => ({ ...prev, channel_name: e.target.value }))}
@@ -7054,7 +7055,7 @@ function DiscordPanel() {
 
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-0.5">Webhook URL *</label>
+          <label htmlFor="ff-firecrawltab-80" className="block text-[10px] text-rmpg-400 mb-0.5">Webhook URL *</label>
           <input id="ff-firecrawltab-80"
             value={config.webhook_url}
             onChange={e => setConfig(prev => ({ ...prev, webhook_url: e.target.value }))}
@@ -7264,7 +7265,7 @@ function AgentsPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <label htmlFor="ff-firecrawltab-82" className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
               <input id="ff-firecrawltab-82"
                 value={formName} onChange={e => setFormName(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -7272,7 +7273,7 @@ function AgentsPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Max Steps</label>
+              <label htmlFor="ff-firecrawltab-83" className="block text-[10px] text-rmpg-400 mb-0.5">Max Steps</label>
               <input id="ff-firecrawltab-83"
                 type="number" min={1} max={50} value={formMaxSteps} onChange={e => setFormMaxSteps(Number(e.target.value))}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 text-center focus:border-orange-500/50 focus:outline-none"
@@ -7280,7 +7281,7 @@ function AgentsPanel() {
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Goal *</label>
+            <label htmlFor="ff-firecrawltab-86" className="block text-[10px] text-rmpg-400 mb-0.5">Goal *</label>
             <RichTextArea
               value={formGoal} onChange={e => setFormGoal(e.target.value)}
               rows={2}
@@ -7289,7 +7290,7 @@ function AgentsPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Initial URL/Query</label>
+            <label htmlFor="ff-firecrawltab-84" className="block text-[10px] text-rmpg-400 mb-0.5">Initial URL/Query</label>
             <input id="ff-firecrawltab-84"
               value={formInput} onChange={e => setFormInput(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -7644,7 +7645,7 @@ function JobMatchPanel() {
       {/* Input Form */}
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-0.5">Search URL *</label>
+          <label htmlFor="ff-firecrawltab-89" className="block text-[10px] text-rmpg-400 mb-0.5">Search URL *</label>
           <input id="ff-firecrawltab-89"
             value={searchUrl} onChange={e => setSearchUrl(e.target.value)}
             className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -7653,7 +7654,7 @@ function JobMatchPanel() {
         </div>
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Skills (comma-separated)</label>
+            <label htmlFor="ff-firecrawltab-90" className="block text-[10px] text-rmpg-400 mb-0.5">Skills (comma-separated)</label>
             <input id="ff-firecrawltab-90"
               value={skills} onChange={e => setSkills(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -7661,7 +7662,7 @@ function JobMatchPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Location</label>
+            <label htmlFor="ff-firecrawltab-91" className="block text-[10px] text-rmpg-400 mb-0.5">Location</label>
             <input id="ff-firecrawltab-91"
               value={location} onChange={e => setLocation(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -7669,7 +7670,7 @@ function JobMatchPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Min Salary</label>
+            <label htmlFor="ff-firecrawltab-92" className="block text-[10px] text-rmpg-400 mb-0.5">Min Salary</label>
             <input id="ff-firecrawltab-92"
               type="number" value={minSalary} onChange={e => setMinSalary(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -8067,14 +8068,14 @@ function ApiConsolePanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Max Pages</label>
+              <label htmlFor="ff-firecrawltab-100" className="block text-[10px] text-rmpg-400 mb-0.5">Max Pages</label>
               <input id="ff-firecrawltab-100"
                 value={maxPages} onChange={e => setMaxPages(e.target.value)} type="number" min="1"
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none font-mono"
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Max Depth</label>
+              <label htmlFor="ff-firecrawltab-101" className="block text-[10px] text-rmpg-400 mb-0.5">Max Depth</label>
               <input id="ff-firecrawltab-101"
                 value={maxDepth} onChange={e => setMaxDepth(e.target.value)} type="number" min="1"
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -8255,7 +8256,7 @@ function CliPanel() {
       {/* Command Selection */}
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-0.5">Command</label>
+          <label htmlFor="ff-firecrawltab-102" className="block text-[10px] text-rmpg-400 mb-0.5">Command</label>
           <select id="ff-firecrawltab-102"
             value={command} onChange={e => setCommand(e.target.value as typeof command)}
             className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -8269,7 +8270,7 @@ function CliPanel() {
         <div className="grid grid-cols-2 gap-2">
           {(command === 'scrape' || command === 'crawl' || command === 'map') && (
             <div className="col-span-2">
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">URL</label>
+              <label htmlFor="ff-firecrawltab-103" className="block text-[10px] text-rmpg-400 mb-0.5">URL</label>
               <input id="ff-firecrawltab-103"
                 value={argUrl} onChange={e => setArgUrl(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -8279,7 +8280,7 @@ function CliPanel() {
           )}
           {command === 'search' && (
             <div className="col-span-2">
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Query</label>
+              <label htmlFor="ff-firecrawltab-104" className="block text-[10px] text-rmpg-400 mb-0.5">Query</label>
               <input id="ff-firecrawltab-104"
                 value={argQuery} onChange={e => setArgQuery(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -8289,7 +8290,7 @@ function CliPanel() {
           )}
           {(command === 'search' || command === 'crawl') && (
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Limit</label>
+              <label htmlFor="ff-firecrawltab-105" className="block text-[10px] text-rmpg-400 mb-0.5">Limit</label>
               <input id="ff-firecrawltab-105"
                 value={argLimit} onChange={e => setArgLimit(e.target.value)} type="number" min="1"
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -8298,7 +8299,7 @@ function CliPanel() {
           )}
           {command === 'crawl' && (
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Depth</label>
+              <label htmlFor="ff-firecrawltab-106" className="block text-[10px] text-rmpg-400 mb-0.5">Depth</label>
               <input id="ff-firecrawltab-106"
                 value={argDepth} onChange={e => setArgDepth(e.target.value)} type="number" min="1"
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -8801,7 +8802,7 @@ function N8nPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
+              <label htmlFor="ff-firecrawltab-110" className="block text-[10px] text-rmpg-400 mb-0.5">Name *</label>
               <input id="ff-firecrawltab-110"
                 value={formName} onChange={e => setFormName(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -8809,7 +8810,7 @@ function N8nPanel() {
               />
             </div>
             <div>
-              <label className="block text-[10px] text-rmpg-400 mb-0.5">Trigger</label>
+              <label htmlFor="ff-firecrawltab-111" className="block text-[10px] text-rmpg-400 mb-0.5">Trigger</label>
               <select id="ff-firecrawltab-111"
                 value={formTrigger} onChange={e => setFormTrigger(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -8822,7 +8823,7 @@ function N8nPanel() {
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] text-rmpg-400">Nodes</label>
+              <label htmlFor="ff-firecrawltab-112" className="text-[10px] text-rmpg-400">Nodes</label>
               <SmallBtn onClick={addNode}><Plus className="w-3 h-3" /> Add Node</SmallBtn>
             </div>
             {formNodes.map((node, idx) => (
@@ -8885,7 +8886,7 @@ function N8nPanel() {
                       {runs.map(run => (
                         <div key={run.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800 rounded-sm border border-rmpg-700">
                           <StatusLed status={run.status} />
-                          <span className="text-[10px] text-rmpg-300 flex-1">{(run.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                          <span className="text-[10px] text-rmpg-300 flex-1">{toDisplayLabel(run.status)}</span>
                           {run.error && <span className="text-[9px] text-red-400 truncate max-w-[200px]">{run.error}</span>}
                           <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(run.started_at)}</span>
                         </div>
@@ -9008,7 +9009,7 @@ function MendablePyPanel() {
       {showForm && (
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Index Name *</label>
+            <label htmlFor="ff-firecrawltab-114" className="block text-[10px] text-rmpg-400 mb-0.5">Index Name *</label>
             <input id="ff-firecrawltab-114"
               value={formName} onChange={e => setFormName(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -9016,7 +9017,7 @@ function MendablePyPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">URLs * (one per line)</label>
+            <label htmlFor="ff-firecrawltab-115" className="block text-[10px] text-rmpg-400 mb-0.5">URLs * (one per line)</label>
             <RichTextArea
               value={formUrls} onChange={e => setFormUrls(e.target.value)}
               rows={4}
@@ -9300,7 +9301,7 @@ function SkillGenPanel() {
       {/* Input */}
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-0.5">Documentation URL *</label>
+          <label htmlFor="ff-firecrawltab-117" className="block text-[10px] text-rmpg-400 mb-0.5">Documentation URL *</label>
           <input id="ff-firecrawltab-117"
             value={docUrl} onChange={e => setDocUrl(e.target.value)}
             className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -9309,7 +9310,7 @@ function SkillGenPanel() {
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Skill Name *</label>
+            <label htmlFor="ff-firecrawltab-118" className="block text-[10px] text-rmpg-400 mb-0.5">Skill Name *</label>
             <input id="ff-firecrawltab-118"
               value={skillName} onChange={e => setSkillName(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -9317,7 +9318,7 @@ function SkillGenPanel() {
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Description</label>
+            <label htmlFor="ff-firecrawltab-119" className="block text-[10px] text-rmpg-400 mb-0.5">Description</label>
             <input id="ff-firecrawltab-119"
               value={description} onChange={e => setDescription(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -9575,7 +9576,7 @@ function PipelinesPanel() {
       {showForm && (
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Pipeline Name *</label>
+            <label htmlFor="ff-firecrawltab-120" className="block text-[10px] text-rmpg-400 mb-0.5">Pipeline Name *</label>
             <input id="ff-firecrawltab-120"
               value={formName} onChange={e => setFormName(e.target.value)}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -9584,7 +9585,7 @@ function PipelinesPanel() {
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] text-rmpg-400">Steps</label>
+              <label htmlFor="ff-firecrawltab-121" className="text-[10px] text-rmpg-400">Steps</label>
               <SmallBtn onClick={addStep}><Plus className="w-3 h-3" /> Add Step</SmallBtn>
             </div>
             <div className="text-[8px] text-rmpg-500 mb-1">Ingest fetches data, Transform reshapes it, Filter removes unwanted rows, Enrich adds metadata, Output saves results.</div>
@@ -9719,7 +9720,7 @@ function ThemePanel() {
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-4">
         {/* Accent Color */}
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-1">Accent Color</label>
+          <label htmlFor="ff-firecrawltab-124" className="block text-[10px] text-rmpg-400 mb-1">Accent Color</label>
           <div className="flex items-center gap-3">
             <input id="ff-firecrawltab-124"
               type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)}
@@ -9734,14 +9735,14 @@ function ThemePanel() {
 
         {/* Toggles */}
         <div className="space-y-2">
-          <label className="flex items-center gap-3 cursor-pointer">
+          <label htmlFor="ff-firecrawltab-129" className="flex items-center gap-3 cursor-pointer">
             <div className={`relative w-8 h-4 rounded-full transition-colors ${showLabels ? 'bg-orange-500' : 'bg-rmpg-600'}`}
               onClick={() => setShowLabels(!showLabels)}>
               <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showLabels ? 'translate-x-4' : 'translate-x-0.5'}`} />
             </div>
             <span className="text-xs text-rmpg-300">Show Labels</span>
           </label>
-          <label className="flex items-center gap-3 cursor-pointer">
+          <label htmlFor="ff-firecrawltab-128" className="flex items-center gap-3 cursor-pointer">
             <div className={`relative w-8 h-4 rounded-full transition-colors ${compactMode ? 'bg-orange-500' : 'bg-rmpg-600'}`}
               onClick={() => setCompactMode(!compactMode)}>
               <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${compactMode ? 'translate-x-4' : 'translate-x-0.5'}`} />
@@ -9752,7 +9753,7 @@ function ThemePanel() {
 
         {/* Default Tab */}
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-0.5">Default Tab</label>
+          <label htmlFor="ff-firecrawltab-126" className="block text-[10px] text-rmpg-400 mb-0.5">Default Tab</label>
           <select id="ff-firecrawltab-126"
             value={defaultTab} onChange={e => setDefaultTab(e.target.value)}
             className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-orange-500/50 focus:outline-none"
@@ -9853,7 +9854,7 @@ function AiChatPanel() {
 
       {/* Context URL */}
       <div>
-        <label className="block text-[10px] text-rmpg-400 mb-0.5">Context URL (optional)</label>
+        <label htmlFor="ff-firecrawltab-127" className="block text-[10px] text-rmpg-400 mb-0.5">Context URL (optional)</label>
         <input id="ff-firecrawltab-127"
           value={contextUrl} onChange={e => setContextUrl(e.target.value)}
           className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -10315,7 +10316,7 @@ function AssistantPanel() {
       {/* Input */}
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-0.5">Question *</label>
+          <label htmlFor="ff-firecrawltab-137" className="block text-[10px] text-rmpg-400 mb-0.5">Question *</label>
           <input id="ff-firecrawltab-137"
             value={question} onChange={e => setQuestion(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && ask()}
@@ -10330,7 +10331,7 @@ function AssistantPanel() {
           </label>
         </div>
         <div>
-          <label className="block text-[10px] text-rmpg-400 mb-0.5">Context URLs (optional, one per line)</label>
+          <label htmlFor="ff-firecrawltab-139" className="block text-[10px] text-rmpg-400 mb-0.5">Context URLs (optional, one per line)</label>
           <RichTextArea
             value={contextUrls} onChange={e => setContextUrls(e.target.value)}
             rows={3}
@@ -10706,7 +10707,7 @@ function SiteMigratorPanel() {
               </div>
               <span className="text-[10px] text-rmpg-400">{m.pages_crawled}/{m.pages_total} pages</span>
               <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${m.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : m.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
-                {m.status}
+                {(m.status || '').replace(/_/g, ' ')}
               </span>
               <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(m.created_at)}</span>
               <SmallBtn onClick={() => deleteMigration(m.id)} loading={deletingIds.has(m.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
@@ -10810,7 +10811,7 @@ function CodeRepoPanel() {
                 <span className="text-[10px] text-rmpg-400">{r.total_lines || 0} lines</span>
                 <span className="text-[10px] text-rmpg-400">{r.issues_found || 0} issues</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${r.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : r.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
-                  {r.status}
+                  {(r.status || '').replace(/_/g, ' ')}
                 </span>
                 <SmallBtn onClick={() => deleteRepo(r.id)} loading={deletingIds.has(r.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
               </div>

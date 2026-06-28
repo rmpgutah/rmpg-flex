@@ -33,6 +33,7 @@ import {
   type AlprVehicle,
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
+import { notConfigured } from '../utils/notConfigured';
 import { trustScore } from '../utils/plateTrust';
 import { verifyEdgeSignature } from '../utils/edgeHmac';
 import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
@@ -1076,7 +1077,7 @@ alpr.get('/vehicle/:plate/dossier', operational, async (c) => {
 // then routed through the same trust path as every other source (source_type='edge_lora').
 alpr.post('/edge', async (c) => {
   const secret = c.env.ALPR_EDGE_SECRET;
-  if (!secret) return c.json({ error: 'edge ingest not configured' }, 503);
+  if (!secret) return notConfigured(c, 'alpr_edge_secret_unset', { error: 'edge ingest not configured' });
   const ts = Number(c.req.header('X-Edge-Timestamp'));
   const sig = c.req.header('X-Edge-Signature') ?? '';
   const body = await c.req.text();

@@ -72,7 +72,7 @@ export default function CalibrationDialog({ open, value, onClose, onApply }: Pro
 
         <div className="space-y-3">
           <div>
-            <label className={labelCls}>On the page, a length of…</label>
+            <label htmlFor="ff-calibration-ref" className={labelCls}>On the page, a length of…</label>
             <div className="flex gap-1">
               <input id="ff-calibration-ref" type="number" min={0} step="any" value={refLength}
                 onChange={e => setRefLength(e.target.value)} className={inputCls} />
@@ -85,7 +85,7 @@ export default function CalibrationDialog({ open, value, onClose, onApply }: Pro
           </div>
 
           <div>
-            <label className={labelCls}>…equals, in the real world</label>
+            <label htmlFor="ff-calibration-real" className={labelCls}>…equals, in the real world</label>
             <div className="flex gap-1">
               <input id="ff-calibration-real" type="number" min={0} step="any" value={realLength}
                 onChange={e => setRealLength(e.target.value)} className={inputCls} />

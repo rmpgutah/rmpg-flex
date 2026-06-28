@@ -50,7 +50,7 @@ export const PROPERTY_TYPES: PropertyType[] = [
   { code: 'COM', label: 'Commercial',     color: '#f59e0b', match: ['commercial', 'business', 'retail', 'office', 'store', 'shop', 'restaurant', 'hotel', 'motel', 'bank', 'mall', 'gas station'] },
   { code: 'MIX', label: 'Mixed Use',      color: '#14b8a6', match: ['mixed'] },
   { code: 'RES', label: 'Residential',    color: '#22c55e', match: ['residen', 'single family', 'sfr', 'duplex', 'tri-plex', 'fourplex', 'apartment', 'multi', 'condo', 'townhome', 'townhouse', 'mobile', 'manufactured home', 'dwelling', 'home', 'house', 'cabin'] },
-  { code: 'VAC', label: 'Vacant',         color: 'var(--rmpg-400)', match: ['vacant', 'undeveloped', 'unimproved', 'empty', 'open space'] },
+  { code: 'VAC', label: 'Vacant',         color: '#9ca3af', match: ['vacant', 'undeveloped', 'unimproved', 'empty', 'open space'] },
 ];
 
 // Fallback / catch-all (never matched by keyword; returned when nothing fits).

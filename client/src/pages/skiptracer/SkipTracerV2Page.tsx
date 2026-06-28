@@ -17,6 +17,7 @@ import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import IconButton from '../../components/IconButton';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { toDisplayLabel } from '../../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 
@@ -1014,7 +1015,7 @@ export default function SkipTracerV2Page() {
               { key: 'state', label: 'State', icon: MapPin },
             ].map(field => (
               <div key={field.key}>
-                <label className="text-[8px] text-rmpg-500 uppercase tracking-wider block mb-0.5">{field.label}</label>
+                <label htmlFor="ff-skiptracerv2page-1" className="text-[8px] text-rmpg-500 uppercase tracking-wider block mb-0.5">{field.label}</label>
                 <input id="ff-skiptracerv2page-1"
                   type="text"
                   value={advancedFields[field.key] || ''}
@@ -1537,7 +1538,7 @@ export default function SkipTracerV2Page() {
                       {c.facilityState && <span className="text-[9px] text-rmpg-400 font-normal">({c.facilityState})</span>}
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1.5 text-rmpg-300">
-                      {c.status && <div><span className="text-rmpg-500">Status:</span> {c.status.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())}</div>}
+                      {c.status && <div><span className="text-rmpg-500">Status:</span> {toDisplayLabel(c.status)}</div>}
                       {c.bookingDate && <div><span className="text-rmpg-500">Booked:</span> {c.bookingDate}</div>}
                     </div>
                     {c.charges && c.charges.length > 0 && (
@@ -1703,7 +1704,7 @@ export default function SkipTracerV2Page() {
                                 className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm"
                                 style={{ backgroundColor: color + '22', color }}
                               >
-                                {(ev.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                                {toDisplayLabel(ev.category)}
                               </span>
                               {ev.date && (
                                 <span className="text-[9px] font-mono text-rmpg-400">{ev.date}</span>
@@ -1874,7 +1875,7 @@ export default function SkipTracerV2Page() {
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 rounded-sm"
                       style={{ backgroundColor: categoryColor(s.category) + '22', color: categoryColor(s.category) }}
-                    >{(s.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                    >{toDisplayLabel(s.category)}</span>
                     {s.costPerLookup > 0
                       ? <span className="text-[9px] text-rmpg-500 font-mono">${s.costPerLookup.toFixed(4)}/lookup</span>
                       : <span className="text-[9px] text-green-400 font-mono">FREE</span>}

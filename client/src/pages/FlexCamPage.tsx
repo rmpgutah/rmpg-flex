@@ -3,16 +3,21 @@
 // auto-refresh while any request is still downloading.
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
-  CheckCircle2, Clock, Download, FileText, Lock, Play, RefreshCw, Shield, Video,
+  AlertTriangle, CheckCircle2, Clock, Download, FileText, Lock, Play, RefreshCw, Shield, Video, Wrench,
 } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface Req {
   id: number; title: string | null; status: string;
   chunk_count: number; chunks_done: number;
   from_ts: number; to_ts: number;
   evidence_locked?: number; evidence_number?: string | null; classification?: string;
+  trip_id?: string | null;
 }
 
 interface CustodyEntry {
@@ -33,7 +38,7 @@ function fmtTs(ms: number, short = false): string {
 }
 
 function statusBadge(r: Req): { bg: string; ring: string; text: string; label: string; Icon: React.ElementType } {
-  if (r.evidence_locked) return { bg: 'bg-[#d4a017]/10', ring: 'border-[#d4a017]/50', text: 'text-[#d4a017]', label: r.evidence_number ?? 'EVIDENCE', Icon: Lock };
+  if (r.evidence_locked) return { bg: 'bg-brand-400/10', ring: 'border-brand-400/50', text: 'text-brand-400', label: r.evidence_number ?? 'EVIDENCE', Icon: Lock };
   switch (r.status) {
     case 'complete':   return { bg: 'bg-emerald-900/30', ring: 'border-emerald-700/50', text: 'text-emerald-400', label: 'READY',        Icon: CheckCircle2 };
     case 'fulfilling': return { bg: 'bg-blue-900/30',   ring: 'border-blue-700/50',   text: 'text-blue-400',    label: 'DOWNLOADING',  Icon: Clock };
@@ -47,7 +52,7 @@ function pct(r: Req): number {
 }
 
 function pctColor(r: Req): string {
-  if (r.evidence_locked)    return 'bg-[#d4a017]';
+  if (r.evidence_locked)       return 'bg-brand-400';
   if (r.status === 'complete') return 'bg-emerald-500';
   if (r.status === 'fulfilling') return 'bg-blue-500';
   return 'bg-amber-500';
@@ -56,15 +61,28 @@ function pctColor(r: Req): string {
 // ── Component ────────────────────────────────────────────────
 
 export default function FlexCamPage() {
+  const { user } = useAuth();
+  const canLock = user?.role === 'admin' || user?.role === 'manager';
+
   const [reqs, setReqs]         = useState<Req[]>([]);
   const [loading, setLoading]   = useState(true);
   const [lastFetch, setLastFetch] = useState(0);
   const [custodyOpen, setCustodyOpen]     = useState<Record<number, CustodyResult | null>>({});
   const [custodyLoading, setCustodyLoading] = useState<Record<number, boolean>>({});
+  const [custodyErr, setCustodyErr]       = useState<Record<number, string>>({});
   const [pkgResult, setPkgResult] = useState<Record<number, string>>({});
   const [pkgLoading, setPkgLoading] = useState<Record<number, boolean>>({});
+  const [repairResult, setRepairResult] = useState<Record<number, string>>({});
+  const [repairLoading, setRepairLoading] = useState<Record<number, boolean>>({});
+  const [highlightId, setHighlightId] = useState<number | null>(null);
+
+  // ── ConfirmDialog state ───────────────────────────────────
+  const [repairConfirm, setRepairConfirm] = useState<Req | null>(null);
+  const [courtPkgConfirm, setCourtPkgConfirm] = useState<Req | null>(null);
+
   const refsReqs = useRef(reqs);
   refsReqs.current = reqs;
+  const rowRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
 
   const fetchReqs = useCallback((quiet = false) => {
     if (!quiet) setLoading(true);
@@ -87,19 +105,139 @@ export default function FlexCamPage() {
     return () => clearInterval(timer);
   }, [fetchReqs]);
 
-  function toggleCustody(id: number) {
+  // ── URL deep-link: /flexcam?request_id=<n> or ?trip_id=<id> ────
+  // Cross-page contract: dispatch / cases / Body / Dash cameras can link
+  // "view FlexCam request" → /flexcam?request_id=42 and the operator lands on
+  // the row already in the auto-refresh table with its custody panel primed.
+  // One-shot per page load; the param is stripped after applying.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingRequestIdRef = useRef<string | null>(searchParams.get('request_id'));
+  const pendingTripIdRef = useRef<string | null>(searchParams.get('trip_id'));
+  const deepLinkConsumedRef = useRef(false);
+
+  useEffect(() => {
+    if (deepLinkConsumedRef.current || loading) return;
+
+    const reqTarget = pendingRequestIdRef.current;
+    const tripTarget = pendingTripIdRef.current;
+    if (!reqTarget && !tripTarget) return;
+
+    deepLinkConsumedRef.current = true;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (reqTarget) {
+          const numericId = Number(reqTarget);
+          if (Number.isFinite(numericId) && numericId > 0) {
+            let hit = reqs.find((r) => r.id === numericId);
+            if (!hit) {
+              await Promise.resolve(fetchReqs(true));
+              hit = refsReqs.current.find((r) => r.id === numericId);
+            }
+            if (!cancelled) {
+              if (!hit) {
+                console.warn(`[FlexCam] request_id=${numericId} not found`);
+              } else {
+                setHighlightId(numericId);
+                requestAnimationFrame(() => {
+                  const el = rowRefs.current.get(numericId);
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+                if (custodyOpen[numericId] === undefined) toggleCustody(numericId);
+                setTimeout(() => setHighlightId((h) => (h === numericId ? null : h)), 4000);
+              }
+            }
+          }
+        } else if (tripTarget) {
+          // trip_id: find the first matching request row and highlight it
+          const hit = reqs.find((r) => r.trip_id === tripTarget);
+          if (!cancelled) {
+            if (hit) {
+              setHighlightId(hit.id);
+              requestAnimationFrame(() => {
+                const el = rowRefs.current.get(hit.id);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              });
+              setTimeout(() => setHighlightId((h) => (h === hit.id ? null : h)), 4000);
+            } else {
+              console.warn(`[FlexCam] trip_id=${tripTarget} not found`);
+            }
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('request_id');
+          next.delete('trip_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reqs, loading]);
+
+  // ── N shortcut: refresh footage list ───────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
+      fetchReqs();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [fetchReqs]);
+
+  // ── Esc smart-cascade: close-newest-open-first ─────────────────────────
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (isTypingInField(e.target)) return;
+      // 0) ConfirmDialogs take priority
+      if (courtPkgConfirm) { e.stopPropagation(); setCourtPkgConfirm(null); return; }
+      if (repairConfirm)   { e.stopPropagation(); setRepairConfirm(null); return; }
+      // 1) Inline custody error banners
+      const errIds = Object.keys(custodyErr).map(Number);
+      if (errIds.length > 0) { e.stopPropagation(); setCustodyErr({}); return; }
+      // 2) Inline repair / package result banners
+      if (Object.keys(repairResult).length > 0 || Object.keys(pkgResult).length > 0) {
+        e.stopPropagation(); setRepairResult({}); setPkgResult({}); return;
+      }
+      // 3) Any open custody dropdown
+      const openIds = Object.keys(custodyOpen).map(Number);
+      if (openIds.length > 0) { e.stopPropagation(); setCustodyOpen({}); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [custodyErr, repairResult, pkgResult, custodyOpen, courtPkgConfirm, repairConfirm]);
+
+  const toggleCustody = useCallback((id: number) => {
     if (custodyOpen[id] !== undefined) {
       setCustodyOpen((p) => { const n = { ...p }; delete n[id]; return n; });
+      setCustodyErr((p) => { const n = { ...p }; delete n[id]; return n; });
       return;
     }
     setCustodyLoading((p) => ({ ...p, [id]: true }));
+    setCustodyErr((p) => { const n = { ...p }; delete n[id]; return n; });
     apiFetch<CustodyResult>(`/flexcam/footage/${id}/custody`)
       .then((res) => setCustodyOpen((p) => ({ ...p, [id]: res })))
-      .catch((e: Error) => { setCustodyOpen((p) => ({ ...p, [id]: null })); alert(`Custody: ${e.message}`); })
+      .catch((e: Error) => {
+        setCustodyOpen((p) => { const n = { ...p }; delete n[id]; return n; });
+        setCustodyErr((p) => ({ ...p, [id]: e.message }));
+      })
       .finally(() => setCustodyLoading((p) => ({ ...p, [id]: false })));
-  }
+  }, [custodyOpen]);
 
-  function requestCourtPkg(req: Req) {
+  function executeCourtPkg(req: Req) {
     if (pkgLoading[req.id]) return;
     setPkgLoading((p) => ({ ...p, [req.id]: true }));
     setPkgResult((p) => ({ ...p, [req.id]: '' }));
@@ -110,7 +248,8 @@ export default function FlexCamPage() {
         const a    = document.createElement('a');
         a.href = url; a.download = `court-package-${req.id}.json`; a.click();
         URL.revokeObjectURL(url);
-        setPkgResult((p) => ({ ...p, [req.id]: `✓ Signed ${new Date(res.signedAt).toLocaleString()} · ${res.payloadHash.slice(0, 12)}…` }));
+        const signed = parseTimestamp(res.signedAt);
+        setPkgResult((p) => ({ ...p, [req.id]: `✓ Signed ${signed.toLocaleString()} · ${res.payloadHash.slice(0, 12)}…` }));
       })
       .catch((e: Error & { status?: number }) => {
         setPkgResult((p) => ({
@@ -119,6 +258,24 @@ export default function FlexCamPage() {
         }));
       })
       .finally(() => setPkgLoading((p) => ({ ...p, [req.id]: false })));
+  }
+
+  function executeRepair(req: Req) {
+    if (repairLoading[req.id]) return;
+    setRepairLoading((p) => ({ ...p, [req.id]: true }));
+    setRepairResult((p) => ({ ...p, [req.id]: '' }));
+    apiFetch<{ repaired: number; message: string }>(`/flexcam/footage/${req.id}/repair`, { method: 'POST' })
+      .then((res) => {
+        setRepairResult((p) => ({ ...p, [req.id]: `✓ ${res.message}` }));
+        setTimeout(() => fetchReqs(true), 2000);
+      })
+      .catch((e: Error & { status?: number }) => {
+        setRepairResult((p) => ({
+          ...p,
+          [req.id]: e.status === 409 ? 'Locked — unlock first.' : `Error: ${e.message}`,
+        }));
+      })
+      .finally(() => setRepairLoading((p) => ({ ...p, [req.id]: false })));
   }
 
   // ── Summary counts ───────────────────────────────────────
@@ -148,7 +305,7 @@ export default function FlexCamPage() {
           { label: 'TOTAL',       value: total,       color: 'text-rmpg-300' },
           { label: 'DOWNLOADING', value: downloading, color: 'text-blue-400' },
           { label: 'READY',       value: ready,       color: 'text-emerald-400' },
-          { label: 'LOCKED',      value: locked,      color: 'text-[#d4a017]' },
+          { label: 'LOCKED',      value: locked,      color: 'text-brand-400' },
         ].map((s) => (
           <div key={s.label} className="bg-surface-sunken border border-border-default px-3 py-2">
             <div className={`text-[18px] font-bold tabular-nums ${s.color}`}>{s.value}</div>
@@ -157,22 +314,51 @@ export default function FlexCamPage() {
         ))}
       </div>
 
-      {/* ── Request cards ────────────────────────────────────── */}
-      {reqs.length === 0 && !loading && (
-        <div className="text-center py-12 text-rmpg-600 text-[11px]">
-          No trip footage yet. Full-drive recordings appear here automatically.
+      {/* ── Loading skeleton ──────────────────────────────── */}
+      {loading && reqs.length === 0 && (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-surface-raised border border-border-default p-3 space-y-2 animate-pulse">
+              <div className="flex items-start gap-2">
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-rmpg-700 w-2/3" />
+                  <div className="h-2 bg-rmpg-800 w-1/2" />
+                </div>
+                <div className="h-4 w-20 bg-rmpg-700" />
+              </div>
+              <div className="h-2 bg-rmpg-800" />
+              <div className="flex gap-1.5">
+                <div className="h-5 w-12 bg-rmpg-800" />
+                <div className="h-5 w-16 bg-rmpg-800" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
+      {/* ── No data ──────────────────────────────────────── */}
+      {!loading && reqs.length === 0 && (
+        <div className="text-center py-12 space-y-2">
+          <Video className="w-8 h-8 text-rmpg-700 mx-auto" />
+          <div className="text-[11px] text-rmpg-600">No trip footage yet.</div>
+          <div className="text-[9px] text-rmpg-700">Full-drive recordings appear here automatically.</div>
+        </div>
+      )}
+
+      {/* ── Request cards ────────────────────────────────────── */}
       <div className="space-y-2">
         {reqs.map((r) => {
           const sb   = statusBadge(r);
           const p    = pct(r);
           const pc   = pctColor(r);
 
+          const isHighlit = highlightId === r.id;
           return (
             <Fragment key={r.id}>
-              <div className="bg-surface-raised border border-border-default p-3 space-y-2">
+              <div
+                ref={(el) => { rowRefs.current.set(r.id, el); }}
+                className={`bg-surface-raised border p-3 space-y-2 transition-colors ${isHighlit ? 'border-brand-500 ring-1 ring-brand-500/40' : 'border-border-default'}`}
+              >
                 {/* Row 1: title + date + status badge */}
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
@@ -202,10 +388,30 @@ export default function FlexCamPage() {
 
                 {/* Row 3: action buttons */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <a href={`/flexcam/${r.id}`}
+                  <Link
+                    to={`/flexcam/${r.id}`}
                     className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2.5 py-1.5 bg-blue-900/40 border border-blue-700/60 text-blue-300 hover:bg-blue-800/50 transition-colors">
                     <Play className="w-2.5 h-2.5" />PLAY
-                  </a>
+                  </Link>
+                  {r.trip_id ? (
+                    <Link
+                      to={`/flexcam/trip/${r.trip_id}`}
+                      className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2.5 py-1.5 border border-brand-700/60 text-brand-300 hover:bg-brand-900/20 transition-colors"
+                    >
+                      <Play className="w-2.5 h-2.5" />PLAY TRIP
+                    </Link>
+                  ) : null}
+                  {/* REPAIR — visible on partial trips or stuck fulfilling; gated to admin/manager */}
+                  {canLock && (r.status === 'partial' || (r.status === 'fulfilling' && r.chunks_done < r.chunk_count)) && !r.evidence_locked && (
+                    <button
+                      onClick={() => setRepairConfirm(r)}
+                      disabled={repairLoading[r.id]}
+                      title="Reset missing chunks and retry download"
+                      className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2.5 py-1.5 border border-amber-700/60 text-amber-400 hover:bg-amber-900/20 transition-colors disabled:opacity-40">
+                      <Wrench className="w-2.5 h-2.5" />
+                      {repairLoading[r.id] ? '…' : 'REPAIR'}
+                    </button>
+                  )}
                   <button
                     onClick={() => toggleCustody(r.id)}
                     disabled={custodyLoading[r.id]}
@@ -213,25 +419,58 @@ export default function FlexCamPage() {
                     <Shield className="w-2.5 h-2.5" />
                     {custodyLoading[r.id] ? '…' : custodyOpen[r.id] !== undefined ? 'HIDE CUSTODY' : 'CUSTODY'}
                   </button>
+                  {/* COURT PKG — gated to admin/manager + requires evidence lock */}
+                  {canLock && (
+                    <button
+                      onClick={() => { if (r.evidence_locked) setCourtPkgConfirm(r); }}
+                      disabled={pkgLoading[r.id] || !r.evidence_locked}
+                      title={!r.evidence_locked ? 'Lock as evidence first' : undefined}
+                      className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2.5 py-1.5 border border-border-default text-rmpg-400 hover:text-brand-400 hover:border-brand-600 transition-colors disabled:opacity-30">
+                      <FileText className="w-2.5 h-2.5" />
+                      {pkgLoading[r.id] ? '…' : 'COURT PKG'}
+                    </button>
+                  )}
                   <button
-                    onClick={() => requestCourtPkg(r)}
-                    disabled={pkgLoading[r.id] || !r.evidence_locked}
-                    title={!r.evidence_locked ? 'Lock as evidence first' : undefined}
-                    className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2.5 py-1.5 border border-border-default text-rmpg-400 hover:text-brand-400 hover:border-brand-600 transition-colors disabled:opacity-30">
-                    <FileText className="w-2.5 h-2.5" />
-                    {pkgLoading[r.id] ? '…' : 'COURT PKG'}
-                  </button>
-                  <a href={`/api/flexcam/footage/${r.id}`} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-1 text-[9px] text-rmpg-500 hover:text-brand-400 px-1.5 py-1 ml-auto transition-colors">
+                    onClick={() => {
+                      apiFetch<unknown>(`/flexcam/footage/${r.id}`)
+                        .then((json) => {
+                          const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url; a.download = `footage-manifest-${r.id}.json`; a.click();
+                          setTimeout(() => URL.revokeObjectURL(url), 3000);
+                        })
+                        .catch(console.error);
+                    }}
+                    className="flex items-center gap-1 text-[9px] text-rmpg-500 hover:text-brand-400 px-1.5 py-1 ml-auto transition-colors"
+                    title="Download manifest JSON">
                     <Download className="w-2.5 h-2.5" />
-                  </a>
+                  </button>
                 </div>
 
-                {/* Court pkg result */}
+                {/* Repair / court pkg results */}
+                {repairResult[r.id] && (
+                  <div className={`text-[9px] font-mono px-2 py-1 border flex items-start gap-1.5 ${
+                    repairResult[r.id].startsWith('✓') ? 'text-emerald-400 border-emerald-900 bg-emerald-900/10' : 'text-amber-400 border-amber-900 bg-amber-900/10'}`}>
+                    {!repairResult[r.id].startsWith('✓') && <AlertTriangle className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />}
+                    {repairResult[r.id]}
+                  </div>
+                )}
                 {pkgResult[r.id] && (
                   <div className={`text-[9px] font-mono px-2 py-1 border ${
                     pkgResult[r.id].startsWith('✓') ? 'text-emerald-400 border-emerald-900 bg-emerald-900/10' : 'text-amber-400 border-amber-900 bg-amber-900/10'}`}>
                     {pkgResult[r.id]}
+                  </div>
+                )}
+                {custodyErr[r.id] && (
+                  <div className="text-[9px] font-mono px-2 py-1 border border-red-900 bg-red-900/10 text-red-400 flex items-start gap-1.5">
+                    <AlertTriangle className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
+                    <span className="flex-1">Custody load failed: {custodyErr[r.id]}</span>
+                    <button
+                      onClick={() => setCustodyErr((p) => { const n = { ...p }; delete n[r.id]; return n; })}
+                      className="text-red-300 hover:text-red-100"
+                      aria-label="Dismiss custody error"
+                    >×</button>
                   </div>
                 )}
               </div>
@@ -240,21 +479,21 @@ export default function FlexCamPage() {
               {custodyOpen[r.id] !== undefined && custodyOpen[r.id] !== null && (
                 <div className="border border-border-default bg-surface-sunken p-3 space-y-1.5 -mt-1">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Shield className="w-3 h-3 text-[#d4a017]" />
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-[#d4a017]">Chain of Custody</span>
+                    <Shield className="w-3 h-3 text-brand-400" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-brand-400">Chain of Custody</span>
                   </div>
                   {custodyOpen[r.id]!.custody.length === 0 ? (
                     <div className="text-[10px] text-rmpg-600">No custody entries.</div>
                   ) : (
                     custodyOpen[r.id]!.custody.map((entry, i) => (
                       <div key={i} className="flex items-baseline gap-2 py-0.5 border-b border-border-default last:border-0">
-                        <span className="text-[9px] font-bold uppercase text-[#d4a017] w-20 flex-shrink-0">{entry.action}</span>
+                        <span className="text-[9px] font-bold uppercase text-brand-400 w-20 flex-shrink-0">{entry.action}</span>
                         <span className="text-[10px] text-rmpg-300 flex-1 min-w-0">
                           {entry.actor_name ?? (entry.actor_user_id != null ? `#${entry.actor_user_id}` : '—')}
                           {entry.reason && <span className="ml-1 text-rmpg-500 text-[9px]">({entry.reason})</span>}
                         </span>
                         <span className="text-[9px] text-rmpg-600 flex-shrink-0 font-mono">
-                          {new Date(entry.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                          {parseTimestamp(entry.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                         </span>
                       </div>
                     ))
@@ -265,6 +504,30 @@ export default function FlexCamPage() {
           );
         })}
       </div>
+
+      {/* ── ConfirmDialogs ─────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={repairConfirm !== null}
+        onClose={() => setRepairConfirm(null)}
+        onConfirm={() => { if (repairConfirm) { executeRepair(repairConfirm); setRepairConfirm(null); } }}
+        title="Repair Footage Request"
+        message="This will reset missing segments and re-trigger the download from ClearPath. Are you sure?"
+        details={repairConfirm ? <span>Request {repairConfirm.id}: {repairConfirm.title ?? `REQUEST ${repairConfirm.id}`}</span> : undefined}
+        confirmLabel="REPAIR"
+        confirmVariant="warning"
+        isLoading={repairConfirm !== null && repairLoading[repairConfirm.id]}
+      />
+      <ConfirmDialog
+        isOpen={courtPkgConfirm !== null}
+        onClose={() => setCourtPkgConfirm(null)}
+        onConfirm={() => { if (courtPkgConfirm) { executeCourtPkg(courtPkgConfirm); setCourtPkgConfirm(null); } }}
+        title="Generate Court Package"
+        message="This will sign and download an evidence package for this footage request. Only locked evidence can be packaged."
+        details={courtPkgConfirm ? <span>Request {courtPkgConfirm.id}: {courtPkgConfirm.evidence_number ?? courtPkgConfirm.title ?? `REQUEST ${courtPkgConfirm.id}`}</span> : undefined}
+        confirmLabel="GENERATE"
+        confirmVariant="warning"
+        isLoading={courtPkgConfirm !== null && pkgLoading[courtPkgConfirm.id]}
+      />
     </div>
   );
 }

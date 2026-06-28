@@ -74,6 +74,7 @@ export default function CredentialFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<CredentialFormData>({
     storageKey: 'rmpg_credential_form',
@@ -102,6 +103,7 @@ export default function CredentialFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit(form);
   };
 
@@ -125,7 +127,7 @@ export default function CredentialFormModal({
     >
       {/* Officer */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-credentialformmodal-0" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Officer <span className="text-red-400">*</span>
         </label>
         <select id="ff-credentialformmodal-0"
@@ -144,7 +146,7 @@ export default function CredentialFormModal({
 
       {/* Credential Type */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-credentialformmodal-1" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Credential Type <span className="text-red-400">*</span>
         </label>
         <select id="ff-credentialformmodal-1"
@@ -163,7 +165,7 @@ export default function CredentialFormModal({
       {/* Number / Authority */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-credentialformmodal-2" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Credential Number
           </label>
           <input id="ff-credentialformmodal-2"
@@ -175,7 +177,7 @@ export default function CredentialFormModal({
           />
         </div>
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-credentialformmodal-3" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Issuing Authority
           </label>
           <input id="ff-credentialformmodal-3"
@@ -191,7 +193,7 @@ export default function CredentialFormModal({
       {/* Dates */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-credentialformmodal-4" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Issued Date
           </label>
           <input id="ff-credentialformmodal-4"
@@ -202,7 +204,7 @@ export default function CredentialFormModal({
           />
         </div>
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-credentialformmodal-5" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Expiry Date
           </label>
           <input id="ff-credentialformmodal-5"

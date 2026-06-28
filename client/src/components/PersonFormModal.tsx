@@ -240,6 +240,7 @@ export default function PersonFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<PersonFormData>({
     storageKey: 'rmpg_person_form',
@@ -427,7 +428,11 @@ export default function PersonFormModal({
   // still fails after retries we STOP and surface a recoverable choice — we
   // never silently save the record without the ID photo (the 2026-06-13 bug).
   const uploadThenSubmit = async (finalForm: PersonFormData) => {
-    if (!idImageFile) { onSubmit(finalForm); return; }
+    if (!idImageFile) {
+      signalSaved();
+      onSubmit(finalForm);
+      return;
+    }
     setUploadingImage(true);
     setUploadError(null);
     let uploaded = false;
@@ -449,7 +454,10 @@ export default function PersonFormModal({
     }
     // Only save once the photo is attached. On failure we hold here and let the
     // warn-and-choose panel drive the next step (retry / save-without / cancel).
-    if (uploaded) onSubmit(finalForm);
+    if (uploaded) {
+      signalSaved();
+      onSubmit(finalForm);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -466,6 +474,7 @@ export default function PersonFormModal({
     // editing, or empty for a new person) — just don't attach the file that
     // wouldn't upload. The officer can re-edit later to add it.
     setUploadError(null);
+    signalSaved();
     onSubmit(composeFinalForm());
   };
   const dismissUploadError = () => setUploadError(null);
@@ -885,7 +894,7 @@ export default function PersonFormModal({
 
           {/* ID Image Upload */}
           <div className="border-t border-rmpg-600 pt-3 mt-3">
-            <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">ID Photo / Image</label>
+            <label htmlFor="ff-personformmodal-0" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">ID Photo / Image</label>
             <input id="ff-personformmodal-0"
               ref={fileInputRef}
               type="file"
@@ -907,7 +916,7 @@ export default function PersonFormModal({
                     <button
                       type="button"
                       onClick={removeIdImage}
-                      className="absolute top-1 right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-1 right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                       title="Remove image">
                       <X className="w-3 h-3 text-rmpg-100" />
                     </button>

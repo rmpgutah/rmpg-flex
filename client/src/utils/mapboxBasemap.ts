@@ -10,16 +10,27 @@ export type BasemapVariant = 'dark' | 'satellite' | 'light';
 
 const GOLD = '#d4a017';
 
+// Dev-only warn keeps the "never throw" contract intact for production while
+// surfacing a real signal when the auditor wants to know why a layer didn't
+// take a paint/layout property (silent swallowing previously hid real bugs).
+function isDev(): boolean {
+  try { return !!(import.meta as any).env?.DEV; } catch { return false; }
+}
+
 function setPaint(map: mapboxgl.Map, id: string, prop: string, value: unknown): void {
   try {
     if (map.getLayer(id)) map.setPaintProperty(id, prop as never, value as never);
-  } catch { /* layer absent or prop invalid for this style — skip */ }
+  } catch (err) {
+    if (isDev()) console.warn('[basemap] setPaint failed', { id, prop, err });
+  }
 }
 
 function setLayout(map: mapboxgl.Map, id: string, prop: string, value: unknown): void {
   try {
     if (map.getLayer(id)) map.setLayoutProperty(id, prop as never, value as never);
-  } catch { /* skip */ }
+  } catch (err) {
+    if (isDev()) console.warn('[basemap] setLayout failed', { id, prop, err });
+  }
 }
 
 /** Apply theme to layers matched by predicate across all style layers. */

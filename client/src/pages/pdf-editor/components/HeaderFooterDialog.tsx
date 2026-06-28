@@ -39,21 +39,21 @@ export default function HeaderFooterDialog({ open, value, onClose, onApply }: Pr
 
         <div className="text-[9px] text-[#d4a017] uppercase tracking-wider mb-1 font-semibold">Header</div>
         <div className="grid grid-cols-3 gap-1.5 mb-3">
-          <div><label className={labelCls}>Left</label><input id="ff-hf-hl" value={cfg.headerLeft ?? ''} onChange={e => set('headerLeft', e.target.value)} className={inputCls} /></div>
-          <div><label className={labelCls}>Center</label><input id="ff-hf-hc" value={cfg.headerCenter ?? ''} onChange={e => set('headerCenter', e.target.value)} className={inputCls} /></div>
-          <div><label className={labelCls}>Right</label><input id="ff-hf-hr" value={cfg.headerRight ?? ''} onChange={e => set('headerRight', e.target.value)} className={inputCls} /></div>
+          <div><label htmlFor="ff-hf-hl" className={labelCls}>Left</label><input id="ff-hf-hl" value={cfg.headerLeft ?? ''} onChange={e => set('headerLeft', e.target.value)} className={inputCls} /></div>
+          <div><label htmlFor="ff-hf-hc" className={labelCls}>Center</label><input id="ff-hf-hc" value={cfg.headerCenter ?? ''} onChange={e => set('headerCenter', e.target.value)} className={inputCls} /></div>
+          <div><label htmlFor="ff-hf-hr" className={labelCls}>Right</label><input id="ff-hf-hr" value={cfg.headerRight ?? ''} onChange={e => set('headerRight', e.target.value)} className={inputCls} /></div>
         </div>
 
         <div className="text-[9px] text-[#d4a017] uppercase tracking-wider mb-1 font-semibold">Footer</div>
         <div className="grid grid-cols-3 gap-1.5 mb-3">
-          <div><label className={labelCls}>Left</label><input id="ff-hf-fl" value={cfg.footerLeft ?? ''} onChange={e => set('footerLeft', e.target.value)} className={inputCls} /></div>
-          <div><label className={labelCls}>Center</label><input id="ff-hf-fc" value={cfg.footerCenter ?? ''} onChange={e => set('footerCenter', e.target.value)} className={inputCls} /></div>
-          <div><label className={labelCls}>Right</label><input id="ff-hf-fr" value={cfg.footerRight ?? ''} onChange={e => set('footerRight', e.target.value)} className={inputCls} /></div>
+          <div><label htmlFor="ff-hf-fl" className={labelCls}>Left</label><input id="ff-hf-fl" value={cfg.footerLeft ?? ''} onChange={e => set('footerLeft', e.target.value)} className={inputCls} /></div>
+          <div><label htmlFor="ff-hf-fc" className={labelCls}>Center</label><input id="ff-hf-fc" value={cfg.footerCenter ?? ''} onChange={e => set('footerCenter', e.target.value)} className={inputCls} /></div>
+          <div><label htmlFor="ff-hf-fr" className={labelCls}>Right</label><input id="ff-hf-fr" value={cfg.footerRight ?? ''} onChange={e => set('footerRight', e.target.value)} className={inputCls} /></div>
         </div>
 
         <div className="flex items-end gap-2 mb-3">
           <div className="w-24">
-            <label className={labelCls}>Font size</label>
+            <label htmlFor="ff-hf-fs" className={labelCls}>Font size</label>
             <input id="ff-hf-fs" type="number" min={6} max={24} value={cfg.fontSize} onChange={e => set('fontSize', parseInt(e.target.value, 10) || 9)} className={inputCls} />
           </div>
           <div className="text-[9px] text-rmpg-600 pb-1">Tokens: {'{n}'} = page number, {'{total}'} = page count.</div>

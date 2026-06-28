@@ -15,6 +15,21 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 mapboxgl.accessToken =
   (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string || '').trim();
 
+// Redirect Mapbox SDK telemetry POSTs (turnstile/map.load/style.load/etc.) away
+// from events.mapbox.com to a same-origin sink that returns 204. Some operator
+// networks block events.mapbox.com (DNS sinkhole / ad blocker / corporate
+// proxy), and the SDK's retry-on-frame logic then spammed the dispatch console
+// with massive `net::ERR_CONNECTION_REFUSED` stack traces. Pages proxies
+// /api/* to the Worker, so a relative URL works for both web SPAs and the
+// Electron desktop wrapper.
+// Wrapped in try/catch because some unit-test mocks expose `config` as a
+// getter-only descriptor; the redirect is a cosmetic console-noise fix, not
+// load-bearing, so failing silently in tests is safe.
+try {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (mapboxgl as any).config.EVENTS_URL = '/api/mapbox/events/v2';
+} catch { /* mock object without writable config — ignore */ }
+
 // NOTE: PMTiles is NOT read client-side via addProtocol — Mapbox GL JS (unlike
 // MapLibre) has no addProtocol. The statewide overlays are served as native
 // XYZ vector tiles by the Worker (/api/tiles/<name>/{z}/{x}/{y}.mvt), which
@@ -116,7 +131,7 @@ export function monitorTileLoading(
         border-radius: 2px;
         z-index: 2;
         pointer-events: none;
-        animation: rmpg-recovery-pulse 1s ease-in-out infinite;
+        animation: rmpg-recovery-pulse 1.4s ease-in-out infinite;
       }
     `;
     document.head.appendChild(style);

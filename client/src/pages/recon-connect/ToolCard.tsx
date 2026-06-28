@@ -223,7 +223,8 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
   const loadCases = async () => {
     if (cases !== null) return;
     try {
-      const rows = await apiFetch<any[]>('/cases?limit=100');
+      const res = await apiFetch<{ data: any[] }>('/cases?limit=100');
+      const rows = res.data ?? [];
       setCases(rows.map((r) => ({ id: r.id, case_number: r.case_number, title: r.title, status: r.status })));
     } catch {
       setCases([]);
@@ -369,7 +370,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           const suggestions = targetHistory[arg.name] || [];
           return (
             <div key={arg.name} className="flex flex-col gap-1">
-              <label className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
+              <label htmlFor="ff-toolcard-0" className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
               <input id="ff-toolcard-0"
                 type="text"
                 placeholder={arg.placeholder}

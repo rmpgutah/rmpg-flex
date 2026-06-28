@@ -8,7 +8,7 @@ import {
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
   DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
-  Globe, ScanSearch, Film,
+  Globe, ScanSearch, Film, CalendarDays,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -62,13 +62,14 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
-      { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+      { path: '/nsopw', icon: UserX, label: 'Sex Offender Registry' },
     ],
   },
   {
     id: 'serve',
     label: 'Process Service',
     items: [
+      { path: '/serve-intake/scheduler', icon: CalendarDays, label: 'Scheduler' },
       { path: '/serve-intake', icon: Upload, label: 'Serve Intake' },
       { path: '/serve', icon: Briefcase, label: 'Process Server' },
     ],
@@ -114,6 +115,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/intel/reports', icon: FileText, label: 'Intel Products' },
       { path: '/intel/sources', icon: Network, label: 'Source Registry' },
       { path: '/intel/workbench', icon: Share2, label: 'Intel Workbench' },
+      { path: '/person-intel', icon: ScanSearch, label: 'Person Intel' },
     ],
   },
   {

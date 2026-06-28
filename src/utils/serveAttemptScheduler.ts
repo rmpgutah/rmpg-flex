@@ -54,43 +54,57 @@ export function denverNow(): string {
 
 // ── Schedule persistence ─────────────────────────────────────
 
+// Insert a single attempt window slot without touching existing slots.
+// Used by the auto-replan path where only the next slot is being added —
+// callers must NOT use persistAttemptSchedule there because that function
+// DELETEs all prior slots first (correct for initial schedule generation,
+// destructive for incremental append on a failed attempt).
+export async function appendAttemptSlot(
+  db: D1Database,
+  queueId: number,
+  w: AttemptWindow,
+  nowIso: string,
+): Promise<void> {
+  const nowDenver = epochToLocalDenverStr(Date.parse(nowIso));
+
+  const [rawStart, rawEnd] = w.window.split('–').map((s) => s.trim());
+  const windowStart = rawStart;
+  const windowEnd = rawEnd || rawStart;
+
+  const windowStartEpoch = localDenverToEpoch(w.date, windowStart);
+
+  // Random offset: 30 min (1800 s) to 6 h (21600 s)
+  const notifyBeforeSecs = Math.floor(Math.random() * (21600 - 1800 + 1)) + 1800;
+  const notifyAtEpoch = windowStartEpoch - notifyBeforeSecs * 1000;
+  const notifyAt = epochToLocalDenverStr(notifyAtEpoch);
+
+  // If the notification time is already past, still persist the slot
+  // (for calendar display) but mark notified=1 so the cron skips it.
+  const alreadyPast = notifyAt <= nowDenver ? 1 : 0;
+
+  await execute(
+    db,
+    `INSERT INTO serve_attempt_schedules
+       (queue_id, attempt_number, scheduled_date, window_start, window_end,
+        window_label, notify_at, notify_before_secs, notified)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    queueId, w.attempt, w.date,
+    windowStart, windowEnd,
+    w.focus, notifyAt, notifyBeforeSecs, alreadyPast,
+  );
+}
+
 export async function persistAttemptSchedule(
   db: D1Database,
   queueId: number,
   plan: AttemptWindow[],
   nowIso: string,
 ): Promise<void> {
-  const nowDenver = epochToLocalDenverStr(Date.parse(nowIso));
-
   // Clear any old slots for this queue entry (re-upload / re-generation).
   await execute(db, 'DELETE FROM serve_attempt_schedules WHERE queue_id = ?', queueId);
 
   for (const w of plan) {
-    const [rawStart, rawEnd] = w.window.split('–').map((s) => s.trim());
-    const windowStart = rawStart;
-    const windowEnd = rawEnd || rawStart;
-
-    const windowStartEpoch = localDenverToEpoch(w.date, windowStart);
-
-    // Random offset: 30 min (1800 s) to 6 h (21600 s)
-    const notifyBeforeSecs = Math.floor(Math.random() * (21600 - 1800 + 1)) + 1800;
-    const notifyAtEpoch = windowStartEpoch - notifyBeforeSecs * 1000;
-    const notifyAt = epochToLocalDenverStr(notifyAtEpoch);
-
-    // If the notification time is already past, still persist the slot
-    // (for calendar display) but mark notified=1 so the cron skips it.
-    const alreadyPast = notifyAt <= nowDenver ? 1 : 0;
-
-    await execute(
-      db,
-      `INSERT INTO serve_attempt_schedules
-         (queue_id, attempt_number, scheduled_date, window_start, window_end,
-          window_label, notify_at, notify_before_secs, notified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      queueId, w.attempt, w.date,
-      windowStart, windowEnd,
-      w.focus, notifyAt, notifyBeforeSecs, alreadyPast,
-    );
+    await appendAttemptSlot(db, queueId, w, nowIso);
   }
 }
 

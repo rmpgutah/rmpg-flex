@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { ClipboardList } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
+import OfficerPicker from '../components/OfficerPicker';
+import RecordPicker, { type LinkableRecordType } from '../components/RecordPicker';
 
 export interface TaskFormData {
   task_title: string; description: string; priority: string;
@@ -12,6 +14,9 @@ export interface TaskFormData {
 interface TaskFormModalProps {
   isOpen: boolean; onClose: () => void; onSubmit: (d: TaskFormData) => void;
   isSubmitting: boolean; editingRecord?: any; submitError?: string | null;
+  /** When false, the "urgent" priority option is hidden — only supervisor+
+   *  roles may escalate to urgent (enforced in sync with the backend). */
+  canEscalatePriority?: boolean;
 }
 
 const EMPTY_FORM: TaskFormData = {
@@ -20,8 +25,8 @@ const EMPTY_FORM: TaskFormData = {
   linked_entity_type: '', linked_entity_id: '', notes: '',
 };
 
-export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: TaskFormModalProps) {
-  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<TaskFormData>({
+export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError, canEscalatePriority = true }: TaskFormModalProps) {
+  const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<TaskFormData>({
     storageKey: 'rmpg_task_form', defaultValue: EMPTY_FORM, isActive: isOpen,
   });
 
@@ -46,7 +51,7 @@ export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting,
   };
 
   return (
-    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); onSubmit(form); }}
+    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); signalSaved(); onSubmit(form); }}
       title={editingRecord ? 'Edit Task' : 'New Task'} icon={ClipboardList}
       submitLabel={editingRecord ? 'Update' : 'Create'} isSubmitting={isSubmitting}
       isDirty={isDirty} draftRestored={wasRestored} onDiscardDraft={clearDraft}
@@ -58,7 +63,12 @@ export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting,
         <div className="grid grid-cols-2 gap-3">
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Priority</label>
             <select name="priority" className="select-dark mt-1" value={form.priority} onChange={handleChange}>
-              {['low','normal','high','urgent'].map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+              {(['low', 'normal', 'high'] as const).map(p => (
+                <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+              ))}
+              {canEscalatePriority && (
+                <option value="urgent">Urgent</option>
+              )}
             </select></div>
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Status</label>
             <select name="status" className="select-dark mt-1" value={form.status} onChange={handleChange}>
@@ -66,8 +76,14 @@ export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting,
             </select></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Assigned To (User ID)</label>
-            <input name="assigned_to" type="number" className="input-dark mt-1" value={form.assigned_to} onChange={handleChange} /></div>
+          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Assigned To</label>
+            <div className="mt-1">
+              <OfficerPicker
+                value={form.assigned_to ? Number(form.assigned_to) : null}
+                onChange={(id) => setForm(prev => ({ ...prev, assigned_to: id ? String(id) : '' }))}
+                placeholder="Search officer by name, badge, unit…"
+              />
+            </div></div>
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Due Date</label>
             <input name="due_date" type="date" className="input-dark mt-1" value={form.due_date} onChange={handleChange} /></div>
         </div>
@@ -75,9 +91,28 @@ export default function TaskFormModal({ isOpen, onClose, onSubmit, isSubmitting,
           <textarea name="description" rows={3} className="input-dark mt-1" value={form.description} onChange={handleChange} /></div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Linked Entity Type</label>
-            <input name="linked_entity_type" className="input-dark mt-1" placeholder="call, incident, case..." value={form.linked_entity_type} onChange={handleChange} /></div>
-          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Linked Entity ID</label>
-            <input name="linked_entity_id" type="number" className="input-dark mt-1" value={form.linked_entity_id} onChange={handleChange} /></div>
+            <select
+              name="linked_entity_type"
+              className="input-dark mt-1"
+              value={form.linked_entity_type}
+              onChange={(e) => setForm(prev => ({ ...prev, linked_entity_type: e.target.value, linked_entity_id: '' }))}
+            >
+              <option value="">None</option>
+              <option value="call">Call</option>
+              <option value="incident">Incident</option>
+              <option value="case">Case</option>
+              <option value="person">Person</option>
+              <option value="warrant">Warrant</option>
+              <option value="citation">Citation</option>
+            </select></div>
+          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Linked Entity</label>
+            <div className="mt-1">
+              <RecordPicker
+                type={(form.linked_entity_type as LinkableRecordType | '') || ''}
+                value={form.linked_entity_id ? Number(form.linked_entity_id) : null}
+                onChange={(id) => setForm(prev => ({ ...prev, linked_entity_id: id ? String(id) : '' }))}
+              />
+            </div></div>
         </div>
         <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
           <textarea name="notes" rows={2} className="input-dark mt-1" value={form.notes} onChange={handleChange} /></div>

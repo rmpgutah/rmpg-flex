@@ -20,7 +20,7 @@
 // ============================================================
 
 import { useRef, useState, useEffect, useLayoutEffect, useMemo, type ReactElement } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
@@ -28,6 +28,8 @@ import {
   Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Car, Building2, Activity, History,
   Route as RouteIcon, Grid3X3, type LucideIcon,
 } from 'lucide-react';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
 import MovementReportDrawer from './navigation/MovementReportDrawer';
 import CallHistoryDrawer from './navigation/CallHistoryDrawer';
 import TripsDrawer from './navigation/TripsDrawer';
@@ -465,9 +467,15 @@ function ContactRow({ id, sub, color, bearing, distMi, heading, threat }: {
 
 export default function NavigationPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuth();
+  /** GPX/CSV track export is gated to admin or manager. */
+  const canExport = user?.role === 'admin' || user?.role === 'manager';
   const isMobile = useIsMobile();
   const gps = useGpsTracking({ capture: true });
   const [viewMode, setViewMode] = useState<'drive' | 'modules'>('drive');
+  // ── Clear-route confirm dialog ──
+  const [clearRouteConfirmOpen, setClearRouteConfirmOpen] = useState(false);
 
   // ── Native full-screen (kiosk) toggle ──
   // The page already renders edge-to-edge (no app toolbar — it's a standalone
@@ -623,6 +631,8 @@ export default function NavigationPage() {
   const [logOpen, setLogOpen] = useState(false);   // CALL HISTORY drawer
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const myPosRef = useRef<{ lat: number; lng: number } | null>(null); // live pos for raw map handlers
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const deepLinkConsumedRef = useRef(false);
   const crimePopupRef = useRef<any>(null);                            // single open crime "DB visual"
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [crimeOn, setCrimeOn] = useState(true);
@@ -736,7 +746,10 @@ export default function NavigationPage() {
             for (const ly of (map.getStyle()?.layers || [])) {
               if (ly.type === 'background') map.setPaintProperty(ly.id, 'background-color', '#000000');
               else if (/water/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#04070d');
-              else if (/(^|[-_])(land|landcover|landuse)/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', 'var(--surface-overlay)');
+              // Mapbox paint properties don't resolve CSS variables — use the
+              // night-theme literal for --surface-overlay (#060b10). The map
+              // stays dark always per the .tactical-dark rule.
+              else if (/(^|[-_])(land|landcover|landuse)/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#060b10');
             }
           } catch { /* style recolor is cosmetic — never block the map */ }
           markerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
@@ -984,6 +997,31 @@ export default function NavigationPage() {
     routedCallRef.current = -1; // claim — an engine route is already active
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Deep-link: ?destination=<label>&lat=<val>&lng=<val> or ?lat=<val>&lng=<val> ──
+  // Runs once after map is ready. Strips params after consuming so refresh
+  // doesn't re-trigger the route. useRef guard prevents double-fire.
+  useEffect(() => {
+    if (!mapReady || deepLinkConsumedRef.current) return;
+    const latParam = searchParams.get('lat');
+    const lngParam = searchParams.get('lng');
+    const destParam = searchParams.get('destination');
+    if (latParam && lngParam) {
+      const lat = Number(latParam);
+      const lng = Number(lngParam);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        deepLinkConsumedRef.current = true;
+        const label = destParam || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        const next = new URLSearchParams(searchParams);
+        next.delete('lat'); next.delete('lng'); next.delete('destination');
+        setSearchParams(next, { replace: true });
+        if (gps.latitude != null && gps.longitude != null) {
+          routeToDestination(lat, lng, label).catch(() => {});
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady]);
 
   // ── Auto-route to the unit's assigned call, once the map is ready ──
   useEffect(() => {
@@ -1779,6 +1817,55 @@ export default function NavigationPage() {
   useEffect(() => () => { if (alertTimerRef.current) window.clearTimeout(alertTimerRef.current); }, []);
   useEffect(() => () => { if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current); }, []);
 
+  // ── N shortcut: open destination search + focus input ──
+  // ── Esc cascade: clearRouteConfirmOpen → searchOpen → tripOpen → logOpen → tripsOpen ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement)?.tagName;
+      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+      if (e.key === 'n' || e.key === 'N') {
+        if (isInput) return;
+        e.preventDefault();
+        setSearchOpen(true);
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        if (clearRouteConfirmOpen) {
+          e.stopPropagation();
+          setClearRouteConfirmOpen(false);
+          return;
+        }
+        if (searchOpen) {
+          e.stopPropagation();
+          setSearchOpen(false);
+          setSearchQuery('');
+          setSearchResults([]);
+          return;
+        }
+        if (tripOpen) {
+          e.stopPropagation();
+          setTripOpen(false);
+          return;
+        }
+        if (logOpen) {
+          e.stopPropagation();
+          setLogOpen(false);
+          return;
+        }
+        if (tripsOpen) {
+          e.stopPropagation();
+          setTripsOpen(false);
+          return;
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [clearRouteConfirmOpen, searchOpen, tripOpen, logOpen, tripsOpen]);
+
   // #64 — destination-reached confirmation banner. Crosses the same ~800 ft
   // approach threshold but shows a dismissible "Arrived" card (not just a tone),
   // once per destination. Re-arms when the destination changes or clears.
@@ -1903,6 +1990,12 @@ export default function NavigationPage() {
           Map unavailable ({mapError}) — instruments live below
         </div>
       )}
+      {!mapError && !mapReady && (
+        <div className="absolute inset-0 flex items-center justify-center text-rmpg-600 text-xs pointer-events-none">
+          <Crosshair className="w-4 h-4 mr-2 animate-pulse text-brand-500" />
+          Initializing map…
+        </div>
+      )}
 
       {/* Tactical viewport framing — corner brackets (non-interactive) for a
           command-display feel; sized to clear the header and dashboard. */}
@@ -1934,7 +2027,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setAlertsOn((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: alertsOn ? '#d4a017' : '#666' }}
+          style={{ color: alertsOn ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
           title={alertsOn ? 'Proximity alert tones ON' : 'Proximity alert tones OFF'}
           aria-label={alertsOn ? 'Mute proximity alerts' : 'Unmute proximity alerts'}
         >
@@ -1943,7 +2036,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setSearchOpen((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: searchOpen ? '#d4a017' : 'var(--rmpg-400)' }}
+          style={{ color: searchOpen ? 'var(--brand-400)' : 'var(--rmpg-400)' }}
           title="Search destination"
           aria-label="Search destination"
         >
@@ -1952,7 +2045,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setCrimeOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: crimeOn ? '#f59e0b' : '#666' }}
+          style={{ color: crimeOn ? 'var(--sev-warning)' : 'var(--rmpg-600)' }}
           title={crimeOn ? 'Hide crime layer' : 'Show crime layer (SLC + RMPG)'}
           aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
         >
@@ -1961,7 +2054,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setCrashOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: crashOn ? '#e5e7eb' : '#666' }}
+          style={{ color: crashOn ? 'var(--rmpg-200)' : 'var(--rmpg-600)' }}
           title={crashOn ? 'Hide traffic-crash layer' : 'Show SLC traffic crashes (travel hazards)'}
           aria-label={crashOn ? 'Hide traffic crashes' : 'Show traffic crashes'}
         >
@@ -1970,7 +2063,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setTrailOn((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: trailOn ? '#d4a017' : '#666' }}
+          style={{ color: trailOn ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
           title={trailOn ? `Hide patrol trail (${trailPtsCount} pts)` : 'Show patrol breadcrumb trail'}
           aria-label={trailOn ? 'Hide patrol trail' : 'Show patrol trail'}
         >
@@ -1979,7 +2072,7 @@ export default function NavigationPage() {
         <button
           onClick={() => { setTripOpen((v) => !v); if (!tripOpen) { setLogOpen(false); setTripsOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: tripOpen ? '#d4a017' : '#666' }}
+          style={{ color: tripOpen ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
           title="Movement report (speed, g-force, driving events)"
           aria-label="Toggle movement report"
         >
@@ -1988,7 +2081,7 @@ export default function NavigationPage() {
         <button
           onClick={() => { setTripsOpen((v) => !v); if (!tripsOpen) { setTripOpen(false); setLogOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: tripsOpen ? '#d4a017' : '#666' }}
+          style={{ color: tripsOpen ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
           title="Trip chain — per-trip movement reports for this unit"
           aria-label="Toggle trips drawer"
         >
@@ -1997,7 +2090,7 @@ export default function NavigationPage() {
         <button
           onClick={() => { setLogOpen((v) => !v); if (!logOpen) { setTripOpen(false); setTripsOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: logOpen ? '#d4a017' : '#666' }}
+          style={{ color: logOpen ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
           title="Call history log for this unit"
           aria-label="Toggle call history log"
         >
@@ -2038,6 +2131,7 @@ export default function NavigationPage() {
           <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
             <Search className="w-4 h-4 text-brand-400 shrink-0" />
             <input
+              ref={searchInputRef}
               autoFocus
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -2084,7 +2178,7 @@ export default function NavigationPage() {
                 className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500" style={{ borderRadius: 2 }}>
                 <Navigation2 className="w-3.5 h-3.5" />
               </button>
-              <button onClick={clearDestination} title="Clear route" aria-label="Clear route"
+              <button onClick={() => setClearRouteConfirmOpen(true)} title="Clear route" aria-label="Clear route"
                 className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-red-400 hover:border-red-500" style={{ borderRadius: 2 }}>
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -2335,6 +2429,19 @@ export default function NavigationPage() {
         </div>
       )}
 
+      {/* ── Clear-route confirm dialog ── */}
+      <ConfirmDialog
+        isOpen={clearRouteConfirmOpen}
+        onClose={() => setClearRouteConfirmOpen(false)}
+        onConfirm={() => { setClearRouteConfirmOpen(false); clearDestination(); }}
+        title="Clear Route"
+        message="Stop active guidance and clear the current destination?"
+        details={destLabel ? <span>{destLabel}</span> : undefined}
+        confirmLabel="Clear Route"
+        cancelLabel="Keep Route"
+        confirmVariant="warning"
+      />
+
       {/* ── Advanced instrument dashboard (bottom) ── */}
       {/* #68 — safe-area inset padding so controls clear rugged-tablet bezels. */}
       <div className="absolute bottom-0 inset-x-0 z-20" style={{ paddingBottom: 'env(safe-area-inset-bottom)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
@@ -2360,7 +2467,9 @@ export default function NavigationPage() {
             <HudSourceChip label={src.label} color={src.color} fixTick={trailPtsCount} />
             {parked && <HudParkedBadge />}
             <span className="flex-1" />
-            <HudExportCluster pointCount={trailPtsCount} onGpx={() => gpxExport(gps.getCapturedTrack())} onCsv={() => navCsvExport(gps.getCapturedTrack())} />
+            {canExport && (
+              <HudExportCluster pointCount={trailPtsCount} onGpx={() => gpxExport(gps.getCapturedTrack())} onCsv={() => navCsvExport(gps.getCapturedTrack())} />
+            )}
           </div>
 
           {/* #45/#66 — collapsed single-line summary (speed · heading · ETA) */}

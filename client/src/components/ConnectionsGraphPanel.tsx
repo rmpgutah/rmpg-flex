@@ -9,9 +9,9 @@ import { recordTypeLabel } from '../utils/recordTypeLabel';
 
 interface GraphNode {
   id: string;
-  type: 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident'
+  type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence' | 'case' | 'incident'
       | 'warrant' | 'citation' | 'arrest' | 'field_interview' | 'trespass_order' | 'serve_job'
-      | 'intel_report';
+      | 'call' | 'report' | 'intel_report';
   label: string;
   /** Original-case label for prose (label itself is uppercased for the node). */
   rawLabel?: string;
@@ -38,6 +38,7 @@ const NODE_COLORS: Record<string, string> = {
   incident: '#f59e0b',
   vehicle: '#10b981',
   property: '#8b5cf6',
+  business: '#f59e0b',
   evidence: '#ef4444',
   case: '#d4a017',
   warrant: '#dc2626',
@@ -46,6 +47,8 @@ const NODE_COLORS: Record<string, string> = {
   field_interview: '#64748b',
   trespass_order: '#a855f7',
   serve_job: '#14b8a6',
+  call: '#22d3ee',
+  report: '#ec4899',
   intel_report: '#e879f9',
 };
 
@@ -54,6 +57,7 @@ const NODE_RADIUS: Record<string, number> = {
   incident: 18,
   vehicle: 16,
   property: 16,
+  business: 16,
   evidence: 16,
   case: 16,
   warrant: 18,
@@ -62,6 +66,8 @@ const NODE_RADIUS: Record<string, number> = {
   field_interview: 14,
   trespass_order: 16,
   serve_job: 16,
+  call: 18,
+  report: 14,
   intel_report: 18,
 };
 

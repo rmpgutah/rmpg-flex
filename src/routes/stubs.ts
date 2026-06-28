@@ -57,11 +57,35 @@ stubs.get('/unread-count', (c) => c.json({ count: 0 }));
 stubs.get('/notifications', (c) => c.json([]));
 
 // ── Communication (mounted at /api/comms) ──
-stubs.get('/activity-feed', (c) => c.json({ data: [] }));
+stubs.get('/activity-feed', async (c) => {
+  if (c.get('userId') == null) return c.json({ data: [], total: 0, limit: 50, offset: 0 });
+  try {
+    const db = c.env.DB;
+    const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 200);
+    const offset = parseInt(c.req.query('offset') || '0', 10) || 0;
+    const [{ total }] = (await db.prepare('SELECT COUNT(*) as total FROM audit_log').all()).results as { total: number }[];
+    const rows = (await db.prepare(
+      `SELECT al.id, al.user_id, al.action, al.entity_type, al.entity_id, al.details,
+              al.ip_address, al.created_at,
+              u.full_name as user_name, u.badge_number, u.role as user_role
+       FROM audit_log al LEFT JOIN users u ON u.id = al.user_id
+       ORDER BY al.created_at DESC LIMIT ? OFFSET ?`
+    ).bind(limit, offset).all()).results as any[];
+    return c.json({ data: rows, total: total ?? 0, limit, offset });
+  } catch (err) {
+    console.error('GET /comms/activity-feed failed:', err);
+    return c.json({ data: [], total: 0, limit: 50, offset: 0 });
+  }
+});
 stubs.get('/bolos/active', (c) => c.json([]));
 
 // GET /api/comms/bolos/check?address=&subject=&vehicle= — active-BOLO match.
 stubs.get('/bolos/check', async (c) => {
+  // The same `stubs` router is also mounted at /api/diagnostics + /api/updates
+  // as auth:'public' (for /ui-trap and /check). authMiddleware only sets
+  // userId on the auth:'required' mounts, so this gate keeps live BOLO data
+  // (subject_description, vehicle_description, priority) from leaking publicly.
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const address = c.req.query('address') || '';
     const subject = c.req.query('subject') || '';
@@ -105,20 +129,221 @@ stubs.get('/bolos/check', async (c) => {
   }
 });
 
-// ── Comms: drafts (no table yet) ──
-stubs.get('/drafts', (c) => c.json([]));
+// ── Comms: messages CRUD (mounted at /api/comms) ──
+// GET /messages — inbox for the authenticated user (sent + received, paginated).
+stubs.get('/messages', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json({ error: 'unauthorized' }, 401);
+  try {
+    const db = c.env.DB;
+    const limit = Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 500);
+    const rows = (await db.prepare(
+      `SELECT m.*,
+              f.full_name  AS from_name, f.badge_number AS from_badge,
+              t.full_name  AS to_name
+       FROM messages m
+       LEFT JOIN users f ON f.id = m.from_user_id
+       LEFT JOIN users t ON t.id = m.to_user_id
+       WHERE (m.to_user_id = ? OR m.from_user_id = ? OR m.channel IN ('broadcast','dispatch','zone'))
+         AND (m.is_draft IS NULL OR m.is_draft = 0)
+       ORDER BY m.created_at DESC LIMIT ?`
+    ).bind(userId, userId, limit).all()).results as any[];
+    const [{ unreadCount }] = (await db.prepare(
+      `SELECT COUNT(*) as unreadCount FROM messages
+       WHERE (to_user_id = ? OR channel IN ('broadcast','dispatch','zone'))
+         AND read_at IS NULL AND (is_draft IS NULL OR is_draft = 0)`
+    ).bind(userId).all()).results as { unreadCount: number }[];
+    return c.json({ data: rows, unreadCount: unreadCount ?? 0 });
+  } catch (err) {
+    console.error('GET /comms/messages failed:', err);
+    return c.json({ data: [], unreadCount: 0 });
+  }
+});
+
+// POST /messages — send a new direct/broadcast message.
+stubs.post('/messages', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json({ error: 'unauthorized' }, 401);
+  try {
+    const db = c.env.DB;
+    const body = await c.req.json<{
+      to_user_id?: number | string | null;
+      channel?: string;
+      content?: string;
+      subject?: string;
+      priority?: string;
+      parent_id?: number | string | null;
+    }>();
+    const content = (body.content || '').trim();
+    if (!content) return c.json({ error: 'content is required' }, 400);
+    const channel = body.channel === 'broadcast' ? 'broadcast' : 'direct';
+    const toUserId = channel === 'broadcast' ? null : (body.to_user_id ? Number(body.to_user_id) : null);
+    // Derive thread_id: replies use the parent's thread_id or parent's own id.
+    let threadId: string | null = null;
+    if (body.parent_id) {
+      const parent = await db.prepare('SELECT id, thread_id FROM messages WHERE id = ?')
+        .bind(Number(body.parent_id)).first() as { id: number; thread_id: string | null } | null;
+      threadId = parent ? (parent.thread_id || String(parent.id)) : null;
+    }
+    const result = await db.prepare(
+      `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, parent_id, thread_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`
+    ).bind(
+      userId,
+      toUserId,
+      channel,
+      content,
+      (body.subject || '').trim() || null,
+      body.priority || 'routine',
+      body.parent_id ? Number(body.parent_id) : null,
+      threadId,
+    ).run();
+    const created = await db.prepare('SELECT * FROM messages WHERE id = ?')
+      .bind(result.meta.last_row_id).first();
+    return c.json(created, 201);
+  } catch (err) {
+    console.error('POST /comms/messages failed:', err);
+    return c.json({ error: 'Failed to send message' }, 500);
+  }
+});
+
+// PUT /messages/:id/read — mark a single message as read.
+stubs.put('/messages/:id/read', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json({ error: 'unauthorized' }, 401);
+  try {
+    const db = c.env.DB;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
+    await db.prepare(
+      `UPDATE messages SET read_at = datetime('now','localtime')
+       WHERE id = ? AND read_at IS NULL AND (to_user_id = ? OR channel IN ('broadcast','dispatch','zone'))`
+    ).bind(id, userId).run();
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('PUT /comms/messages/:id/read failed:', err);
+    return c.json({ error: 'Failed to mark read' }, 500);
+  }
+});
+
+// PUT /messages/:id/acknowledge — ACK a broadcast message (sets read_at).
+stubs.put('/messages/:id/acknowledge', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json({ error: 'unauthorized' }, 401);
+  try {
+    const db = c.env.DB;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
+    await db.prepare(
+      `UPDATE messages SET read_at = COALESCE(read_at, datetime('now','localtime'))
+       WHERE id = ? AND channel IN ('broadcast','dispatch','zone')`
+    ).bind(id).run();
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('PUT /comms/messages/:id/acknowledge failed:', err);
+    return c.json({ error: 'Failed to acknowledge' }, 500);
+  }
+});
+
+// DELETE /messages/:id — sender may delete their own messages.
+stubs.delete('/messages/:id', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json({ error: 'unauthorized' }, 401);
+  try {
+    const db = c.env.DB;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
+    const msg = await db.prepare('SELECT from_user_id FROM messages WHERE id = ?').bind(id).first() as { from_user_id: number } | null;
+    if (!msg) return c.json({ error: 'not found' }, 404);
+    if (msg.from_user_id !== userId) return c.json({ error: 'forbidden' }, 403);
+    await db.prepare('DELETE FROM messages WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /comms/messages/:id failed:', err);
+    return c.json({ error: 'Failed to delete message' }, 500);
+  }
+});
+
+// ── Comms: drafts (stored in the messages table with is_draft=1) ──
+stubs.get('/drafts', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json([]);
+  try {
+    const db = c.env.DB;
+    const rows = (await db.prepare(
+      `SELECT m.*, f.full_name AS from_name, t.full_name AS to_name
+       FROM messages m
+       LEFT JOIN users f ON f.id = m.from_user_id
+       LEFT JOIN users t ON t.id = m.to_user_id
+       WHERE m.from_user_id = ? AND m.is_draft = 1
+       ORDER BY m.draft_updated_at DESC, m.created_at DESC LIMIT 50`
+    ).bind(userId).all()).results as any[];
+    return c.json(rows);
+  } catch {
+    return c.json([]);
+  }
+});
+
+stubs.post('/drafts', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json({ error: 'unauthorized' }, 401);
+  try {
+    const db = c.env.DB;
+    const body = await c.req.json<{
+      to_user_id?: number | string | null;
+      channel?: string;
+      content?: string;
+      subject?: string;
+      priority?: string;
+    }>();
+    const content = (body.content || '').trim();
+    if (!content) return c.json({ error: 'content is required' }, 400);
+    const result = await db.prepare(
+      `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, is_draft, draft_updated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'), datetime('now','localtime'))`
+    ).bind(
+      userId,
+      body.to_user_id ? Number(body.to_user_id) : null,
+      body.channel || 'direct',
+      content,
+      (body.subject || '').trim() || null,
+      body.priority || 'routine',
+    ).run();
+    return c.json({ success: true, id: result.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /comms/drafts failed:', err);
+    return c.json({ error: 'Failed to save draft' }, 500);
+  }
+});
 
 // ── Comms: emergency broadcast ──
+// Sends as a broadcast message (channel='broadcast', priority='emergency').
+// Client sends { content, subject }; the old stub expected { message } — fixed.
 stubs.post('/emergency-broadcast', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json({ error: 'unauthorized' }, 401);
   try {
-    const body = await c.req.json<{ message?: string; priority?: string }>();
-    if (!body.message?.trim()) return c.json({ error: 'message required' }, 400);
-    return c.json({ success: true, broadcast_id: null, note: 'Emergency broadcast sent (notification fan-out not yet wired)' });
-  } catch { return c.json({ error: 'Broadcast failed' }, 500); }
+    const db = c.env.DB;
+    const body = await c.req.json<{ content?: string; message?: string; subject?: string; priority?: string }>();
+    // Accept both 'content' (current client) and 'message' (old stub compat).
+    const text = (body.content || body.message || '').trim();
+    if (!text) return c.json({ error: 'content is required' }, 400);
+    const result = await db.prepare(
+      `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, created_at)
+       VALUES (?, NULL, 'broadcast', ?, ?, 'emergency', datetime('now','localtime'))`
+    ).bind(userId, text, body.subject || 'EMERGENCY BROADCAST').run();
+    return c.json({ success: true, broadcast_id: result.meta.last_row_id });
+  } catch (err) {
+    console.error('POST /comms/emergency-broadcast failed:', err);
+    return c.json({ error: 'Broadcast failed' }, 500);
+  }
 });
 
 // ── Comms stats (mounted at /api/comms) — D1-backed aggregates ──
 stubs.get('/bolos/stats', async (c) => {
+  // See /bolos/check above — same router is also mounted public, so this
+  // aggregate over the live `bolos` table needs an in-handler gate.
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const db = c.env.DB;
     const [{ totalActive }] = (await db.prepare("SELECT COUNT(*) as totalActive FROM bolos WHERE status = 'active'").all()).results as any[];
@@ -140,6 +365,8 @@ stubs.get('/bolos/stats', async (c) => {
 });
 
 stubs.get('/messages/priority-stats', async (c) => {
+  // See /bolos/check / /bolos/stats — same public-mount leak surface.
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
   try {
     const db = c.env.DB;
     const byPriority = (await db.prepare("SELECT priority, COUNT(*) as total, SUM(CASE WHEN read_at IS NOT NULL THEN 1 ELSE 0 END) as read_count, ROUND(AVG(CASE WHEN read_at IS NOT NULL THEN (julianday(read_at) - julianday(created_at)) * 24 * 60 END), 1) as avg_read_time_minutes FROM messages GROUP BY priority ORDER BY CASE priority WHEN 'emergency' THEN 0 WHEN 'urgent' THEN 1 ELSE 2 END").all()).results as any[];

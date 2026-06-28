@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { retentionCutoffMs, isPurgeable } from '../src/utils/footage/retention';
+import { retentionCutoffMs, isPurgeable, isBeyondRequestHorizon } from '../src/utils/footage/retention';
 
 describe('retentionCutoffMs', () => {
   it('subtracts retention days from now (ms)', () => {
@@ -26,5 +26,25 @@ describe('isPurgeable', () => {
   });
   it('treats null/undefined evidence_locked as unlocked', () => {
     expect(isPurgeable({ created_ms: 1, evidence_locked: null }, cutoff)).toBe(true);
+  });
+});
+
+describe('isBeyondRequestHorizon', () => {
+  const now = Date.UTC(2026, 5, 22, 0, 0, 0); // 2026-06-22
+  const day = 86_400_000;
+  it('flags a window older than the horizon (the 500-storm windows)', () => {
+    expect(isBeyondRequestHorizon(now - 30 * day, now, 7)).toBe(true);
+  });
+  it('allows a window within the horizon (still retrievable)', () => {
+    expect(isBeyondRequestHorizon(now - 3 * day, now, 7)).toBe(false);
+  });
+  it('allows a now/future window', () => {
+    expect(isBeyondRequestHorizon(now, now, 7)).toBe(false);
+  });
+  it('disables the cap when maxAgeDays<=0 (request anything)', () => {
+    expect(isBeyondRequestHorizon(now - 365 * day, now, 0)).toBe(false);
+  });
+  it('boundary: exactly at the cutoff is not beyond', () => {
+    expect(isBeyondRequestHorizon(now - 7 * day, now, 7)).toBe(false);
   });
 });

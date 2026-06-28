@@ -358,9 +358,19 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
         {displayProperties.length === 0 && (
           <div className="text-center py-16">
             <Building2 className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No properties match.' : 'No properties found.'}</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No properties match.'
+                : showArchived
+                  ? 'No archived property records.'
+                  : 'No properties found.'}
+            </p>
             <p className="text-[10px] text-rmpg-600 mt-1">
-              {searchQuery ? 'Try broadening your search.' : 'Click "New Property" to add a record.'}
+              {searchQuery
+                ? 'Try broadening your search.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Property" to add a record.'}
             </p>
           </div>
         )}

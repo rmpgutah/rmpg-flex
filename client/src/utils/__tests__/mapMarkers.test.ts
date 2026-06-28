@@ -5,6 +5,7 @@ import {
   buildDotMarker,
   unitStatusColor,
   callPriorityColor,
+  isValidLngLat,
 } from '../mapMarkers';
 
 describe('unitStatusColor', () => {
@@ -58,5 +59,40 @@ describe('buildDotMarker', () => {
     const el = buildDotMarker({ color: '#d4a017', size: 12 });
     expect(el).toBeInstanceOf(HTMLElement);
     expect(el.style.background).toContain('rgb(212, 160, 23)');
+  });
+});
+
+describe('isValidLngLat', () => {
+  it('accepts a real Utah position', () => {
+    expect(isValidLngLat(-111.876, 40.760)).toBe(true);
+  });
+  it('rejects the exact (0, 0) ClearPath no-fix signature', () => {
+    expect(isValidLngLat(0, 0)).toBe(false);
+  });
+  it('accepts coordinates close to but not exactly (0, 0)', () => {
+    // Real Utah positions have >=4 significant digits; the rejection is intentionally exact.
+    expect(isValidLngLat(0.0001, 0.0001)).toBe(true);
+    expect(isValidLngLat(0, 0.0001)).toBe(true);
+    expect(isValidLngLat(0.0001, 0)).toBe(true);
+  });
+  it('rejects NaN / Infinity / -Infinity', () => {
+    expect(isValidLngLat(NaN, 40)).toBe(false);
+    expect(isValidLngLat(-111, NaN)).toBe(false);
+    expect(isValidLngLat(Infinity, 40)).toBe(false);
+    expect(isValidLngLat(-Infinity, 40)).toBe(false);
+    expect(isValidLngLat(-111, Infinity)).toBe(false);
+  });
+  it('rejects null / undefined / non-number types', () => {
+    expect(isValidLngLat(null, 40)).toBe(false);
+    expect(isValidLngLat(-111, null)).toBe(false);
+    expect(isValidLngLat(undefined, undefined)).toBe(false);
+    expect(isValidLngLat('-111', 40)).toBe(false);
+    expect(isValidLngLat(-111, '40')).toBe(false);
+  });
+  it('rejects out-of-globe values', () => {
+    expect(isValidLngLat(-111, 91)).toBe(false);
+    expect(isValidLngLat(-111, -91)).toBe(false);
+    expect(isValidLngLat(181, 40)).toBe(false);
+    expect(isValidLngLat(-181, 40)).toBe(false);
   });
 });
