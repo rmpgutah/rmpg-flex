@@ -276,8 +276,6 @@ export default function ForensicLabPage() {
   const { user } = useAuth();
   // admin/manager/supervisor can create and edit; admin/manager can delete
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
-  // Only admin/manager may delete or cancel a forensic case
-  const canDelete = ['admin', 'manager'].includes(user?.role ?? '');
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
