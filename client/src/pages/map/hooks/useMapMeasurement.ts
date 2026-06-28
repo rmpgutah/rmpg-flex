@@ -57,9 +57,7 @@ function computeSphericalArea(path: { lat: number; lng: number }[]): number {
 
 function formatDistance(meters: number): { value: number; unit: string; display: string } {
   const feet = meters * 3.28084;
-  if (feet < 1000) {
-    return { value: feet, unit: 'ft', display: `${Math.round(feet).toLocaleString()} ft` };
-  }
+  if (feet < 1000) return { value: feet, unit: 'ft', display: `${Math.round(feet).toLocaleString()} ft` };
   const miles = feet / 5280;
   return { value: miles, unit: 'mi', display: `${miles.toFixed(2)} mi` };
 }
@@ -76,9 +74,7 @@ function formatAreaMetric(sqMeters: number): string {
 
 function formatArea(sqMeters: number): { value: number; unit: string; display: string } {
   const sqFeet = sqMeters * 10.7639;
-  if (sqFeet < 43560) {
-    return { value: sqFeet, unit: 'sq ft', display: `${Math.round(sqFeet).toLocaleString()} sq ft` };
-  }
+  if (sqFeet < 43560) return { value: sqFeet, unit: 'sq ft', display: `${Math.round(sqFeet).toLocaleString()} sq ft` };
   const acres = sqFeet / 43560;
   return { value: acres, unit: 'acres', display: `${acres.toFixed(2)} acres` };
 }
@@ -112,15 +108,13 @@ export function useMapMeasurement(): MeasurementState {
 
   const renderSegmentLabels = useCallback((segs: SegmentInfo[]) => {
     clearSegmentLabels();
-    const map = mapRef.current;
+    const m = mapRef.current;
     const path = pathRef.current;
-    if (!map || segs.length === 0) return;
-
+    if (!m || segs.length === 0) return;
     segs.forEach((seg) => {
       const p1 = path[seg.fromIdx];
       const p2 = path[seg.toIdx];
       if (!p1 || !p2) return;
-      const midLat = (p1.lat + p2.lat) / 2;
       const midLng = (p1.lng + p2.lng) / 2;
 
       const popup = new mapboxgl.Popup({
@@ -149,9 +143,7 @@ export function useMapMeasurement(): MeasurementState {
         totalMeters += segMeters;
         const segFeet = segMeters * 3.28084;
         segs.push({
-          fromIdx: i - 1,
-          toIdx: i,
-          meters: segMeters,
+          fromIdx: i - 1, toIdx: i, meters: segMeters,
           displayFt: segFeet < 1000 ? `${Math.round(segFeet)} ft` : `${(segFeet / 5280).toFixed(2)} mi`,
           displayM: formatDistanceMetric(segMeters),
         });
@@ -168,7 +160,6 @@ export function useMapMeasurement(): MeasurementState {
         const perimMeters = totalMeters + closingMeters;
         const perimFmt = formatDistance(perimMeters);
         setPerimeterDisplay(`Perimeter: ${perimFmt.display} / ${formatDistanceMetric(perimMeters)}`);
-
         const sqm = computeSphericalArea(path);
         const areaFmt = formatArea(sqm);
         setAreaDisplay(`Area: ${areaFmt.display} / ${formatAreaMetric(sqm)}`);
@@ -193,9 +184,7 @@ export function useMapMeasurement(): MeasurementState {
         perimMeters += segMeters;
         const segFeet = segMeters * 3.28084;
         segs.push({
-          fromIdx: i - 1,
-          toIdx: i,
-          meters: segMeters,
+          fromIdx: i - 1, toIdx: i, meters: segMeters,
           displayFt: segFeet < 1000 ? `${Math.round(segFeet)} ft` : `${(segFeet / 5280).toFixed(2)} mi`,
           displayM: formatDistanceMetric(segMeters),
         });
@@ -257,6 +246,19 @@ export function useMapMeasurement(): MeasurementState {
       vertexMarkersRef.current.push(marker);
     }
 
+    // Update vertex layer
+    removeSourceAndLayer(m, VERTEX_LAYER, VERTEX_SOURCE);
+    const vertexFeatures: GeoJSON.Feature[] = pathRef.current.map(p => ({
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+    }));
+    m.addSource(VERTEX_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: vertexFeatures } });
+    m.addLayer({
+      id: VERTEX_LAYER, type: 'circle', source: VERTEX_SOURCE,
+      paint: { 'circle-color': '#d4a017', 'circle-radius': 5, 'circle-stroke-color': '#050505', 'circle-stroke-width': 2 },
+    });
+
     updateMeasurement();
   }, [updateMeasurement]);
 
@@ -306,9 +308,8 @@ export function useMapMeasurement(): MeasurementState {
     updateMeasurement();
 
     if (pathRef.current.length === 0) {
-      const m = modeRef.current;
-      setMeasureDisplay(m === 'distance' ? '0 ft' : '0 sq ft');
-      setMeasureDisplayMetric(m === 'distance' ? '0 m' : '0 sq m');
+      setMeasureDisplay('');
+      setMeasureDisplayMetric('');
       setSegments([]);
       setPerimeterDisplay('');
       setAreaDisplay('');
@@ -338,8 +339,7 @@ export function useMapMeasurement(): MeasurementState {
     removeListeners();
     removeOverlays();
     pathRef.current = [];
-
-    mapRef.current = map;
+    mapRef.current = m;
     modeRef.current = mode;
     setMeasureMode(mode);
     setMeasuring(true);
@@ -373,19 +373,8 @@ export function useMapMeasurement(): MeasurementState {
   }, [removeListeners, removeOverlays]);
 
   return {
-    measuring,
-    measureMode,
-    measureValue,
-    measureUnit,
-    measureDisplay,
-    measureDisplayMetric,
-    segments,
-    perimeterDisplay,
-    areaDisplay,
-    pointCount,
-    startMeasure,
-    finishMeasurement,
-    clearMeasurement,
-    undoLastPoint,
+    measuring, measureMode, measureValue, measureUnit, measureDisplay, measureDisplayMetric,
+    segments, perimeterDisplay, areaDisplay, pointCount,
+    startMeasure, finishMeasurement, clearMeasurement, undoLastPoint,
   };
 }

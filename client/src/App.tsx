@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
+import { useDispatchVoice } from './hooks/useDispatchVoice';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { NavTripProvider } from './context/NavTripContext';
 import { ToastProvider } from './components/ToastProvider';
@@ -428,6 +429,7 @@ function AppRoutes() {
 
   return (
     <>
+      {isAuthenticated && <DispatchVoiceMount />}
       {isAuthenticated && <GlobalSearch />}
       {isAuthenticated && <KeyboardShortcuts />}
       <Suspense fallback={<LoadingSplash message="Loading module" />}>

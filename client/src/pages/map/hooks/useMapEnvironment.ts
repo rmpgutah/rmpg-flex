@@ -1,28 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 
 type LightingCondition = 'daylight' | 'twilight' | 'darkness';
 
-interface SunriseSunset {
-  sunrise: string;
-  sunset: string;
-  minutesToNextTransition: number;
-  nextTransition: 'sunrise' | 'sunset';
-}
+interface SunriseSunset { sunrise: string; sunset: string; minutesToNextTransition: number; nextTransition: 'sunrise' | 'sunset'; }
 
-interface WeatherHazards {
-  freezing: boolean;
-  highWind: boolean;
-  rain: boolean;
-  snow: boolean;
-  description: string;
-}
+interface WeatherHazards { freezing: boolean; highWind: boolean; rain: boolean; snow: boolean; description: string; }
 
-interface WindCondition {
-  speed: number;
-  direction: number;
-  cardinal: string;
-}
+interface WindCondition { speed: number; direction: number; cardinal: string; }
 
 interface UseMapEnvironmentReturn {
   lighting: LightingCondition;
@@ -70,7 +56,6 @@ function getLightingCondition(elevation: number): LightingCondition {
 
 function findNextTransition(now: Date, lat: number, lng: number): { minutes: number; type: 'sunrise' | 'sunset' } {
   const STEP_MS = 2 * 60 * 1000;
-  const MAX_MS = 24 * 60 * 60 * 1000;
   const startMs = now.getTime();
   let prevElev = solarElevation(now, lat, lng);
   for (let ms = startMs + STEP_MS; ms <= startMs + MAX_MS; ms += STEP_MS) {
@@ -113,7 +98,6 @@ export function useMapEnvironment(
   const [visibilityRange, setVisibilityRange] = useState(10000);
   const [schoolZoneActive, setSchoolZoneActive] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -126,7 +110,6 @@ export function useMapEnvironment(
     const lightCond = getLightingCondition(elev);
     setLighting(lightCond);
     setLowVisibility(lightCond !== 'daylight');
-
     const transition = findNextTransition(now, SLC_LAT, SLC_LNG);
     setSunriseSunset({ sunrise: '', sunset: '', minutesToNextTransition: transition.minutes, nextTransition: transition.type });
     setSchoolZoneActive(isSchoolZoneTime());
@@ -140,9 +123,7 @@ export function useMapEnvironment(
           setSunriseSunset((prev) => prev ? { ...prev, sunrise: lightData.sunrise || '', sunset: lightData.sunset || '' } : prev);
         }
       }
-    } catch (err) {
-      console.warn('[useMapEnvironment] Light data fetch failed, using client-side fallback:', err);
-    }
+    } catch { /* ignore */ }
 
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -157,12 +138,10 @@ export function useMapEnvironment(
         const windSpeed = Math.round(c.wind_speed_10m);
         const windDir = c.wind_direction_10m;
         const code = c.weather_code;
-
         const freezing = temp < 32;
         const highWind = windSpeed > 30;
         const rain = RAIN_CODES.has(code);
         const snow = SNOW_CODES.has(code);
-
         const parts: string[] = [];
         if (freezing) parts.push('Freezing');
         if (highWind) parts.push(`High Wind (${windSpeed}mph)`);
@@ -191,17 +170,11 @@ export function useMapEnvironment(
 
   useEffect(() => {
     if (!enabled) {
-      setLighting('daylight');
-      setSunriseSunset(null);
-      setLowVisibility(false);
-      setWeatherHazards(DEFAULT_WEATHER);
-      setIcyRoad(false);
-      setWindCondition(null);
-      setVisibilityRange(10000);
-      setSchoolZoneActive(false);
+      setLighting('daylight'); setSunriseSunset(null); setLowVisibility(false);
+      setWeatherHazards(DEFAULT_WEATHER); setIcyRoad(false); setWindCondition(null);
+      setVisibilityRange(10000); setSchoolZoneActive(false);
       return;
     }
-
     calculate();
     intervalRef.current = setInterval(calculate, REFRESH_INTERVAL);
 
