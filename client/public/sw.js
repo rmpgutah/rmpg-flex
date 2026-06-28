@@ -106,8 +106,6 @@
 // v1129: Text Editor — ConfirmDialog replaces window.confirm for revert, ?doc_id= deep-link alias (strip after mount), N shortcut (navigate to Documents when no file loaded), Esc cascade closes revert dialog, empty state for no-file, role gates (supervisor+ can edit/save; others view-only), #d4a017 → text-brand-gold-500 token.
 // v1128: Shift Plans — useSearchParams replaces window.history.replaceState for deep-link strip (?plan_id=/?date=), canManage role gate (admin/manager/supervisor) on create/edit/delete/archive/clear-all/N-shortcut, N shortcut gated, context menu mutate items gated.
 // v1127: Use of Force — audit pass: e.stopPropagation() added to Esc cascade branches (form/reviewDialog/error/selection/filters), header comment updated to v1127; all prior features (ConfirmDialog, ?uof_id= deep-link, N shortcut, role-gated review, 3-state empty, brand tokens) verified clean.
-// v1126: Plate Log — role gates (canManage: admin/manager/supervisor) on Confirm/Reject/Bulk actions, ConfirmDialog for bulk ops, 3-state empty (loading/no-data/no-results-for-filter), brand-gold-500 tokens replace all hardcoded #d4a017, text-rmpg-400 replaces #888888.
-// v1125: NSOPW Offender Registry — deep-link setSearchParams strip, N shortcut, Esc cascade, parseTimestamp for last-run display.
 // v1124: Court Tracker — role gates (canManage: admin/manager), ?case_id= deep-link, API shape fixes (upcoming/single-event/conflicts/stats/calendar wrapped in {data}), byType event_type key fix, case_id filter on GET /events.
 // v1123: Code Enforcement — role gates (canEnforce: admin/manager/supervisor) gate
 //        New button, N shortcut, void/refer violation, cancel tow; ConfirmDialog for
