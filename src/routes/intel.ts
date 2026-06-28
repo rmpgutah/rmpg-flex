@@ -569,20 +569,32 @@ intel.post('/quick-capture', operational, async (c) => {
     } catch (err: any) { console.error('[quick-capture] vehicle failed:', err?.message); }
   }
 
+  // Linked dispatch call / incident — when the client launches the page
+  // with ?call_id=… / ?incident_id=… (page 56 audit), stamp the FI so
+  // the call's / incident's timeline picks it up. Schema columns
+  // (associated_call_id / associated_incident_id) already exist on
+  // field_interviews (see migrations/baseline/schema.sql). Coerce
+  // through Number() so a stray string doesn't trip D1's strict types.
+  const linkedCallId = Number.isFinite(Number(b?.call_id)) ? Number(b.call_id) : null;
+  const linkedIncidentId = Number.isFinite(Number(b?.incident_id)) ? Number(b.incident_id) : null;
+
   let fiId: number | null = null;
   try {
     const r = await execute(db,
       `INSERT INTO field_interviews
          (person_id, vehicle_id, officer_id, location, latitude, longitude,
           contact_reason, narrative, subject_first_name, subject_last_name,
-          subject_dob, subject_description, vehicle_plate, status, created_at, interview_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted', datetime('now'), datetime('now'))`,
+          subject_dob, subject_description, vehicle_plate,
+          associated_call_id, associated_incident_id,
+          status, created_at, interview_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted', datetime('now'), datetime('now'))`,
       personId, vehicleId, userId, b?.location || null,
       Number.isFinite(Number(b?.lat)) ? Number(b.lat) : null,
       Number.isFinite(Number(b?.lng)) ? Number(b.lng) : null,
       b?.contact_reason || 'field contact', b?.narrative || null,
       first || null, last || null, b?.dob || null, b?.subject_description || null,
-      plate || null);
+      plate || null,
+      linkedCallId, linkedIncidentId);
     fiId = r.meta.last_row_id as number;
     await execute(db,
       `UPDATE field_interviews SET fi_number = 'FI-' || strftime('%Y%m%d', 'now') || '-' || id WHERE id = ? AND (fi_number IS NULL OR fi_number = '')`,
@@ -604,7 +616,16 @@ intel.post('/quick-capture', operational, async (c) => {
     } catch (err: any) { console.error('[quick-capture] notify failed:', err?.message); }
   }
 
-  return c.json({ success: true, person_id: personId, person_reused: personReused, vehicle_id: vehicleId, fi_id: fiId, hits });
+  return c.json({
+    success: true,
+    person_id: personId,
+    person_reused: personReused,
+    vehicle_id: vehicleId,
+    fi_id: fiId,
+    associated_call_id: linkedCallId,
+    associated_incident_id: linkedIncidentId,
+    hits,
+  });
 });
 
 // ─── Interaction audio recording (Wave 3b) ───────────────────

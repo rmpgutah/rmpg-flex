@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import PlateLogPage from '../PlateLogPage';
+import { ToastProvider } from '../../components/ToastProvider';
 
 const apiFetch = vi.fn(async (path: string, init?: RequestInit) => {
   if (init?.method === 'POST') return {
@@ -24,6 +25,10 @@ vi.mock('../../hooks/useApi', () => ({
 // SightingsMap pulls in Mapbox GL (no WebGL in jsdom) — stub it; the map isn't
 // under test here.
 vi.mock('../../components/SightingsMap', () => ({ default: () => null }));
+// useAuth is used for role-gating (canManage); stub it as admin for tests.
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { role: 'admin', full_name: 'Test Admin', username: 'testadmin' } }),
+}));
 
 describe('PlateLogPage', () => {
   beforeEach(() => {
@@ -31,7 +36,7 @@ describe('PlateLogPage', () => {
   });
 
   it('logs a plate and renders the critical hit banner + recent sightings', async () => {
-    render(<MemoryRouter><PlateLogPage /></MemoryRouter>);
+    render(<MemoryRouter><ToastProvider><PlateLogPage /></ToastProvider></MemoryRouter>);
     await waitFor(() => expect(screen.getByText('XYZ789')).toBeInTheDocument());
     fireEvent.change(screen.getByPlaceholderText('PLATE'), { target: { value: 'abc123' } });
     fireEvent.click(screen.getByText('LOG + CHECK'));

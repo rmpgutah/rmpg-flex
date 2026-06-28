@@ -6,7 +6,7 @@ import { useMenuActions } from '../../utils/contextMenuActions';
 import { useAuth } from '../../context/AuthContext';
 import type {
   Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement,
-  Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera,
+  Deployment, CoverageGap, OfficerEquipment, BodyCamera,
   BodyCamVideo, DashcamEvent, CpgDeviceMapping,
 } from '../../types';
 import PanelTitleBar from '../../components/PanelTitleBar';
@@ -185,8 +185,6 @@ export default function PersonnelPage() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [deploymentsLoading, setDeploymentsLoading] = useState(false);
   const [coverageGaps, setCoverageGaps] = useState<CoverageGap[]>([]);
-  const [analytics, setAnalytics] = useState<PersonnelAnalytics | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   // Equipment data
   const [equipment, setEquipment] = useState<OfficerEquipment[]>([]);
@@ -201,10 +199,7 @@ export default function PersonnelPage() {
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
   const [editingVideo, setEditingVideo] = useState<BodyCamVideo | null>(null);
 
-  // Dash camera data (ClearPathGPS)
-  const [dashcamEvents, setDashcamEvents] = useState<DashcamEvent[]>([]);
-  const [deviceMappings, setDeviceMappings] = useState<CpgDeviceMapping[]>([]);
-  const [dashcamLoading, setDashcamLoading] = useState(false);
+  // Per-officer dashcam data (fetched on detail-tab switch)
   const [officerDashcamEvents, setOfficerDashcamEvents] = useState<DashcamEvent[]>([]);
   const [officerDeviceMapping, setOfficerDeviceMapping] = useState<CpgDeviceMapping | null>(null);
   const [officerDashcamLoading, setOfficerDashcamLoading] = useState(false);
@@ -801,22 +796,6 @@ export default function PersonnelPage() {
     ]);
     setBodyCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
     setBodyCamVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
-  };
-
-  const refreshDashcamData = async () => {
-    setDashcamLoading(true);
-    try {
-      const [events, mappings] = await Promise.all([
-        apiFetch<any[]>('/clearpathgps/dashcam-events'),
-        apiFetch<any[]>('/clearpathgps/mappings'),
-      ]);
-      setDashcamEvents(Array.isArray(events) ? events : []);
-      setDeviceMappings(Array.isArray(mappings) ? mappings : []);
-    } catch {
-      addToast('Failed to refresh dash camera data', 'error');
-    } finally {
-      setDashcamLoading(false);
-    }
   };
 
   const handleBodyCameraSubmit = async (data: BodyCameraFormData) => {
@@ -1477,6 +1456,15 @@ export default function PersonnelPage() {
         } else if (activeTab === 'equipment') {
           e.preventDefault();
           openAddEquipment();
+        } else if (activeTab === 'credentials') {
+          e.preventDefault();
+          openAddCredential();
+        } else if (activeTab === 'training') {
+          e.preventDefault();
+          openAddTraining();
+        } else if (activeTab === 'deployment') {
+          e.preventDefault();
+          openAddDeployment();
         }
       }
     };

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BarChart3,
@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Check,
   RotateCcw,
+  Trash2,
   X,
 } from 'lucide-react';
 import {
@@ -35,9 +36,11 @@ import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { localToday, dateToLocalYMD, parseTimestamp } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
@@ -100,12 +103,12 @@ interface OfficerActivityData {
 // Constants
 // ============================================================
 
-const PIE_COLORS = ['#888888', '#d4a017', '#888888', '#a855f7', '#22c55e', '#22c55e', 'var(--rmpg-500)', '#ec4899', '#8b5cf6'];
+const PIE_COLORS = ['var(--text-muted)', 'var(--brand-gold)', 'var(--text-muted)', '#a855f7', '#22c55e', '#22c55e', 'var(--rmpg-500)', '#ec4899', '#8b5cf6'];
 
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#dc2626',
-  P2: '#d4a017',
-  P3: '#888888',
+  P2: 'var(--brand-gold)',
+  P3: 'var(--text-muted)',
   P4: 'var(--rmpg-500)',
 };
 
@@ -188,24 +191,6 @@ function formatDateLabel(dateStr: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function convertToCSV(data: any[], headers: string[]): string {
-  const rows = [headers.join(',')];
-
-  data.forEach(row => {
-    const values = headers.map(header => {
-      const value = row[header];
-      if (value === null || value === undefined) return '';
-      if (typeof value === 'string' && value.includes(',')) {
-        return `"${value}"`;
-      }
-      return value;
-    });
-    rows.push(values.join(','));
-  });
-
-  return rows.join('\n');
-}
-
 function exportToCSV(
   incidentsData: IncidentsSummaryData | null,
   officerActivity: OfficerActivityData[],
@@ -280,7 +265,7 @@ function exportToCSV(
 // ═══════════════════════════════════════════════════════════
 // Feature 27: Report Approval Queue Component
 // ═══════════════════════════════════════════════════════════
-function ReportApprovalQueue() {
+function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -292,6 +277,10 @@ function ReportApprovalQueue() {
   // Cases #1604 (last big native-dialog cluster in the audit).
   const [returnTarget, setReturnTarget] = useState<any | null>(null);
   const [returnReason, setReturnReason] = useState('');
+  // ConfirmDialog state for delete report — gated to admin/manager via
+  // the canDelete prop so officers and supervisors can't accidentally
+  // destroy a report from the queue. Replaces a potential window.confirm.
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -338,32 +327,59 @@ function ReportApprovalQueue() {
     }
   };
 
-  // Esc on the page level closes the return-reason modal first. Implemented
-  // inside the listed-effect below rather than via a global keydown so it
-  // doesn't fight the parent page's smart-cascade.
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const id = String(deleteTarget.id);
+    setProcessing(id);
+    try {
+      await apiFetch(`/records/reports/${id}`, { method: 'DELETE' });
+      setReports(prev => prev.filter(r => String(r.id) !== id));
+    } catch { /* ignore */ }
+    finally {
+      setProcessing(null);
+      setDeleteTarget(null);
+    }
+  };
+
+  // Esc cascade: delete confirm → return-reason modal. Implemented inside a
+  // single capture-phase effect so it fires before the parent page's Esc
+  // handler, giving the inner layer a chance to consume it first.
   useEffect(() => {
-    if (!returnTarget) return;
+    if (!deleteTarget && !returnTarget) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setReturnTarget(null);
-        setReturnReason('');
-      }
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (deleteTarget) { setDeleteTarget(null); return; }
+      if (returnTarget) { setReturnTarget(null); setReturnReason(''); }
     };
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [returnTarget]);
+  }, [deleteTarget, returnTarget]);
 
   const buildReportMenu = (r: any): ContextMenuItem[] => [
     m.action('Approve', () => handleApprove(String(r.id)), { icon: <Check size={12} />, disabled: processing === String(r.id) }),
     m.action('Return for revision', () => openReturnDialog(r), { icon: <RotateCcw size={12} />, danger: true, disabled: processing === String(r.id) }),
+    ...(canDelete ? [
+      m.separator(),
+      m.action('Delete report', () => setDeleteTarget(r), { icon: <Trash2 size={12} />, danger: true, disabled: processing === String(r.id) }),
+    ] : []),
     m.separator(),
     m.copy('Copy incident #', r.incident_number),
     m.copyId(r.id),
   ];
 
-  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading queue...</div>;
-  if (reports.length === 0) return <div className="text-[10px] text-rmpg-500 text-center py-4">No reports pending review</div>;
+  if (loading) return (
+    <div className="flex items-center gap-2 text-[10px] text-rmpg-500">
+      <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading approval queue" />
+      Loading queue...
+    </div>
+  );
+  if (reports.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-6 text-rmpg-500">
+      <FileText className="w-6 h-6 text-rmpg-600 mb-2" />
+      <span className="text-[10px]">No reports pending review</span>
+    </div>
+  );
 
   return (
     <div className="space-y-2">
@@ -397,9 +413,38 @@ function ReportApprovalQueue() {
             >
               Return
             </button>
+            {canDelete && (
+              <button type="button"
+                onClick={() => setDeleteTarget(r)}
+                disabled={processing === String(r.id)}
+                className="toolbar-btn text-[9px] bg-red-900/20 text-red-500 border-red-800/30 hover:bg-red-900/40"
+                aria-label="Delete report"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
       ))}
+
+      {/* ConfirmDialog for report deletion — gated to admin/manager via canDelete. */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Report"
+        message="Permanently delete this report from the approval queue? This action cannot be undone."
+        details={deleteTarget && (
+          <>
+            <div><span className="text-rmpg-400">Incident:</span> <span className="font-mono">{deleteTarget.incident_number || '—'}</span></div>
+            {deleteTarget.incident_type && <div><span className="text-rmpg-400">Type:</span> {formatIncidentType(deleteTarget.incident_type)}</div>}
+            {deleteTarget.officer_name && <div><span className="text-rmpg-400">Author:</span> {deleteTarget.officer_name}</div>}
+          </>
+        )}
+        confirmLabel="Delete Report"
+        confirmVariant="danger"
+        isLoading={processing === String(deleteTarget?.id)}
+      />
 
       {/* Inline return-reason modal — replaces the native window.prompt(). */}
       {returnTarget && (
@@ -632,7 +677,7 @@ function WeeklyDigestCard() {
                   <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Bar dataKey="count" fill="#888888" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="count" fill="var(--text-muted)" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -931,7 +976,12 @@ export default function ReportsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Role gates — create = admin|manager, delete = admin|manager only.
+  const canCreate = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
+  const canDelete = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
 
   // Hydrate date-range state from URL params on first render so a deep-link
   // like /reports?range=last_30_days lands the operator on the right window
@@ -978,6 +1028,54 @@ export default function ReportsPage() {
       }
     });
   }, [loading]);
+
+  // ── URL deep-link: ?report_id=<id> / ?type=<val> ──────────────────
+  // ?report_id: scroll to the approval-queue card + toast the queued ID.
+  // ?type: pre-select the date range corresponding to a report type slug
+  //        (e.g. ?type=crime-trends scrolls to that card).
+  // Both are consumed once on mount (useRef guard) and stripped from the
+  // URL so a back-forward doesn't re-trigger them.
+  const deepLinkConsumedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkConsumedRef.current || loading) return;
+    deepLinkConsumedRef.current = true;
+
+    const reportId = searchParams.get('report_id');
+    const typeParam = searchParams.get('type');
+
+    // Strip both one-shot params immediately so the URL stays clean.
+    if (reportId || typeParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('report_id');
+      next.delete('type');
+      setSearchParams(next, { replace: true });
+    }
+
+    if (reportId) {
+      // Scroll approval queue card into view and toast the target ID.
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLElement>('[data-report-card="approval-queue"]');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('ring-2', 'ring-brand-400/40');
+          window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400/40'), 1500);
+        }
+      });
+      addToast(`Viewing report #${reportId} in approval queue`, 'info');
+    }
+
+    if (typeParam && SCROLLABLE_CARDS.has(typeParam)) {
+      // ?type matches a scrollable card slug — scroll to it.
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLElement>(`[data-report-card="${typeParam}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('ring-2', 'ring-brand-400/40');
+          window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400/40'), 1500);
+        }
+      });
+    }
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mirror state -> URL so a refresh keeps the window. Wrapped in an effect
   // so we don't fight React's render cycle. We use replace:true to avoid
@@ -1137,16 +1235,13 @@ export default function ReportsPage() {
   useEffect(() => { document.title = 'Reports & Analytics \u2014 RMPG Flex'; }, []);
 
   // \u2500\u2500 Keyboard shortcuts \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  // Esc smart-cascade: close error banner first, then exit custom range,
-  // then bounce back to the Dashboard. The previous Reports page had no
-  // Esc binding at all, so an operator who hit Escape after seeing an
-  // error banner couldn't dismiss it without clicking the small button.
+  // Esc smart-cascade: close error banner first, then exit custom range.
+  // stopPropagation per branch so inner layers (ReportApprovalQueue's own
+  // Esc handler for the delete confirm / return modal) consume it first.
   //
-  // `N`: open the Custom Report Builder. Mirrors the muscle memory used
-  // on Dispatch / Patrol / FI / Evidence / Trespass / Court Tracker \u2014
-  // typing-suppressed so it doesn't fire while editing the custom-range
-  // date inputs or the return-reason modal that lives inside
-  // ReportApprovalQueue.
+  // `N`: open the Custom Report Builder \u2014 gated to canCreate (admin|manager)
+  // so officers don't accidentally land on the builder. Typing-suppressed so
+  // it doesn't fire while editing the custom-range date inputs or modals.
   useEffect(() => {
     const isTypingInField = (target: EventTarget | null): boolean => {
       if (!(target instanceof HTMLElement)) return false;
@@ -1155,24 +1250,23 @@ export default function ReportsPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (error) { setError(null); return; }
-        if (dateRange === 'custom') { setDateRange('last_14_days'); return; }
+        if (error) { e.stopPropagation(); setError(null); return; }
+        if (dateRange === 'custom') { e.stopPropagation(); setDateRange('last_14_days'); return; }
         // No more open layers on this page \u2014 let the global Esc handler
-        // (if any) catch it. We don't call navigate back to Dashboard
-        // here because the operator might be reading a chart and a stray
-        // Esc shouldn't yank them off the page.
+        // (if any) catch it. We don't navigate back to Dashboard on Esc
+        // because the operator might be reading a chart.
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
-      if (e.key === 'n' || e.key === 'N') {
+      if ((e.key === 'n' || e.key === 'N') && canCreate) {
         e.preventDefault();
         navigate('/reports/custom');
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [error, dateRange, navigate]);
+  }, [error, dateRange, navigate, canCreate]);
 
   return (
     <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto`}>
@@ -1230,12 +1324,14 @@ export default function ReportsPage() {
           )}
         </div>
         <PrintButton />
-        <button type="button"
-          className="toolbar-btn"
-          onClick={() => navigate('/reports/custom')}
-        >
-          <Database className="w-3.5 h-3.5" /> Custom Builder
-        </button>
+        {canCreate && (
+          <button type="button"
+            className="toolbar-btn"
+            onClick={() => navigate('/reports/custom')}
+          >
+            <Database className="w-3.5 h-3.5" /> Custom Builder
+          </button>
+        )}
         <button type="button"
           className="toolbar-btn"
           onClick={handleExport}
@@ -1294,12 +1390,14 @@ export default function ReportsPage() {
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">
-            <button type="button"
-              className="toolbar-btn justify-center min-h-[44px]"
-              onClick={() => navigate('/reports/custom')}
-            >
-              <Database className="w-3.5 h-3.5" /> Builder
-            </button>
+            {canCreate && (
+              <button type="button"
+                className="toolbar-btn justify-center min-h-[44px]"
+                onClick={() => navigate('/reports/custom')}
+              >
+                <Database className="w-3.5 h-3.5" /> Builder
+              </button>
+            )}
             <button type="button"
               className="toolbar-btn justify-center min-h-[44px]"
               onClick={handleExport}
@@ -1405,7 +1503,7 @@ export default function ReportsPage() {
               <FileText className="w-4 h-4 text-purple-400" />
               <span className="text-xs font-bold text-rmpg-100 uppercase">Report Approval Queue</span>
             </div>
-            <ReportApprovalQueue />
+            <ReportApprovalQueue canDelete={canDelete} />
           </div>
 
           {/* Charts Grid */}
@@ -1507,8 +1605,8 @@ export default function ReportsPage() {
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#888888" strokeWidth={2} dot={{ fill: '#888888', r: 3 }} />
-                  <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="#d4a017" strokeDasharray="5 5" strokeWidth={1} dot={false} />
+                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="var(--text-muted)" strokeWidth={2} dot={{ fill: 'var(--text-muted)', r: 3 }} />
+                  <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="var(--brand-gold)" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
               )}
@@ -1535,8 +1633,8 @@ export default function ReportsPage() {
                   <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={70} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Bar dataKey="calls" name="Calls" fill="#888888" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="calls" name="Calls" fill="var(--text-muted)" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="incidents" name="Incidents" fill="var(--brand-gold)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
               )}
@@ -1559,15 +1657,15 @@ export default function ReportsPage() {
                 }))}>
                   <defs>
                     <linearGradient id="callVolumeGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#888888" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
+                      <stop offset="5%" stopColor="var(--text-muted)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--text-muted)" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Area type="monotone" dataKey="calls" name="Calls" stroke="#888888" strokeWidth={2} fill="url(#callVolumeGradient)" />
+                  <Area type="monotone" dataKey="calls" name="Calls" stroke="var(--text-muted)" strokeWidth={2} fill="url(#callVolumeGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
               </div>

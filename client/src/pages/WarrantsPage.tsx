@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
-import { formatEnumValue } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import { useToast } from '../components/ToastProvider';
 import WarrantNsopwStatus from '../components/WarrantNsopwStatus';
@@ -23,7 +23,7 @@ import WarrantBadge from '../components/WarrantBadge';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
-import StatuteLookup, { OffenseLevelBadge } from '../components/StatuteLookup';
+import StatuteLookup from '../components/StatuteLookup';
 import type { StatuteResult } from '../components/StatuteLookup';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { useFormDraft } from '../hooks/useFormDraft';
@@ -500,6 +500,11 @@ export default function WarrantsPage() {
 
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // Serve / archive / recall: mirrors ROLES_CRUD_WRITE on the server
+  // (admin | manager | supervisor | dispatcher).
+  const canManageWarrants =
+    user?.role === 'admin' || user?.role === 'manager' ||
+    user?.role === 'supervisor' || user?.role === 'dispatcher';
 
   // ── Tab state ──
   // If the URL deep-links to a specific warrant_id, force the warrants tab so the
@@ -778,6 +783,10 @@ export default function WarrantsPage() {
   // Delete confirm
   const [deletingWarrant, setDeletingWarrant] = useState<Warrant | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Single-warrant archive confirm (detail panel toolbar)
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [archiveTargetId, setArchiveTargetId] = useState<number | null>(null);
 
   // Person search for form
   const [personSearch, setPersonSearch] = useState('');
@@ -1441,6 +1450,13 @@ export default function WarrantsPage() {
     }
   };
 
+  const performArchive = async () => {
+    setArchiveConfirmOpen(false);
+    if (archiveTargetId == null) return;
+    await handleArchive(archiveTargetId);
+    setArchiveTargetId(null);
+  };
+
   const handleUnarchive = async (id: number) => {
     try {
       await apiFetch(`/warrants/${id}/unarchive`, { method: 'POST' });
@@ -1538,24 +1554,26 @@ export default function WarrantsPage() {
 
   // Keyboard shortcut: Escape — smart cascade. Closes the smallest open
   // modal first (top of stack), not all at once. Order: bulk confirms →
-  // delete confirm → Utah detail → person profile → serve → form modal.
+  // archive confirm → delete confirm → Utah detail → person profile →
+  // serve → form modal.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (bulkUpdateConfirmOpen) { setBulkUpdateConfirmOpen(false); return; }
-      if (bulkArchiveConfirmOpen) { setBulkArchiveConfirmOpen(false); return; }
-      if (bulkPrintConfirmOpen) { setBulkPrintConfirmOpen(false); return; }
-      if (deletingWarrant) { setDeletingWarrant(null); return; }
-      if (utahDetailWarrant) { setUtahDetailWarrant(null); return; }
-      if (personProfileOpen) { setPersonProfileOpen(false); return; }
-      if (serveModalOpen) { setServeModalOpen(false); return; }
-      if (formOpen) { setFormOpen(false); setEditingWarrant(null); return; }
+      if (bulkUpdateConfirmOpen) { e.stopPropagation(); setBulkUpdateConfirmOpen(false); return; }
+      if (bulkArchiveConfirmOpen) { e.stopPropagation(); setBulkArchiveConfirmOpen(false); return; }
+      if (bulkPrintConfirmOpen) { e.stopPropagation(); setBulkPrintConfirmOpen(false); return; }
+      if (archiveConfirmOpen) { e.stopPropagation(); setArchiveConfirmOpen(false); setArchiveTargetId(null); return; }
+      if (deletingWarrant) { e.stopPropagation(); setDeletingWarrant(null); return; }
+      if (utahDetailWarrant) { e.stopPropagation(); setUtahDetailWarrant(null); return; }
+      if (personProfileOpen) { e.stopPropagation(); setPersonProfileOpen(false); return; }
+      if (serveModalOpen) { e.stopPropagation(); setServeModalOpen(false); return; }
+      if (formOpen) { e.stopPropagation(); setFormOpen(false); setEditingWarrant(null); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [
     bulkUpdateConfirmOpen, bulkArchiveConfirmOpen, bulkPrintConfirmOpen,
-    deletingWarrant, utahDetailWarrant, personProfileOpen,
+    archiveConfirmOpen, deletingWarrant, utahDetailWarrant, personProfileOpen,
     serveModalOpen, formOpen,
   ]);
 
@@ -1574,7 +1592,7 @@ export default function WarrantsPage() {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         if (t.isContentEditable) return;
       }
-      if (formOpen || serveModalOpen || personProfileOpen || utahDetailWarrant || deletingWarrant) return;
+      if (formOpen || serveModalOpen || personProfileOpen || utahDetailWarrant || deletingWarrant || archiveConfirmOpen) return;
       if (activeTab !== 'warrants') return;
       e.preventDefault();
       openNewForm();
@@ -1590,7 +1608,7 @@ export default function WarrantsPage() {
       <PanelTitleBar title="WARRANT SEARCH" icon={AlertTriangle}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
-        {activeTab === 'warrants' && !showArchived && (
+        {activeTab === 'warrants' && !showArchived && isAdminOrManager && (
           <button type="button" onClick={openNewForm} className="toolbar-btn toolbar-btn-primary text-[9px]">
             <Plus className="w-3 h-3" /> New Warrant
           </button>
@@ -2182,7 +2200,7 @@ export default function WarrantsPage() {
                       icon={Gavel}
                       title="No warrants on file"
                       description="Create a new warrant to get started."
-                      action={{ label: 'New Warrant', onClick: openNewForm }}
+                      action={isAdminOrManager ? { label: 'New Warrant', onClick: openNewForm } : undefined}
                     />
                   );
                 })()
@@ -2210,7 +2228,7 @@ export default function WarrantsPage() {
                       <div className="text-sm text-rmpg-200 font-medium">{w.subject_name || 'Unknown'}</div>
                       <div className="text-xs text-rmpg-400 truncate mt-0.5">{chargesFromJson(w.charge_description)}</div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
-                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}` : ''}
+                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${toDisplayLabel(w.offense_level)}` : ''}
                         {w.source ? ` \u2022 ${w.source}` : ''}
                       </div>
                       {/* UPGRADE 42: Expiration warning highlight */}
@@ -2367,7 +2385,7 @@ export default function WarrantsPage() {
               <PrintRecordButton recordType="warrant" recordData={selectedWarrant} identifier={selectedWarrant?.warrant_number} entityType="warrant" entityId={selectedWarrant?.id} label="Print" />
               {selectedWarrant && !selectedWarrant.archived_at && (
                 <>
-                  {selectedWarrant.status === 'active' && (
+                  {selectedWarrant.status === 'active' && canManageWarrants && (
                     <>
                       <button type="button" onClick={() => { setServeLocation(''); setServeModalOpen(true); }} className="toolbar-btn toolbar-btn-primary text-[9px]" style={isMobile ? { minHeight: 48 } : undefined}>
                         <CheckCircle className="w-3 h-3" /> Serve
@@ -2380,9 +2398,9 @@ export default function WarrantsPage() {
                       </button>
                     </>
                   )}
-                  {selectedWarrant.status !== 'active' && (
+                  {selectedWarrant.status !== 'active' && isAdminOrManager && (
                     <>
-                      <button type="button" onClick={() => handleArchive(selectedWarrant.id)} className="toolbar-btn text-[9px]" title="Archive this warrant" style={isMobile ? { minHeight: 48 } : undefined}>
+                      <button type="button" onClick={() => { setArchiveTargetId(selectedWarrant.id); setArchiveConfirmOpen(true); }} className="toolbar-btn text-[9px]" title="Archive this warrant" style={isMobile ? { minHeight: 48 } : undefined}>
                         <Archive className="w-3 h-3" /> Archive
                       </button>
                       <button type="button" onClick={() => setDeletingWarrant(selectedWarrant)} className="toolbar-btn text-[9px] text-red-400" title="Permanently delete" style={isMobile ? { minHeight: 48 } : undefined}>
@@ -2392,7 +2410,7 @@ export default function WarrantsPage() {
                   )}
                 </>
               )}
-              {selectedWarrant?.archived_at && (
+              {selectedWarrant?.archived_at && isAdminOrManager && (
                 <button type="button" onClick={() => handleUnarchive(selectedWarrant.id)} className="toolbar-btn text-[9px] text-amber-400" style={isMobile ? { minHeight: 48 } : undefined}>
                   <RotateCcw className="w-3 h-3" /> Unarchive
                 </button>
@@ -3527,7 +3545,7 @@ export default function WarrantsPage() {
                                   r.status === 'completed' ? 'bg-green-900/30 text-green-400' :
                                   r.status === 'running' ? 'bg-brand-blue/20 text-brand-blue' :
                                   'bg-red-900/30 text-red-400'
-                                }`}>{(r.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                                }`}>{toDisplayLabel(r.status)}</span>
                               </td>
                             </tr>
                           ))}
@@ -4194,7 +4212,7 @@ export default function WarrantsPage() {
       )}
 
       {/* MOBILE FAB */}
-      {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && (
+      {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && isAdminOrManager && (
         <IconButton onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
           <Plus className="w-6 h-6" />
         </IconButton>
@@ -4230,6 +4248,16 @@ export default function WarrantsPage() {
         onConfirm={performBulkArchive}
         title="Archive Warrants"
         message={`Archive ${batchSelected.size} warrant${batchSelected.size === 1 ? '' : 's'}? Archived warrants can be restored later.`}
+        confirmLabel="Archive"
+      />
+
+      {/* SINGLE ARCHIVE CONFIRM (detail panel toolbar) */}
+      <ConfirmDialog
+        isOpen={archiveConfirmOpen}
+        onClose={() => { setArchiveConfirmOpen(false); setArchiveTargetId(null); }}
+        onConfirm={performArchive}
+        title="Archive Warrant"
+        message="Archive this warrant? It can be restored later."
         confirmLabel="Archive"
       />
 
@@ -4334,7 +4362,7 @@ export default function WarrantsPage() {
                             utahDetailWarrant.offense_level === 'felony' ? 'bg-red-900/50 text-red-400 border-red-700/50' :
                             utahDetailWarrant.offense_level === 'misdemeanor' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                             'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50'
-                          }`}>{(utahDetailWarrant.offense_level || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                          }`}>{toDisplayLabel(utahDetailWarrant.offense_level)}</span>
                         </div>
                       </div>
                     )}
