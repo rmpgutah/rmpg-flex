@@ -1,0 +1,15 @@
+ALTER TABLE scraped_warrants ADD COLUMN detail_url TEXT;
+ALTER TABLE scraped_warrants ADD COLUMN first_seen_at TEXT;
+ALTER TABLE scraped_warrants ADD COLUMN last_seen_at TEXT;
+ALTER TABLE scraped_warrants ADD COLUMN cleared_at TEXT;
+ALTER TABLE scraped_warrants ADD COLUMN dob_verified INTEGER  0;
+ALTER TABLE radio_transcripts ADD COLUMN audio_file TEXT;
+ALTER TABLE radio_transcripts ADD COLUMN file_size INTEGER;
+ALTER TABLE radio_transcripts ADD COLUMN linked_call_id INTEGER;
+ALTER TABLE field_interviews ADD COLUMN date TEXT;
+ALTER TABLE field_interviews ADD COLUMN gang_affiliation TEXT;
+ALTER TABLE field_interviews ADD COLUMN section_id INTEGER;
+ALTER TABLE field_interviews ADD COLUMN zone_id INTEGER;
+ALTER TABLE field_interviews ADD COLUMN beat_id INTEGER;
+ALTER TABLE field_interviews ADD COLUMN zone_beat TEXT;
+ALTER TABLE field_interviews ADD COLUMN updated_at TEXT;

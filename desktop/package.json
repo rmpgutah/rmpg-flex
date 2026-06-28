@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-desktop",
-  "version": "5.8.5",
+  "version": "5.8.6",
   "description": "RMPG Flex CAD/RMS — Desktop Application",
   "author": "Rocky Mountain Protective Group",
   "license": "UNLICENSED",
@@ -10,7 +10,9 @@
     "start": "electron . --dev",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:all": "electron-builder --mac --win"
+    "build:all": "electron-builder --mac --win",
+    "postinstall": "electron-rebuild -f -w serialport,better-sqlite3 || echo '[postinstall] electron-rebuild skipped (likely CI or first install before electron); run npm run rebuild manually if dev start fails with NODE_MODULE_VERSION'",
+    "rebuild": "electron-rebuild -f -w serialport,better-sqlite3"
   },
   "build": {
     "appId": "com.rmpg.flex",
@@ -34,6 +36,7 @@
       "pinManager.js",
       "offlineRouter.js",
       "syncManager.js",
+      "internalGps.js",
       "originalCatalog.json"
     ],
     "extraResources": [
@@ -59,7 +62,8 @@
       "icon": "../client/public/rmpg-seal.icns",
       "darkModeSupport": true,
       "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "identity": null
     },
     "dmg": {
       "backgroundColor": "#000000",
@@ -77,6 +81,7 @@
       "icon": "../client/public/rmpg-seal.ico"
     },
     "nsis": {
+      "artifactName": "RMPG-Flex-Setup-${version}.${ext}",
       "oneClick": false,
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
@@ -97,12 +102,14 @@
     }
   },
   "dependencies": {
-    "better-sqlite3": "^12.9.0",
-    "electron-updater": "^6.8.3"
+    "better-sqlite3": "^12.11.1",
+    "electron-updater": "^6.8.9",
+    "serialport": "^13.0.0"
   },
   "devDependencies": {
-    "electron": "^40.9.3",
-    "electron-builder": "^26.0.0"
+    "@electron/rebuild": "^4.0.4",
+    "electron": "^40.10.4",
+    "electron-builder": "^26.15.2"
   },
   "overrides": {
     "@xmldom/xmldom": "0.8.13",

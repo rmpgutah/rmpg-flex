@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Eye, Copy } from 'lucide-react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+
+// NOTE: these cards render in bare-render unit tests with no ToastProvider /
+// Router. useMenuActions() (the usual PATH-B helper) calls useToast()/useNavigate()
+// which THROW outside their providers, so we build ContextMenuItem[] inline with
+// useContextMenu() (safe no-op fallback) + the standalone clipboard/separator
+// helpers instead. Copy items skip the toast confirmation by design.
 
 // Endpoints:
 //   GET /api/comms/bolos/active             — active BOLOs (server already filters active+unexpired)
@@ -36,6 +46,7 @@ type FeedItem =
 
 export default function BolosCard() {
   const { subscribe } = useWebSocket();
+  const { openMenu } = useContextMenu();
 
   const [bolos, setBolos] = useState<BoloRow[]>([]);
   const [alerts, setAlerts] = useState<PremiseRow[]>([]);
@@ -102,25 +113,55 @@ export default function BolosCard() {
       items.push({ kind: 'alert', id: a.id, created_at: a.created_at || '', row: a });
     }
     items.sort((x, y) => {
-      const tx = x.created_at ? new Date(x.created_at).getTime() : 0;
-      const ty = y.created_at ? new Date(y.created_at).getTime() : 0;
+      const tx = x.created_at ? parseTimestamp(x.created_at).getTime() : 0;
+      const ty = y.created_at ? parseTimestamp(y.created_at).getTime() : 0;
       return ty - tx;
     });
     return items.slice(0, 8);
   }, [bolos, alerts]);
 
+  // Build a right-click menu for a feed row. Reuses the row's expand toggle
+  // for 'Open'; copy items use the standalone clipboard helper (no toast).
+  const buildRowMenu = useCallback(
+    (opts: { key: string; isExpanded: boolean; title: string; details: string }): ContextMenuItem[] => {
+      const items: ContextMenuItem[] = [
+        {
+          label: opts.isExpanded ? 'Collapse' : 'Open',
+          icon: <Eye size={12} />,
+          onClick: () => setExpandedKey(opts.isExpanded ? null : opts.key),
+        },
+        separator(),
+        {
+          label: 'Copy title',
+          icon: <Copy size={12} />,
+          disabled: !opts.title,
+          onClick: () => { void copyToClipboard(opts.title); },
+        },
+      ];
+      if (opts.details) {
+        items.push({
+          label: 'Copy details',
+          icon: <Copy size={12} />,
+          onClick: () => { void copyToClipboard(opts.details); },
+        });
+      }
+      return items;
+    },
+    [],
+  );
+
   if (loading) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
-        <div className="h-[180px] animate-pulse bg-[#1a1a1a] border border-[#222]" />
+        <div className="h-[180px] animate-pulse bg-surface-raised border border-border-default" />
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
         <div className="flex items-center justify-between gap-2">
           <span className="text-amber-400 text-xs">{error}</span>
@@ -137,11 +178,11 @@ export default function BolosCard() {
   }
 
   return (
-    <section className="bg-[#141414] border border-[#222] p-3">
+    <section className="bg-surface-base border border-border-default p-3">
       <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
 
       {feed.length === 0 ? (
-        <p className="text-gray-500 text-xs italic">No active BOLOs or alerts.</p>
+        <p className="text-rmpg-500 text-xs italic">No active BOLOs or alerts.</p>
       ) : (
         <ul className="space-y-1">
           {feed.map((item) => {
@@ -161,18 +202,19 @@ export default function BolosCard() {
                   <button
                     type="button"
                     onClick={() => setExpandedKey(isExpanded ? null : key)}
+                    onContextMenu={(e) => openMenu(e, buildRowMenu({ key, isExpanded, title, details: fullText }))}
                     aria-expanded={isExpanded}
                     className="w-full text-left min-h-[44px] border-l-2 border-l-red-700 pl-2 py-2 flex flex-col"
                   >
                     <span className="flex items-center gap-2">
                       <span className="bg-red-900/40 text-red-300 text-[9px] font-bold tracking-widest px-1.5 py-0.5">BOLO</span>
-                      <span className="text-white text-xs truncate">{title}</span>
+                      <span className="text-rmpg-100 text-xs truncate">{title}</span>
                     </span>
                     {subtitle ? (
-                      <span className="text-gray-500 text-[11px] truncate">{subtitle}</span>
+                      <span className="text-rmpg-500 text-[11px] truncate">{subtitle}</span>
                     ) : null}
                     {isExpanded && fullText ? (
-                      <span className="mt-1 text-gray-300 text-[11px] whitespace-pre-wrap">{fullText}</span>
+                      <span className="mt-1 text-rmpg-300 text-[11px] whitespace-pre-wrap">{fullText}</span>
                     ) : null}
                   </button>
                 </li>
@@ -187,18 +229,19 @@ export default function BolosCard() {
                 <button
                   type="button"
                   onClick={() => setExpandedKey(isExpanded ? null : key)}
+                  onContextMenu={(e) => openMenu(e, buildRowMenu({ key, isExpanded, title, details: fullText }))}
                   aria-expanded={isExpanded}
                   className="w-full text-left min-h-[44px] border-l-2 border-l-amber-700 pl-2 py-2 flex flex-col"
                 >
                   <span className="flex items-center gap-2">
                     <span className="bg-amber-900/40 text-amber-300 text-[9px] font-bold tracking-widest px-1.5 py-0.5">ALERT</span>
-                    <span className="text-white text-xs truncate">{title}</span>
+                    <span className="text-rmpg-100 text-xs truncate">{title}</span>
                   </span>
                   {subtitle ? (
-                    <span className="text-gray-500 text-[11px] truncate">{subtitle}</span>
+                    <span className="text-rmpg-500 text-[11px] truncate">{subtitle}</span>
                   ) : null}
                   {isExpanded && fullText ? (
-                    <span className="mt-1 text-gray-300 text-[11px] whitespace-pre-wrap">{fullText}</span>
+                    <span className="mt-1 text-rmpg-300 text-[11px] whitespace-pre-wrap">{fullText}</span>
                   ) : null}
                 </button>
               </li>

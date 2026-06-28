@@ -11,6 +11,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Request location permissions on launch — GPS tracking is mandatory for all officers
         requestLocationPermissions()
+
+        // On-foot detection: stream CoreMotion activity into the WebView.
+        // Deferred 2 s because the Capacitor WKWebView isn't ready at launch time.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            if let bridgeVC = self.window?.rootViewController as? CAPBridgeViewController,
+               let webView = bridgeVC.bridge?.webView {
+                MotionActivityBridge.shared.attach(to: webView)
+            }
+        }
+
         return true
     }
 

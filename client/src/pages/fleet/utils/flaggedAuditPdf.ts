@@ -17,6 +17,8 @@
 
 import jsPDF from 'jspdf';
 import type { FleetFuelLog } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
 interface Args {
   logs: FleetFuelLog[];         // caller pre-filters to flagged rows
@@ -33,6 +35,7 @@ const FLAG_LEGEND: Record<string, string> = {
 
 export function generateFlaggedAuditPdf({ logs, scopeLabel, dateRange }: Args): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 36;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -53,7 +56,7 @@ export function generateFlaggedAuditPdf({ logs, scopeLabel, dateRange }: Args): 
     if (!s) return '';
     const cleaned = s.replace(/Z$/, '').replace('T', ' ');
     if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(cleaned)) return cleaned.slice(0, 16);
-    const d = new Date(s);
+    const d = parseTimestamp(s);
     if (isNaN(d.getTime())) return s;
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;

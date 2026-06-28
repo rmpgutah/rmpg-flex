@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react';
 //
 // Wake Lock requires a user-activation token. If `active` flips true
 // before the first gesture, we defer acquisition until the first
-// click/keydown, then re-acquire on visibility changes.
+// click/keydown/touch, then re-acquire on visibility changes.
 export function useScreenWakeLock(active: boolean): void {
   const sentinelRef = useRef<any>(null);
   const gestureSeenRef = useRef(false);
@@ -51,10 +51,10 @@ export function useScreenWakeLock(active: boolean): void {
     };
 
     if (active) {
-      // Attempt immediately — succeeds if a prior gesture already happened.
-      acquire();
+      acquire(); // Succeeds if a prior gesture already happened
       window.addEventListener('click', onGesture);
       window.addEventListener('keydown', onGesture);
+      window.addEventListener('touchstart', onGesture);
       document.addEventListener('visibilitychange', onVisibility);
     }
 
@@ -62,6 +62,7 @@ export function useScreenWakeLock(active: boolean): void {
       cancelled = true;
       window.removeEventListener('click', onGesture);
       window.removeEventListener('keydown', onGesture);
+      window.removeEventListener('touchstart', onGesture);
       document.removeEventListener('visibilitychange', onVisibility);
       release();
     };

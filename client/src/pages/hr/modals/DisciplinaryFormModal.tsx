@@ -7,6 +7,8 @@ import { useState, useEffect, useRef, useId } from 'react';
 import { X, Loader2, Star, Shield } from 'lucide-react';
 import type { DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity } from '../../../types';
 import { DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
+import { useFormDraft } from '../../../hooks/useFormDraft';
+import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface DisciplinaryFormModalProps {
@@ -46,7 +48,18 @@ export default function DisciplinaryFormModal({
   editRecord,
   officers,
 }: DisciplinaryFormModalProps) {
-  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_hr_disciplinary_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -71,17 +84,24 @@ export default function DisciplinaryFormModal({
     } else {
       setForm({ ...EMPTY_FORM });
     }
-  }, [isOpen, editRecord]);
+    snapshot();
+  }, [isOpen, editRecord, setForm, snapshot]);
 
   // Escape to close
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !submitting) onClose();
+      if (e.key === 'Escape' && !submitting) {
+        if (isDirty) {
+          if (window.confirm('You have unsaved changes. Close anyway?')) onClose();
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, submitting, onClose]);
+  }, [isOpen, submitting, onClose, isDirty]);
 
   if (!isOpen) return null;
 
@@ -103,6 +123,7 @@ export default function DisciplinaryFormModal({
         action_taken: form.action_taken || null,
         witness: form.witness || null,
       });
+      clearDraft();
       onClose();
     } finally {
       setSubmitting(false);
@@ -114,7 +135,9 @@ export default function DisciplinaryFormModal({
   const HeaderIcon = isCommendation ? Star : Shield;
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center p-4">
+    <>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
+      <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={submitting ? undefined : onClose} />
 
@@ -130,17 +153,28 @@ export default function DisciplinaryFormModal({
         <div className={`flex items-center justify-between px-4 py-3 border-b ${accentBorder} ${accentHeader}`}>
           <div className="flex items-center gap-2">
             <HeaderIcon size={16} className={isCommendation ? 'text-amber-400' : 'text-brand-400'} />
-            <h2 id={titleId} className="text-sm font-semibold text-white">
+            <h2 id={titleId} className="text-sm font-semibold text-rmpg-100">
               {isEditing ? 'Edit' : 'New'} {isCommendation ? 'Commendation' : 'Disciplinary Record'}
             </h2>
           </div>
-          <button type="button" onClick={onClose} disabled={submitting} className="text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onClose} disabled={submitting} className="text-rmpg-400 hover:text-rmpg-100">
             <X size={16} />
           </button>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={() => { setForm({ ...EMPTY_FORM }); snapshot(); }} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                Discard
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Officer */}
             <div className="space-y-1">
@@ -150,7 +184,7 @@ export default function DisciplinaryFormModal({
                 value={form.officer_id}
                 onChange={handleChange}
                 required
-                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
               >
                 <option value="">Select officer...</option>
                 {officers.map(o => (
@@ -169,7 +203,7 @@ export default function DisciplinaryFormModal({
                 value={form.type}
                 onChange={handleChange}
                 required
-                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
               >
                 {TYPE_OPTIONS.map(t => (
                   <option key={t.value} value={t.value}>
@@ -188,7 +222,7 @@ export default function DisciplinaryFormModal({
                   value={form.severity}
                   onChange={handleChange}
                   required
-                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
                 >
                   {SEVERITY_OPTIONS.map(s => (
                     <option key={s.value} value={s.value}>
@@ -208,7 +242,7 @@ export default function DisciplinaryFormModal({
                 value={form.incident_date}
                 onChange={handleChange}
                 required
-                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
               />
             </div>
 
@@ -220,7 +254,7 @@ export default function DisciplinaryFormModal({
                 name="follow_up_date"
                 value={form.follow_up_date}
                 onChange={handleChange}
-                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100"
               />
             </div>
 
@@ -233,7 +267,7 @@ export default function DisciplinaryFormModal({
                 value={form.witness}
                 onChange={handleChange}
                 placeholder="Witness name"
-                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 placeholder-rmpg-500"
               />
             </div>
           </div>
@@ -248,7 +282,7 @@ export default function DisciplinaryFormModal({
               required
               rows={3}
               maxLength={5000}
-              className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
+              className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 placeholder-rmpg-500 resize-none"
               placeholder="Describe the incident or commendation..."
             />
             <div className="text-[9px] text-rmpg-500 text-right">{form.description.length}/5000</div>
@@ -263,7 +297,7 @@ export default function DisciplinaryFormModal({
               onChange={handleChange}
               rows={2}
               maxLength={3000}
-              className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white placeholder-rmpg-500 resize-none"
+              className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-rmpg-100 placeholder-rmpg-500 resize-none"
               placeholder="Corrective action or follow-up steps..."
             />
             <div className="text-[9px] text-rmpg-500 text-right">{form.action_taken.length}/3000</div>
@@ -275,7 +309,7 @@ export default function DisciplinaryFormModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white border border-rmpg-700 rounded-sm"
+              className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-100 border border-rmpg-700 rounded-sm"
             >
               Cancel
             </button>
@@ -284,8 +318,8 @@ export default function DisciplinaryFormModal({
               disabled={submitting}
               className={`px-3 py-1.5 text-xs font-medium rounded-sm flex items-center gap-1.5 ${
                 isCommendation
-                  ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                  : 'bg-brand-600 hover:bg-brand-500 text-white'
+                  ? 'bg-amber-600 hover:bg-amber-500 text-rmpg-100'
+                  : 'bg-brand-600 hover:bg-brand-500 text-rmpg-100'
               } disabled:opacity-50`}
             >
               {submitting && <Loader2 size={12} className="animate-spin" />}
@@ -295,5 +329,6 @@ export default function DisciplinaryFormModal({
         </form>
       </div>
     </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Wrench, AlertTriangle, Clock, CheckCircle, ChevronRight, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface FleetVehicle {
   id: string;
@@ -21,7 +22,7 @@ interface Props {
 
 function daysUntil(dateStr: string | null): number | null {
   if (!dateStr) return null;
-  const target = new Date(dateStr + 'T00:00:00');
+  const target = parseTimestamp(dateStr);
   const now = new Date();
   return Math.ceil((target.getTime() - now.getTime()) / 86400000);
 }
@@ -29,7 +30,7 @@ function daysUntil(dateStr: string | null): number | null {
 function formatDate(d: string | null): string {
   if (!d) return '—';
   try {
-    return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   } catch { return d; }
 }
 
@@ -137,8 +138,8 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
                   onClick={() => onSelectVehicle(v.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 bg-red-900/20 border border-red-800/30 hover:bg-red-900/40 transition-colors text-left"
                 >
-                  <span className="text-[11px] font-mono font-bold text-white">{v.vehicle_number}</span>
-                  <span className="text-[10px] text-rmpg-300 flex-1 truncate">
+                  <span className="text-[11px] font-mono font-bold text-rmpg-100">{v.vehicle_number}</span>
+                  <span className="text-[10px] text-rmpg-300 min-w-0 flex-1 truncate">
                     {v.year} {v.make} {v.model}
                   </span>
                   <span className="text-[10px] font-bold text-red-400">
@@ -168,8 +169,8 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
                   onClick={() => onSelectVehicle(v.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 bg-amber-900/15 border border-amber-800/30 hover:bg-amber-900/30 transition-colors text-left"
                 >
-                  <span className="text-[11px] font-mono font-bold text-white">{v.vehicle_number}</span>
-                  <span className="text-[10px] text-rmpg-300 flex-1 truncate">
+                  <span className="text-[11px] font-mono font-bold text-rmpg-100">{v.vehicle_number}</span>
+                  <span className="text-[10px] text-rmpg-300 min-w-0 flex-1 truncate">
                     {v.year} {v.make} {v.model}
                   </span>
                   <span className="text-[10px] font-bold text-amber-400">
@@ -199,8 +200,8 @@ export default function MaintenanceMonitor({ onSelectVehicle }: Props) {
                   onClick={() => onSelectVehicle(v.id)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700 hover:bg-rmpg-700 transition-colors text-left"
                 >
-                  <span className="text-[11px] font-mono font-bold text-white">{v.vehicle_number}</span>
-                  <span className="text-[10px] text-rmpg-300 flex-1 truncate">
+                  <span className="text-[11px] font-mono font-bold text-rmpg-100">{v.vehicle_number}</span>
+                  <span className="text-[10px] text-rmpg-300 min-w-0 flex-1 truncate">
                     {v.year} {v.make} {v.model}
                   </span>
                   <span className="text-[10px] text-rmpg-400">

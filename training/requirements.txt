@@ -1,0 +1,12 @@
+# Offline GPU training deps for train_lora.py (NOT needed by the Worker).
+# Versions known-good for Llama-3.x QLoRA + completion-only SFT as of 2026-06.
+# Install on the training box: pip install -r training/requirements.txt
+torch>=2.4
+transformers>=4.46
+peft>=0.13
+trl>=0.12
+datasets>=3.0
+accelerate>=1.0
+bitsandbytes>=0.44      # 4-bit QLoRA; CUDA only
+safetensors>=0.4
+sentencepiece>=0.2

@@ -1,37 +1,45 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useWebSocket } from '../context/WebSocketContext';
 import { StreamPlayer } from '../utils/StreamPlayer';
+import { voiceWsUrl } from '../utils/voiceWs';
 
 // ============================================================
 // RMPG Flex — Panic Audio Hook
-// Opens a live mic for 15 seconds when panic is activated.
-// Other users hear the audio in real-time via MediaSource
-// Extensions (MSE) streaming. After 15 seconds, responders
-// can talk back to the panic sender.
+// ============================================================
+// Live distress audio for a panic alert, carried on the DEDICATED
+// voice socket (VoiceHubDO, room panic-<panicId>) — NOT the main
+// /api/ws alert socket, which lands on the legacy worker that has no
+// audio relay (the old panic_audio messages were silently dropped).
+//
+// Roles in a panic room (all share the same half-duplex hub):
+//   • Sender   — the officer: startBroadcast() opens the mic for up to
+//                60s. The DO relays it to everyone AND archives it to
+//                R2 (panic_alerts.audio_file_id). Stays connected after
+//                to hear talk-back.
+//   • Listener — dispatchers/supervisors: listen() on the incoming
+//                panic_alert, hear the officer in real time.
+//   • Responder— a listener who talks back: startResponse() once the
+//                officer's broadcast ends (half-duplex).
 // ============================================================
 
 export interface PanicAudioState {
-  /** Whether the local mic is actively capturing (sender) */
-  isBroadcasting: boolean;
-  /** Whether we are receiving audio from a panic sender */
-  isReceiving: boolean;
-  /** Whether the responder mic is open (talk-back mode) */
-  isResponding: boolean;
-  /** Remaining seconds of the broadcast */
-  broadcastTimeLeft: number;
-  /** The user ID of the panic sender (for talk-back) */
-  panicSenderUserId: number | null;
-  /** Error message */
+  isBroadcasting: boolean;   // local mic capturing (sender)
+  isReceiving: boolean;      // hearing audio from the room
+  isResponding: boolean;     // responder mic open (talk-back)
+  broadcastTimeLeft: number; // remaining seconds of the sender broadcast
+  panicSenderUserId: number | null; // sender (for talk-back target)
   error: string | null;
 }
 
 const BROADCAST_DURATION = 60; // seconds
+const MIC: MediaStreamConstraints = {
+  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 16000 },
+};
 
-// ── Hook ─────────────────────────────────────────────────────
+function pickMime(): string {
+  return MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+}
 
 export function usePanicAudio() {
-  const { send, subscribe } = useWebSocket();
-
   const [state, setState] = useState<PanicAudioState>({
     isBroadcasting: false,
     isReceiving: false,
@@ -41,309 +49,219 @@ export function usePanicAudio() {
     error: null,
   });
 
+  const wsRef = useRef<WebSocket | null>(null);
+  const roomRef = useRef<number | null>(null);   // current panicId
+  const authedRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const broadcastTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const broadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Guard against double-start (mic/timer leak)
   const isBroadcastingRef = useRef(false);
-  // Track the current panic ID for tagging audio chunks
   const panicIdRef = useRef<number | null>(null);
   const broadcastStartTimeRef = useRef<number>(0);
-
-  // Stream players for incoming audio (separate for panic vs. response)
-  const panicPlayerRef = useRef<StreamPlayer | null>(null);
-  const responsePlayerRef = useRef<StreamPlayer | null>(null);
-
-  // Ref-mirror for stopBroadcast so timer closures always call the latest version
+  const playerRef = useRef<StreamPlayer | null>(null);
+  const playerTeardownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopBroadcastRef = useRef<() => void>(() => {});
 
-  // ─── Start broadcasting (sender — open mic) ─────────────────
+  const sendVoice = (obj: unknown) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify(obj)); } catch { /* in-flight */ }
+    }
+  };
+
+  const teardownPlayer = useCallback(() => {
+    if (playerTeardownTimer.current) { clearTimeout(playerTeardownTimer.current); playerTeardownTimer.current = null; }
+    if (playerRef.current) { try { playerRef.current.destroy(); } catch { /* noop */ } playerRef.current = null; }
+  }, []);
+
+  // Open (or reuse) the voice socket for a panic room and resolve once
+  // the DO has authenticated us. The onmessage handler plays incoming
+  // audio for every role — the sender hears talk-back through the very
+  // same path a dispatcher hears the sender.
+  const ensureConnected = useCallback((panicId: number): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (wsRef.current && roomRef.current === panicId
+          && wsRef.current.readyState === WebSocket.OPEN && authedRef.current) {
+        resolve(); return;
+      }
+      if (wsRef.current && roomRef.current !== panicId) {
+        try { wsRef.current.close(); } catch { /* noop */ }
+        wsRef.current = null; authedRef.current = false;
+      }
+      const token = localStorage.getItem('rmpg_token');
+      if (!token) { reject(new Error('Not authenticated')); return; }
+
+      roomRef.current = panicId;
+      const ws = new WebSocket(voiceWsUrl(`panic-${panicId}`));
+      wsRef.current = ws;
+      let settled = false;
+      const to = setTimeout(() => { if (!settled) { settled = true; reject(new Error('Voice connect timeout')); } }, 8000);
+
+      ws.onopen = () => { try { ws.send(JSON.stringify({ type: 'authenticate', token })); } catch { /* noop */ } };
+      ws.onmessage = (ev) => {
+        let msg: any;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        switch (msg.type) {
+          case 'voice_ready':
+            authedRef.current = true;
+            if (!settled) { settled = true; clearTimeout(to); resolve(); }
+            break;
+          case 'radio_transmit_start':
+            teardownPlayer();
+            { const p = new StreamPlayer(); p.init('audio/webm;codecs=opus'); playerRef.current = p; }
+            setState((prev) => ({ ...prev, isReceiving: true, panicSenderUserId: msg.user_id ?? prev.panicSenderUserId }));
+            break;
+          case 'radio_audio':
+            playerRef.current?.appendChunk(msg.chunk);
+            break;
+          case 'radio_transmit_end':
+            setState((prev) => ({ ...prev, isReceiving: false }));
+            if (playerTeardownTimer.current) clearTimeout(playerTeardownTimer.current);
+            playerTeardownTimer.current = setTimeout(teardownPlayer, 1500);
+            break;
+          case 'voice_busy':
+            setState((prev) => ({ ...prev, error: 'Channel busy — wait for the current transmission' }));
+            break;
+        }
+      };
+      ws.onerror = () => { if (!settled) { settled = true; clearTimeout(to); reject(new Error('Voice connect error')); } };
+      ws.onclose = () => { if (roomRef.current === panicId) authedRef.current = false; };
+    });
+  }, [teardownPlayer]);
+
+  // ─── Sender: open the mic for up to 60s ─────────────────────
   const startBroadcast = useCallback(async (panicId?: number) => {
-    // Guard against double-start: prevents mic/timer leak if button is mashed
     if (isBroadcastingRef.current) return;
+    if (panicId == null) { setState((p) => ({ ...p, error: 'No panic id for voice room' })); return; }
     isBroadcastingRef.current = true;
-    panicIdRef.current = panicId ?? null;
+    panicIdRef.current = panicId;
     broadcastStartTimeRef.current = Date.now();
 
     try {
-      // Request mic access
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 16000,
-        },
-      });
+      await ensureConnected(panicId);
+      const stream = await navigator.mediaDevices.getUserMedia(MIC);
       streamRef.current = stream;
-
-      // Use MediaRecorder to capture audio in small chunks
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        audioBitsPerSecond: 16000,
-      });
+      const recorder = new MediaRecorder(stream, { mimeType: pickMime(), audioBitsPerSecond: 16000 });
       mediaRecorderRef.current = recorder;
-
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          // Convert blob to base64 and send via WebSocket
-          const reader = new FileReader();
-          reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1] || '';
-            send({
-              type: 'panic_audio',
-              data: {
-                audio: base64,
-                mimeType,
-                chunk: true,
-                panicId: panicIdRef.current,
-              },
-            });
-          };
-          reader.readAsDataURL(event.data);
-        }
+        if (event.data.size === 0) return;
+        const reader = new FileReader();
+        reader.onload = () => sendVoice({ type: 'audio', chunk: (reader.result as string).split(',')[1] || '' });
+        reader.readAsDataURL(event.data);
       };
 
-      // Capture in 500ms chunks for near-real-time streaming
+      sendVoice({ type: 'transmit_start' });
       recorder.start(500);
+      setState((prev) => ({ ...prev, isBroadcasting: true, broadcastTimeLeft: BROADCAST_DURATION, error: null }));
 
-      setState(prev => ({
-        ...prev,
-        isBroadcasting: true,
-        broadcastTimeLeft: BROADCAST_DURATION,
-        error: null,
-      }));
-
-      // Countdown timer — uses ref to avoid stale closure
       let timeLeft = BROADCAST_DURATION;
       broadcastTimerRef.current = setInterval(() => {
         timeLeft -= 1;
-        setState(prev => ({ ...prev, broadcastTimeLeft: timeLeft }));
-        if (timeLeft <= 0) {
-          stopBroadcastRef.current();
-        }
+        setState((prev) => ({ ...prev, broadcastTimeLeft: timeLeft }));
+        if (timeLeft <= 0) stopBroadcastRef.current();
       }, 1000);
-
-      // Hard stop after duration — uses ref to avoid stale closure
-      broadcastTimeoutRef.current = setTimeout(() => {
-        stopBroadcastRef.current();
-      }, BROADCAST_DURATION * 1000);
-
+      broadcastTimeoutRef.current = setTimeout(() => stopBroadcastRef.current(), BROADCAST_DURATION * 1000);
     } catch (err) {
-      // Clean up any partially-acquired resources (mic stream, timers)
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
       mediaRecorderRef.current = null;
-      if (broadcastTimerRef.current) {
-        clearInterval(broadcastTimerRef.current);
-        broadcastTimerRef.current = null;
-      }
-      if (broadcastTimeoutRef.current) {
-        clearTimeout(broadcastTimeoutRef.current);
-        broadcastTimeoutRef.current = null;
-      }
+      if (broadcastTimerRef.current) { clearInterval(broadcastTimerRef.current); broadcastTimerRef.current = null; }
+      if (broadcastTimeoutRef.current) { clearTimeout(broadcastTimeoutRef.current); broadcastTimeoutRef.current = null; }
       isBroadcastingRef.current = false;
-      setState(prev => ({
-        ...prev,
-        isBroadcasting: false,
-        error: err instanceof Error ? err.message : 'Failed to access microphone',
-      }));
+      setState((prev) => ({ ...prev, isBroadcasting: false, error: err instanceof Error ? err.message : 'Failed to access microphone' }));
     }
-  }, [send]);
+  }, [ensureConnected]);
 
-  // ─── Stop broadcasting ──────────────────────────────────────
+  // ─── Stop the sender broadcast (stays connected for talk-back) ──
   const stopBroadcast = useCallback(() => {
-    // Guard: only act if actually broadcasting
     if (!isBroadcastingRef.current) return;
     isBroadcastingRef.current = false;
-
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+      try { mediaRecorderRef.current.stop(); } catch { /* noop */ }
     }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (broadcastTimerRef.current) {
-      clearInterval(broadcastTimerRef.current);
-      broadcastTimerRef.current = null;
-    }
-    if (broadcastTimeoutRef.current) {
-      clearTimeout(broadcastTimeoutRef.current);
-      broadcastTimeoutRef.current = null;
-    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
     mediaRecorderRef.current = null;
+    if (broadcastTimerRef.current) { clearInterval(broadcastTimerRef.current); broadcastTimerRef.current = null; }
+    if (broadcastTimeoutRef.current) { clearTimeout(broadcastTimeoutRef.current); broadcastTimeoutRef.current = null; }
 
-    // Calculate actual duration
-    const actualDuration = Math.round((Date.now() - broadcastStartTimeRef.current) / 1000);
-
-    // Signal end of broadcast with panicId and duration
-    send({
-      type: 'panic_audio',
-      data: {
-        end: true,
-        panicId: panicIdRef.current,
-        duration: actualDuration,
-      },
-    });
-
+    const duration = Math.round((Date.now() - broadcastStartTimeRef.current) / 1000);
+    sendVoice({ type: 'transmit_end', duration });
     panicIdRef.current = null;
     broadcastStartTimeRef.current = 0;
-
-    setState(prev => ({
-      ...prev,
-      isBroadcasting: false,
-      broadcastTimeLeft: 0,
-    }));
-  }, [send]);
-
-  // Keep ref in sync so timer closures always call the latest stopBroadcast
-  useEffect(() => { stopBroadcastRef.current = stopBroadcast; }, [stopBroadcast]);
-
-  // ─── Start responding (talk-back mode) ──────────────────────
-  const startResponse = useCallback(async (targetUserId: number) => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      streamRef.current = stream;
-
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-
-      const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 16000 });
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1] || '';
-            send({
-              type: 'panic_audio_response',
-              targetUserId,
-              data: {
-                audio: base64,
-                mimeType,
-                chunk: true,
-              },
-            });
-          };
-          reader.readAsDataURL(event.data);
-        }
-      };
-
-      recorder.start(500);
-      setState(prev => ({ ...prev, isResponding: true, error: null }));
-    } catch (err) {
-      setState(prev => ({
-        ...prev,
-        error: err instanceof Error ? err.message : 'Failed to access microphone',
-      }));
-    }
-  }, [send]);
-
-  // ─── Stop responding ────────────────────────────────────────
-  const stopResponse = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    mediaRecorderRef.current = null;
-    setState(prev => ({ ...prev, isResponding: false }));
+    setState((prev) => ({ ...prev, isBroadcasting: false, broadcastTimeLeft: 0 }));
   }, []);
 
-  // ─── Receive and play audio via MSE streaming ────────────────
-  useEffect(() => {
-    // Listen for incoming panic audio (from the officer who triggered panic)
-    const unsubAudio = subscribe('panic_audio', (msg: any) => {
-      // Skip playback if WE are the one broadcasting — prevents echo/reverb
-      // when the server fails to filter us out (e.g. multi-tab edge case)
-      if (isBroadcastingRef.current) return;
+  useEffect(() => { stopBroadcastRef.current = stopBroadcast; }, [stopBroadcast]);
 
-      const data = msg.data || msg.payload || msg;
+  // ─── Listener: hear a panic room (dispatcher receiving the alert) ──
+  const listen = useCallback(async (panicId: number) => {
+    try { await ensureConnected(panicId); } catch { /* connect failures are non-fatal — alert UI still works */ }
+  }, [ensureConnected]);
 
-      if (data.end) {
-        // Broadcast ended — destroy player, allow responder talk-back
-        panicPlayerRef.current?.destroy();
-        panicPlayerRef.current = null;
-        setState(prev => ({ ...prev, isReceiving: false }));
-        return;
-      }
+  // ─── Responder: talk back over the already-open room ──────────
+  const startResponse = useCallback(async (_targetUserId: number) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      setState((p) => ({ ...p, error: 'Not connected to the panic channel' })); return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(MIC);
+      streamRef.current = stream;
+      const recorder = new MediaRecorder(stream, { mimeType: pickMime(), audioBitsPerSecond: 16000 });
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size === 0) return;
+        const reader = new FileReader();
+        reader.onload = () => sendVoice({ type: 'audio', chunk: (reader.result as string).split(',')[1] || '' });
+        reader.readAsDataURL(event.data);
+      };
+      sendVoice({ type: 'transmit_start' });
+      recorder.start(500);
+      setState((prev) => ({ ...prev, isResponding: true, error: null }));
+    } catch (err) {
+      setState((prev) => ({ ...prev, error: err instanceof Error ? err.message : 'Failed to access microphone' }));
+    }
+  }, []);
 
-      if (data.audio && data.mimeType) {
-        setState(prev => ({
-          ...prev,
-          isReceiving: true,
-          panicSenderUserId: data.fromUserId || prev.panicSenderUserId,
-        }));
+  const stopResponse = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop(); } catch { /* noop */ }
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    mediaRecorderRef.current = null;
+    sendVoice({ type: 'transmit_end' });
+    setState((prev) => ({ ...prev, isResponding: false }));
+  }, []);
 
-        // Lazily create the stream player on first audio chunk
-        if (!panicPlayerRef.current) {
-          panicPlayerRef.current = new StreamPlayer();
-          panicPlayerRef.current.init(data.mimeType);
-        }
-        panicPlayerRef.current.appendChunk(data.audio);
-      }
-    });
+  // ─── Stop listening / leave the room (alert dismissed/resolved) ──
+  const stopListening = useCallback(() => {
+    if (isBroadcastingRef.current) return; // never cut our own live broadcast
+    try { wsRef.current?.close(); } catch { /* noop */ }
+    wsRef.current = null; authedRef.current = false; roomRef.current = null;
+    teardownPlayer();
+    setState((prev) => ({ ...prev, isReceiving: false }));
+  }, [teardownPlayer]);
 
-    // Listen for incoming audio responses (talk-back from responders to sender)
-    const unsubResponse = subscribe('panic_audio_response', (msg: any) => {
-      const data = msg.data || msg.payload || msg;
-      if (data.audio && data.mimeType) {
-        // Lazily create response player
-        if (!responsePlayerRef.current) {
-          responsePlayerRef.current = new StreamPlayer();
-          responsePlayerRef.current.init(data.mimeType);
-        }
-        responsePlayerRef.current.appendChunk(data.audio);
-      }
-    });
-
-    return () => {
-      unsubAudio();
-      unsubResponse();
-      panicPlayerRef.current?.destroy();
-      panicPlayerRef.current = null;
-      responsePlayerRef.current?.destroy();
-      responsePlayerRef.current = null;
-    };
-  }, [subscribe]);
+  const setSenderUserId = useCallback((userId: number) => {
+    setState((prev) => ({ ...prev, panicSenderUserId: userId }));
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       isBroadcastingRef.current = false;
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
+        try { mediaRecorderRef.current.stop(); } catch { /* noop */ }
       }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
       if (broadcastTimerRef.current) clearInterval(broadcastTimerRef.current);
       if (broadcastTimeoutRef.current) clearTimeout(broadcastTimeoutRef.current);
-      panicPlayerRef.current?.destroy();
-      responsePlayerRef.current?.destroy();
+      if (playerTeardownTimer.current) clearTimeout(playerTeardownTimer.current);
+      try { playerRef.current?.destroy(); } catch { /* noop */ }
+      try { wsRef.current?.close(); } catch { /* noop */ }
     };
-  }, []);
-
-  const setSenderUserId = useCallback((userId: number) => {
-    setState(prev => ({ ...prev, panicSenderUserId: userId }));
   }, []);
 
   return {
@@ -353,5 +271,7 @@ export function usePanicAudio() {
     startResponse,
     stopResponse,
     setSenderUserId,
+    listen,
+    stopListening,
   };
 }
