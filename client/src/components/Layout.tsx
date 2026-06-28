@@ -93,6 +93,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import PttController from './PttController';
 import { initSettingsSync } from '../utils/settingsSync';
+import { loadSystemSettings } from '../utils/systemSettings';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
@@ -136,6 +137,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/patrol': 'Patrol',
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
+  '/national-warrants': 'National Warrant Search',
   '/citations': 'Citations',
   '/law-book': 'Law Book',
   '/field-interviews': 'Field Interviews',
@@ -207,6 +209,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/body-cameras': 'Body Cameras',
   '/dash-cameras': 'Dash Cameras',
   '/microbilt': 'MicroBilt',
+  '/navigation': 'Module Navigation',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -360,6 +363,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
+  { path: '/navigation', icon: Navigation2, label: 'Nav Index', group: 'system' },
 ];
 
 // Paths that client_viewer role is NOT allowed to see
@@ -391,6 +395,10 @@ export default function Layout() {
   const { isConnected, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Full-bleed pages (map, route-builder) need overflow-hidden on main so
+  // child height: 100% resolves correctly for Mapbox GL / map containers.
+  const isFullBleedPage = location.pathname === '/map' || location.pathname === '/route-builder' || location.pathname === '/geography';
 
   const gps = useGpsTracking();
   const presence = usePresence();
@@ -559,8 +567,8 @@ export default function Layout() {
   // scroll/resize so the panel follows the triggering button.
   const toolbarBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [dropdownRect, setDropdownRect] = useState<{ left: number; top: number; width: number } | null>(null);
-  // Close dropdown on route change
-  useEffect(() => { setOpenDropdown(null); }, [location.pathname]);
+  // Close dropdown on route change + Spillman MDT page-flip chirp
+  useEffect(() => { setOpenDropdown(null); playUiNavigate(); }, [location.pathname]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -715,6 +723,10 @@ export default function Layout() {
   // devices. Lives here so it runs for the whole authenticated session.
   useEffect(() => {
     if (!user) return;
+    // Pull org-wide system settings (Console Settings) and apply Display
+    // settings to the document root. Branding/localization/report values
+    // are read at their own call sites via getSystemSetting.
+    loadSystemSettings();
     return initSettingsSync();
   }, [user]);
 
@@ -908,6 +920,9 @@ export default function Layout() {
     <div className="flex flex-col text-rmpg-100 overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
+
+      {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
+      <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
 
       {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
       <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
@@ -1379,7 +1394,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavBack}
           disabled={!canGoBack}
-          className="toolbar-btn"
+          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
           title="Back (Alt+←)"
           aria-label="Navigate back"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
@@ -1390,7 +1405,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavForward}
           disabled={!canGoForward}
-          className="toolbar-btn"
+          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
           title="Forward (Alt+→)"
           aria-label="Navigate forward"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
