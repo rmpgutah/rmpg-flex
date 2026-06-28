@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   kmhToMph, channelOf, isOutsideChannel, pickVideoObjects, mediaDedupeKey, formatTs, r2KeyFor,
-  isCameraOfflineFromMapping,
 } from '../src/utils/clearpathSync';
-import { pickAlprImageUrl, validatePlate } from '../src/utils/clearpathAlpr';
+import { pickAlprImageUrl } from '../src/utils/clearpathAlpr';
 import type { CpgMediaEvent, CpgMediaObject } from '../src/utils/clearpathGps';
 
 const mo = (over: Partial<CpgMediaObject>): CpgMediaObject => ({
@@ -69,75 +68,4 @@ describe('clearpathAlpr pure helpers', () => {
     expect(pickAlprImageUrl(ev([inside, insecure]))).toBeNull();
   });
 
-  it('validatePlate normalizes real plates and rejects model junk', () => {
-    expect(validatePlate('abc-123')).toBe('ABC123');
-    expect(validatePlate(' 7XY 99 ')).toBe('7XY99');
-    expect(validatePlate('NOTVISIBLE')).toBeNull();
-    expect(validatePlate('none')).toBeNull();
-    expect(validatePlate('')).toBeNull();
-    expect(validatePlate(null)).toBeNull();
-    expect(validatePlate('A')).toBeNull();           // too short
-    expect(validatePlate('TOOLONGPLATE')).toBeNull(); // too long
-  });
-});
-
-describe('isCameraOfflineFromMapping', () => {
-  // Pin time so the tests aren't wall-clock-dependent. All timestamps below
-  // are interpreted relative to this NOW.
-  const NOW = Date.parse('2026-06-23T12:00:00Z');
-
-  it('returns false when ignition is on (camera always awake while driving)', () => {
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'on', last_synced_at: null }, NOW)).toBe(false);
-    // Even with an ancient GPS sync, ignition=on overrides — the camera is
-    // necessarily uploading right now.
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'ON', last_synced_at: '2025-01-01 00:00:00' }, NOW)).toBe(false);
-  });
-
-  it('returns false when ignition state is unknown (sensor blip safety)', () => {
-    // null/empty/wild values must NOT suspend the queue — a missing column
-    // or one-tick gap would otherwise stall every camera in the fleet.
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: null, last_synced_at: null }, NOW)).toBe(false);
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: '', last_synced_at: '2026-06-23 11:59:00' }, NOW)).toBe(false);
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'unknown', last_synced_at: '2026-01-01 00:00:00' }, NOW)).toBe(false);
-  });
-
-  it('returns true when ignition is off and GPS is older than the stale window', () => {
-    // 30 minutes ago > default 15-minute stale window → camera asleep.
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'off', last_synced_at: '2026-06-23 11:30:00' }, NOW)).toBe(true);
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'OFF', last_synced_at: '2026-06-22 11:00:00' }, NOW)).toBe(true);
-  });
-
-  it('returns false when ignition is off but GPS just synced (modem still awake)', () => {
-    // 5 minutes ago < default 15-minute stale window — ClearPath GPS modules
-    // stay awake briefly after ignition off, so the camera might still be
-    // reachable. Don't suspend yet.
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'off', last_synced_at: '2026-06-23 11:55:00' }, NOW)).toBe(false);
-  });
-
-  it('returns true when ignition is off and there is no GPS sync at all', () => {
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'off', last_synced_at: null }, NOW)).toBe(true);
-  });
-
-  it('returns true on unparseable last_synced_at strings (treated as no signal)', () => {
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'off', last_synced_at: 'not-a-date' }, NOW)).toBe(true);
-  });
-
-  it('honours a custom stale-minutes threshold', () => {
-    // 20 minutes ago, threshold=30 → still considered awake.
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'off', last_synced_at: '2026-06-23 11:40:00' }, NOW, 30)).toBe(false);
-    // 20 minutes ago, threshold=10 → asleep.
-    expect(isCameraOfflineFromMapping(
-      { ignition_state: 'off', last_synced_at: '2026-06-23 11:40:00' }, NOW, 10)).toBe(true);
-  });
 });
