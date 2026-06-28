@@ -247,39 +247,36 @@ export const FONT = {
 // ── Border / Line Width Tokens ───────────────────────────────
 
 export const BORDER = {
-  // Line widths — bumped 2026-05-05 design-definition pass.
-  SECTION_OUTER:    0.7,   // Border around sections
-  FIELD:            0.4,   // Field box borders
-  TABLE_OUTER:      0.7,   // Outer border of tables
-  // [Improvement 31] Thicker row separators — the 0.25mm rows were
-  // disappearing on some laser printers at 300dpi. 0.3mm prints
-  // reliably while keeping the compact look.
-  TABLE_ROW:        0.3,   // Row separators (+0.05mm)
-  TABLE_COLUMN:     0.3,   // Column separators (+0.05mm)
-  CHECKBOX:         0.4,   // Checkbox square border
-  CHECK_MARK:       0.6,   // Check mark stroke
-  SIGNATURE_LINE:   0.5,   // Signature line (was 0.4)
-  ACCENT_HEADER:    1.0,   // Accent line below header (was 0.8)
-  ACCENT_FOOTER:    0.6,   // Accent line above footer (was 0.5)
+  // Line widths — reduced 2026-06-28 for low-ink printing.
+  SECTION_OUTER:    0.3,   // Border around sections
+  FIELD:            0.3,   // Field box borders
+  TABLE_OUTER:      0.3,   // Outer border of tables
+  TABLE_ROW:        0.3,   // Row separators
+  TABLE_COLUMN:     0.3,   // Column separators
+  CHECKBOX:         0.3,   // Checkbox square border
+  CHECK_MARK:       0.3,   // Check mark stroke
+  SIGNATURE_LINE:   0.3,   // Signature line
+  ACCENT_HEADER:    0.3,   // Accent line below header
+  ACCENT_FOOTER:    0.3,   // Accent line above footer
   ACCENT_SECTION:   0,     // Section header left-accent strip REMOVED 2026-05-30 (was 2.0). Zero-width = no left highlight anywhere; section-header bars span full width and titles start at the left margin across all PDF generators.
-  FIELD_UNDERLINE:  0.3,   // Field underline rule (was 0.15 — visibly defined)
-  CASE_BOX:         1.0,   // White border inside case number box
-  BANNER:           0.8,   // Banner borders
+  FIELD_UNDERLINE:  0.3,   // Field underline rule
+  CASE_BOX:         0.3,   // White border inside case number box
+  BANNER:           0.3,   // Banner borders
   DIAGRAM_GRID:     0.1,   // Accident diagram grid lines
   FORM_CELL:        0.25,  // Form cell borders (subtle grid)
   SIDEBAR_TAB:      0.25,  // Sidebar tab border
-  FORM_GRID_OUTER:  0.5,   // Bold outer border around form grid
+  FORM_GRID_OUTER:  0.3,   // Bold outer border around form grid
   CLASSIFICATION:   0,     // Classification bars are filled, no stroke
-  CLASSIFICATION_RULE: 0.5, // Gold rule under top classification bar
-  CERT_BOX:         0.6,   // Officer certification block border
-  CAUTION_STRIP:    0.8,   // Caution strip outer border
-  PRIORITY_BAR:     0.6,   // Priority bar outer border
+  CLASSIFICATION_RULE: 0.3, // Gold rule under top classification bar
+  CERT_BOX:         0.3,   // Officer certification block border
+  CAUTION_STRIP:    0.3,   // Caution strip outer border
+  PRIORITY_BAR:     0.3,   // Priority bar outer border
   TIMELINE_CELL:    0.25,  // Dispatch timeline cell dividers
-  TIMELINE_OUTER:   0.5,   // Dispatch timeline outer border
+  TIMELINE_OUTER:   0.3,   // Dispatch timeline outer border
   COC_ROW:          0.25,  // Chain of custody row divider
   COC_OUTER:        0.5,   // Chain of custody outer border
-  BARCODE_STRIP:    0.4,   // Barcode scan strip border
-  MUGSHOT_FRAME:    0.7,   // Mugshot frame
+  BARCODE_STRIP:    0.3,   // Barcode scan strip border
+  MUGSHOT_FRAME:    0.3,   // Mugshot frame
   NARRATIVE_RULE:   0.3,   // Left-margin vertical rule on narrative
   // [Improvement 32] Double-rule — two thin lines 0.8mm apart used as
   // major section dividers (e.g. between header chrome and body).
@@ -287,7 +284,7 @@ export const BORDER = {
   DOUBLE_RULE_GAP:  0.8,   // Gap between double-rule lines (mm)
   // [Improvement 33] Image frame border — slightly heavier than field
   // borders so embedded photos have a distinct picture-frame feel.
-  IMAGE_FRAME:      0.5,   // Image/photo frame border
+  IMAGE_FRAME:      0.3,   // Image/photo frame border
   // [Improvement 34] Pill badge outline — thin stroke around flag pills
   // for definition when printed on paper with poor ink absorption.
   PILL_OUTLINE:     0.15,  // Flag pill outline stroke

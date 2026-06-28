@@ -568,8 +568,10 @@ export function addClassificationBar(doc: jsPDF, priority: string, yStart: numbe
   const cw = getContentWidth(doc);
   const prio = PRIORITY_COLORS[priority?.toLowerCase()] || PRIORITY_COLORS['routine'];
 
-  doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, yStart, cw, LAYOUT.CLASSIF_BAR_H, 'F');
+  // Outline-only classification badge (low ink)
+  doc.setDrawColor(prio.bg[0], prio.bg[1], prio.bg[2]);
+  doc.setLineWidth(0.3);
+  doc.rect(LAYOUT.PAGE_MARGIN, yStart, cw, LAYOUT.CLASSIF_BAR_H);
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_CLASSIF_BAR);
   doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
@@ -612,15 +614,15 @@ export function addReportHeader(
   const accentRgb = hexToRgb(brand.accent_color);
 
   // Detect if header background is light or dark to choose text colors
-  const bgLuminance = (headerBg[0] * 0.299 + headerBg[1] * 0.587 + headerBg[2] * 0.114);
-  const isLightBg = bgLuminance > 140;
-  const headerTextColor: [number, number, number] = isLightBg ? [30, 30, 30] : [255, 255, 255]; // neutralized 2026-05-30
-  const headerMetaColor: [number, number, number] = isLightBg ? [100, 100, 100] : [150, 150, 150]; // neutralized 2026-05-30
-  const subheaderColor: [number, number, number] = isLightBg ? primaryRgb : [accentRgb[0], accentRgb[1], accentRgb[2]];
+  // (Always use dark text now — header fill removed for low ink)
+  const headerTextColor: [number, number, number] = [30, 30, 30];
+  const headerMetaColor: [number, number, number] = [100, 100, 100];
+  const subheaderColor: [number, number, number] = [accentRgb[0], accentRgb[1], accentRgb[2]];
 
-  // ── Header background bar (no top outline — clean edge) ─
-  doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, headerY, cw, LAYOUT.HEADER_HEIGHT, 'F');
+  // ── Header background bar (outline only — low ink) ─
+  doc.setDrawColor(headerBg[0], headerBg[1], headerBg[2]);
+  doc.setLineWidth(0.3);
+  doc.rect(LAYOUT.PAGE_MARGIN, headerY, cw, LAYOUT.HEADER_HEIGHT);
 
   // ── Seal / Logo image (left) ───────────────────────────
   const sealX = LAYOUT.PAGE_MARGIN + SPACING.SM + 0.5;
@@ -688,8 +690,9 @@ export function addReportHeader(
     const prioW = Math.min(doc.getTextWidth(prioText) + 4, textMaxWidth);
     const prioX = textStartX;
     const prioY = headerY + 16.5;
-    doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
-    doc.roundedRect(prioX, prioY, prioW, 3, 0.5, 0.5, 'F');
+    doc.setDrawColor(prio.bg[0], prio.bg[1], prio.bg[2]);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(prioX, prioY, prioW, 3, 0.5, 0.5);
     doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
     doc.text(prioText, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
   }
@@ -699,8 +702,9 @@ export function addReportHeader(
   const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
   const caseBoxY = headerY + 1;
 
-  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(caseBoxX, caseBoxY, LAYOUT.CASE_BOX_W, caseBoxH, 'F');
+  doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.setLineWidth(0.3);
+  doc.rect(caseBoxX, caseBoxY, LAYOUT.CASE_BOX_W, caseBoxH);
 
   // Luminance check: use dark text on light primary color, white on dark
   const primaryLum = primaryRgb[0] * 0.299 + primaryRgb[1] * 0.587 + primaryRgb[2] * 0.114;
@@ -717,10 +721,11 @@ export function addReportHeader(
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.text(caseNumber, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 12, { align: 'center' });
 
-  // ── Thin accent line below header (primary color only) ─
+  // ── Thin accent line below header (outline only — low ink) ─
   const stripY = headerY + LAYOUT.HEADER_HEIGHT;
-  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, stripY, cw, LAYOUT.ACCENT_STRIP_H, 'F');
+  doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.setLineWidth(0.3);
+  doc.line(LAYOUT.PAGE_MARGIN, stripY, LAYOUT.PAGE_MARGIN + cw, stripY);
 
   // ── Reset drawing state ────────────────────────────────
   doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -811,7 +816,7 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, textY);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.setLineWidth(0.5);
+  doc.setLineWidth(0.3);
   doc.line(LAYOUT.PAGE_MARGIN, y + barH, LAYOUT.PAGE_MARGIN + cw, y + barH);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1141,12 +1146,13 @@ export function addFlagBadges(
       else if (AMBER.test(upperFlag))  bg = [80, 80, 80];
     }
 
-    // Draw pill background
-    doc.setFillColor(bg[0], bg[1], bg[2]);
-    doc.roundedRect(curX, curY, pillW, pillH, cornerR, cornerR, 'F');
+    // Draw pill background — outline only (low ink)
+    doc.setDrawColor(bg[0], bg[1], bg[2]);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(curX, curY, pillW, pillH, cornerR, cornerR);
 
-    // Draw text (white on colored bg)
-    doc.setTextColor(255, 255, 255);
+    // Draw text (dark on white bg)
+    doc.setTextColor(0, 0, 0);
     const pillCapH = fontSize * 0.35;
     const textY = curY + (pillH + pillCapH) / 2;
     doc.text(fitPdfText(doc, text, Math.max(6, maxWidth - pillPadX * 2)), curX + pillPadX, textY);
@@ -1186,8 +1192,8 @@ export function addCautionBlock(
   const lineH = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, true);
   const boxH = Math.max(8, lines.length * lineH + 4);
 
-  // Amber warning background
-  doc.setFillColor(...COLOR.CAUTION_BG);
+  // Very light caution tint (low ink)
+  doc.setFillColor(250, 250, 245);
   doc.rect(x, y, width, boxH, 'F');
   // Orange left accent bar
   doc.setFillColor(...COLOR.CAUTION_ACCENT);
@@ -1271,23 +1277,23 @@ export function addSignatureBlock(
   const infoRowH = overrideInfoRowH ?? 8;
   const totalH = roleBarH + sigRowH + infoRowH;
 
-  // ── Role label header bar ──
-  doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(x, y, width, roleBarH, 'F');
+  // ── Role label header bar (outline only — low ink) ──
+  doc.setDrawColor(...COLOR.BG_SECTION_HDR);
+  doc.setLineWidth(0.3);
+  doc.rect(x, y, width, roleBarH);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(0, 0, 0);
   const roleCapH = FONT.SIZE_SECTION_TITLE * 0.35;
   const roleTextY = y + (roleBarH + roleCapH) / 2;
   doc.text(sanitizePdfText(roleLabel.toUpperCase()), x + SPACING.CONTENT_INSET, roleTextY);
 
-  // ── Signature area ──
+  // ── Signature area (very light tint — low ink) ──
   const row1Y = y + roleBarH;
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.setLineWidth(0.3);
   doc.rect(x, row1Y, width, sigRowH);
-  // [Improvement 46] Subtle background tint in signature area
-  doc.setFillColor(...COLOR.SIGNATURE_BG);
+  doc.setFillColor(252, 252, 252);
   doc.rect(x + 0.3, row1Y + 0.3, width - 0.6, sigRowH - 0.6, 'F');
 
   if (sigData?.signatureImage) {
@@ -1498,7 +1504,7 @@ export function addPageFooter(
   // [Improvement 14] Footer accent line uses primary brand color for
   // visual consistency with the header accent strip.
   doc.setDrawColor(footerAccentRgb[0], footerAccentRgb[1], footerAccentRgb[2]);
-  doc.setLineWidth(BORDER.ACCENT_FOOTER);
+  doc.setLineWidth(0.3);
   doc.line(SAFE_PRINT_EDGE_SIDE, accentLineY, pageWidth - SAFE_PRINT_EDGE_SIDE, accentLineY);
 
   // ── Main row (form# | agency | page X of Y) ──────────
@@ -1558,16 +1564,18 @@ export function addDocumentIntegrityTrailer(
   // block reads as a "certificate", not header content.
   let y = pageH * 0.22;
 
-  // ── Title bar (dark with gold accent strip) ─────────────
+  // ── Title bar (outline only — low ink) ─────────────
   const accentW = BORDER.ACCENT_SECTION;
   const titleH = 7;
-  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.rect(margin, y, accentW, titleH, 'F');
-  doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(margin + accentW, y, cw - accentW, titleH, 'F');
+  doc.setDrawColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.setLineWidth(0.3);
+  doc.rect(margin, y, accentW, titleH);
+  doc.setDrawColor(...COLOR.BG_SECTION_HDR);
+  doc.setLineWidth(0.3);
+  doc.rect(margin + accentW, y, cw - accentW, titleH);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(0, 0, 0);
   const titleCapH = 10 * 0.35;
   doc.text(
     'DOCUMENT INTEGRITY',
@@ -2014,13 +2022,14 @@ export function addNarrativeSection(
   // Page break callback: draw section continuation sub-header
   const contTitle = title.toUpperCase() + ' -- CONTINUED';
   const narrativePageBreak = (newY: number): number => {
-    // Draw section continuation sub-header — Spillman black band + white text
+    // Section continuation sub-header — thin outline (low ink)
     const cw = getContentWidth(doc);
-    doc.setFillColor(0, 0, 0);
-    doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.3);
+    doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(255, 255, 255);
+    doc.setTextColor(0, 0, 0);
     const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
     doc.text(fitPdfText(doc, contTitle, cw - SPACING.CONTENT_INSET * 2 - 2), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
@@ -2272,16 +2281,17 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     // strikethrough (live PDF 2026-06-11).
     const contH = SPACING.SECTION_HEADER_H + 1.7;
 
-    // Spillman black-band continuation header — solid black bar, white text
-    doc.setFillColor(0, 0, 0);
-    doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
+    // Spillman continuation header — thin outline (low ink)
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.3);
+    doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH);
 
-    // Text centered in the black bar
+    // Text centered in the outlined band
     const contCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const contTextY = contY + (contH + contCapH) / 2;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(255, 255, 255);
+    doc.setTextColor(0, 0, 0);
     doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
 
     // Form number + case number on right
@@ -3445,16 +3455,17 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
-  // Large WARNING banner
+  // Large WARNING banner — outline only (low ink)
   const primaryRgb = hexToRgb(activeBranding.primary_color);
-  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 10, 'F');
-  doc.setDrawColor(...COLOR.TEXT_INVERTED);
-  doc.setLineWidth(BORDER.CASE_BOX);
+  doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.setLineWidth(0.3);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 10);
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(0.3);
   doc.rect(LAYOUT.PAGE_MARGIN + 1.5, y + 1.2, cw - 3, 7.6);
   doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(0, 0, 0);
   doc.text('WARNING -- TRESPASS NOTICE', pageWidth / 2, y + 7, { align: 'center' });
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
@@ -3759,16 +3770,17 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
     reportDate: data.occurred_date || data.created_at || '',
   });
 
-  // MANDATORY header banner
+  // MANDATORY header banner — outline only (low ink)
   const primaryRgb = hexToRgb(activeBranding.primary_color);
-  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 8, 'F');
-  doc.setDrawColor(...COLOR.TEXT_INVERTED);
-  doc.setLineWidth(BORDER.BANNER);
+  doc.setDrawColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.setLineWidth(0.3);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 8);
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(0.3);
   doc.rect(LAYOUT.PAGE_MARGIN + 1, y + 1, cw - 2, 6);
   doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER_SMALL);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(0, 0, 0);
   doc.text('MANDATORY REPORT -- MUST BE COMPLETED WITHIN 24 HOURS OF INCIDENT', pageWidth / 2, y + 5.5, { align: 'center' });
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
@@ -3885,14 +3897,15 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
 
   // Activity Log
   { const sec = openAutoSection(doc, 'Activity Log', y); y = sec.contentY;
-    doc.setFillColor(...COLOR.BG_TABLE_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 2, cw - 2, 7, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
-    doc.setLineWidth(BORDER.TABLE_ROW * 3);
+    doc.setLineWidth(0.3);
+    doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 2, cw - 2, 7);
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(0.3);
     doc.line(LAYOUT.PAGE_MARGIN + 1, y + 5, LAYOUT.PAGE_MARGIN + cw - 1, y + 5);
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(0, 0, 0);
     doc.text('TIME', lx, y + 2);
     doc.text('ACTIVITY / LOCATION', LAYOUT.PAGE_MARGIN + 25, y + 2);
     doc.text('NOTES', LAYOUT.PAGE_MARGIN + 100, y + 2);
