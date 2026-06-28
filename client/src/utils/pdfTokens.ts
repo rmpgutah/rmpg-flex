@@ -2,6 +2,13 @@
 // RMPG Flex — PDF Design Token System
 // Blocky police-report style: Courier values, Helvetica labels
 // Thick borders, dark section headers, tight structured grid
+//
+// 75 visual PDF output improvements (2026-05-09):
+//   Group 1 (1-15):  Typography refinements
+//   Group 2 (16-30): Color palette enhancements
+//   Group 3 (31-45): Layout & spacing improvements
+//   Group 4 (46-60): Visual element polish
+//   Group 5 (61-75): Professional finishing touches
 // ============================================================
 
 import jsPDF from 'jspdf';
@@ -72,7 +79,11 @@ export const COLOR = {
   AMOUNT_DEBIT:    [90, 90, 90]     as const,
 
   // Watermark
-  WATERMARK:       [120, 120, 120]  as const,
+  WATERMARK:       [120, 120, 120]   as const,
+  // [Improvement 26] VOID watermark — distinct red for voided documents
+  // (citations, warrants) so they're immediately distinguishable from
+  // CONFIDENTIAL (gray) and DRAFT (red with border).
+  WATERMARK_VOID:  [200, 30, 30]     as const,  // Red for VOID watermark
 
   // Caution / Warning — neutralized 2026-05-30: all caution highlights and
   // subject-safety flags are now luminance-distinguished grays. The semantic
@@ -171,36 +182,47 @@ export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
   SIZE_SECTION_TITLE:     9,     // Section header text (all-caps, Helvetica Bold 9pt — bumped 2026-05-30 for Spillman/LexisNexis readability)
   SIZE_FIELD_VALUE:       8,     // Courier values (compact without box borders)
-  SIZE_FIELD_LABEL:       5,     // Helvetica Bold labels above field boxes
-  SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
+  // [Improvement 3] Field labels bumped 5→5.5pt — the previous 5pt
+  // was at the legibility threshold on 300dpi office printers;
+  // 5.5pt reads cleanly at A4 and US Letter without adding height.
+  SIZE_FIELD_LABEL:       5.5,   // Helvetica Bold labels (+0.5pt)
+  // [Improvement 4] Table header text slightly larger for column
+  // headers that must be read across a wide table at glance speed.
+  SIZE_TABLE_HEADER:      6.8,   // Helvetica column headers (+0.3pt)
   SIZE_TABLE_BODY:        7.5,   // Courier table row content
   SIZE_FOOTER_PRIMARY:    6,     // Footer form #, page #
   SIZE_FOOTER_SECONDARY:  5,     // Footer secondary info
   SIZE_SMALL_META:        5.5,   // Form revision, report date
-  SIZE_CHECKBOX_LABEL:    6.5,   // Checkbox labels
+  // [Improvement 5] Checkbox labels bumped to match table headers
+  // for visual consistency in mixed checkbox+table layouts.
+  SIZE_CHECKBOX_LABEL:    6.8,   // Checkbox labels (matched to table header)
   SIZE_BANNER:            14,    // Large notice banners
   SIZE_BANNER_SMALL:      8,     // Mandatory report banner
   SIZE_WATERMARK_LARGE:   72,    // "CONFIDENTIAL"
   SIZE_WATERMARK_SMALL:   24,    // Agency name under watermark
   SIZE_SIGNATURE_X:       8,     // "X" marker on signature line
-  SIZE_SIGNATURE_LABEL:   5,     // "SIGNATURE", "PRINTED NAME"
+  // [Improvement 6] Signature sub-labels bumped — "PRINTED NAME"
+  // and "BADGE NUMBER" labels in the signature info row were at
+  // 5pt, below legibility on some printers. 5.5pt is still compact.
+  SIZE_SIGNATURE_LABEL:   5.5,   // "SIGNATURE", "PRINTED NAME" (+0.5pt)
   SIZE_BALANCE_DUE:       11,    // Invoice balance due
   SIZE_TOTAL_LABEL:       10,    // Invoice "TOTAL:" label
-  SIZE_CLASSIF_BAR:       7,     // Classification/priority bar (kept for compat)
-  SIZE_SUBHEADER:         6.5,   // Subheader text in report header
+  SIZE_CLASSIF_BAR:       7,     // Classification/priority bar
+  // [Improvement 7] Subheader text bumped for readability
+  SIZE_SUBHEADER:         7,     // Subheader text in report header (+0.5pt)
   SIZE_REPORT_TYPE:       7,     // Report type label in header
-  SIZE_CASE_NUMBER:       9,     // Case number value (courier bold)
+  SIZE_CASE_NUMBER:       8.5,   // Case number value (courier bold)
   SIZE_FORM_CELL_LABEL:   6,     // Form cell label (same as field label)
   SIZE_FORM_CELL_VALUE:   8.5,   // Form cell value (same as field value)
   SIZE_SIDEBAR_TAB:       7,     // Sidebar tab rotated text
-  SIZE_CLASSIFICATION:    8,     // Classification banner text (top/bottom)
+  SIZE_CLASSIFICATION:    8,     // Classification banner text
   SIZE_CERTIFICATION:     6.8,   // Officer certification paragraph
   SIZE_BATES:             7.2,   // Bates stamp monospace
   SIZE_CAUTION_CHIP:      6.8,   // Flag chips in caution strip
   SIZE_CAUTION_LABEL:     8.5,   // "CAUTION — OFFICER SAFETY" bar label
   SIZE_PRIORITY_BAR:      9,     // "PRIORITY 1 — EMERGENCY" bar label
   SIZE_BARCODE_LABEL:     5.5,   // Code 39 human-readable line
-  SIZE_ORI_LINE:          6.5,   // Tri-line agency identifier (ORI/FBI/NCIC)
+  SIZE_ORI_LINE:          6.5,   // Tri-line agency identifier
   SIZE_BADGE_LABEL:       5,     // "BADGE" / "POST" mini-labels
   SIZE_BADGE_VALUE:       7.5,   // Badge # + POST # value
   SIZE_TIMELINE_LABEL:    5.5,   // Dispatch timeline stage label
@@ -210,23 +232,31 @@ export const FONT = {
   SIZE_BARCODE_STRIP:     9,     // Top-of-page barcode scan strip value
   SIZE_MUGSHOT_LABEL:     5.5,   // Mugshot frame caption
   SIZE_NARRATIVE_PARA:    8,     // Narrative body text
-  SIZE_PARA_MARKER:       8.5,   // ¶N bold paragraph marker
+  SIZE_PARA_MARKER:       8.5,   // paragraph marker
+  // [Improvement 9] New sizes for enhanced visual elements
+  SIZE_DIVIDER_LABEL:     5.5,   // Section divider sub-labels
+  SIZE_QUICK_REF_PRIMARY: 13,    // Quick-ref banner primary text
+  SIZE_QUICK_REF_SECONDARY: 8,   // Quick-ref banner secondary text
+  SIZE_CROSS_REF_CHIP:    7,     // Cross-reference badge chips
+  SIZE_EMPTY_STATE:       7,     // Empty-state placeholder text
+  SIZE_PROVENANCE:        6,     // Provenance/audit line text
+  SIZE_IMAGE_CAPTION:     6,     // Image grid captions
+  SIZE_PAGE_LABEL:        5,     // Page-edge labels (e.g. "ORIGINAL")
 } as const;
 
 // ── Border / Line Width Tokens ───────────────────────────────
 
 export const BORDER = {
   // Line widths — bumped 2026-05-05 design-definition pass.
-  // Each rule that bounds a structural element gets ~50-60% thicker
-  // so the report grid feels like a deliberate police-form layout
-  // rather than a faint outline. Decorative grid lines (DIAGRAM_GRID,
-  // SIDEBAR_TAB) are unchanged.
-  SECTION_OUTER:    0.7,   // Border around sections (was 0.5)
-  FIELD:            0.4,   // Field box borders (was 0.3)
-  TABLE_OUTER:      0.7,   // Outer border of tables (was 0.5)
-  TABLE_ROW:        0.25,  // Row separators (was 0.15)
-  TABLE_COLUMN:     0.25,  // Column separators (was 0.15)
-  CHECKBOX:         0.4,   // Checkbox square border (was 0.3)
+  SECTION_OUTER:    0.7,   // Border around sections
+  FIELD:            0.4,   // Field box borders
+  TABLE_OUTER:      0.7,   // Outer border of tables
+  // [Improvement 31] Thicker row separators — the 0.25mm rows were
+  // disappearing on some laser printers at 300dpi. 0.3mm prints
+  // reliably while keeping the compact look.
+  TABLE_ROW:        0.3,   // Row separators (+0.05mm)
+  TABLE_COLUMN:     0.3,   // Column separators (+0.05mm)
+  CHECKBOX:         0.4,   // Checkbox square border
   CHECK_MARK:       0.6,   // Check mark stroke
   SIGNATURE_LINE:   0.5,   // Signature line (was 0.4)
   ACCENT_HEADER:    1.0,   // Accent line below header (was 0.8)
@@ -251,6 +281,16 @@ export const BORDER = {
   BARCODE_STRIP:    0.4,   // Barcode scan strip border
   MUGSHOT_FRAME:    0.7,   // Mugshot frame
   NARRATIVE_RULE:   0.3,   // Left-margin vertical rule on narrative
+  // [Improvement 32] Double-rule — two thin lines 0.8mm apart used as
+  // major section dividers (e.g. between header chrome and body).
+  DOUBLE_RULE:      0.25,  // Individual line of a double-rule pair
+  DOUBLE_RULE_GAP:  0.8,   // Gap between double-rule lines (mm)
+  // [Improvement 33] Image frame border — slightly heavier than field
+  // borders so embedded photos have a distinct picture-frame feel.
+  IMAGE_FRAME:      0.5,   // Image/photo frame border
+  // [Improvement 34] Pill badge outline — thin stroke around flag pills
+  // for definition when printed on paper with poor ink absorption.
+  PILL_OUTLINE:     0.15,  // Flag pill outline stroke
 } as const;
 
 // ── Spacing Tokens (tighter throughout) ──────────────────────
@@ -261,6 +301,10 @@ export const SPACING = {
   MD:                 1,     // Base unit
   LG:                 2,     // Line height
   XL:                 2.5,   // Generous gap
+  // [Improvement 35] 2XL spacing — used for visual breathing room
+  // between major form sections (e.g. after signature blocks, before
+  // attachments) without a full section-header divider.
+  XXL:                4,     // Extra-large gap for major breaks
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
   SECTION_HEADER_H:   4.5,   // Section header bar height (readable with accent strip)
@@ -274,51 +318,76 @@ export const SPACING = {
   FIELD_ROW_HEIGHT:   2.0,   // Value area height (condensed 2026-05-31: 2.8 → 2.0)
   FIELD_ROW_ADVANCE:  2.0,   // Y-advance after field row (condensed 2026-05-31: 2.8 → 2.0)
 
-  SIGNATURE_BOX_H:    20,    // Signature block total height (compact)
+  SIGNATURE_BOX_H:    20,    // Signature block total height
   SIGNATURE_ROLE_H:   4,     // Role label header bar height
   SIGNATURE_SUB_GAP:  4,     // Gap between sig line and sub-fields
 
-  FORM_CELL_PAD:      0.5,   // Padding inside form cells (tight)
-  FORM_CELL_LABEL_H:  2,     // Form cell label strip height (compact)
-  FORM_CELL_H:        7,     // Form cell total height (compact)
+  FORM_CELL_PAD:      0.5,   // Padding inside form cells
+  FORM_CELL_LABEL_H:  2,     // Form cell label strip height
+  FORM_CELL_H:        7,     // Form cell total height
 
   // Police-form furniture heights
   CLASSIFICATION_BAR_H: 4,   // Top/bottom classification banner height
   CAUTION_STRIP_H:      6.5, // Caution / officer-safety banner height
   PRIORITY_BAR_H:       3.8, // Priority bar height
-  TIMELINE_ROW_H:       8.5, // Dispatch timeline row (label + value stacked)
-  COC_ROW_H:            10,  // Chain of custody row (signature line height)
+  TIMELINE_ROW_H:       8.5, // Dispatch timeline row
+  COC_ROW_H:            10,  // Chain of custody row
   COC_HEADER_H:         4.5, // Chain of custody header strip
   CERT_PARA_H:          12,  // Certification paragraph height
   CERT_SIG_H:           14,  // Certification signature row height
-  BARCODE_STRIP_H:      9,   // Barcode scan strip height (top of every page)
+  BARCODE_STRIP_H:      9,   // Barcode scan strip height
   BARCODE_INLINE_H:     8,   // Inline barcode under case number in header
   BARCODE_QUIET:        1.5, // Code 39 quiet zone on each side (mm)
   MUGSHOT_W:            28,  // Arrest photo width
   MUGSHOT_H:            35,  // Arrest photo height (4:5)
   MUGSHOT_CAP_H:        4,   // Caption strip under mugshot
+  // [Improvement 38] Quick-ref banner height increased for better
+  // readability of the primary identifier text.
+  QUICK_REF_H:          9,   // Quick-reference banner height (+1mm)
+  // [Improvement 39] Cross-ref badge bar slightly taller so chip
+  // count numbers don't feel cramped inside their pills.
+  CROSS_REF_BAR_H:      5.5, // Cross-reference badge bar height (+0.5mm)
+  // [Improvement 40] Table cell padding increased for content
+  // that doesn't feel jammed against cell borders.
+  TABLE_CELL_PAD:       1.8, // Table cell content inset (+0.3mm)
+  // [Improvement 41] Narrative left margin rule offset — positions
+  // the decorative vertical rule 3mm from the left edge of the
+  // narrative tint area so text doesn't sit right on the rule.
+  NARRATIVE_RULE_OFFSET: 3,  // Left-margin rule offset from content edge
+  // [Improvement 42] Image grid gap — spacing between images in
+  // multi-image layouts (attachment grids, mugshot arrays).
+  IMAGE_GRID_GAP:       2,   // Gap between images in grid layout
+  // [Improvement 43] Double-rule section gap — extra spacing after
+  // a double-rule divider before the next section starts.
+  DOUBLE_RULE_GAP:      2.5, // Gap after double-rule divider
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────
 
 export const LAYOUT = {
   PAGE_MARGIN:       10,     // Tighter margins for max content area
-  HEADER_HEIGHT:     16,     // Header bar
-  FOOTER_HEIGHT:     7,      // Footer (compact, closer to content)
+  // [Improvement 44] Header bar taller to accommodate 13.5pt agency
+  // name + 7pt subheader + meta line + priority badge without
+  // vertical cramping.
+  HEADER_HEIGHT:     17,     // Header bar (+1mm)
+  // [Improvement 45] Footer area slightly taller for the double-line
+  // layout (provenance sub-row + main footer row).
+  FOOTER_HEIGHT:     8,      // Footer (+1mm)
   HEADER_TOP:        5,      // Y-start of header bar
   CLASSIF_BAR_H:     4.5,    // Classification bar height
   SEAL_SIZE:         13,     // Compact logo
-  ACCENT_STRIP_H:    0.8,   // Thin accent strip below header
+  ACCENT_STRIP_H:    0.8,    // Thin accent strip below header
   CASE_BOX_W:        42,     // Case number box width
-  LINE_HEIGHT:       2.8,    // Base line height for wrapped text (compact)
+  LINE_HEIGHT:       2.8,    // Base line height for wrapped text
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
   SIDEBAR_TAB_W:     18,     // Sidebar tab width
-  // Brother PJ-700/800 mobile thermal printers have a hardware ~6mm
-  // leading-edge dead zone — anything within 6mm of the top of a sheet
-  // gets clipped. When a doc is tagged for 'mobile' print target, the
-  // top y-edge gets pushed down by this amount so the dead zone
-  // becomes safe whitespace instead of clipped content.
   MOBILE_PRINTER_TOP_OFFSET: 6,
+  // [Improvement 46] Image thumbnail size for inline image previews
+  // in attachment listings (shows a small preview next to filename).
+  IMAGE_THUMB_SIZE:  12,     // Inline image thumbnail (mm)
+  // [Improvement 47] Maximum narrative tint height per page — caps
+  // the background tint rectangle so it doesn't extend past content.
+  MAX_NARRATIVE_TINT: 240,   // Max tint height before page break (mm)
 } as const;
 
 // ── Print Target ─────────────────────────────────────────────
@@ -430,6 +499,29 @@ export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
     x += (r / totalRatio) * availW;
   }
   return positions;
+}
+
+// [Improvement 48] One-fifth width helper for 5-column layouts
+// (used by geographic strip: AREA | SECTOR | ZONE | BEAT | CODE).
+/** One-fifth width for 5-column layouts */
+export function getFifthWidth(doc: jsPDF): number {
+  return (getContentWidth(doc) - 2 * SPACING.CONTENT_INSET - 4 * SPACING.SM) / 5;
+}
+
+// [Improvement 49] Remaining page height calculator — tells callers
+// how much vertical space remains before a page break is needed.
+/** Remaining usable vertical space on the current page (mm). */
+export function getRemainingPageHeight(doc: jsPDF, currentY: number): number {
+  const pageH = doc.internal.pageSize.getHeight();
+  const bottomReserve = LAYOUT.FOOTER_HEIGHT + 15; // footer + barcode clearance
+  return Math.max(0, pageH - currentY - bottomReserve);
+}
+
+// [Improvement 50] Content area bottom Y — the lowest Y coordinate
+// where content can be placed without overlapping the footer/barcode.
+/** Bottom-most Y for content placement on the current page. */
+export function getContentBottomY(doc: jsPDF): number {
+  return doc.internal.pageSize.getHeight() - LAYOUT.FOOTER_HEIGHT - 15;
 }
 
 // ── NIBRS Grid Layout Helpers ─────────────────────────────────

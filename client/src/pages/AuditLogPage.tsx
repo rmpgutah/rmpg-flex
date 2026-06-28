@@ -150,6 +150,10 @@ const AuditLogPage: React.FC = () => {
   const [complianceReport, setComplianceReport] = useState<any>(null);
   const [indexStats, setIndexStats] = useState<{ total_entries: number; estimated_size_mb: number } | null>(null);
 
+  // ═══ NEW: Compliance report + index stats ═══
+  const [complianceReport, setComplianceReport] = useState<any>(null);
+  const [indexStats, setIndexStats] = useState<{ total_entries: number; estimated_size_mb: number } | null>(null);
+
   // Memoized filter dropdown values — derived from logs, recalculated only when logs change
   const uniqueActions = useMemo(() => {
     const actions = new Set<string>();
@@ -749,7 +753,7 @@ const AuditLogPage: React.FC = () => {
             >
               <option value="">All Actions</option>
               {uniqueActions.map(action => (
-                <option key={action} value={action}>{action}</option>
+                <option key={action} value={action}>{action.replace(/_/g, ' ').toUpperCase()}</option>
               ))}
             </select>
           </div>
@@ -764,7 +768,7 @@ const AuditLogPage: React.FC = () => {
             >
               <option value="">All Types</option>
               {uniqueEntityTypes.map(type => (
-                <option key={type} value={type}>{type}</option>
+                <option key={type} value={type}>{type.replace(/_/g, ' ').toUpperCase()}</option>
               ))}
             </select>
           </div>
