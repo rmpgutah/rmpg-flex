@@ -49,20 +49,17 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-// ── Reusable API Key Panel ────────────────────────────────────
-// Generic panel for managing encrypted API keys via PUT /api/admin/third-party-keys
-interface ApiKeyConfig {
-  key: string;
-  label: string;
-  desc: string;
-  /** Regex pattern the key must match, or null for no validation */
-  pattern?: RegExp;
-  /** Human-readable format hint shown below the input */
-  formatHint?: string;
-  /** When set, render a "Test" button that live-probes the stored key via
-   *  POST /admin/third-party-keys/:key/test (only anthropic_api_key today). */
-  testable?: boolean;
-}
+// ── Third-Party API Keys Panel ──────────────────────────────
+// Lets admins set RapidAPI keys for Lead Generation, DL OCR, etc.
+const THIRD_PARTY_KEYS = [
+  {
+    key: 'google_maps_platform_api_key',
+    label: 'Google Maps Platform',
+    desc: 'Used for all enabled Google Maps Platform services, including Maps, Places, Routes, Geocoding, Weather, and related APIs',
+  },
+  { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab' },
+  { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo' },
+] as const;
 
 function validateKey(value: string, config: ApiKeyConfig): string | null {
   if (!value.trim()) return null;
@@ -82,6 +79,13 @@ const MAPBOX_KEYS: ApiKeyConfig[] = [
   // field would recreate the plaintext-secret leak.
   { key: 'mapbox_style_url', label: 'Custom Style URL', desc: 'Your Mapbox Studio custom style URL — creates a branded map (mapbox://styles/username/style_id)', formatHint: 'mapbox://styles/{username}/{style_id}' },
   { key: 'mapbox_access_token', label: 'Public Access Token', desc: 'PRIMARY — Client-side map rendering, geocoding, directions. Starts with pk.', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Access Tokens' },
+];
+
+const MAP_PROVIDER_KEYS: ApiKeyConfig[] = [
+  { key: 'mapbox_api_key', label: 'Mapbox Access Token', desc: 'Primary client-side map rendering engine for Map page, dispatch overlays, and beat polygons', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Tokens' },
+  { key: 'mapbox_username', label: 'Mapbox Username', desc: 'Your Mapbox account username — used for account-specific style access', secret: false },
+  { key: 'mapbox_password', label: 'Mapbox Password', desc: 'Mapbox account password — stored encrypted, used for direct account authentication' },
+  { key: 'mapbox_style_url', label: 'Mapbox Style URL', desc: 'Custom map style link — e.g. mapbox://styles/username/styleid or full URL from Mapbox Studio → Share', secret: false, formatHint: 'mapbox://styles/... or https://api.mapbox.com/styles/v1/...' },
 ];
 
 const AI_ML_KEYS: ApiKeyConfig[] = [
@@ -292,12 +296,6 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   const handleSave = async (configKey: string) => {
     const value = values[configKey]?.trim();
     if (!value) return;
-    const cfg = keyConfigs.find(k => k.key === configKey);
-    if (cfg) {
-      const err = validateKey(value, cfg);
-      if (err) { setErrors(prev => ({ ...prev, [configKey]: err })); return; }
-    }
-    setErrors(prev => ({ ...prev, [configKey]: null }));
     setSaving(configKey);
     try {
       await apiFetch('/admin/third-party-keys', {
@@ -306,6 +304,11 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
       });
       setConfigured(prev => ({ ...prev, [configKey]: true }));
       setValues(prev => ({ ...prev, [configKey]: '' }));
+      // Invalidate client-side Mapbox token cache so the map page
+      // picks up the new token without a full page reload.
+      if (configKey.startsWith('mapbox_')) {
+        getMapboxToken(true);
+      }
     } catch { /* silent */ }
     setSaving(null);
   };
@@ -337,10 +340,10 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   };
 
   return (
-    <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-rmpg-700">
-        {icon}
-        <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
+    <div className="panel-beveled bg-surface-base border border-[#1c2e42] rounded-sm">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#1c2e42]">
+        <Key className="w-4 h-4 text-brand-400" />
+        <h2 className="text-sm font-semibold text-rmpg-300">API Integrations</h2>
       </div>
       <div className="p-4 space-y-4">
         {keyConfigs.map(({ key, label, desc, formatHint, testable }) => (
@@ -641,7 +644,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   // ── Render ──
 
   // Set document title
-  useEffect(() => { document.title = 'Admin - Integrations \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Admin - Integrations — RMPG Flex'; }, []);
 
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {
