@@ -74,6 +74,15 @@ function TripBadge({ trip }: { trip: Trip }) {
   );
 }
 
+// Feature 2: GPS stale indicator thresholds
+function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
+  if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
+  const elapsed = Date.now() - new Date(unit.gps_updated_at).getTime();
+  if (elapsed > 5 * 60 * 1000) return 'lost';  // >5 min = red (lost)
+  if (elapsed > 2 * 60 * 1000) return 'stale'; // >2 min = amber (stale)
+  return 'ok';
+}
+
 interface UnitStatusBoardProps {
   units: Unit[];
   onUnitClick?: (unit: Unit) => void;
