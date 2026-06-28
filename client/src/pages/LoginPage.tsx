@@ -4,17 +4,18 @@
 // device info, then 2FA / setup / password change flows.
 // ============================================================
 
-import React, { useState, useEffect, useRef, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock, KeyRound, Usb, Monitor,
-  Server, Wifi, Clock,
+  Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock,
+  KeyRound, Usb, Fingerprint, Monitor, Server, Wifi, Clock,
+  HelpCircle, CheckCircle, ArrowRight,
 } from 'lucide-react';
-
-const LoginGlobe = lazy(() => import('../components/login/LoginGlobe'));
 import { useAuth, type LoginStep } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
 import PasswordStrengthMeter from '../components/security/PasswordStrengthMeter';
 import BackupCodesDisplay from '../components/security/BackupCodesDisplay';
+import { parseTimestamp } from '../utils/dateUtils';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '5.3.9';
@@ -112,10 +113,99 @@ export default function LoginPage() {
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [webauthnError, setWebauthnError] = useState(false);
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('choose');
-  const [twoFactorMethods, setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
+  // NOTE: `twoFactorMethods` is currently never written (AuthContext owns the
+  // real source of truth) — leaving the local read so the UI doesn't crash if
+  // a future wiring pass adds the method-list to the context. Today both keys
+  // are undefined, which makes `getEffectiveMode()` fall through to 'totp'.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [twoFactorMethods, _setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
+
+  // Forgot Password flow state
+  type ForgotPwStep = 'username' | 'questions' | 'reset' | 'success';
+  // Auto-opens when `/login?forgot=1` (the redirect from the legacy
+  // /forgot-password route) so the operator lands on the working in-page flow.
+  const [forgotPwActive, setForgotPwActive] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('forgot') === '1';
+  });
+  const [forgotPwStep, setForgotPwStep] = useState<ForgotPwStep>('username');
+  const [forgotUsername, setForgotUsername] = useState('');
+  const [forgotQuestions, setForgotQuestions] = useState<string[]>([]);
+  const [forgotAnswers, setForgotAnswers] = useState(['', '', '']);
+  const [forgotTempToken, setForgotTempToken] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotError, setForgotError] = useState('');
 
   // Last login display
   const [lastLoginInfo, setLastLoginInfo] = useState<{ time: string; ip: string } | null>(null);
+
+  // ── URL deep-link contract (one-shot, stripped after consumption) ──
+  // Honors `?return=<path>` to redirect to the original destination after
+  // login (a supervisor can paste a deep link without authing first and
+  // still land where they intended). `?reset=1` flashes a success banner
+  // after the reset-password flow returns the user to /login. `?error=...`
+  // surfaces a single banner (e.g. `?error=session_expired`).
+  // `?username=<val>` pre-fills the username field (stripped on mount so a
+  // refresh doesn't re-populate; deepLinkConsumedRef prevents double-apply).
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkConsumedRef = useRef(false);
+  const returnUrl = useMemo(() => {
+    const raw = searchParams.get('return');
+    if (!raw) return null;
+    // Only same-origin paths — never let an attacker bounce to an external host
+    if (!raw.startsWith('/') || raw.startsWith('//')) return null;
+    return raw;
+  }, [searchParams]);
+  const [resetSuccess, setResetSuccess] = useState<boolean>(() => searchParams.get('reset') === '1');
+  const [urlError, setUrlError] = useState<string | null>(() => {
+    const code = searchParams.get('error');
+    if (!code) return null;
+    switch (code) {
+      case 'session_expired':  return 'Your session expired. Sign in again to continue.';
+      case 'unauthorized':     return 'You must sign in to view that page.';
+      case 'logged_out':       return 'You have been signed out.';
+      default:                 return null;
+    }
+  });
+  // Strip consumed params on mount so a refresh doesn't re-pin the banners.
+  // Also apply ?username= pre-fill (one-shot via deepLinkConsumedRef).
+  useEffect(() => {
+    if (deepLinkConsumedRef.current) return;
+    deepLinkConsumedRef.current = true;
+    const hasTransient = searchParams.has('reset') || searchParams.has('error') ||
+      searchParams.has('forgot') || searchParams.has('username');
+    if (!hasTransient) return;
+    const next = new URLSearchParams(searchParams);
+    // Pre-fill username if provided and field is empty
+    const usernameParam = next.get('username');
+    if (usernameParam && !loginUsername) {
+      setLoginUsername(usernameParam);
+    }
+    next.delete('reset');
+    next.delete('error');
+    next.delete('forgot');
+    next.delete('username');
+    // Preserve `return` — it's still load-bearing for the post-login navigate.
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Auto-dismiss the reset-success flash after 6s so the form regains focus.
+  useEffect(() => {
+    if (!resetSuccess) return;
+    const t = setTimeout(() => setResetSuccess(false), 6000);
+    return () => clearTimeout(t);
+  }, [resetSuccess]);
+
+  // Post-login redirect honoring `?return=<path>`. The App.tsx /login route
+  // already auto-redirects authed users to `/` (or `/crm`), but it ignores
+  // the return URL. We intercept on `complete` and route there explicitly.
+  useEffect(() => {
+    if (loginStep !== 'complete' || !returnUrl) return;
+    navigate(returnUrl, { replace: true });
+  }, [loginStep, returnUrl, navigate]);
 
   // Check for last login info stored during login flow
   useEffect(() => {
@@ -157,23 +247,45 @@ export default function LoginPage() {
   // Device info (computed once)
   const device = useMemo(() => getDeviceInfo(), []);
 
-  // Idle logout message
-  const [showIdleMessage, setShowIdleMessage] = useState(false);
-  const [showSessionExpired, setShowSessionExpired] = useState(false);
+  // Derived: true when the credentials form is the active step.
+  // Declared here (before the keyboard useEffect) so the closure captures it.
+  const isCredentialStep = !pending2FA && loginStep !== 'setup_2fa' && loginStep !== 'confirm_setup_2fa' && loginStep !== 'show_backup_codes' && loginStep !== 'password_change';
+
+  // Esc smart-cascade: clear the most-foreground transient state first.
+  //   1. context error (clearError)  2. URL-error banner  3. reset-success flash
+  //   4. unmasked password  5. open forgot-password panel  → no-op otherwise.
+  // N shortcut: focuses the username field when on the credentials step and the
+  //   event target is not already an input/textarea (guards typed "n" in forms).
+  // Critically, Esc does NOT cancel 2FA / setup_2fa — those have their own
+  // explicit "Back" controls and an accidental Esc mid-verification would
+  // discard the partially-entered code.
   useEffect(() => {
-    if (sessionStorage.getItem('rmpg_idle_logout') === '1') {
-      setShowIdleMessage(true);
-      sessionStorage.removeItem('rmpg_idle_logout');
-      const t = setTimeout(() => setShowIdleMessage(false), 15000);
-      return () => clearTimeout(t);
-    }
-    if (sessionStorage.getItem('rmpg_session_expired') === '1') {
-      setShowSessionExpired(true);
-      sessionStorage.removeItem('rmpg_session_expired');
-      const t = setTimeout(() => setShowSessionExpired(false), 15000);
-      return () => clearTimeout(t);
-    }
-  }, []);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (error) { clearError(); return; }
+        if (urlError) { setUrlError(null); return; }
+        if (resetSuccess) { setResetSuccess(false); return; }
+        if (showPassword) { setShowPassword(false); return; }
+        if (forgotPwActive) { handleForgotClose(); return; }
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
+        if (isCredentialStep && !forgotPwActive) {
+          e.preventDefault();
+          usernameRef.current?.focus();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error, urlError, resetSuccess, showPassword, forgotPwActive, isCredentialStep]);
+
+  // Auto-logout (idle / max-session) messaging removed — sessions no longer
+  // expire automatically, so these notices can never fire.
 
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -307,6 +419,93 @@ export default function LoginPage() {
     }
   };
 
+  // ── Forgot Password Handlers ──────────────────────────
+  const handleForgotStart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotUsername.trim()) return;
+    setForgotBusy(true);
+    setForgotError('');
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: forgotUsername.trim() }),
+      });
+      const data = await res.json();
+      if (data.hasQuestions && data.questions) {
+        setForgotQuestions(data.questions);
+        setForgotPwStep('questions');
+      } else {
+        setForgotError('No security questions found for this account. Contact your administrator.');
+      }
+    } catch {
+      setForgotError('Unable to connect. Please try again.');
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
+  const handleForgotAnswerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (forgotAnswers.some(a => !a.trim())) return;
+    setForgotBusy(true);
+    setForgotError('');
+    try {
+      const res = await fetch('/api/auth/forgot-password/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: forgotUsername.trim(), answers: forgotAnswers.map(a => a.trim().toLowerCase()) }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.tempToken) {
+        setForgotTempToken(data.tempToken);
+        setForgotPwStep('reset');
+      } else {
+        setForgotError(data.error || 'One or more answers are incorrect.');
+      }
+    } catch {
+      setForgotError('Unable to connect. Please try again.');
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
+  const handleForgotReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotNewPassword || forgotNewPassword !== forgotConfirmPassword) return;
+    setForgotBusy(true);
+    setForgotError('');
+    try {
+      const res = await fetch('/api/auth/forgot-password/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken: forgotTempToken, newPassword: forgotNewPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setForgotPwStep('success');
+      } else {
+        setForgotError(data.error || 'Failed to reset password.');
+      }
+    } catch {
+      setForgotError('Unable to connect. Please try again.');
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
+  const handleForgotClose = () => {
+    setForgotPwActive(false);
+    setForgotPwStep('username');
+    setForgotUsername('');
+    setForgotQuestions([]);
+    setForgotAnswers(['', '', '']);
+    setForgotTempToken('');
+    setForgotNewPassword('');
+    setForgotConfirmPassword('');
+    setForgotError('');
+  };
+
   const handleBackWebAuthn = () => {
     if (twoFactorMode !== 'choose' && twoFactorMethods.totp && twoFactorMethods.webauthn) {
       setTwoFactorMode('choose');
@@ -335,117 +534,26 @@ export default function LoginPage() {
   };
 
   const status = stepStatus[loginStep] || stepStatus.username;
-  const isCredentialStep = !pending2FA && loginStep !== 'setup_2fa' && loginStep !== 'confirm_setup_2fa' && loginStep !== 'show_backup_codes' && loginStep !== 'password_change';
 
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #0c0c0c' }}>
-      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
-      <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
+    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+      <span className="text-[8px] uppercase tracking-wider font-bold text-rmpg-500">{label}</span>
+      <span className="text-[9px] font-mono text-rmpg-400">{value}</span>
     </div>
   );
 
   return (
-    <div className={`min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden${lowPerf ? ' login-lite' : ''}`} style={{ background: 'radial-gradient(ellipse at center, #0b0b0b 0%, #050505 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
-      {/* Ambient 3D globe — skip on low-perf devices (biggest GPU hog) */}
-      {!lowPerf && (
-        <Suspense fallback={null}>
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ zIndex: 0, opacity: 0.65 }}
-            aria-hidden="true"
-          >
-            <LoginGlobe className="w-full h-full" />
-          </div>
-        </Suspense>
-      )}
-
-      {/* Animated grid overlay — skip on low-perf */}
-      {!lowPerf && <div className="login-grid-bg" style={{ zIndex: 1 }} />}
-
-      {/* Radar sweep behind everything (decorative) — skip on low-perf */}
-      {!lowPerf && <div className="login-radar" aria-hidden="true" />}
-
-      {/* HUD corner brackets — skip on low-perf */}
-      {!lowPerf && (
-        <>
-          <div className="login-corner tl" aria-hidden="true" />
-          <div className="login-corner tr" aria-hidden="true" />
-          <div className="login-corner bl" aria-hidden="true" />
-          <div className="login-corner br" aria-hidden="true" />
-        </>
-      )}
-
-      {/* Scanline overlay — skip on low-perf */}
-      {!lowPerf && <div className="login-scanline" aria-hidden="true" />}
-
-      {/* Vignette to keep card readable over globe */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          zIndex: 1,
-          background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 22%, rgba(0,0,0,0.55) 65%, rgba(0,0,0,0.92) 100%)',
-        }}
-        aria-hidden="true"
-      />
-
-      {/* HUD readout panel — top left (system) — hidden on low-perf */}
-      {!lowPerf && (
-      <div className="hidden md:block absolute top-4 left-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
-        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1" style={{ color: '#d4a017' }}>◆ Command Console</div>
-        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
-          <div className="flex justify-between gap-3"><span>NODE</span><span style={{ color: '#c5c5c5' }}>RMPG-PRIMARY</span></div>
-          <div className="flex justify-between gap-3"><span>UPLINK</span><span className="login-data-flicker" style={{ color: '#22c55e' }}>● SECURE</span></div>
-          <div className="flex justify-between gap-3"><span>TLS</span><span style={{ color: '#c5c5c5' }}>1.3 / AES-256</span></div>
-          <div className="flex justify-between gap-3"><span>SECTOR</span><span style={{ color: '#c5c5c5' }}>UTAH · MTN</span></div>
-        </div>
-      </div>
-      )}
-
-      {/* HUD readout panel — top right (clock + threat level) — hidden on low-perf */}
-      {!lowPerf && (
-      <div className="hidden md:block absolute top-4 right-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
-        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1 text-right" style={{ color: '#d4a017' }}>Tactical Status ◆</div>
-        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
-          <div className="flex justify-between gap-3"><span>TIME</span><span style={{ color: '#c5c5c5' }}>{clock} MT</span></div>
-          <div className="flex justify-between gap-3"><span>DATE</span><span style={{ color: '#c5c5c5' }}>{new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: '2-digit', year: 'numeric' })}</span></div>
-          <div className="flex justify-between gap-3"><span>DEFCON</span><span style={{ color: '#22c55e' }}>● NORMAL</span></div>
-          <div className="flex justify-between gap-3"><span>PATROL</span><span className="login-data-flicker" style={{ color: '#c5c5c5' }}>ACTIVE</span></div>
-        </div>
-      </div>
-      )}
-
-      {/* HUD readout panel — bottom left (system telemetry) — hidden on low-perf */}
-      {!lowPerf && (
-      <div className="hidden md:block absolute bottom-4 left-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
-        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1" style={{ color: '#d4a017' }}>◆ Telemetry</div>
-        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
-          <div className="flex justify-between gap-3"><span>CAD/RMS</span><span style={{ color: '#22c55e' }}>● ONLINE</span></div>
-          <div className="flex justify-between gap-3"><span>DISPATCH</span><span style={{ color: '#22c55e' }}>● ONLINE</span></div>
-          <div className="flex justify-between gap-3"><span>NCIC</span><span style={{ color: '#22c55e' }}>● LINKED</span></div>
-          <div className="flex justify-between gap-3"><span>EVIDENCE</span><span style={{ color: '#22c55e' }}>● SIGNED</span></div>
-        </div>
-      </div>
-      )}
-
-      {/* HUD readout panel — bottom right (region) — hidden on low-perf */}
-      {!lowPerf && (
-      <div className="hidden md:block absolute bottom-4 right-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
-        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1 text-right" style={{ color: '#d4a017' }}>Coverage ◆</div>
-        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
-          <div className="flex justify-between gap-3"><span>AREAS</span><span style={{ color: '#c5c5c5' }}>6</span></div>
-          <div className="flex justify-between gap-3"><span>SECTORS</span><span style={{ color: '#c5c5c5' }}>29</span></div>
-          <div className="flex justify-between gap-3"><span>ZONES</span><span style={{ color: '#c5c5c5' }}>288</span></div>
-          <div className="flex justify-between gap-3"><span>BEATS</span><span style={{ color: '#c5c5c5' }}>719</span></div>
-        </div>
-      </div>
-      )}
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, var(--surface-base) 0%, var(--surface-sunken) 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
+      {/* Animated grid background */}
+      <div className="login-grid-bg" />
 
       {/* ── Security Warning Banner ─────────────────── */}
       <div
         className="w-full max-w-lg mb-1 sm:mb-3 px-3 sm:px-0 relative z-10"
         role="alert"
         aria-label="Security warning"
+        style={{ marginTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div
           style={{
@@ -475,7 +583,7 @@ export default function LoginPage() {
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
-              className="login-badge-anim"
+              className="drop-shadow-[0_0_15px_rgba(212,160,23,0.25)]"
               style={{
                 height: 'clamp(48px, 12vw, 88px)',
                 width: 'clamp(48px, 12vw, 88px)',
@@ -486,19 +594,19 @@ export default function LoginPage() {
             />
           </div>
           <div className="flex items-center justify-center gap-2 mt-0.5 sm:mt-1">
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #333333)' }} />
-            <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(136, 136, 136, 0.65)' }}>
+            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, var(--border-default))' }} />
+            <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold text-rmpg-400/65">
               Secure Authentication
             </p>
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, #333333, transparent)' }} />
+            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, var(--border-default), transparent)' }} />
           </div>
         </div>
 
         {/* ── Login Card ──────────────────────────────── */}
-        <div className="shadow-md relative overflow-hidden panel-beveled bg-surface-base login-card-frame" role="form" aria-label="Authentication form">
+        <div className="shadow-md relative overflow-hidden panel-beveled bg-surface-base" role="form" aria-label="Authentication form">
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#888888' }} />
+            <ShieldCheck className="w-3 h-3 text-rmpg-400" />
             <span>
               {loginStep === 'setup_2fa' || loginStep === 'confirm_setup_2fa'
                 ? '2FA SETUP'
@@ -517,30 +625,49 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderBottom: '1px solid var(--border-subtle)' }} aria-hidden="true">_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderBottom: '1px solid var(--border-subtle)' }} aria-hidden="true">&#9633;</div>
             </div>
           </div>
 
           <div className="p-4 sm:p-5">
-            {/* Idle timeout message */}
-            {showIdleMessage && (
-              <div className="mb-3 p-2.5 bg-amber-900/25 border border-amber-700/50 flex items-start gap-2" role="status" aria-live="polite">
-                <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
-                <div>
-                  <p className="text-[10px] text-amber-300 font-semibold">Session Expired</p>
-                  <p className="text-[9px] text-amber-400/80">You were automatically logged out due to inactivity.</p>
-                </div>
+            {/* URL `?error=...` banner — dismisses on Esc or close */}
+            {urlError && !forgotPwActive && (
+              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in" role="alert" aria-live="polite" style={{
+                background: 'rgba(220, 38, 38, 0.10)',
+                border: '1px solid #7f1d1d',
+              }}>
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} aria-hidden="true" />
+                <p className="text-xs flex-1" style={{ color: '#ef7a7a' }}>{urlError}</p>
+                <button
+                  type="button"
+                  onClick={() => setUrlError(null)}
+                  className="text-[10px] uppercase tracking-wide font-bold text-rmpg-500 hover:text-rmpg-200 transition-colors"
+                  aria-label="Dismiss notice"
+                >
+                  Dismiss
+                </button>
               </div>
             )}
-            {/* Max session duration message — neutral info style (not gold/warning) */}
-            {showSessionExpired && (
-              <div className="mb-3 p-2.5 bg-[#141414] border border-[#2e2e2e] flex items-start gap-2" role="status" aria-live="polite">
-                <Lock className="w-3.5 h-3.5 text-[#888888] flex-shrink-0 mt-0.5" aria-hidden="true" />
-                <div>
-                  <p className="text-[10px] text-[#cccccc] font-semibold">Session Duration Limit</p>
-                  <p className="text-[9px] text-[#888888]">Your session reached the maximum duration. Please sign in again.</p>
-                </div>
+
+            {/* `?reset=1` success flash — comes from ResetPasswordPage */}
+            {resetSuccess && !forgotPwActive && (
+              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in" role="status" aria-live="polite" style={{
+                background: 'rgba(34, 197, 94, 0.08)',
+                border: '1px solid #166534',
+              }}>
+                <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#22c55e' }} aria-hidden="true" />
+                <p className="text-xs flex-1" style={{ color: '#86efac' }}>
+                  Password reset complete. Sign in with your new password.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setResetSuccess(false)}
+                  className="text-[10px] uppercase tracking-wide font-bold text-rmpg-500 hover:text-rmpg-200 transition-colors"
+                  aria-label="Dismiss notice"
+                >
+                  Dismiss
+                </button>
               </div>
             )}
 
@@ -550,7 +677,7 @@ export default function LoginPage() {
                 <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#22c55e' }} />
                 <p className="text-xs" style={{ color: '#86efac' }}>
                   Last login: {(() => {
-                    const d = new Date(lastLoginInfo.time);
+                    const d = parseTimestamp(lastLoginInfo.time);
                     const now = new Date();
                     const diff = now.getTime() - d.getTime();
                     const hours = Math.floor(diff / 3600000);
@@ -585,15 +712,18 @@ export default function LoginPage() {
             )}
 
             {/* ══════ CREDENTIALS STEP (username + password on one screen) ══════ */}
-            {isCredentialStep && (
+            {/* Hidden while the forgot-password panel is open so the operator
+                isn't looking at two parallel forms. */}
+            {isCredentialStep && !forgotPwActive && (
               <form onSubmit={handleCredentialsSubmit} className="space-y-3">
                 <div>
-                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Username
                   </label>
                   <input
                     ref={usernameRef}
                     id="username"
+                    name="username"
                     type="text"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Enter your username"
@@ -605,13 +735,14 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Password
                   </label>
                   <div className="relative">
                     <input
                       ref={passwordRef}
                       id="password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
                       className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 pr-8"
                       placeholder="Enter your password"
@@ -624,10 +755,9 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11"
-                      style={{ color: '#666666' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                                            className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11 text-rmpg-500"
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       tabIndex={0}
                     >
@@ -638,7 +768,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !loginUsername.trim() || !password}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -649,6 +779,16 @@ export default function LoginPage() {
                   ) : (
                     'Sign In'
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setForgotPwActive(true); setForgotPwStep('username'); setForgotUsername(loginUsername); setForgotError(''); }}
+                                    className="w-full text-center text-[10px] uppercase tracking-wider font-bold mt-2 transition-colors text-rmpg-500"
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#d4a017'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                  aria-label="Forgot password"
+                >
+                  Forgot Password?
                 </button>
               </form>
             )}
@@ -667,10 +807,10 @@ export default function LoginPage() {
                 className="space-y-4"
               >
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                     Enter Authenticator Code
                   </p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>
+                  <p className="text-[9px] text-rmpg-500">
                     Open your authenticator app and enter the 6-digit code
                   </p>
                 </div>
@@ -685,7 +825,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || totpCode.replace(/\s/g, '').length < 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -703,28 +843,27 @@ export default function LoginPage() {
 
                 {/* Trust this device checkbox */}
                 <label className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
-                  <input
+                  <input id="ff-loginpage-0"
                     type="checkbox"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
                     className="w-4 h-4 rounded-sm accent-[#888888] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
-                    style={{ accentColor: '#888888' }}
+                    style={{ accentColor: 'var(--rmpg-400)' }}
                     aria-label="Trust this device for 30 days"
                   />
-                  <span className="text-[10px] group-hover:text-rmpg-200 transition-colors" style={{ color: '#888888' }}>
+                  <span className="text-[10px] group-hover:text-rmpg-200 transition-colors text-rmpg-400">
                     Trust this device for 30 days
                   </span>
                 </label>
 
                 {/* Alternative methods */}
-                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid #2b2b2b' }}>
+                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid var(--border-default)' }}>
                   <button
                     type="button"
                     onClick={handleBackWebAuthn}
-                    className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
-                    style={{ color: '#666666' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                                        className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5 text-rmpg-500"
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                     aria-label="Go back to credentials"
                   >
                     <ArrowLeft className="w-3 h-3" aria-hidden="true" />
@@ -735,10 +874,9 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => { clearError(); handleSecurityKeyAuth(); }}
                       disabled={loginBusy}
-                      className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
-                      style={{ color: '#666666' }}
+                                            className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5 text-rmpg-500"
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#d97706'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                       aria-label="Verify with YubiKey security key"
                     >
                       <Usb className="w-3 h-3" aria-hidden="true" />
@@ -747,10 +885,9 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}
-                      className="text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5"
-                      style={{ color: '#666666' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                                            className="text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5 text-rmpg-500"
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--rmpg-400)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                       aria-label="Use a backup recovery code"
                     >
                       Backup Code
@@ -764,8 +901,8 @@ export default function LoginPage() {
             {pending2FA && effectiveMode === 'webauthn' && (
               <div className="space-y-4">
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Security Key</p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">Security Key</p>
+                  <p className="text-[9px] text-rmpg-500">
                     {webauthnError ? 'Authentication failed — try again' : 'Touch your security key when it flashes'}
                   </p>
                 </div>
@@ -774,7 +911,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleSecurityKeyAuth}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                   aria-label={webauthnError ? 'Retry security key authentication' : 'Activate security key'}
                 >
@@ -795,10 +932,9 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={handleBackWebAuthn}
-                    className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#666666' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                                        className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -811,11 +947,11 @@ export default function LoginPage() {
             {pending2FA && effectiveMode === 'backup' && (
               <form onSubmit={handleBackupSubmit} className="space-y-3">
                 <div className="text-center mb-2">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Recovery Code</p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>Enter one of your single-use backup codes</p>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">Recovery Code</p>
+                  <p className="text-[9px] text-rmpg-500">Enter one of your single-use backup codes</p>
                 </div>
 
-                <input
+                <input id="ff-loginpage-1"
                   type="text"
                   className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 text-center font-mono tracking-widest uppercase"
                   placeholder="XXXX-XXXX"
@@ -831,7 +967,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !backupCode.trim()}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loginBusy ? (
                     <>
@@ -847,10 +983,9 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={handleBackWebAuthn}
-                    className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#666666' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                                        className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -858,10 +993,9 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
-                    className="text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#666666' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#888888'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                                        className="text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--rmpg-400)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
                   >
                     Use Authenticator
                   </button>
@@ -873,11 +1007,11 @@ export default function LoginPage() {
             {loginStep === 'setup_2fa' && (
               <div className="space-y-4">
                 <div className="text-center">
-                  <ShieldCheck className="w-10 h-10 mx-auto mb-2" style={{ color: '#888888' }} />
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                  <ShieldCheck className="w-10 h-10 mx-auto mb-2 text-rmpg-400" />
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                     Two-Factor Authentication Required
                   </p>
-                  <p className="text-[9px] leading-relaxed" style={{ color: '#666666' }}>
+                  <p className="text-[9px] leading-relaxed text-rmpg-500">
                     Your account requires two-factor authentication. You'll need an authenticator app like
                     <strong> Google Authenticator</strong> or <strong>Authy</strong>.
                   </p>
@@ -886,7 +1020,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleStartSetup}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -901,7 +1035,7 @@ export default function LoginPage() {
                 <button type="button"
                   onClick={handleBack}
                   className="w-full flex items-center justify-center gap-1 py-1.5 text-[9px] uppercase tracking-wider"
-                  style={{ color: '#666666', background: 'transparent', border: 'none' }}
+                  style={{ color: 'var(--rmpg-500)', background: 'transparent', border: 'none' }}
                 >
                   <ArrowLeft className="w-3 h-3" /> Set Up Later
                 </button>
@@ -912,8 +1046,8 @@ export default function LoginPage() {
             {loginStep === 'confirm_setup_2fa' && (
               <form onSubmit={handleConfirmSetup} className="space-y-4">
                 <div className="text-center">
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>Scan QR Code</p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">Scan QR Code</p>
+                  <p className="text-[9px] text-rmpg-500">
                     Scan with your authenticator app, then enter the 6-digit code
                   </p>
                 </div>
@@ -930,15 +1064,14 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowManualKey(!showManualKey)}
-                    className="text-[9px] uppercase tracking-wide"
-                    style={{ color: '#888888' }}
+                    className="text-[9px] uppercase tracking-wide text-rmpg-400"
                   >
                     {showManualKey ? 'Hide' : 'Show'} manual entry key
                   </button>
                   {showManualKey && manualKey && (
                     <div
                       className="mt-2 p-2 font-mono text-xs tracking-wider break-all select-all cursor-text"
-                      style={{ background: '#050505', border: '1px solid #2b2b2b', color: '#e0e0e0' }}
+                      style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
                     >
                       {manualKey}
                     </div>
@@ -946,7 +1079,7 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="setup-code" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="setup-code" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Enter code from app to verify
                   </label>
                   <input
@@ -968,7 +1101,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || setupCode.length !== 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -988,7 +1121,7 @@ export default function LoginPage() {
               <div>
                 <div className="text-center mb-4">
                   <KeyRound className="w-8 h-8 mx-auto mb-2" style={{ color: '#d4a017' }} />
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                     Backup Recovery Codes
                   </p>
                 </div>
@@ -1003,17 +1136,17 @@ export default function LoginPage() {
             {loginStep === 'password_change' && (
               <form onSubmit={handlePasswordChange} className="space-y-3">
                 <div className="text-center mb-2">
-                  <Lock className="w-8 h-8 mx-auto mb-2" style={{ color: '#888888' }} />
-                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                  <Lock className="w-8 h-8 mx-auto mb-2 text-rmpg-400" />
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
                     Password Change Required
                   </p>
-                  <p className="text-[9px]" style={{ color: '#666666' }}>
+                  <p className="text-[9px] text-rmpg-500">
                     Your password has expired or must be changed before continuing.
                   </p>
                 </div>
 
                 <div>
-                  <label htmlFor="new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     New Password
                   </label>
                   <input
@@ -1032,7 +1165,7 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                  <label htmlFor="confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
                     Confirm Password
                   </label>
                   <input
@@ -1054,7 +1187,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !newPassword || newPassword !== confirmPassword}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                   aria-busy={loginBusy}
                 >
                   {loginBusy ? (
@@ -1069,7 +1202,221 @@ export default function LoginPage() {
               </form>
             )}
 
-            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #2b2b2b' }} aria-hidden="true" />
+            {/* ══════ Forgot Password Flow ══════ */}
+            {forgotPwActive && (
+              <div className="space-y-3">
+                {/* Error */}
+                {forgotError && (
+                  <div className="flex items-center gap-2 p-2.5 mb-2 animate-fade-in" role="alert" style={{ background: 'rgba(220, 38, 38, 0.15)', border: '1px solid #991b1b' }}>
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} aria-hidden="true" />
+                    <p className="text-xs" style={{ color: '#ef7a7a' }}>{forgotError}</p>
+                  </div>
+                )}
+
+                {/* Step: Username */}
+                {forgotPwStep === 'username' && (
+                  <form onSubmit={handleForgotStart} className="space-y-3">
+                    <div className="text-center mb-1">
+                      <HelpCircle className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
+                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
+                        Forgot Password
+                      </p>
+                      <p className="text-[9px] text-rmpg-500">
+                        Enter your username to retrieve your security questions.
+                      </p>
+                    </div>
+                    <div>
+                      <label htmlFor="forgot-username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
+                        Username
+                      </label>
+                      <input
+                        id="forgot-username"
+                        type="text"
+                        className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
+                        placeholder="Enter your username"
+                        value={forgotUsername}
+                        onChange={(e) => setForgotUsername(e.target.value)}
+                        autoComplete="username"
+                        autoFocus
+                        required
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={forgotBusy || !forgotUsername.trim()}
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {forgotBusy ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                          Checking...
+                        </>
+                      ) : (
+                        'Continue'
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleForgotClose}
+                                            className="w-full text-center text-[9px] uppercase tracking-wider mt-1 text-rmpg-500"
+                    >
+                      Back to Login
+                    </button>
+                  </form>
+                )}
+
+                {/* Step: Answer Security Questions */}
+                {forgotPwStep === 'questions' && (
+                  <form onSubmit={handleForgotAnswerSubmit} className="space-y-3">
+                    <div className="text-center mb-1">
+                      <ShieldCheck className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
+                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
+                        Answer Security Questions
+                      </p>
+                      <p className="text-[9px] text-rmpg-500">
+                        Answers are case-insensitive.
+                      </p>
+                    </div>
+                    {[0, 1, 2].map((i) => (
+                      <div key={i}>
+                        <label htmlFor="ff-loginpage-2" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
+                          Question {i + 1}
+                        </label>
+                        <p className="text-[10px] mb-1" style={{ color: 'var(--rmpg-400)' }}>{forgotQuestions[i]}</p>
+                        <input id="ff-loginpage-2"
+                          type="text"
+                          className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
+                          placeholder="Your answer"
+                          value={forgotAnswers[i]}
+                          onChange={(e) => {
+                            const newAnswers = [...forgotAnswers];
+                            newAnswers[i] = e.target.value;
+                            setForgotAnswers(newAnswers);
+                          }}
+                          autoComplete="off"
+                          autoFocus={i === 0}
+                          required
+                        />
+                      </div>
+                    ))}
+                    <button
+                      type="submit"
+                      disabled={forgotBusy || forgotAnswers.some(a => !a.trim())}
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {forgotBusy ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                          Verifying...
+                        </>
+                      ) : (
+                        'Verify Answers'
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setForgotPwStep('username'); setForgotError(''); }}
+                                            className="w-full flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider mt-1 text-rmpg-500"
+                    >
+                      <ArrowLeft className="w-3 h-3" /> Back
+                    </button>
+                  </form>
+                )}
+
+                {/* Step: Reset Password */}
+                {forgotPwStep === 'reset' && (
+                  <form onSubmit={handleForgotReset} className="space-y-3">
+                    <div className="text-center mb-1">
+                      <Lock className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
+                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1 text-rmpg-400">
+                        Reset Password
+                      </p>
+                      <p className="text-[9px] text-rmpg-500">
+                        Choose a new password for your account.
+                      </p>
+                    </div>
+                    <div>
+                      <label htmlFor="forgot-new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
+                        New Password
+                      </label>
+                      <input
+                        id="forgot-new-pw"
+                        type="password"
+                        className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
+                        placeholder="At least 12 characters"
+                        value={forgotNewPassword}
+                        onChange={(e) => setForgotNewPassword(e.target.value)}
+                        autoComplete="new-password"
+                        autoFocus
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="forgot-confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide text-rmpg-400">
+                        Confirm Password
+                      </label>
+                      <input
+                        id="forgot-confirm-pw"
+                        type="password"
+                        className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
+                        placeholder="Confirm new password"
+                        value={forgotConfirmPassword}
+                        onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                        autoComplete="new-password"
+                        required
+                      />
+                      {forgotConfirmPassword && forgotNewPassword !== forgotConfirmPassword && (
+                        <p className="text-[9px] mt-1" style={{ color: '#ef4444' }}>Passwords do not match</p>
+                      )}
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={forgotBusy || !forgotNewPassword || forgotNewPassword !== forgotConfirmPassword}
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {forgotBusy ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                          Resetting...
+                        </>
+                      ) : (
+                        'Reset Password'
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setForgotPwStep('questions'); setForgotError(''); }}
+                                            className="w-full flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider mt-1 text-rmpg-500"
+                    >
+                      <ArrowLeft className="w-3 h-3" /> Back
+                    </button>
+                  </form>
+                )}
+
+                {/* Step: Success */}
+                {forgotPwStep === 'success' && (
+                  <div className="text-center space-y-3 py-2">
+                    <CheckCircle className="w-10 h-10 mx-auto" style={{ color: '#22c55e' }} />
+                    <p className="text-[10px] uppercase tracking-wide font-bold text-rmpg-400">
+                      Password Reset Complete
+                    </p>
+                    <p className="text-[9px] text-rmpg-500">
+                      Your password has been reset successfully. You can now log in with your new password.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleForgotClose}
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-rmpg-100 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                      Return to Login
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-default)' }} aria-hidden="true" />
           </div>
 
           {/* Status bar */}
@@ -1079,7 +1426,7 @@ export default function LoginPage() {
               <span>{status.text}</span>
             </div>
             <div className="status-bar-section" aria-label="Connection encrypted">
-              <span style={{ color: '#666666' }}>ENCRYPTED</span>
+              <span className="text-rmpg-500">ENCRYPTED</span>
             </div>
             <div className="status-bar-section border-r-0">
               <span>v{APP_VERSION}</span>
@@ -1088,13 +1435,16 @@ export default function LoginPage() {
         </div>
 
         {/* ── System Info + Device Info Panels ─────────── */}
-        {/* Hidden on phones to keep login form above fold. Uses CSS class. */}
-        {isCredentialStep && (
+        {/* Hidden on phones to keep login form above fold. Uses CSS class.
+            Also hidden while forgot-password is open — the panel itself is
+            tall enough that the extra two panels push the action button off
+            the fold. */}
+        {isCredentialStep && !forgotPwActive && (
           <div className="login-system-info grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
             {/* System Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">
               <div className="panel-title-bar flex items-center gap-1.5">
-                <Server className="w-2.5 h-2.5" style={{ color: '#888888' }} />
+                <Server className="w-2.5 h-2.5 text-rmpg-400" />
                 <span>SYSTEM</span>
               </div>
               <div className="px-3 py-2">
@@ -1104,7 +1454,7 @@ export default function LoginPage() {
                 <InfoRow label="Operator" value="Rocky Mountain Protective Group" />
                 <InfoRow label="Jurisdiction" value="Salt Lake City, UT" />
                 <div className="flex items-center justify-between py-[3px]">
-                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>Server</span>
+                  <span className="text-[8px] uppercase tracking-wider font-bold text-rmpg-500">Server</span>
                   <div className="flex items-center gap-1">
                     <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e' }} />
                     <span className="text-[9px] font-mono" style={{ color: '#4ade80' }}>Online</span>
@@ -1116,7 +1466,7 @@ export default function LoginPage() {
             {/* Device Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">
               <div className="panel-title-bar flex items-center gap-1.5">
-                <Monitor className="w-2.5 h-2.5" style={{ color: '#888888' }} />
+                <Monitor className="w-2.5 h-2.5 text-rmpg-400" />
                 <span>DEVICE</span>
               </div>
               <div className="px-3 py-2">
@@ -1126,7 +1476,7 @@ export default function LoginPage() {
                 <InfoRow label="Display" value={device.screen} />
                 <InfoRow label="Viewport" value={device.viewport} />
                 <div className="flex items-center justify-between py-[3px]">
-                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>Connection</span>
+                  <span className="text-[8px] uppercase tracking-wider font-bold text-rmpg-500">Connection</span>
                   <div className="flex items-center gap-1">
                     <Wifi className="w-2.5 h-2.5" style={{ color: device.online ? '#4ade80' : '#ef4444' }} />
                     <span className="text-[9px] font-mono" style={{ color: device.online ? '#4ade80' : '#ef4444' }}>
@@ -1144,15 +1494,15 @@ export default function LoginPage() {
           <div
             className="text-center py-1.5 px-3"
             style={{
-              background: '#0b0b0b',
-              border: '1px solid #2b2b2b',
-              borderTop: '2px solid #333333',
+              background: 'var(--surface-base)',
+              border: '1px solid var(--border-default)',
+              borderTop: '2px solid var(--border-default)',
             }}
           >
-            <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: '#333333' }}>
+            <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: 'var(--text-muted)' }}>
               Internal Use Only
             </p>
-            <p className="text-[7px] mt-0.5 uppercase tracking-wider" style={{ color: '#666666' }}>
+            <p className="text-[7px] mt-0.5 uppercase tracking-wider text-rmpg-500">
               Company Confidential — Do Not Distribute
             </p>
           </div>
@@ -1160,12 +1510,12 @@ export default function LoginPage() {
 
         {/* Footer with clock */}
         <div className="text-center mt-2 flex items-center justify-center gap-3" aria-label="Application footer">
-          <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: '#2e2e2e' }}>
+          <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: 'var(--text-muted)' }}>
             RMPG Flex v{APP_VERSION} | Rocky Mountain Protective Group, LLC
           </p>
           <div className="flex items-center gap-1" role="timer" aria-label="Current Mountain Time">
-            <Clock className="w-2.5 h-2.5" style={{ color: '#2e2e2e' }} aria-hidden="true" />
-            <time className="text-[8px] font-mono tabular-nums" style={{ color: '#383838' }}>{clock} MT</time>
+            <Clock className="w-2.5 h-2.5" style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
+            <time className="text-[8px] font-mono tabular-nums" style={{ color: 'var(--text-muted)' }}>{clock} MT</time>
           </div>
         </div>
       </div>

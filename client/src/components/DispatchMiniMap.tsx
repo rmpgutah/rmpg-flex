@@ -1,23 +1,39 @@
 // ============================================================
 // RMPG Flex — Dispatch Mini-Map
-// Lightweight embeddable Mapbox GL panel showing the selected
+// Lightweight embeddable Mapbox GL JS panel showing the selected
 // call location and assigned unit positions. Used inline in the
 // Dispatch right column.
+//
+// Mapbox GL JS handles its own offline caching via the browser's
+// tile cache — no separate Leaflet fallback needed.
 // ============================================================
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Maximize2, MapPin, Navigation, Wifi } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Maximize2, MapPin, RefreshCw, Car } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import mapboxgl from 'mapbox-gl';
-import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
-import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
-import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
-import { getMapboxToken } from '../utils/mapboxApiKey';
-import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
-import type { CallForService, Unit, UnitStatus } from '../types';
+import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
+import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { buildUnitMarker, buildCallMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
+import { useMapRouting } from '../hooks/useMapRouting';
+import { useGpsTracking } from '../hooks/useGpsTracking';
+import { apiFetch } from '../hooks/useApi';
+import { speak } from '../utils/edgeTTS';
+import ManeuverArrow from './ManeuverArrow';
+import type { CallForService, Unit } from '../types';
 
-/** Priority color mapping — uses shared PRIORITY_HEX tokens */
-const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
+// `call.assigned_units` can arrive as id strings/numbers OR as full unit
+// objects (the call-detail endpoint returns objects). Normalize to a Set of
+// id-strings so assigned-unit matching works either way. Previously the code
+// did `assigned_units.includes(String(u.id))`, which is always false when the
+// array holds objects — so the assigned unit never matched, and the unit
+// marker, route line, and turn-by-turn directions never appeared.
+function assignedUnitIdSet(call: { assigned_units?: unknown } | null | undefined): Set<string> {
+  const a = (call as { assigned_units?: unknown } | null | undefined)?.assigned_units;
+  if (!Array.isArray(a)) return new Set();
+  return new Set(a.map((x) => String(x && typeof x === 'object' ? (x as { id: unknown }).id : x)));
+}
 
 interface DispatchMiniMapProps {
   call: CallForService | null;
@@ -33,15 +49,7 @@ interface DispatchMiniMapProps {
   serveRouteOrder?: number[] | null;
 }
 
-/** Active route info returned by inline routing */
-interface ActiveRouteInfo {
-  unitCallSign: string;
-  callNumber: string;
-  eta: string;
-  distance: string;
-}
-
-const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608]; // [lng, lat]
+const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608]; // Salt Lake City fallback [lng, lat]
 const MINI_ZOOM = 15;
 const ROUTE_TRAIL_ID = 'dispatch-minimap-route';
 const SERVE_TRAIL_ID = 'dispatch-minimap-serve-route';
@@ -68,191 +76,55 @@ function buildCallMarker(label: string, priority?: string): HTMLElement {
   const isP1 = priority === 'P1';
   const isP2 = priority === 'P2';
 
-  const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6));';
-
-  // Priority pulse animation for P1/P2
-  if (isP1 || isP2) {
-    wrapper.style.animation = isP1 ? 'minimap-pulse 1.2s ease-in-out infinite' : 'minimap-pulse 2.5s ease-in-out infinite';
-  }
-
-  const tag = document.createElement('div');
-  tag.style.cssText =
-    `background:${color};color:#fff;font-size:7px;font-weight:900;` +
-    "padding:2px 4px;border:1.5px solid rgba(255,255,255,0.9);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;" +
-    `box-shadow:0 0 8px ${color}50, inset 0 1px 0 rgba(255,255,255,0.15);display:flex;align-items:center;gap:3px;border-radius:1px;`;
-
-  // Priority badge
-  if (priority) {
-    const priBadge = document.createElement('span');
-    priBadge.style.cssText = 'font-size:6px;opacity:0.85;letter-spacing:0.5px;';
-    priBadge.textContent = priority;
-    tag.appendChild(priBadge);
-
-    const sep = document.createElement('span');
-    sep.style.cssText = 'opacity:0.4;font-size:5px;';
-    sep.textContent = '\u00b7';
-    tag.appendChild(sep);
-  }
-
-  const labelSpan = document.createElement('span');
-  labelSpan.textContent = label;
-  tag.appendChild(labelSpan);
-
-  const caret = document.createElement('div');
-  caret.style.cssText =
-    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};`;
-
-  wrapper.appendChild(tag);
-  wrapper.appendChild(caret);
-  return wrapper;
-}
-
-/** Build a unit marker DOM element with status-colored indicator */
-function buildUnitMarker(callSign: string, status?: UnitStatus): HTMLElement {
-  const color = UNIT_STATUS_HEX[status || 'available'] || '#888888';
-
-  const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.5));';
-
-  const tag = document.createElement('div');
-  tag.style.cssText =
-    `background:${color};color:#fff;font-size:8px;font-weight:900;` +
-    "padding:2px 5px;border:1.5px solid rgba(255,255,255,0.8);white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:1px;" +
-    `box-shadow:0 0 6px ${color}40, inset 0 1px 0 rgba(255,255,255,0.12);display:flex;align-items:center;gap:2px;`;
-
-  const csSpan = document.createElement('span');
-  csSpan.textContent = callSign;
-  tag.appendChild(csSpan);
-
-  // Tiny caret pointing down
-  const caret = document.createElement('div');
-  caret.style.cssText =
-    `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};`;
-
-  wrapper.appendChild(tag);
-  wrapper.appendChild(caret);
-  return wrapper;
-}
-
-/** Inject minimap-specific keyframe animation (idempotent) */
-function injectMinimapKeyframes() {
-  if (document.getElementById('minimap-keyframes')) return;
-  const style = document.createElement('style');
-  style.id = 'minimap-keyframes';
-  style.textContent = `
-    @keyframes minimap-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: 0.9; } }
-  `;
-  document.head.appendChild(style);
-}
-
-export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate, serveRouteJobs, serveRouteOrder }: DispatchMiniMapProps) {
+export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const serveMarkersRef = useRef<mapboxgl.Marker[]>([]);
-  const tokenRef = useRef<string | null>(null);
-  const geocoderRef = useRef<MapboxGeocoder | null>(null);
+  const callMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const unitMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mapBearing, setMapBearing] = useState(0);
+  const [tilesStalled, setTilesStalled] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [mapTokenRetry, setMapTokenRetry] = useState(0);
+  // Bumped to true the moment the Mapbox instance is created. mapRef is a ref
+  // (assigning it does NOT re-render), so without this the useMapRouting hook
+  // below would stay bound to map=null forever and queryRoute would bail before
+  // ever fetching the Directions API — no route line, no turn-by-turn banner.
+  const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (see installWebglContextRecovery below).
+  const [recovering, setRecovering] = useState(false);
+  const [recoverNonce, setRecoverNonce] = useState(0);
+  const recoverCamRef = useRef<MapCamera | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
-  // Inline routing state (replaces useMapRouting)
-  const [activeRoute, setActiveRoute] = useState<ActiveRouteInfo | null>(null);
-  const lastAutoRouteRef = useRef<string>('');
+  // Always-visible assigned vehicle (independent of dispatch)
+  interface AssignedVehicle {
+    id: number;
+    vehicle_number: string;
+    plate_number: string | null;
+    gps_lat: number | null;
+    gps_lon: number | null;
+    status: string;
+    current_mileage: number | null;
+  }
+  const [assignedVehicle, setAssignedVehicle] = useState<AssignedVehicle | null>(null);
+  const assignedVehicleMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
-  // Inject keyframes + Mapbox styles on mount
-  useEffect(() => { injectMinimapKeyframes(); injectMapboxStyles(); }, []);
+  // Classify error: auth/config vs connectivity
+  const isAuthError = error != null && (error.includes('token') || error.includes('configured'));
 
-  const visibleUnitCount = useMemo(() =>
-    units.filter(u =>
-      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
-    ).length,
-    [units, call?.assigned_units],
-  );
+  // Routing (auto-route when a single assigned unit has GPS)
+  const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapReady ? mapRef.current : null });
+  const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
 
-  const isAuthError = error != null;
+  // Device's OWN live GPS (read-only — Layout owns the upload). Drives
+  // continuous, phone-maps-style route recomputation from watchPosition
+  // (~1/sec) when THIS device is the unit being routed, instead of waiting
+  // for the server units feed to round-trip on a tab switch.
+  const devGps = useGpsTracking({ upload: false });
 
-  // ── Inline routing functions ──
-
-  const clearRoute = useCallback(() => {
-    const map = mapRef.current;
-    if (map) {
-      try { removeMapboxTrail(map, ROUTE_TRAIL_ID); } catch { /* layer may not exist */ }
-    }
-    setActiveRoute(null);
-    lastAutoRouteRef.current = '';
-  }, []);
-
-  const showRoute = useCallback(async (
-    unitCallSign: string, callNumber: string,
-    originLat: number, originLng: number,
-    destLat: number, destLng: number,
-  ) => {
-    const map = mapRef.current;
-    const token = tokenRef.current;
-    if (!map || !token) return;
-
-    try {
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${originLng},${originLat};${destLng},${destLat}?access_token=${token}&geometries=geojson&overview=full`;
-      const resp = await fetch(url);
-      if (!resp.ok) return;
-      const data = await resp.json();
-      const route = data.routes?.[0];
-      if (!route) return;
-
-      const coords: [number, number][] = route.geometry.coordinates;
-      // Remove old route trail then add new one
-      try { removeMapboxTrail(map, ROUTE_TRAIL_ID); } catch { /* ok */ }
-      addMapboxTrail(map, ROUTE_TRAIL_ID, coords, '#22c55e', 3);
-
-      setActiveRoute({
-        unitCallSign,
-        callNumber,
-        eta: formatEta(route.duration),
-        distance: formatDistance(route.distance),
-      });
-    } catch {
-      // Routing fetch failed — silently ignore
-    }
-  }, []);
-
-  const updateOrigin = useCallback(async (lat: number, lng: number) => {
-    // Re-fetch route with new origin keeping same destination from call
-    if (!call?.latitude || !call?.longitude) return;
-    const map = mapRef.current;
-    const token = tokenRef.current;
-    if (!map || !token) return;
-
-    // Find the active route's unit callsign from current state
-    const currentRoute = activeRoute;
-    if (!currentRoute) return;
-
-    try {
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lng},${lat};${call.longitude},${call.latitude}?access_token=${token}&geometries=geojson&overview=full`;
-      const resp = await fetch(url);
-      if (!resp.ok) return;
-      const data = await resp.json();
-      const route = data.routes?.[0];
-      if (!route) return;
-
-      const coords: [number, number][] = route.geometry.coordinates;
-      try { removeMapboxTrail(map, ROUTE_TRAIL_ID); } catch { /* ok */ }
-      addMapboxTrail(map, ROUTE_TRAIL_ID, coords, '#22c55e', 3);
-
-      setActiveRoute({
-        unitCallSign: currentRoute.unitCallSign,
-        callNumber: currentRoute.callNumber,
-        eta: formatEta(route.duration),
-        distance: formatDistance(route.distance),
-      });
-    } catch {
-      // Silently ignore routing errors
-    }
-  }, [call?.latitude, call?.longitude, activeRoute]);
-
-  // ── Load Mapbox token and create map ──
+  // Load Mapbox token + init map
   useEffect(() => {
     let cancelled = false;
     setError(null);
@@ -260,132 +132,255 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
     (async () => {
       try {
-        const token = await getMapboxToken();
+        const token = await getMapboxAccessToken();
         if (cancelled) return;
-        if (!token) {
-          setError('Mapbox token not configured');
-          return;
-        }
-        tokenRef.current = token;
+        initMapbox(token);
+        if (cancelled) return;
         setLoaded(true);
+        setError(null);
       } catch (err: any) {
         if (!cancelled) {
-          setError(err?.message || 'Failed to load Mapbox token');
+          setLoaded(false);
+          setError(err?.message || getMapboxTokenErrorMessage());
         }
       }
     })();
 
     return () => { cancelled = true; };
-  }, []);
+  }, [mapTokenRetry]);
 
-  // Initialize or update map
+  // Initialize the map ONCE, then re-center + re-pin the call only when the
+  // SELECTED CALL changes. Deliberately does NOT depend on `units`, so a unit
+  // GPS poll never re-centers the map ("reload while the unit moves") or
+  // disturbs the static call pin.
   useEffect(() => {
-    if (!loaded || !mapContainerRef.current || !tokenRef.current) return;
+    if (!loaded || !mapRef.current) return;
+    const map = mapRef.current;
 
-    const center: [number, number] = call?.latitude != null && call?.longitude != null
-      ? [call.longitude, call.latitude]
-      : DEFAULT_CENTER;
+    // isValidLngLat rejects NaN/Infinity and the exact (0,0) no-fix signature
+    // so a call with bad coordinates never anchors the map / drops a teardrop.
+    const hasCallLoc = isValidLngLat(call?.longitude, call?.latitude);
+    // A WebGL-loss rebuild reopens at the captured view; otherwise center on the
+    // call (or the SLC fallback). One-shot: cleared after the new map is built.
+    const recoverCam = recoverCamRef.current;
+    const center: [number, number] = recoverCam
+      ? recoverCam.center
+      : hasCallLoc
+        ? [call!.longitude!, call!.latitude!]
+        : DEFAULT_CENTER;
+    const zoom = recoverCam ? recoverCam.zoom : MINI_ZOOM;
 
     if (!mapRef.current) {
-      const map = createMapboxMap({
+      recoverCamRef.current = null;
+      const map = new mapboxgl.Map({
         container: mapContainerRef.current,
+        style: MAPBOX_STYLE_DARK,
         center,
-        zoom: MINI_ZOOM,
-        style: 'dark',
-        accessToken: tokenRef.current,
+        zoom,
+        attributionControl: false,
       });
-
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       mapRef.current = map;
+      registerMapInstance(map);
+      setMapReady(true); // re-render so useMapRouting picks up the real map instance
+      setRecovering(false);
 
-      // Add compact geocoder control
-      if (tokenRef.current && !geocoderRef.current) {
-        const geocoder = new MapboxGeocoder({
-          accessToken: tokenRef.current,
-          mapboxgl: mapboxgl as any,
-          marker: true,
-          placeholder: 'Search…',
-          proximity: { longitude: DEFAULT_CENTER[0], latitude: DEFAULT_CENTER[1] },
-          countries: 'US',
-          limit: 3,
-          collapsed: true,
-          clearOnBlur: true,
-          flyTo: { speed: 1.4, zoom: 16 },
-        });
-        map.addControl(geocoder, 'bottom-right');
-        geocoderRef.current = geocoder;
-      }
-
-      // Track bearing for compass indicator
-      map.on('rotate', () => {
-        setMapBearing(map.getBearing());
+      // WebGL context-loss recovery: rebuild this map in place if the GPU drops
+      // its context (long shift / Toughbook GPU pressure / sleep-wake). We null
+      // mapRef + bump recoverNonce so THIS effect re-creates the map; the marker
+      // and routing effects (keyed on mapReady) re-attach to the new instance.
+      webglRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'DispatchMiniMap',
+        onContextLost: () => setRecovering(true),
+        onContextRestored: () => setRecovering(false),
+        onRebuild: (camera) => {
+          recoverCamRef.current = camera;
+          if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
+          callMarkerRef.current?.remove(); callMarkerRef.current = null;
+          unitMarkersRef.current.forEach((m) => m.remove()); unitMarkersRef.current.clear();
+          if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+          setMapReady(false);
+          setRecovering(true);
+          setRecoverNonce((n) => n + 1);
+        },
+        onGiveUp: () => setRecovering(false),
       });
-    } else {
+
+      // Monitor tile loading
+      map.on('idle', () => setTilesStalled(false));
+      const stallCheck = setInterval(() => {
+        if (!map.loaded()) setTilesStalled(true);
+      }, 15000);
+
+      map.on('remove', () => clearInterval(stallCheck));
+    } else if (hasCallLoc) {
+      // Only re-center when a new call is selected (this effect's deps), never
+      // on a unit GPS update — preserves the dispatcher's pan/zoom.
       mapRef.current.setCenter(center);
     }
 
-    // Clear old markers
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current = [];
+    // Call marker (red) — static per call. Move the existing marker in place
+    // rather than tearing it down so it never flickers / "flies around".
+    if (hasCallLoc && mapRef.current) {
+      if (callMarkerRef.current) {
+        callMarkerRef.current.setLngLat([call!.longitude!, call!.latitude!]);
+        // The builder nests the label in a <span>; update it in place so the
+        // teardrop shape/rotation isn't wiped by setting textContent on the root.
+        const label = callMarkerRef.current.getElement()?.querySelector('span');
+        if (label) label.textContent = call!.call_number || 'CALL';
+      } else {
+        const el = buildCallMarker({ priority: call!.priority, label: call!.call_number || 'CALL' });
+        callMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([call!.longitude!, call!.latitude!])
+          .addTo(mapRef.current);
+      }
+    } else if (!hasCallLoc && callMarkerRef.current) {
+      callMarkerRef.current.remove();
+      callMarkerRef.current = null;
+    }
+  }, [loaded, call?.id, call?.latitude, call?.longitude, recoverNonce]);
 
-    // Call marker (priority-colored pin)
-    if (call?.latitude != null && call?.longitude != null && mapRef.current) {
-      const el = buildCallMarker(call.call_number || 'CALL', (call as any).priority);
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([call.longitude, call.latitude])
-        .addTo(mapRef.current);
-      markersRef.current.push(marker);
+  // Fetch assigned vehicle — always visible, independent of dispatch
+  useEffect(() => {
+    let cancelled = false;
+    const fetchAssignedVehicle = () => {
+      apiFetch<AssignedVehicle | null>('/dispatch/gps/my-vehicle')
+        .then((v) => {
+          if (cancelled || !v) return;
+          setAssignedVehicle(v);
+        })
+        .catch(() => { /* no assigned vehicle — normal */ });
+    };
+    fetchAssignedVehicle();
+    const interval = setInterval(fetchAssignedVehicle, 60_000); // refresh every 60s
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  // Render assigned vehicle marker on map (always visible)
+  useEffect(() => {
+    if (!loaded || !mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    const av = assignedVehicle;
+
+    // Remove existing marker if vehicle info changed or GPS lost
+    if (assignedVehicleMarkerRef.current) {
+      assignedVehicleMarkerRef.current.remove();
+      assignedVehicleMarkerRef.current = null;
     }
 
-    // Assigned unit markers (status-colored)
-    const assignedUnitsWithGps = units.filter(u =>
-      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
+    if (!av || !isValidLngLat(av.gps_lon, av.gps_lat)) return;
+
+    // Take-home vehicle: no dispatch status in scope, so render the shared unit
+    // pin with the vehicle number as its label (gold-ring 'onscene' tone keeps
+    // the original gold-branded accent the plain neutral ring would have lost).
+    const el = buildUnitMarker({ label: av.vehicle_number || 'V', status: 'onscene' });
+    const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([av.gps_lon!, av.gps_lat!])
+      .addTo(map);
+    assignedVehicleMarkerRef.current = marker;
+
+    return () => {
+      if (assignedVehicleMarkerRef.current) {
+        assignedVehicleMarkerRef.current.remove();
+        assignedVehicleMarkerRef.current = null;
+      }
+    };
+  }, [loaded, mapReady, assignedVehicle?.gps_lat, assignedVehicle?.gps_lon, assignedVehicle?.vehicle_number]);
+
+  // Assigned-unit markers — keyed by unit id and MOVED in place on each GPS
+  // update so the pin glides to its new position instead of being destroyed and
+  // recreated (which made it flicker / jump around the map). Match by the
+  // call's assigned_units OR the unit's current_call_id (list/WS payloads omit
+  // assigned_units).
+  useEffect(() => {
+    if (!loaded || !mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+
+    const assignedIds = assignedUnitIdSet(call);
+    const assignedUnits = units.filter(u =>
+      (assignedIds.has(String(u.id)) ||
+        (u.current_call_id != null && String(u.current_call_id) === String(call?.id))) &&
+      isValidLngLat(u.longitude, u.latitude)
     );
 
-    for (const unit of assignedUnitsWithGps) {
-      if (mapRef.current) {
-        const el = buildUnitMarker(unit.call_sign, (unit as any).status);
+    const liveIds = new Set<string>();
+    for (const unit of assignedUnits) {
+      const id = String(unit.id);
+      liveIds.add(id);
+      const existing = unitMarkersRef.current.get(id);
+      if (existing) {
+        existing.setLngLat([unit.longitude!, unit.latitude!]);
+        // Label lives in the builder's <span>; update it (not the root) in place.
+        const label = existing.getElement()?.querySelector('span');
+        if (label && label.textContent !== unit.call_sign) label.textContent = unit.call_sign;
+      } else {
+        const el = buildUnitMarker({ label: unit.call_sign, status: unit.status });
         const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([unit.longitude!, unit.latitude!])
-          .addTo(mapRef.current);
-        markersRef.current.push(marker);
+          .addTo(map);
+        unitMarkersRef.current.set(id, marker);
       }
     }
-  }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
+    // Drop markers for units no longer assigned / no longer in the feed.
+    for (const [id, marker] of unitMarkersRef.current) {
+      if (!liveIds.has(id)) { marker.remove(); unitMarkersRef.current.delete(id); }
+    }
+  }, [loaded, mapReady, units, call?.id]);
 
-  // Track whether we have an active route via ref to avoid double-render from state dependency
+  // Auto-route: show driving route when exactly 1 assigned unit has GPS
   const hasActiveRouteRef = useRef(false);
   hasActiveRouteRef.current = !!activeRoute;
 
-  // Auto-route: show driving route when exactly 1 assigned unit has GPS
   useEffect(() => {
     if (!loaded || !mapRef.current || call?.latitude == null || call?.longitude == null) {
       if (hasActiveRouteRef.current) clearRoute();
       return;
     }
 
+    const assignedIds = assignedUnitIdSet(call);
     const assignedWithGps = units.filter(u =>
-      call.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
+      (assignedIds.has(String(u.id)) ||
+        (u.current_call_id != null && String(u.current_call_id) === String(call.id))) &&
+      u.latitude != null && u.longitude != null
     );
 
     if (assignedWithGps.length === 1) {
       const u = assignedWithGps[0];
       const combo = `${u.call_sign}:${call.call_number}`;
 
-      // Only re-show if the assignment changed
       if (combo !== lastAutoRouteRef.current) {
+        // Set the combo eagerly to avoid spamming the Directions API across
+        // rapid re-renders, but clear it again if the query actually failed
+        // (e.g. the map wasn't ready yet) so the next render retries instead
+        // of falling through to the throttled updateOrigin path forever.
         lastAutoRouteRef.current = combo;
-        showRoute(u.call_sign, call.call_number || 'CALL', u.latitude!, u.longitude!, call.latitude, call.longitude);
+        showRoute(u.call_sign, call.call_number || 'CALL', u.latitude!, u.longitude!, call.latitude, call.longitude)
+          .then((info) => { if (!info) lastAutoRouteRef.current = ''; });
       } else {
-        // Same unit+call — just update GPS origin for re-routing
         updateOrigin(u.latitude!, u.longitude!);
       }
     } else {
-      // Multiple or zero assigned units — clear route
       if (hasActiveRouteRef.current) {
         clearRoute();
       }
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, call?.assigned_units, units, showRoute, clearRoute, updateOrigin]);
+
+  // ── Live turn-by-turn recompute from the DEVICE's own GPS ──
+  // Standard phone-GPS behavior: when the officer viewing this map IS the unit
+  // routed to the call (call-sign match), recompute the route from the device's
+  // continuous watchPosition fixes (~1/sec) rather than the server units poll.
+  // useMapRouting.updateOrigin re-snaps progress, advances the turn-by-turn
+  // step, and auto-reroutes when off-corridor — so directions + ETA stay live
+  // without ever leaving the page. Dispatchers watching ANOTHER unit are
+  // unaffected (the call-sign guard fails, server position keeps driving it).
+  useEffect(() => {
+    if (!activeRoute) return;
+    const { latitude: lat, longitude: lng, unitCallSign } = devGps;
+    if (lat == null || lng == null) return;
+    if (!unitCallSign || unitCallSign !== activeRoute.unitCallSign) return;
+    updateOrigin(lat, lng);
+  }, [devGps.latitude, devGps.longitude, devGps.unitCallSign, activeRoute, updateOrigin]);
 
   // Notify parent of route changes
   useEffect(() => {
@@ -399,91 +394,48 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
   }, [activeRoute, onRouteUpdate]);
 
-  // Serve route overlay — show numbered markers + polyline for PSO calls
+  // Voice-announce the current driving direction at the appropriate time.
+  // Because useMapRouting recomputes from the unit's live origin, steps[0]
+  // becomes the next maneuver as the unit drives — so we speak whenever that
+  // instruction CHANGES (the moment it becomes current). Throttled to one
+  // utterance per distinct instruction so we don't repeat on every re-render.
+  //
+  // AUDIBLE nav is gated to the EN-ROUTE phase only: it starts speaking when
+  // the call goes 'enroute' and stops once the unit is 'onscene' (and never
+  // speaks while pending/dispatched/cleared). The route line + on-screen
+  // maneuver banner still render at any status — this gate is voice-only, so
+  // simply opening the dispatch screen no longer triggers spoken directions.
+  // Resetting the throttle ref outside en-route means the first instruction is
+  // announced the instant status flips to 'enroute'.
+  const lastSpokenRef = useRef<string>('');
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loaded) return;
+    const isEnRoute = call?.status === 'enroute';
+    const current = activeRoute?.steps?.[0]?.instruction?.trim();
+    if (!isEnRoute || !current) { lastSpokenRef.current = ''; return; }
+    if (current === lastSpokenRef.current) return;
+    lastSpokenRef.current = current;
+    // distanceText gives the lead-in ("In 0.3 mi, turn left …") for natural cadence.
+    const dist = activeRoute?.steps?.[0]?.distanceText;
+    const phrase = dist ? `In ${dist}, ${current}` : current;
+    void speak(phrase, 'moderate', 'conversational');
+  }, [activeRoute?.steps, call?.status]);
 
-    // Clean up previous serve overlays
-    serveMarkersRef.current.forEach(m => m.remove());
-    serveMarkersRef.current = [];
-    try { removeMapboxTrail(map, SERVE_TRAIL_ID); } catch { /* ok */ }
-
-    if (!serveRouteJobs || serveRouteJobs.length === 0) return;
-
-    // Order jobs by route order if available
-    let orderedJobs = serveRouteJobs;
-    if (serveRouteOrder && serveRouteOrder.length > 0) {
-      const jobMap = new Map(serveRouteJobs.map((j: any) => [j.id, j]));
-      const ordered = serveRouteOrder.map(id => jobMap.get(id)).filter(Boolean);
-      const orderedIdSet = new Set(serveRouteOrder);
-      const remaining = serveRouteJobs.filter((j: any) => !orderedIdSet.has(j.id));
-      orderedJobs = [...ordered, ...remaining];
-    }
-
-    // Build coordinate path for polyline
-    const coords: [number, number][] = orderedJobs
-      .filter((j: any) => j.recipient_lat != null && j.recipient_lng != null)
-      .map((j: any) => [j.recipient_lng, j.recipient_lat] as [number, number]);
-
-    if (coords.length > 1) {
-      addMapboxTrail(map, SERVE_TRAIL_ID, coords, '#d4a017', 2);
-    }
-
-    // Numbered markers
-    orderedJobs.forEach((job: any, idx: number) => {
-      if (job.recipient_lat == null || job.recipient_lng == null) return;
-      const statusColor = job.status === 'served' ? '#22c55e'
-        : job.status === 'failed' ? '#ef4444'
-        : job.status === 'in_progress' ? '#eab308'
-        : '#d4a017';
-      const el = document.createElement('div');
-      el.style.cssText = 'display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));';
-      const badge = document.createElement('div');
-      badge.style.cssText = `width:16px;height:16px;border-radius:50%;background:${statusColor};color:#000;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;font-family:'JetBrains Mono',monospace;border:1px solid #fff;`;
-      badge.textContent = String(idx + 1);
-      const caret = document.createElement('div');
-      caret.style.cssText = `width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:4px solid ${statusColor};`;
-      el.appendChild(badge);
-      el.appendChild(caret);
-
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([job.recipient_lng, job.recipient_lat])
-        .addTo(map);
-      serveMarkersRef.current.push(marker);
-    });
-
-    // Fit bounds to include serve jobs + call location
-    if (coords.length > 0) {
-      const bounds = new mapboxgl.LngLatBounds();
-      if (call?.latitude != null && call?.longitude != null) {
-        bounds.extend([call.longitude, call.latitude]);
-      }
-      coords.forEach(c => bounds.extend(c));
-      map.fitBounds(bounds, { padding: 40 });
-    }
-  }, [loaded, serveRouteJobs, serveRouteOrder, call?.id]);
-
-  // Cleanup on unmount
+  // Cleanup: remove persistent markers + unregister map instance on unmount
   useEffect(() => {
     return () => {
-      markersRef.current.forEach(m => m.remove());
-      serveMarkersRef.current.forEach(m => m.remove());
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
+      if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
+      callMarkerRef.current?.remove();
+      callMarkerRef.current = null;
+      unitMarkersRef.current.forEach((m) => m.remove());
+      unitMarkersRef.current.clear();
+      if (mapRef.current) unregisterMapInstance(mapRef.current);
     };
   }, []);
 
-  // Derive assigned unit count for status display
-  const assignedUnits = units.filter(u => call?.assigned_units?.includes(String(u.id)));
-  const assignedWithGpsCount = assignedUnits.filter(u => u.latitude != null && u.longitude != null).length;
-
-  // ── Map error placeholder (sole error surface) ──
+  // Auth error (config problem, not connectivity)
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0b0b' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-base)' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
@@ -492,7 +444,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const priorityColor = MINI_PRIORITY_COLORS[(call as any)?.priority] || '#888888';
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141414' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid var(--border-subtle)' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -529,25 +481,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               {assignedWithGpsCount > 0 && <span style={{ color: '#22c55e', marginLeft: 3 }}>●</span>}
             </span>
           )}
-          {/* Serve route badge */}
-          {serveRouteJobs && serveRouteJobs.length > 0 && (
-            <span className="text-[7px] font-bold px-1.5 py-0.5"
-              style={{
-                background: 'rgba(0,0,0,0.8)',
-                backdropFilter: 'blur(4px)',
-                color: '#d4a017',
-                fontFamily: "'JetBrains Mono', monospace",
-                borderLeft: '2px solid #d4a017',
-              }}>
-              {serveRouteJobs.length} STOPS
-            </span>
-          )}
         </div>
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
-            className="text-rmpg-400 hover:text-white transition-colors"
-            style={{ background: 'rgba(0,0,0,0.8)', padding: '3px 5px', border: 'none', cursor: 'pointer', backdropFilter: 'blur(4px)' }}
+            className="text-rmpg-400 hover:text-rmpg-100"
+            style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
             title="Open full map"
           >
             <Maximize2 style={{ width: 10, height: 10 }} />
@@ -555,8 +494,8 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {onClose && (
             <button type="button"
               onClick={onClose}
-              className="text-rmpg-400 hover:text-white transition-colors"
-              style={{ background: 'rgba(0,0,0,0.8)', padding: '3px 5px', border: 'none', cursor: 'pointer', backdropFilter: 'blur(4px)' }}
+              className="text-rmpg-400 hover:text-rmpg-100"
+              style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
               title="Close mini-map"
             >
               ✕
@@ -566,7 +505,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       </div>
 
       {/* Compass indicator (top-right, below buttons) */}
-      {loaded && mapBearing !== 0 && (
+      {loaded && mapHeading !== 0 && (
         <div style={{
           position: 'absolute', top: 36, right: 4, zIndex: 10,
           pointerEvents: 'none',
@@ -579,7 +518,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             backdropFilter: 'blur(4px)',
           }}>
             <svg width="16" height="16" viewBox="0 0 16 16"
-              style={{ transform: `rotate(${-mapBearing}deg)`, transition: 'transform 0.3s ease' }}>
+              style={{ transform: `rotate(${-mapHeading}deg)`, transition: 'transform 0.3s ease' }}>
               <polygon points="8,2 6.5,9 8,7.5 9.5,9" fill="#d4a017" />
               <polygon points="8,14 6.5,7 8,8.5 9.5,7" fill="#555555" />
               <text x="8" y="1.5" textAnchor="middle" fill="#d4a017" fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
@@ -597,75 +536,60 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 6,
           borderLeft: '2px solid #22c55e',
         }}>
-          <Navigation style={{ width: 8, height: 8, color: '#22c55e', transform: 'rotate(45deg)' }} />
-          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: 'var(--rmpg-400)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
-          <span style={{ fontSize: 10, color: '#fff', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#666666', fontFamily: "'JetBrains Mono', monospace" }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+          <span style={{ fontSize: 8, color: 'var(--rmpg-500)' }}>{activeRoute.distance}</span>
+        </div>
+      )}
+
+      {/* Turn-by-turn nav banner — ONE direction at a time, pinned to the bottom
+          of the map. ETA + remaining miles sit above the current instruction.
+          useMapRouting recomputes the route from the unit's live origin, so
+          steps[0] is always the current/next maneuver; it auto-advances as the
+          unit drives, and each new instruction is announced by voice (effect
+          below). */}
+      {activeRoute?.steps && activeRoute.steps.length > 0 && (
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
+          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
+        }}>
+          {/* ETA + miles, above */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+            padding: '2px 6px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)',
+          }}>
+            <span style={{ fontSize: 8, color: STATUS_COLORS.offline, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+              {activeRoute.unitCallSign}→{activeRoute.callNumber}
+            </span>
+            <span style={{ fontSize: 13, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em' }}>
+              {activeRoute.eta} <span style={{ fontSize: 8, color: '#16a34a' }}>ETA</span>
+            </span>
+            <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>{activeRoute.distance}</span>
+          </div>
+          {/* Current direction, one at a time */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
+            <ManeuverArrow
+              type={activeRoute.steps[0].maneuverType}
+              modifier={activeRoute.steps[0].modifier}
+              size={28}
+            />
+            <span style={{ fontSize: 13, color: '#ffffff', fontWeight: 700, flex: 1, lineHeight: 1.25 }}>
+              {activeRoute.steps[0].instruction}
+            </span>
+            {activeRoute.steps[0].distanceMeters > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--rmpg-400)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                {activeRoute.steps[0].distanceText}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
       {/* Map container with tactical grid overlay */}
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
-        {/* Geocoder compact dark theme override */}
-        <style>{`
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder {
-            background: rgba(10,10,10,0.92) !important;
-            border: 1px solid #2b2b2b !important;
-            border-radius: 2px !important;
-            font-size: 9px !important;
-            min-width: 28px !important;
-            max-width: 180px !important;
-            box-shadow: none !important;
-          }
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--input {
-            color: #ccc !important;
-            font-size: 9px !important;
-            height: 24px !important;
-            padding: 2px 24px !important;
-          }
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--input::placeholder {
-            color: #555 !important;
-          }
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions {
-            background: #0a0a0a !important;
-            border: 1px solid #2b2b2b !important;
-            font-size: 9px !important;
-          }
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions > li > a {
-            color: #aaa !important;
-            font-size: 9px !important;
-            padding: 4px 8px !important;
-          }
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions > .active > a,
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
-            background: #1a1a1a !important;
-            color: #d4a017 !important;
-          }
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--icon-search {
-            fill: #d4a017 !important;
-            width: 14px !important;
-            height: 14px !important;
-            top: 5px !important;
-            left: 5px !important;
-          }
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--icon-close {
-            fill: #666 !important;
-            width: 12px !important;
-            height: 12px !important;
-          }
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--button {
-            background: transparent !important;
-            width: 24px !important;
-            height: 24px !important;
-          }
-          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--collapsed {
-            min-width: 28px !important;
-            width: 28px !important;
-          }
-        `}</style>
         <div style={{
           position: 'absolute', inset: 0, pointerEvents: 'none',
           backgroundImage:
@@ -677,41 +601,52 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {/* Loading overlay — tactical radar sweep */}
       {!loaded && !error && (
         <div style={{
-          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 6,
-          background: '#0b0b0b',
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'var(--surface-overlay)',
         }}>
-          <div style={{ position: 'relative', width: 32, height: 32 }}>
-            {/* Radar ring */}
-            <div style={{
-              position: 'absolute', inset: 0,
-              border: '1px solid #d4a01740', borderRadius: '50%',
-            }} />
-            {/* Sweep line */}
-            <div style={{
-              position: 'absolute', top: '50%', left: '50%', width: 14, height: 1,
-              background: 'linear-gradient(90deg, #d4a017, transparent)',
-              transformOrigin: '0 0',
-              animation: 'rmpg-radar-sweep 2s linear infinite',
-            }} />
-            {/* Center dot */}
-            <div style={{
-              position: 'absolute', top: '50%', left: '50%',
-              width: 3, height: 3, borderRadius: '50%',
-              background: '#d4a017', transform: 'translate(-50%,-50%)',
-            }} />
-          </div>
-          <span style={{
-            fontSize: 7, color: '#333', fontWeight: 700,
-            fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em',
-          }}>
-            ACQUIRING
-          </span>
+          <RefreshCw style={{ width: 14, height: 14, color: 'var(--rmpg-500)' }} className="animate-spin" />
         </div>
       )}
 
-      {/* Connected indicator (green dot when map loaded) */}
-      {loaded && (
+      {/* WebGL recovery badge — map briefly rebuilding after a GPU context drop */}
+      {recovering && (
+        <div style={{
+          position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', zIndex: 12,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.9)', border: `1px solid ${STATUS_COLORS.warning}55`,
+            padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+          }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.warning }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.warning, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+              RECONNECTING
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Tile stall badge with signal indicator */}
+      {loaded && tilesStalled && (
+        <div style={{
+          position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.85)', border: `1px solid ${STATUS_COLORS.caution}40`,
+            padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+            borderRadius: 2,
+          }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.caution }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.caution, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+              OFFLINE
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Connected indicator (green dot when tiles loaded and not stalled) */}
+      {loaded && !tilesStalled && (
         <div style={{
           position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
           pointerEvents: 'none',

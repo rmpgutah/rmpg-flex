@@ -198,7 +198,7 @@ export default function IncidentDetailWindow() {
       <div className="bg-surface-base border border-rmpg-600 p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">{incident.incident_number}</h2>
+            <h2 className="text-2xl font-bold text-rmpg-100 tracking-tight">{incident.incident_number}</h2>
             <div className="flex items-center gap-2 mt-1">
               <span className={`px-2 py-0.5 text-[10px] uppercase font-bold border ${CATEGORY_COLORS[category]}`}>
                 {category}
@@ -237,7 +237,7 @@ export default function IncidentDetailWindow() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
         <div className="bg-surface-base border border-rmpg-600 p-4">
           <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-2">Location</h3>
-          <p className="text-sm text-white font-medium">{incident.location_address || 'N/A'}</p>
+          <p className="text-sm text-rmpg-100 font-medium">{incident.location_address || 'N/A'}</p>
           {incident.property_name && (
             <p className="text-xs text-rmpg-300 mt-1">Property: {incident.property_name}</p>
           )}
@@ -317,7 +317,7 @@ export default function IncidentDetailWindow() {
           Individuals Involved ({persons.length})
         </h3>
         {persons.length > 0 ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] text-rmpg-400 uppercase">
                 <th className="text-left pb-2">Role</th>
@@ -336,13 +336,13 @@ export default function IncidentDetailWindow() {
                         {(p.role || '').replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </td>
-                    <td className="py-1.5 text-white font-medium">{p.last_name}, {p.first_name}</td>
+                    <td className="py-1.5 text-rmpg-100 font-medium">{p.last_name}, {p.first_name}</td>
                     <td className="py-1.5 text-rmpg-300">{p.dob || 'N/A'}</td>
                   </tr>
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         ) : (
           <p className="text-xs text-rmpg-500">No persons linked</p>
         )}
@@ -354,7 +354,7 @@ export default function IncidentDetailWindow() {
           Vehicles Involved ({vehicles.length})
         </h3>
         {vehicles.length > 0 ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] text-rmpg-400 uppercase">
                 <th className="text-left pb-2">Role</th>
@@ -371,13 +371,13 @@ export default function IncidentDetailWindow() {
                       {(v.role || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </td>
-                  <td className="py-1.5 text-white font-mono">{v.plate_number || 'N/A'}{v.state ? ` (${v.state})` : ''}</td>
+                  <td className="py-1.5 text-rmpg-100 font-mono">{v.plate_number || 'N/A'}{v.state ? ` (${v.state})` : ''}</td>
                   <td className="py-1.5 text-rmpg-200">{[v.year, v.color, v.make, v.model].filter(Boolean).join(' ')}</td>
                   <td className="py-1.5 text-rmpg-300">{v.owner_first_name ? `${v.owner_first_name} ${v.owner_last_name || ''}` : 'N/A'}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         ) : (
           <p className="text-xs text-rmpg-500">No vehicles linked</p>
         )}
@@ -389,7 +389,7 @@ export default function IncidentDetailWindow() {
           Evidence ({evidence.length})
         </h3>
         {evidence.length > 0 ? (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] text-rmpg-400 uppercase">
                 <th className="text-left pb-2">Item #</th>
@@ -401,7 +401,7 @@ export default function IncidentDetailWindow() {
             <tbody>
               {evidence.map((e: any, i: number) => (
                 <tr key={e.id || `evidence-${i}`} className="border-t border-rmpg-700/50">
-                  <td className="py-1.5 text-white font-mono font-bold">{e.evidence_number}</td>
+                  <td className="py-1.5 text-rmpg-100 font-mono font-bold">{e.evidence_number}</td>
                   <td className="py-1.5">
                     <span className="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-600/40">
                       {e.evidence_type || 'physical'}
@@ -412,7 +412,7 @@ export default function IncidentDetailWindow() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         ) : (
           <p className="text-xs text-rmpg-500">No evidence recorded</p>
         )}

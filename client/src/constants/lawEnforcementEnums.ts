@@ -485,15 +485,7 @@ export const CALL_STATUS_OPTIONS = [
   'Cleared', 'Cancelled', 'Stacked', 'Holding',
 ] as const;
 
-export const DISPOSITION_OPTIONS = [
-  'Report Taken', 'Arrest Made', 'Citation Issued',
-  'Warning Issued', 'Referred to Other Agency',
-  'Unfounded', 'No Police Action Required',
-  'Gone on Arrival', 'Cancelled by RP',
-  'Cancelled by Dispatch', 'Cancelled by Officer',
-  'Civil Matter', 'Mental Health Hold',
-  'Trespass Warning', 'Mediated', 'Other',
-] as const;
+export { DISPOSITION_OPTIONS } from './dispositionCodes';
 
 export const HAZARD_CODE_OPTIONS = [
   'None Reported', 'Weapons Present',

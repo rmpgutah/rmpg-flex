@@ -8,6 +8,7 @@
 // ============================================================
 
 import React, { useEffect, useRef, useCallback } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ const LINE_BASE: React.CSSProperties = {
 
 // ── Component ───────────────────────────────────────────────
 
-export default function VideoHudOverlay(props: VideoHudOverlayProps) {
+function VideoHudOverlay(props: VideoHudOverlayProps) {
   const { type, visible, videoRef, recordedAt } = props;
   const timestampRef = useRef<HTMLSpanElement>(null);
   const animRef = useRef<number>(0);
@@ -75,7 +76,7 @@ export default function VideoHudOverlay(props: VideoHudOverlayProps) {
   const updateTimestamp = useCallback(() => {
     const video = videoRef.current;
     if (video && timestampRef.current && recordedAt) {
-      const baseTime = new Date(recordedAt).getTime();
+      const baseTime = parseTimestamp(recordedAt).getTime();
       const elapsed = video.currentTime * 1000;
       const now = new Date(baseTime + elapsed);
       timestampRef.current.textContent = formatOverlayTimestamp(now);
@@ -258,3 +259,5 @@ function RecIndicator() {
     </div>
   );
 }
+
+export default React.memo(VideoHudOverlay);

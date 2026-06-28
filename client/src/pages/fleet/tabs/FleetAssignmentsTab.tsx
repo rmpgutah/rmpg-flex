@@ -1,10 +1,11 @@
 import { Radio, Clock, User, ArrowRight } from 'lucide-react';
 import type { FleetAssignment } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 function formatDuration(start: string, end?: string): string {
-  const s = new Date(start);
-  const e = end ? new Date(end) : new Date();
+  const s = parseTimestamp(start);
+  const e = end ? parseTimestamp(end) : new Date();
   const diffMs = e.getTime() - s.getTime();
   const days = Math.floor(diffMs / 86400000);
   const hours = Math.floor((diffMs % 86400000) / 3600000);
@@ -21,7 +22,7 @@ interface Props {
 
 export default function FleetAssignmentsTab({ assignments }: Props) {
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">

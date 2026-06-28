@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { CheckCircle, XCircle, ChevronLeft, ChevronRight, RefreshCw, History } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { LoginHistoryEntry } from '../../types';
@@ -16,7 +17,7 @@ function parseDevice(ua: string): string {
 }
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const d = parseTimestamp(dateStr);
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   const mins = Math.floor(diff / 60000);
@@ -66,7 +67,7 @@ export default function LoginHistoryTable() {
   if (loading && entries.length === 0) {
     return (
       <div className="flex items-center justify-center py-8">
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#666666' }} />
+        <RefreshCw className="w-4 h-4 animate-spin text-rmpg-500" />
       </div>
     );
   }
@@ -74,8 +75,8 @@ export default function LoginHistoryTable() {
   if (entries.length === 0) {
     return (
       <div className="text-center py-6">
-        <History className="w-6 h-6 mx-auto mb-2" style={{ color: '#2e2e2e' }} />
-        <p className="text-[10px]" style={{ color: '#666666' }}>No login history</p>
+        <History className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
+        <p className="text-[10px] text-rmpg-500">No login history</p>
       </div>
     );
   }
@@ -126,9 +127,9 @@ export default function LoginHistoryTable() {
       {totalPages > 1 && (
         <div
           className="flex items-center justify-between px-3 py-1.5"
-          style={{ borderTop: '1px solid #2b2b2b', background: '#050505' }}
+          style={{ borderTop: '1px solid var(--border-default)', background: 'var(--surface-overlay)' }}
         >
-          <span className="text-[10px] font-mono" style={{ color: '#666666' }}>
+          <span className="text-[10px] font-mono text-rmpg-500">
             Page {page} of {totalPages} ({total} entries)
           </span>
           <div className="flex gap-1">

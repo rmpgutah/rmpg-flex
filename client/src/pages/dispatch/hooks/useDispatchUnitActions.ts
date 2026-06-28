@@ -19,7 +19,7 @@ import { useCallback, useState } from 'react';
 import type { CallForService, Unit } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
-import { mapDbCall, mapDbUnit } from '../utils/dispatchMappers';
+import { mapDbCall, mapDbUnit, looksLikeCallRow } from '../utils/dispatchMappers';
 import { announceLocalAction } from '../../../utils/voiceAlerts';
 
 export interface UseDispatchUnitActionsArgs {
@@ -41,12 +41,28 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
   const [newUnitCallSign, setNewUnitCallSign] = useState('');
   const [newUnitOfficerId, setNewUnitOfficerId] = useState('');
   const [newUnitStatus, setNewUnitStatus] = useState<string>('available');
+  // Setup fields (admin create/edit)
+  const [newUnitVehicleId, setNewUnitVehicleId] = useState('');
+  const [newUnitCapabilities, setNewUnitCapabilities] = useState<string[]>([]);
+  const [newUnitBeat, setNewUnitBeat] = useState('');
+  const [newUnitAudioMode, setNewUnitAudioMode] = useState<string>('audible');
   const [unitCreating, setUnitCreating] = useState(false);
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
 
-  // ── Modal state (delete) ───────────────────────────────────
+  // ── Modal state (dispose: retire or delete) ────────────────
   const [deletingUnit, setDeletingUnit] = useState<Unit | null>(null);
   const [unitDeleting, setUnitDeleting] = useState(false);
+
+  const resetUnitForm = useCallback(() => {
+    setNewUnitCallSign('');
+    setNewUnitOfficerId('');
+    setNewUnitStatus('available');
+    setNewUnitVehicleId('');
+    setNewUnitCapabilities([]);
+    setNewUnitBeat('');
+    setNewUnitAudioMode('audible');
+    setEditingUnit(null);
+  }, []);
 
   // ── Refresh helper (replaces 5 inline copies of the same fetch) ──
   const refreshUnits = useCallback(async () => {
@@ -61,55 +77,59 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
     if (!cs) { addToast('Call sign is required', 'error'); return; }
     setUnitCreating(true);
     try {
+      const payload: Record<string, unknown> = {
+        call_sign: cs,
+        officer_id: newUnitOfficerId || null,
+        status: newUnitStatus || 'available',
+        capabilities: newUnitCapabilities,
+        assigned_beat: newUnitBeat.trim() || null,
+        audio_mode: newUnitAudioMode || 'audible',
+      };
       if (editingUnit) {
-        await apiFetch(`/dispatch/units/${editingUnit.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            call_sign: cs,
-            officer_id: newUnitOfficerId || null,
-            status: newUnitStatus,
-          }),
-        });
+        await apiFetch(`/dispatch/units/${editingUnit.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       } else {
-        await apiFetch('/dispatch/units', {
-          method: 'POST',
-          body: JSON.stringify({
-            call_sign: cs,
-            officer_id: newUnitOfficerId || null,
-            status: newUnitStatus || 'available',
-          }),
-        });
+        payload.vehicle_id = newUnitVehicleId.trim() || null;
+        await apiFetch('/dispatch/units', { method: 'POST', body: JSON.stringify(payload) });
       }
       await refreshUnits();
-      setNewUnitCallSign('');
-      setNewUnitOfficerId('');
-      setNewUnitStatus('available');
-      setEditingUnit(null);
+      resetUnitForm();
       setShowCreateUnitModal(false);
     } catch (err: any) {
       addToast(err?.error || err?.message || `Failed to ${editingUnit ? 'update' : 'create'} unit`, 'error');
     } finally {
       setUnitCreating(false);
     }
-  }, [newUnitCallSign, editingUnit, newUnitOfficerId, newUnitStatus, refreshUnits, addToast]);
+  }, [newUnitCallSign, editingUnit, newUnitOfficerId, newUnitStatus, newUnitVehicleId, newUnitCapabilities, newUnitBeat, newUnitAudioMode, refreshUnits, resetUnitForm, addToast]);
 
   const openEditUnit = useCallback((unit: Unit) => {
     setEditingUnit(unit);
     setNewUnitCallSign(unit.call_sign);
     setNewUnitOfficerId(unit.officer_id || '');
     setNewUnitStatus(unit.status);
+    setNewUnitVehicleId(unit.vehicle || '');
+    setNewUnitCapabilities(Array.isArray(unit.capabilities) ? unit.capabilities : []);
+    setNewUnitBeat(unit.assigned_beat || '');
+    setNewUnitAudioMode(unit.audio_mode || 'audible');
     setShowCreateUnitModal(true);
   }, []);
 
-  const handleDeleteUnit = useCallback(async () => {
+  // Dispose a unit (admin/manager). mode 'delete' permanently removes it;
+  // 'retire' soft-decommissions (out-of-service, keeps the row). Both
+  // force-clear any stale call assignment server-side, so this works even on
+  // a unit stuck on a call (the plain DELETE refused those).
+  const handleDisposeUnit = useCallback(async (mode: 'delete' | 'retire') => {
     if (!deletingUnit) return;
     setUnitDeleting(true);
     try {
-      await apiFetch(`/dispatch/units/${deletingUnit.id}`, { method: 'DELETE' });
+      await apiFetch(`/dispatch/units/${deletingUnit.id}/dispose`, {
+        method: 'POST',
+        body: JSON.stringify({ mode }),
+      });
       await refreshUnits();
+      addToast(mode === 'retire' ? `Unit ${deletingUnit.call_sign} retired (out of service)` : `Unit ${deletingUnit.call_sign} deleted`, 'success');
       setDeletingUnit(null);
     } catch (err: any) {
-      addToast(err?.error || err?.message || 'Failed to delete unit', 'error');
+      addToast(err?.error || err?.message || `Failed to ${mode} unit`, 'error');
     } finally {
       setUnitDeleting(false);
     }
@@ -122,9 +142,15 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
         method: 'POST',
         body: JSON.stringify({ unit_id: unitId }),
       });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
+      // DEFENSIVE: only adopt the server response if it's a full call row.
+      // If a backend regression returns a bare {message}/{error} body, mapDbCall
+      // would emit a blank-id 'Other' call that wipes the dispatch panel. Fall
+      // back to patching assigned_units locally from the unit we just assigned.
+      const apply = (c: CallForService): CallForService => looksLikeCallRow(result)
+        ? mapDbCall(result)
+        : { ...c, assigned_units: Array.from(new Set([...(c.assigned_units || []), String(unitId)])) };
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? apply(c) : c));
+      setSelectedCall((prev) => prev ? apply(prev) : prev);
       onAssignSuccess?.();
       const assignedUnit = units.find((u) => String(u.id) === String(unitId));
       if (assignedUnit) {
@@ -143,9 +169,12 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
         method: 'POST',
         body: JSON.stringify({ unit_id: unitId }),
       });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // DEFENSIVE: see handleAssignUnit — never let a non-row response blank the call.
+      const apply = (c: CallForService): CallForService => looksLikeCallRow(result)
+        ? mapDbCall(result)
+        : { ...c, assigned_units: Array.from(new Set([...(c.assigned_units || []), String(unitId)])) };
+      setCalls((prev) => prev.map((c) => c.id === callId ? apply(c) : c));
+      setSelectedCall((prev) => prev?.id === callId ? apply(prev) : prev);
       await refreshUnits();
       addToast(`Unit assigned to call`, 'success');
     } catch (err: any) {
@@ -160,9 +189,13 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
         method: 'POST',
         body: JSON.stringify({ unit_id: unitId }),
       });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
+      // DEFENSIVE: see handleAssignUnit — fall back to removing the unit locally
+      // rather than letting a non-row response blank the call.
+      const apply = (c: CallForService): CallForService => looksLikeCallRow(result)
+        ? mapDbCall(result)
+        : { ...c, assigned_units: (c.assigned_units || []).filter((u) => String(u) !== String(unitId)) };
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? apply(c) : c));
+      setSelectedCall((prev) => prev ? apply(prev) : prev);
       await refreshUnits();
     } catch (err: any) {
       console.error('Failed to unassign unit:', err);
@@ -182,15 +215,24 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
     setNewUnitOfficerId,
     newUnitStatus,
     setNewUnitStatus,
+    newUnitVehicleId,
+    setNewUnitVehicleId,
+    newUnitCapabilities,
+    setNewUnitCapabilities,
+    newUnitBeat,
+    setNewUnitBeat,
+    newUnitAudioMode,
+    setNewUnitAudioMode,
+    resetUnitForm,
     unitCreating,
-    // Delete modal state
+    // Dispose modal state
     deletingUnit,
     setDeletingUnit,
     unitDeleting,
     // Handlers
     openEditUnit,
     handleSaveUnit,
-    handleDeleteUnit,
+    handleDisposeUnit,
     handleAssignUnit,
     handleDragAssignUnit,
     handleUnassignUnit,

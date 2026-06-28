@@ -10,6 +10,7 @@
 // the proprietary writer — these are independent text outputs.
 
 import { Annotation } from './types';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 
 function csvEscape(v: string): string {
   if (/[,"\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
@@ -72,7 +73,7 @@ export function exportAnnotationsAsMarkdown(annotations: Annotation[], fileName:
       const summary = annotationSummary(a);
       const meta: string[] = [];
       if (a.authorName) meta.push(`by ${a.authorName}`);
-      if (a.createdAt) meta.push(new Date(a.createdAt).toLocaleString());
+      if (a.createdAt) meta.push(safeDateTimeStr(a.createdAt));
       if (a.status) meta.push(a.status);
       if (a.layer) meta.push(`layer: ${a.layer}`);
       const metaStr = meta.length > 0 ? ` _(${meta.join(' · ')})_` : '';
