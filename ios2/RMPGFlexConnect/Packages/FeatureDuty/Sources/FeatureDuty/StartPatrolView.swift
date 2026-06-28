@@ -84,38 +84,9 @@ public struct StartPatrolView: View {
     }
 
     private var formattedElapsed: String {
-        let s = Int(dutyState.elapsedSinceShiftStart())
-        return String(format: "%02d:%02d:%02d on shift", s / 3600, (s % 3600) / 60, s % 60)
-    }
-
-    private func toggle() async {
-        isBusy = true
-        error = nil
-        do {
-            if dutyState.isOnDuty {
-                let r = try await api.clockOff()
-                dutyState.clockOff()
-                if !r.on_shift { dismiss() }
-            } else {
-                let r = try await api.clockOn()
-                let callSign = r.unit?.call_sign ?? "—"
-                dutyState.clockOn(unitID: callSign)
-                dismiss()
-            }
-        } catch {
-            self.error = friendlyError(error)
-        }
-        isBusy = false
-    }
-
-    private func friendlyError(_ err: Error) -> String {
-        let msg = err.localizedDescription
-        if msg.contains("NO_UNIT") || msg.contains("No unit") {
-            return "No unit assigned to your account. Contact dispatch to assign a unit."
-        }
-        if msg.contains("NEEDS_VEHICLE") || msg.contains("No vehicle") {
-            return "No vehicle available for your unit. Contact dispatch."
-        }
-        return msg
+        let s = Int(dutyState.elapsedSinceShiftStart(now: .now))
+        let h = s / 3600
+        let m = (s % 3600) / 60
+        return String(format: "%02d:%02d", h, m)
     }
 }

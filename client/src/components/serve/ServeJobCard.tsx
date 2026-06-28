@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { formatEnumValue } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import {
   MapPin,
   ClipboardCheck,
@@ -37,6 +37,8 @@ interface ServeJobCardProps {
   onEdit: (jobId: number) => void;
   /** Edit a previously-logged attempt — opens EditServeAttemptModal in the parent. */
   onEditAttempt?: (jobId: number, attempt: ServeAttempt) => void;
+  /** Open audit trail modal for this job. */
+  onAudit?: (jobId: number) => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
   // ── Selection mode (bulk actions) ──────────────────────────────────────────
@@ -109,6 +111,7 @@ export default React.memo(function ServeJobCard({
   onFlagAddress,
   onEdit,
   onEditAttempt,
+  onAudit,
   isExpanded = false,
   onToggleExpand,
   isSelected = false,
@@ -259,7 +262,7 @@ export default React.memo(function ServeJobCard({
           {/* Enhancement 50: Document type with icon */}
           <span className="text-[9px] font-mono text-rmpg-400 bg-rmpg-800/60 border border-rmpg-700/40 px-1 py-0 inline-flex items-center gap-0.5">
             {(() => { const DocIcon = DOC_TYPE_ICONS[job.document_type] || FileText; return <DocIcon className="w-2.5 h-2.5" />; })()}
-            {(job.document_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+            {toDisplayLabel(job.document_type || '')}
           </span>
 
           {/* Priority */}
@@ -515,6 +518,15 @@ export default React.memo(function ServeJobCard({
               <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Notes</span>
               <p className="text-rmpg-300 mt-0.5">{job.notes}</p>
             </div>
+          )}
+
+          {onAudit && (
+            <button type="button"
+              onClick={(e) => { e.stopPropagation(); onAudit(job.id); }}
+              className="text-[9px] text-rmpg-400 hover:text-rmpg-200 uppercase tracking-wider font-bold transition-colors"
+            >
+              Audit Log
+            </button>
           )}
         </div>
       )}

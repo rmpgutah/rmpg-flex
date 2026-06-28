@@ -13,7 +13,7 @@ import {
   Server, Shield,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
-import { formatLabel } from '../utils/formatters';
+import { formatLabel, toDisplayLabel } from '../utils/formatters';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -719,7 +719,7 @@ export default function IpedPage() {
                         <td className="px-3 py-2">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] font-semibold ${STATUS_STYLES[job.status] || 'bg-rmpg-800 text-rmpg-400'}`}>
                             <Icon size={10} />
-                            {(job.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                            {toDisplayLabel(job.status || '')}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-rmpg-500 truncate max-w-[200px] hidden md:table-cell" title={job.input_path}>

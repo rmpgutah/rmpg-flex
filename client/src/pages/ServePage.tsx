@@ -11,7 +11,7 @@ import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
-  FolderOpen, Layers,
+  FolderOpen, Layers, Printer,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -35,6 +35,7 @@ import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import EditServeAttemptModal from '../components/serve/EditServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
+import ServeAuditLogModal from '../components/serve/ServeAuditLogModal';
 import FormModal from '../components/FormModal';
 import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
 import type { ServeJob, ServeAttempt, ServeAttemptData, ServeSkipAddress, ServeFolder } from '../types';
@@ -186,6 +187,7 @@ export default function ServePage() {
   // (so we know which queueId to PUT against) and the specific attempt row.
   const [editAttempt, setEditAttempt] = useState<{ jobId: number; attempt: ServeAttempt } | null>(null);
   const [skipTraceJob, setSkipTraceJob] = useState<ServeJob | null>(null);
+  const [auditJobId, setAuditJobId] = useState<number | null>(null);
   const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
   const [createJobOpen, setCreateJobOpen] = useState(false);
   const [editJob, setEditJob] = useState<ServeJob | null>(null);
@@ -323,6 +325,91 @@ export default function ServePage() {
     } catch (err) {
       console.error('[serve] Notice of Attempt generation failed:', err);
       setFetchError('Could not generate the Notice of Attempt — please try again.');
+    }
+  };
+
+  // Job Information Sheet (PS-300) — full printable packet carried by the PSO
+  // to the field and filed as an internal record. Distinct from the Notice of
+  // Attempt (left with the recipient): this sheet shows ALL attempts, skip
+  // trace results, service instructions, and has blank lines for field notes.
+  const handleJobSheet = async (jobId: number) => {
+    try {
+      const job = await apiFetch<ServeJob & { attempts?: any[]; skipTraces?: any[] }>(`/process-server/${jobId}`);
+      const { parseTimestamp } = await importWithRetry(() => import('../utils/dateUtils'));
+
+      const fullAddress = [
+        job.recipient_address,
+        (job as any).recipient_address_2,
+        job.recipient_city,
+        job.recipient_state,
+        job.recipient_zip,
+      ].filter(Boolean).join(', ');
+
+      const pad = (n: number) => String(n).padStart(2, '0');
+
+      const attempts = (job.attempts || []).map((a, i) => {
+        const ts = a.attempt_at || a.created_at || null;
+        const at = ts ? parseTimestamp(ts) : null;
+        const valid = at && !isNaN(at.getTime());
+        return {
+          number: a.attempt_number ?? i + 1,
+          date: valid ? `${pad(at!.getMonth() + 1)}/${pad(at!.getDate())}/${at!.getFullYear()}` : '',
+          time: valid ? at!.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+          type: (a.attempt_type || '').replace(/_/g, ' '),
+          result: (a as any).disposition_code || a.result || 'other',
+          officerName: a.officer_name || '',
+          notes: a.notes || '',
+          gpsLat: a.latitude ?? null,
+          gpsLng: a.longitude ?? null,
+        };
+      });
+
+      const skipTraces = (job.skipTraces || []).map((t: any) => {
+        const tTs = t.created_at ? parseTimestamp(t.created_at) : null;
+        const tValid = tTs && !isNaN(tTs.getTime());
+        const addrs = Array.isArray(t.addresses_found) ? t.addresses_found : [];
+        return {
+          date: tValid ? `${pad(tTs!.getMonth() + 1)}/${pad(tTs!.getDate())}/${tTs!.getFullYear()}` : '',
+          searchType: t.search_type || '',
+          addressesFound: addrs.length,
+          addressesTried: addrs.map((a: any) =>
+            [a.address, a.city, a.state, a.zip].filter(Boolean).join(', ')
+          ),
+        };
+      });
+
+      const { generateServeJobSheet } = await importWithRetry(() => import('../utils/serveJobSheetPdfGenerator'));
+      const pdf = await generateServeJobSheet({
+        jobId: job.id,
+        status: job.status,
+        priority: job.priority,
+        deadline: job.deadline || null,
+        timeWindow: job.time_window,
+        serveDate: job.serve_date || null,
+        serviceInstructions: job.service_instructions || null,
+        notes: job.notes || null,
+        recipientName: job.recipient_name,
+        recipientAddress: fullAddress || job.recipient_address || 'N/A',
+        recipientGps: (job.recipient_lat != null && job.recipient_lng != null)
+          ? { lat: job.recipient_lat, lng: job.recipient_lng }
+          : null,
+        documentType: job.document_type,
+        caseNumber: job.case_number || null,
+        courtName: job.court_name || null,
+        jurisdiction: job.jurisdiction || null,
+        clientName: job.client_name || null,
+        attorneyName: job.attorney_name || null,
+        officerName: user?.full_name || user?.username || 'Process Server',
+        officerBadge: user?.badge_number || '',
+        attempts,
+        skipTraces: skipTraces.length > 0 ? skipTraces : undefined,
+      });
+
+      const { openPdfDocument } = await importWithRetry(() => import('../utils/openPdfDocument'));
+      openPdfDocument(pdf, `Job-Sheet-${job.case_number || job.id}.pdf`);
+    } catch (err) {
+      console.error('[serve] Job sheet generation failed:', err);
+      setFetchError('Could not generate the Job Information Sheet — please try again.');
     }
   };
 
@@ -493,7 +580,7 @@ export default function ServePage() {
       await apiFetch('/process-server/sync-from-sm', { method: 'POST' });
       refreshJobs();
     } catch {
-      // sync failed
+      addToast('Sync from ServeManager failed', 'error');
     } finally {
       setSyncing(false);
     }
@@ -524,7 +611,7 @@ export default function ServePage() {
       });
       refreshJobs();
     } catch {
-      // flag failed
+      addToast('Could not flag address — please try again', 'error');
     }
   }, [refreshJobs]);
 
@@ -574,7 +661,7 @@ export default function ServePage() {
       dueDiligenceComplete?: boolean;
       attemptNumber?: number;
       jobStatus?: string;
-    }>(`/api/process-server/${attemptJob.id}/attempt`, {
+    }>(`/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -602,6 +689,17 @@ export default function ServePage() {
     return result;
   }, [attemptJob, refreshJobs, setJobs, addToast]);
 
+  const handleDeleteAttempt = useCallback(async (queueId: number, attempt: ServeAttempt) => {
+    try {
+      await apiFetch(`/process-server/${queueId}/attempt/${attempt.id}`, { method: 'DELETE' });
+      setEditAttempt(null);
+      addToast(`Attempt #${attempt.attempt_number} deleted`, 'success');
+      setTimeout(refreshJobs, 300);
+    } catch (e) {
+      addToast(`Could not delete attempt: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+    }
+  }, [addToast, refreshJobs]);
+
   const handleRouteOptimized = useCallback(async (
     orderedJobIds: number[],
     data: { totalDistance: number; totalDuration: number; fuelCost: number },
@@ -611,12 +709,12 @@ export default function ServePage() {
     try {
       await apiFetch('/process-server/reorder', {
         method: 'PUT',
-        body: JSON.stringify({ orderedIds: orderedJobIds }),
+        body: JSON.stringify({ items: orderedJobIds.map((id, i) => ({ id, sort_order: i })) }),
       });
       refreshJobs();
       fetchSavedRoute(); // Refresh saved route for Route tab
     } catch {
-      // reorder failed — local state still updated
+      addToast('Could not save route order on server', 'error');
     }
   }, [refreshJobs, fetchSavedRoute]);
 
@@ -685,7 +783,7 @@ export default function ServePage() {
       setEditJob(null);
       refreshJobs();
     } catch {
-      // error
+      addToast('Could not save job', 'error');
     } finally {
       setFormSubmitting(false);
     }
@@ -1073,6 +1171,7 @@ export default function ServePage() {
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
       ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
+      m.action('Print Job Sheet', () => handleJobSheet(job.id), { icon: <Printer size={12} /> }),
       ...(job.attempt_count > 0 ? [m.action('Notice of Attempt to Serve', () => handleNoticeOfAttempt(job.id), { icon: <FileWarning size={12} /> })] : []),
       m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
       moveSubmenu.length > 0
@@ -1343,6 +1442,7 @@ export default function ServePage() {
                                 onFlagAddress={handleFlagAddress}
                                 onEdit={openEdit}
                                 onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
+                                onAudit={setAuditJobId}
                                 isExpanded={expandedJobId === job.id}
                                 onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                               />
@@ -1389,6 +1489,7 @@ export default function ServePage() {
                           onFlagAddress={handleFlagAddress}
                           onEdit={openEdit}
                           onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
+                          onAudit={setAuditJobId}
                           isExpanded={expandedJobId === job.id}
                           onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                         />
@@ -1718,7 +1819,7 @@ export default function ServePage() {
                     {deadlines.overdue.map((d: any) => (
                       <div key={d.id} className="text-[10px] flex gap-2 py-0.5 text-red-300">
                         <span>{d.recipient_name}</span>
-                        <span className="text-rmpg-500">{(d.document_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                        <span className="text-rmpg-500">{toDisplayLabel(d.document_type)}</span>
                         <span className="ml-auto">{Math.abs(Math.round(d.days_remaining))}d overdue</span>
                       </div>
                     ))}
@@ -1802,6 +1903,7 @@ export default function ServePage() {
           queueId={editAttempt.jobId}
           attempt={editAttempt.attempt}
           onSaved={refreshJobs}
+          onDelete={canManage ? handleDeleteAttempt : undefined}
         />
       )}
 
@@ -1823,6 +1925,14 @@ export default function ServePage() {
           job={skipTraceJob}
           onAddToRoute={handleSkipTraceAddToRoute}
           onLookupComplete={refreshJobs}
+        />
+      )}
+
+      {/* Audit Log Modal */}
+      {auditJobId != null && (
+        <ServeAuditLogModal
+          jobId={auditJobId}
+          onClose={() => setAuditJobId(null)}
         />
       )}
 

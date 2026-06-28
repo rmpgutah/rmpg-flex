@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ExternalLink, RefreshCw, Sparkles } from 'lucide-react';
+import { CalendarDays, ExternalLink, Navigation, RefreshCw, Sparkles } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import WeekTimeline from './WeekTimeline';
@@ -164,12 +164,21 @@ export default function ServeSchedulerPanel() {
           />
         )
       }
-      <div className="px-2 py-1 border-t border-rmpg-700 text-[10px] text-rmpg-300 flex gap-3">
+      <div className="px-2 py-1 border-t border-rmpg-700 text-[10px] text-rmpg-300 flex gap-3 items-center">
         <span>Today: <span className="text-rmpg-100 tabular-nums">{todayCount}</span></span>
         <span>
           Critical: <span className={`${criticalCount > 0 ? 'text-red-300' : 'text-rmpg-100'} tabular-nums`}>{criticalCount}</span>
           {criticalCount > 0 ? <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /> : null}
         </span>
+        <span>
+          Unassigned: <span className="text-amber-400 tabular-nums">{slots.filter(s => s.officer_id == null).length}</span>
+        </span>
+        <a
+          href="/serve-intake/scheduler"
+          className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] uppercase text-brand-200 border border-brand-500/40 rounded-[2px] hover:bg-brand-500/20"
+        >
+          <Navigation size={8} /> Plan Route
+        </a>
       </div>
     </div>
   );

@@ -159,9 +159,6 @@ final class RecordsViewModel {
 public struct RecordsTabView: View {
     @Environment(\.theme) private var theme
     @State private var vm: RecordsViewModel
-    @State private var selectedPerson:  PersonRecord?
-    @State private var selectedVehicle: VehicleRecord?
-    @State private var selectedWarrant: WarrantRecord?
 
     public init(client: APIClient) {
         _vm = State(initialValue: RecordsViewModel(client: client))
@@ -178,9 +175,6 @@ public struct RecordsTabView: View {
             .background(theme.colors.surfaceBase.ignoresSafeArea())
             .navigationTitle("RECORDS")
             .rmpgNavBar(background: theme.colors.surfaceRaised)
-            .sheet(item: $selectedPerson)  { PersonDetailSheet(person: $0) }
-            .sheet(item: $selectedVehicle) { VehicleDetailSheet(vehicle: $0) }
-            .sheet(item: $selectedWarrant) { WarrantDetailSheet(warrant: $0) }
         }
     }
 
@@ -196,7 +190,9 @@ public struct RecordsTabView: View {
                 .foregroundStyle(theme.colors.textPrimary)
                 .tint(theme.colors.brandGold)
                 .autocorrectionDisabled()
+                #if canImport(UIKit)
                 .textInputAutocapitalization(.never)
+                #endif
                 .onChange(of: vm.query) { _, _ in vm.queryChanged() }
             if !vm.query.isEmpty {
                 Button { vm.query = "" } label: {
@@ -293,30 +289,19 @@ public struct RecordsTabView: View {
                 switch vm.segment {
                 case .persons:
                     ForEach(vm.persons) { p in
-                        Button { selectedPerson = p } label: {
-                            PersonRowView(person: p)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowBackground(theme.colors.surfaceBase)
-                        .listRowSeparatorTint(theme.colors.surfaceMuted)
+                        PersonRowView(person: p).listRowBackground(theme.colors.surfaceBase)
+                            .listRowSeparatorTint(theme.colors.surfaceMuted)
                     }
                 case .vehicles:
                     ForEach(vm.vehicles) { v in
-                        Button { selectedVehicle = v } label: {
-                            VehicleRowView(vehicle: v)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowBackground(theme.colors.surfaceBase)
-                        .listRowSeparatorTint(theme.colors.surfaceMuted)
+                        VehicleRowView(vehicle: v).listRowBackground(theme.colors.surfaceBase)
+                            .listRowSeparatorTint(theme.colors.surfaceMuted)
                     }
                 case .warrants:
                     ForEach(vm.warrants) { w in
-                        Button { selectedWarrant = w } label: {
-                            WarrantRowView(warrant: w)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowBackground(w.isActive ? theme.colors.critical.opacity(0.06) : theme.colors.surfaceBase)
-                        .listRowSeparatorTint(theme.colors.surfaceMuted)
+                        WarrantRowView(warrant: w)
+                            .listRowBackground(w.isActive ? theme.colors.critical.opacity(0.06) : theme.colors.surfaceBase)
+                            .listRowSeparatorTint(theme.colors.surfaceMuted)
                     }
                 }
             }
