@@ -44,6 +44,43 @@ export const COMPARE_DATE = (entry: any, range: string): boolean => {
   return true;
 };
 
+// ─────────────────────────────────────────────────────────────
+// Quiet hours — TODO(user-contribution).
+//
+// `isInQuietHours(startHHMM, endHHMM, now)` returns true when `now`
+// falls within the quiet-hours window. The tricky bit: the window can
+// wrap midnight (e.g. start="22:00", end="06:00"), in which case the
+// naive `now >= start && now <= end` returns false at 23:00 — the bug
+// we want to avoid.
+//
+// Inputs: startHHMM/endHHMM are "HH:MM" strings; now is a Date.
+// Return true if quiet, false if not. Empty/invalid window → false.
+//
+// Used by SettingsTab (status indicator) AND LiveTab (suppresses the
+// new-transmission beep), so a correct implementation directly gates
+// whether the console makes noise overnight.
+// ─────────────────────────────────────────────────────────────
+export function isInQuietHours(startHHMM: string, endHHMM: string, now: Date = new Date()): boolean {
+  const toMins = (hhmm: string): number | null => {
+    const m = (hhmm || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h = Number(m[1]), min = Number(m[2]);
+    if (h > 23 || min > 59) return null;
+    return h * 60 + min;
+  };
+
+  const start = toMins(startHHMM);
+  const end = toMins(endHHMM);
+  if (start === null || end === null || start === end) return false; // unset / zero-width window
+
+  const cur = now.getHours() * 60 + now.getMinutes();
+  // Half-open [start, end): end minute is audible. Wrap past midnight
+  // (start > end) becomes a single OR check.
+  return start < end
+    ? cur >= start && cur < end      // same-day window, e.g. 08:00–17:00
+    : cur >= start || cur < end;     // wraps midnight, e.g. 22:00–06:00
+}
+
 // ── Boolean search: supports OR (|), negation (-) ──
 export function matchesSearch(text: string, query: string): boolean {
   if (!query) return true;

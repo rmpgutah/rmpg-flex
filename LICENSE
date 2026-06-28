@@ -1,0 +1,57 @@
+RMPG Flex — Proprietary License
+================================
+
+Copyright (c) 2024–2026 Rocky Mountain Protective Group, LLC ("RMPG").
+All rights reserved.
+
+This software, including its source code, compiled artifacts, documentation,
+database schemas, configuration, and associated materials (collectively, the
+"Software"), is the confidential and proprietary property of RMPG.
+
+Permitted use
+-------------
+The Software may be accessed, used, modified, and deployed solely by:
+
+  1. Current employees of RMPG, in the course of their employment; and
+  2. Contractors, vendors, and partners engaged in writing with RMPG, strictly
+     within the scope of that written engagement.
+
+All such use is subject to RMPG's information-security, confidentiality, and
+data-handling policies, including but not limited to its handling of criminal
+justice information (CJI), personally identifiable information (PII), and law
+enforcement records.
+
+Prohibited use
+--------------
+Without the prior written consent of an authorized officer of RMPG, you may NOT:
+
+  - Copy, redistribute, sublicense, sell, lease, or otherwise transfer the
+    Software or any portion of it;
+  - Publish, publicly display, or disclose the Software, in source or compiled
+    form, to any third party;
+  - Reverse engineer, decompile, or disassemble the Software except to the
+    extent that such activity is expressly permitted by applicable law;
+  - Use the Software, or any data derived from it, to train, fine-tune, or
+    otherwise improve any machine-learning model not owned by RMPG;
+  - Use the Software outside the scope of authorized RMPG business.
+
+Third-party components
+----------------------
+The Software incorporates open-source components, each governed by its own
+license. Those licenses are preserved in the dependency manifests
+(package.json, package-lock.json, etc.) and in the source headers of the
+relevant files, and nothing in this license overrides them.
+
+No warranty
+-----------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, OR NONINFRINGEMENT. IN NO EVENT SHALL RMPG OR ITS
+PRINCIPALS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM
+THE USE OF, OR INABILITY TO USE, THE SOFTWARE.
+
+Contact
+-------
+For licensing inquiries, contact:
+  Rocky Mountain Protective Group, LLC
+  chzamo@rmpgutah.us

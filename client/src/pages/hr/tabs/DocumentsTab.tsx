@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react';
-import { FileText, Plus, Trash2, CheckCircle, Loader2, Search } from 'lucide-react';
+import { FileText, Plus, Trash2, CheckCircle, Loader2, Search, Eye } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 
 import RichTextArea from '../../../components/RichTextArea';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
+import { coded } from '../../../utils/searchText';
 interface HRDocument {
   id: number;
   title: string;
@@ -38,8 +44,14 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
   const [form, setForm] = useState({ title: '', category: 'policy', description: '' });
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const loadDocs = async () => {
     setLoading(true);
@@ -74,27 +86,48 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
     try { await apiFetch('/hr/acknowledgments', { method: 'POST', body: JSON.stringify({ document_id: docId }) }); addToast('Acknowledged', 'success'); loadAcks(docId); } catch { addToast('Failed to acknowledge document', 'error'); }
   };
 
-  const handleDelete = async (docId: number) => {
-    if (!window.confirm('Delete this document? This cannot be undone.')) return;
-    try { await apiFetch<any[]>(`/hr/documents/${docId}`, { method: 'DELETE' }); addToast('Document deleted', 'success'); loadDocs(); } catch { addToast('Failed to delete document', 'error'); }
+  const handleDelete = (docId: number) => {
+    setConfirmDeleteId(docId);
+  };
+
+  const doDelete = async () => {
+    if (confirmDeleteId === null) return;
+    setConfirmDeleteLoading(true);
+    try {
+      await apiFetch<any[]>(`/hr/documents/${confirmDeleteId}`, { method: 'DELETE' });
+      addToast('Document deleted', 'success');
+      setConfirmDeleteId(null);
+      loadDocs();
+    } catch { addToast('Failed to delete document', 'error'); }
+    finally { setConfirmDeleteLoading(false); }
   };
 
   const myAcks = new Set(acks.filter(a => a.officer_id === Number(user?.id)).map(a => a.document_id));
 
+  const buildDocMenu = (doc: HRDocument): ContextMenuItem[] => [
+    m.action('Open document', () => setSelectedDocId(doc.id), { icon: <Eye size={12} /> }),
+    ...(!myAcks.has(doc.id) ? [m.action('Acknowledge', () => handleAcknowledge(doc.id), { icon: <CheckCircle size={12} /> })] : []),
+    m.separator(),
+    m.copy('Copy title', doc.title),
+    m.copy('Copy category', doc.category),
+    m.copyId(doc.id),
+    ...(isManager ? [m.separator(), m.action('Delete', () => handleDelete(doc.id), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2"><FileText className="w-4 h-4" /> HR Document Library</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2"><FileText className="w-4 h-4" /> HR Document Library</h2>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search documents..." aria-label="Search HR documents by name, category, or officer" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
+            <input id="ff-documentstab-0" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search documents..." aria-label="Search HR documents by name, category, or officer" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
           </div>
-          <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="input-field text-xs py-1 px-2">
+          <select id="ff-documentstab-1" value={filterCat} onChange={e => setFilterCat(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Categories</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
           </select>
-          {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Document</button>}
+          {isManager && <button type="button" data-hr-new-btn onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Document</button>}
         </div>
       </div>
 
@@ -102,12 +135,12 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Title *</label>
-              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input-field w-full text-xs" placeholder="Document title" maxLength={200} />
+              <label htmlFor="ff-documentstab-2" className="field-label">Title *</label>
+              <input id="ff-documentstab-2" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input-field w-full text-xs" placeholder="Document title" maxLength={200} />
             </div>
             <div>
-              <label className="field-label">Category</label>
-              <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="input-field w-full text-xs">
+              <label htmlFor="ff-documentstab-3" className="field-label">Category</label>
+              <select id="ff-documentstab-3" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="input-field w-full text-xs">
                 {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
               </select>
             </div>
@@ -130,18 +163,18 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
           {docs.filter(doc => {
             if (!searchQuery) return true;
             const q = searchQuery.toLowerCase();
-            return doc.title.toLowerCase().includes(q) || doc.description?.toLowerCase().includes(q) || doc.category.toLowerCase().includes(q);
+            return doc.title.toLowerCase().includes(q) || doc.description?.toLowerCase().includes(q) || coded(doc.category, formatEnumValue).includes(q);
           }).map(doc => (
-            <div key={doc.id} role="listitem" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedDocId(doc.id); }} className={`panel-beveled p-3 cursor-pointer transition-all duration-150 hover:bg-surface-raised/30 hover:shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500/40 ${selectedDocId === doc.id ? 'border-brand-500 shadow-sm' : ''}`} onClick={() => setSelectedDocId(doc.id)}>
+            <div key={doc.id} role="listitem" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedDocId(doc.id); }} className={`panel-beveled p-3 cursor-pointer transition-all duration-150 hover:bg-surface-raised/30 hover:shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500/40 ${selectedDocId === doc.id ? 'border-brand-500 shadow-sm' : ''}`} onClick={() => setSelectedDocId(doc.id)} onContextMenu={(e) => openMenu(e, buildDocMenu(doc))}>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
                     <FileText className="w-3.5 h-3.5 text-brand-400" />
-                    <span className="text-xs font-bold text-white">{doc.title}</span>
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{(doc.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                    <span className="text-xs font-bold text-rmpg-100">{doc.title}</span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{toDisplayLabel(doc.category)}</span>
                   </div>
                   {doc.description && <p className="text-[10px] text-rmpg-400 mt-1">{doc.description}</p>}
-                  <span className="text-[10px] text-rmpg-500">Uploaded by {doc.uploaded_by_name} on {doc.created_at ? new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+                  <span className="text-[10px] text-rmpg-500">Uploaded by {doc.uploaded_by_name} on {doc.created_at ? parseTimestamp(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {!myAcks.has(doc.id) ? (
@@ -162,7 +195,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                   <p className="text-[10px] text-rmpg-400 font-bold mb-1">Acknowledgments ({acks.length})</p>
                   <div className="grid grid-cols-3 gap-1">
                     {acks.map(a => (
-                      <div key={a.id} className="text-[10px] text-rmpg-300">{a.officer_name} - {a.acknowledged_at ? new Date(a.acknowledged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</div>
+                      <div key={a.id} className="text-[10px] text-rmpg-300">{a.officer_name} - {a.acknowledged_at ? parseTimestamp(a.acknowledged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</div>
                     ))}
                   </div>
                 </div>
@@ -171,6 +204,17 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={doDelete}
+        title="Delete Document"
+        message="Delete this document? This cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={confirmDeleteLoading}
+      />
     </div>
   );
 }

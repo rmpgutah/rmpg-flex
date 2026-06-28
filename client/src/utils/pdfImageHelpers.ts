@@ -3,9 +3,57 @@
 // Async functions to fetch, downscale, and prepare images
 // for embedding into jsPDF documents.
 // NO jsPDF imports here — rendering helpers are in pdfGenerator.ts
+//
+// CRITICAL ISOLATION RULE (Claude Opus 4.8, PR #889 follow-on):
+//   This module previously imported `apiFetchAttachments` from
+//   hooks/useApi, which is auth-coupled — on a 401 it attempts a
+//   token refresh and, on failure, does `window.location.href =
+//   '/login'`, tearing down the entire app and any open PDF viewer.
+//   This was the root cause of the "PDF opens then goes blank"
+//   crash (fixed for pdfStaticMap in c0f34f20; missed here).
+//   Now uses raw fetch with JWT from localStorage + 7s timeout
+//   (same isolation pattern as pdfStaticMap.ts).
 // ============================================================
 
-import { apiFetchAttachments } from '../hooks/useApi';
+// ============================================================
+
+// ── Fetch helpers (isolated from auth-coupled apiFetch) ────
+const API_BASE = (() => {
+  if (typeof window === 'undefined') return 'https://api.rmpgutah.us';
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost') return 'http://localhost:8787';
+  if (hostname.includes('pages.dev')) return 'https://api.rmpgutah.us';
+  return 'https://api.rmpgutah.us';
+})();
+
+function getAuthToken(): string | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem('rmpg_token');
+  } catch { return null; }
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return await fetch(url, { signal: controller.signal, headers });
+  } catch { return null; } finally { clearTimeout(timer); }
+}
+
+async function fetchEntityAttachments(
+  entityType: string,
+  entityId: string | number,
+): Promise<any[]> {
+  const url = `${API_BASE}/api/documents/${entityType}/${entityId}/attachments`;
+  const res = await fetchWithTimeout(url, 7000);
+  if (!res || !res.ok) return [];
+  try { return await res.json(); } catch { return []; }
+}
+
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -26,10 +74,6 @@ const FETCH_TIMEOUT_MS = 10000;
 const TOKEN_KEY = 'rmpg_token';
 
 // ── Image Fetching ───────────────────────────────────────────
-
-function getAuthToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || '';
-}
 
 /**
  * Fetch a single image by file_id, downscale to max 800px,
@@ -163,7 +207,7 @@ export async function fetchEntityImages(
   entityId: string | number,
 ): Promise<ResolvedImage[]> {
   try {
-    const attachments = await apiFetchAttachments(entityType, entityId);
+    const attachments = await fetchEntityAttachments(entityType, entityId);
     const imageAttachments = attachments.filter(
       (a: any) => a.mime_type && a.mime_type.startsWith('image/'),
     );

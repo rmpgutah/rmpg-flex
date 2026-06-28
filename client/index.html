@@ -3,41 +3,52 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
+    <link rel="apple-touch-icon" href="/rmpg flex.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#0d1722" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RMPG Flex" />
     <meta name="description" content="Rocky Mountain Protective Group — CAD/RMS Dispatch Console" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <script>
-      // Synchronously apply theme before React loads to prevent flash-of-wrong-theme.
-      // Keep storage key + valid values in sync with client/src/utils/theme.ts.
+      // Synchronously apply theme before React loads to prevent flash-of-wrong-theme (FOUC).
+      // Resolution order: legacy flag → manual override → time-of-day schedule (06:00–18:00 day).
+      // Keep storage keys + valid values in sync with client/src/utils/theme.ts.
       (function () {
-        var theme = 'dark';
         try {
-          theme = localStorage.getItem('rmpg_theme_preference') === 'light' ? 'light' : 'dark';
-        } catch {}
+          var html = document.documentElement;
+          var legacy = false;
+          try { legacy = localStorage.getItem('rmpg_theme_legacy') === '1'; } catch (e) {}
 
-        // Chrome color: deep black for dark, saturated navy blue for "Light Mode"
-        // (which is actually a brighter blue variant, not a true light background).
-        // Keep in sync with --surface-base values in client/src/index.css.
-        var chrome = theme === 'light' ? '#0d2a4d' : '#000000';
-        var html = document.documentElement;
-        html.classList.add('theme-' + theme);
-        // Both themes are dark-on-dark (saturated-blue "Light Mode" is still
-        // a dark surface), so color-scheme stays 'dark' in both — keeps native
-        // form controls + scrollbars rendering with light-on-dark defaults.
-        // Keep in sync with client/src/utils/theme.ts.
-        html.style.colorScheme = 'dark';
-        html.style.backgroundColor = chrome;
+          var theme;
+          if (legacy) {
+            theme = 'dark';
+          } else {
+            var override = null;
+            try { override = JSON.parse(localStorage.getItem('rmpg_theme_override') || 'null'); } catch (e) {}
+            if (override && override.active) {
+              theme = override.theme === 'light' ? 'light' : 'dark';
+            } else {
+              var h = new Date().getHours();
+              theme = (h >= 6 && h < 18) ? 'light' : 'dark';
+            }
+          }
 
-        var themeColor = document.querySelector('meta[name="theme-color"]');
-        if (themeColor) themeColor.setAttribute('content', chrome);
+          html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black');
+          html.classList.add('theme-' + theme);
+          if (legacy) html.classList.add('theme-legacy-black');
 
-        var statusBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-        if (statusBar) statusBar.setAttribute('content', 'black-translucent');
+          var lightSurface = theme === 'light' && !legacy;
+          var chrome = legacy ? '#000000' : (theme === 'light' ? '#d6d3c8' : '#0d1722');
+          html.style.colorScheme = lightSurface ? 'light' : 'dark';
+          html.style.backgroundColor = chrome;
+
+          var themeColor = document.querySelector('meta[name="theme-color"]');
+          if (themeColor) themeColor.setAttribute('content', chrome);
+          var statusBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+          if (statusBar) statusBar.setAttribute('content', lightSurface ? 'default' : 'black-translucent');
+        } catch (e) {}
       })();
     </script>
     <style>
@@ -55,52 +66,53 @@
          wins from first paint with no FOUC.
          Values MUST match THEME_BODY_BACKGROUNDS in client/src/utils/theme.ts
          so the splash fades into the hydrated body with no shade shift. */
-      #pre-splash { background: #0a0a0a; }
-      html.theme-light #pre-splash { background: #0d2a4d; }
+      #pre-splash { background: #0d1722; }
+      html.theme-light #pre-splash { background: #ece9dd; }
+      html.theme-legacy-black #pre-splash { background: #0a0a0a; }
     </style>
     <!--
       CSP Note: 'unsafe-inline' is required in script-src and style-src for:
       1. Vite dev mode injects inline scripts/styles for HMR
-      2. Google Maps API dynamically injects inline scripts and styles
-      3. Inline styles used in Google Maps InfoWindow content
+      2. Mapbox GL JS popup InfoWindow inline styles
+      'unsafe-eval' is required by bundled vendor libs (charts/pdf/barcode + the
+      Mapbox expression evaluator) that compile code at runtime via the Function
+      constructor.
+
+      MUST stay in sync with the canonical policy in client/public/_headers.
+      A document governed by BOTH a header CSP and this <meta> CSP enforces the
+      INTERSECTION (most-restrictive-wins per directive) — NOT "header overrides
+      meta". A directive omitted here (e.g. a missing 'unsafe-eval' or media-src)
+      independently blocks that capability even when _headers allows it. That
+      exact drift previously blocked runtime code evaluation in production.
+      'frame-ancestors', 'report-uri'/'report-to' are intentionally omitted:
+      browsers ignore them when delivered via <meta>, so they live only in the
+      _headers HTTP header.
+
       TODO (production hardening): Replace 'unsafe-inline' with nonce-based CSP
       by generating a per-request nonce on the server and injecting it into both
       the CSP header and all inline <script>/<style> tags. This requires server-side
-      rendering of index.html (not static serving). Google Maps inline scripts
-      would still need 'unsafe-inline' or a hash-based approach.
+      rendering of index.html (not static serving).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com https://api.mapbox.com https://events.mapbox.com https://*.mapbox.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com https://api.mapbox.com https://*.mapbox.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com https://*.google.com https://*.googleusercontent.com https://*.arcgis.com https://js.arcgis.com https://api.mapbox.com https://*.mapbox.com; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' wss://rmpgutah.us https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.mapbox.com https://events.mapbox.com https://*.mapbox.com https://*.tiles.mapbox.com; frame-src 'self' blob: https://*.arcgis.com; worker-src 'self' blob: https://api.mapbox.com https://*.mapbox.com; child-src 'self' blob:; manifest-src 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io https://graph.mapillary.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://storage.googleapis.com https://tfhub.dev https://www.kaggle.com https://unpkg.com https://huggingface.co https://*.huggingface.co; frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" />
     <link rel="manifest" href="/manifest.json" />
     <title>RMPG Flex - Rocky Mountain Protective Group</title>
   </head>
-  <body class="text-white">
+  <body class="bg-[#0a0a0a] text-white">
     <div id="root">
       <!-- Pre-React branded splash — hidden once React hydrates -->
-      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh">
+      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100dvh;height:100vh;background:#0a0a0a;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)">
         <div style="display:flex;flex-direction:column;align-items:center">
           <img src="/rmpg flex.png" alt="RMPG Flex" width="88" height="88"
-               style="filter:drop-shadow(0 0 18px rgba(167,177,188,0.22));object-fit:contain" draggable="false" />
+               style="filter:drop-shadow(0 0 20px rgba(136,136,136,0.3));object-fit:contain" draggable="false" />
           <div style="margin-top:16px;margin-bottom:12px;width:140px;height:2px;background:#1a1a1a;border-radius:1px;overflow:hidden">
-            <div style="width:48px;height:100%;background:linear-gradient(90deg,transparent,#a7b1bc,transparent);animation:sl 1.6s ease-in-out infinite"></div>
+            <div style="width:48px;height:100%;background:linear-gradient(90deg,transparent,#888888,transparent);animation:sl 1.6s ease-in-out infinite"></div>
           </div>
           <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:rgba(160,160,160,0.7);font-family:system-ui,sans-serif;margin:0">
             Initializing
           </p>
-          <button id="pre-splash-reload" type="button"
-            style="display:none;margin-top:18px;padding:10px 16px;background:#1a1a1a;border:1px solid #222;color:#ccc;font-size:11px;letter-spacing:0.15em;text-transform:uppercase;cursor:pointer"
-            onclick="window.location.reload()">
-            Reload
-          </button>
         </div>
       </div>
       <style>#pre-splash{transition:opacity .3s}@keyframes sl{0%{transform:translateX(-48px)}100%{transform:translateX(140px)}}</style>
-      <script>
-        setTimeout(function () {
-          var splash = document.getElementById('pre-splash');
-          var btn = document.getElementById('pre-splash-reload');
-          if (splash && splash.offsetParent !== null && btn) btn.style.display = 'inline-block';
-        }, 8000);
-      </script>
     </div>
     <script type="module" src="/src/main.tsx"></script>
     <!-- Service worker registration handled by useServiceWorker hook in React -->

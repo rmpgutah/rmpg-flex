@@ -59,7 +59,6 @@ export function useMapKeyboardShortcuts(
 
     function onKeyDown(e: KeyboardEvent) {
       if (isTypingInField(e.target)) return;
-      // Skip when modifiers are held — don't clash with Cmd+R, Ctrl+F, etc.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       const key = e.key.toLowerCase();
@@ -78,9 +77,6 @@ export function useMapKeyboardShortcuts(
         }
       })();
       if (!match) return;
-      // Prevent the default browser behavior (e.g. "/" quick-find) for
-      // any key we consume, so officers don't also get an unrelated
-      // browser side-effect.
       e.preventDefault();
       match();
     }
@@ -90,15 +86,18 @@ export function useMapKeyboardShortcuts(
   }, [enabled, handlers, showHelp]);
 }
 
-/** Pretty list of the shortcut bindings — for help overlays. */
+/** Pretty list of the shortcut bindings — for the help overlay.
+ *  KEEP IN SYNC with the inline keydown handler in MapPage.tsx — the modal
+ *  reads from this constant and operators trust the list to match what
+ *  actually happens. (Previous drift: this listed P/F/D/I/E for never-wired
+ *  Phase-2 overlays; the inline handler actually binds L/H/B/C/+/-/Esc.) */
 export const MAP_SHORTCUT_BINDINGS: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'H', label: 'Heatmap' },
-  { key: 'B', label: 'Breadcrumb trails' },
-  { key: 'C', label: 'Call clustering' },
-  { key: 'P', label: 'Patrol checkpoints' },
-  { key: 'F', label: 'Field interviews' },
-  { key: 'D', label: 'Daylight overlay' },
-  { key: 'I', label: 'Incident reports' },
-  { key: 'E', label: 'Enforcement clusters' },
+  { key: 'L', label: 'Toggle layers panel' },
+  { key: 'H', label: 'Toggle heatmap' },
+  { key: 'B', label: 'Toggle breadcrumb trails' },
+  { key: 'C', label: 'Center on all units' },
+  { key: '+ / =', label: 'Zoom in' },
+  { key: '−', label: 'Zoom out' },
+  { key: 'Esc', label: 'Close all panels' },
   { key: '?', label: 'Show this help' },
 ];
