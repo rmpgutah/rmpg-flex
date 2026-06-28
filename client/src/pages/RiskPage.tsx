@@ -14,7 +14,6 @@ interface RiskAssessment {
   id: number;
   assessment_number?: string;
   entity_type: string;
-  entity_id?: number | null;
   risk_level: string;
   risk_category?: string;
   description?: string;
@@ -50,7 +49,6 @@ export default function RiskPage() {
   const [deleteBusy, setDeleteBusy]       = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [searchQuery, setSearchQuery]     = useState('');
-  const [highlightId, setHighlightId]     = useState<number | null>(null);
   const { addToast }                      = useToast();
   const m                                 = useMenuActions();
   const { user }                          = useAuth();
@@ -60,14 +58,8 @@ export default function RiskPage() {
   // POST / PUT / DELETE → admin | manager only (mirrors server-side gate)
   const canWrite = user?.role === 'admin' || user?.role === 'manager';
 
-  // Capture deep-link params before any setSearchParams call clears them
-  const pendingAssessmentIdRef = useRef<string | null>(searchParams.get('assessment_id'));
-  const pendingSubjectIdRef    = useRef<string | null>(searchParams.get('subject_id'));
-
-  // Row ref map for scroll-to on deep-link (populated by DOM query post-render,
-  // as DataTable does not expose a per-row ref hook)
-  const rowRefs             = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
-  const deepLinkConsumedRef = useRef(false);
+  // Capture ?risk_id= before any setSearchParams call clears it
+  const pendingRiskIdRef = useRef<string | null>(searchParams.get('risk_id'));
 
   // ── Fetch ───────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -89,75 +81,22 @@ export default function RiskPage() {
     });
   }, [fetchData]);
 
-  // ── Deep-link: ?assessment_id=<id> or ?subject_id=<id> ─────────────
-  // ?assessment_id= → open the matching assessment by PK + scroll+flash row
-  // ?subject_id=    → filter the list by entity_id (no modal open)
+  // ── Deep-link: ?risk_id= — open the matching row then strip the param ──
   useEffect(() => {
-    if (!hasLoaded || deepLinkConsumedRef.current) return;
-    deepLinkConsumedRef.current = true;
-
+    if (!hasLoaded) return;
+    const pendingId = pendingRiskIdRef.current;
+    if (!pendingId) return;
+    const numericId = parseInt(pendingId, 10);
+    if (!isNaN(numericId)) {
+      const hit = assessments.find((a) => a.id === numericId);
+      if (hit) openEdit(hit);
+    }
     const next = new URLSearchParams(searchParams);
-    let stripped = false;
-
-    // assessment_id deep-link — open edit form, scroll & flash row
-    const assessmentIdParam = pendingAssessmentIdRef.current;
-    if (assessmentIdParam) {
-      const numericId = parseInt(assessmentIdParam, 10);
-      if (!isNaN(numericId)) {
-        const hit = assessments.find((a) => a.id === numericId);
-        if (hit) {
-          openEdit(hit);
-          setHighlightId(numericId);
-          addToast(`Assessment ${hit.assessment_number ?? '#' + numericId} loaded`, 'success');
-        } else {
-          addToast(`Assessment #${assessmentIdParam} not found`, 'warning');
-        }
-      }
-      next.delete('assessment_id');
-      stripped = true;
-    }
-
-    // subject_id deep-link — pre-fill search to filter by entity_id
-    const subjectIdParam = pendingSubjectIdRef.current;
-    if (subjectIdParam && !assessmentIdParam) {
-      const numericSubject = parseInt(subjectIdParam, 10);
-      if (!isNaN(numericSubject)) {
-        const hits = assessments.filter((a) => a.entity_id === numericSubject);
-        if (hits.length > 0) {
-          addToast('Showing ' + hits.length + ' assessment' + (hits.length !== 1 ? 's' : '') + ' for subject #' + subjectIdParam, 'info');
-          setSearchQuery(subjectIdParam);
-        } else {
-          addToast('No assessments found for subject #' + subjectIdParam, 'warning');
-        }
-      }
-      next.delete('subject_id');
-      stripped = true;
-    }
-
-    if (stripped) {
-      setSearchParams(next, { replace: true });
-    }
+    next.delete('risk_id');
+    setSearchParams(next, { replace: true });
+    pendingRiskIdRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasLoaded, assessments]);
-
-  // Flash-highlight row via DOM query (DataTable has no per-row ref hook).
-  // Finds the row whose cell text contains the assessment number or id.
-  useEffect(() => {
-    if (highlightId === null) return;
-    const target = assessments.find((a) => a.id === highlightId);
-    if (!target) return;
-    const needle = target.assessment_number ?? String(highlightId);
-    const rows = document.querySelectorAll<HTMLTableRowElement>('tr');
-    for (const tr of Array.from(rows)) {
-      if (tr.textContent?.includes(needle)) {
-        rowRefs.current.set(highlightId, tr);
-        tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        break;
-      }
-    }
-    const t = setTimeout(() => setHighlightId(null), 3000);
-    return () => clearTimeout(t);
-  }, [highlightId, assessments]);
 
   // ── Form helpers ────────────────────────────────────────────────────
   const openNew = () => {
@@ -201,7 +140,7 @@ export default function RiskPage() {
     if (!deleteId || !canWrite) return;
     setDeleteBusy(true);
     try {
-      await apiFetch('/risk/assessments/' + deleteId, { method: 'DELETE' });
+      await apiFetch(`/risk/assessments/${deleteId}`, { method: 'DELETE' });
       setDeleteId(null);
       fetchData();
       addToast('Assessment deleted', 'success');
@@ -244,8 +183,7 @@ export default function RiskPage() {
           (a.risk_category     ?? '').toLowerCase().includes(q) ||
           (a.risk_level        ?? '').toLowerCase().includes(q) ||
           (a.status            ?? '').toLowerCase().includes(q) ||
-          (a.assessment_number ?? '').toLowerCase().includes(q) ||
-          String(a.entity_id   ?? '').includes(q),
+          (a.assessment_number ?? '').toLowerCase().includes(q),
       )
     : assessments;
 
@@ -283,10 +221,8 @@ export default function RiskPage() {
   ];
 
   // ── Empty state strings ─────────────────────────────────────────────
-  const emptyMessage = loading
-    ? 'Loading...'
-    : hasSearch
-    ? 'No assessments match "' + searchQuery + '"'
+  const emptyMessage = hasSearch
+    ? `No assessments match "${searchQuery}"`
     : 'No risk assessments on record';
 
   return (
@@ -294,7 +230,7 @@ export default function RiskPage() {
       <PanelTitleBar title="RISK MANAGEMENT" icon={Shield}>
         <input
           type="search"
-          placeholder="Filter..."
+          placeholder="Filter…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="input-dark text-[11px] h-[28px] px-2 w-40"
@@ -325,10 +261,10 @@ export default function RiskPage() {
       </div>
 
       {loading && (
-        <div className="text-center py-8 text-rmpg-500 text-xs">Loading risk records...</div>
+        <div className="text-center py-8 text-rmpg-500 text-xs">Loading risk records…</div>
       )}
 
-      {!loading && assessments.length === 0 && !hasSearch && canWrite && (
+      {!loading && filtered.length === 0 && !hasSearch && canWrite && (
         <div className="text-center py-2 text-xs text-rmpg-500">
           <button onClick={openNew} className="text-brand-400 hover:text-brand-300 underline">
             Create the first assessment
@@ -351,7 +287,7 @@ export default function RiskPage() {
         ]}
       />
 
-      {/* Create / Edit modal */}
+      {/* ── Create / Edit modal ───────────────────────────────────────── */}
       {showForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
@@ -434,14 +370,14 @@ export default function RiskPage() {
                 className="toolbar-btn toolbar-btn-primary px-4"
                 style={{ height: 28 }}
               >
-                {submitting ? 'Saving...' : editingRecord ? 'Update' : 'Create'}
+                {submitting ? 'Saving…' : editingRecord ? 'Update' : 'Create'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete confirmation */}
+      {/* ── Delete confirmation ───────────────────────────────────────── */}
       <ConfirmDialog
         isOpen={deleteId !== null}
         onClose={() => setDeleteId(null)}
