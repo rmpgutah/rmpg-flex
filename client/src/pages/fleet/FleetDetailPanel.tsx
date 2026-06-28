@@ -30,6 +30,8 @@ import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost,
 import { formatMilitary } from './utils/fleetFormatters';
 import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
+import { generateFleetVehicleSummaryPdf } from './utils/fleetVehicleSummaryPdf';
+import { generateFleetMaintenanceHistoryPdf } from './utils/fleetMaintenanceHistoryPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import EmailedDocuments from '../../components/EmailedDocuments';
 import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
@@ -73,6 +75,8 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'tires', label: 'Tires', icon: Circle },
   { key: 'damage', label: 'Damage', icon: AlertTriangle },
   { key: 'recalls', label: 'Recalls', icon: AlertOctagon },
+  { key: 'gps', label: 'GPS', icon: MapPin },
+  { key: 'dashcam', label: 'Dash Cam', icon: Camera },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
   { key: 'dashcam', label: 'Dash Cam', icon: Video },
   { key: 'fuel_cards', label: 'Fuel Cards', icon: CreditCard },
@@ -155,6 +159,8 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
     { key: 'fuel_logs', label: 'Fuel Logs' },
     { key: 'maintenance', label: 'Maintenance' },
     { key: 'mileage_summary', label: 'Mileage / Day' },
+    { key: 'vehicle_summary', label: 'Vehicle Summary PDF' },
+    { key: 'maintenance_history', label: 'Maintenance History PDF' },
   ] as const;
 
   const buildRecordData = (reportType: string) => ({
@@ -198,6 +204,35 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
     })),
   });
 
+  const handleDirectPdf = async (key: string) => {
+    if (key === 'vehicle_summary') {
+      // Fetch the full cost summary from the server (all 7 categories)
+      let costTotals: { fuel?: number; maintenance?: number; expenses?: number; loans?: number; insurance?: number; accessories?: number; utilities?: number } = {};
+      try {
+        const costData = await apiFetch<{
+          categories: { fuel: number; maintenance: number; loans: number; insurance: number; accessories: number; utilities: number; expenses: number };
+        }>(`/fleet/${detail.id}/cost-summary`);
+        if (costData?.categories) {
+          costTotals = costData.categories;
+        }
+      } catch {
+        // Fallback to locally available fuel + maintenance data
+        const fuelTotal = fuelSummary?.total_cost ?? fuelLogs.reduce((s, f) => s + (Number(f.total_cost) || 0), 0);
+        const maintenanceTotal = maintenance.reduce((s, m) => s + (Number(m.cost) || 0), 0);
+        costTotals = { fuel: fuelTotal, maintenance: maintenanceTotal };
+      }
+      generateFleetVehicleSummaryPdf({
+        vehicle: detail,
+        assignedUnit: detail.assigned_unit_call_sign || undefined,
+        costTotals,
+        recentMaintenance: maintenance.slice(0, 5),
+      });
+    } else if (key === 'maintenance_history') {
+      generateFleetMaintenanceHistoryPdf({ vehicle: detail, records: maintenance });
+    }
+    setOpen(false);
+  };
+
   return (
     <div className="relative" ref={ref}>
       <button type="button" className="toolbar-btn" onClick={() => setOpen(!open)}>
@@ -206,16 +241,27 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
       {open && (
         <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded-sm shadow-lg min-w-[180px]">
           {reportOptions.map((opt) => (
-            <PrintRecordButton
-              key={opt.key}
-              recordType="fleet"
-              recordData={buildRecordData(opt.key)}
-              identifier={`${detail.vehicle_number}_${opt.key}`}
-              entityType="fleet"
-              entityId={detail.id}
-              label={opt.label}
-              className="w-full text-left px-3 py-1.5 text-xs hover:bg-rmpg-600 border-none rounded-none"
-            />
+            opt.key === 'vehicle_summary' || opt.key === 'maintenance_history' ? (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => handleDirectPdf(opt.key)}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-rmpg-600 text-white"
+              >
+                {opt.label}
+              </button>
+            ) : (
+              <PrintRecordButton
+                key={opt.key}
+                recordType="fleet"
+                recordData={buildRecordData(opt.key)}
+                identifier={`${detail.vehicle_number}_${opt.key}`}
+                entityType="fleet"
+                entityId={detail.id}
+                label={opt.label}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-rmpg-600 border-none rounded-none"
+              />
+            )
           ))}
         </div>
       )}
@@ -518,6 +564,9 @@ export default function FleetDetailPanel({
         {activeTab === 'tires' && <FleetTiresTab vehicleId={detail.id} />}
         {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
         {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
+        {activeTab === 'expenses' && <FleetExpensesTab vehicle={detail} canManage={['admin', 'manager', 'supervisor', 'officer'].includes(user?.role || '')} />}
+        {activeTab === 'gps' && <FleetGpsTab vehicleId={detail.id} />}
+        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
         {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
         {activeTab === 'fuel_cards' && <FleetFuelCardsTab />}
