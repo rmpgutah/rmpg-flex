@@ -17,10 +17,15 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { recordAudit } from '../../utils/auditLog';
 import { requireRole } from '../../middleware/auth';
-import { broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
+import { geocodeAddress } from '../geocode';
+import { parseUnitIds, canonicalUnitIdsJson } from './unitIds';
+import { log } from '../../utils/logger';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
@@ -37,6 +42,30 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return EARTH_RADIUS_M * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 const AVG_URBAN_SPEED_MPH = 25;
+
+// ─── GPS freshness ────────────────────────────────────────
+// A unit's last fix can be minutes old (lost signal, parked in a garage,
+// app backgrounded). Recommending or auto-dispatching a unit whose
+// position is stale sends responders to a guess. We compute the age of
+// units.gps_updated_at and prefer FRESH units; stale ones are flagged so
+// the dispatcher (and the AI) never treat an old fix as current.
+const GPS_FRESH_WINDOW_S = 180; // 3 min — default "fresh" cutoff
+
+/** Parse a D1 timestamp ('YYYY-MM-DD HH:MM:SS' UTC, or ISO) to epoch ms. */
+function parseUtcMs(ts: string): number {
+  let s = ts.trim();
+  if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
+  if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s += 'Z'; // stored value is UTC
+  return Date.parse(s);
+}
+
+/** Age of a GPS fix in seconds; null when never reported / unparseable. */
+function gpsAgeSeconds(ts: string | null | undefined, nowMs: number): number | null {
+  if (!ts) return null;
+  const ms = parseUtcMs(ts);
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.round((nowMs - ms) / 1000));
+}
 
 // =====================================================================
 // DEV-1: Closest-unit recommendation (DI-2)
@@ -58,28 +87,33 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
     }
 
     const limit = Math.min(25, Math.max(1, parseInt(c.req.query('limit') || '5', 10)));
+    // Caller may widen/narrow the "fresh" window (seconds); default 3 min.
+    const freshWindow = Math.min(3600, Math.max(15,
+      parseInt(c.req.query('freshWindow') || String(GPS_FRESH_WINDOW_S), 10)));
 
-    // Pull available units with GPS. Lean schema stores lat/lng directly on
-    // units (no separate gps_locations table on lean D1 — confirmed via
-    // sqlite_master inspection). Filter to available + dispatched-but-near
+    // Pull available units with GPS + last-fix timestamp. Lean schema stores
+    // lat/lng directly on units. Filter to available + dispatched-but-near
     // statuses so the dispatcher sees who could be repurposed.
     const units = await query<{
       id: number; call_sign: string; status: string; officer_id: number | null;
       latitude: number | null; longitude: number | null; current_call_id: number | null;
-      officer_name: string | null; badge_number: string | null;
+      officer_name: string | null; badge_number: string | null; gps_updated_at: string | null;
     }>(db, `
       SELECT u.id, u.call_sign, u.status, u.officer_id,
-             u.latitude, u.longitude, u.current_call_id,
+             u.latitude, u.longitude, u.current_call_id, u.gps_updated_at,
              usr.full_name AS officer_name, usr.badge_number
       FROM units u
       LEFT JOIN users usr ON usr.id = u.officer_id
-      WHERE u.status IN ('available', 'on_patrol', 'dispatched')
+      WHERE u.status IN ('available', 'dispatched')
         AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
     `);
 
+    const now = Date.now();
     const ranked = units.map((u) => {
       const distM = haversineMeters(call.latitude!, call.longitude!, u.latitude!, u.longitude!);
       const distMi = distM / 1609.34;
+      const ageS = gpsAgeSeconds(u.gps_updated_at, now);
+      const stale = ageS == null || ageS > freshWindow;
       return {
         unit_id: u.id,
         callSign: u.call_sign,
@@ -90,8 +124,18 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
         distanceMeters: Math.round(distM),
         distanceMiles: Math.round(distMi * 10) / 10,
         etaMinutes: Math.round((distMi / AVG_URBAN_SPEED_MPH) * 60 * 10) / 10,
+        gpsAgeSeconds: ageS,
+        gpsStale: stale,
       };
-    }).sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, limit);
+    })
+      // Fresh units first (a 0.5 mi unit with a 20-min-old fix is NOT closer
+      // than a 2 mi unit reporting live), then by distance within each group.
+      .sort((a, b) => (a.gpsStale === b.gpsStale)
+        ? a.distanceMeters - b.distanceMeters
+        : (a.gpsStale ? 1 : -1))
+      .slice(0, limit);
+
+    const freshCount = ranked.filter((r) => !r.gpsStale).length;
 
     return c.json({
       callId: id,
@@ -99,10 +143,13 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
       callPriority: call.priority,
       callLat: call.latitude,
       callLng: call.longitude,
+      freshWindowSeconds: freshWindow,
+      freshCount,
       recommended: ranked,
+      ...(freshCount === 0 ? { reason: 'NO_FRESH_UNITS' } : {}),
     });
   } catch (err) {
-    console.error('[dispatch] recommended-units error', err);
+    log.error('[dispatch] recommended-units error', {}, err);
     return c.json({ error: 'Failed to compute recommended units', code: 'RECOMMEND_ERR' }, 500);
   }
 });
@@ -125,7 +172,7 @@ audioMode.get('/mine/audio-mode', requireRole(...READ_ROLES), async (c) => {
     if (!row) return c.json({ unit_id: null, call_sign: null, audio_mode: 'audible' });
     return c.json({ unit_id: row.id, call_sign: row.call_sign, audio_mode: row.audio_mode || 'audible' });
   } catch (err) {
-    console.error('[dispatch] mine/audio-mode error', err);
+    log.error('[dispatch] mine/audio-mode error', {}, err);
     return c.json({ error: 'Failed to fetch audio mode', code: 'AUDIO_MODE_GET_ERR' }, 500);
   }
 });
@@ -133,10 +180,10 @@ audioMode.get('/mine/audio-mode', requireRole(...READ_ROLES), async (c) => {
 audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const user = c.get('user') as any;
+    const user = c.get('user') as { id: number; role: string; username?: string; full_name?: string } | undefined;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const mode = String(body.audio_mode || '').toLowerCase();
     if (!VALID_AUDIO_MODES.includes(mode)) {
       return c.json({ error: `audio_mode must be one of ${VALID_AUDIO_MODES.join(', ')}`, code: 'INVALID_AUDIO_MODE' }, 400);
@@ -145,16 +192,131 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
     if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
 
     // Officers can only change their own unit; supervisors+ can change any
-    const canForce = ['admin', 'manager', 'supervisor', 'dispatcher'].includes(user.role);
-    if (!canForce && unit.officer_id !== user.id) {
+    const userRole = user?.role ?? '';
+    const canForce = ['admin', 'manager', 'supervisor', 'dispatcher'].includes(userRole);
+    if (!canForce && unit.officer_id !== user?.id) {
       return c.json({ error: 'Officers may only change their own unit audio mode', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
 
     await execute(db, "UPDATE units SET audio_mode = ?, updated_at = datetime('now') WHERE id = ?", mode, unitId);
     return c.json({ success: true, unit_id: unitId, audio_mode: mode });
   } catch (err) {
-    console.error('[dispatch] PUT audio-mode error', err);
+    log.error('[dispatch] PUT audio-mode error', {}, err);
     return c.json({ error: 'Failed to update audio mode', code: 'AUDIO_MODE_SET_ERR' }, 500);
+  }
+});
+
+// PUT /:id/mileage — CAD "MI" command sets a unit's odometer reading.
+audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; role: string; username?: string; full_name?: string } | undefined;
+    const userId = c.get('userId') as number | undefined;
+    const isManager = user && ['admin', 'manager', 'supervisor'].includes(user.role);
+    const unitId = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const mileage = Number(body.mileage);
+    if (!Number.isFinite(mileage)) {
+      return c.json({ error: 'mileage must be a number', code: 'INVALID_MILEAGE' }, 400);
+    }
+    // Gate 1: absolute ceiling
+    if (mileage > 999_999) {
+      // Log the reject before returning
+      if (userId) {
+        await recordAudit(c, {
+          action: 'mileage_rejected_ceiling', entityType: 'unit', entityId: unitId,
+          details: `Rejected ${mileage} — exceeds 999,999 ceiling by ${user?.full_name ?? userId} on unit ${unitId}`,
+          actorId: userId,
+        });
+      }
+      return c.json({
+        error: `Mileage ${mileage} exceeds maximum of 999,999 miles. This is likely a data-entry error — add one fewer digit or contact an admin to override.`,
+        code: 'MILEAGE_CEILING',
+        ceiling: 999_999,
+        override_available: isManager,
+      }, 400);
+    }
+    // Gate 2: below zero (defensive — the input min="0" handles normal paths)
+    if (mileage < 0) {
+      return c.json({ error: 'mileage must be non-negative', code: 'INVALID_MILEAGE' }, 400);
+    }
+    const unit = await queryFirst<{ id: number; mileage: number | null; call_sign: string | null }>(
+      db, 'SELECT id, mileage, call_sign FROM units WHERE id = ?', unitId);
+    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+    // Gate 2: decreasing (odometer shouldn't roll backward). Allow
+    // managers to override (data-entry corrections, car swap, etc.).
+    if (unit.mileage != null && mileage < unit.mileage) {
+      if (!isManager) {
+        if (userId) {
+          await recordAudit(c, {
+            action: 'mileage_rejected_decreasing', entityType: 'unit', entityId: unitId,
+            details: `Rejected decreasing mileage ${mileage} < ${unit.mileage} by ${user?.full_name ?? userId} on unit ${unitId} (${unit.call_sign ?? ''})`,
+            actorId: userId,
+          });
+        }
+        return c.json({
+          error: `New mileage (${mileage}) is lower than the current reading (${unit.mileage}). Odometer readings should not decrease. Verify you entered the right number, or request an admin override.`,
+          code: 'MILEAGE_DECREASING',
+          previous: unit.mileage,
+          override_available: false,
+        }, 400);
+      }
+      // Manager override: proceed, but log the override reason from the body or a default.
+      const reason = typeof body.override_reason === 'string' && body.override_reason.trim()
+        ? body.override_reason.trim() : 'Admin override — decreasing mileage correction';
+      if (userId) {
+        await recordAudit(c, {
+          action: 'mileage_override_decreasing', entityType: 'unit', entityId: unitId,
+          details: `Override decreasing ${unit.mileage}→${mileage}: ${reason}`,
+          actorId: userId,
+        });
+      }
+    }
+    // Gate 3: delta sanity (> 500 mi in one step is not plausible
+    // for a single patrol session). Managers can override.
+    if (unit.mileage != null && mileage > unit.mileage && mileage - unit.mileage > 500) {
+      if (!isManager) {
+        if (userId) {
+          await recordAudit(c, {
+            action: 'mileage_rejected_delta', entityType: 'unit', entityId: unitId,
+            details: `Rejected large delta ${mileage - unit.mileage} mi by ${user?.full_name ?? userId} on unit ${unitId} (${unit.call_sign ?? ''})`,
+            actorId: userId,
+          });
+        }
+        return c.json({
+          error: `Mileage jump of ${mileage - unit.mileage} miles is unusually large for one session. Verify the reading and try again, or request an admin override.`,
+          code: 'MILEAGE_DELTA_SANITY',
+          previous: unit.mileage,
+          delta: mileage - unit.mileage,
+          override_available: false,
+        }, 400);
+      }
+      // Manager override: proceed with audit note.
+      const reason = typeof body.override_reason === 'string' && body.override_reason.trim()
+        ? body.override_reason.trim() : 'Admin override — large mileage delta correction';
+      if (userId) {
+        await recordAudit(c, {
+          action: 'mileage_override_delta', entityType: 'unit', entityId: unitId,
+          details: `Override delta ${mileage - unit.mileage} mi: ${reason}`,
+          actorId: userId,
+        });
+      }
+    }
+    // Gate 4: audit the accepted write so fleet data-integrity
+    // investigations have the full edit history.
+    if (userId) {
+      await recordAudit(c, {
+        action: 'mileage_updated', entityType: 'unit', entityId: unitId,
+        details: `${user?.full_name ?? userId} updated mileage ${unit.mileage ?? 'null'}→${mileage} on unit ${unitId} (${unit.call_sign ?? ''})`,
+        actorId: userId,
+      });
+    }
+    await execute(db, "UPDATE units SET mileage = ?, updated_at = datetime('now') WHERE id = ?", mileage, unitId);
+    return c.json({ success: true, unit_id: unitId, mileage, previous_mileage: unit.mileage });
+  } catch (err) {
+    log.error('[dispatch] PUT mileage error', {}, err);
+    return c.json({ error: 'Failed to update mileage', code: 'MILEAGE_SET_ERR' }, 500);
   }
 });
 
@@ -178,7 +340,7 @@ premiseAlerts.get('/', requireRole(...READ_ROLES), async (c) => {
     `);
     return c.json(rows.map((r) => ({ ...r, flags: safeJson(r.flags as string, []) })));
   } catch (err) {
-    console.error('[dispatch] premise-alerts list error', err);
+    log.error('[dispatch] premise-alerts list error', {}, err);
     return c.json({ error: 'Failed to list premise alerts', code: 'PA_LIST_ERR' }, 500);
   }
 });
@@ -192,7 +354,7 @@ premiseAlerts.get('/:id', requireRole(...READ_ROLES), async (c) => {
     if (!row) return c.json({ error: 'Premise alert not found', code: 'PA_NOT_FOUND' }, 404);
     return c.json({ ...row, flags: safeJson(row.flags as string, []) });
   } catch (err) {
-    console.error('[dispatch] premise-alerts get error', err);
+    log.error('[dispatch] premise-alerts get error', {}, err);
     return c.json({ error: 'Failed to fetch premise alert', code: 'PA_GET_ERR' }, 500);
   }
 });
@@ -201,7 +363,7 @@ premiseAlerts.post('/', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const address = String(body.address || '').trim();
     const title = String(body.title || '').trim();
     const alert_level = String(body.alert_level || 'info').toLowerCase();
@@ -210,14 +372,22 @@ premiseAlerts.post('/', requireRole(...WRITE_ROLES), async (c) => {
       return c.json({ error: `alert_level must be one of ${VALID_ALERT_LEVELS.join(', ')}`, code: 'PA_INVALID_LEVEL' }, 400);
     }
 
+    // Backfill geocode when address is provided but coords are not
+    let lat = body.latitude != null ? Number(body.latitude) : null;
+    let lng = body.longitude != null ? Number(body.longitude) : null;
+    if ((lat == null || lng == null) && address.length >= 3) {
+      const coords = await geocodeAddress(c.env, address).catch(() => null);
+      if (coords) { lat = coords.lat; lng = coords.lng; }
+    }
+
     const result = await execute(db, `
       INSERT INTO premise_alerts
         (address, latitude, longitude, alert_type, alert_level, title, description,
          flags, expires_at, created_by, active)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       address,
-      body.latitude != null ? Number(body.latitude) : null,
-      body.longitude != null ? Number(body.longitude) : null,
+      lat,
+      lng,
       body.alert_type || 'caution',
       alert_level,
       title,
@@ -228,7 +398,7 @@ premiseAlerts.post('/', requireRole(...WRITE_ROLES), async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM premise_alerts WHERE id = ?', result.meta.last_row_id);
     return c.json({ ...created, flags: safeJson(created?.flags as string, []) }, 201);
   } catch (err) {
-    console.error('[dispatch] premise-alerts create error', err);
+    log.error('[dispatch] premise-alerts create error', {}, err);
     return c.json({ error: 'Failed to create premise alert', code: 'PA_CREATE_ERR' }, 500);
   }
 });
@@ -238,23 +408,34 @@ premiseAlerts.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
-    const before = await queryFirst<any>(db, 'SELECT * FROM premise_alerts WHERE id = ?', id);
+    const before = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM premise_alerts WHERE id = ?', id);
     if (!before) return c.json({ error: 'Premise alert not found', code: 'PA_NOT_FOUND' }, 404);
 
-    const b = await c.req.json().catch(() => ({} as any));
-    const alert_level = b.alert_level ? String(b.alert_level).toLowerCase() : before.alert_level;
+    const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const alert_level = b.alert_level ? String(b.alert_level).toLowerCase() : String(before.alert_level ?? '');
     if (!VALID_ALERT_LEVELS.includes(alert_level)) {
       return c.json({ error: `alert_level must be one of ${VALID_ALERT_LEVELS.join(', ')}`, code: 'PA_INVALID_LEVEL' }, 400);
     }
+
+    // Backfill geocode when address changes and coords are not explicit in the body
+    const newAddress = b.address ?? before.address;
+    let lat = b.latitude !== undefined ? (b.latitude != null ? Number(b.latitude) : null) : before.latitude;
+    let lng = b.longitude !== undefined ? (b.longitude != null ? Number(b.longitude) : null) : before.longitude;
+    if (b.latitude === undefined && b.longitude === undefined
+        && typeof newAddress === 'string' && newAddress.trim().length >= 3) {
+      const coords = await geocodeAddress(c.env, newAddress).catch(() => null);
+      if (coords) { lat = coords.lat; lng = coords.lng; }
+    }
+
     await execute(db, `
       UPDATE premise_alerts SET
         address = ?, latitude = ?, longitude = ?, alert_type = ?, alert_level = ?,
         title = ?, description = ?, flags = ?, expires_at = ?, active = ?,
         updated_at = datetime('now')
       WHERE id = ?`,
-      b.address ?? before.address,
-      b.latitude !== undefined ? (b.latitude != null ? Number(b.latitude) : null) : before.latitude,
-      b.longitude !== undefined ? (b.longitude != null ? Number(b.longitude) : null) : before.longitude,
+      newAddress,
+      lat,
+      lng,
       b.alert_type ?? before.alert_type,
       alert_level,
       b.title ?? before.title,
@@ -266,7 +447,7 @@ premiseAlerts.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const after = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM premise_alerts WHERE id = ?', id);
     return c.json({ ...after, flags: safeJson(after?.flags as string, []) });
   } catch (err) {
-    console.error('[dispatch] premise-alerts update error', err);
+    log.error('[dispatch] premise-alerts update error', {}, err);
     return c.json({ error: 'Failed to update premise alert', code: 'PA_UPDATE_ERR' }, 500);
   }
 });
@@ -281,7 +462,7 @@ premiseAlerts.delete('/:id', requireRole(...ADMIN_ROLES), async (c) => {
     await execute(db, 'DELETE FROM premise_alerts WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[dispatch] premise-alerts delete error', err);
+    log.error('[dispatch] premise-alerts delete error', {}, err);
     return c.json({ error: 'Failed to delete premise alert', code: 'PA_DELETE_ERR' }, 500);
   }
 });
@@ -298,20 +479,20 @@ premiseAlerts.get('/near/scan', requireRole(...READ_ROLES), async (c) => {
     }
     const dLat = radius / 111000;
     const dLng = radius / (111000 * Math.max(0.01, Math.cos(toRad(lat))));
-    const candidates = await query<any>(db, `
+    const candidates = await query<Record<string, unknown>>(db, `
       SELECT * FROM premise_alerts
       WHERE active = 1
         AND latitude BETWEEN ? AND ?
         AND longitude BETWEEN ? AND ?
         AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
-      lat - dLat, lat + dLat, lng - dLng, lng + dLng);
+      lat - dLat, lat + dLng, lng - dLng, lng + dLng);
     const within = candidates
-      .map((p: any) => ({ ...p, flags: safeJson(p.flags, []), distance_meters: Math.round(haversineMeters(lat, lng, p.latitude, p.longitude)) }))
-      .filter((p: any) => p.distance_meters <= radius)
-      .sort((a: any, b: any) => a.distance_meters - b.distance_meters);
+      .map((p) => ({ ...p, flags: safeJson(p.flags as string, []), distance_meters: Math.round(haversineMeters(lat, lng, Number(p.latitude), Number(p.longitude))) }))
+      .filter((p) => p.distance_meters <= radius)
+      .sort((a, b) => a.distance_meters - b.distance_meters);
     return c.json({ count: within.length, radius_meters: radius, alerts: within });
   } catch (err) {
-    console.error('[dispatch] premise-alerts/near error', err);
+    log.error('[dispatch] premise-alerts/near error', {}, err);
     return c.json({ error: 'Failed to scan premise alerts', code: 'PA_SCAN_ERR' }, 500);
   }
 });
@@ -327,7 +508,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
-    const base = await queryFirst<any>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const base = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!base) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
     // Tactical flags overflowed to calls_for_service_ext when the base table hit
     // the D1 100-col cap (see calls.ts UPDATABLE_CALL_COLUMNS_EXT). The write path
@@ -335,7 +516,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
     // — same precedence as GET /calls/:id — or those flags read as stale 0.
     let ext: Record<string, unknown> | null = null;
     try { ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id); }
-    catch { /* ext table may not exist in dev */ }
+    catch { log.warn('[safety-briefing] ext table query failed', { callId: id }); /* ext table may not exist in dev */ }
     const call = { ...base, ...(ext || {}) };
 
     const warnings: Array<{ type: string; label: string; severity: 'critical' | 'high' | 'medium'; source: string }> = [];
@@ -353,21 +534,23 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
     if (call.hazmat) warnings.push({ type: 'HAZMAT', label: 'HAZMAT', severity: 'critical', source: 'call' });
 
     // ── Premise alerts within 50m ──
-    if (call.latitude != null && call.longitude != null) {
+    const clat = Number(call.latitude);
+    const clng = Number(call.longitude);
+    if (!isNaN(clat) && !isNaN(clng)) {
       const dLat = 50 / 111000;
-      const dLng = 50 / (111000 * Math.max(0.01, Math.cos(toRad(call.latitude))));
+      const dLng = 50 / (111000 * Math.max(0.01, Math.cos(toRad(clat))));
       try {
-        const candidates = await query<any>(db, `
+        const candidates = await query<Record<string, unknown>>(db, `
           SELECT id, address, latitude, longitude, alert_level, title, description
           FROM premise_alerts
           WHERE active = 1
             AND latitude BETWEEN ? AND ?
             AND longitude BETWEEN ? AND ?
             AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
-          call.latitude - dLat, call.latitude + dLat,
-          call.longitude - dLng, call.longitude + dLng);
+          clat - dLat, clat + dLat,
+          clng - dLng, clng + dLng);
         for (const a of candidates) {
-          const d = haversineMeters(call.latitude, call.longitude, a.latitude, a.longitude);
+          const d = haversineMeters(clat, clng, a.latitude as number, a.longitude as number);
           if (d <= 50) {
             const sev: 'critical' | 'high' | 'medium' = a.alert_level === 'critical' ? 'critical' : a.alert_level === 'warning' ? 'high' : 'medium';
             warnings.push({
@@ -378,12 +561,12 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
             });
           }
         }
-      } catch { /* premise_alerts may not exist in dev */ }
+      } catch { log.warn('[safety-briefing] premise_alerts query failed', { callId: id }); /* premise_alerts may not exist in dev */ }
     }
 
     // ── Linked persons (incident_persons via incidents.call_id) ──
     try {
-      const linkedPersons = await query<any>(db, `
+      const linkedPersons = await query<Record<string, unknown>>(db, `
         SELECT p.first_name, p.last_name
         FROM incident_persons ip
         JOIN persons p ON ip.person_id = p.id
@@ -400,11 +583,11 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
           source: 'incident_persons',
         });
       }
-    } catch { /* incidents may not be linked yet */ }
+    } catch { log.warn('[safety-briefing] incidents query failed', { callId: id }); /* incidents may not be linked yet */ }
 
     // ── Active warrants for any linked person ──
     try {
-      const warrants = await query<any>(db, `
+      const warrants = await query<Record<string, unknown>>(db, `
         SELECT w.warrant_number, w.type, w.subject_person_id, p.first_name, p.last_name
         FROM warrants w
         LEFT JOIN persons p ON w.subject_person_id = p.id
@@ -416,17 +599,21 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
           )
         LIMIT 50`, id);
       for (const w of warrants) {
+        const wtype = String(w.type || 'unknown');
+        const wfn = String(w.first_name || '');
+        const wln = String(w.last_name || '');
+        const wnum = String(w.warrant_number || '');
         warnings.push({
           type: 'WARRANT',
-          label: `ACTIVE WARRANT: ${(w.type || 'unknown').toUpperCase()}`,
+          label: `ACTIVE WARRANT: ${wtype.toUpperCase()}`,
           severity: 'critical',
-          source: `${w.first_name || ''} ${w.last_name || ''}`.trim() || w.warrant_number,
+          source: `${wfn} ${wln}`.trim() || wnum,
         });
       }
-    } catch { /* warrants schema variance */ }
+    } catch { log.warn('[safety-briefing] warrants query failed', { callId: id }); /* warrants schema variance */ }
 
     // ── Incident-type hints ──
-    const itype = (call.incident_type || '').toLowerCase();
+    const itype = String(call.incident_type || '').toLowerCase();
     if ((itype.includes('shooting') || itype.includes('shots_fired')) && !warnings.find((w) => w.type === 'ARMED')) {
       warnings.push({ type: 'ARMED', label: 'POSSIBLE WEAPONS', severity: 'critical', source: 'Incident type' });
     }
@@ -441,7 +628,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
 
     return c.json(warnings);
   } catch (err) {
-    console.error('[dispatch] warnings error', err);
+    log.error('[dispatch] warnings error', {}, err);
     return c.json({ error: 'Failed to compute warnings', code: 'WARN_ERR' }, 500);
   }
 });
@@ -451,35 +638,37 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
 // PUT /api/dispatch/units/:id/status
 // =====================================================================
 export const unitStatus = new Hono<Env>();
-const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
 
 unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const user = c.get('user') as any;
+    const user = c.get('user') as { id: number; role: string } | undefined;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
 
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const status = String(body.status || '').toLowerCase();
     if (!VALID_UNIT_STATUSES.includes(status)) {
       return c.json({ error: `status must be one of ${VALID_UNIT_STATUSES.join(', ')}`, code: 'INVALID_STATUS', valid: VALID_UNIT_STATUSES }, 400);
     }
 
-    const unit = await queryFirst<any>(db, 'SELECT id, officer_id FROM units WHERE id = ?', unitId);
+    const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT id, officer_id FROM units WHERE id = ?', unitId);
     if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
 
     // Officers can only change their own unit; supervisors+ can change any
     const supervisorRoles = ['admin', 'manager', 'supervisor', 'dispatcher'];
-    if (!supervisorRoles.includes(user.role) && unit.officer_id !== user.id) {
+    const uRole = user?.role ?? '';
+    const uId = user?.id;
+    if (!supervisorRoles.includes(uRole) && unit.officer_id !== uId) {
       return c.json({ error: 'Officers may only change their own unit status', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
 
     await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", status, unitId);
-    const updated = await queryFirst<any>(db, 'SELECT * FROM units WHERE id = ?', unitId);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', unitId);
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] unit status error', err);
+    log.error('[dispatch] unit status error', {}, err);
     return c.json({ error: 'Failed to update unit status', code: 'UNIT_STATUS_ERR' }, 500);
   }
 });
@@ -499,9 +688,11 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
     const type = c.req.query('type');
     let where = 'WHERE 1=1';
     const params: unknown[] = [];
-    if (status) { where += ' AND status = ?'; params.push(status); }
-    else { where += " AND status = 'active'"; }
-    if (type) { where += ' AND type = ?'; params.push(type); }
+    // Qualify with b. — the users JOIN also has status/type columns and
+    // unqualified names throw "ambiguous column name" (live 500, 2026-06-12).
+    if (status) { where += ' AND b.status = ?'; params.push(status); }
+    else { where += " AND b.status = 'active'"; }
+    if (type) { where += ' AND b.type = ?'; params.push(type); }
     const rows = await query<Record<string, unknown>>(db, `
       SELECT b.*, u.full_name AS issued_by_name
       FROM bolos b LEFT JOIN users u ON u.id = b.issued_by
@@ -509,8 +700,85 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
       ...params);
     return c.json(rows);
   } catch (err) {
-    console.error('[dispatch] bolos list error', err);
+    log.error('[dispatch] bolos list error', {}, err);
     return c.json({ error: 'Failed to list BOLOs', code: 'BOLO_LIST_ERR' }, 500);
+  }
+});
+
+// Static sub-routes registered BEFORE GET /:id. This router is also mounted at
+// /api/comms/bolos (the channel the client actually calls); that mount must be a
+// SUPERSET of the stubs router's /bolos/{active,check,stats} or it would shadow
+// them with a 404 (parseInt('stats') → NaN). These three mirror stubs.ts.
+bolos.get('/active', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT b.*, u.full_name AS issued_by_name
+      FROM bolos b LEFT JOIN users u ON u.id = b.issued_by
+      WHERE b.status = 'active'
+      ORDER BY b.priority = 'P1' DESC, b.priority = 'P2' DESC, b.created_at DESC`);
+    return c.json(rows);
+  } catch (err) {
+    log.error('[dispatch] bolos active error', {}, err);
+    return c.json([]);
+  }
+});
+
+bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const address = c.req.query('address') || '';
+    const subject = c.req.query('subject') || '';
+    const vehicle = c.req.query('vehicle') || '';
+    if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
+    const keywords = (text: string) =>
+      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
+    const matchClauses: string[] = [];
+    const params: unknown[] = [];
+    for (const kw of keywords(subject)) {
+      matchClauses.push('(UPPER(subject_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    for (const kw of keywords(vehicle)) {
+      matchClauses.push('(UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    if (address && address.length >= 3) {
+      matchClauses.push('UPPER(description) LIKE ?');
+      params.push(`%${address.toUpperCase()}%`);
+    }
+    if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, bolo_number, type, title, description,
+             subject_description, vehicle_description, priority, created_at, expires_at
+      FROM bolos
+      WHERE status = 'active' AND (${matchClauses.join(' OR ')})
+      ORDER BY priority ASC, created_at DESC LIMIT 10`, ...params);
+    return c.json({ matches: rows, count: rows.length });
+  } catch (err) {
+    log.error('[dispatch] bolos check error', {}, err);
+    return c.json({ matches: [], count: 0 });
+  }
+});
+
+bolos.get('/stats', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const [{ totalActive }] = await query<{ totalActive: number }>(db, "SELECT COUNT(*) as totalActive FROM bolos WHERE status = 'active'");
+    const [{ expiringSoon }] = await query<{ expiringSoon: number }>(db, "SELECT COUNT(*) as expiringSoon FROM bolos WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now', '+24 hours')");
+    const byCategory = await query<Record<string, unknown>>(db, "SELECT type as category, COUNT(*) as count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count FROM bolos GROUP BY type ORDER BY type");
+    const byPriority = await query<Record<string, unknown>>(db, "SELECT priority, COUNT(*) as count FROM bolos WHERE status = 'active' GROUP BY priority ORDER BY priority");
+    const avgLifespan = await queryFirst<{ hours: number | null }>(db, "SELECT ROUND(AVG((julianday(expired_at) - julianday(created_at)) * 24), 1) as hours FROM bolos WHERE status IN ('expired','cancelled') AND expired_at IS NOT NULL");
+    return c.json({
+      byCategory: byCategory || [],
+      byPriority: byPriority || [],
+      totalActive: totalActive ?? 0,
+      expiringSoon: expiringSoon ?? 0,
+      avgLifespanHours: avgLifespan?.hours ?? null,
+    });
+  } catch (err) {
+    log.error('[dispatch] bolos stats error', {}, err);
+    return c.json({ byCategory: [], byPriority: [], totalActive: 0, expiringSoon: 0, avgLifespanHours: null });
   }
 });
 
@@ -531,7 +799,7 @@ bolos.post('/', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const body = await c.req.json().catch(() => ({} as any));
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     const type = String(body.type || '').toLowerCase();
     const title = String(body.title || '').trim();
     if (!type || !title) return c.json({ error: 'type and title are required', code: 'BOLO_MISSING_FIELDS' }, 400);
@@ -556,7 +824,7 @@ bolos.post('/', requireRole(...WRITE_ROLES), async (c) => {
     const created = await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
-    console.error('[dispatch] bolos create error', err);
+    log.error('[dispatch] bolos create error', {}, err);
     return c.json({ error: 'Failed to create BOLO', code: 'BOLO_CREATE_ERR' }, 500);
   }
 });
@@ -566,10 +834,14 @@ bolos.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
-    const before = await queryFirst<any>(db, 'SELECT * FROM bolos WHERE id = ?', id);
+    const before = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM bolos WHERE id = ?', id);
     if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
-    const b = await c.req.json().catch(() => ({} as any));
-    const status = b.status ? String(b.status).toLowerCase() : before.status;
+    const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    // The Communications "Resolve" button sends status:'resolved', which is not a
+    // valid bolos.status enum value (live CHECK = active/expired/cancelled) and
+    // would 400. Treat "resolved" as "cancelled" (no longer needed).
+    let status = b.status ? String(b.status).toLowerCase() : String(before.status ?? '');
+    if (status === 'resolved') status = 'cancelled';
     if (!VALID_BOLO_STATUSES.includes(status)) return c.json({ error: `status must be one of ${VALID_BOLO_STATUSES.join(', ')}`, code: 'BOLO_INVALID_STATUS' }, 400);
 
     await execute(db, `
@@ -588,7 +860,7 @@ bolos.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
       id);
     return c.json(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id));
   } catch (err) {
-    console.error('[dispatch] bolos update error', err);
+    log.error('[dispatch] bolos update error', {}, err);
     return c.json({ error: 'Failed to update BOLO', code: 'BOLO_UPDATE_ERR' }, 500);
   }
 });
@@ -604,6 +876,69 @@ bolos.delete('/:id', requireRole(...ADMIN_ROLES), async (c) => {
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: 'Failed to delete BOLO', code: 'BOLO_DELETE_ERR' }, 500);
+  }
+});
+
+// POST /:id/archive — "archive" a single BOLO = mark expired (no archive column
+// on bolos; expired/cancelled are already hidden from the default active list).
+bolos.post('/:id/archive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const before = await queryFirst(db, 'SELECT id FROM bolos WHERE id = ?', id);
+    if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
+    await execute(db, "UPDATE bolos SET status = 'expired', expired_at = datetime('now') WHERE id = ?", id);
+    return c.json({ success: true, ...(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id) as object) });
+  } catch (err) {
+    log.error('[dispatch] bolos archive error', {}, err);
+    return c.json({ error: 'Failed to archive BOLO', code: 'BOLO_ARCHIVE_ERR' }, 500);
+  }
+});
+
+// POST /:id/unarchive — reactivate a BOLO (clears the expired timestamp).
+bolos.post('/:id/unarchive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const before = await queryFirst(db, 'SELECT id FROM bolos WHERE id = ?', id);
+    if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
+    await execute(db, "UPDATE bolos SET status = 'active', expired_at = NULL WHERE id = ?", id);
+    return c.json({ success: true, ...(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id) as object) });
+  } catch (err) {
+    log.error('[dispatch] bolos unarchive error', {}, err);
+    return c.json({ error: 'Failed to unarchive BOLO', code: 'BOLO_UNARCHIVE_ERR' }, 500);
+  }
+});
+
+// POST /expire-check — auto-expire active BOLOs past their expires_at. Static
+// route; registered after /:id but Hono's router prioritizes static segments.
+bolos.post('/expire-check', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const res = await execute(db, "UPDATE bolos SET status = 'expired', expired_at = datetime('now') WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')");
+    return c.json({ success: true, expired: res.meta.changes ?? 0 });
+  } catch (err) {
+    log.error('[dispatch] bolos expire-check error', {}, err);
+    return c.json({ error: 'Failed to run expire check', code: 'BOLO_EXPIRE_ERR' }, 500);
+  }
+});
+
+// POST /auto-archive { days_expired } — cancel BOLOs that have been expired
+// longer than N days. Non-destructive (rows kept for history/audit); cancelled
+// BOLOs are already hidden from the active list. Default window 7 days.
+bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const daysRaw = Number(body.days_expired ?? 7);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 3650) : 7;
+    const res = await execute(db, "UPDATE bolos SET status = 'cancelled' WHERE status = 'expired' AND expired_at IS NOT NULL AND expired_at <= datetime('now', ?)", `-${days} days`);
+    return c.json({ success: true, archived: res.meta.changes ?? 0 });
+  } catch (err) {
+    log.error('[dispatch] bolos auto-archive error', {}, err);
+    return c.json({ error: 'Failed to auto-archive', code: 'BOLO_AUTOARCHIVE_ERR' }, 500);
   }
 });
 
@@ -626,13 +961,13 @@ welfareActive.get('/active', requireRole(...WRITE_ROLES), async (c) => {
       JOIN units un ON un.officer_id = u.id
       WHERE un.status = 'onscene' AND un.current_call_id IS NOT NULL`);
 
-    const watches: any[] = [];
+    const watches: Record<string, unknown>[] = [];
     for (const cand of candidates) {
       try {
-        const id = (c.env as any).WELFARE_WATCH.idFromName(`u-${cand.id}`);
-        const stub = (c.env as any).WELFARE_WATCH.get(id);
+        const id = c.env.WELFARE_WATCH.idFromName(`u-${cand.id}`);
+        const stub = c.env.WELFARE_WATCH.get(id);
         const r = await stub.fetch('https://do/state', { method: 'GET' });
-        const state = await r.json();
+        const state = await r.json<{ idle?: boolean }>();
         if (state && !state.idle) {
           watches.push({
             user_id: cand.id,
@@ -642,12 +977,12 @@ welfareActive.get('/active', requireRole(...WRITE_ROLES), async (c) => {
             watch: state,
           });
         }
-      } catch { /* DO unreachable / state error — skip */ }
+      } catch { log.warn('[welfare-active] DO fetch failed', { officerId: cand.id }); /* DO unreachable / state error — skip */ }
     }
 
     return c.json({ count: watches.length, watches });
   } catch (err) {
-    console.error('[dispatch] welfare/active error', err);
+    log.error('[dispatch] welfare/active error', {}, err);
     return c.json({ error: 'Failed to list active welfare watches', code: 'WELFARE_ACTIVE_ERR' }, 500);
   }
 });
@@ -666,17 +1001,27 @@ function safeJson<T>(s: string | null | undefined, fb: T): T {
 // entries before the call's own created_at). Always store UTC here.
 const utcNow = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
-// Canonical updated-call payload: bare base row (no JOINs) so we stay under the
-// D1 100-column result-set cap. The client maps this through mapDbCall(), which
-// only reads base columns, so a flat SELECT * is sufficient.
+// Canonical updated-call payload. mapDbCall() reads two ext-only columns that
+// live on calls_for_service_ext (the 1:1 overflow table): `held_at` (from which
+// it SYNTHESIZES the client-facing status:'on_hold', since the base status CHECK
+// has no on_hold) and `pinned` (queue-top sort). A bare `SELECT *` from the base
+// table omitted both, so EVERY mutation routed through here (transfer, assign,
+// unassign, dispatch, etc.) silently dropped a call's hold + pin in the UI.
+// Merge them back in via a second cheap point-lookup rather than a JOIN, so we
+// never risk the D1 100-column result-set cap on this base table.
+// CRITICAL FIX: Return full ext table data (PSO/process fields) so WebSocket
+// broadcasts and API responses don't lose PSO/process fields after updates.
 async function fetchCallRow(db: D1Database, id: number) {
-  return queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+  const base = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+  if (!base) return base;
+  const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+  return { ...base, ...(ext || {}) };
 }
 
 // =====================================================================
 // DEV-8: Closest-unit suggestion (single-result analogue to recommended-units)
 // GET /api/dispatch/calls/:id/closest-unit
-// Ported from legacy/server-vps/src/routes/dispatch/callActions.ts:2305.
+// Ported from legacy VPS callActions.ts.
 // Returns the single nearest AVAILABLE unit plus the next two alternatives —
 // used by the dispatcher's "find nearest" button as a fast pre-assign hint.
 // =====================================================================
@@ -725,7 +1070,7 @@ closestUnit.get('/:id/closest-unit', requireRole(...WRITE_ROLES), async (c) => {
       alternatives: ranked.slice(1, 3),
     });
   } catch (err) {
-    console.error('[dispatch] closest-unit error', err);
+    log.error('[dispatch] closest-unit error', {}, err);
     return c.json({ error: 'Failed to compute closest unit', code: 'CLOSEST_UNIT_ERROR' }, 500);
   }
 });
@@ -733,7 +1078,7 @@ closestUnit.get('/:id/closest-unit', requireRole(...WRITE_ROLES), async (c) => {
 // =====================================================================
 // DEV-9: Auto-assign nearest unit to call
 // POST /api/dispatch/calls/:id/auto-assign
-// Ported from legacy/server-vps/src/routes/dispatch/callActions.ts:1734.
+// Ported from legacy VPS callActions.ts.
 // Finds nearest AVAILABLE unit by haversine, mutates: appends to
 // call.assigned_unit_ids JSON array, flips call status pending→dispatched,
 // sets unit status=dispatched, logs to audit_log. No D1 transactions
@@ -759,8 +1104,8 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
       return c.json({ error: 'Call has no GPS coordinates — cannot auto-assign', code: 'CALL_HAS_NO_GPS' }, 400);
     }
 
-    const units = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(db, `
-      SELECT id, call_sign, latitude, longitude
+    const units = await query<{ id: number; call_sign: string; latitude: number; longitude: number; gps_updated_at: string | null; current_call_id: number | null }>(db, `
+      SELECT id, call_sign, latitude, longitude, gps_updated_at, current_call_id
       FROM units
       WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL
     `);
@@ -768,15 +1113,33 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
       return c.json({ error: 'No available units with GPS positions', code: 'NO_AVAILABLE_UNITS_WITH_GPS' }, 404);
     }
 
-    let nearest = units[0];
+    const eligible = units.filter((u) => u.current_call_id == null);
+    if (eligible.length === 0) {
+      return c.json({ error: 'No available units are uncommitted (all have stale current_call_id)', code: 'NO_UNCOMMITTED_UNITS' }, 409);
+    }
+    const unitsToConsider = eligible;
+
+    // Prefer units reporting a FRESH fix — dispatching to a stale position
+    // sends the responder to where the unit *was*, not where it is. Fall back
+    // to stale units only if nobody is reporting live (flagged in the result).
+    const nowMs = Date.now();
+    const fresh = unitsToConsider.filter((u) => {
+      const age = gpsAgeSeconds(u.gps_updated_at, nowMs);
+      return age != null && age <= GPS_FRESH_WINDOW_S;
+    });
+    const pool = fresh.length > 0 ? fresh : unitsToConsider;
+    const usedStaleFallback = fresh.length === 0;
+
+    let nearest = pool[0];
     let minMeters = Infinity;
-    for (const u of units) {
+    for (const u of pool) {
       const d = haversineMeters(call.latitude, call.longitude, u.latitude, u.longitude);
       if (d < minMeters) { minMeters = d; nearest = u; }
     }
     const minMiles = minMeters / 1609.34;
+    const nearestGpsAge = gpsAgeSeconds(nearest.gps_updated_at, nowMs);
 
-    const currentUnits = safeJson<number[]>(call.assigned_unit_ids, []);
+    const currentUnits = parseUnitIds(call.assigned_unit_ids);
     if (!currentUnits.includes(Number(nearest.id))) currentUnits.push(Number(nearest.id));
 
     const now = utcNow();
@@ -787,18 +1150,18 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
           assigned_unit_ids = ?,
           dispatched_at = COALESCE(dispatched_at, ?)
       WHERE id = ?
-    `, JSON.stringify(currentUnits), now, call.id);
+    `, canonicalUnitIdsJson(currentUnits), now, call.id);
 
     await execute(db, `
       UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
     `, call.id, now, nearest.id);
 
     if (userId != null) {
-      await execute(db, `
-        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'auto_assigned', 'call', ?, ?, ?)
-      `, userId, call.id, `Auto-assigned nearest unit ${nearest.call_sign} (${minMiles.toFixed(2)} mi) to ${call.call_number ?? '#' + call.id}`,
-        c.req.header('CF-Connecting-IP') || 'unknown');
+      await recordAudit(c, {
+        action: 'auto_assigned', entityType: 'call', entityId: call.id,
+        details: `Auto-assigned nearest unit ${nearest.call_sign} (${minMiles.toFixed(2)} mi) to ${call.call_number ?? '#' + call.id}`,
+        actorId: userId,
+      });
     }
 
     const updated = await queryFirst<Record<string, unknown>>(
@@ -808,9 +1171,11 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
       ...(updated || {}),
       auto_assigned_unit: nearest.call_sign,
       distance_miles: Math.round(minMiles * 100) / 100,
+      gps_age_seconds: nearestGpsAge,
+      gps_stale: usedStaleFallback,
     });
   } catch (err) {
-    console.error('[dispatch] auto-assign error', err);
+    log.error('[dispatch] auto-assign error', {}, err);
     return c.json({ error: 'Failed to auto-assign', code: 'AUTOASSIGN_ERROR' }, 500);
   }
 });
@@ -818,7 +1183,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
 // =====================================================================
 // DEV-10: Manual timeline entry
 // POST /api/dispatch/calls/:id/timeline
-// Ported from legacy/server-vps/src/routes/dispatch/callLifecycle.ts:551.
+// Ported from legacy VPS callLifecycle.ts.
 // Inserts a row into audit_log scoped to entity_type='call'. Validates
 // details length and any user-supplied created_at (1-min future skew allowed
 // to handle client/server clock drift without rejecting legitimate writes).
@@ -863,12 +1228,13 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
       timestamp = body.created_at;
     }
 
-    const result = await execute(db, `
-      INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, ?, 'call', ?, ?, ?, ?)
-    `, userId, action, call.id, details, c.req.header('CF-Connecting-IP') || 'unknown', timestamp);
+    await recordAudit(c, {
+      action, entityType: 'call', entityId: call.id, details, actorId: userId,
+      createdAt: timestamp, // preserve caller-supplied backfill time
+    });
 
-    const insertedId = (result as any)?.meta?.last_row_id ?? (result as any)?.lastInsertRowid;
+    const idRow = await queryFirst<{ id: number }>(db, 'SELECT last_insert_rowid() AS id');
+    const insertedId = idRow?.id;
     const entry = await queryFirst<Record<string, unknown>>(db, `
       SELECT al.*, u.full_name AS user_name
       FROM audit_log al
@@ -878,13 +1244,13 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
 
     return c.json(entry ?? { id: insertedId, action, details, created_at: timestamp }, 201);
   } catch (err) {
-    console.error('[dispatch] add timeline entry error', err);
+    log.error('[dispatch] add timeline entry error', {}, err);
     return c.json({ error: 'Failed to add timeline entry', code: 'TIMELINE_ADD_ERROR' }, 500);
   }
 });
 
 // PUT /api/dispatch/calls/:id/timeline/:entryId — edit a timeline entry.
-// Ported from legacy callLifecycle.ts:479. Only `details` is editable —
+// Ported from legacy VPS callLifecycle.ts. Only `details` is editable —
 // created_at is an immutable audit-log timestamp. The entry is matched by
 // (id, entity_type='call', entity_id) so one call can't edit another's rows.
 callTimeline.put('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c) => {
@@ -911,7 +1277,7 @@ callTimeline.put('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c)
       'SELECT al.*, u.full_name AS user_name FROM audit_log al LEFT JOIN users u ON u.id = al.user_id WHERE al.id = ?', entryId);
     return c.json(updated ?? { id: entryId, details: body.details });
   } catch (err) {
-    console.error('[dispatch] edit timeline entry error', err);
+    log.error('[dispatch] edit timeline entry error', {}, err);
     return c.json({ error: 'Failed to update timeline entry', code: 'TIMELINE_UPDATE_ERROR' }, 500);
   }
 });
@@ -934,7 +1300,7 @@ callTimeline.delete('/:id/timeline/:entryId', requireRole(...READ_ROLES), async 
     await execute(db, 'DELETE FROM audit_log WHERE id = ?', entryId);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[dispatch] delete timeline entry error', err);
+    log.error('[dispatch] delete timeline entry error', {}, err);
     return c.json({ error: 'Failed to delete timeline entry', code: 'TIMELINE_DELETE_ERROR' }, 500);
   }
 });
@@ -952,7 +1318,7 @@ callTimeline.delete('/:id/timeline/:entryId', requireRole(...READ_ROLES), async 
 //   DELETE /:id/notes/:noteId      — delete a note from the JSON notes array
 //   POST   /:id/generate-incident  — spawn a draft incident from a cleared call
 //
-// Ported from legacy/server-vps/src/routes/dispatch/{callActions,callLifecycle}.ts.
+// Ported from legacy VPS callActions + callLifecycle.
 // D1 has no multi-statement transactions, so writes run sequentially (no
 // rollback) — acceptable here: each handler's writes are independent and a
 // partial failure surfaces as a 500 the client retries. activity_log → audit_log,
@@ -1005,28 +1371,28 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
           `UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?
            WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)`,
           prevUnitStatus, id, now, unitId, id);
-        if (((res as any)?.meta?.changes ?? 0) > 0) revertedUnitIds.push(unitId);
+        if ((res.meta.changes ?? 0) > 0) revertedUnitIds.push(unitId);
       }
     }
 
     if (userId != null) {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-         VALUES (?, 'status_reverted', 'call', ?, ?, ?)`,
-        userId, id, `${call.call_number} status reverted from ${call.status} to ${previousStatus}`,
-        c.req.header('CF-Connecting-IP') || 'unknown');
+      await recordAudit(c, {
+        action: 'status_reverted', entityType: 'call', entityId: id,
+        details: `${call.call_number} status reverted from ${call.status} to ${previousStatus}`,
+        actorId: userId,
+      });
     }
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_status_changed', call: updated, status: previousStatus });
+    await emitAlert(c.env, 'dispatch_update',{ action: 'call_status_changed', call: updated, status: previousStatus });
     for (const unitId of revertedUnitIds) {
       const unit = await queryFirst<Record<string, unknown>>(db,
         `SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON usr.id = u.officer_id WHERE u.id = ?`, unitId);
-      if (unit) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit });
+      if (unit) await emitAlert(c.env, 'dispatch_update',{ action: 'unit_status_changed', unit });
     }
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] revert-status error', err);
+    log.error('[dispatch] revert-status error', {}, err);
     return c.json({ error: 'Failed to revert status', code: 'REVERT_STATUS_ERROR' }, 500);
   }
 });
@@ -1061,18 +1427,18 @@ callActions.post('/:id/le-notification', requireRole(...READ_ROLES), async (c) =
       agencyName, case_number || null, now, id);
 
     if (userId != null) {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-         VALUES (?, 'le_notification', 'call', ?, ?, ?, ?)`,
-        userId, id, `LE notified: ${agencyName}${case_number ? ` (Case #${case_number})` : ''}`,
-        c.req.header('CF-Connecting-IP') || 'unknown', now);
+      await recordAudit(c, {
+        action: 'le_notification', entityType: 'call', entityId: id,
+        details: `LE notified: ${agencyName}${case_number ? ` (Case #${case_number})` : ''}`,
+        actorId: userId,
+      });
     }
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update',{ action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] le-notification error', err);
+    log.error('[dispatch] le-notification error', {}, err);
     return c.json({ error: 'Failed to record LE notification', code: 'LE_NOTIFICATION_ERROR' }, 500);
   }
 });
@@ -1101,32 +1467,34 @@ callActions.post('/:id/transfer', requireRole(...WRITE_ROLES), async (c) => {
     const toUnit = await queryFirst<{ id: number; call_sign: string }>(db, 'SELECT id, call_sign FROM units WHERE id = ?', toUnitId);
     if (!fromUnit || !toUnit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
 
-    let units = safeJson<number[]>(call.assigned_unit_ids, []).filter((u) => u !== fromUnitId);
-    if (!units.includes(toUnitId)) units.push(toUnitId);
+    const units = parseUnitIds(call.assigned_unit_ids).filter((u) => u !== Number(fromUnitId));
+    if (!units.includes(Number(toUnitId))) units.push(Number(toUnitId));
 
     const now = utcNow();
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?', JSON.stringify(units), now, id);
-    await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?`, now, fromUnitId);
-    await execute(db, `UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?`, id, now, toUnitId);
+    await db.batch([
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?').bind(canonicalUnitIdsJson(units), now, id),
+      db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?`).bind(now, fromUnitId),
+      db.prepare(`UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?`).bind(id, now, toUnitId),
+    ]);
 
     if (userId != null) {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-         VALUES (?, 'call_transferred', 'call', ?, ?, ?)`,
-        userId, id, `Transferred ${call.call_number} from ${fromUnit.call_sign} to ${toUnit.call_sign}`,
-        c.req.header('CF-Connecting-IP') || 'unknown');
+      await recordAudit(c, {
+        action: 'call_transferred', entityType: 'call', entityId: id,
+        details: `Transferred ${call.call_number} from ${fromUnit.call_sign} to ${toUnit.call_sign}`,
+        actorId: userId,
+      });
     }
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update',{ action: 'call_updated', call: updated });
     for (const unitId of [fromUnitId, toUnitId]) {
       const unit = await queryFirst<Record<string, unknown>>(db,
         `SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON usr.id = u.officer_id WHERE u.id = ?`, unitId);
-      if (unit) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit });
+      if (unit) await emitAlert(c.env, 'dispatch_update',{ action: 'unit_status_changed', unit });
     }
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] transfer error', err);
+    log.error('[dispatch] transfer error', {}, err);
     return c.json({ error: 'Failed to transfer call', code: 'TRANSFER_CALL_ERROR' }, 500);
   }
 });
@@ -1151,27 +1519,60 @@ callActions.post('/:id/broadcast-note', requireRole(...WRITE_ROLES), async (c) =
 
     const now = utcNow();
     const notes = safeJson<any[]>(call.notes, []);
-    notes.push({ id: `bn-${Date.now()}`, author: 'DISPATCH BROADCAST', text: message, timestamp: now, broadcast: true });
+    notes.push({ id: `bn-${Date.now()}`, author: 'DISPATCH BROADCAST', author_username: (c.get('user') as { username?: string } | undefined)?.username || null, text: message, timestamp: now, broadcast: true });
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
 
     const updated = await fetchCallRow(db, id);
     const unitIds = safeJson<number[]>(call.assigned_unit_ids, []);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
-    broadcastAll('dispatch_update', {
+    await emitAlert(c.env, 'dispatch_update',{ action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update',{
       action: 'dispatch_broadcast', call_id: id, call_number: call.call_number, message, unit_ids: unitIds,
     });
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] broadcast-note error', err);
+    log.error('[dispatch] broadcast-note error', {}, err);
     return c.json({ error: 'Failed to broadcast note', code: 'BROADCAST_NOTE_ERROR' }, 500);
   }
 });
 
-// PUT /:id/notes/:noteId — edit a note inside the JSON notes array (admin/manager).
-callActions.put('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => {
+// POST /:id/notes — append ONE note server-side. The client previously did a
+// read-modify-write of the entire notes JSON blob (read in-memory notes, push,
+// PUT the whole array), so two dispatchers adding notes to the same call within
+// each other's think-time silently dropped one. Appending on the server re-reads
+// the current notes immediately before writing, collapsing that window. The
+// static '/:id/notes' is registered before '/:id/notes/:noteId' so it never
+// collides with the edit/delete routes. Client sends { text, author? }.
+callActions.post('/:id/notes', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const user = c.get('user') as { username?: string } | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    const call = await queryFirst<{ id: number; notes: string | null }>(
+      db, 'SELECT id, notes FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    const body = await c.req.json<{ text?: string; author?: string }>().catch(() => ({} as { text?: string; author?: string }));
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (text.length < 1 || text.length > 2000) {
+      return c.json({ error: 'text is required (1-2000 chars)', code: 'NOTE_TEXT_INVALID' }, 400);
+    }
+    const now = utcNow();
+    const notes = safeJson<any[]>(call.notes, []);
+    notes.push({ id: `n-${Date.now()}`, author: String(body.author || 'Dispatch').slice(0, 120), author_username: (c.get('user') as { username?: string } | undefined)?.username || null, text, timestamp: now });
+    await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
+    const updated = await fetchCallRow(db, id);
+    await emitAlert(c.env, 'dispatch_update',{ action: 'call_updated', call: updated });
+    return c.json(updated);
+  } catch (err) {
+    log.error('[dispatch] add-note error', {}, err);
+    return c.json({ error: 'Failed to add note', code: 'ADD_NOTE_ERROR' }, 500);
+  }
+});
+
+// PUT /:id/notes/:noteId — edit a note inside the JSON notes array (admin/manager).
+callActions.put('/:id/notes/:noteId', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { username?: string; role?: string } | undefined;
     const id = parseInt(c.req.param('id') || '', 10);
     const noteId = c.req.param('noteId');
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
@@ -1187,15 +1588,24 @@ callActions.put('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => 
     const idx = notes.findIndex((n) => String(n.id) === String(noteId));
     if (idx === -1) return c.json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }, 404);
 
+    // Author-or-admin: a note's author may edit it (ownership keyed on the
+    // server-stamped author_username, not the spoofable display author);
+    // admins/managers may edit any. Legacy notes lack author_username -> admin-only.
+    const isAdmin = ADMIN_ROLES.includes(user?.role || '');
+    const isOwner = !!notes[idx].author_username && notes[idx].author_username === user?.username;
+    if (!isAdmin && !isOwner) {
+      return c.json({ error: 'You can only edit your own notes', code: 'NOTE_FORBIDDEN' }, 403);
+    }
+
     const now = utcNow();
     notes[idx] = { ...notes[idx], text, edited_at: now, edited_by: user?.username || 'admin' };
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update',{ action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] edit note error', err);
+    log.error('[dispatch] edit note error', {}, err);
     return c.json({ error: 'Failed to edit note', code: 'EDIT_NOTE_ERROR' }, 500);
   }
 });
@@ -1220,19 +1630,21 @@ callActions.delete('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) 
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update',{ action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] delete note error', err);
+    log.error('[dispatch] delete note error', {}, err);
     return c.json({ error: 'Failed to delete note', code: 'DELETE_NOTE_ERROR' }, 500);
   }
 });
 
-// POST /:id/generate-incident — spawn a draft incident from a cleared/closed call.
-// Returns 409 if one already exists (client handles this). The lean incidents
-// table has no tactical-flag / PSO / district columns, so all of that call
-// detail is packed into the narrative instead of structured columns.
-callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c) => {
+// Shared incident-generation logic behind two routes:
+//   POST /:id/generate-incident   — post-clear action; requires cleared/closed.
+//   POST /:id/promote-to-incident — CAD "PI" command; promotes a LIVE call,
+//                                   so it does NOT require cleared/closed.
+// Both build a draft incident from the call, dedup on call_id (409), and
+// write an audit row. Kept as one helper so the two routes can't drift.
+async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean) {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -1240,10 +1652,10 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
 
-    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
-    if (!['cleared', 'closed'].includes(call.status)) {
+    if (requireCleared && !['cleared', 'closed'].includes(call.status as string)) {
       return c.json({ error: 'Can only generate incident reports from cleared or closed calls', code: 'CALL_NOT_CLEARED' }, 400);
     }
 
@@ -1271,7 +1683,7 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
 
     const np: string[] = [];
     np.push(`Incident generated from dispatch call ${call.call_number}.`);
-    np.push(`\nCall Type: ${(call.incident_type || '').replace(/_/g, ' ').toUpperCase()}`);
+    np.push(`\nCall Type: ${String(call.incident_type || '').replace(/_/g, ' ').toUpperCase()}`);
     np.push(`Priority: ${call.priority}`);
     np.push(`Location: ${call.location_address || 'Unknown'}`);
     if (call.caller_name) np.push(`Caller: ${call.caller_name}${call.caller_phone ? ` (${call.caller_phone})` : ''}`);
@@ -1294,11 +1706,11 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
       call.location_address || null, call.latitude ?? null, call.longitude ?? null, narrative, userId);
     const incidentId = result.meta.last_row_id;
 
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-       VALUES (?, 'incident_created', 'incident', ?, ?, ?)`,
-      userId, incidentId, `Generated ${incidentNumber} from call ${call.call_number}`,
-      c.req.header('CF-Connecting-IP') || 'unknown');
+    await recordAudit(c, {
+      action: 'incident_created', entityType: 'incident', entityId: incidentId,
+      details: `Generated ${incidentNumber} from call ${call.call_number}`,
+      actorId: userId,
+    });
 
     const incident = await queryFirst<Record<string, unknown>>(db, `
       SELECT i.*, o.full_name AS officer_name, c.call_number
@@ -1308,7 +1720,199 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
       WHERE i.id = ?`, incidentId);
     return c.json(incident ?? { id: incidentId, incident_number: incidentNumber }, 201);
   } catch (err) {
-    console.error('[dispatch] generate-incident error', err);
+    log.error('[dispatch] generate-incident error', {}, err);
     return c.json({ error: 'Failed to generate incident', code: 'GENERATE_INCIDENT_ERROR' }, 500);
+  }
+}
+
+// Post-clear: requires the call to be cleared/closed first.
+callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+  (c) => generateIncidentFromCall(c, true));
+
+// CAD "PI" command: promote a live call to an incident report immediately,
+// without first clearing it. Same dedup + audit behavior.
+callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+  (c) => generateIncidentFromCall(c, false));
+
+// GET /:id/serve-link — read the serve_queue row linked to a dispatch call.
+// Returns the serve_queue row (the client stores it as `serveLink`) or null
+// if no serve job exists for this call. The client calls this from the
+// selectedCall detail effect and the serve:attempt WS handler to refresh
+// the serve status panel. Without this route the panel never populated
+// (the .catch silently swallowed the 404).
+callActions.get('/:id/serve-link', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE call_id = ?', id);
+    return c.json(row ?? null);
+  } catch (err) {
+    log.error('[dispatch] serve-link read error', {}, err);
+    return c.json({ error: 'Failed to read serve link', code: 'SERVE_LINK_ERR' }, 500);
+  }
+});
+
+// POST /:id/send-to-serve — seed a serve_queue entry from a dispatch call
+// (DispatchPage "Send to Serve Queue" button). Dedups on call_id so a
+// double-click doesn't create two jobs. Returns the serve_queue row
+// (the client stores it as `serveLink`).
+callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    if (userId == null) return c.json({ error: 'Unauthenticated', code: 'NO_AUTH' }, 401);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    // Dedup: one serve job per call. Return the existing row if present.
+    const existing = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE call_id = ?', id);
+    if (existing) return c.json(existing, 200);
+
+    const result = await execute(db,
+      `INSERT INTO serve_queue (
+         call_id, officer_id, created_by, recipient_address, recipient_lat, recipient_lng,
+         property_id, priority, status, notes, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
+      id, userId, userId,
+      call.location_address ?? null, call.latitude ?? null, call.longitude ?? null,
+      call.property_id ?? null,
+      `Created from dispatch call ${call.call_number}`);
+
+    try {
+      await recordAudit(c, {
+        action: 'serve_queued', entityType: 'serve_queue', entityId: result.meta.last_row_id,
+        details: `Sent call ${call.call_number} to serve queue`,
+        actorId: userId,
+      });
+    } catch { log.warn('[send-to-serve] audit record failed', { serveQueueId: result.meta.last_row_id }); /* audit non-fatal */ }
+
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE id = ?', result.meta.last_row_id);
+    return c.json(created ?? { id: result.meta.last_row_id }, 201);
+  } catch (err) {
+    log.error('[dispatch] send-to-serve error', {}, err);
+    return c.json({ error: 'Failed to send to serve queue', code: 'SEND_TO_SERVE_ERR' }, 500);
+  }
+});
+
+// PATCH /:id/pin — pin/unpin a call to the top of the dispatch queue.
+// `pinned` lives on calls_for_service_ext (the base table is at the D1
+// 100-column cap), so we upsert the ext row. Nobody implemented this
+// before → the DispatchPage pin toggle 404'd and the optimistic update
+// always reverted. The list query (GET /calls) reads cfse.pinned and
+// sorts pinned-first so the state persists across refreshes.
+callActions.patch('/:id/pin', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const pinned = body.pinned ? 1 : 0;
+
+    const call = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+    await execute(db, 'UPDATE calls_for_service_ext SET pinned = ? WHERE id = ?', pinned, id);
+    return c.json({ success: true, id, pinned: Boolean(pinned) });
+  } catch (err) {
+    log.error('[dispatch] pin error', {}, err);
+    return c.json({ error: 'Failed to toggle pin', code: 'PIN_ERR' }, 500);
+  }
+});
+
+// ─── Dispatch-to-Work-Order integration ─────────────────────
+// POST /:id/report-issue — create a work order from a dispatch call
+// when a unit reports a mechanical issue. Auto-links to the unit and
+// vehicle for the fleet repair workflow.
+callActions.post('/:id/report-issue', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const callId = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(callId) || callId <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT id, call_number, incident_type, location_address, assigned_unit_ids FROM calls_for_service WHERE id = ?', callId,
+    );
+    if (!call) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
+
+    const userId = c.get('userId') as number | undefined;
+    const body = await c.req.json<{
+      summary?: string; vehicle_id?: number; unit_id?: number;
+      failure_category?: string; priority?: string; notes?: string;
+    }>().catch(() => ({} as { summary?: string; vehicle_id?: number; unit_id?: number; failure_category?: string; priority?: string; notes?: string }));
+
+    // Resolve unit → vehicle when vehicle_id not explicitly provided
+    let vehicleId: number | null = body.vehicle_id ?? null;
+    let unitId: number | null = body.unit_id ?? null;
+    if (!vehicleId && unitId) {
+      const unit = await queryFirst<{ fleet_vehicle_id: number | null }>(
+        db, `SELECT fv.id AS fleet_vehicle_id
+             FROM units u LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
+             WHERE u.id = ?`, unitId,
+      );
+      if (unit?.fleet_vehicle_id) vehicleId = unit.fleet_vehicle_id;
+    }
+    if (!vehicleId && !unitId) {
+      // Parse from assigned_unit_ids
+      const unitIds = parseUnitIds(call.assigned_unit_ids);
+      if (unitIds.length > 0) {
+        unitId = unitIds[0];
+        const unit = await queryFirst<{ fleet_vehicle_id: number | null }>(
+          db, `SELECT fv.id AS fleet_vehicle_id
+               FROM units u LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
+               WHERE u.id = ?`, unitId,
+        );
+        if (unit?.fleet_vehicle_id) vehicleId = unit.fleet_vehicle_id;
+      }
+    }
+    if (!vehicleId) return c.json({ error: 'Could not determine vehicle. Provide vehicle_id or ensure unit is linked to a fleet vehicle.', code: 'NO_VEHICLE' }, 400);
+
+    // Validate priority
+    const validPriorities = new Set(['low', 'normal', 'high', 'emergency']);
+    const priority = body.priority && validPriorities.has(body.priority) ? body.priority : 'normal';
+
+    const result = await execute(db,
+      `INSERT INTO work_orders
+         (vehicle_id, summary, failure_category, priority, call_id, unit_id,
+          reported_by_user_id, status, notes, created_by,
+          custom_fields_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?,
+               ?)`,
+      vehicleId,
+      body.summary ?? `Mechanical issue reported from Call #${call.call_number ?? callId}`,
+      body.failure_category ?? null,
+      priority,
+      callId,
+      unitId,
+      userId ?? null,
+      body.notes ?? null,
+      userId ?? null,
+      JSON.stringify({ source: 'dispatch_report', call_number: call.call_number, incident_type: call.incident_type }),
+    );
+
+    const woId = Number(result.meta.last_row_id);
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM work_orders WHERE id = ?', woId);
+
+    // Log the action
+    try {
+      await execute(db,
+        `INSERT INTO cfs_action_log (call_id, action, verb, params, narrative, actor_id)
+         VALUES (?, 'work_order_created', 'report-issue', ?, ?, ?)`,
+        callId,
+        JSON.stringify({ work_order_id: woId, vehicle_id: vehicleId, unit_id: unitId, failure_category: body.failure_category }),
+        `Work order #${woId} created for vehicle maintenance issue`,
+        userId ?? null,
+      );
+    } catch { /* non-fatal */ }
+
+    log.info('[dispatch] work order created from call', { callId, workOrderId: woId, vehicleId, unitId });
+    return c.json({ data: created, call_id: callId, unit_id: unitId }, 201);
+  } catch (err) {
+    log.error('[dispatch] report-issue error', {}, err);
+    return c.json({ error: 'Failed to create work order', code: 'REPORT_ISSUE_ERR' }, 500);
   }
 });
