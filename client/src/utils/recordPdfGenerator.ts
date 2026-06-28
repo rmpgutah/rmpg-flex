@@ -5,9 +5,12 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { registerArialFont } from './pdf/fonts/registerArial';
 import QRCode from 'qrcode';
-import { isPast, isWithinDays } from './dateUtils';
-import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
+import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
+import { hasValue, toNum } from './sentinel';
+import { zsbComposite } from './dispatchCodeParts';
+import { humanizeRelationship } from './recordLinks';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
   addCheckboxField, addStackedSignatures, addFlagBadges, addCautionBlock,
@@ -36,15 +39,20 @@ export type {
 } from './recordPdfGeneratorExt';
 import {
   addQuickReferenceBanner, addLinkedRecordsStrip, addProvenanceLine,
-  addEmptyStateRow, addSeverityMeter,
+  addEmptyStateRow, addSeverityMeter, drawThreatPostureBand,
   type QuickRefBannerConfig,
 } from './pdfDetailHelpers';
+import { recordPosture } from '../components/records/recordVisuals';
+import { type Trip, tripMiles, tripDurationMin } from '../hooks/useTrips';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
+import { cleanAddressText } from './addressClean';
+import { fetchLocationMapImage, fetchTacticalContext } from './pdfStaticMap';
+import { toMgrs } from './mgrs';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, formatEnumValue,
-  applyPrintTarget, topMarginY, type PrintTarget,
+  applyPrintTarget, topMarginY, getCapHeight, type PrintTarget,
 } from './pdfTokens';
 
 /** Options applied to every public record-PDF entry point. The
@@ -54,9 +62,9 @@ export interface RecordPdfOptions {
   printTarget?: PrintTarget;
 }
 import {
-  drawNibrsHeader, drawFormSection, drawCautionFlagStrip,
-  drawDispatchTimelineStrip, drawChainOfCustodyTable,
-  type CautionFlag, type TimelineEvent, type CustodyTransfer,
+  drawNibrsHeader, drawFormSection,
+  drawDispatchTimelineStrip, drawChainOfCustodyTable, drawFormRow,
+  type TimelineEvent, type CustodyTransfer, type FormCell,
 } from './pdfFormHelpers';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
@@ -103,6 +111,272 @@ function normalizeCaseNumber(raw: string | null | undefined): string {
   return trimmed;
 }
 
+// ── Call status-aware rendering helpers ──────────────────────
+//
+// An OPEN call (pending / dispatched / on-scene) has most of its timestamp
+// and resolution fields empty. Rendering those as "N/A" / "--:--:--" made a
+// perfectly healthy in-progress call look broken. computeCallLifecycle()
+// figures out WHERE a call sits in its lifecycle so empty fields can read
+// "PENDING" / "AWAITING DISPOSITION" and the timeline strip can highlight the
+// live edge instead of dash-soup.
+
+const CALL_CLOSED_STATES = ['closed', 'archived', 'cancelled', 'canceled', 'resolved', 'cleared', 'completed'];
+
+interface CallLifecycle {
+  /** true while the call is still open (no disposition + not closed). */
+  open: boolean;
+  /** Per-stage state for the 5-cell timeline strip (RECEIVED..CLEARED). */
+  stripStates: ('done' | 'active' | 'future')[];
+  /** Per-field state for the 6 DATE/TIME fields (created..closed). */
+  fieldStates: ('done' | 'active' | 'future')[];
+}
+
+function computeCallLifecycle(data: CallPdfData): CallLifecycle {
+  const status = String(data.status || '').toLowerCase();
+  const closed = !!data.closed_at || !!data.cleared_at || CALL_CLOSED_STATES.includes(status);
+
+  // Mark the FIRST stage with no timestamp as the active (next-expected) step;
+  // every later empty stage is 'future'. A closed call has no active edge.
+  const assign = (have: boolean[]): ('done' | 'active' | 'future')[] => {
+    const states: ('done' | 'active' | 'future')[] = have.map(h => (h ? 'done' : 'future'));
+    if (!closed) {
+      const idx = have.findIndex(h => !h);
+      if (idx >= 0) states[idx] = 'active';
+    }
+    return states;
+  };
+
+  return {
+    open: !closed && !data.disposition,
+    stripStates: assign([
+      !!data.created_at,
+      !!data.dispatched_at,
+      !!data.enroute_at,
+      !!data.onscene_at,
+      !!(data.cleared_at || data.closed_at),
+    ]),
+    fieldStates: assign([
+      !!data.created_at,
+      !!data.dispatched_at,
+      !!data.enroute_at,
+      !!data.onscene_at,
+      !!data.cleared_at,
+      !!data.closed_at,
+    ]),
+  };
+}
+
+// Flags fed into recordPosture() to compute the call's dominant threat
+// treatment — mirrors personPostureFlags()/vehiclePostureFlags() in
+// recordVisuals so the printed Call report and the on-screen RecordHero agree
+// on severity. Only TRUE boolean flags + a non-sentinel weapon string
+// contribute (a literal "None"/"0" weapon value never escalates posture — the
+// sentinel-string trap documented in the project memory).
+function callPostureFlags(data: CallPdfData): string[] {
+  const flags: string[] = [];
+  const push = (cond: unknown, label: string) => { if (cond) flags.push(label); };
+  push(data.officer_safety_caution, 'officer safety');
+  const wv = (data.weapons_involved || '').toLowerCase().trim();
+  if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) flags.push(`weapon ${wv}`);
+  push(data.felony_in_progress, 'felony in progress');
+  push(data.domestic_violence, 'violent');        // DV → violent/red tier
+  push(data.vehicle_pursuit, 'pursuit');
+  push(data.foot_pursuit, 'pursuit');
+  push(data.gang_related, 'gang');
+  push(data.hazmat, 'hazmat');
+  push(data.mental_health_crisis, 'mental crisis');
+  push(data.injuries_reported, 'medical');
+  push(data.trespass_issued, 'trespass');
+  return flags;
+}
+
+// Short human-facing chip labels for the posture band (parallel to
+// callPostureFlags, but worded for display rather than classification).
+function callPostureChips(data: CallPdfData): string[] {
+  const chips: string[] = [];
+  if (data.officer_safety_caution) chips.push('OFFICER SAFETY');
+  const wv = (data.weapons_involved || '').toLowerCase().trim();
+  if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) chips.push('WEAPONS');
+  if (data.felony_in_progress) chips.push('FELONY IP');
+  if (data.domestic_violence) chips.push('DV');
+  if (data.vehicle_pursuit) chips.push('VEH PURSUIT');
+  if (data.foot_pursuit) chips.push('FOOT PURSUIT');
+  if (data.gang_related) chips.push('GANG');
+  if (data.hazmat) chips.push('HAZMAT');
+  if (data.mental_health_crisis) chips.push('MENTAL HEALTH');
+  if (data.injuries_reported) chips.push('INJURIES');
+  if (data.trespass_issued) chips.push('TRESPASS');
+  return chips;
+}
+
+// ── Entity cross-reference (same person across multiple roles) ───────────────
+// The same individual frequently appears as caller AND responding officer AND a
+// linked person (e.g. an owner-operator filing on their own property). Without
+// linkage a reader sees three unrelated names. These helpers tag each linked
+// record with the OTHER roles that resolve to the same entity so the
+// cross-references are explicit on the printed form.
+function normalizeEntityName(raw?: string | null): string {
+  if (!raw) return '';
+  return String(raw)
+    .toUpperCase()
+    .replace(/[.,]/g, ' ')
+    .replace(/\b(JR|SR|II|III|IV)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// True if two names refer to the same person, tolerant of "LAST, FIRST" vs
+// "FIRST LAST" ordering (compares token sets, requires ≥2 shared name tokens
+// so a lone shared surname doesn't false-positive).
+function sameEntityName(a?: string | null, b?: string | null): boolean {
+  const ta = normalizeEntityName(a).split(' ').filter(Boolean);
+  const tb = normalizeEntityName(b).split(' ').filter(Boolean);
+  if (ta.length < 2 || tb.length < 2) return false;
+  const setB = new Set(tb);
+  return ta.filter(t => setB.has(t)).length >= 2;
+}
+
+// Build the set of cross-reference tags for a person name against the call's
+// other entity roles (caller / responding officer / assigned units).
+function personCrossRefTags(name: string, data: CallPdfData): string[] {
+  const tags: string[] = [];
+  if (sameEntityName(name, data.caller_name)) tags.push('ALSO CALLER');
+  if (sameEntityName(name, data.responding_officer)) tags.push('RESP OFFICER');
+  if ((Array.isArray(data.assigned_units_detail) ? data.assigned_units_detail : []).some(u => sameEntityName(name, u.officer_name))) {
+    tags.push('ASSIGNED UNIT');
+  }
+  return tags;
+}
+
+// ── Shared threat-posture band rollout (all record types) ────────────────────
+// The Call report's threat band is now applied to EVERY threat-bearing record
+// type so the printed report and the on-screen RecordHero (#794) carry the same
+// at-a-glance danger read. Each generator builds a posture-flag array from its
+// own data shape; renderRecordPostureBand() runs it through the SAME
+// recordPosture() engine the UI uses and draws the band — skipped for a 'clear'
+// posture so low-risk records print exactly as before (no added length).
+
+/** Run a posture-flag array through recordPosture() and render the band.
+ *  Returns y unchanged for a 'clear' posture. Chips are the matched flags,
+ *  de-duped + upper-cased; drawThreatPostureBand caps the count with "+N". */
+function renderRecordPostureBand(
+  doc: jsPDF,
+  flags: Array<string | null | undefined>,
+  context: string,
+  y: number,
+): number {
+  const posture = recordPosture(flags);
+  if (posture.level === 'clear') return y;
+  const chips: string[] = [];
+  const seen = new Set<string>();
+  for (const f of flags) {
+    if (!f) continue;
+    const c = String(f).replace(/_/g, ' ').toUpperCase().trim().slice(0, 22);
+    if (c && !seen.has(c)) { seen.add(c); chips.push(c); }
+  }
+  return drawThreatPostureBand(doc, {
+    level: posture.level,
+    tone: posture.tone,
+    label: posture.label,
+    context,
+    flags: chips,
+  }, y);
+}
+
+// Per-type posture-flag builders — mirror the React tab builders
+// (personPostureFlags/vehiclePostureFlags) but read the *PdfData shapes.
+
+/** The `flags` column arrives from D1 as raw JSON TEXT (e.g. '[]' or
+ *  '["GANG"]'). Iterating that string directly yields CHARACTERS — live
+ *  PDFs printed "[" and "]" as threat chips (2026-06-11). Normalize to a
+ *  real array first; non-JSON strings are treated as a single flag. */
+function normalizeRecordFlags(raw: unknown): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (!s) return [];
+    if (s.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(s);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    }
+    return [s];
+  }
+  return [];
+}
+
+function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  for (const f of normalizeRecordFlags(data.flags)) flags.push(typeof f === 'object' && f !== null ? (f as any).type : f);
+  if ((Array.isArray(data.warrants) ? data.warrants : []).some(w => (w.status || '').toLowerCase() === 'active')) flags.push('ACTIVE WARRANT');
+  if (data.bolo_active) flags.push('BOLO');
+  if (data.is_sex_offender) flags.push('SEX OFFENDER');
+  if (hasValue(data.gang_affiliation)) flags.push('GANG');
+  if (hasValue(data.probation_parole) && /parole|probation/i.test(String(data.probation_parole))) flags.push('PAROLE/PROBATION');
+  if (hasValue(data.mental_health_flags)) flags.push('MENTAL HEALTH');
+  if (hasValue(data.caution_flags)) flags.push(data.caution_flags!);
+  return flags;
+}
+
+function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  const ss = (data.stolen_status || '').toLowerCase();
+  const notStolen = ['none', 'not_stolen', 'not stolen', 'recovered', ''].includes(ss);
+  for (const f of normalizeRecordFlags(data.flags)) {
+    const flag = typeof f === 'object' && f !== null ? (f as any).type : f;
+    // Filter stale STOLEN flags when stolen_status explicitly says not stolen
+    if (notStolen && typeof flag === 'string' && flag.toUpperCase() === 'STOLEN') continue;
+    flags.push(flag);
+  }
+  if (data.hazmat) flags.push('HAZMAT');
+  if (ss && !notStolen) flags.push('STOLEN');
+  const ts = (data.tow_status || '').toLowerCase();
+  if (ts && ['impound', 'hold', 'evidence'].some(t => ts.includes(t))) flags.push('IMPOUND');
+  return flags;
+}
+
+function propertyPdfPostureFlags(data: PropertyPdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  if (hasValue(data.known_hazards)) flags.push(data.known_hazards!);
+  if (hasValue(data.hazard_notes)) flags.push('HAZARD');
+  if ((Array.isArray(data.trespass_orders) ? data.trespass_orders : []).some(t => (t.status || '').toLowerCase() === 'active')) flags.push('TRESPASS');
+  return flags;
+}
+
+function evidencePdfPostureFlags(data: EvidencePdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  const both = `${data.category || ''} ${data.evidence_type || ''}`.toLowerCase();
+  if (/weapon|firearm|gun|knife|rifle|pistol/.test(both)) flags.push('WEAPON');
+  if (/drug|narcotic|controlled|paraphernalia/.test(both)) flags.push('NARCOTICS');
+  if (/biohazard|blood|dna|bio|hazmat/.test(both)) flags.push('BIOHAZARD');
+  const st = (data.status || '').toLowerCase();
+  if (/seal|court.?hold|\bhold\b/.test(st)) flags.push('SEALED/HOLD');
+  return flags;
+}
+
+function citationPdfPostureFlags(data: CitationPdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  if (data.dui_related) flags.push('DUI');
+  if (data.hazmat) flags.push('HAZMAT');
+  if (data.accident_related) flags.push('ACCIDENT');
+  if ((data.offense_level || '').toLowerCase().includes('felony')) flags.push('FELONY');
+  if (data.school_zone) flags.push('SCHOOL ZONE');
+  if (data.construction_zone) flags.push('CONSTRUCTION ZONE');
+  if (data.commercial_vehicle) flags.push('COMMERCIAL');
+  return flags;
+}
+
+function warrantPdfPostureFlags(data: WarrantPdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  if ((data.status || '').toLowerCase() === 'active') flags.push('ACTIVE WARRANT');
+  if ((data.offense_level || '').toLowerCase().includes('felony')) flags.push('FELONY');
+  const df = (data.subject_distinguishing_features || '').toLowerCase();
+  if (/armed|weapon|gun|dangerous/.test(df)) flags.push('ARMED & DANGEROUS');
+  if (/gang/.test(df)) flags.push('GANG');
+  return flags;
+}
+
 function drawDistrictBar(
   doc: jsPDF,
   y: number,
@@ -138,23 +412,13 @@ function drawDistrictBar(
   // produced visually duplicative noise like SECTION=SL1, AREA=SL.
   // CONTRACT ID was geographically misplaced; it now lives in the
   // PSO Client Request Details section where it belongs.
-  const sectionRaw = data.sector_id || data.sector_name || '';
-  const zoneRaw = zoneLeaf(data.zone_id) || data.zone_name || '';
-  const beatRaw = beatLeaf(data.beat_id) || data.beat_name || '';
-  const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '';
-  const hasRealArea = !!(data.area_name || data.area_id);
+  // Dispatch printouts present the SHORT CODE only (e.g. "SLA-A2") — the full
+  // Area / Section / Zone / Beat names are presented on the Map UI, not on
+  // dispatch call surfaces. Geography fields drive the canonical SEC/ZONE/BEAT
+  // composite; the stored dispatch_code / zone_beat is only a fallback.
+  const shortCode = zsbComposite({ zoneId: data.zone_id, beatId: data.beat_id, dispatchCode: data.dispatch_code || data.zone_beat });
   const distFields: { label: string; value: string }[] = [];
-  if (hasRealArea) distFields.push({ label: 'AREA', value: data.area_name || data.area_id });
-  // Suppress empty SECTION / ZONE / BEAT cells rather than padding them
-  // with "N/A" — when only the beat is set (e.g. SLC-UNINC for an
-  // un-sectored unincorporated address), the bar previously showed
-  // SECTION N/A · ZONE N/A · BEAT SLC-UNINC · CODE SLC/UNINC, with
-  // the two empty columns just diluting the readable cells. Empty
-  // cells now collapse, and the remaining cells expand to fill width.
-  if (sectionRaw) distFields.push({ label: 'SECTION', value: sectionRaw });
-  if (zoneRaw)    distFields.push({ label: 'ZONE',    value: zoneRaw });
-  if (beatRaw)    distFields.push({ label: 'BEAT',    value: beatRaw });
-  if (combined)   distFields.push({ label: 'CODE',    value: combined });
+  if (shortCode) distFields.push({ label: 'DISPATCH CODE', value: shortCode });
   if (distFields.length === 0) return barY; // safety: nothing to draw
 
   // ── Cell layout ───────────────────────────────────────────
@@ -171,11 +435,13 @@ function drawDistrictBar(
   // labels render as muted-white and values as full-white regardless
   // of activeSectionStyle so the bar always reads as a unified
   // dark-slate strip with high text contrast.
-  const labelColor: [number, number, number] = [200, 200, 200];
+  const labelColor: [number, number, number] = [
+    COLOR.TEXT_SUBHEAD_INVERTED[0], COLOR.TEXT_SUBHEAD_INVERTED[1], COLOR.TEXT_SUBHEAD_INVERTED[2],
+  ];
   const valueColor: [number, number, number] = [
     COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
   ];
-  const sepColor: [number, number, number] = [80, 80, 85];
+  const sepColor: [number, number, number] = [80, 80, 80]; // neutralized 2026-05-30
 
   for (let i = 0; i < distFields.length; i++) {
     const f = distFields[i];
@@ -210,7 +476,11 @@ function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, 
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(label.toUpperCase(), x, y + 1.8);
-  y += 3.4;  // was 3.0 — +0.4mm cushion between label baseline and value top
+  // Label baseline sits at y+1.8; the 8pt Courier value cap-height is
+  // ~2.8mm, so the value baseline must clear y+1.8+2.8 or the value
+  // overprints the label (seen live on "PIERCING DESCRIPTION" /
+  // "DISTINGUISHING FEATURES" 2026-06-11). 5.2mm leaves ~0.6mm of air.
+  y += 5.2;
   // Body text — word-wrapped Courier
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -230,6 +500,21 @@ function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, 
   // SCAR DESCRIPTION label appeared to kiss the bottom of multi-line
   // tattoo content (caught 2026-05-05).
   return y + 2.5;
+}
+
+/**
+ * Vertical space (mm) addNarrativeField will consume for `value` at `width`.
+ * Used to reserve a whole two-column row up front so a page break can never
+ * land BETWEEN the left and right columns — which would draw the right column
+ * at a stale y on the new page and overprint its label onto its value.
+ * Mirrors addNarrativeField's geometry: 5.2 (label+gap) + lines*3.4 + 2.5 pad.
+ */
+function narrativeFieldHeight(doc: jsPDF, value: string, width: number): number {
+  if (!value || !value.trim()) return 0;
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  const lines = doc.splitTextToSize(sanitizePdfText(value), width - 1) as string[];
+  return 5.2 + lines.length * 3.4 + 2.5;
 }
 
 // ── Type Aliases for Record Types ────────────────────────────
@@ -365,6 +650,10 @@ export interface CallPdfData {
   starting_mileage?: number;
   ending_mileage?: number;
   responding_vehicle_id?: string;
+  // Telemetry — the logged call-response trip (drive to scene), if any.
+  // Fetched by the caller (PrintRecordButton) via /dispatch/trips?call_id=,
+  // rendered as a single audit line under Mileage.
+  response_trip?: Trip;
   // Timeline
   created_at?: string;
   dispatched_at?: string;
@@ -374,7 +663,19 @@ export interface CallPdfData {
   closed_at?: string;
   created_by?: string;
   // Notes / Narrative
-  notes?: { id: string; author: string; content: string; created_at: string }[];
+  // Body arrives as `content` (this interface's original shape) OR `text`
+  // (live CallNote from dispatchMappers); timestamp as `created_at` OR
+  // `timestamp`. All optional/coalesced at render time — see Notes section.
+  notes?: {
+    id: string;
+    author: string;
+    content?: string;
+    text?: string;
+    body?: string;
+    narrative?: string;
+    created_at?: string;
+    timestamp?: string;
+  }[];
   narrative?: string;
   // OPR identifier
   dispatcher_name?: string;
@@ -385,10 +686,10 @@ export interface CallPdfData {
   // Linked vehicles (from call_vehicles join)
   linked_vehicles?: { role: string; plate_number?: string; plate_state?: string; year?: number; color?: string; make?: string; model?: string; vin?: string; owner_first_name?: string; owner_last_name?: string; stolen_status?: string }[];
   attachment_images?: PdfImage[];
-  // GPS breadcrumb trail
+  // GPS breadcrumb trail — field names match gps.ts TrailPointRow / TRAIL_POINT_SELECT
   breadcrumb_trail?: {
-    points: { lat: number; lng: number; timestamp: string; speed_mph?: number; source?: string }[];
-    stats: {
+    points: { lat: number; lng: number; time: string; speed: number | null; status: string | null; call_type: string | null; road_name: string | null; intersection: string | null; call_sign?: string | null }[];
+    stats?: {
       total_distance_miles: number;
       duration_minutes: number;
       avg_speed_mph: number;
@@ -480,7 +781,12 @@ export interface PersonPdfData {
   first_name: string;
   last_name: string;
   middle_name?: string;
+  suffix?: string;
   alias_nickname?: string;
+  aliases?: string;
+  sex?: string;
+  nationality?: string;
+  photo_url?: string;
   date_of_birth?: string;
   gender?: string;
   race?: string;
@@ -513,6 +819,9 @@ export interface PersonPdfData {
   dl_state?: string;
   dl_class?: string;
   dl_expiry?: string;
+  dl_issue_date?: string;
+  dl_restrictions?: string;
+  dl_endorsements?: string;
   id_type?: string;
   id_number?: string;
   id_state?: string;
@@ -589,9 +898,15 @@ export interface PersonPdfData {
   updated_at?: string;
   id_photo?: PdfImage | null;
   attachment_images?: PdfImage[];
-  // Linked records (from record_links)
+  // Linked records (from record_links — manual cross-references)
   linked_vehicles?: { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship?: string }[];
   linked_properties?: { name: string; address?: string; relationship?: string }[];
+  linked_businesses?: { name: string; relationship?: string }[];
+  linked_persons?: { name: string; dob?: string; flags?: string; relationship?: string }[];
+  linked_evidence?: { label: string; relationship?: string }[];
+  linked_incidents_xref?: { label: string; relationship?: string }[];
+  linked_cases?: { label: string; relationship?: string }[];
+  linked_warrants_xref?: { label: string; relationship?: string }[];
   // Cross-reference dossier appendix payload (Phase B). Caller fetches
   // /api/records/persons/:id/dossier and stuffs the result here before
   // calling downloadRecordPdf. Listed in NON_CANONICAL_FIELDS in
@@ -675,6 +990,9 @@ export interface VehiclePdfData {
   incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
   calls?: { call_number: string; incident_type: string; status: string; location: string; created_at: string }[];
   citations?: { citation_number: string; type: string; status: string; violation_date: string }[];
+  // Linked records (from /records/links?source_type=vehicle&source_id=ID)
+  linked_persons?: { name: string; dob?: string; flags?: string; relationship?: string }[];
+  linked_properties?: { name: string; address?: string; relationship?: string }[];
   // Cross-reference dossier appendix payload (Phase B). See PersonPdfData.
   _dossier?: import('./pdfDossierRenderer').VehicleDossierData;
 }
@@ -1024,6 +1342,9 @@ export interface PropertyPdfData {
   incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
   calls?: { call_number: string; incident_type: string; status: string; created_at: string }[];
   trespass_orders?: { order_number: string; subject_name: string; status: string; issued_date: string; expires_date: string }[];
+  // Linked records (from /records/links?source_type=property&source_id=ID)
+  linked_persons?: { name: string; dob?: string; flags?: string; relationship?: string }[];
+  linked_vehicles?: { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship?: string }[];
 }
 
 export interface CitationPdfData {
@@ -1049,6 +1370,7 @@ export interface CitationPdfData {
   zone_id?: string;
   beat_id?: string;
   zone_beat?: string;
+  dispatch_code?: string;
   latitude?: number;
   longitude?: number;
   // Violation
@@ -1129,7 +1451,7 @@ function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string
 function fmtDate(ts?: string | null): string {
   if (!ts) return '';
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     if (isNaN(d.getTime())) return ts;
     const { mm, dd, yyyy } = toMountain(d);
     return `${mm}/${dd}/${yyyy}`;
@@ -1140,10 +1462,34 @@ function fmtDate(ts?: string | null): string {
 function fmtDateTime(ts?: string | null): string {
   if (!ts) return '';
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     if (isNaN(d.getTime())) return ts;
     const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
     return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
+  } catch { return ts; }
+}
+
+// Date-only (Mountain). Used by the Visit History table's single DATE column.
+function fmtDateOnly(ts?: string | null): string {
+  if (!ts) return '';
+  try {
+    const d = parseTimestamp(ts);
+    if (isNaN(d.getTime())) return ts;
+    const { mm, dd, yyyy } = toMountain(d);
+    return `${mm}/${dd}/${yyyy}`;
+  } catch { return ts; }
+}
+
+// Time-of-day only (Mountain). The Visit History table shows just HH:MM:SS per
+// phase column — the date lives in its own column, so we no longer repeat the
+// full date on every phase (old layout printed it five times per visit).
+function fmtClock(ts?: string | null): string {
+  if (!ts) return '';
+  try {
+    const d = parseTimestamp(ts);
+    if (isNaN(d.getTime())) return ts;
+    const { hh, min, sec } = toMountain(d);
+    return `${hh}:${min}:${sec}`;
   } catch { return ts; }
 }
 
@@ -1153,9 +1499,80 @@ function fmtDateTime(ts?: string | null): string {
 // code should call `fmtDateTime` directly.
 const fmtTimestamp = fmtDateTime;
 
-function fmtCurrency(val?: number | null): string {
-  if (val == null) return 'N/A';
-  return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+// ============================================================
+// PDF field rendering — sentinel-safe field value
+// ============================================================
+// Live D1 cells frequently hold the literal STRINGS "N/A" / "None" / "0" /
+// "null" / "undefined" instead of SQL NULL — a known data-quality issue
+// documented in the [[project-sentinel-none-strings]] memory entry. Without
+// guarding here, those values flow straight onto the form ("DOB: N/A",
+// "WARRANT #: N/A", "ENTERED BY: N/A"), making a clean-but-empty record
+// look as though it were populated with garbage. They also pollute the
+// filename when warrant_number happens to be "N/A" → sanitization yields
+// "N_A_warrant.pdf".
+//
+// `pdfField()` is the single place to coerce those to a visible em-dash
+// placeholder ("—"), matching the convention already used by the NCIC/ORI
+// block. Pass the raw value (any type), get back a guaranteed non-empty
+// display string.
+//
+// Two intentional choices:
+//   1. Returns the em-dash by default (NOT empty string). `addFieldPair`
+//      with an empty value collapses the row visually; an em-dash makes
+//      "field exists, value missing" legible and prints uniformly across
+//      sections that already use "—" (NCIC) and sections that don't (Court).
+//   2. Sentinel match is CASE-INSENSITIVE on the trimmed value. Live data
+//      has been observed as "N/A", "n/a", "N/a", " N/A ", "None", "NONE",
+//      "null", "undefined". Numeric "0" is intentionally NOT sentinel here
+//      because some text fields (e.g. count fields cast to string) carry
+//      a meaningful "0" — currency handles its own null path via fmtCurrency.
+const EMPTY_FIELD = '—'; // em-dash, matches NCIC/ORI block convention
+const SENTINEL_RE = /^(n\/a|none|null|undefined)$/i;
+function pdfField(v: unknown, fallback: string = EMPTY_FIELD): string {
+  if (v == null) return fallback;
+  const s = String(v).trim();
+  if (s === '' || SENTINEL_RE.test(s)) return fallback;
+  return s;
+}
+
+// ============================================================
+// PDF field rendering — charges (JSON-array or delimited string)
+// ============================================================
+// ArrestFormModal and PersonIntelPanel both JSON.stringify(chargeLines)
+// before writing to the warrants.charges column, so the DB stores e.g.
+// `'["BATTERY"]'` (literal text). Naive `String(charges).split(",")` then
+// produces a single row with the LITERAL text `["BATTERY"]` rendered as
+// the charge — which is what showed up in the N_A_warrant.pdf the
+// operator just printed.
+//
+// `parseCharges()` first tries JSON.parse (the common case for any
+// warrant created from a Records form), then falls back to splitting
+// on common delimiters (the legacy case for warrants imported from
+// scrape sources or hand-typed strings).
+function parseCharges(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map(String).map(s => s.trim()).filter(Boolean);
+  const s = String(raw).trim();
+  if (!s) return [];
+  // JSON array fast path — warrants written from ArrestFormModal /
+  // PersonIntelPanel land here. Only try JSON.parse if the string LOOKS
+  // like a JSON literal, otherwise every bare "BATTERY, ASSAULT" string
+  // pays for a thrown SyntaxError on the unhappy path.
+  if (s.startsWith('[')) {
+    try {
+      const arr = JSON.parse(s);
+      if (Array.isArray(arr)) return arr.map(String).map(t => t.trim()).filter(Boolean);
+    } catch {
+      // fall through to delimiter split
+    }
+  }
+  return s.split(/\r?\n|;|,(?=\s)|,/).map(t => t.trim()).filter(Boolean);
+}
+
+function fmtCurrency(val?: number | null | string): string {
+  const n = typeof val === 'number' ? val : Number(String(val ?? '').trim());
+  if (val == null || !Number.isFinite(n)) return EMPTY_FIELD; // sentinel "None"/"" → blank, never "$None"
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 }
 
 /**
@@ -1181,6 +1598,458 @@ function titleCase(str: string): string {
 
 // ── Call for Service Report ──────────────────────────────────
 
+/**
+ * Fetch + render a static location-map snapshot section (used by CFS,
+ * Property, and Business PDFs). Best-effort: if no image can be produced
+ * (no coordinates/address, no Mapbox token, offline, or a test environment
+ * without OffscreenCanvas) it returns `y` unchanged and the document
+ * continues text-only — never throws, never blanks the page.
+ */
+/**
+ * Approximate solar rise/set (suncalc-style NOAA approximation, ±2min) —
+ * computed OFFLINE so the tactical block's light-condition readout never
+ * costs a network call. Returns null inside polar day/night edge cases.
+ */
+function sunTimes(d: Date, lat: number, lng: number): { sunrise: Date; sunset: Date } | null {
+  const rad = Math.PI / 180;
+  const dayMs = 86400000;
+  const J1970 = 2440588;
+  const J2000 = 2451545;
+  const toJulian = (date: Date) => date.valueOf() / dayMs - 0.5 + J1970;
+  const fromJulian = (j: number) => new Date((j + 0.5 - J1970) * dayMs);
+  const n = Math.round(toJulian(d) - J2000 - 0.0009 - -lng / 360);
+  const ds = J2000 + 0.0009 + -lng / 360 + n;
+  const M = rad * (357.5291 + 0.98560028 * (ds - J2000));
+  const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+  const L = M + C + rad * 102.9372 + Math.PI;
+  const Jtransit = ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+  const dec = Math.asin(Math.sin(L) * Math.sin(rad * 23.4397));
+  const phi = rad * lat;
+  const cosH = (Math.sin(rad * -0.833) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec));
+  if (cosH < -1 || cosH > 1) return null;
+  const w = Math.acos(cosH);
+  return { sunrise: fromJulian(Jtransit - w / (2 * Math.PI)), sunset: fromJulian(Jtransit + w / (2 * Math.PI)) };
+}
+
+async function addLocationMapSection(
+  doc: jsPDF,
+  opts: {
+    title: string;
+    lat?: number | null;
+    lng?: number | null;
+    address?: string | null;
+    caption?: string;
+    style?: string;
+    zoom?: number;
+    priority?: string;
+    /** Extra labeled cells appended to the LOCATION DATA strip's top row
+     *  (cross street, property, suite, ...). */
+    details?: { label: string; value: string; ratio?: number }[];
+    /** Incident timestamp (ISO) driving the light-condition readout —
+     *  defaults to generation time. */
+    eventIso?: string | null;
+  },
+  y: number,
+): Promise<number> {
+  const img = await fetchLocationMapImage({
+    lat: opts.lat,
+    lng: opts.lng,
+    address: opts.address,
+    style: opts.style,
+    zoom: opts.zoom,
+    egressRoutes: true, // tactical planning overlay — best-effort, may be absent
+    overviewInset: true,
+  });
+  if (!img) return y;
+  const egress = img.egress ?? [];
+  const priorityRoutes = img.priorityRoutes ?? [];
+  // Support-facility + elevation context (best-effort; null in tests/offline).
+  const tac = await fetchTacticalContext(img.lat, img.lng);
+  // 6-hex → RGB for route-colored plate chips matching the baked line colors.
+  const hexRgb = (hex: string): [number, number, number] => [
+    parseInt(hex.slice(0, 2), 16) || 0,
+    parseInt(hex.slice(2, 4), 16) || 0,
+    parseInt(hex.slice(4, 6), 16) || 0,
+  ];
+
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  const aspect = img.width > 0 && img.height > 0 ? img.width / img.height : 2.2;
+  let drawW = ffw;
+  let drawH = drawW / aspect;
+  const maxH = 95; // mm — tall enough for the default 1000×440 Mapbox image to fill the full page width
+  if (drawH > maxH) {
+    drawH = maxH;
+    drawW = drawH * aspect;
+    if (drawW > ffw) { drawW = ffw; drawH = drawW / aspect; }
+  }
+  const offX = lx + (ffw - drawW) / 2;
+
+  // Reserve header (~5) + image + LOCATION DATA grid (2 rows) + pads.
+  y = checkPageBreak(doc, y, drawH + 8 + (2 + (egress.length ? 1 : 0) + (priorityRoutes.length ? 1 : 0) + 3) * SPACING.FORM_CELL_H + 10, opts.priority);
+  const sec = openAutoSection(doc, opts.title, y);
+  y = sec.contentY;
+  const imgY = y;
+  try {
+    doc.addImage(img.dataUrl, 'JPEG', offX, imgY, drawW, drawH);
+    doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
+    doc.setLineWidth(0.3);
+    doc.rect(offX, imgY, drawW, drawH);
+  } catch {
+    return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Tactical overlay (SWAT location-analysis treatment, 2026-06-11) ──
+  // The static image is CENTERED on the target coordinate, so the reticle
+  // axes pass exactly through the location the pin marks. Every overlay
+  // stroke is double-drawn (wide white underlay + thin dark line) so it
+  // stays legible over both dark rooftops and pale concrete.
+  const cxm = offX + drawW / 2;
+  const cym = imgY + drawH / 2;
+  const hair = (x1: number, y1: number, x2: number, y2: number) => {
+    doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.7); doc.line(x1, y1, x2, y2);
+    doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.2); doc.line(x1, y1, x2, y2);
+  };
+  const GAP = 5;   // center gap so the hairlines never obscure the structure
+  const RING = 3.4;
+  hair(offX, cym, cxm - GAP, cym);
+  hair(cxm + GAP, cym, offX + drawW, cym);
+  hair(cxm, imgY, cxm, cym - GAP);
+  hair(cxm, cym + GAP, cxm, imgY + drawH);
+  doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.7); doc.circle(cxm, cym, RING);
+  doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.25); doc.circle(cxm, cym, RING);
+
+  // North indicator (static renders are always north-up / bearing 0).
+  {
+    const nx = offX + drawW - 6.5;
+    const ny = imgY + 6.5;
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(0.25);
+    doc.circle(nx, ny, 3.4, 'FD');
+    doc.setFillColor(20, 20, 20);
+    doc.triangle(nx, ny - 2.4, nx - 1.2, ny - 0.4, nx + 1.2, ny - 0.4, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    doc.setTextColor(20, 20, 20);
+    doc.text('N', nx, ny + 2.4, { align: 'center' });
+  }
+
+  // SWAT side designations — ALPHA/BRAVO/CHARLIE/DELTA plates centered on
+  // each frame edge with the azimuth of that side. Static renders are
+  // north-up, so ALPHA (the reference side) is fixed to the north edge —
+  // standard side-lettering proceeds clockwise.
+  {
+    const sides: { lbl: string; x: number; y: number }[] = [
+      { lbl: 'A - 000\u00B0', x: cxm, y: imgY + 3.4 },
+      { lbl: 'B - 090\u00B0', x: offX + drawW - 8.5, y: cym },
+      { lbl: 'C - 180\u00B0', x: cxm, y: imgY + drawH - 3.4 },
+      { lbl: 'D - 270\u00B0', x: offX + 8.5, y: cym },
+    ];
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5);
+    for (const s of sides) {
+      const w2 = doc.getTextWidth(s.lbl) + 2.4;
+      const h2 = 3.4;
+      doc.setFillColor(20, 20, 20);
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0.25);
+      doc.rect(s.x - w2 / 2, s.y - h2 / 2, w2, h2, 'FD');
+      doc.setTextColor(255, 255, 255);
+      doc.text(s.lbl, s.x, s.y + 1.1, { align: 'center' });
+    }
+  }
+
+  // Ground-truth scale bar (bottom-left). Mapbox styles use 512px tiles, so
+  // ground resolution per LOGICAL pixel = 156543.03392·cos(lat)/2^(zoom+1);
+  // the request is @2x, so logical width = img.width/2.
+  const zoomUsed = opts.zoom ?? 15;
+  const mPerLogicalPx = (156543.03392 * Math.cos((img.lat * Math.PI) / 180)) / Math.pow(2, zoomUsed + 1);
+  const mPerMm = ((img.width / 2) * mPerLogicalPx) / drawW;
+  {
+    const niceM = [10, 20, 25, 50, 100, 200, 250, 500, 1000].find((m) => m / mPerMm >= 16) ?? 1000;
+    const barMm = niceM / mPerMm;
+    const bx = offX + 3;
+    const by = imgY + drawH - 4;
+    doc.setFillColor(255, 255, 255);
+    doc.rect(bx - 1.2, by - 3.4, barMm + 16, 5.4, 'F');
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(0.3);
+    doc.line(bx, by, bx + barMm, by);
+    doc.line(bx, by - 1.4, bx, by);
+    doc.line(bx + barMm, by - 1.4, bx + barMm, by);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5);
+    doc.setTextColor(20, 20, 20);
+    doc.text(`${niceM} M`, bx + barMm + 2, by);
+  }
+  // Range rings — dashed perimeter circles at a clean ground distance and
+  // its half, clipped-safe (largest nice radius that fits inside the frame
+  // with 6mm clearance). Gives the reviewer instant standoff distances.
+  {
+    const fitMm = Math.min(drawW, drawH) / 2 - 6;
+    const ringM = [1000, 500, 200, 100, 50].find((m) => m / mPerMm <= fitMm); // halves stay integer-clean
+    if (ringM) {
+      const dash = (doc as unknown as { setLineDashPattern?: (p: number[], ph: number) => void });
+      for (const m of [ringM, ringM / 2]) {
+        const rMm = m / mPerMm;
+        dash.setLineDashPattern?.([1.4, 1.4], 0);
+        doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.55); doc.circle(cxm, cym, rMm);
+        doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.2); doc.circle(cxm, cym, rMm);
+        dash.setLineDashPattern?.([], 0);
+        // Ring label plate at 45° NE on the circle
+        const lx2 = cxm + rMm * Math.SQRT1_2;
+        const ly2 = cym - rMm * Math.SQRT1_2;
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(20, 20, 20);
+        doc.setLineWidth(0.2);
+        const lbl = `${m} M`;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(4.5);
+        const lw = doc.getTextWidth(lbl) + 1.6;
+        doc.rect(lx2 - lw / 2, ly2 - 1.7, lw, 3, 'FD');
+        doc.setTextColor(20, 20, 20);
+        doc.text(lbl, lx2, ly2 + 0.6, { align: 'center' });
+      }
+    }
+  }
+
+  // Overview inset (PiP, top-left) — wide-area streets render framing the
+  // close-up; kept clear of the bottom corners so the Mapbox logo +
+  // attribution baked into the main raster stay visible (TOS).
+  let insetRect: { x: number; y: number; w: number; h: number } | null = null;
+  if (img.insetDataUrl) {
+    const iw = 40;
+    const ih = 26.7;
+    const ix = offX + 2;
+    const iy = imgY + 2;
+    insetRect = { x: ix - 1, y: iy - 1, w: iw + 2, h: ih + 2 };
+    try {
+      doc.setFillColor(255, 255, 255);
+      doc.rect(ix - 0.7, iy - 0.7, iw + 1.4, ih + 1.4, 'F');
+      doc.addImage(img.insetDataUrl, 'JPEG', ix, iy, iw, ih);
+      doc.setDrawColor(20, 20, 20);
+      doc.setLineWidth(0.3);
+      doc.rect(ix, iy, iw, ih);
+      doc.setFillColor(20, 20, 20);
+      doc.rect(ix, iy + ih - 3, 16, 3, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(4.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text('AREA OVERVIEW', ix + 1, iy + ih - 0.9);
+    } catch { /* inset optional */ }
+  }
+
+  // EXIT plates — one per computed egress route, placed at the route's far
+  // end projected into the frame (Web Mercator around the image center; the
+  // static render is centered on the target). Plates clamp to a 4mm inset
+  // so a route that leaves the frame still gets its label on the edge it
+  // exits through.
+  if (egress.length || priorityRoutes.length) {
+    const world = 512 * Math.pow(2, zoomUsed); // logical px
+    const mercX = (lngV: number) => world * (lngV / 360 + 0.5);
+    const mercY = (latV: number) => {
+      const phi = (latV * Math.PI) / 180;
+      return world * (0.5 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / (2 * Math.PI));
+    };
+    const cX = mercX(img.lng);
+    const cY = mercY(img.lat);
+    const pxPerMmX = (img.width / 2) / drawW;
+    const pxPerMmY = (img.height / 2) / drawH;
+    const plates: { text: string; end: [number, number]; colorHex: string }[] = [
+      ...egress.map((r) => ({ text: `EXIT ${r.label}`, end: r.end, colorHex: r.colorHex })),
+      ...priorityRoutes.map((p) => ({
+        text: p.kind === 'CASEVAC' ? 'CASEVAC' : 'HWY',
+        end: p.end,
+        colorHex: p.colorHex,
+      })),
+    ];
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    for (const plate of plates) {
+      let ex = cxm + (mercX(plate.end[0]) - cX) / pxPerMmX;
+      let ey = cym + (mercY(plate.end[1]) - cY) / pxPerMmY;
+      const chipW = 2.2; // route-color swatch matching the baked line
+      const plateW = doc.getTextWidth(plate.text) + 3 + chipW;
+      const plateH = 4.2;
+      ex = Math.max(offX + 4, Math.min(ex, offX + drawW - plateW - 4));
+      ey = Math.max(imgY + 4, Math.min(ey, imgY + drawH - plateH - 4));
+      // Keep plates clear of the overview inset (top-left PiP).
+      if (insetRect &&
+          ex < insetRect.x + insetRect.w && ex + plateW > insetRect.x &&
+          ey < insetRect.y + insetRect.h && ey + plateH > insetRect.y) {
+        ey = insetRect.y + insetRect.h + 1;
+      }
+      // Off-frame route ends clamp to the same edge — nudge stacked plates
+      // apart so CASEVAC/HWY labels never overprint an EXIT plate.
+      while (placed.some((p) =>
+        ex < p.x + p.w + 1 && ex + plateW > p.x - 1 && ey < p.y + p.h + 1 && ey + plateH > p.y - 1)) {
+        ey += plateH + 1;
+        if (ey > imgY + drawH - plateH - 4) { ey = imgY + 4; ex += plateW + 2; }
+      }
+      placed.push({ x: ex, y: ey, w: plateW, h: plateH });
+      doc.setFillColor(20, 20, 20);
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0.3);
+      doc.rect(ex, ey, plateW, plateH, 'FD');
+      const [cr, cg, cb] = hexRgb(plate.colorHex);
+      doc.setFillColor(cr, cg, cb);
+      doc.rect(ex + 0.8, ey + 1.1, chipW - 0.6, plateH - 2.2, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.text(plate.text, ex + chipW + 1.4, ey + plateH - 1.4);
+    }
+  }
+
+  // Hazard / sensitive-occupancy symbols — lettered diamonds (S school,
+  // D daycare, F fuel) at each site's projected position. Only plotted
+  // when the site falls inside the frame; the HAZARDS data row below
+  // carries the full name/distance/bearing either way.
+  if (tac?.hazards.length) {
+    const world = 512 * Math.pow(2, zoomUsed);
+    const mercX = (lngV: number) => world * (lngV / 360 + 0.5);
+    const mercY = (latV: number) => {
+      const phi = (latV * Math.PI) / 180;
+      return world * (0.5 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / (2 * Math.PI));
+    };
+    const cX = mercX(img.lng);
+    const cY = mercY(img.lat);
+    const pxPerMmX = (img.width / 2) / drawW;
+    const pxPerMmY = (img.height / 2) / drawH;
+    for (const hz of tac.hazards) {
+      const hx = cxm + (mercX(hz.lng) - cX) / pxPerMmX;
+      const hy = cym + (mercY(hz.lat) - cY) / pxPerMmY;
+      const R2 = 2.6;
+      if (hx < offX + R2 + 1 || hx > offX + drawW - R2 - 1 || hy < imgY + R2 + 1 || hy > imgY + drawH - R2 - 1) continue;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(20, 20, 20);
+      doc.setLineWidth(0.35);
+      doc.triangle(hx, hy - R2, hx - R2, hy, hx + R2, hy, 'FD');
+      doc.triangle(hx - R2, hy, hx + R2, hy, hx, hy + R2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(4.8);
+      doc.setTextColor(20, 20, 20);
+      doc.text(hz.letter, hx, hy + 0.85, { align: 'center' });
+    }
+  }
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  y = imgY + drawH;
+
+  // ── LOCATION DATA strip — bordered grid flush against the image frame.
+  // Replaces the old single caption line with a detailed address/grid
+  // readout: target address (+ caller-supplied cells like cross street),
+  // then decimal-degree coords, a DMS grid reference, and the print scale.
+  const toDMS = (v: number, pos: string, neg: string): string => {
+    const hemi = v < 0 ? neg : pos;
+    const a = Math.abs(v);
+    const d = Math.floor(a);
+    const mF = (a - d) * 60;
+    const m = Math.floor(mF);
+    const s = ((mF - m) * 60).toFixed(1);
+    return `${d}\u00B0${String(m).padStart(2, '0')}'${s.padStart(4, '0')}"${hemi}`;
+  };
+  const topCells: FormCell[] = [
+    { label: 'TARGET ADDRESS', value: opts.caption || opts.address || '', ratio: 2.6 },
+    ...(opts.details || []).map((c) => ({ label: c.label, value: c.value || EMPTY_FIELD, ratio: c.ratio ?? 1 })),
+  ];
+  const frameM = Math.round(mPerMm * drawW);
+  const botCells: FormCell[] = [
+    { label: 'LATITUDE (DD)', value: img.lat.toFixed(6), ratio: 0.9 },
+    { label: 'LONGITUDE (DD)', value: img.lng.toFixed(6), ratio: 0.95 },
+    { label: 'GRID (DMS)', value: `${toDMS(img.lat, 'N', 'S')} ${toDMS(img.lng, 'E', 'W')}`, ratio: 1.55, valueFontSize: 6 },
+    { label: 'GRID (MGRS)', value: toMgrs(img.lat, img.lng) || EMPTY_FIELD, ratio: 1.35, valueFontSize: 6 },
+    { label: 'SCALE / FRAME', value: `1:${Math.round(mPerMm * 1000).toLocaleString('en-US')} / ${frameM} M`, ratio: 1.1, valueFontSize: 6 },
+  ];
+  y = drawFormRow(doc, topCells, offX, y, drawW);
+  y = drawFormRow(doc, botCells, offX, y, drawW);
+  // Egress / planning row — one cell per computed exit route: driving
+  // distance, overall direction, and the first named road out.
+  if (egress.length) {
+    const egressCells: FormCell[] = egress.map((r) => ({
+      label: `EGRESS ${r.label} (${r.compass})`,
+      value:
+        `${(r.distanceM / 1609.344).toFixed(2)} MI` +
+        `${r.durationS > 0 ? ` / ${Math.max(1, Math.round(r.durationS / 60))} MIN` : ''}` +
+        `${r.via ? ` VIA ${r.via}` : ''}`,
+      valueFontSize: 5.5,
+    }));
+    y = drawFormRow(doc, egressCells, offX, y, drawW);
+  }
+  // Priority safety routes — destination-anchored (nearest hospital /
+  // nearest controlled-access highway), real Directions paths.
+  if (priorityRoutes.length) {
+    const prCells: FormCell[] = priorityRoutes.map((p) => {
+      const name = p.name.length > 24 ? p.name.slice(0, 23).trimEnd() + '.' : p.name;
+      return {
+        label: p.kind === 'CASEVAC' ? 'CASEVAC ROUTE - MEDICAL' : 'HIGHWAY ACCESS',
+        value:
+          `${name} - ${(p.distanceM / 1609.344).toFixed(2)} MI` +
+          `${p.durationS > 0 ? ` / ${Math.max(1, Math.round(p.durationS / 60))} MIN` : ''}` +
+          `${p.via ? ` VIA ${p.via}` : ''}`,
+        valueFontSize: 5.5,
+      };
+    });
+    y = drawFormRow(doc, prCells, offX, y, drawW);
+  }
+
+  // ── TACTICAL REVIEW rows — environment + nearest support facilities. ──
+  // Sun times are computed offline from the incident timestamp; elevation
+  // and the MEDICAL/FIRE/LAW ENF cells come from fetchTacticalContext and
+  // degrade to absent when offline.
+  {
+    // parseTimestamp, never the raw Date constructor on a server string —
+    // naive timestamps must resolve via the shared Mountain-Time rules.
+    const evt = opts.eventIso ? parseTimestamp(opts.eventIso) : new Date();
+    const evtOk = Number.isFinite(evt.valueOf());
+    const sun = evtOk ? sunTimes(evt, img.lat, img.lng) : null;
+    const fmtMT = (d: Date) =>
+      d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Denver' });
+    let light = EMPTY_FIELD;
+    if (sun && evtOk) {
+      const t = evt.valueOf();
+      const PAD = 30 * 60000;
+      light = t < sun.sunrise.valueOf() - PAD || t > sun.sunset.valueOf() + PAD
+        ? 'DARKNESS'
+        : (t < sun.sunrise.valueOf() + PAD || t > sun.sunset.valueOf() - PAD ? 'TWILIGHT' : 'DAYLIGHT');
+    }
+    const envCells: FormCell[] = [
+      {
+        label: 'ELEVATION',
+        value: tac?.elevationM != null ? `${Math.round(tac.elevationM * 3.28084)} FT (${Math.round(tac.elevationM)} M)` : EMPTY_FIELD,
+      },
+      { label: 'SUNRISE (MT)', value: sun ? fmtMT(sun.sunrise) : EMPTY_FIELD },
+      { label: 'SUNSET (MT)', value: sun ? fmtMT(sun.sunset) : EMPTY_FIELD },
+      { label: 'LIGHT AT REPORT', value: light },
+    ];
+    y = drawFormRow(doc, envCells, offX, y, drawW);
+    if (tac?.pois.length) {
+      const poiCells: FormCell[] = tac.pois.map((p) => {
+        const name = p.name.length > 26 ? p.name.slice(0, 25).trimEnd() + '.' : p.name;
+        return {
+          label: `NEAREST ${p.kind}`,
+          value: `${name} - ${(p.distanceM / 1609.344).toFixed(2)} MI ${p.compass}`,
+          valueFontSize: 6,
+        };
+      });
+      y = drawFormRow(doc, poiCells, offX, y, drawW, SPACING.FORM_CELL_H + 1);
+    }
+    if (tac?.hazards.length) {
+      const hazCells: FormCell[] = tac.hazards.map((h) => {
+        const name = h.name.length > 22 ? h.name.slice(0, 21).trimEnd() + '.' : h.name;
+        return {
+          label: `HAZARD ${h.letter} - ${h.kind}`,
+          value: `${name} - ${h.distanceM < 1000 ? `${Math.round(h.distanceM)} M` : `${(h.distanceM / 1609.344).toFixed(2)} MI`} ${h.compass}`,
+          valueFontSize: 6,
+        };
+      });
+      y = drawFormRow(doc, hazCells, offX, y, drawW, SPACING.FORM_CELL_H + 1);
+    }
+  }
+  y += 1;
+  return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+}
+
 async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Adopt light-banner style for Call PDF (2026-05-04) — visual cohesion
   // with the Person PDF tactical-report look. Restored to 'dark' at end
@@ -1200,6 +2069,24 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const ffw = getFullFieldWidth(doc);
   const prio = callPriorityLabel(data.priority);
 
+  // REGRESSION-GUARD: shared gate for process-service call types. Both the
+  // "Process Service Details" block and the "Visit History" table gate on
+  // this predicate; duplicating the includes/equality check at both sites
+  // causes drift (the 2026-06-01 fix added civil_paper_service to one block
+  // but the reviewer had to verify the other manually). A single shared
+  // predicate ensures both blocks stay in lockstep.
+  const isProcessServiceCall =
+    data.incident_type === 'civil_paper_service' ||
+    data.incident_type === 'process_service' ||
+    data.pso_service_type === 'process_service';
+
+  // Status-aware lifecycle + rolled-up threat posture, computed once and
+  // threaded through the timeline strip, DATE/TIME grid, posture band, and
+  // Resolution Details so the whole report reads coherently for OPEN calls.
+  const lifecycle = computeCallLifecycle(data);
+  const posture = recordPosture(callPostureFlags(data));
+  const postureChips = callPostureChips(data);
+
   setActiveCaseNumber(data.call_number);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -1208,7 +2095,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     formNumber: 'FORM PS-201',
     caseNumber: data.call_number,
     caseNumberLabel: 'CALL FOR SERVICE',
-    reportDate: fmtTimestamp(data.created_at || ''),
+    reportDate: fmtTimestamp(data.created_at) || 'N/A',
   });
 
   // Quick-reference banner — primary identifier in big text immediately
@@ -1241,14 +2128,23 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     ];
     const events: TimelineEvent[] = [];
     let prevTs: number | null = null;
-    for (const s of stages) {
-      const t = s.iso ? Date.parse(s.iso) : NaN;
-      const time = isFinite(t) ? new Date(t).toLocaleTimeString('en-US', { hour12: false }) : undefined;
+    for (let i = 0; i < stages.length; i++) {
+      const s = stages[i];
+      // parseTimestamp interprets naive server strings as UTC (the app standard);
+      // Date.parse treated them as local, skewing the elapsed deltas ~6-7h.
+      const t = s.iso ? parseTimestamp(s.iso).getTime() : NaN;
+      const time = isFinite(t) ? new Date(t).toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Denver' }) : undefined;
       const elapsed = isFinite(t) && prevTs != null ? formatElapsed(t - prevTs) : undefined;
-      events.push({ label: s.label, time, elapsed });
+      // Status-aware state: done if timestamped, else active/future per the
+      // lifecycle. Lets the strip render "PENDING" on the live edge + faint
+      // placeholders ahead instead of "--:--:--" dash-soup on open calls.
+      events.push({ label: s.label, time, elapsed, state: lifecycle.stripStates[i] });
       if (isFinite(t)) prevTs = t;
     }
-    if (events.some(e => e.time)) {
+    // Render whenever the call has been created (i.e. always) so the lifecycle
+    // edge is visible even before dispatch — an open call's "what next?" is as
+    // useful as a closed call's chronology.
+    if (events.some(e => e.time || e.state === 'active')) {
       y = drawDispatchTimelineStrip(doc, events, y);
     }
   }
@@ -1260,30 +2156,23 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // underlying data is absent — so existing minimal-data calls
   // print at the same length as before.
 
-  // β.1 — Hazard chip strip (officer-safety glance).
-  // The officer_safety_caution flag is rendered as "REVIEW BEFORE
-  // APPROACH" rather than "OFFICER SAFETY" — the strip's own banner
-  // literal already reads "CAUTION -- OFFICER SAFETY", so a matching
-  // "OFFICER SAFETY" chip on the right side was visibly duplicative
-  // (caught 2026-05-04). The new label adds operational guidance
-  // instead of repeating the banner words while still ensuring the
-  // strip renders when officer_safety is the sole hazard flag.
-  {
-    const flags: CautionFlag[] = [];
-    if (data.officer_safety_caution) flags.push({ label: 'REVIEW BEFORE APPROACH', kind: 'armed' });
-    if (data.weapons_involved && data.weapons_involved !== '0' && data.weapons_involved.toLowerCase() !== 'n/a') {
-      flags.push({ label: `WEAPONS: ${data.weapons_involved.toUpperCase()}`, kind: 'armed' });
-    }
-    if (data.felony_in_progress) flags.push({ label: 'FELONY IN PROGRESS', kind: 'warrant' });
-    if (data.domestic_violence) flags.push({ label: 'DOMESTIC VIOLENCE', kind: 'violent' });
-    if (data.mental_health_crisis) flags.push({ label: 'MENTAL HEALTH CRISIS', kind: 'mental' });
-    if (data.hazmat) flags.push({ label: 'HAZMAT', kind: 'medical' });
-    if (data.gang_related) flags.push({ label: 'GANG RELATED', kind: 'gang' });
-    if (data.vehicle_pursuit) flags.push({ label: 'VEHICLE PURSUIT', kind: 'violent' });
-    if (data.foot_pursuit) flags.push({ label: 'FOOT PURSUIT', kind: 'violent' });
-    if (flags.length > 0) {
-      y = drawCautionFlagStrip(doc, flags, y);
-    }
+  // β.1 — Threat-posture band (rolled-up officer-safety glance).
+  // Replaces the old per-flag CAUTION chip strip with the #794 posture
+  // engine's single dominant treatment: recordPosture() ranks every flag and
+  // the band shows ONE loud signal (OFFICER SAFETY / HIGH RISK / CAUTION) in
+  // the matching severity color, with the contributing flags as chips on the
+  // right. This is the SAME posture object the on-screen RecordHero renders,
+  // so paper and panel can never disagree. Skipped entirely for a no-flag
+  // call so minimal records print at the same length as before.
+  if (posture.level !== 'clear' && postureChips.length > 0) {
+    const ctx = `PRI ${String(data.priority || '').toUpperCase() || 'STD'} - ${formatEnumValue(data.incident_type)}`;
+    y = drawThreatPostureBand(doc, {
+      level: posture.level,
+      tone: posture.tone,
+      label: posture.label,
+      context: ctx,
+      flags: postureChips,
+    }, y);
   }
 
   // β.2 — Cross-reference badge bar (linked persons/vehicles/properties)
@@ -1294,8 +2183,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   //       exist. Benchmarks: P1 ≤5min, P2 ≤10min, P3+ ≤20min. Score
   //       inverts so 100 = on-or-under benchmark, 0 = ≥3× benchmark.
   if (data.dispatched_at && data.onscene_at) {
-    const tDisp = Date.parse(data.dispatched_at);
-    const tArr = Date.parse(data.onscene_at);
+    // parseTimestamp interprets naive server strings as UTC (the app
+    // standard). The pre-wave-3 code used Date.parse which treated
+    // them as local, skewing response-time scores ~6-7h. Fixed in
+    // ecd8e2e4 for the timeline strip (line 1678) but this SLA
+    // gauge block was missed — same bug, same fix. (Wave 3.1)
+    const tDisp = parseTimestamp(data.dispatched_at).getTime();
+    const tArr = parseTimestamp(data.onscene_at).getTime();
     if (isFinite(tDisp) && isFinite(tArr) && tArr >= tDisp) {
       const respMin = (tArr - tDisp) / 60000;
       const prioStr = String(data.priority || '').toUpperCase();
@@ -1346,7 +2240,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const it = items[i];
         // Status dot
         if (it.on) {
-          doc.setFillColor(60, 120, 70);
+          doc.setFillColor(80, 80, 80); // neutralized 2026-05-30
         } else {
           doc.setFillColor(180, 180, 180);
         }
@@ -1366,37 +2260,52 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   y = drawDistrictBar(doc, y, data as any);
 
-  // Classification
-  // Section/Zone/Beat is intentionally omitted — the district bar at
-  // the top of page 1 already shows it (and Incident Location was also
-  // displaying it, producing a visible triple-render of the same data).
-  // Case Number is normalized: legacy free-text values like "Not Field"
-  // / "Not Filed" / "N/A" are coerced to empty so the field falls back
-  // to the standard placeholder rendering rather than surfacing typos.
-  { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
+  // Dispatch Identification — dense 4-row grid covering all classification,
+  // routing, and provenance fields. Secondary type, contract ID, dispatcher,
+  // and record creator are always visible on the printed form regardless of
+  // incident type so auditors don't need to dig into the PSO section or the
+  // database to answer "who created this / what was the secondary class."
+  { const sec = openAutoSection(doc, 'Dispatch Identification', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
+      // Row 1: Core classification
       { label: 'Call Number', value: data.call_number },
       { label: 'Incident Type', value: formatEnumValue(data.incident_type) },
       { label: 'Priority', value: formatEnumValue(data.priority) },
+      // Row 2: Status, routing, secondary classification
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: formatEnumValue(data.source) },
+      { label: 'Secondary Type', value: formatEnumValue(data.secondary_type) },
+      // Row 3: Resolution + geography + contract
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
+      { label: 'Dispatch Code', value: zsbComposite({ zoneId: data.zone_id, beatId: data.beat_id, dispatchCode: data.dispatch_code || data.zone_beat }) },
+      { label: 'Contract ID', value: data.contract_id || '' },
+      // Row 4: Case linkage + record provenance
       { label: 'Case Number', value: normalizeCaseNumber(data.case_number) },
       { label: 'Incident Number', value: data.incident_number || '' },
+      { label: 'Created By', value: data.created_by || '' },
     ], y);
+    // Row 5: Dispatcher + record-creation timestamp (half-width pair)
+    { const yL = addFieldPair(doc, 'Dispatcher / OPR', data.dispatcher_name || '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Record Created', fmtTimestamp(data.created_at), rx, y, hfw);
+      y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // Date / Time — 3-column grid (6 timestamps in 2 rows of 3) + Timeline subsection
   y = checkPageBreak(doc, y, 40, prio);
   { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
+    // Status-aware values: a populated stage prints its timestamp; the live
+    // edge of an open call prints "PENDING"; un-reached stages print a clean
+    // "-" instead of the old "N/A" wall that made open calls look incomplete.
+    const tsField = (iso: string | undefined, idx: number) =>
+      iso ? fmtTimestamp(iso) : lifecycle.fieldStates[idx] === 'active' ? 'PENDING' : '-';
     y = addThreeColumnFields(doc, [
-      { label: 'Created', value: fmtTimestamp(data.created_at || '') },
-      { label: 'Dispatched', value: fmtTimestamp(data.dispatched_at || '') },
-      { label: 'Enroute', value: fmtTimestamp(data.enroute_at || '') },
-      { label: 'On Scene', value: fmtTimestamp(data.onscene_at || '') },
-      { label: 'Cleared', value: fmtTimestamp(data.cleared_at || '') },
-      { label: 'Closed', value: fmtTimestamp(data.closed_at || '') },
+      { label: 'Created', value: tsField(data.created_at, 0) },
+      { label: 'Dispatched', value: tsField(data.dispatched_at, 1) },
+      { label: 'Enroute', value: tsField(data.enroute_at, 2) },
+      { label: 'On Scene', value: tsField(data.onscene_at, 3) },
+      { label: 'Cleared', value: tsField(data.cleared_at, 4) },
+      { label: 'Closed', value: tsField(data.closed_at, 5) },
     ], y);
 
     // Timeline sub-section — compact per-step waterfall with deltas + totals
@@ -1447,7 +2356,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let prevMs: number | null = null;
       for (let i = 0; i < steps.length; i++) {
         const s = steps[i];
-        const tsMs = new Date(s.ts as string).getTime();
+        const tsMs = parseTimestamp(s.ts as string).getTime();
         const deltaMs = (prevMs != null && isFinite(tsMs - prevMs) && tsMs - prevMs >= 0) ? tsMs - prevMs : null;
         let deltaStr = '—';
         if (deltaMs != null) {
@@ -1478,11 +2387,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const clock = hh > 0 ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
         return `${clock} (${(ms / 3600000).toFixed(2)}h)`;
       };
-      const t0 = data.created_at ? new Date(data.created_at).getTime() : NaN;
-      const tEnd = (data.cleared_at || data.closed_at || (data as any).archived_at) ? new Date((data.cleared_at || data.closed_at || (data as any).archived_at) as string).getTime() : NaN;
-      const tDisp = data.dispatched_at ? new Date(data.dispatched_at).getTime() : NaN;
-      const tOn = data.onscene_at ? new Date(data.onscene_at).getTime() : NaN;
-      const tClr = data.cleared_at ? new Date(data.cleared_at).getTime() : (data.closed_at ? new Date(data.closed_at).getTime() : NaN);
+      const t0 = data.created_at ? parseTimestamp(data.created_at).getTime() : NaN;
+      const tEnd = (data.cleared_at || data.closed_at || (data as any).archived_at) ? parseTimestamp((data.cleared_at || data.closed_at || (data as any).archived_at) as string).getTime() : NaN;
+      const tDisp = data.dispatched_at ? parseTimestamp(data.dispatched_at).getTime() : NaN;
+      const tOn = data.onscene_at ? parseTimestamp(data.onscene_at).getTime() : NaN;
+      const tClr = data.cleared_at ? parseTimestamp(data.cleared_at).getTime() : (data.closed_at ? parseTimestamp(data.closed_at).getTime() : NaN);
       const totalMs = tEnd - t0;
       const respMs = tOn - tDisp;
       const onSceneMs = tClr - tOn;
@@ -1571,7 +2480,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       else if (data.pso_72hr_notified === 'resolved') slaStatus = 'RESOLVED';
       else if (data.pso_72hr_deadline) {
         try {
-          const dl = new Date(data.pso_72hr_deadline);
+          const dl = parseTimestamp(data.pso_72hr_deadline);
           if (!Number.isNaN(dl.getTime()) && isPast(dl.toISOString())) slaStatus = 'OVERDUE';
         } catch { /* ignore parse errors */ }
       }
@@ -1579,7 +2488,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let timeRemaining = '';
       if (data.pso_72hr_deadline) {
         try {
-          const dl = new Date(data.pso_72hr_deadline).getTime();
+          const dl = parseTimestamp(data.pso_72hr_deadline).getTime();
           const diffMs = dl - Date.now();
           const absH = Math.floor(Math.abs(diffMs) / 3_600_000);
           const absM = Math.floor((Math.abs(diffMs) % 3_600_000) / 60_000);
@@ -1614,8 +2523,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     if (data.dispatched_at || data.onscene_at || data.cleared_at) {
       const durMin = (from?: string, to?: string): string => {
         if (!from || !to) return '';
-        const a = new Date(from).getTime();
-        const b = new Date(to).getTime();
+        const a = parseTimestamp(from).getTime();
+        const b = parseTimestamp(to).getTime();
         if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
         const mins = Math.round((b - a) / 60_000);
         const h = Math.floor(mins / 60);
@@ -1657,8 +2566,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       );
     }
 
-    // Process Service sub-section (unchanged from prior version except for the deadline row)
-    if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
+    // (Process Service Details is rendered as a top-level section below, so it
+    //  also appears for civil_paper_service / process_service calls — not only
+    //  pso_client_request. See the "Process Service Details" block after this.)
+  }
+
+  // ── Process Service Details ────────────────────────────────
+  // Top-level (not nested under pso_client_request): serve-intake creates
+  // calls as incident_type='civil_paper_service', so gating this under PSO
+  // hid the serve-to / result / attempts on every intake CFS. Render whenever
+  // there's process data OR the call is a service-type incident.
+  {
+    if (isProcessServiceCall || data.process_service_type || data.process_served_to) {
       y = checkPageBreak(doc, y, 18, prio);
       const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
       y = addThreeColumnFields(doc, [
@@ -1688,7 +2607,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     // Row 1: Address (full width)
-    y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
+    y = addFieldPair(doc, 'Address', data.location || (data as any).location_address || '', lx, y, ffw);
     // Row 2: Latitude | Longitude | Cross Street (3 columns)
     y = addThreeColumnFields(doc, [
       { label: 'Latitude', value: data.latitude != null ? String(data.latitude) : '' },
@@ -1724,6 +2643,25 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  // CFS address-location map — SWAT location-analysis treatment (2026-06-11):
+  // satellite-streets at zoom 17 (one step out from the old z18 close-up so
+  // approach routes / adjacent structures are in frame), centered reticle +
+  // north indicator + ground scale bar drawn over the image, and a bordered
+  // LOCATION DATA grid (target address, cross street, DD + DMS grid, scale)
+  // flush beneath the frame.
+  y = await addLocationMapSection(doc, {
+    title: 'Incident Location Map',
+    lat: data.latitude,
+    lng: data.longitude,
+    address: cleanAddressText(data.location || (data as any).location_address),
+    caption: cleanAddressText(data.location || (data as any).location_address),
+    style: 'mapbox/satellite-streets-v12',
+    zoom: 17,
+    priority: prio,
+    details: [{ label: 'CROSS STREET', value: data.cross_street || '' }],
+    eventIso: data.created_at,
+  }, y);
 
   // Flags — before Scene Conditions
   // Need: section header (~5mm) + 4 checkbox rows × 3.5mm (14mm) + section
@@ -1824,8 +2762,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
           }
           y = maxUY;
         }
-      } else if (data.assigned_units && data.assigned_units.length > 0) {
-        y = addFieldPair(doc, 'Assigned Units', data.assigned_units.join(', '), lx, y, ffw);
+      } else if (Array.isArray(data.assigned_units) && data.assigned_units.length > 0) {
+        const unitLabels = data.assigned_units.map((u: any) =>
+          typeof u === 'object' ? (u.call_sign || u.name || String(u.id || '')) : String(u));
+        y = addFieldPair(doc, 'Assigned Units', unitLabels.join(', '), lx, y, ffw);
       }
       y = closeAutoSection(doc, uSec.sectionY, y, undefined, uSec.sectionPage);
     }
@@ -1854,49 +2794,124 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // Response Trip — one-line audit summary of the logged drive-to-scene
+  // (call_response) trip, when telemetry captured it. Threaded in by the
+  // caller as data.response_trip (fetched via /dispatch/trips?call_id=).
+  {
+    const rt = data.response_trip;
+    if (rt && rt.trip_type === 'call_response') {
+      const unitTag = (data.assigned_units_detail?.[0]?.call_sign)
+        || (rt.unit_id != null ? `Unit ${rt.unit_id}` : 'Unit');
+      const dur = tripDurationMin(rt);
+      const durStr = dur != null ? `${dur} min` : 'N/A';
+      const miStr = `${tripMiles(rt).toFixed(1)} mi`;
+      const mileagePart = (rt.start_mileage != null && rt.end_mileage != null)
+        ? `, mileage ${Number(rt.start_mileage).toLocaleString()}->${Number(rt.end_mileage).toLocaleString()}`
+        : '';
+      const respLine = `${unitTag} -> scene in ${durStr} over ${miStr}${mileagePart}`;
+      y = checkPageBreak(doc, y, 10, prio);
+      y = addNarrativeField(doc, 'Response', respLine, lx, y, ffw);
+    }
+  }
+
+  // GPS Response Analytics — summary statistics derived from the logged GPS
+  // trail for this call (no individual breadcrumb points — just the rolled-up
+  // operational picture: distance, duration, speed envelope). Only renders
+  // when breadcrumb_trail.stats is populated by the API.
+  {
+    const gpsStats = data.breadcrumb_trail?.stats;
+    if (gpsStats && (gpsStats.total_distance_miles > 0 || gpsStats.duration_minutes > 0)) {
+      y = checkPageBreak(doc, y, 18, prio);
+      const gpsSec = openAutoSection(doc, 'GPS Response Analytics', y); y = gpsSec.contentY;
+      const fmtGpsMph = (n: number | undefined) => n != null ? `${n.toFixed(1)} mph` : '—';
+      const fmtGpsMi  = (n: number | undefined) => n != null ? `${n.toFixed(2)} mi` : '—';
+      const fmtGpsMin = (n: number | undefined) => {
+        if (n == null) return '—';
+        const h = Math.floor(n / 60);
+        const m = Math.round(n % 60);
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+      };
+      const srcBreakdown = gpsStats.source_breakdown
+        ? Object.entries(gpsStats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}:${v}`).join('  ')
+        : '—';
+      y = addThreeColumnFields(doc, [
+        { label: 'Total Distance', value: fmtGpsMi(gpsStats.total_distance_miles) },
+        { label: 'Duration', value: fmtGpsMin(gpsStats.duration_minutes) },
+        { label: 'GPS Points Logged', value: String(gpsStats.total_points ?? '—') },
+        { label: 'Avg Speed', value: fmtGpsMph(gpsStats.avg_speed_mph) },
+        { label: 'Max Speed', value: fmtGpsMph(gpsStats.max_speed_mph) },
+        { label: 'Data Sources', value: srcBreakdown },
+      ], y);
+      y = closeAutoSection(doc, gpsSec.sectionY, y, undefined, gpsSec.sectionPage);
+    }
+  }
+
   // Linked Persons — route through the shared addTableWithShading helper
   // so the table automatically redraws column headers + a
   // "LINKED PERSONS -- CONTINUED" sub-bar on any page break (no more
   // orphaned data rows on continuation pages).
-  if (data.linked_persons && data.linked_persons.length > 0) {
+  if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
     const sec = openAutoSection(doc, 'LINKED PERSONS', y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.14, ffw * 0.26, ffw * 0.20];
+    // CROSS-REF column added 2026-05-30: surfaces (1) a threat token derived
+    // from the person's role (SUBJECT for suspect/wanted/offender roles) and
+    // (2) entity cross-references — when this linked person is ALSO the caller,
+    // the responding officer, or an assigned unit, so a reader sees the same
+    // individual isn't three different people.
+    const pColW = [ffw * 0.22, ffw * 0.12, ffw * 0.12, ffw * 0.18, ffw * 0.16, ffw * 0.20];
     const pColPos: number[] = [];
     { let cx = lx; for (const w of pColW) { pColPos.push(cx); cx += w; } }
-    const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE']
+    const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE', 'CROSS-REF']
       .map((label, i) => ({ label, x: pColPos[i] }));
-    const pRows = data.linked_persons.map(p => [
-      `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
-      formatEnumValue(p.role) || '—',
-      (p.dob || '—').toUpperCase(),
-      [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
-      (p.phone || '—').toUpperCase(),
-    ]);
+    const pRows = data.linked_persons.map(p => {
+      const fullName = `${p.first_name || ''} ${p.last_name || ''}`;
+      const roleL = (p.role || '').toLowerCase();
+      const tokens: string[] = [];
+      if (/suspect|subject|wanted|arrest|offender|aggressor|perp/.test(roleL)) tokens.push('SUBJECT');
+      tokens.push(...personCrossRefTags(fullName, data));
+      return [
+        `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
+        formatEnumValue(p.role) || '—',
+        (p.dob || '—').toUpperCase(),
+        [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
+        (p.phone || '—').toUpperCase(),
+        tokens.join(' / ') || '—',
+      ];
+    });
     y = addTableWithShading(doc, pHeaders, pRows, y, pColPos, { sectionTitle: 'LINKED PERSONS' });
   }
 
   // Linked Vehicles — clean table: section header + column headers + data rows
-  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
+  if (Array.isArray(data.linked_vehicles) && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
     const sec = openAutoSection(doc, 'LINKED VEHICLES', y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
+    // FLAGS column added 2026-05-30: pulls the stolen status OUT of the OWNER
+    // cell (where it was a cramped "[STOLEN]" suffix) into its own threat
+    // column, and cross-references the owner against the call's other entities
+    // (OWNER=CALLER / OWNER LINKED) so a self-reported vehicle is obvious.
+    const vColW = [ffw * 0.11, ffw * 0.24, ffw * 0.10, ffw * 0.15, ffw * 0.22, ffw * 0.18];
     const vColPos: number[] = [];
     { let cx = lx; for (const w of vColW) { vColPos.push(cx); cx += w; } }
-    const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER']
+    const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER', 'FLAGS']
       .map((label, i) => ({ label, x: vColPos[i] }));
     const vRows = data.linked_vehicles.map(v => {
-      const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase())
-        ? ` [${formatEnumValue(v.stolen_status)}]`
-        : '';
+      const isStolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase());
+      const ownerName = `${v.owner_first_name || ''} ${v.owner_last_name || ''}`;
+      const tokens: string[] = [];
+      if (isStolen) tokens.push(formatEnumValue(v.stolen_status!) || 'STOLEN');
+      if (sameEntityName(ownerName, data.caller_name)) tokens.push('OWNER=CALLER');
+      else if ((Array.isArray(data.linked_persons) ? data.linked_persons : []).some(p => sameEntityName(ownerName, `${p.first_name || ''} ${p.last_name || ''}`))) {
+        tokens.push('OWNER LINKED');
+      }
       return [
         formatEnumValue(v.role) || '—',
         [v.year, v.make, v.model].filter(Boolean).join(' ').toUpperCase() || '—',
         (v.color || '—').toUpperCase(),
         ((v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '')).toUpperCase() || '—',
-        ([v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + stolen).toUpperCase() || '—',
+        [v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ').toUpperCase() || '—',
+        tokens.join(' / ') || '—',
       ];
     });
     y = addTableWithShading(doc, vHeaders, vRows, y, vColPos, { sectionTitle: 'LINKED VEHICLES' });
@@ -1915,16 +2930,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     // Page break callback: draw "INCIDENT DETAILS -- CONTINUED" header on new page
     const descPageBreak = (newY: number): number => {
       const cw = getContentWidth(doc);
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
-      doc.setDrawColor(...COLOR.BORDER_SECTION);
-      doc.setLineWidth(BORDER.SECTION_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-      const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH) / 2);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      const idRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
+      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.line(LAYOUT.PAGE_MARGIN, idRuleY, LAYOUT.PAGE_MARGIN + cw, idRuleY);
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1954,108 +2967,103 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Flags — already rendered above (before Scene Conditions)
 
-  // LE Coordination
-  if (data.le_agency || data.le_case_number) {
-    y = checkPageBreak(doc, y, 18, prio);
-    const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Agency', data.le_agency || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'LE Case Number', data.le_case_number || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  // External Agency Coordination — render whenever any coordination flag is set
+  // (agency name, LE case number, LE-notified checkbox, or supervisor-notified).
+  // Previously this block was suppressed when only checkboxes were ticked,
+  // leaving no record of the notification on the printed form. Now the section
+  // always appears when any coordination occurred so auditors see a complete
+  // procedural picture.
+  {
+    const hasCoord = !!(data.le_agency || data.le_case_number || data.le_notified || data.supervisor_notified);
+    if (hasCoord) {
+      y = checkPageBreak(doc, y, 22, prio);
+      const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
+      y = addThreeColumnFields(doc, [
+        { label: 'Agency', value: data.le_agency || '' },
+        { label: 'LE Case Number', value: data.le_case_number || '' },
+        { label: 'LE Notified', value: data.le_notified ? 'YES' : 'NO' },
+      ], y);
+      { const yL = addFieldPair(doc, 'Supervisor Notified', data.supervisor_notified ? 'YES' : 'NO', lx, y, hfw);
+        const yR = addFieldPair(doc, 'Dispatcher / OPR', data.dispatcher_name || '', rx, y, hfw);
+        y = Math.max(yL, yR); }
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
   }
 
   // PSO Client Request Details — already rendered after Caller Information above
 
   // Visit History Timeline (PSO calls with return visits)
-  if (data.incident_type === 'pso_client_request' && data.visit_history && data.visit_history.length > 0) {
+  // Both pso_client_request AND process_service calls accrue visit history on
+  // re-dispatch (server attaches it for both — see src/routes/dispatch/calls.ts).
+  // Gate shared with the Process Service Details block above via isProcessServiceCall.
+  if ((isProcessServiceCall || data.incident_type === 'pso_client_request') && Array.isArray(data.visit_history) && data.visit_history.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Visit History -- ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
-    y = sec.contentY;
+    y = sec.sectionY + SPACING.SECTION_HEADER_H;
 
-    for (let vi = 0; vi < data.visit_history.length; vi++) {
-      const visit = data.visit_history[vi];
-      y = checkPageBreak(doc, y, 12, prio);
-      if (vi > 0) {
-        doc.setDrawColor(...COLOR.BORDER_TABLE);
-        doc.setLineWidth(BORDER.TABLE_ROW);
-        doc.line(lx, y, lx + ffw, y);
-        y += 0.3;
+    // Spreadsheet-style grid (one row per prior visit) routed through the
+    // shared addTableWithShading helper — same look as LINKED PERSONS, with
+    // zebra rows, column dividers, and an automatic header re-draw +
+    // "VISIT HISTORY -- CONTINUED" sub-bar on page breaks. Replaces the old
+    // hand-drawn multi-line text block (cramped spacing + the full date
+    // repeated on every phase). A dedicated DATE column lets each phase show
+    // time-only (HH:MM:SS), so the date prints once per visit.
+    const vColFr = [0.08, 0.11, 0.085, 0.085, 0.085, 0.085, 0.085, 0.13, 0.165];
+    const vColPos: number[] = [];
+    { let cx = lx; for (const fr of vColFr) { vColPos.push(cx); cx += fr * ffw; } }
+    const vHeaders = ['VISIT', 'DATE', 'DISP', 'EN RT', 'ON SC', 'CLR', 'CLS', 'MILES', 'DISPOSITION']
+      .map((label, i) => ({ label, x: vColPos[i] }));
+
+    const vRows = data.visit_history.map((visit) => {
+      // Status rides in the VISIT cell ("#1 ARCHIVED") — word-wraps to its own
+      // line in the narrow column, keeping it without burning a full column.
+      const visitCell = `#${visit.visit_number}${visit.status ? ' ' + String(visit.status).toUpperCase() : ''}`;
+
+      // MILES: total, with the odometer range folded in when both ends are
+      // known (word-wraps to a second line within the cell).
+      let milesCell = '—';
+      const sMi = visit.starting_mileage, eMi = visit.ending_mileage;
+      if (sMi != null && eMi != null) {
+        milesCell = `${(eMi - sMi).toFixed(1)} (${sMi.toLocaleString()}-${eMi.toLocaleString()})`;
+      } else if (eMi != null) {
+        milesCell = `End ${eMi.toLocaleString()}`;
+      } else if (sMi != null) {
+        milesCell = `Start ${sMi.toLocaleString()}`;
       }
 
-      // Visit header line
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(`Visit #${visit.visit_number}`, lx, y);
-
-      // Status badge
-      const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
-      const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(statusText, lx + visitLabelW, y);
-
-      // Units on the right
+      // DISPOSITION cell carries responding units / vehicle when present.
       let unitsList: string[] = [];
-      try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
-      if (unitsList.length > 0) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
-        const unitsW = doc.getTextWidth(unitsText);
-        doc.text(unitsText, lx + ffw - unitsW, y);
-      }
-      // SPACING.SM (0.5) is a "small gap" token — too small to advance a
-      // full text line. Use FIELD_ROW_ADVANCE (2.8) between visit-history
-      // rows so timestamps / mileage / disposition don't render on top of
-      // each other (regression observed in PSO call PDFs 2026-05-02).
-      y += SPACING.FIELD_ROW_ADVANCE;
+      // Guard revived visit rows from sentinel D1 TEXT-column values
+      // (e.g. "None", "N/A") that JSON.parse happily accepts but
+      // aren't arrays. The commit 1c9ff136 Array.isArray-guarded 30
+      // analogous sites but this one was missed. (Wave 3.1)
+      try {
+        const parsed = JSON.parse(visit.assigned_units || '[]');
+        if (Array.isArray(parsed)) unitsList = parsed;
+      } catch { /* ignore — malformed JSON, treat as empty */ }
+      const dispExtras: string[] = [];
+      if (unitsList.length > 0) dispExtras.push(unitsList.join(', '));
+      if (visit.responding_vehicle_id) dispExtras.push(`Veh ${visit.responding_vehicle_id}`);
+      const dispCell = [visit.disposition || '—', ...dispExtras].join(' / ');
 
-      // Timestamps row
-      const timeFields: string[] = [];
-      if (visit.dispatched_at) timeFields.push(`Disp: ${fmtDateTime(visit.dispatched_at)}`);
-      if (visit.enroute_at) timeFields.push(`EnRt: ${fmtDateTime(visit.enroute_at)}`);
-      if (visit.onscene_at) timeFields.push(`OnSc: ${fmtDateTime(visit.onscene_at)}`);
-      if (visit.cleared_at) timeFields.push(`Clr: ${fmtDateTime(visit.cleared_at)}`);
-      if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
+      // Single DATE column = the visit's dispatched date (falls back to the
+      // first available phase / record timestamp).
+      const visitDate = fmtDateOnly(visit.dispatched_at || visit.onscene_at || visit.cleared_at || visit.created_at);
 
-      if (timeFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.FIELD_ROW_ADVANCE;
-      }
+      return [
+        visitCell,
+        visitDate,
+        fmtClock(visit.dispatched_at),
+        fmtClock(visit.enroute_at),
+        fmtClock(visit.onscene_at),
+        fmtClock(visit.cleared_at),
+        fmtClock(visit.closed_at),
+        milesCell,
+        dispCell,
+      ];
+    });
 
-      // Mileage row (if present)
-      const mileageFields: string[] = [];
-      if (visit.responding_vehicle_id) mileageFields.push(`Vehicle: ${visit.responding_vehicle_id}`);
-      if (visit.starting_mileage != null) mileageFields.push(`Start: ${visit.starting_mileage.toLocaleString()} mi`);
-      if (visit.ending_mileage != null) mileageFields.push(`End: ${visit.ending_mileage.toLocaleString()} mi`);
-      if (visit.starting_mileage != null && visit.ending_mileage != null) {
-        mileageFields.push(`Total: ${(visit.ending_mileage - visit.starting_mileage).toFixed(1)} mi`);
-      }
-
-      if (mileageFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.FIELD_ROW_ADVANCE;
-      }
-
-      // Disposition
-      if (visit.disposition) {
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_PRIMARY);
-        doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
-        y += SPACING.FIELD_ROW_ADVANCE;
-      }
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    y = addTableWithShading(doc, vHeaders, vRows, y, vColPos, { sectionTitle: 'VISIT HISTORY' });
   }
 
   // Assigned Units — already rendered above (after Scene Conditions)
@@ -2084,77 +3092,25 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   y = checkPageBreak(doc, y, 20, prio);
 
   { const sec = openAutoSection(doc, 'Resolution Details', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Disposition', formatEnumValue(data.disposition), rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Action Taken', data.action_taken || 'N/A', lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // FREE-FORM — GPS, Notes, Narrative, Attachments, Signatures
-  // ═══════════════════════════════════════════════════════════
-
-  // GPS Activity Log — only render when breadcrumb data exists
-  const trail = data.breadcrumb_trail;
-  if (trail && trail.points && trail.points.length > 0) {
-    y = checkPageBreak(doc, y, 30, prio);
-    const sec = openAutoSection(doc, 'GPS Activity Log', y); y = sec.contentY;
-    const stats = trail.stats;
+    // Status-aware: an OPEN call has no disposition yet — print "PENDING" /
+    // "AWAITING DISPOSITION" rather than "N/A", which read as missing data on
+    // a call that simply hasn't been resolved.
+    const dispVal = formatEnumValue(data.disposition) || (lifecycle.open ? 'PENDING' : 'N/A');
+    const actionVal = data.action_taken || (lifecycle.open ? 'OPEN - AWAITING DISPOSITION' : 'N/A');
+    // Row 1: Responding officer + disposition + cleared timestamp (3-column)
     y = addThreeColumnFields(doc, [
-      { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
-      { label: 'Duration', value: `${stats.duration_minutes} min` },
-      { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
-      { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
-      { label: 'Breadcrumb Points', value: String(stats.total_points) },
-      { label: 'Sources', value: stats.source_breakdown
-        ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
-        : '' },
+      { label: 'Responding Officer', value: data.responding_officer || (lifecycle.open ? 'UNASSIGNED' : 'N/A') },
+      { label: 'Disposition', value: dispVal },
+      { label: 'Cleared At', value: fmtTimestamp(data.cleared_at) || (lifecycle.open ? 'PENDING' : '—') },
     ], y);
-    y += SPACING.SM;
-
-    const maxRows = 50;
-    const step = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
-    const sampled = trail.points.filter((_: any, i: number) => i % step === 0 || i === trail.points.length - 1);
-
-    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 130, LAYOUT.PAGE_MARGIN + 155];
-    const tableHeaders = [
-      { label: 'TIME', x: colPositions[0] },
-      { label: 'LOCATION / ROAD', x: colPositions[1] },
-      { label: 'SPEED', x: colPositions[2] },
-      { label: 'SOURCE', x: colPositions[3] },
-      { label: 'UNIT', x: colPositions[4] },
-    ];
-    const tableRows = sampled.map((p: any) => {
-      let timeStr = '';
-      try {
-        timeStr = new Date(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-      } catch { timeStr = p.time; }
-      let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
-      if (p.road_name) {
-        locationStr = p.road_name;
-        if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;
-      }
-      return [
-        timeStr,
-        locationStr,
-        p.speed_mph != null ? `${p.speed_mph} mph` : '-',
-        (p.source || 'unknown').toUpperCase(),
-        p.call_sign || '',
-      ];
-    });
-
-    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-
-    if (step > 1) {
-      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.MD;
-    }
+    // Row 2: Action taken — full-width (may contain extended narrative)
+    y = addFieldPair(doc, 'Action Taken', actionVal, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // FREE-FORM — Notes, Narrative, Attachments, Signatures
+  // ═══════════════════════════════════════════════════════════
 
   // Notes — police-report entry-log style.
   // Each note becomes a numbered "ENTRY N OF M" block with a charcoal
@@ -2166,7 +3122,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // already contains a system tag like "SERVE INTAKE" or "DISPATCH"
   // — surfaces as the colored entry-type chip on the right of the
   // header strip; otherwise falls back to "OFFICER NOTE".
-  if (data.notes && data.notes.length > 0) {
+  if (Array.isArray(data.notes) && data.notes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
     y += 1.5;
@@ -2246,15 +3202,23 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         || upper === '' || upper === 'SYSTEM';
       const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
       const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
-      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [50, 75, 110]
-        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [120, 90, 20]
-        : upper === 'NCIC' || upper === 'ALERT' ? [180, 25, 25]
-        : !isSystemTag ? [60, 80, 60]
+      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [60, 60, 60]   // neutralized 2026-05-30
+        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [75, 75, 75]
+        : upper === 'NCIC' || upper === 'ALERT' ? [45, 45, 45]
+        : !isSystemTag ? [90, 90, 90]
         : [70, 70, 70];
+
+      // Same field drift as the body: timestamp arrives as `created_at`
+      // (interface) or `timestamp` (live CallNote). Coalesce so the header
+      // strip doesn't render an empty/Invalid date.
+      const noteTs =
+        (n as { created_at?: string; timestamp?: string }).created_at ||
+        (n as { timestamp?: string }).timestamp ||
+        '';
 
       // Initial entry header strip (top of this note).
       y = drawEntryHeaderStrip(
-        y, ni + 1, noteCount, fmtTimestamp(n.created_at).toUpperCase(),
+        y, ni + 1, noteCount, fmtTimestamp(noteTs).toUpperCase(),
         entryType, tagBg, officerSuffix, false,
       );
 
@@ -2267,13 +3231,24 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       const onEntryPageBreak = (newY: number): number => {
         return drawEntryHeaderStrip(
-          newY, ni + 1, noteCount, fmtTimestamp(n.created_at).toUpperCase(),
+          newY, ni + 1, noteCount, fmtTimestamp(noteTs).toUpperCase(),
           entryType, tagBg, '', true,  // continued=true; suppress officer suffix
         );
       };
+      // Note body field drift: the CallPdfData interface declares `content`,
+      // but live CallNote objects (from dispatchMappers) carry the body in
+      // `text`. Older/system notes may also use `body`/`narrative`. Coalesce
+      // across all of them so the entry body never renders blank when only
+      // the header (author/timestamp) resolves. (2026-06-08)
+      const noteBody =
+        (n as { content?: string; text?: string; body?: string; narrative?: string }).content ||
+        (n as { text?: string }).text ||
+        (n as { body?: string }).body ||
+        (n as { narrative?: string }).narrative ||
+        '';
       const bodyEndY = addFormattedText(
         doc,
-        (n.content || '').toUpperCase(),
+        noteBody.toUpperCase(),
         lx + bodyIndent,
         y,
         ffw - bodyIndent,
@@ -2299,7 +3274,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Attachments
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
@@ -2313,7 +3288,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // seal slot with the "SCAN FOR MOBILE PSO" caption fitting alongside
   // — pre-fix the 18mm QR was overflowing the slot and visually
   // crowding the date/time row (caught 2026-05-04).
-  if (data.incident_type === 'pso_client_request' && data.id) {
+  // Mobile-PSO QR badge is gated OFF until the mobile-PSO backend subsystem
+  // (POST /api/cfs/:id/qr-token + the /api/mobile/cfs/* challenge/auth/status/
+  // narrative/pso routes from legacy mobileCfs.ts) is LIVE in the Worker
+  // (src/routes/mobileCfs.ts). The Worker can't rasterize a QR, so the endpoint
+  // returns { token, url } and we render the PNG here with the bundled qrcode lib.
+  const MOBILE_PSO_QR_ENABLED: boolean = true;
+  if (MOBILE_PSO_QR_ENABLED && data.incident_type === 'pso_client_request' && data.id) {
     try {
       const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
         method: 'POST',
@@ -2323,7 +3304,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         },
       });
       if (resp.ok) {
-        const { qr_png_base64 } = await resp.json();
+        const { url } = await resp.json();
+        const qr_png_base64 = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
         const qrSize = 12; // mm — compact corner badge
@@ -2414,52 +3396,16 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // Cross-reference badge bar — only appears when records are linked
   y = addLinkedRecordsStrip(doc, data, y);
 
-  // Caution-flag strip — synthesized from BOLO state + caution_flags
-  // text + structured flags array. Renders only when at least one
-  // flag is detected; otherwise returns y unchanged.
+  // Threat-posture band — unified with the Call report + on-screen RecordHero.
+  // Replaces the old per-flag caution strip: recordPosture() ranks BOLO / sex-
+  // offender / gang / parole / active-warrant / structured-flags into ONE
+  // dominant treatment (critical=red OFFICER SAFETY, high=orange HIGH RISK,
+  // caution=amber). The sentinel guard in personPdfPostureFlags() keeps a
+  // literal "None" gang value from firing a false GANG signal. Skipped for a
+  // clear-posture person so unflagged records print unchanged.
   {
-    const flags: CautionFlag[] = [];
-    if (data.bolo_active) flags.push({ label: 'BOLO ACTIVE', kind: 'warrant' });
-    const flagsArr = Array.isArray(data.flags) ? data.flags : [];
-    for (const f of flagsArr) {
-      // Defensive flag-label extraction.
-      // The persons.flags column has been written historically as both
-      // a JSON array of strings AND a JSON array of { label, kind }
-      // objects (legacy migration). Naive String(f).toUpperCase() on
-      // an object gives "[OBJECT OBJECT]" which surfaces on the caution
-      // banner — visible 2026-05-04. Pull whatever label-like string
-      // is available; skip if the entry is empty or still gives garbage.
-      let raw = '';
-      if (typeof f === 'string') {
-        raw = f;
-      } else if (f && typeof f === 'object') {
-        const obj = f as Record<string, unknown>;
-        raw = String(obj.label ?? obj.name ?? obj.value ?? obj.flag ?? '').trim();
-      }
-      const fStr = raw.trim().toUpperCase();
-      if (!fStr || fStr === '[OBJECT OBJECT]') continue;
-      if (/ARMED|WEAPON/.test(fStr)) flags.push({ label: fStr, kind: 'armed' });
-      else if (/WARRANT/.test(fStr)) flags.push({ label: fStr, kind: 'warrant' });
-      else if (/GANG/.test(fStr)) flags.push({ label: fStr, kind: 'gang' });
-      else if (/MENTAL/.test(fStr)) flags.push({ label: fStr, kind: 'mental' });
-      else if (/MEDICAL|MEDICATION/.test(fStr)) flags.push({ label: fStr, kind: 'medical' });
-      else if (/VIOLENT/.test(fStr)) flags.push({ label: fStr, kind: 'violent' });
-      else flags.push({ label: fStr, kind: 'default' });
-    }
-    if (data.is_sex_offender) flags.push({ label: 'REGISTERED SEX OFFENDER', kind: 'warrant' });
-    // Only raise the GANG caution chip when gang_affiliation is an
-    // operationally significant value — explicit "None" / "N/A" / "0"
-    // selections must NOT trigger an officer-safety chip.
-    if (data.gang_affiliation
-        && !['none', '0', 'n/a', 'na', ''].includes(data.gang_affiliation.toLowerCase().trim())) {
-      flags.push({ label: `GANG: ${data.gang_affiliation.toUpperCase()}`, kind: 'gang' });
-    }
-    if (data.probation_parole && /probation|parole/i.test(data.probation_parole)) {
-      flags.push({ label: data.probation_parole.toUpperCase(), kind: 'default' });
-    }
-    if (flags.length > 0) {
-      y = drawCautionFlagStrip(doc, flags, y);
-    }
+    const dobCtx = hasValue(data.date_of_birth) ? `DOB ${data.date_of_birth}` : '';
+    y = renderRecordPostureBand(doc, personPdfPostureFlags(data), dobCtx, y);
   }
 
   y = drawDistrictBar(doc, y, data as any);
@@ -2468,18 +3414,26 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   { const sec = openAutoSection(doc, 'Subject Identification', y); y = sec.contentY;
     const fifthW = ffw / 5;
 
-    // Row 1: Last Name, First Name, Middle Name — full width, normal layout
-    const fy1 = addFieldPair(doc, 'Last Name', data.last_name || '', lx, y, ffw * 0.4);
-    const fy2 = addFieldPair(doc, 'First Name', data.first_name || '', lx + ffw * 0.4, y, ffw * 0.35);
-    const fy3 = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + ffw * 0.75, y, ffw * 0.25);
-    y = Math.max(fy1, fy2, fy3);
-    // Row 2: Alias, DOB, Gender, Race — full width
+    // Row 1: Last, First, Middle, Suffix
+    const fy1 = addFieldPair(doc, 'Last Name', data.last_name || '', lx, y, ffw * 0.35);
+    const fy2 = addFieldPair(doc, 'First Name', data.first_name || '', lx + ffw * 0.35, y, ffw * 0.3);
+    const fy3 = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + ffw * 0.65, y, ffw * 0.2);
+    const fy3b = addFieldPair(doc, 'Suffix', data.suffix || '', lx + ffw * 0.85, y, ffw * 0.15);
+    y = Math.max(fy1, fy2, fy3, fy3b);
+    // Row 2: Alias / Nickname, Aliases (other AKAs), Alias DOB
     const fy4 = addFieldPair(doc, 'Alias / Nickname', data.alias_nickname || '', lx, y, hfw);
-    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), rx, y, ffw * 0.2);
-    const fy6 = addFieldPair(doc, 'Gender', data.gender || '', rx + ffw * 0.2, y, ffw * 0.15);
-    const fy7 = addFieldPair(doc, 'Race', data.race || '', rx + ffw * 0.35, y, ffw * 0.15);
-    y = Math.max(fy4, fy5, fy6, fy7);
-    // Row 3: Marital Status, Citizenship, Place of Birth, Language, Record ID
+    const fy4b = addFieldPair(doc, 'Other Aliases (AKAs)', data.aliases || '', rx, y, hfw);
+    y = Math.max(fy4, fy4b);
+    // Row 3: DOB, Sex, Gender, Race, Nationality
+    // Fall back to alias_dob when date_of_birth is null (e.g. record created from DL scan where dob landed in alias_dob)
+    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth || data.alias_dob), lx, y, fifthW);
+    // Fall back to gender when sex (legal) field is not populated
+    const fy5b = addFieldPair(doc, 'Sex (Legal)', data.sex || data.gender || '', lx + fifthW, y, fifthW);
+    const fy6 = addFieldPair(doc, 'Gender', data.gender || '', lx + 2 * fifthW, y, fifthW);
+    const fy7 = addFieldPair(doc, 'Race', data.race || '', lx + 3 * fifthW, y, fifthW);
+    const fy7b = addFieldPair(doc, 'Nationality', data.nationality || '', lx + 4 * fifthW, y, fifthW);
+    y = Math.max(fy5, fy5b, fy6, fy7, fy7b);
+    // Row 4: Marital Status, Citizenship, Place of Birth, Language, Record ID
     const fy8 = addFieldPair(doc, 'Marital Status', data.marital_status || '', lx, y, fifthW);
     const fy9 = addFieldPair(doc, 'Citizenship', data.citizenship || '', lx + fifthW, y, fifthW);
     const fy10 = addFieldPair(doc, 'Place of Birth', data.place_of_birth || '', lx + 2 * fifthW, y, fifthW);
@@ -2581,6 +3535,16 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const d3 = addFieldPair(doc, 'DL Class', data.dl_class || '', lx + fifthW * 3, y, fifthW);
     const d4 = addFieldPair(doc, 'DL Expiry', fmtDate(data.dl_expiry), lx + fifthW * 4, y, fifthW);
     y = Math.max(d1, d2, d3, d4);
+    // Row 1b: Issue Date (2/5), Restrictions (3/5)
+    if (data.dl_issue_date || data.dl_restrictions) {
+      const di1 = addFieldPair(doc, 'DL Issue Date', fmtDate(data.dl_issue_date), lx, y, fifthW * 2);
+      const di2 = addFieldPair(doc, 'Restrictions', data.dl_restrictions || '', lx + fifthW * 2, y, fifthW * 3);
+      y = Math.max(di1, di2);
+    }
+    // Row 1c: Endorsements
+    if (data.dl_endorsements) {
+      y = addFieldPair(doc, 'Endorsements', data.dl_endorsements, lx, y, ffw);
+    }
     // Row 2: ID Type (1/5), ID Number (2/5), ID State (1/5), ID Expiry (1/5)
     const i1 = addFieldPair(doc, 'ID Type', data.id_type || '', lx, y, fifthW);
     const i2 = addFieldPair(doc, 'ID Number', data.id_number || '', lx + fifthW, y, fifthW * 2);
@@ -2681,26 +3645,43 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       y += 1.5;  // explicit row-gap before the 2-col Scar/Piercing row
     }
 
-    // Scar / Piercing → 2-col row (left + right)
+    // Scar / Piercing → 2-col row (left + right). When only one of the
+    // pair is present it renders in the LEFT column — a lone value in the
+    // right column reads as floating mid-page (seen live 2026-06-11).
     if (data.scar_description || data.piercing_description) {
-      const ly = data.scar_description
-        ? addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw)
-        : y;
-      const ry = data.piercing_description
-        ? addNarrativeField(doc, 'Piercing Description', data.piercing_description, rx, y, hfw)
-        : y;
-      y = Math.max(ly, ry) + 1.5;  // explicit row-gap before next 2-col row
+      if (data.scar_description && data.piercing_description) {
+        // Reserve the whole row so a page break can't split the two columns
+        // (which would draw the right column at a stale y → label/value overlap).
+        y = checkPageBreak(doc, y, Math.max(
+          narrativeFieldHeight(doc, data.scar_description, hfw),
+          narrativeFieldHeight(doc, data.piercing_description, hfw),
+        ), prio);
+        const ly = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw);
+        const ry = addNarrativeField(doc, 'Piercing Description', data.piercing_description, rx, y, hfw);
+        y = Math.max(ly, ry) + 1.5;  // explicit row-gap before next 2-col row
+      } else if (data.scar_description) {
+        y = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw) + 1.5;
+      } else {
+        y = addNarrativeField(doc, 'Piercing Description', data.piercing_description!, lx, y, hfw) + 1.5;
+      }
     }
 
-    // Distinguishing Features / Marks Location → 2-col row
+    // Distinguishing Features / Marks Location → 2-col row (same collapse)
     if (data.distinguishing_features || data.identifying_marks_location) {
-      const ly = data.distinguishing_features
-        ? addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw)
-        : y;
-      const ry = data.identifying_marks_location
-        ? addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, rx, y, hfw)
-        : y;
-      y = Math.max(ly, ry);
+      if (data.distinguishing_features && data.identifying_marks_location) {
+        // Reserve the whole row so a page break can't split the two columns.
+        y = checkPageBreak(doc, y, Math.max(
+          narrativeFieldHeight(doc, data.distinguishing_features, hfw),
+          narrativeFieldHeight(doc, data.identifying_marks_location, hfw),
+        ), prio);
+        const ly = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw);
+        const ry = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, rx, y, hfw);
+        y = Math.max(ly, ry);
+      } else if (data.distinguishing_features) {
+        y = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw);
+      } else {
+        y = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location!, lx, y, hfw);
+      }
     }
 
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -2818,16 +3799,19 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 10. Active Warrants ───────────────────────────────────
-  if (data.warrants && data.warrants.length > 0) {
+  const activeWarrantsOnly = Array.isArray(data.warrants)
+    ? data.warrants.filter(w => (w.status || '').toLowerCase() === 'active')
+    : [];
+  if (activeWarrantsOnly.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
-    const warrantRows = data.warrants.map(w => [
+    const warrantRows = activeWarrantsOnly.map(w => [
       w.warrant_number || 'N/A',
       titleCase(w.type || ''),
       titleCase(w.status || ''),
       w.charge_description || 'N/A',
-      titleCase(w.offense_level || ''),
-      fmtDate(w.date_issued),
+      titleCase(w.offense_level || '') || 'N/A',
+      fmtDate(w.date_issued || (w as any).issued_date) || 'N/A',
     ]);
     y = addTableWithShading(
       doc,
@@ -2847,7 +3831,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 11. Incident History ──────────────────────────────────
-  if (data.incidents && data.incidents.length > 0) {
+  if (Array.isArray(data.incidents) && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incidentRows = data.incidents.map(inc => [
@@ -2874,7 +3858,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 12. Citation History ──────────────────────────────────
-  if (data.citations && data.citations.length > 0) {
+  if (Array.isArray(data.citations) && data.citations.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const citationRows = data.citations.map(c => [
@@ -2901,7 +3885,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 13. Dispatch Call History ──────────────────────────────
-  if (data.calls && data.calls.length > 0) {
+  if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
@@ -2928,7 +3912,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 14. Criminal History — condensed single table ──────────
-  if (data.criminal_records && data.criminal_records.length > 0) {
+  if (Array.isArray(data.criminal_records) && data.criminal_records.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Criminal History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const crCw = getContentWidth(doc);
@@ -2962,14 +3946,14 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 14b. Linked Vehicles ──────────────────────────────────
-  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
+  if (Array.isArray(data.linked_vehicles) && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     { const sec = openAutoSection(doc, 'Linked Vehicles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const vehRows = data.linked_vehicles.map(v => [
       v.license_plate || 'N/A',
       [v.year, v.make, v.model].filter(Boolean).join(' ') || 'N/A',
       (v.color || '').toUpperCase(),
-      titleCase(v.relationship || 'linked'),
+      humanizeRelationship(v.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PLATE', x: lx }, { label: 'VEHICLE', x: lx + 35 }, { label: 'COLOR', x: lx + 110 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -2977,17 +3961,102 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 14c. Linked Properties ──────────────────────────────────
-  if (data.linked_properties && data.linked_properties.length > 0) {
+  if (Array.isArray(data.linked_properties) && data.linked_properties.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     { const sec = openAutoSection(doc, 'Linked Properties', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const propRows = data.linked_properties.map(p => [
       p.name || 'N/A',
       p.address || '',
-      titleCase(p.relationship || 'linked'),
+      humanizeRelationship(p.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
       propRows, y, [lx, lx + 50, lx + 140]);
+  }
+
+  // ── 14d. Linked Businesses ───────────────────────────────────
+  if (Array.isArray(data.linked_businesses) && data.linked_businesses.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Businesses', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const bizRows = data.linked_businesses.map((b: any) => [
+      b.name || 'N/A',
+      humanizeRelationship(b.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'BUSINESS', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      bizRows, y, [lx, lx + 120]);
+  }
+
+  // ── 14e. Linked Persons ──────────────────────────────────────
+  if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const lnkPersonRows = data.linked_persons.map((p: any) => [
+      p.name || 'N/A',
+      p.dob ? fmtDate(p.dob) : 'N/A',
+      humanizeRelationship(p.relationship),
+      p.flags || '',
+    ]);
+    y = addTableWithShading(doc,
+      [
+        { label: 'NAME', x: lx },
+        { label: 'DOB', x: lx + 70 },
+        { label: 'RELATIONSHIP', x: lx + 100 },
+        { label: 'FLAGS', x: lx + 152 },
+      ],
+      lnkPersonRows, y, [lx, lx + 70, lx + 100, lx + 152]);
+  }
+
+  // ── 14f. Linked Evidence ─────────────────────────────────────
+  if (Array.isArray(data.linked_evidence) && data.linked_evidence.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Evidence', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const evRows = data.linked_evidence.map((e: any) => [
+      e.label || 'N/A',
+      humanizeRelationship(e.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'EVIDENCE', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      evRows, y, [lx, lx + 120]);
+  }
+
+  // ── 14g. Linked Incidents (cross-reference) ──────────────────
+  if (Array.isArray(data.linked_incidents_xref) && data.linked_incidents_xref.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Incidents', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const xrefIncRows = data.linked_incidents_xref.map((i: any) => [
+      i.label || 'N/A',
+      humanizeRelationship(i.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'INCIDENT', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      xrefIncRows, y, [lx, lx + 120]);
+  }
+
+  // ── 14h. Linked Cases (cross-reference) ─────────────────────
+  if (Array.isArray(data.linked_cases) && data.linked_cases.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Cases', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const caseRows = data.linked_cases.map((c: any) => [
+      c.label || 'N/A',
+      humanizeRelationship(c.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CASE', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      caseRows, y, [lx, lx + 120]);
+  }
+
+  // ── 14i. Linked Warrants (cross-reference) ───────────────────
+  if (Array.isArray(data.linked_warrants_xref) && data.linked_warrants_xref.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Warrants', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const wXrefRows = data.linked_warrants_xref.map((w: any) => [
+      w.label || 'N/A',
+      humanizeRelationship(w.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'WARRANT', x: lx }, { label: 'RELATIONSHIP', x: lx + 120 }],
+      wXrefRows, y, [lx, lx + 120]);
   }
 
   // ── 15. Notes ─────────────────────────────────────────────
@@ -3000,26 +4069,21 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     onPageBreak: formSectionPageBreak,
     rows: [
       { cells: [
-        { label: '48. CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
-        { label: '49. LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+        { label: '48. CREATED', value: fmtTimestamp(data.created_at) || 'N/A', ratio: 1 },
+        { label: '49. LAST UPDATED', value: fmtTimestamp(data.updated_at) || 'N/A', ratio: 1 },
       ]},
     ],
     y,
   });
 
   // ── 17. Attachments ───────────────────────────────────────
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
   }
 
-  // ── 18. Provenance line — last-updated audit trail ────────
-  // Renders a tiny right-aligned line above the signature block:
-  // "Last updated: 04/12/2026 14:23 by S.NESBITT". Returns y
-  // unchanged if neither created_at nor updated_at is set.
-  y = addProvenanceLine(doc, {
-    createdAt: data.created_at,
-    updatedAt: data.updated_at,
-  }, y);
+  // ── 18. (removed 2026-06-11) Provenance line — the META section
+  // immediately above already prints CREATED + LAST UPDATED; the extra
+  // right-aligned "LAST UPDATED: ..." line duplicated it verbatim.
 
   // ── 19. Signature Block — full-width stacked ──────────────
   y = addStackedSignatures(doc, 'Entering Officer', '', y, getOfficerSig(), undefined, prio);
@@ -3042,7 +4106,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
 
-  setActiveCaseNumber(data.license_plate || 'N/A');
+  setActiveCaseNumber(data.license_plate || data.plate_number || 'N/A');
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
@@ -3074,6 +4138,15 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 
   y = addLinkedRecordsStrip(doc, data, y);
 
+  // Threat-posture band — stolen / hazmat / impound / structured flags rolled
+  // into one treatment, matching the on-screen vehicle RecordHero.
+  y = renderRecordPostureBand(
+    doc,
+    vehiclePdfPostureFlags(data),
+    [data.year, data.make, data.model].filter(Boolean).join(' ').toUpperCase(),
+    y,
+  );
+
   y = drawDistrictBar(doc, y, data as any);
 
   // ── Vehicle Identification ──
@@ -3081,8 +4154,8 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   { const sec = openAutoSection(doc, 'Vehicle Identification', y); y = sec.contentY;
     const sixthW = ffw / 6;
     // Row 1: License Plate (2/6), State (1/6), Plate Type (1/6), VIN (2/6)
-    const r1a = addFieldPair(doc, 'License Plate', data.license_plate || '', lx, y, sixthW * 2);
-    const r1b = addFieldPair(doc, 'State', data.plate_state || '', lx + sixthW * 2, y, sixthW);
+    const r1a = addFieldPair(doc, 'License Plate', data.license_plate || data.plate_number || '', lx, y, sixthW * 2);
+    const r1b = addFieldPair(doc, 'State', data.plate_state || data.state || data.registration_state || '', lx + sixthW * 2, y, sixthW);
     const r1c = addFieldPair(doc, 'Plate Type', data.plate_type || '', lx + sixthW * 3, y, sixthW);
     const r1d = addFieldPair(doc, 'VIN', data.vin || '', lx + sixthW * 4, y, sixthW * 2);
     y = Math.max(r1a, r1b, r1c, r1d);
@@ -3205,7 +4278,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   y = addNarrativeSection(doc, 'Distinguishing Features', data.distinguishing_features || '', y);
   y = addNarrativeSection(doc, 'Damage Description', data.damage_description || '', y);
 
-  if (data.flags && data.flags.length > 0) {
+  if (Array.isArray(data.flags) && data.flags.length > 0) {
     y = checkPageBreak(doc, y, 10);
     { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
       y = addFieldPair(doc, 'Active Flags', data.flags.join(', '), lx, y, ffw);
@@ -3214,7 +4287,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // ── Incident History ──
-  if (data.incidents && data.incidents.length > 0) {
+  if (Array.isArray(data.incidents) && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incRows = data.incidents.map(inc => [
@@ -3229,7 +4302,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // ── Call History ──
-  if (data.calls && data.calls.length > 0) {
+  if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
@@ -3245,7 +4318,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // ── Citation History ──
-  if (data.citations && data.citations.length > 0) {
+  if (Array.isArray(data.citations) && data.citations.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const citRows = data.citations.map(c => [
@@ -3259,6 +4332,35 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
       citRows, y, [lx, lx + 40, lx + 90, lx + 140]);
   }
 
+  // ── Linked Persons (cross-reference from record_links) ──
+  if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const personRows = data.linked_persons.map(p => [
+      p.name || 'N/A',
+      fmtDate(p.dob),
+      (p.flags || '').toUpperCase(),
+      humanizeRelationship(p.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'NAME', x: lx }, { label: 'DOB', x: lx + 70 }, { label: 'FLAGS', x: lx + 105 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      personRows, y, [lx, lx + 70, lx + 105, lx + 140]);
+  }
+
+  // ── Linked Properties (cross-reference from record_links) ──
+  if (Array.isArray(data.linked_properties) && data.linked_properties.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Properties', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const propRows = data.linked_properties.map(p => [
+      p.name || 'N/A',
+      p.address || '',
+      humanizeRelationship(p.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      propRows, y, [lx, lx + 50, lx + 140]);
+  }
+
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // ── Record Metadata ──
@@ -3267,13 +4369,13 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     topBanner: true,
     onPageBreak: formSectionPageBreak,
     rows: [{ cells: [
-      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
-      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+      { label: 'CREATED', value: fmtTimestamp(data.created_at) || 'N/A', ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at) || 'N/A', ratio: 1 },
     ]}],
     y,
   });
 
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
@@ -3318,18 +4420,29 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
 
   const statusPrio = data.status === 'active' ? 'critical' : data.status === 'served' ? 'low' : 'medium';
 
-  setActiveCaseNumber(data.warrant_number);
+  // Display warrant identifier — fall back through warrant_number → case_number →
+  // local id-stamp so we never surface the literal "N/A" sentinel as the case
+  // number (it was producing "WARRANT #: N/A" in the page header, the
+  // quick-reference banner, and the file's barcode metadata).
+  const warrantIdRaw = data.warrant_number ?? (data as any).case_number ?? null;
+  const warrantIdField = pdfField(warrantIdRaw, EMPTY_FIELD);
+  const sentinelFreeWarrantId = warrantIdField === EMPTY_FIELD
+    ? ((data as any).id ? `WARRANT-${(data as any).id}` : EMPTY_FIELD)
+    : warrantIdField;
+  setActiveCaseNumber(sentinelFreeWarrantId);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
     formTitle: 'WARRANT RECORD',
     formNumber: 'FORM PS-204',
-    caseNumber: data.warrant_number,
+    caseNumber: sentinelFreeWarrantId,
     caseNumberLabel: 'WARRANT #',
     reportDate: fmtDate(data.created_at),
   });
 
-  // Quick-reference banner — warrant# + subject + status pill
+  // Quick-reference banner — warrant# + subject + status pill.
+  // Secondary line collapses to charge list via parseCharges so it can never
+  // surface the literal "[...]" stringified JSON we used to print.
   {
     const subject = [data.subject_last_name, data.subject_first_name]
       .filter(Boolean).join(', ').toUpperCase();
@@ -3341,9 +4454,13 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
         : status
           ? { label: status.toUpperCase(), tone: 'elevated' }
           : undefined;
+    const bannerCharges = parseCharges(data.charge_description ?? (data as any).charges);
+    const bannerChargeText = bannerCharges.length
+      ? bannerCharges.join(', ')
+      : undefined;
     y = addQuickReferenceBanner(doc, {
-      primary: data.warrant_number,
-      secondary: [subject, data.charge_description, data.offense_level].filter(Boolean).join(' · '),
+      primary: sentinelFreeWarrantId,
+      secondary: [subject, bannerChargeText, data.offense_level].filter(Boolean).join(' · '),
       pill,
     }, y);
   }
@@ -3358,24 +4475,17 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     }, x, y, w);
   }
 
-  // Caution-flag strip — warrants always carry "ACTIVE WARRANT"
-  // when active; surface armed/violent flags from subject metadata
-  // if the data shape includes them.
-  {
-    const flags: CautionFlag[] = [];
-    if (String(data.status).toLowerCase() === 'active') {
-      flags.push({ label: 'ACTIVE WARRANT', kind: 'warrant' });
-    }
-    if ((data.offense_level || '').toLowerCase() === 'felony') {
-      flags.push({ label: 'FELONY OFFENSE', kind: 'violent' });
-    }
-    const distinguishing = String(data.subject_distinguishing_features || '').toUpperCase();
-    if (/ARMED|WEAPON/.test(distinguishing)) flags.push({ label: 'ARMED & DANGEROUS', kind: 'armed' });
-    if (/GANG/.test(distinguishing)) flags.push({ label: 'GANG AFFILIATION', kind: 'gang' });
-    if (flags.length > 0) {
-      y = drawCautionFlagStrip(doc, flags, y);
-    }
-  }
+  // Threat-posture band — unified with the Call/Person reports + the on-screen
+  // RecordHero. recordPosture() rolls active-warrant / felony / armed-and-
+  // dangerous / gang into one dominant treatment. Kept ALONGSIDE the priority-
+  // score severity meter above (that's a numeric solvability/priority gauge,
+  // orthogonal to the threat read).
+  y = renderRecordPostureBand(
+    doc,
+    warrantPdfPostureFlags(data),
+    [data.offense_level, data.status].filter(Boolean).map(s => String(s).toUpperCase()).join(' - '),
+    y,
+  );
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -3386,10 +4496,10 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   // bar landed near y=28. The chip now reserves its own vertical
   // band and pushes Y down before any section is drawn.
   const bucket = data.priority_score == null ? null :
-    data.priority_score >= 90 ? { label: 'CRITICAL', color: [220, 38, 38] as [number,number,number] } :
-    data.priority_score >= 70 ? { label: 'HIGH',     color: [245, 158, 11] as [number,number,number] } :
-    data.priority_score >= 40 ? { label: 'MEDIUM',   color: [100, 116, 139] as [number,number,number] } :
-    { label: 'LOW', color: [156, 163, 175] as [number,number,number] };
+    data.priority_score >= 90 ? { label: 'CRITICAL', color: [50, 50, 50] as [number,number,number] } :   // neutralized 2026-05-30
+    data.priority_score >= 70 ? { label: 'HIGH',     color: [75, 75, 75] as [number,number,number] } :
+    data.priority_score >= 40 ? { label: 'MEDIUM',   color: [100, 100, 100] as [number,number,number] } :
+    { label: 'LOW', color: [130, 130, 130] as [number,number,number] };
   if (bucket) {
     const pageW = doc.internal.pageSize.getWidth();
     const chipW = 50;
@@ -3455,13 +4565,17 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     const quarterW = ffw / 4;
     // Row 1: Warrant Number (2/5), Type (1/5), Status (1/5), Offense Level (1/5)
     const fifthW = ffw / 5;
-    const r1a = addFieldPair(doc, 'Warrant Number', data.warrant_number || '', lx, y, fifthW * 2);
-    const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.type), lx + fifthW * 2, y, fifthW);
-    const r1c = addFieldPair(doc, 'Status', displayStatus(data.status || ''), lx + fifthW * 3, y, fifthW);
-    const r1d = addFieldPair(doc, 'Offense Level', (data.offense_level || '').toUpperCase(), lx + fifthW * 4, y, fifthW);
+    const r1a = addFieldPair(doc, 'Warrant Number', pdfField(data.warrant_number), lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'Type', pdfField(formatEnumValue(data.type)), lx + fifthW * 2, y, fifthW);
+    const r1c = addFieldPair(doc, 'Status', pdfField(displayStatus(data.status || '')), lx + fifthW * 3, y, fifthW);
+    const r1d = addFieldPair(doc, 'Offense Level', pdfField((data.offense_level || '').toUpperCase()), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
-    // Row 2: Charge Description (full width)
-    y = addFieldPair(doc, 'Charge Description', data.charge_description || '', lx, y, ffw);
+    // Row 2: Charge Description (full width) — runs through parseCharges so
+    // a JSON-array DB value (["BATTERY"]) renders as a real charge list,
+    // not the literal stringified array.
+    const charges = parseCharges(data.charge_description ?? (data as any).charges);
+    y = addFieldPair(doc, 'Charge Description',
+      charges.length ? charges.join(', ') : EMPTY_FIELD, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3472,21 +4586,21 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     const sixthW = ffw / 6;
     // Row 1: Last Name (2/5), First Name (2/5), DOB (1/5)
     const fifthW = ffw / 5;
-    const r1a = addFieldPair(doc, 'Last Name', data.subject_last_name || '', lx, y, fifthW * 2);
-    const r1b = addFieldPair(doc, 'First Name', data.subject_first_name || '', lx + fifthW * 2, y, fifthW * 2);
-    const r1c = addFieldPair(doc, 'DOB', fmtDate(data.subject_dob), lx + fifthW * 4, y, fifthW);
+    const r1a = addFieldPair(doc, 'Last Name', pdfField(data.subject_last_name), lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'First Name', pdfField(data.subject_first_name), lx + fifthW * 2, y, fifthW * 2);
+    const r1c = addFieldPair(doc, 'DOB', pdfField(fmtDate(data.subject_dob)), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Gender, Race, Height, Weight, Hair, Eyes (6 cols)
-    const r2a = addFieldPair(doc, 'Gender', data.subject_gender || '', lx, y, sixthW);
-    const r2b = addFieldPair(doc, 'Race', data.subject_race || '', lx + sixthW, y, sixthW);
-    const r2c = addFieldPair(doc, 'Height', data.subject_height || '', lx + sixthW * 2, y, sixthW);
-    const r2d = addFieldPair(doc, 'Weight', data.subject_weight || '', lx + sixthW * 3, y, sixthW);
-    const r2e = addFieldPair(doc, 'Hair', data.subject_hair_color || '', lx + sixthW * 4, y, sixthW);
-    const r2f = addFieldPair(doc, 'Eyes', data.subject_eye_color || '', lx + sixthW * 5, y, sixthW);
+    const r2a = addFieldPair(doc, 'Gender', pdfField(data.subject_gender), lx, y, sixthW);
+    const r2b = addFieldPair(doc, 'Race', pdfField(data.subject_race), lx + sixthW, y, sixthW);
+    const r2c = addFieldPair(doc, 'Height', pdfField(data.subject_height), lx + sixthW * 2, y, sixthW);
+    const r2d = addFieldPair(doc, 'Weight', pdfField(data.subject_weight), lx + sixthW * 3, y, sixthW);
+    const r2e = addFieldPair(doc, 'Hair', pdfField(data.subject_hair_color), lx + sixthW * 4, y, sixthW);
+    const r2f = addFieldPair(doc, 'Eyes', pdfField(data.subject_eye_color), lx + sixthW * 5, y, sixthW);
     y = Math.max(r2a, r2b, r2c, r2d, r2e, r2f);
     // Row 3: Address (full width, conditional)
     if (data.subject_address) {
-      y = addFieldPair(doc, 'Address', data.subject_address, lx, y, ffw);
+      y = addFieldPair(doc, 'Address', pdfField(data.subject_address), lx, y, ffw);
     }
     // Mugshot — 110pt x 110pt (~1.5"), right-aligned within section (Phase 1 review)
     if (data.subject_photo_url) {
@@ -3510,15 +4624,15 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   y = checkPageBreak(doc, y, 18, statusPrio);
   { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
     // Row 1: Issuing Court (half), Issuing Judge (half)
-    const r1a = addFieldPair(doc, 'Issuing Court', data.issuing_court || '', lx, y, hfw);
-    const r1b = addFieldPair(doc, 'Issuing Judge', data.issuing_judge || '', rx, y, hfw);
+    const r1a = addFieldPair(doc, 'Issuing Court', pdfField(data.issuing_court), lx, y, hfw);
+    const r1b = addFieldPair(doc, 'Issuing Judge', pdfField(data.issuing_judge), rx, y, hfw);
     y = Math.max(r1a, r1b);
     // Row 2: Bail Amount, Expiration Date, Entered By, Entry Date (4 cols)
     const quarterW = ffw / 4;
-    const r2a = addFieldPair(doc, 'Bail Amount', fmtCurrency(data.bail_amount), lx, y, quarterW);
-    const r2b = addFieldPair(doc, 'Expiration Date', fmtDate(data.expires_at), lx + quarterW, y, quarterW);
-    const r2c = addFieldPair(doc, 'Entered By', data.entered_by_name || '', lx + quarterW * 2, y, quarterW);
-    const r2d = addFieldPair(doc, 'Entry Date', fmtTimestamp(data.created_at), lx + quarterW * 3, y, quarterW);
+    const r2a = addFieldPair(doc, 'Bail Amount', pdfField(fmtCurrency(data.bail_amount)), lx, y, quarterW);
+    const r2b = addFieldPair(doc, 'Expiration Date', pdfField(fmtDate(data.expires_at)), lx + quarterW, y, quarterW);
+    const r2c = addFieldPair(doc, 'Entered By', pdfField(data.entered_by_name), lx + quarterW * 2, y, quarterW);
+    const r2d = addFieldPair(doc, 'Entry Date', pdfField(fmtTimestamp(data.created_at)), lx + quarterW * 3, y, quarterW);
     y = Math.max(r2a, r2b, r2c, r2d);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -3647,25 +4761,41 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   }
 
   // ── Source / provenance (Phase 1) ──
+  // Two distinct provenance shapes: SCRAPED (from utah-warrant-watch or
+  // future state scrapers) vs MANUALLY ENTERED (operator filled the form).
+  // Each gets a context-appropriate Last refreshed + Verification pair.
+  // PRIOR BUG: Verification defaulted to 'auto-scraped' on the manual
+  // branch too, producing the visible contradiction
+  // "SOURCE: MANUALLY ENTERED + VERIFICATION: AUTO-SCRAPED" on the N_A
+  // warrant operator-printed PDF (Karl Turley, 2026-05-30).
   y = checkPageBreak(doc, y, 18, statusPrio);
   {
     const sec = openAutoSection(doc, 'Source / Provenance', y);
     y = sec.contentY;
     const halfW = ffw / 2;
-    if (data.source_scraper_name) {
-      const r1a = addFieldPair(doc, 'Scraper', data.source_scraper_name, lx, y, halfW);
-      const r1b = addFieldPair(doc, 'State',   data.source_state || '—',  lx + halfW, y, halfW);
+    const isScraped = !!data.source_scraper_name;
+    if (isScraped) {
+      const r1a = addFieldPair(doc, 'Scraper', pdfField(data.source_scraper_name), lx, y, halfW);
+      const r1b = addFieldPair(doc, 'State',   pdfField(data.source_state),        lx + halfW, y, halfW);
       y = Math.max(r1a, r1b);
     } else {
-      const r1a = addFieldPair(doc, 'Source', 'Manually entered', lx, y, halfW);
-      const r1b = addFieldPair(doc, 'By',     data.entered_by_name || 'Unknown', lx + halfW, y, halfW);
+      const r1a = addFieldPair(doc, 'Source', 'Manually entered',                  lx, y, halfW);
+      const r1b = addFieldPair(doc, 'By',     pdfField(data.entered_by_name),      lx + halfW, y, halfW);
       y = Math.max(r1a, r1b);
     }
     if (data.source_url) {
-      y = addFieldPair(doc, 'URL', data.source_url, lx, y, ffw);
+      y = addFieldPair(doc, 'URL', pdfField(data.source_url), lx, y, ffw);
     }
-    const r3a = addFieldPair(doc, 'Last refreshed', fmtDate(data.source_last_scraped_at) || '—', lx, y, halfW);
-    const r3b = addFieldPair(doc, 'Verification',   data.source_verification || 'auto-scraped', lx + halfW, y, halfW);
+    const r3a = addFieldPair(doc, 'Last refreshed', pdfField(fmtDate(data.source_last_scraped_at)), lx, y, halfW);
+    // Verification semantics:
+    //  - Scraped + operator hasn't manually verified → "auto-scraped"
+    //  - Scraped + operator has marked verified       → use the stored value
+    //  - Manual entry                                 → "manual"  (NOT auto-scraped!)
+    // pdfField on the manual default still passes through cleanly because
+    // 'manual' isn't a sentinel.
+    const verificationDefault = isScraped ? 'auto-scraped' : 'manual';
+    const r3b = addFieldPair(doc, 'Verification', pdfField(data.source_verification, verificationDefault),
+      lx + halfW, y, halfW);
     y = Math.max(r3a, r3b);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -3696,7 +4826,7 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
 
   // ── Watermarks (after all content) — stamp every page (Phase 1 review) ──
   const totalPages = doc.getNumberOfPages();
-  if (data.expires_at && new Date(data.expires_at) < new Date()) {
+  if (data.expires_at && parseTimestamp(data.expires_at) < new Date()) {
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
       drawDiagonalWatermark(doc, 'EXPIRED', [220, 38, 38, 0.15]);
@@ -3710,7 +4840,16 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   }
 
   // ── Print audit footer — stamp every page (Phase 1 review) ──
-  const audit = `Printed by: ${data.printed_by_name || 'Unknown'}${data.printed_by_badge ? ' #' + data.printed_by_badge : ''}  on  ${fmtDate(data.printed_at) || fmtDate(new Date().toISOString())}`;
+  // pdfField swallows "N/A"/"None" sentinel strings (sometimes set on the
+  // user row when full_name wasn't migrated) and lets the caller's
+  // pre-computed display name pass through. If we STILL end up with the
+  // em-dash here, surface "(unattributed)" so the print is honest about
+  // missing audit context rather than asserting a fictional "Unknown" user.
+  const printedByName = pdfField(data.printed_by_name);
+  const printedByLabel = printedByName === EMPTY_FIELD ? '(unattributed)' : printedByName;
+  const badgeSuffix = data.printed_by_badge ? ' #' + data.printed_by_badge : '';
+  const printedDate = fmtDate(data.printed_at) || fmtDate(new Date().toISOString());
+  const audit = `Printed by: ${printedByLabel}${badgeSuffix}  on  ${printedDate}`;
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     doc.setFontSize(7);
@@ -3760,6 +4899,16 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
       pill,
     }, y);
   }
+
+  // Threat-posture band — weapon / narcotics / biohazard / sealed-hold, derived
+  // from the evidence category + type + custody status so a dangerous item
+  // reads loud on the custody report.
+  y = renderRecordPostureBand(
+    doc,
+    evidencePdfPostureFlags(data),
+    [data.category, data.status].filter(Boolean).map(s => String(s).toUpperCase()).join(' - '),
+    y,
+  );
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -3891,7 +5040,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   // receivedBy, reason → purpose, timestamp → dateTime. Pads
   // empty rows up to a 3-row minimum so paper handoff has space.
   {
-    const transfers: CustodyTransfer[] = (data.chain_of_custody || []).map(c => ({
+    const transfers: CustodyTransfer[] = (Array.isArray(data.chain_of_custody) ? data.chain_of_custody : []).map(c => ({
       dateTime: c.timestamp,
       releasedBy: c.from_person,
       receivedBy: c.to_person,
@@ -3908,7 +5057,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   }
 
   // Attachments
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
@@ -3961,7 +5110,7 @@ function expiryStatusTag(dateStr: string | null | undefined, warnWithinDays = 30
   if (!dateStr) return '';
   if (isPast(dateStr)) return '[EXPIRED]';
   // Compute exact days remaining
-  const d = new Date(dateStr).getTime();
+  const d = parseTimestamp(dateStr).getTime();
   const now = Date.now();
   const days = Math.ceil((d - now) / 86400000);
   if (days <= warnWithinDays) return `[${days} DAY${days === 1 ? '' : 'S'}]`;
@@ -4080,7 +5229,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   }
 
   // ── FUEL LOG REPORT ──
-  if (reportType === 'fuel_logs' && data.fuel_logs && data.fuel_logs.length > 0) {
+  if (reportType === 'fuel_logs' && Array.isArray(data.fuel_logs) && data.fuel_logs.length > 0) {
     // Use fuel_summary from backend if available, otherwise compute locally
     const fs = data.fuel_summary;
     const totalGal = fs?.total_gallons ?? data.fuel_logs.reduce((sum, f) => sum + (f.gallons || 0), 0);
@@ -4199,7 +5348,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   }
 
   // ── MAINTENANCE REPORT ──
-  if (reportType === 'maintenance' && data.maintenance_logs && data.maintenance_logs.length > 0) {
+  if (reportType === 'maintenance' && Array.isArray(data.maintenance_logs) && data.maintenance_logs.length > 0) {
     // Summary row
     const totalCost = data.maintenance_logs.reduce((sum, m) => sum + (m.cost || 0), 0);
     const totalLabor = data.maintenance_logs.reduce((sum, m) => sum + (m.labor_cost || 0), 0);
@@ -4231,7 +5380,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   }
 
   // ── MILEAGE SUMMARY REPORT ──
-  if (reportType === 'mileage_summary' && data.fuel_logs && data.fuel_logs.length > 0) {
+  if (reportType === 'mileage_summary' && Array.isArray(data.fuel_logs) && data.fuel_logs.length > 0) {
     // Distance resolution order (most trustworthy -> fallback):
     //   1. calc_distance — backend computes from odometer deltas, most accurate
     //   2. distance      — legacy user-entered field
@@ -4339,14 +5488,31 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Renders the equipment array as a numbered table (spreadsheet-style)
     // instead of a single comma-joined string, so each item has its own
     // line and officers can mark it visually when auditing.
-    if (data.equipment && data.equipment.length > 0) {
-      y = checkPageBreak(doc, y, 12 + data.equipment.length * 4);
-      { const sec = openAutoSection(doc, `Installed Equipment (${data.equipment.length})`, y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    // Normalize equipment to string[]: the live `fleet_vehicles.equipment`
+    // column is TEXT, so it arrives as a JSON-array string, a comma-separated
+    // string, null, or (when built client-side) a real array. A raw string has
+    // a `.length` but no `.map`, which crashed the fleet record PDF
+    // ("equipment.map is not a function"). Coerce before rendering.
+    const equipmentList: string[] = (() => {
+      const e: unknown = (data as { equipment?: unknown }).equipment;
+      if (Array.isArray(e)) return e.map((x) => String(x)).filter(Boolean);
+      if (typeof e === 'string' && e.trim()) {
+        const t = e.trim();
+        if (t.startsWith('[')) {
+          try { const p = JSON.parse(t); if (Array.isArray(p)) return p.map((x) => String(x)).filter(Boolean); } catch { /* fall through to CSV */ }
+        }
+        return t.split(',').map((s) => s.trim()).filter(Boolean);
+      }
+      return [];
+    })();
+    if (equipmentList.length > 0) {
+      y = checkPageBreak(doc, y, 12 + equipmentList.length * 4);
+      { const sec = openAutoSection(doc, `Installed Equipment (${equipmentList.length})`, y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
       const eqColW = [14, ffw - 14];
       const eqColPos = [lx, lx + eqColW[0]];
       const eqHeaders = ['ITEM #', 'DESCRIPTION']
         .map((label, i) => ({ label, x: eqColPos[i] }));
-      const eqRows = data.equipment.map((item, i) => [
+      const eqRows = equipmentList.map((item, i) => [
         `${String(i + 1).padStart(3, '0')}`,
         item || '',
       ]);
@@ -4357,7 +5523,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Merged chronological view of fuel + maintenance events (last 8)
     // so readers get a single-glance history at the end of the status
     // report without needing to jump to a separate log.
-    const fuelEntries = (data.fuel_logs || []).map(f => ({
+    const fuelEntries = (Array.isArray(data.fuel_logs) ? data.fuel_logs : []).map(f => ({
       date: f.fuel_date || '',
       type: 'FUEL',
       summary: `${(f.gallons || 0).toFixed(1)} GAL` +
@@ -4365,7 +5531,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         (f.station ? ` - ${f.station}` : ''),
       odometer: f.odometer_reading,
     }));
-    const maintEntries = (data.maintenance_logs || []).map(m => ({
+    const maintEntries = (Array.isArray(data.maintenance_logs) ? data.maintenance_logs : []).map(m => ({
       date: m.service_date || '',
       type: 'MAINT',
       summary: (m.description || '').slice(0, 60) +
@@ -4538,7 +5704,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── CREDENTIALS TABLE ──
-  if ((reportType === 'full' || reportType === 'credentials') && data.credentials && data.credentials.length > 0) {
+  if ((reportType === 'full' || reportType === 'credentials') && Array.isArray(data.credentials) && data.credentials.length > 0) {
     y = checkPageBreak(doc, y, 12);
     { const sec = openAutoSection(doc, 'Credentials', y); y = sec.contentY;
       y = addFieldPair(doc, 'Credentials', `${data.credentials.length} on file`, lx, y, ffw);
@@ -4563,7 +5729,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── TRAINING RECORDS TABLE ──
-  if ((reportType === 'full' || reportType === 'training') && data.training_records && data.training_records.length > 0) {
+  if ((reportType === 'full' || reportType === 'training') && Array.isArray(data.training_records) && data.training_records.length > 0) {
     // Summary stats
     const totalHours = data.training_records.reduce((s, t) => s + (t.hours || 0), 0);
     const completedCount = data.training_records.filter(t => t.status === 'completed').length;
@@ -4597,7 +5763,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── EQUIPMENT TABLE ──
-  if ((reportType === 'full' || reportType === 'equipment') && data.equipment_list && data.equipment_list.length > 0) {
+  if ((reportType === 'full' || reportType === 'equipment') && Array.isArray(data.equipment_list) && data.equipment_list.length > 0) {
     y = checkPageBreak(doc, y, 12);
     { const sec = openAutoSection(doc, 'Assigned Equipment', y); y = sec.contentY;
       y = addFieldPair(doc, 'Equipment', `${data.equipment_list.length} items`, lx, y, ffw);
@@ -4622,7 +5788,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── BODY CAMERAS TABLE ──
-  if ((reportType === 'full' || reportType === 'equipment') && data.body_cameras && data.body_cameras.length > 0) {
+  if ((reportType === 'full' || reportType === 'equipment') && Array.isArray(data.body_cameras) && data.body_cameras.length > 0) {
     y = checkPageBreak(doc, y, 12);
     { const sec = openAutoSection(doc, 'Body Cameras', y); y = sec.contentY;
       y = addFieldPair(doc, 'Cameras', `${data.body_cameras.length} assigned`, lx, y, ffw);
@@ -4647,7 +5813,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── DEPLOYMENTS TABLE ──
-  if ((reportType === 'full') && data.deployments && data.deployments.length > 0) {
+  if ((reportType === 'full') && Array.isArray(data.deployments) && data.deployments.length > 0) {
     y = checkPageBreak(doc, y, 12);
     { const sec = openAutoSection(doc, 'Deployments', y); y = sec.contentY;
       y = addFieldPair(doc, 'Deployments', `${data.deployments.length} records`, lx, y, ffw);
@@ -4672,7 +5838,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── TIME & ATTENDANCE TABLE ──
-  if ((reportType === 'full' || reportType === 'time') && data.time_entries && data.time_entries.length > 0) {
+  if ((reportType === 'full' || reportType === 'time') && Array.isArray(data.time_entries) && data.time_entries.length > 0) {
     const totalHours = data.time_entries.reduce((s, t) => s + (t.total_hours || 0), 0);
 
     y = checkPageBreak(doc, y, 12);
@@ -4702,7 +5868,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // Attachments
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
@@ -4745,6 +5911,15 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   y = addLinkedRecordsStrip(doc, data, y);
+
+  // Threat-posture band — known hazards / hazard notes / active trespass orders
+  // on the premise, so a responding officer sees site dangers up front.
+  y = renderRecordPostureBand(
+    doc,
+    propertyPdfPostureFlags(data),
+    (data.name || '').toUpperCase().slice(0, 32),
+    y,
+  );
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -4789,6 +5964,27 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = Math.max(r2a, r2b);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  // Property / business site map — same SWAT location-analysis treatment as
+  // the CFS map: zoom 17 (structure + surrounding approach in frame), reticle
+  // + north + scale overlay, LOCATION DATA grid below. Geocodes the full
+  // address when lat/lng absent (business records store no coordinates).
+  y = await addLocationMapSection(doc, {
+    title: 'Location Map',
+    lat: data.latitude,
+    lng: data.longitude,
+    address: `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim(),
+    caption: data.address || data.name,
+    style: 'mapbox/satellite-streets-v12',
+    zoom: 17,
+    details: [
+      { label: 'PROPERTY',  value: data.name || '', ratio: 1.2 },
+      { label: 'STATUS',    value: data.is_active === false ? 'INACTIVE' : 'ACTIVE', ratio: 0.65 },
+      { label: 'TYPE',      value: (data.property_type || data.business_type || '').replace(/_/g, ' ').toUpperCase(), ratio: 0.95 },
+      ...(data.owner_name ? [{ label: 'OWNER', value: data.owner_name, ratio: 1.0 }] : []),
+    ],
+    eventIso: data.created_at,
+  }, y);
 
   // ── Access & Security ──
   y = checkPageBreak(doc, y, 12);
@@ -4890,7 +6086,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // ── Incident History at this property ──
-  if (data.incidents && data.incidents.length > 0) {
+  if (Array.isArray(data.incidents) && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incRows = data.incidents.map(inc => [
@@ -4905,7 +6101,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // ── Dispatch Call History at this property ──
-  if (data.calls && data.calls.length > 0) {
+  if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
@@ -4935,6 +6131,36 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
       toRows, y, [lx, lx + 30, lx + 85, lx + 120, lx + 150]);
   }
 
+  // ── Linked Persons (cross-reference from record_links) ──
+  if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const personRows = data.linked_persons.map(p => [
+      p.name || 'N/A',
+      fmtDate(p.dob),
+      (p.flags || '').toUpperCase(),
+      humanizeRelationship(p.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'NAME', x: lx }, { label: 'DOB', x: lx + 70 }, { label: 'FLAGS', x: lx + 105 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      personRows, y, [lx, lx + 70, lx + 105, lx + 140]);
+  }
+
+  // ── Linked Vehicles (cross-reference from record_links) ──
+  if (Array.isArray(data.linked_vehicles) && data.linked_vehicles.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Vehicles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const vehRows = data.linked_vehicles.map(v => [
+      v.license_plate || 'N/A',
+      [v.year, v.make, v.model].filter(Boolean).join(' ') || 'N/A',
+      (v.color || '').toUpperCase(),
+      humanizeRelationship(v.relationship),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'PLATE', x: lx }, { label: 'VEHICLE', x: lx + 35 }, { label: 'COLOR', x: lx + 110 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      vehRows, y, [lx, lx + 35, lx + 110, lx + 140]);
+  }
+
   // Access Instructions
   y = addNarrativeSection(doc, 'Access Instructions', data.access_instructions || '', y);
 
@@ -4953,14 +6179,14 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     topBanner: true,
     onPageBreak: formSectionPageBreak,
     rows: [{ cells: [
-      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
-      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+      { label: 'CREATED', value: fmtTimestamp(data.created_at) || 'N/A', ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at) || 'N/A', ratio: 1 },
     ]}],
     y,
   });
 
   // Attachments
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
@@ -5014,6 +6240,15 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
       pill,
     }, y);
   }
+
+  // Threat-posture band — DUI / hazmat / accident / felony-level / zone flags
+  // surfaced on the citation so aggravating circumstances read at a glance.
+  y = renderRecordPostureBand(
+    doc,
+    citationPdfPostureFlags(data),
+    (formatEnumValue(data.type) || 'CITATION'),
+    y,
+  );
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -5123,7 +6358,10 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   }
 
   // ── Violations Table (multiple per citation) ──
-  if (data.violations && data.violations.length > 0) {
+  // Array.isArray guard, not bare truthiness: live TEXT columns can deliver a
+  // sentinel string ("None"/"[]") whose .length is truthy but whose .map throws
+  // (the recurring equipment.map crash class). [[project-sentinel-none-strings]]
+  if (Array.isArray(data.violations) && data.violations.length > 0) {
     y = checkPageBreak(doc, y, 20, prio);
     { const sec = openAutoSection(doc, 'Violations', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const violRows = data.violations.map(v => [
@@ -5148,15 +6386,13 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   }
 
   // ── Location / Geography ──
-  if (data.sector_id || data.zone_id || data.beat_id) {
+  // Printouts present the SHORT dispatch code only; the full Section/Zone/Beat
+  // names live on the Map UI (see drawDistrictBar + the dispatch-code rule).
+  if (data.sector_id || data.zone_id || data.beat_id || data.dispatch_code) {
     y = checkPageBreak(doc, y, 10, prio);
     const sec = openAutoSection(doc, 'Location / Geography', y); y = sec.contentY;
-    const qw = ffw / 4;
-    const g1 = addFieldPair(doc, 'Section', data.sector_id || '', lx, y, qw);
-    const g2 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + qw, y, qw);
-    const g3 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + 2 * qw, y, qw);
-    const g4 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '', lx + 3 * qw, y, qw);
-    y = Math.max(g1, g2, g3, g4);
+    const code = zsbComposite({ zoneId: data.zone_id, beatId: data.beat_id, dispatchCode: data.dispatch_code || data.zone_beat });
+    y = addFieldPair(doc, 'Dispatch Code', code, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -5258,6 +6494,7 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   options: RecordPdfOptions = {},
 ): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
 
   // Set form key for footer form numbers
@@ -5267,6 +6504,7 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    timeZone: 'America/Denver',
   }));
 
   // Watermark on first page
@@ -5406,7 +6644,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? new Date(closedDate) : new Date();
+    const sigDate = closedDate ? parseTimestamp(closedDate) : new Date();
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({
@@ -5428,9 +6666,13 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const id = identifier || 'record';
     const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
     const filename = `${id}_${recordType}${targetSuffix}.pdf`;
-    // Explicit blob download — works on Safari (doc.save uses window.open which strips filename)
+    // doc.output('blob') already returns a Blob. Wrapping it in
+    // new Blob([blob], ...) creates a double-wrapped blob — the inner
+    // blob's bytes are re-encoded through the outer Blob constructor,
+    // which works in most browsers but is a spec violation. Fixed by
+    // using the original Blob directly. (Wave 3.1)
     const blob = doc.output('blob');
-    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
@@ -5464,7 +6706,7 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? new Date(closedDate) : new Date();
+    const sigDate = closedDate ? parseTimestamp(closedDate) : new Date();
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({
@@ -5476,6 +6718,10 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);
+    // generateRecordPdfBlobUrl doesn't receive an identifier param
+    // (it's a preview-only function); pass empty string so the
+    // signature verifier knows the case-number field is intentionally
+    // absent (same as the pre-wave-3.1 behavior for blob previews).
     setActiveSignature(
       await fetchPdfSignature(recordType, '', payloadHash) || undefined
     );
@@ -5499,21 +6745,28 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
 export interface BoloSubject {
   first_name: string;
   last_name: string;
-  dob?: string;
-  gender?: string;
-  race?: string;
-  height?: string;
-  weight?: string;
-  hair_color?: string;
-  eye_color?: string;
-  address?: string;
+  dob?: string | null;
+  gender?: string | null;
+  race?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  hair_color?: string | null;
+  eye_color?: string | null;
+  address?: string | null;
   photo_url?: string | null;
   warrants: { warrant_number: string; type: string; charge_description: string; offense_level: string | null; issuing_court: string | null; bail_amount: number | null }[];
 }
 
+export interface BoloPdfOptions extends RecordPdfOptions {
+  /** Operator who printed the packet - rendered on the BOLO header. */
+  printedBy?: string;
+  printedByBadge?: string;
+}
+
 /** Generate a multi-page BOLO (Be On The Lookout) packet PDF */
-export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptions = {}): jsPDF {
+export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
@@ -5526,6 +6779,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    timeZone: 'America/Denver',
   }));
 
   // Sort by severity: felony first
@@ -5556,6 +6810,16 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
   doc.setFontSize(8);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(`${sorted.length} SUBJECT${sorted.length !== 1 ? 'S' : ''} WITH ACTIVE WARRANTS`, margin, y);
+
+  // "Printed by" attribution on the right - the audit trail an officer
+  // recovering the packet from their downloads folder needs to know who
+  // pulled this and when. Sentinel-safe via pdfField.
+  const printedBy = pdfField(options.printedBy, '');
+  if (printedBy) {
+    const badge = pdfField(options.printedByBadge, '');
+    const label = badge ? `PRINTED BY: ${printedBy} #${badge}` : `PRINTED BY: ${printedBy}`;
+    doc.text(label, margin + contentW, y, { align: 'right' });
+  }
   y += 5;
 
   for (let i = 0; i < sorted.length; i++) {
@@ -5588,22 +6852,30 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
     if (topSev.label) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
-      const sevColor: [number, number, number] = topSev.label === 'felony' ? [220, 50, 50] : topSev.label === 'misdemeanor' ? [220, 160, 40] : [120, 120, 120];
+      const sevColor: [number, number, number] = topSev.label === 'felony' ? [50, 50, 50] : topSev.label === 'misdemeanor' ? [80, 80, 80] : [120, 120, 120]; // neutralized 2026-05-30
       doc.setTextColor(...sevColor);
       doc.text(topSev.label.toUpperCase(), margin + contentW - 2, y + 5, { align: 'right' });
     }
 
     y += 9;
 
-    // Physical description row
+    // Physical description row - every part runs through pdfField so
+    // sentinel strings ("N/A", "None", "null") in the persons table don't
+    // leak onto the BOLO header as garbage.
     const descParts: string[] = [];
-    if (subj.dob) descParts.push(`DOB: ${fmtDate(subj.dob)}`);
-    if (subj.gender) descParts.push(`${subj.gender}`);
-    if (subj.race) descParts.push(`${subj.race}`);
-    if (subj.height) descParts.push(`Ht: ${subj.height}`);
-    if (subj.weight) descParts.push(`Wt: ${subj.weight}`);
-    if (subj.hair_color) descParts.push(`Hair: ${subj.hair_color}`);
-    if (subj.eye_color) descParts.push(`Eyes: ${subj.eye_color}`);
+    const dobClean = pdfField(subj.dob, '');
+    if (dobClean) descParts.push(`DOB: ${fmtDate(dobClean)}`);
+    const pushField = (label: string | null, val: unknown, prefix?: string) => {
+      const clean = pdfField(val, '');
+      if (clean) descParts.push(prefix ? `${prefix}: ${clean}` : clean);
+      void label;
+    };
+    pushField(null, subj.gender);
+    pushField(null, subj.race);
+    pushField(null, subj.height, 'Ht');
+    pushField(null, subj.weight, 'Wt');
+    pushField(null, subj.hair_color, 'Hair');
+    pushField(null, subj.eye_color, 'Eyes');
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
@@ -5611,11 +6883,12 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
     doc.text(descParts.join('  |  '), margin + 2, y + 3);
     y += 5;
 
-    if (subj.address) {
+    const addressClean = pdfField(subj.address, '');
+    if (addressClean) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text(`Address: ${subj.address}`, margin + 2, y + 3);
+      doc.text(`Address: ${addressClean}`, margin + 2, y + 3);
       y += 5;
     }
 
@@ -5641,7 +6914,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       // Table header
-      doc.setFillColor(30, 40, 55);
+      doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
       doc.rect(margin + 2, y, contentW - 4, 5, 'F');
       doc.text('WARRANT #', margin + 4, y + 3.5);
       doc.text('TYPE', margin + 40, y + 3.5);
@@ -5662,12 +6935,16 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
           doc.setGState(new doc.GState({ opacity: 1.0 }));
           y = topMarginY(doc) + 5;
         }
-        doc.text(w.warrant_number || '', margin + 4, y + 3);
-        doc.text(formatEnumValue(w.type), margin + 40, y + 3);
-        // Truncate charge if too long
-        const charge = (w.charge_description || '').substring(0, 50);
-        doc.text(charge, margin + 60, y + 3);
-        doc.text((w.issuing_court || '').substring(0, 25), margin + 130, y + 3);
+        // pdfField scrubs "N/A" / "None" / "null" sentinel rows the live
+        // warrants table is full of; parseCharges unwraps the JSON-array
+        // form that ArrestFormModal writes (`["BATTERY"]`) so the BOLO
+        // shows "BATTERY" instead of the literal bracket-quoted string.
+        doc.text(pdfField(w.warrant_number), margin + 4, y + 3);
+        doc.text(pdfField(formatEnumValue(w.type)), margin + 40, y + 3);
+        const chargeList = parseCharges(w.charge_description);
+        const chargeText = chargeList.length ? chargeList.join('; ') : pdfField(w.charge_description);
+        doc.text(chargeText.substring(0, 50), margin + 60, y + 3);
+        doc.text(pdfField(w.issuing_court).substring(0, 25), margin + 130, y + 3);
         doc.text(fmtCurrency(w.bail_amount), margin + contentW - 8, y + 3, { align: 'right' });
         y += 5;
       }
@@ -5730,6 +7007,7 @@ export interface WarrantSummaryData {
 /** Generate a single-page Warrant Activity Summary Report */
 export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: RecordPdfOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
@@ -5742,6 +7020,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
   setGenerationTimestamp(new Date().toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    timeZone: 'America/Denver',
   }));
 
   addConfidentialWatermark(doc);
@@ -5806,7 +7085,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     ty += 5;
 
     // Header row
-    doc.setFillColor(30, 40, 55);
+    doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
     doc.rect(x, ty, w, 5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
@@ -5857,7 +7136,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     doc.text('TOP ISSUING COURTS', margin, y + 3);
     y += 5;
 
-    doc.setFillColor(30, 40, 55);
+    doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
     doc.rect(margin, y, contentW, 5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);

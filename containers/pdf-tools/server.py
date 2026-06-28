@@ -18,7 +18,6 @@ through the Worker fetch handler.
 import base64
 import logging
 import os
-import re
 import secrets
 import shutil
 import subprocess
@@ -32,19 +31,6 @@ from fastapi.responses import FileResponse, JSONResponse
 
 app = FastAPI(title="rmpg-pdf-tools", version="1.0.0")
 logger = logging.getLogger(__name__)
-
-_PASSWORD_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
-_MAX_PDF_PASSWORD_LENGTH = 1024
-
-
-def _validate_qpdf_password(value: str, field_name: str) -> str:
-    if not isinstance(value, str):
-        raise HTTPException(400, f"{field_name} must be a string")
-    if len(value) > _MAX_PDF_PASSWORD_LENGTH:
-        raise HTTPException(400, f"{field_name} is too long")
-    if _PASSWORD_CONTROL_CHARS_RE.search(value):
-        raise HTTPException(400, f"{field_name} contains invalid control characters")
-    return value
 
 # Size cap matches the existing client-side PDF editor limit. Cloudflare
 # Container disk on the `basic` instance is 4 GB, but holding a 50 MB PDF in
@@ -126,6 +112,17 @@ async def health() -> dict:
 #   extract=y|n           — copy text / images out
 #   accessibility=y|n     — screen-reader access
 #   useAes=y              — always AES-256 (default for new PDFs)
+def _validate_password_arg(field_name: str, value: str, max_len: int = 128) -> None:
+    """Validate password fields before they are passed to subprocess args."""
+    if not isinstance(value, str):
+        raise HTTPException(400, f"{field_name} must be a string")
+    if len(value) > max_len:
+        raise HTTPException(400, f"{field_name} must be <= {max_len} characters")
+    # Disallow control chars that can break logging/parsing and are unsafe as CLI args.
+    if any(ord(ch) < 32 for ch in value):
+        raise HTTPException(400, f"{field_name} contains invalid control characters")
+
+
 @app.post("/encrypt")
 async def encrypt(
     pdf: UploadFile = File(...),
@@ -163,14 +160,27 @@ async def encrypt(
         owner_password = base64.urlsafe_b64encode(secrets.token_bytes(24)).decode().rstrip("=")
         generated_owner = True
 
-    user_password = _validate_qpdf_password(user_password, "user_password")
-    owner_password = _validate_qpdf_password(owner_password, "owner_password")
+    _validate_password_arg("user_password", user_password)
+    _validate_password_arg("owner_password", owner_password)
 
     with temp_workdir() as workdir:
         in_path = os.path.join(workdir, "in.pdf")
         out_path = os.path.join(workdir, "out.pdf")
         await save_upload(pdf, in_path)
 
+        # SECURITY (CWE-78): qpdf is invoked as an argv LIST with shell=False
+        # (the subprocess default). There is no shell, so user_password /
+        # owner_password cannot inject shell metacharacters — they are passed to
+        # execve as opaque argv elements. They are also positional operands
+        # consumed immediately after `--encrypt` (qpdf reads the next three
+        # tokens as user-pw, owner-pw, key-length), so a value beginning with
+        # `-` is taken as the password, never reinterpreted as a flag — there is
+        # no argument-injection vector either. _validate_password_arg() further
+        # bounds length and rejects control characters. The attacker-controlled
+        # file paths are fixed temp paths AND guarded by the `--` end-of-options
+        # separator. CodeQL's py/command-line-injection on this line is a false
+        # positive for that combination; do not "fix" it by reshaping the args
+        # in a way that breaks valid passwords.
         cmd = [
             "qpdf", "--encrypt",
             user_password, owner_password, str(key_length),
@@ -184,7 +194,7 @@ async def encrypt(
         ]
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True, timeout=60)
+            subprocess.run(cmd, check=True, capture_output=True, timeout=60, shell=False)
         except subprocess.CalledProcessError as e:
             # qpdf exit code 3 = warnings, output may still be valid.
             # Anything else = real failure.
@@ -294,12 +304,12 @@ async def extract_text(
                     ocr_used = True
                 else:
                     ocr_skipped_reason = "OCR didn't improve extraction"
-            except (ocrmypdf.exceptions.MissingDependencyError, ocrmypdf.exceptions.PriorOcrFoundError) as e:
-                logger.warning("OCR skipped due to known ocrmypdf condition", exc_info=True)
-                ocr_skipped_reason = f"ocrmypdf unavailable ({type(e).__name__})"
+            except (ocrmypdf.exceptions.MissingDependencyError, ocrmypdf.exceptions.PriorOcrFoundError):
+                logger.exception("OCR skipped due to dependency/prior OCR condition")
+                ocr_skipped_reason = "ocr unavailable or not applicable"
             except Exception:  # noqa: BLE001 — surface as JSON, don't 500
-                logger.exception("OCR failed unexpectedly")
-                ocr_skipped_reason = "ocrmypdf failed"
+                logger.exception("OCR processing failed")
+                ocr_skipped_reason = "ocr processing failed"
 
         # Page count via pdftotext side-channel: count form-feed characters
         # in the layout-mode output. Faster than re-shelling pdfinfo.

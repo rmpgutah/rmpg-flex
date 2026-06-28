@@ -4,6 +4,8 @@
 import { useCallback, useState, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { getDirections } from '../utils/mapboxServices';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 const ROUTE_SOURCE_ID = 'rmpg-routes-polyline';
 const ROUTE_LAYER_ID = 'rmpg-routes-polyline-layer';
@@ -37,10 +39,10 @@ export function useMapboxRoutes(map: mapboxgl.Map | null) {
     if (!map) return;
     try {
       [ROUTE_LAYER_ID, ARROW_LAYER_ID, ETA_LAYER_ID].forEach((id) => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
       [ROUTE_SOURCE_ID, ETA_SOURCE_ID].forEach((id) => {
-        if (map.getSource(id)) map.removeSource(id);
+        safeRemoveSource(map, id);
       });
     } catch { /* ignore */ }
   }, [map]);
@@ -146,7 +148,7 @@ export function useMapboxRoutes(map: mapboxgl.Map | null) {
 
       setActiveRoutes((prev) => {
         const updated = [...prev.filter((r) => !isSameRoute(r, pair)), info];
-        if (map.loaded()) renderRoutes(updated, map);
+        whenStyleReady(map, () => { renderRoutes(updated, map); });
         return updated;
       });
 
@@ -199,7 +201,7 @@ export function useMapboxRoutes(map: mapboxgl.Map | null) {
     }
 
     setActiveRoutes(routes);
-    if (map.loaded()) renderRoutes(routes, map);
+    whenStyleReady(map, () => { renderRoutes(routes, map); });
     setLoading(false);
   }, [map, renderRoutes]);
 

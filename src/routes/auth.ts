@@ -1,11 +1,99 @@
 import { Hono } from 'hono';
-import { sign } from 'hono/jwt';
+import type { Env } from '../types';
+import { sign, verify as verifyJwt } from 'hono/jwt';
 import { compareSync, hashSync } from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, queryFirst, query, execute } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
+import { rateLimitAllow } from '../utils/rateLimit';
+import { signResource, type SignedResourceParams } from '../utils/signedAccess';
+import { recordAudit } from '../utils/auditLog';
+import {
+  generateRegistrationOptions, verifyRegistrationResponse,
+  generateAuthenticationOptions, verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
+import type {
+  AuthenticatorTransportFuture, RegistrationResponseJSON, AuthenticationResponseJSON,
+} from '@simplewebauthn/server';
+import { isoBase64URL } from '@simplewebauthn/server/helpers';
+import {
+  generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
+  encryptTotpSecret, decryptTotpSecret,
+  generateBackupCodes, hashBackupCode,
+} from '../utils/totp';
 
-const auth = new Hono<{ Bindings: { DB: D1Database; KV: KVNamespace; JWT_SECRET: string }; Variables: { user: { id: number; username: string; role: string; full_name: string }; userId: number } }>();
+const auth = new Hono<Env>();
+
+// ── Session + token contract (MUST match the legacy `rmpg-flex` Worker) ──────
+// login/refresh fall through the proxy to legacy in normal operation; this
+// rewrite is the hot spare and also serves these directly if the proxy routes
+// them here. A token/session issued here is therefore interchangeable with one
+// issued by legacy. Original: legacy/server-vps/src/routes/auth.ts +
+// middleware/auth.ts.
+//
+// Live `sessions` schema (legacy-owned): session_id (UUID, UNIQUE NOT NULL),
+// user_id, refresh_token_hash (sha256 hex of the refresh JWT, NOT the raw
+// token), is_active (default 1), expires_at, created_at/last_used_at (defaults).
+// There is NO `token` / `refresh_token` / `refresh_expires_at` column — the
+// earlier handlers referenced those and 500'd on every login + refresh.
+const ACCESS_TTL_SECONDS = 15 * 60;            // 15m — legacy config.jwt.accessExpiry
+const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;  // 7d  — legacy config.jwt.refreshExpiry
+
+// Live `users` uses must_change_password / totp_enabled — NOT the
+// force_password_change / totp_enrolled names the earlier handlers queried
+// (those columns do not exist on live D1).
+const USER_SELECT =
+  'id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password, totp_enabled';
+
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Claims carry BOTH userId (camelCase — legacy middleware REQUIRES it, see
+// legacy middleware/auth.ts:51 `if (!decoded.userId ...)`) and user_id (snake —
+// this Worker's middleware reads `user_id ?? userId`), so a token verifies on
+// either Worker. type:'access' keeps it usable as a Bearer (legacy rejects
+// type:'refresh' Bearers). exp is set explicitly: hono/jwt does not add it.
+function tokenClaims(user: any) {
+  return {
+    sub: String(user.id),
+    userId: user.id,
+    user_id: user.id,
+    username: user.username,
+    role: user.role,
+    fullName: user.full_name,
+    full_name: user.full_name,
+  };
+}
+
+function signAccessToken(secret: string, claims: Record<string, unknown>): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return sign({ ...claims, type: 'access', iat: now, exp: now + ACCESS_TTL_SECONDS }, secret);
+}
+
+// The refresh token is itself a signed JWT (type:'refresh') so a subsequent
+// /refresh routed to legacy can verifyRefreshToken() it. Only its sha256 is
+// stored in sessions.refresh_token_hash.
+function signRefreshToken(secret: string, claims: Record<string, unknown>): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return sign({ ...claims, type: 'refresh', iat: now, exp: now + REFRESH_TTL_SECONDS }, secret);
+}
+
+// Insert a session row using the live (legacy-owned) schema and return the new
+// session_id. is_active / created_at / last_used_at come from column defaults.
+async function createSession(c: any, db: any, userId: number, refreshToken: string): Promise<string> {
+  const sessionId = uuidv4(); // full dashed UUID → matches live session_id (36 chars)
+  const refreshHash = await sha256Hex(refreshToken);
+  await execute(
+    db,
+    `INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'))`,
+    sessionId, userId, refreshHash,
+    c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || '',
+  );
+  return sessionId;
+}
 
 function userPayload(user: any) {
   const nameParts = (user.full_name || '').split(' ');
@@ -21,9 +109,37 @@ function userPayload(user: any) {
     phone: user.phone || null,
     avatar_url: user.avatar_url || null,
     status: user.status,
-    must_change_password: !!user.force_password_change,
-    totp_enabled: !!user.totp_enrolled,
+    must_change_password: !!user.must_change_password,
+    totp_enabled: !!user.totp_enabled,
   };
+}
+
+// Best-effort audit of every login outcome into `login_attempts` (the table the
+// Security Dashboard reads — /security/recent-threats, /blocked-ips,
+// /login-history, /event-timeline). MUST never throw: a logging failure cannot
+// be allowed to block or break a login, mirroring the login_count counter
+// pattern. `created_at` is omitted so the column default (Denver-local time,
+// consistent with historical rows) fires. `username` is the value as submitted
+// so it joins to users.username exactly the way the dashboard queries expect;
+// failed attempts for unknown usernames are kept on purpose as probe intel.
+async function recordLoginAttempt(
+  db: any,
+  username: unknown,
+  ip: string,
+  success: boolean,
+  failureReason: string | null,
+): Promise<void> {
+  try {
+    await execute(
+      db,
+      `INSERT INTO login_attempts (username, ip_address, success, failure_reason)
+       VALUES (?, ?, ?, ?)`,
+      String(username ?? '').slice(0, 255),
+      ip || null,
+      success ? 1 : 0,
+      success ? null : failureReason,
+    );
+  } catch { /* non-critical — never fail a login on an audit-write error */ }
 }
 
 auth.post('/login', async (c) => {
@@ -33,46 +149,96 @@ auth.post('/login', async (c) => {
       return c.json({ error: 'Username and password are required', code: 'USERNAME_AND_PASSWORD_ARE' }, 400);
     }
 
+    // Brute-force throttle: generous per-IP window (shared NAT at HQ means
+    // many legit users behind one IP) + a tighter per-username window so a
+    // distributed credential-stuffing run still hits a wall. Counts every
+    // attempt, success included — fine at these limits; KV fails open.
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+    const uname = String(username).toLowerCase().slice(0, 64);
+    const [ipOk, userOk] = await Promise.all([
+      rateLimitAllow(c.env.KV, `login:ip:${ip}`, 30, 300),
+      rateLimitAllow(c.env.KV, `login:user:${uname}`, 10, 300),
+    ]);
+    if (!ipOk || !userOk) {
+      await recordLoginAttempt(getDb(c.env), username, ip, false, 'rate_limited');
+      return c.json({ error: 'Too many login attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
+    }
+
     const db = getDb(c.env);
     const user = await queryFirst<any>(
       db,
-      `SELECT id, username, password_hash, full_name, email, role,
-              badge_number, phone, avatar_url, status, force_password_change, totp_enrolled
-       FROM users WHERE username = ?`,
+      `SELECT ${USER_SELECT}, password_hash FROM users WHERE username = ?`,
       username
     );
 
     if (!user) {
+      await recordLoginAttempt(db, username, ip, false, 'user_not_found');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
     if (user.status !== 'active') {
+      await recordLoginAttempt(db, username, ip, false, 'account_inactive');
       return c.json({ error: 'Account is inactive', code: 'ACCOUNT_INACTIVE' }, 403);
     }
 
     if (!compareSync(password, user.password_hash)) {
+      await recordLoginAttempt(db, username, ip, false, 'invalid_password');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
-    const jwtSecret = c.env.JWT_SECRET;
-    const now = Math.floor(Date.now() / 1000);
-    const payload = { sub: String(user.id), user_id: user.id, username: user.username, role: user.role };
+    const secret = c.env.JWT_SECRET;
 
-    const sessionId = uuidv4().replace(/-/g, '');
-    const accessToken = await sign({ ...payload, sessionId }, jwtSecret);
-    const refreshToken = uuidv4();
+    // ── Two-factor gate ───────────────────────────────────────
+    // When the account has TOTP enabled (and isn't exempt), do NOT issue
+    // tokens or create a session yet — return the client's pending-2FA
+    // contract ({ requires2FA, tempToken }; AuthContext.login switches the
+    // form to the code step). The tempToken is a 5-minute purpose-bound JWT
+    // that /login/verify-2fa and /login/verify-backup-code exchange for real
+    // tokens after the second factor checks out.
+    const exempt = await queryFirst<{ totp_exempt: number | null }>(
+      db, 'SELECT totp_exempt FROM users WHERE id = ?', user.id).catch(() => null);
+    if (user.totp_enabled && !exempt?.totp_exempt) {
+      const now = Math.floor(Date.now() / 1000);
+      const tempToken = await sign(
+        { sub: String(user.id), userId: user.id, username: user.username, type: '2fa_pending', iat: now, exp: now + 300 },
+        secret,
+      );
+      // Offer the security-key path when the account has registered keys
+      // (table may be absent on local DBs pre-0090 — treat as none).
+      let webauthnCount = 0;
+      try {
+        const r = await queryFirst<{ n: number }>(
+          db, 'SELECT COUNT(*) AS n FROM webauthn_credentials WHERE user_id = ?', user.id);
+        webauthnCount = r?.n ?? 0;
+      } catch { /* table absent */ }
+      return c.json({
+        requires2FA: true,
+        tempToken,
+        methods: { totp: true, webauthn: webauthnCount > 0 },
+        requiresPasswordChange: !!user.must_change_password,
+      });
+    }
 
-    await execute(
-      db,
-      `INSERT INTO sessions (user_id, token, refresh_token, ip_address, user_agent, expires_at, refresh_expires_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now', '+15 minutes'), datetime('now', '+7 days'))`,
-      user.id, accessToken, refreshToken, c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || ''
-    );
+    const claims = tokenClaims(user);
+    const refreshToken = await signRefreshToken(secret, claims);
+    const sessionId = await createSession(c, db, user.id, refreshToken);
+    const accessToken = await signAccessToken(secret, { ...claims, sessionId });
+
+    // Best-effort login counters — never let a counter error fail the login.
+    try {
+      await execute(
+        db,
+        `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = datetime('now') WHERE id = ?`,
+        user.id,
+      );
+    } catch { /* non-critical */ }
+
+    await recordLoginAttempt(db, user.username, ip, true, null);
 
     return c.json({
       token: accessToken,
       refreshToken,
       sessionId,
-      expiresIn: 900,
+      expiresIn: ACCESS_TTL_SECONDS,
       lastLoginAt: null,
       lastLoginIp: null,
       user: userPayload(user),
@@ -83,18 +249,145 @@ auth.post('/login', async (c) => {
   }
 });
 
+// ── Login second factor ─────────────────────────────────────
+// Exchange a pending-2FA tempToken (issued by /login when totp_enabled) +
+// a valid second factor for real tokens. Response shape mirrors /login's
+// success branch exactly (AuthContext.verify2FALogin stores it identically).
+
+async function resolve2faPending(c: any, db: any): Promise<{ user: any } | { error: Response }> {
+  const body = (await c.req.json().catch(() => ({}))) as { tempToken?: string; code?: string };
+  const tempToken = body.tempToken
+    || (c.req.header('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!tempToken) {
+    return { error: c.json({ error: 'Verification session expired. Please sign in again.', code: 'MFA_EXPIRED' }, 401) };
+  }
+  let payload: any;
+  try {
+    payload = await verifyJwt(tempToken, c.env.JWT_SECRET, 'HS256');
+  } catch {
+    return { error: c.json({ error: 'Verification session expired. Please sign in again.', code: 'MFA_EXPIRED' }, 401) };
+  }
+  if (payload?.type !== '2fa_pending' || payload?.userId == null) {
+    return { error: c.json({ error: 'Verification session expired. Please sign in again.', code: 'MFA_EXPIRED' }, 401) };
+  }
+  const user = await queryFirst<any>(
+    db,
+    `SELECT ${USER_SELECT}, totp_secret_enc, totp_backup_codes FROM users WHERE id = ? AND status = 'active'`,
+    payload.userId,
+  );
+  if (!user) {
+    return { error: c.json({ error: 'User not found or inactive', code: 'USER_INACTIVE' }, 401) };
+  }
+  return { user };
+}
+
+async function issueLoginTokens(c: any, db: any, user: any) {
+  const secret = c.env.JWT_SECRET;
+  const claims = tokenClaims(user);
+  const refreshToken = await signRefreshToken(secret, claims);
+  const sessionId = await createSession(c, db, user.id, refreshToken);
+  const accessToken = await signAccessToken(secret, { ...claims, sessionId });
+  try {
+    await execute(
+      db,
+      `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = datetime('now') WHERE id = ?`,
+      user.id,
+    );
+  } catch { /* non-fatal */ }
+  const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+  await recordLoginAttempt(db, user.username, ip, true, null);
+  return c.json({
+    token: accessToken,
+    refreshToken,
+    sessionId,
+    expiresIn: ACCESS_TTL_SECONDS,
+    lastLoginAt: null,
+    lastLoginIp: null,
+    user: userPayload(user),
+  });
+}
+
+// POST /auth/login/verify-2fa — { tempToken, code } → full login tokens.
+auth.post('/login/verify-2fa', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const resolved = await resolve2faPending(c, db);
+    if ('error' in resolved) return resolved.error;
+    const { user } = resolved;
+    const { code } = await c.req.json<{ code?: string }>().catch(() => ({} as any));
+
+    if (!user.totp_secret_enc) {
+      return c.json({ error: 'Two-factor configuration missing. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
+    }
+    const secretB32 = await decryptTotpSecret(user.totp_secret_enc, c.env.JWT_SECRET);
+    if (!secretB32) {
+      // VPS-era blob encrypted with the lost key — surfaced distinctly so an
+      // admin knows to re-enroll rather than retry codes.
+      return c.json({ error: 'Authentication configuration error. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
+    }
+    if (!(await verifyTotpCode(secretB32, code || ''))) {
+      return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 401);
+    }
+    return await issueLoginTokens(c, db, user);
+  } catch (err) {
+    console.error('verify-2fa failed:', err);
+    return c.json({ error: 'Verification failed', code: 'VERIFY_2FA_ERROR' }, 500);
+  }
+});
+
+// POST /auth/login/verify-backup-code — { tempToken, code } → full login
+// tokens; the matched backup code is consumed (single use).
+auth.post('/login/verify-backup-code', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const resolved = await resolve2faPending(c, db);
+    if ('error' in resolved) return resolved.error;
+    const { user } = resolved;
+    const { code } = await c.req.json<{ code?: string }>().catch(() => ({} as any));
+
+    let hashes: string[] = [];
+    try {
+      const parsed = JSON.parse(user.totp_backup_codes || '[]');
+      if (Array.isArray(parsed)) hashes = parsed.map(String);
+    } catch { /* treat as none */ }
+    const candidate = await hashBackupCode(code || '');
+    const idx = hashes.indexOf(candidate);
+    if (idx === -1) {
+      return c.json({ error: 'Invalid backup code.', code: 'INVALID_BACKUP_CODE' }, 401);
+    }
+    hashes.splice(idx, 1); // single use
+    await execute(db, 'UPDATE users SET totp_backup_codes = ? WHERE id = ?', JSON.stringify(hashes), user.id);
+    return await issueLoginTokens(c, db, user);
+  } catch (err) {
+    console.error('verify-backup-code failed:', err);
+    return c.json({ error: 'Verification failed', code: 'VERIFY_BACKUP_ERROR' }, 500);
+  }
+});
+
 auth.post('/refresh', async (c) => {
   try {
-    const { refresh_token } = await c.req.json();
+    // Accept both spellings. The client (AuthContext + apiFetch) sends
+    // camelCase `refreshToken`; older/legacy callers send snake_case
+    // `refresh_token`. Tolerating both mirrors the auth middleware's
+    // user_id/userId handling and prevents a silent 401 → forced-logout
+    // loop when the body key doesn't match.
+    const body = await c.req.json<{ refresh_token?: string; refreshToken?: string }>();
+    const refresh_token = body.refresh_token ?? body.refreshToken;
     if (!refresh_token) {
       return c.json({ error: 'Refresh token required' }, 400);
     }
 
+    // The session stores ONLY sha256(refreshToken). Hash the presented token
+    // and look it up — this matches sessions written by legacy (same sha256),
+    // so a session created on either Worker can be refreshed here. The active +
+    // not-expired session row is the authority; we read user_id from it.
     const db = getDb(c.env);
+    const refreshHash = await sha256Hex(refresh_token);
     const session = await queryFirst<any>(
       db,
-      `SELECT id, user_id, token FROM sessions WHERE refresh_token = ? AND refresh_expires_at > datetime('now')`,
-      refresh_token
+      `SELECT id, session_id, user_id FROM sessions
+       WHERE refresh_token_hash = ? AND is_active = 1 AND expires_at > datetime('now')`,
+      refreshHash
     );
     if (!session) {
       return c.json({ error: 'Invalid or expired refresh token' }, 401);
@@ -102,26 +395,38 @@ auth.post('/refresh', async (c) => {
 
     const user = await queryFirst<any>(
       db,
-      `SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, status, force_password_change, totp_enrolled
-       FROM users WHERE id = ? AND status = 'active'`,
+      `SELECT ${USER_SELECT} FROM users WHERE id = ? AND status = 'active'`,
       session.user_id
     );
     if (!user) {
+      // Stale session for a deactivated/removed user — retire it.
+      await execute(db, `UPDATE sessions SET is_active = 0 WHERE id = ?`, session.id);
       return c.json({ error: 'User not found or inactive' }, 401);
     }
 
-    const jwtSecret = c.env.JWT_SECRET;
-    const now = Math.floor(Date.now() / 1000);
-    const payload = { sub: String(user.id), user_id: user.id, username: user.username, role: user.role };
-    const newAccessToken = await sign({ ...payload, sessionId: uuidv4().replace(/-/g, '') }, jwtSecret);
+    const secret = c.env.JWT_SECRET;
+    const claims = tokenClaims(user);
+    // Rotate the refresh token (matches legacy) and re-key the session by its
+    // new hash, so a leaked old refresh token can't be replayed.
+    const newRefreshToken = await signRefreshToken(secret, claims);
+    const newRefreshHash = await sha256Hex(newRefreshToken);
+    const newAccessToken = await signAccessToken(secret, { ...claims, sessionId: session.session_id });
 
-    await execute(db, `UPDATE sessions SET token = ?, expires_at = datetime('now', '+15 minutes') WHERE id = ?`, newAccessToken, session.id);
+    await execute(
+      db,
+      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime('now', 'localtime') WHERE id = ?`,
+      newRefreshHash, session.id,
+    );
 
     return c.json({
       token: newAccessToken,
+      refreshToken: newRefreshToken,
+      sessionId: session.session_id,
+      expiresIn: ACCESS_TTL_SECONDS,
       user: userPayload(user),
     });
   } catch (err) {
+    console.error('Refresh error:', err);
     return c.json({ error: 'Refresh failed' }, 500);
   }
 });
@@ -129,7 +434,21 @@ auth.post('/refresh', async (c) => {
 auth.post('/logout', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const db = getDb(c.env);
-  await execute(db, 'DELETE FROM sessions WHERE user_id = ?', userId);
+  // Soft-deactivate (is_active = 0) like legacy, scoped to the device that's
+  // logging out when it sends a refreshToken / sessionId; otherwise retire all
+  // of this user's sessions. Body is optional — tolerate a missing/empty body.
+  const body = await c.req.json<{ refreshToken?: string; refresh_token?: string; sessionId?: string }>().catch(() => ({} as any));
+  const refreshToken = body.refreshToken ?? body.refresh_token;
+  try {
+    if (refreshToken) {
+      const refreshHash = await sha256Hex(refreshToken);
+      await execute(db, 'UPDATE sessions SET is_active = 0 WHERE refresh_token_hash = ? AND user_id = ?', refreshHash, userId);
+    } else if (body.sessionId) {
+      await execute(db, 'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?', body.sessionId, userId);
+    } else {
+      await execute(db, 'UPDATE sessions SET is_active = 0 WHERE user_id = ?', userId);
+    }
+  } catch { /* logout is best-effort — never block the client from clearing local state */ }
   return c.json({ message: 'Logged out' });
 });
 
@@ -137,13 +456,24 @@ auth.get('/me', authMiddleware, async (c) => {
   const db = getDb(c.env);
   const user = await queryFirst<any>(
     db,
-    `SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, status, force_password_change, totp_enrolled
-     FROM users WHERE id = ?`,
+    `SELECT ${USER_SELECT} FROM users WHERE id = ?`,
     c.get('userId')
   );
   if (!user) return c.json({ error: 'User not found' }, 404);
   return c.json({ user: userPayload(user) });
 });
+
+// Enforce the advertised password policy (GET /password-policy) — previously
+// only length was checked, so "12345678" satisfied a policy that requires
+// upper/lower/digit/special. Returns an error string, or null when valid.
+function validateNewPassword(pwd: string): string | null {
+  if (typeof pwd !== 'string' || pwd.length < 8) return 'Password must be at least 8 characters';
+  if (!/[A-Z]/.test(pwd)) return 'Password must contain an uppercase letter';
+  if (!/[a-z]/.test(pwd)) return 'Password must contain a lowercase letter';
+  if (!/[0-9]/.test(pwd)) return 'Password must contain a number';
+  if (!/[^A-Za-z0-9]/.test(pwd)) return 'Password must contain a special character';
+  return null;
+}
 
 auth.put('/password', authMiddleware, async (c) => {
   try {
@@ -151,9 +481,8 @@ auth.put('/password', authMiddleware, async (c) => {
     if (!current_password || !new_password) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    if (new_password.length < 8) {
-      return c.json({ error: 'Password must be at least 8 characters' }, 400);
-    }
+    const policyErr = validateNewPassword(new_password);
+    if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
     const db = getDb(c.env);
@@ -165,10 +494,99 @@ auth.put('/password', authMiddleware, async (c) => {
     const newHash = hashSync(new_password, 12);
     await execute(
       db,
-      `UPDATE users SET password_hash = ?, force_password_change = 0, password_changed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
       newHash, userId
     );
     return c.json({ message: 'Password updated' });
+  } catch (err) {
+    return c.json({ error: 'Password change failed' }, 500);
+  }
+});
+
+// POST /auth/change-password — alias the client uses from the in-profile
+// password rotation modal (UserProfileModal). Same logic as the existing
+// PUT /password, but accepts camelCase body keys to match the client.
+auth.post('/change-password', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{
+      currentPassword?: string; newPassword?: string;
+      current_password?: string; new_password?: string;
+    }>();
+    const current = body.currentPassword ?? body.current_password ?? '';
+    const next = body.newPassword ?? body.new_password ?? '';
+    if (!current || !next) {
+      return c.json({ error: 'Current and new password required' }, 400);
+    }
+    const policyErr = validateNewPassword(next);
+    if (policyErr) return c.json({ error: policyErr }, 400);
+
+    const userId = c.get('userId');
+    const db = getDb(c.env);
+    const user = await queryFirst<any>(db, 'SELECT password_hash FROM users WHERE id = ?', userId);
+    if (!user || !compareSync(current, user.password_hash)) {
+      return c.json({ error: 'Current password is incorrect' }, 401);
+    }
+
+    const newHash = hashSync(next, 12);
+    await execute(
+      db,
+      `UPDATE users SET password_hash = ?, must_change_password = 0,
+                          password_changed_at = datetime('now'),
+                          updated_at = datetime('now')
+       WHERE id = ?`,
+      newHash, userId,
+    );
+    return c.json({ message: 'Password updated' });
+  } catch (err) {
+    return c.json({ error: 'Password change failed' }, 500);
+  }
+});
+
+// POST /auth/login/change-password — forced password change at login.
+// Triggered when the login response carries `must_change_password: true`.
+// The client holds a `tempToken` (the just-issued JWT) and sends only
+// the new password — current password is implicit (just authenticated).
+// Returns a fresh access token + user so the SPA can complete login.
+auth.post('/login/change-password', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{ newPassword?: string; new_password?: string }>();
+    const next = body.newPassword ?? body.new_password ?? '';
+    const policyErr = validateNewPassword(next);
+    if (policyErr) return c.json({ error: policyErr }, 400);
+
+    const userId = c.get('userId');
+    const db = getDb(c.env);
+    const newHash = hashSync(next, 12);
+    await execute(
+      db,
+      `UPDATE users SET password_hash = ?, must_change_password = 0,
+                          password_changed_at = datetime('now'),
+                          updated_at = datetime('now')
+       WHERE id = ?`,
+      newHash, userId,
+    );
+
+    // Re-issue a fresh JWT so the old tempToken can't be reused.
+    const user = await queryFirst<any>(
+      db,
+      `SELECT ${USER_SELECT} FROM users WHERE id = ?`,
+      userId,
+    );
+    if (!user) return c.json({ error: 'User not found' }, 404);
+
+    const secret = c.env.JWT_SECRET;
+    const claims = tokenClaims(user);
+    const refreshToken = await signRefreshToken(secret, claims);
+    const sessionId = await createSession(c, db, user.id, refreshToken);
+    const accessToken = await signAccessToken(secret, { ...claims, sessionId });
+
+    return c.json({
+      token: accessToken,
+      refreshToken,
+      sessionId,
+      expiresIn: ACCESS_TTL_SECONDS,
+      user: userPayload(user),
+    });
   } catch (err) {
     return c.json({ error: 'Password change failed' }, 500);
   }
@@ -190,7 +608,915 @@ auth.get('/session-timeout', (c) => {
   return c.json({ idleTimeoutMinutes: 30, maxSessionHours: 12 });
 });
 
-auth.get('/profile', authMiddleware, (c) => c.json({}));
-auth.put('/profile', authMiddleware, async (c) => c.json({ success: true }));
+// ── Signed media URLs ────────────────────────────────────────
+// POST /auth/sign-urls — client/src/utils/signedUrls.ts has called this
+// since it shipped; the endpoint never existed, so <video>/<audio> tags
+// fell back to ?token=<full session JWT>. Issues per-resource HMAC params
+// ({ signed: { "type:id": { sig, exp, nonce } } }) the stream handlers
+// verify. Read scope is enforced HERE, at sign time — a signature carries
+// no session, so it must never be issuable for a resource the caller
+// can't already read.
+const SIGNABLE_TYPES = new Set(['bodycam', 'radio', 'panic']);
+const MEDIA_READ_ALL_ROLES = new Set(['admin', 'manager', 'supervisor']); // mirrors bodyCameras.ts READ_ALL_ROLES
+
+auth.post('/sign-urls', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'Authentication required' }, 401);
+    const body = await c.req.json<{ resources?: Array<{ type?: string; id?: string | number }> }>().catch(() => ({} as any));
+    const resources = Array.isArray(body?.resources) ? body.resources.slice(0, 100) : [];
+    const db = getDb(c.env);
+    const signed: Record<string, SignedResourceParams> = {};
+    for (const r of resources) {
+      const type = String(r?.type ?? '');
+      const id = String(r?.id ?? '');
+      if (!SIGNABLE_TYPES.has(type) || !/^\d{1,12}$/.test(id)) continue;
+      if (type === 'bodycam' && !MEDIA_READ_ALL_ROLES.has(user.role)) {
+        // Officers may only sign their own footage — same scope rule as
+        // the stream handler itself.
+        const row = await queryFirst<{ officer_id: number }>(db, 'SELECT officer_id FROM bodycam_videos WHERE id = ?', id);
+        if (!row || row.officer_id !== user.id) continue;
+      }
+      signed[`${type}:${id}`] = await signResource(c.env.JWT_SECRET, type, id);
+    }
+    return c.json({ signed });
+  } catch (err) {
+    console.error('POST /auth/sign-urls failed:', err);
+    return c.json({ error: 'Failed to sign resources' }, 500);
+  }
+});
+
+// GET /auth/profile — return the current user's editable profile fields.
+// Used by UserProfileModal on mount to populate the form.
+auth.get('/profile', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId');
+  const row = await queryFirst<any>(
+    db,
+    `SELECT id, username, full_name, email, phone, badge_number, role, status, avatar_url
+     FROM users WHERE id = ?`,
+    userId,
+  );
+  if (!row) return c.json({ error: 'User not found' }, 404);
+  const [first_name, ...rest] = (row.full_name || '').trim().split(/\s+/);
+  const last_name = rest.join(' ');
+  return c.json({ ...row, first_name: first_name || '', last_name });
+});
+
+// PUT /auth/profile — update the current user's profile.
+// Accepts: username, first_name, last_name, email, phone (any subset).
+// Username changes hit the UNIQUE constraint on users.username, so the
+// route checks for collisions and returns 409 with a clear message
+// instead of bubbling the raw SQL error. When username changes, the
+// JWT becomes stale (its `username` claim no longer matches), so the
+// route issues a fresh access token + refresh + session row in the
+// same response — the client can swap it in transparently without
+// forcing a logout.
+auth.put('/profile', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{
+      username?: string;
+      first_name?: string; last_name?: string;
+      firstName?: string; lastName?: string;
+      email?: string; phone?: string;
+    }>();
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+
+    const existing = await queryFirst<any>(
+      db, 'SELECT username, full_name FROM users WHERE id = ?', userId,
+    );
+    if (!existing) return c.json({ error: 'User not found' }, 404);
+
+    const first = (body.first_name ?? body.firstName ?? '').trim();
+    const last = (body.last_name ?? body.lastName ?? '').trim();
+    const fullName = [first, last].filter(Boolean).join(' ');
+    const username = body.username?.trim();
+
+    if (username && username !== existing.username) {
+      if (username.length < 3) {
+        return c.json({ error: 'Username must be at least 3 characters' }, 400);
+      }
+      if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+        return c.json({ error: 'Username can only contain letters, numbers, underscore, dot, hyphen' }, 400);
+      }
+      const collision = await queryFirst<any>(
+        db, 'SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?',
+        username, userId,
+      );
+      if (collision) {
+        return c.json({ error: 'Username already taken', code: 'USERNAME_TAKEN' }, 409);
+      }
+    }
+
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (username && username !== existing.username) { sets.push('username = ?'); params.push(username); }
+    if (fullName && fullName !== existing.full_name) { sets.push('full_name = ?'); params.push(fullName); }
+    if (body.email !== undefined) { sets.push('email = ?'); params.push(body.email || null); }
+    if (body.phone !== undefined) { sets.push('phone = ?'); params.push(body.phone || null); }
+
+    if (sets.length === 0) {
+      return c.json({ success: true, message: 'No changes' });
+    }
+    sets.push("updated_at = datetime('now')");
+    params.push(userId);
+    await execute(db, `UPDATE users SET ${sets.join(', ')} WHERE id = ?`, ...params);
+
+    const updated = await queryFirst<any>(
+      db,
+      `SELECT ${USER_SELECT} FROM users WHERE id = ?`,
+      userId,
+    );
+
+    // Username changed → re-issue JWT so the username claim matches.
+    // The client's apiFetch reads `token` from the response and swaps
+    // it into localStorage when present, so the existing session
+    // continues uninterrupted under the new username.
+    let tokenBundle: Record<string, unknown> = {};
+    if (username && username !== existing.username) {
+      const secret = c.env.JWT_SECRET;
+      const claims = tokenClaims(updated);
+      const refreshToken = await signRefreshToken(secret, claims);
+      const sessionId = await createSession(c, db, updated.id, refreshToken);
+      const accessToken = await signAccessToken(secret, { ...claims, sessionId });
+      tokenBundle = { token: accessToken, refreshToken, sessionId, expiresIn: ACCESS_TTL_SECONDS };
+    }
+
+    return c.json({ success: true, user: userPayload(updated), ...tokenBundle });
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('UNIQUE')) {
+      return c.json({ error: 'Username already taken', code: 'USERNAME_TAKEN' }, 409);
+    }
+    return c.json({ error: 'Failed to update profile', detail: msg }, 500);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
+// Profile photo / sessions / MFA status (UserProfileModal.tsx)
+// ════════════════════════════════════════════════════════════════
+// These four surfaces were added to the client after the legacy `rmpg-flex`
+// bundle froze, so legacy 404s them (live sweep 2026-06-02: profile-image,
+// sessions, totp/status, 2fa/status). They read ONLY columns that exist on
+// live D1 (users.profile_image / .totp_enabled / .totp_backup_codes,
+// sessions.is_active/expires_at), so unlike the login/refresh handlers above
+// they run correctly on the rewrite. Routed to env.API in proxy/index.ts.
+
+// NOTE: GET/PUT /auth/profile-image are defined ONCE, further below (search
+// "own the base64-data-URL contract"). An earlier un-validated duplicate lived
+// here and — because Hono runs the FIRST-registered handler for a duplicate
+// path — shadowed the validating pair, so the data-URL format check + ~1.5MB
+// size cap never ran (any authenticated user could write an unbounded blob to
+// users.profile_image). Removed; the canonical validated handlers below are the
+// only ones now.
+
+// GET /auth/sessions — active login sessions for the current user. The Sessions
+// tab reads session_id / ip_address / user_agent / last_used_at|created_at and
+// does `setSessions(Array.isArray(data) ? data : [])`, so return a bare array.
+auth.get('/sessions', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<any>(
+    db,
+    `SELECT session_id, ip_address, user_agent, created_at, last_used_at, expires_at
+       FROM sessions
+      WHERE user_id = ? AND COALESCE(is_active, 1) = 1 AND expires_at > datetime('now')
+      ORDER BY COALESCE(last_used_at, created_at) DESC`,
+    c.get('userId'),
+  );
+  return c.json(rows || []);
+});
+
+// DELETE /auth/sessions/:sessionId — revoke one session (soft: is_active = 0,
+// which the GET filter then hides). Scoped to user_id so a user can only revoke
+// their own sessions. Legacy 404'd this too, so the "Revoke" button was dead.
+auth.delete('/sessions/:sessionId', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const sessionId = c.req.param('sessionId');
+  await execute(
+    db,
+    'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?',
+    sessionId,
+    c.get('userId'),
+  );
+  return c.json({ success: true });
+});
+
+// GET /auth/totp/status — TOTP enrollment state. No enroll/verify flow is wired
+// up on the Worker yet (legacy-era MFA was never ported), so this is a read-only
+// honest status sourced from users.totp_enabled. Shape: { enabled, required }.
+auth.get('/totp/status', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const row = await queryFirst<{ totp_enabled: number | null }>(
+    db,
+    'SELECT totp_enabled FROM users WHERE id = ?',
+    c.get('userId'),
+  );
+  return c.json({ enabled: !!row?.totp_enabled, required: false });
+});
+
+// GET /auth/2fa/status — two-factor status for the Security tab. The client reads
+// { enabled, backupCodesRemaining }. backupCodesRemaining is the real count from
+// users.totp_backup_codes (JSON array or comma-separated), 0 when un-enrolled.
+auth.get('/2fa/status', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const row = await queryFirst<{ totp_enabled: number | null; totp_backup_codes: string | null }>(
+    db,
+    'SELECT totp_enabled, totp_backup_codes FROM users WHERE id = ?',
+    c.get('userId'),
+  );
+  let backupCodesRemaining = 0;
+  if (row?.totp_backup_codes) {
+    try {
+      const parsed = JSON.parse(row.totp_backup_codes);
+      backupCodesRemaining = Array.isArray(parsed) ? parsed.length : 0;
+    } catch {
+      backupCodesRemaining = row.totp_backup_codes.split(',').map((s) => s.trim()).filter(Boolean).length;
+    }
+  }
+  return c.json({ enabled: !!row?.totp_enabled, backupCodesRemaining });
+});
+
+// ════════════════════════════════════════════════════════════════
+// Security Dashboard (SecurityDashboardPage.tsx, route /security-dashboard)
+// ════════════════════════════════════════════════════════════════
+// The /api/auth router is mounted public (login/refresh are open), so we
+// gate just the /security/* subtree with authMiddleware. Backed by the live
+// login_attempts + sessions tables. Every handler is defensive and returns
+// the page's safe empty shape on any error. Legacy had only login-history
+// (a proxy stub) — the rest 404'd (live sweep 2026-06-02).
+auth.use('/security/*', authMiddleware);
+
+// GET /api/auth/security/status
+auth.get('/security/status', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    // Sessions that can still authenticate: active flag + unexpired AND used
+    // within the last 7 days (a session's refresh chain dies silently when a
+    // device stops using it; counting week-old idle rows inflated the number
+    // to 40-70 "active sessions" and read as a compromise indicator).
+    const sess = await queryFirst<{ active: number }>(db,
+      `SELECT COUNT(*) AS active FROM sessions
+        WHERE user_id = ? AND COALESCE(is_active,1) = 1 AND expires_at > datetime('now')
+          AND COALESCE(last_used_at, created_at) > datetime('now','-7 days')`,
+      userId);
+    const last = await queryFirst<{ created_at: string; ip_address: string | null }>(db, 'SELECT created_at, ip_address FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', userId);
+    // 2FA + backup-code state — SecurityStatusCard reads totpEnabled /
+    // totpSetupRequired / backupCodesRemaining (it rendered
+    // "undefined remaining" while these fields were missing).
+    const me = await queryFirst<{ totp_enabled: number | null; totp_backup_codes: string | null; must_change_password: number | null }>(
+      db, 'SELECT totp_enabled, totp_backup_codes, must_change_password FROM users WHERE id = ?', userId);
+    let backupCodesRemaining = 0;
+    if (me?.totp_backup_codes) {
+      try {
+        const parsed = JSON.parse(me.totp_backup_codes);
+        backupCodesRemaining = Array.isArray(parsed) ? parsed.length : 0;
+      } catch {
+        backupCodesRemaining = me.totp_backup_codes.split(',').map((x) => x.trim()).filter(Boolean).length;
+      }
+    }
+    const totpEnabled = !!me?.totp_enabled;
+    return c.json({
+      // SecurityStatus shape (client/src/types SecurityStatus)
+      totpEnabled,
+      totpSetupRequired: false,
+      backupCodesRemaining,
+      activeSessions: sess?.active ?? 0,
+      trustedDevices: 0,
+      passwordExpiresAt: null,
+      passwordExpiringSoon: false,
+      passwordExpired: false,
+      passwordChangedAt: null,
+      forcePasswordChange: !!me?.must_change_password,
+      unreadSecurityNotifications: 0,
+      // legacy keys kept for any older consumers
+      twoFactorEnabled: totpEnabled,
+      passwordAge: 0,
+      lastLogin: last?.created_at ?? '',
+      lastLoginIp: last?.ip_address ?? '',
+      accountStatus: 'Active',
+    });
+  } catch {
+    return c.json({ totpEnabled: false, totpSetupRequired: false, backupCodesRemaining: 0, activeSessions: 0, trustedDevices: 0, passwordExpiresAt: null, passwordExpiringSoon: false, passwordExpired: false, passwordChangedAt: null, forcePasswordChange: false, unreadSecurityNotifications: 0, twoFactorEnabled: false, passwordAge: 0, lastLogin: '', lastLoginIp: '', accountStatus: 'Active' });
+  }
+});
+
+// GET /api/auth/security/recent-threats — recent failed logins.
+auth.get('/security/recent-threats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT id, 'failed_login' AS type, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts WHERE COALESCE(success,0) = 0 ORDER BY created_at DESC LIMIT 50");
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// GET /api/auth/security/blocked-ips — IPs with repeated failures (>=5/24h).
+auth.get('/security/blocked-ips', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT ip_address, COUNT(*) AS failed_attempts, MAX(created_at) AS last_attempt FROM login_attempts WHERE COALESCE(success,0) = 0 AND ip_address IS NOT NULL AND created_at >= datetime('now','-1 day') GROUP BY ip_address HAVING COUNT(*) >= 5 ORDER BY failed_attempts DESC LIMIT 100");
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// GET /api/auth/security/login-history?limit=&offset= — real history from the
+// live login_attempts table (this path was proxy-stubbed empty for months).
+// UNION SHAPE for two consumers:
+//   • LoginHistoryTable (ProfilePage) reads entries + total — the CALLER's own
+//     attempts, paginated. live table has no user_agent/device_fingerprint
+//     columns, so those return '' (the device parser tolerates empty).
+//   • SecurityDashboardPage reads data — org-wide recent attempts for
+//     admin/manager/supervisor, else the caller's own.
+auth.get('/security/login-history', async (c) => {
+  const empty = { entries: [], total: 0, data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 15 } };
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '15', 10) || 15));
+    const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
+    const userId = c.get('userId') as number;
+    const me = await queryFirst<{ username: string; role: string }>(db, 'SELECT username, role FROM users WHERE id = ?', userId);
+    if (!me) return c.json(empty);
+
+    const mine = await query<Record<string, unknown>>(db,
+      `SELECT id, ip_address, '' AS user_agent, '' AS device_fingerprint,
+              COALESCE(success,0) AS success, failure_reason, created_at
+       FROM login_attempts WHERE username = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      me.username, limit, offset);
+    const total = (await queryFirst<{ c: number }>(db,
+      'SELECT COUNT(*) AS c FROM login_attempts WHERE username = ?', me.username))?.c ?? 0;
+
+    const orgWide = ['admin', 'manager', 'supervisor'].includes(me.role);
+    const data = await query<Record<string, unknown>>(db,
+      `SELECT la.id, u.id AS user_id, la.ip_address, '' AS user_agent,
+              COALESCE(la.success,0) AS success, la.failure_reason AS reason,
+              la.created_at, COALESCE(u.full_name, la.username) AS full_name
+       FROM login_attempts la LEFT JOIN users u ON u.username = la.username
+       ${orgWide ? '' : 'WHERE la.username = ?'}
+       ORDER BY la.created_at DESC LIMIT 50`,
+      ...(orgWide ? [] : [me.username]));
+
+    return c.json({
+      entries: mine, total, data,
+      pagination: { total, totalPages: Math.max(1, Math.ceil(total / limit)), page: Math.floor(offset / limit) + 1, limit },
+    });
+  } catch { return c.json(empty); }
+});
+
+// GET /api/auth/security/password-compliance — no password-age tracking on
+// live D1 yet; return empty (page tolerates {data:[]}).
+auth.get('/security/password-compliance', async (c) => c.json({ data: [] }));
+
+// GET /api/auth/security/session-analytics — sessions per day (last 14d).
+auth.get('/security/session-analytics', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ day: string; count: number }>(db,
+      "SELECT substr(created_at,1,10) AS day, COUNT(*) AS count FROM sessions WHERE created_at >= datetime('now','-14 days') GROUP BY substr(created_at,1,10) ORDER BY day");
+    const data: Record<string, number> = {};
+    for (const r of rows || []) data[r.day] = r.count;
+    return c.json({ data });
+  } catch {
+    return c.json({ data: {} });
+  }
+});
+
+// GET /api/auth/security/event-timeline?limit= — login successes + failures.
+auth.get('/security/event-timeline', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT id, CASE WHEN COALESCE(success,0)=1 THEN 'login' ELSE 'failed_login' END AS event, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts ORDER BY created_at DESC LIMIT ?", limit);
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// ─── Profile image ────────────────────────────────────────
+// The client stores the avatar as a base64 data URL (resized 256×256 JPEG)
+// in users.profile_image. NOTE: the legacy handler used a different contract
+// — it expected { url } (an http(s) URL) and REJECTED data: URLs with a 400,
+// and only ever exposed avatar_url via /me — which is why uploads silently
+// failed and the topbar avatar never updated. These handlers own the
+// base64-data-URL contract; the proxy routes /api/auth/profile-image here.
+
+// GET /auth/profile-image — return the current user's stored avatar.
+auth.get('/profile-image', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    const row = await queryFirst<{ profile_image: string | null }>(
+      db, 'SELECT profile_image FROM users WHERE id = ?', userId,
+    );
+    return c.json({ profile_image: row?.profile_image || null });
+  } catch (err) {
+    console.error('Get profile-image error:', err);
+    return c.json({ error: 'Failed to load profile image', code: 'GET_PROFILE_IMAGE_ERROR' }, 500);
+  }
+});
+
+// PUT /auth/profile-image — save (base64 data URL) or clear (null).
+auth.put('/profile-image', authMiddleware, async (c) => {
+  try {
+    const { profile_image } = await c.req.json<{ profile_image?: string | null }>();
+    if (profile_image !== null && profile_image !== undefined) {
+      if (typeof profile_image !== 'string' || !/^data:image\/(png|jpeg|jpg|webp);base64,/.test(profile_image)) {
+        return c.json({ error: 'profile_image must be a base64 image data URL or null', code: 'INVALID_PROFILE_IMAGE' }, 400);
+      }
+      // Client resizes to 256×256 JPEG (~10–40KB). Cap generously at ~1.5MB
+      // of base64 to reject anything pathological before it hits D1.
+      if (profile_image.length > 1_500_000) {
+        return c.json({ error: 'Image too large — must be under ~1MB', code: 'PROFILE_IMAGE_TOO_LARGE' }, 413);
+      }
+    }
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    await execute(
+      db,
+      `UPDATE users SET profile_image = ?, updated_at = datetime('now') WHERE id = ?`,
+      profile_image || null, userId,
+    );
+    return c.json({ success: true, profile_image: profile_image || null });
+  } catch (err) {
+    console.error('Save profile-image error:', err);
+    return c.json({ error: 'Failed to save profile image', code: 'SAVE_PROFILE_IMAGE_ERROR' }, 500);
+  }
+});
+
+// ── Signature (UserProfileModal) ──────────────────────────
+auth.get('/signature', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ digital_signature: string | null }>(db,
+      'SELECT digital_signature FROM users WHERE id = ?', c.get('userId'));
+    return c.json({ signature: row?.digital_signature || null });
+  } catch { return c.json({ signature: null }); }
+});
+
+auth.put('/signature', authMiddleware, async (c) => {
+  try {
+    const { signature } = await c.req.json<{ signature?: string | null }>();
+    if (signature && typeof signature === 'string' && signature.length > 500_000) {
+      return c.json({ error: 'Signature too large' }, 413);
+    }
+    const db = getDb(c.env);
+    await execute(db,
+      `UPDATE users SET digital_signature = ?, updated_at = datetime('now') WHERE id = ?`,
+      signature || null, c.get('userId'));
+    return c.json({ success: true });
+  } catch { return c.json({ error: 'Failed to save signature' }, 500); }
+});
+
+// ── 2FA / TOTP stubs (not yet ported from legacy) ─────────
+// ── TOTP enrollment (real — replaces the MFA_NOT_PORTED 501 stubs) ──
+// Two client surfaces share these flows with slightly different field names:
+//   UserProfileModal:        POST /totp/setup → { qrCodeDataUrl?, otpauthUrl,
+//                            manualKey }; /totp/verify-setup { code } →
+//                            { backupCodes }; /totp/disable { password }.
+//   TwoFactorSetupWizard:    POST /2fa/setup → { qrCodeDataUri?, otpauthUrl,
+//                            manualKey }; /2fa/setup/verify { token } →
+//                            { backupCodes }.
+// The QR image is rendered CLIENT-side from otpauthUrl (qrcode npm pkg is
+// already in the client bundle) — generating a PNG in the Worker would mean
+// vendoring a QR encoder for no gain.
+
+async function startTotpSetup(c: any) {
+  const db = getDb(c.env);
+  const userId = c.get('userId');
+  const me = await queryFirst<{ username: string; totp_enabled: number | null }>(
+    db, 'SELECT username, totp_enabled FROM users WHERE id = ?', userId);
+  if (!me) return c.json({ error: 'User not found' }, 404);
+  if (me.totp_enabled) {
+    return c.json({ error: 'Two-factor authentication is already enabled. Disable it before re-enrolling.', code: 'ALREADY_ENABLED' }, 400);
+  }
+  const secret = generateTotpSecret();
+  await execute(db, 'UPDATE users SET totp_pending_secret = ? WHERE id = ?', secret, userId);
+  const otpauthUrl = buildOtpauthUrl(secret, me.username);
+  // manualKey grouped in 4s for typing into an authenticator by hand.
+  const manualKey = secret.replace(/(.{4})/g, '$1 ').trim();
+  return c.json({ otpauthUrl, manualKey, secret, qrCodeDataUrl: null, qrCodeDataUri: null });
+}
+
+async function verifyTotpSetup(c: any) {
+  const db = getDb(c.env);
+  const userId = c.get('userId');
+  const body = (await c.req.json().catch(() => ({}))) as { code?: string; token?: string };
+  const code = body.code ?? body.token ?? '';
+  const me = await queryFirst<{ totp_pending_secret: string | null }>(
+    db, 'SELECT totp_pending_secret FROM users WHERE id = ?', userId);
+  if (!me?.totp_pending_secret) {
+    return c.json({ error: 'No pending 2FA setup — start setup first.', code: 'NO_PENDING_SETUP' }, 400);
+  }
+  if (!(await verifyTotpCode(me.totp_pending_secret, code))) {
+    return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 400);
+  }
+  const enc = await encryptTotpSecret(me.totp_pending_secret, c.env.JWT_SECRET);
+  const codes = generateBackupCodes(10);
+  const hashes = await Promise.all(codes.map(hashBackupCode));
+  await execute(db,
+    `UPDATE users SET totp_enabled = 1, totp_secret_enc = ?, totp_pending_secret = NULL,
+            totp_backup_codes = ? WHERE id = ?`,
+    enc, JSON.stringify(hashes), userId);
+  try {
+    await recordAudit(c, { action: 'totp_enabled', entityType: 'user', entityId: userId, details: 'Two-factor authentication enabled', actorId: userId });
+  } catch { /* non-fatal */ }
+  return c.json({ success: true, backupCodes: codes });
+}
+
+auth.post('/totp/setup', authMiddleware, startTotpSetup);
+auth.post('/2fa/setup', authMiddleware, startTotpSetup);
+auth.post('/totp/verify-setup', authMiddleware, verifyTotpSetup);
+auth.post('/2fa/setup/verify', authMiddleware, verifyTotpSetup);
+
+// POST /totp/disable { password } — password-confirmed disable.
+auth.post('/totp/disable', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    const { password } = await c.req.json<{ password?: string }>().catch(() => ({} as any));
+    const me = await queryFirst<{ password_hash: string }>(
+      db, 'SELECT password_hash FROM users WHERE id = ?', userId);
+    if (!me || !password || !compareSync(password, me.password_hash)) {
+      return c.json({ error: 'Incorrect password', code: 'INVALID_PASSWORD' }, 401);
+    }
+    await execute(db,
+      `UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL,
+              totp_pending_secret = NULL, totp_backup_codes = NULL WHERE id = ?`,
+      userId);
+    try {
+      await recordAudit(c, { action: 'totp_disabled', entityType: 'user', entityId: userId, details: 'Two-factor authentication disabled', actorId: userId });
+    } catch { /* non-fatal */ }
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('totp/disable failed:', err);
+    return c.json({ error: 'Failed to disable 2FA' }, 500);
+  }
+});
+
+// POST /2fa/backup-codes/regenerate { password } → fresh set of 10 codes.
+auth.post('/2fa/backup-codes/regenerate', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    const { password } = await c.req.json<{ password?: string }>().catch(() => ({} as any));
+    const me = await queryFirst<{ password_hash: string; totp_enabled: number | null }>(
+      db, 'SELECT password_hash, totp_enabled FROM users WHERE id = ?', userId);
+    if (!me || !password || !compareSync(password, me.password_hash)) {
+      return c.json({ error: 'Incorrect password', code: 'INVALID_PASSWORD' }, 401);
+    }
+    if (!me.totp_enabled) {
+      return c.json({ error: 'Two-factor authentication is not enabled.', code: 'NOT_ENABLED' }, 400);
+    }
+    const codes = generateBackupCodes(10);
+    const hashes = await Promise.all(codes.map(hashBackupCode));
+    await execute(db, 'UPDATE users SET totp_backup_codes = ? WHERE id = ?', JSON.stringify(hashes), userId);
+    return c.json({ success: true, backupCodes: codes });
+  } catch (err) {
+    console.error('backup-codes/regenerate failed:', err);
+    return c.json({ error: 'Failed to regenerate backup codes' }, 500);
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// WebAuthn / Security keys (YubiKey, Touch ID, Windows Hello)
+// ════════════════════════════════════════════════════════════
+// Port of legacy/server-vps/src/routes/webauthn.ts onto Workers:
+// @simplewebauthn/server v13 (pure WebCrypto — Workers-compatible),
+// challenges in KV (5-min TTL) instead of the legacy in-memory Map,
+// credentials in `webauthn_credentials` (migration 0090; also created
+// directly on live D1). Client: SecurityKeyManager.tsx (registration)
+// + AuthContext.verifyWebAuthn (2FA login) — contracts unchanged.
+
+const WEBAUTHN_CHALLENGE_PREFIX = 'webauthn-challenge:';
+const WEBAUTHN_CHALLENGE_TTL = 300; // 5 min, matches legacy
+const WEBAUTHN_RP_NAME = 'RMPG Flex';
+
+// rpID/origin: prod is rmpgutah.us (rpID covers www.); local dev is the
+// Vite server on localhost. Derived from the request Origin header so a
+// registration made from www. and a login from the apex both verify.
+function webauthnRp(c: any): { rpID: string; origins: string[] } {
+  const origin = c.req.header('Origin') || '';
+  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) {
+    return { rpID: 'localhost', origins: [origin] };
+  }
+  return { rpID: 'rmpgutah.us', origins: ['https://rmpgutah.us', 'https://www.rmpgutah.us'] };
+}
+
+function parseWebauthnTransports(json: string | null): AuthenticatorTransportFuture[] | undefined {
+  if (!json) return undefined;
+  try {
+    const arr = JSON.parse(json) as AuthenticatorTransportFuture[];
+    return arr.length > 0 ? arr : undefined;
+  } catch { return undefined; }
+}
+
+async function getWebauthnCredentials(db: any, userId: number): Promise<Array<{
+  id: number; credential_id: string; public_key: string; counter: number;
+  transports: string | null; name: string; device_type: string;
+  backed_up: number; created_at: string; last_used_at: string | null;
+}>> {
+  try {
+    return await query(db,
+      `SELECT id, credential_id, public_key, counter, transports, name,
+              device_type, backed_up, created_at, last_used_at
+         FROM webauthn_credentials WHERE user_id = ?`, userId);
+  } catch { return []; } // table may be absent on local DBs pre-0090
+}
+
+// Resolve the acting user for the registration-side endpoints.
+const webauthnUserId = (c: any): number => Number(c.get('userId'));
+
+// ── GET /webauthn/status ─────────────────────────────────────
+auth.get('/webauthn/status', authMiddleware, async (c) => {
+  try {
+    const creds = await getWebauthnCredentials(getDb(c.env), webauthnUserId(c));
+    return c.json({ enabled: creds.length > 0, credentialCount: creds.length, supported: true });
+  } catch (err) {
+    console.error('webauthn/status failed:', err);
+    return c.json({ enabled: false, credentialCount: 0, supported: true });
+  }
+});
+
+// ── GET /webauthn/credentials ────────────────────────────────
+auth.get('/webauthn/credentials', authMiddleware, async (c) => {
+  try {
+    const creds = await getWebauthnCredentials(getDb(c.env), webauthnUserId(c));
+    return c.json(creds.map((cr) => ({
+      id: cr.id,
+      name: cr.name,
+      deviceType: cr.device_type,
+      backedUp: !!cr.backed_up,
+      transports: parseWebauthnTransports(cr.transports) || [],
+      createdAt: cr.created_at,
+      lastUsedAt: cr.last_used_at,
+    })));
+  } catch (err) {
+    console.error('webauthn/credentials failed:', err);
+    return c.json({ error: 'Failed to list security keys', code: 'WEBAUTHN_LIST_ERROR' }, 500);
+  }
+});
+
+// ── POST /webauthn/register-options ──────────────────────────
+auth.post('/webauthn/register-options', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = webauthnUserId(c);
+    const user = await queryFirst<{ id: number; username: string; full_name: string | null }>(
+      db, 'SELECT id, username, full_name FROM users WHERE id = ?', userId);
+    if (!user) return c.json({ error: 'User not found', code: 'USER_NOT_FOUND' }, 404);
+
+    const existing = await getWebauthnCredentials(db, userId);
+    const { rpID } = webauthnRp(c);
+    const options = await generateRegistrationOptions({
+      rpName: WEBAUTHN_RP_NAME,
+      rpID,
+      userName: user.username,
+      userDisplayName: user.full_name || user.username,
+      attestationType: 'none',
+      excludeCredentials: existing.map((cr) => ({
+        id: cr.credential_id,
+        transports: parseWebauthnTransports(cr.transports),
+      })),
+      authenticatorSelection: {
+        residentKey: 'preferred',
+        userVerification: 'preferred',
+      },
+    });
+
+    const idBytes = crypto.getRandomValues(new Uint8Array(16));
+    const challengeId = Array.from(idBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+    await c.env.KV.put(
+      `${WEBAUTHN_CHALLENGE_PREFIX}${challengeId}`,
+      JSON.stringify({ challenge: options.challenge, userId }),
+      { expirationTtl: WEBAUTHN_CHALLENGE_TTL },
+    );
+    return c.json({ options, challengeId });
+  } catch (err) {
+    console.error('webauthn/register-options failed:', err);
+    return c.json({ error: 'Failed to start security key registration', code: 'WEBAUTHN_REGISTEROPTIONS_ERROR' }, 500);
+  }
+});
+
+// ── POST /webauthn/register-verify ───────────────────────────
+auth.post('/webauthn/register-verify', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{
+      challengeId?: string; response?: RegistrationResponseJSON; name?: string;
+    }>().catch(() => null);
+    if (!body?.challengeId || !body.response) {
+      return c.json({ error: 'Missing challengeId or response', code: 'MISSING_CHALLENGEID_OR_RESPONSE' }, 400);
+    }
+    if (typeof body.challengeId !== 'string' || body.challengeId.length > 64 || !/^[a-f0-9]+$/.test(body.challengeId)) {
+      return c.json({ error: 'Invalid challengeId format', code: 'INVALID_CHALLENGEID_FORMAT' }, 400);
+    }
+    if (body.name != null && (typeof body.name !== 'string' || body.name.length > 100)) {
+      return c.json({ error: 'Security key name must be 100 characters or less', code: 'SECURITY_KEY_NAME_TOO_LONG' }, 400);
+    }
+
+    const key = `${WEBAUTHN_CHALLENGE_PREFIX}${body.challengeId}`;
+    const storedRaw = await c.env.KV.get(key);
+    if (!storedRaw) return c.json({ error: 'Challenge expired. Please try again.', code: 'CHALLENGE_EXPIRED' }, 400);
+    const stored = JSON.parse(storedRaw) as { challenge: string; userId: number };
+    const userId = webauthnUserId(c);
+    if (stored.userId !== userId) return c.json({ error: 'Challenge mismatch', code: 'CHALLENGE_MISMATCH' }, 403);
+
+    const { rpID, origins } = webauthnRp(c);
+    const verification = await verifyRegistrationResponse({
+      response: body.response,
+      expectedChallenge: stored.challenge,
+      expectedOrigin: origins,
+      expectedRPID: rpID,
+      requireUserVerification: false, // UV is 'preferred' — some keys skip it
+    });
+    await c.env.KV.delete(key).catch(() => undefined);
+
+    if (!verification.verified || !verification.registrationInfo) {
+      return c.json({ error: 'Verification failed. Please try again.', code: 'VERIFICATION_FAILED' }, 400);
+    }
+    const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+
+    const db = getDb(c.env);
+    const credName = body.name?.trim() || 'Security Key';
+    const result = await execute(db, `
+      INSERT INTO webauthn_credentials
+        (user_id, credential_id, public_key, counter, device_type, backed_up, transports, name, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+    `,
+      userId,
+      credential.id, // Base64URLString already
+      isoBase64URL.fromBuffer(credential.publicKey),
+      credential.counter,
+      credentialDeviceType,
+      credentialBackedUp ? 1 : 0,
+      credential.transports && credential.transports.length > 0 ? JSON.stringify(credential.transports) : null,
+      credName,
+    );
+
+    // A security key counts as 2FA enabled (matches legacy behavior).
+    await execute(db, 'UPDATE users SET totp_enabled = 1 WHERE id = ?', userId).catch(() => undefined);
+
+    return c.json({
+      success: true,
+      credential: {
+        id: result.meta?.last_row_id ?? 0,
+        name: credName,
+        deviceType: credentialDeviceType,
+        backedUp: credentialBackedUp,
+      },
+    });
+  } catch (err) {
+    console.error('webauthn/register-verify failed:', err);
+    return c.json({ error: 'Failed to register security key', code: 'WEBAUTHN_REGISTERVERIFY_ERROR' }, 500);
+  }
+});
+
+// ── DELETE /webauthn/credentials/:id ─────────────────────────
+auth.delete('/webauthn/credentials/:id{[0-9]+}', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = webauthnUserId(c);
+    const credId = Number(c.req.param('id'));
+    const cred = await queryFirst<{ id: number; name: string }>(
+      db, 'SELECT id, name FROM webauthn_credentials WHERE id = ? AND user_id = ?', credId, userId);
+    if (!cred) return c.json({ error: 'Credential not found', code: 'CREDENTIAL_NOT_FOUND' }, 404);
+    await execute(db, 'DELETE FROM webauthn_credentials WHERE id = ? AND user_id = ?', credId, userId);
+
+    // If no keys remain AND no TOTP secret, drop the 2FA flag (legacy parity).
+    const remaining = await queryFirst<{ n: number }>(
+      db, 'SELECT COUNT(*) AS n FROM webauthn_credentials WHERE user_id = ?', userId);
+    const totp = await queryFirst<{ totp_secret_enc: string | null }>(
+      db, 'SELECT totp_secret_enc FROM users WHERE id = ?', userId).catch(() => null);
+    if ((remaining?.n ?? 0) === 0 && !totp?.totp_secret_enc) {
+      await execute(db, 'UPDATE users SET totp_enabled = 0 WHERE id = ?', userId).catch(() => undefined);
+    }
+    return c.json({ message: 'Security key removed' });
+  } catch (err) {
+    console.error('webauthn delete credential failed:', err);
+    return c.json({ error: 'Failed to remove security key', code: 'WEBAUTHN_DELETE_ERROR' }, 500);
+  }
+});
+
+// ── POST /webauthn/authenticate-options ──────────────────────
+// 2FA step during login — accepts the pending-2FA tempToken in the body
+// (NOT authMiddleware-gated: the user has no session yet).
+auth.post('/webauthn/authenticate-options', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const resolved = await resolve2faPending(c, db);
+    if ('error' in resolved) return resolved.error;
+    const userId = resolved.user.id as number;
+
+    const creds = await getWebauthnCredentials(db, userId);
+    if (creds.length === 0) {
+      return c.json({ error: 'No security keys registered', hasSecurityKeys: false }, 400);
+    }
+    const { rpID } = webauthnRp(c);
+    const options = await generateAuthenticationOptions({
+      rpID,
+      allowCredentials: creds.map((cr) => ({
+        id: cr.credential_id,
+        transports: parseWebauthnTransports(cr.transports),
+      })),
+      userVerification: 'preferred',
+    });
+
+    const idBytes = crypto.getRandomValues(new Uint8Array(16));
+    const challengeId = Array.from(idBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+    await c.env.KV.put(
+      `${WEBAUTHN_CHALLENGE_PREFIX}${challengeId}`,
+      JSON.stringify({ challenge: options.challenge, userId }),
+      { expirationTtl: WEBAUTHN_CHALLENGE_TTL },
+    );
+    return c.json({ options, challengeId, hasSecurityKeys: true });
+  } catch (err) {
+    console.error('webauthn/authenticate-options failed:', err);
+    return c.json({ error: 'Failed to start security key verification', code: 'WEBAUTHN_AUTHENTICATEOPTIONS_ERROR' }, 500);
+  }
+});
+
+// ── POST /webauthn/authenticate-verify ───────────────────────
+// Completes 2FA via security key → full login tokens (same contract as
+// /login/verify-2fa; AuthContext.verifyWebAuthn consumes it).
+auth.post('/webauthn/authenticate-verify', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const resolved = await resolve2faPending(c, db);
+    if ('error' in resolved) return resolved.error;
+    const { user } = resolved;
+
+    const body = await c.req.json<{
+      challengeId?: string; response?: AuthenticationResponseJSON;
+    }>().catch(() => ({} as any));
+    if (!body?.challengeId || !body.response) {
+      return c.json({ error: 'Missing required fields', code: 'MISSING_REQUIRED_FIELDS' }, 400);
+    }
+    if (typeof body.challengeId !== 'string' || body.challengeId.length > 64 || !/^[a-f0-9]+$/.test(body.challengeId)) {
+      return c.json({ error: 'Invalid challengeId format', code: 'INVALID_CHALLENGEID_FORMAT' }, 400);
+    }
+
+    const key = `${WEBAUTHN_CHALLENGE_PREFIX}${body.challengeId}`;
+    const storedRaw = await c.env.KV.get(key);
+    if (!storedRaw) return c.json({ error: 'Challenge expired. Please try again.', code: 'CHALLENGE_EXPIRED' }, 400);
+    const stored = JSON.parse(storedRaw) as { challenge: string; userId: number };
+    if (stored.userId !== user.id) return c.json({ error: 'Challenge mismatch', code: 'CHALLENGE_MISMATCH' }, 403);
+
+    const cred = await queryFirst<{
+      id: number; credential_id: string; public_key: string; counter: number; transports: string | null;
+    }>(db,
+      'SELECT id, credential_id, public_key, counter, transports FROM webauthn_credentials WHERE credential_id = ? AND user_id = ?',
+      body.response.id, user.id);
+    if (!cred) return c.json({ error: 'Security key not recognized', code: 'SECURITY_KEY_NOT_RECOGNIZED' }, 400);
+
+    const { rpID, origins } = webauthnRp(c);
+    const verification = await verifyAuthenticationResponse({
+      response: body.response,
+      expectedChallenge: stored.challenge,
+      expectedOrigin: origins,
+      expectedRPID: rpID,
+      requireUserVerification: false,
+      credential: {
+        id: cred.credential_id,
+        publicKey: isoBase64URL.toBuffer(cred.public_key),
+        counter: cred.counter,
+        transports: parseWebauthnTransports(cred.transports),
+      },
+    });
+    await c.env.KV.delete(key).catch(() => undefined);
+
+    if (!verification.verified) {
+      return c.json({ error: 'Security key verification failed', code: 'SECURITY_KEY_VERIFICATION_FAILED' }, 401);
+    }
+    await execute(db,
+      `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now','localtime') WHERE id = ?`,
+      verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
+
+    return await issueLoginTokens(c, db, user);
+  } catch (err) {
+    console.error('webauthn/authenticate-verify failed:', err);
+    return c.json({ error: 'Failed to verify security key', code: 'WEBAUTHN_AUTHENTICATEVERIFY_ERROR' }, 500);
+  }
+});
+
+// ── Security: unblock IP ───────────────────────────────────
+auth.post('/security/unblock-ip', authMiddleware, async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const { ip } = await c.req.json<{ ip: string }>();
+    if (!ip) return c.json({ error: 'ip required' }, 400);
+    const db = getDb(c.env);
+    const r = await execute(db,
+      `DELETE FROM login_attempts WHERE ip_address = ? AND COALESCE(success, 0) = 0`, ip);
+    return c.json({ success: true, cleared: r.meta.changes ?? 0 });
+  } catch { return c.json({ error: 'Failed to unblock IP' }, 500); }
+});
 
 export default auth;

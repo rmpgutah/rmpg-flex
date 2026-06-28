@@ -74,7 +74,7 @@ export default function UploadProgressBar({
 
       {/* Progress bar */}
       <div
-        className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm overflow-hidden"
+        className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm overflow-hidden"
         style={{ height: 4 }}
       >
         {phase === 'processing' ? (

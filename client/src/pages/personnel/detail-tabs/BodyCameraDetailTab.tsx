@@ -6,6 +6,8 @@ import React, { useState } from 'react';
 import { Video, Plus, Edit2, Trash2, Loader2, Camera, Play, Upload } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo } from '../../../types';
 import { CAMERA_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS, VIDEO_CLASSIFICATION_COLORS } from '../utils/personnelConstants';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   cameras: BodyCamera[];
@@ -43,7 +45,7 @@ export default function BodyCameraDetailTab({
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatFileSize = (bytes: number) => {
@@ -62,11 +64,11 @@ export default function BodyCameraDetailTab({
   };
 
   const statusLabel = (status: string) => status.replace(/_/g, ' ').toUpperCase();
-  const classLabel = (cls: string) => cls.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const classLabel = (cls: string) => toDisplayLabel(cls);
 
   const topBorderColor = (status: string) => {
     switch (status) {
-      case 'assigned': return 'border-t-2 border-t-gray-500';
+      case 'assigned': return 'border-t-2 border-t-rmpg-500';
       case 'available': return 'border-t-2 border-t-green-500';
       case 'maintenance': return 'border-t-2 border-t-amber-500';
       case 'lost': return 'border-t-2 border-t-red-500';
@@ -103,8 +105,8 @@ export default function BodyCameraDetailTab({
 
       {/* Camera Status Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-gray-500">
-          <p className="text-lg font-bold text-gray-400 font-mono">{cameras.filter(c => c.status === 'assigned').length}</p>
+        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">
+          <p className="text-lg font-bold text-rmpg-400 font-mono">{cameras.filter(c => c.status === 'assigned').length}</p>
           <p className="field-label">Assigned</p>
         </div>
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">

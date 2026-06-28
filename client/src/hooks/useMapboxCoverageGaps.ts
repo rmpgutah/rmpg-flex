@@ -4,6 +4,8 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface GpsPoint {
   latitude: number;
@@ -57,8 +59,8 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
     return () => {
       if (!map) return;
       try {
-        if (map.getLayer(FILL_LAYER_ID)) map.removeLayer(FILL_LAYER_ID);
-        if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+        safeRemoveLayer(map, FILL_LAYER_ID);
+        safeRemoveSource(map, SOURCE_ID);
       } catch { /* ignore */ }
     };
   }, [map]);
@@ -66,8 +68,8 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
   const clearFromMap = useCallback(() => {
     if (!map) return;
     visibleRef.current = false;
-    try { if (map.getLayer(FILL_LAYER_ID)) map.removeLayer(FILL_LAYER_ID); } catch { /* */ }
-    try { if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID); } catch { /* */ }
+    safeRemoveLayer(map, FILL_LAYER_ID);
+    safeRemoveSource(map, SOURCE_ID);
   }, [map]);
 
   const computeCoverage = useCallback(async (
@@ -115,7 +117,9 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
       });
       setStats(s);
 
-      // Render on map
+      // Render on map — guard on STYLE readiness (addSource throws
+      // "Style is not done loading" before the basemap style finishes).
+      whenStyleReady(map, () => {
       clearFromMap();
       visibleRef.current = true;
 
@@ -161,6 +165,7 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
           ],
           'fill-outline-color': '#333333',
         },
+      });
       });
     } catch (err) {
       console.warn('[useMapboxCoverageGaps] compute failed:', err);

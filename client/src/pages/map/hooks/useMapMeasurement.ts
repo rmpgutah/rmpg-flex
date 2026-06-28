@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export type MeasureMode = 'distance' | 'area';
 
@@ -220,8 +221,10 @@ export function useMapMeasurement(): MeasurementState {
       if (map.getSource(sourceId)) {
         (map.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(lineData);
       } else {
-        map.addSource(sourceId, { type: 'geojson', data: lineData });
-        map.addLayer({ id: `${sourceId}-line`, type: 'line', source: sourceId, paint: { 'line-color': '#d4a017', 'line-width': 3, 'line-opacity': 0.9 } });
+        whenStyleReady(map, () => {
+          map.addSource(sourceId, { type: 'geojson', data: lineData });
+          map.addLayer({ id: `${sourceId}-line`, type: 'line', source: sourceId, paint: { 'line-color': '#d4a017', 'line-width': 3, 'line-opacity': 0.9 } });
+        });
       }
     }
 
@@ -232,9 +235,11 @@ export function useMapMeasurement(): MeasurementState {
       if (map.getSource(polygonSourceId)) {
         (map.getSource(polygonSourceId) as mapboxgl.GeoJSONSource).setData(polyData);
       } else {
-        map.addSource(polygonSourceId, { type: 'geojson', data: polyData });
-        map.addLayer({ id: `${polygonSourceId}-fill`, type: 'fill', source: polygonSourceId, paint: { 'fill-color': '#d4a017', 'fill-opacity': 0.15 } });
-        map.addLayer({ id: `${polygonSourceId}-line`, type: 'line', source: polygonSourceId, paint: { 'line-color': '#d4a017', 'line-width': 3, 'line-opacity': 0.9 } });
+        whenStyleReady(map, () => {
+          map.addSource(polygonSourceId, { type: 'geojson', data: polyData });
+          map.addLayer({ id: `${polygonSourceId}-fill`, type: 'fill', source: polygonSourceId, paint: { 'fill-color': '#d4a017', 'fill-opacity': 0.15 } });
+          map.addLayer({ id: `${polygonSourceId}-line`, type: 'line', source: polygonSourceId, paint: { 'line-color': '#d4a017', 'line-width': 3, 'line-opacity': 0.9 } });
+        });
       }
     }
   }, [renderSegmentLabels]);

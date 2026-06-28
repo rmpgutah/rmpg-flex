@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import type { DashcamEvent, CpgDeviceMapping } from '../../../types';
 import { DASHCAM_EVENT_COLORS } from '../utils/personnelConstants';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   events: DashcamEvent[];
@@ -28,7 +30,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
 
   const formatDateTime = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleString('en-US', {
+    return parseTimestamp(d).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -36,10 +38,10 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
 
   const formatDate = (d?: string | null) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const eventLabel = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  const eventLabel = (t: string) => toDisplayLabel(t);
 
   // Stats
   const hardBrakes = events.filter(e => e.event_type === 'hard_brake').length;
@@ -126,7 +128,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
 
       {/* Impact alert */}
       {impacts > 0 && (
-        <div className="panel-beveled p-2.5 flex items-center gap-2 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="panel-beveled p-2.5 flex items-center gap-2 border border-red-700/40 border-l-2 border-l-red-500 bg-red-950/30">
           <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
           <span className="text-[10px] text-red-400 font-semibold">
             {impacts} impact event{impacts !== 1 ? 's' : ''} — review immediately

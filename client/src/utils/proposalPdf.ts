@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { registerArialFont } from './pdf/fonts/registerArial';
 import {
   hexToRgb,
   addReportHeader,
@@ -48,6 +49,7 @@ export async function generateProposalPdf(proposal: any, client: any): Promise<v
   setGenerationTimestamp(new Date().toLocaleString());
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageWidth = doc.internal.pageSize.getWidth();
   const cw = getContentWidth(doc);
   const lx = getLeftX();
