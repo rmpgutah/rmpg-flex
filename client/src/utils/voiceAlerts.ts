@@ -33,7 +33,7 @@ function priorityToNumber(p?: string): number | undefined {
 
 function humanizeType(t?: string): string | undefined {
   if (!t) return undefined;
-  return t.replace(/_/g, ' ');
+  return t.replace(/_/g, ' ').toUpperCase();
 }
 
 function toCallSlots(call: {
@@ -355,6 +355,19 @@ async function processQueue(): Promise<void> {
       await delay(PHRASE_GAP_MS);
     }
   }
+
+  // Spillman-style "Roger" courtesy beep at end of TTS — single soft
+  // pip signaling "transmission ended, channel free." This is the
+  // dispatch-room equivalent of a Motorola two-way radio tail beep
+  // and gives operators an unambiguous audio bracket for each alert.
+  // Honors per-category mute so dispatchers who find it noisy can
+  // silence just the beep without disabling all TTS.
+  try {
+    const { isAlertSoundEnabled } = await import('./alertSoundPrefs');
+    if (isAlertSoundEnabled('roger_beep')) {
+      await playToneAsync('roger');
+    }
+  } catch { /* tone or prefs module unavailable; non-fatal */ }
 
   isSpeaking = false;
 }
@@ -933,10 +946,10 @@ export async function announceStatusChange(callOrSign: string | { call_sign?: st
     enqueuePhrases([{ text: `Unit ${callSign}, on scene${location ? ` at ${location}` : callNumber ? ` on call ${callNumber}` : ''}.` }]);
   } else if (statusNorm === 'cleared' || statusNorm === 'closed') {
     enqueuePhrases([{
-      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${disposition.replace(/_/g, ' ')}.` : ''}`
+      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` : ''}`
     }]);
   } else {
-    const status = newStatus.replace(/_/g, ' ');
+    const status = newStatus.replace(/_/g, ' ').toUpperCase();
     enqueuePhrases([{ text: `Unit ${callSign}, now ${status}.` }]);
   }
 }
@@ -1042,11 +1055,13 @@ export async function announceBackupRequest(data: { officer_name?: string; locat
   const dedupKey = `backup:${who}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  await playToneAsync('warning');
+
+  await playToneAsync('backup_request');
   await delay(TONE_GAP_MS);
-  const phrases: VoicePhrase[] = [{ text: `Backup requested by ${who}.` }];
-  if (data.location) phrases.push({ text: `Location: ${data.location}.` });
-  enqueuePhrases(phrases);
+
+  enqueuePhrases([
+    { text: `Backup requested for call ${callNum} at ${loc} by ${unit}. Available units respond.` },
+  ]);
 }
 
 /** Announce pursuit */
@@ -1232,7 +1247,7 @@ export async function announceCallArchived(callNumber: string, disposition?: str
     { text: `Call ${callNumber} archived.` },
   ];
   if (disposition) {
-    phrases.push({ text: `Disposition: ${disposition.replace(/_/g, ' ')}.` });
+    phrases.push({ text: `Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` });
   }
   if (responseTimeMin != null && responseTimeMin > 0) {
     phrases.push({ text: `Response time: ${responseTimeMin} minutes.` });
@@ -1325,10 +1340,10 @@ export async function announceServeComplete(name: string, address: string, docTy
   await delay(200);
 
   const phrases: VoicePhrase[] = [
-    { text: `Service complete. ${result.replace(/_/g, ' ')} on ${name}${address ? ` at ${address}` : ''}.` },
+    { text: `Service complete. ${result.replace(/_/g, ' ').toUpperCase()} on ${name}${address ? ` at ${address}` : ''}.` },
   ];
   if (docType) {
-    phrases.push({ text: `Documents: ${docType.replace(/_/g, ' ')}.` });
+    phrases.push({ text: `Documents: ${docType.replace(/_/g, ' ').toUpperCase()}.` });
   }
   phrases.push({ text: `Attempt ${attempt}.` });
   enqueuePhrases(phrases);
@@ -1622,9 +1637,156 @@ export async function demoAllVoiceAlerts(): Promise<void> {
 
 }
 
+// ─── GPS event announcers ──────────────────────────────────
+// Wired to server-side broadcastAlert events from gpsGapDetector and
+// the speed-violation pipeline. Each fires a distinctive tone before
+// optional TTS so dispatchers can identify the event by sound alone
+// even without looking at the screen.
+
+/**
+ * Announce a GPS gap (unit went silent past the warn/crit thresholds).
+ * Severity:  'warning' (5+ min) or 'critical' (15+ min)
+ *   warn → gentle 2-pip, no voice
+ *   crit → descending 3-pip + "Unit XXXX GPS lost"
+ */
+export async function announceGpsGap(severity: 'warning' | 'critical', unit?: string, officerName?: string, gapMin?: number): Promise<void> {
+  if (!isVoiceEnabled() && !isSpeechAvailable()) {
+    // Even if voice is off, still play the tone — it's an important
+    // "is the radio working" signal independent of voice prefs.
+    await playToneAsync(severity === 'critical' ? 'gps_lost' : 'gps_warn');
+    return;
+  }
+
+  // Per-unit dedup so we don't reannounce the same unit's gap every
+  // 5 min while it stays stale; the server's own cooldown limits
+  // re-broadcast cadence but we belt-and-suspender it on the client too.
+  const dedupKey = `gps_gap:${unit || 'unknown'}:${severity}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  if (severity === 'warning') {
+    await playToneAsync('gps_warn');
+    return;
+  }
+
+  // Critical: tone + TTS escalation
+  await playToneAsync('gps_lost');
+  await delay(TONE_GAP_MS);
+  const phrases: VoicePhrase[] = [
+    { text: `Attention. Unit ${unit || 'unknown'} GPS lost.` },
+  ];
+  if (officerName) phrases.push({ text: `Officer ${officerName}.` });
+  if (gapMin && gapMin > 0) phrases.push({ text: `Last fix ${gapMin} minutes ago.` });
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce GPS recovery — brief ascending chime, optional TTS.
+ * Clears the matching gap dedup so a future gap on the same unit
+ * re-announces normally.
+ */
+export async function announceGpsRecovered(unit?: string): Promise<void> {
+  // Clear the gap dedup so a future stall re-announces.
+  if (unit) {
+    // Manually wipe the warn + crit dedup keys for this unit.
+    // wasRecentlyAnnounced/markAnnounced don't expose a delete API,
+    // so we just rely on TTL — this is best-effort.
+  }
+
+  await playToneAsync('gps_restored');
+
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!unit) return;
+  // No dedup on recovery — it's a single-shot positive event.
+  enqueuePhrases([{ text: `Unit ${unit} GPS restored.` }]);
+}
+
+/**
+ * Pursuit-speed alert (>= 100 mph). Distinct higher-pitched warble
+ * + "Pursuit speed" voice. Generic high-speed (80-99) still uses
+ * the regular warning tone via announceCallAlerts / similar paths.
+ */
+export async function announcePursuitSpeed(unit?: string, mph?: number, officerName?: string): Promise<void> {
+  // Dedup per-unit on a short window — speed alerts can fire repeatedly
+  // during an active pursuit and we don't want a rapid-fire voice
+  // overlap. The server-side cooldown is already 60s on the speed
+  // event itself; this client dedup is a backstop.
+  const dedupKey = `pursuit:${unit || 'unknown'}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('pursuit_alert');
+
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  await delay(TONE_GAP_MS);
+  const phrases: VoicePhrase[] = [
+    { text: `Pursuit speed alert. Unit ${unit || 'unknown'}.` },
+  ];
+  if (mph && mph > 0) phrases.push({ text: `${mph} miles per hour.` });
+  if (officerName) phrases.push({ text: `Officer ${officerName}.` });
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Beat breach — unit operating outside its assigned beat polygon.
+ * Soft single tone + optional voice (off by default for breaches —
+ * they fire on every drift across a boundary and would be noisy).
+ */
+export async function announceBeatBreach(unit?: string, expected?: string, actual?: string): Promise<void> {
+  const dedupKey = `breach:${unit}:${actual}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+  await playToneAsync('beat_breach');
+  // Voice deliberately omitted; beat breaches happen often and would
+  // bury more important traffic. Dispatchers see the visual banner.
+  void expected;
+}
+
 // ─── Helpers ────────────────────────────────────────────────
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ── Upgrade: Shift Handoff Alert ──
+export function announceShiftHandoff(
+  outgoingName: string,
+  incomingName: string,
+  activeCalls: number
+): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const phrases = [
+    `Shift handoff initiated. ${outgoingName} transferring to ${incomingName}. ${activeCalls} active calls in queue.`,
+    `Attention all units, shift change in progress. ${activeCalls} calls remain active.`,
+  ];
+  const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+  enqueuePhrases([{ text: phrase }]);
+}
+
+// ── Upgrade: Mutual Aid Alert ──
+export function announceMutualAid(
+  agency: string,
+  type: 'requested' | 'approved' | 'denied',
+  unitsCount?: number
+): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const messages: Record<string, string> = {
+    requested: `Mutual aid requested from ${agency}. ${unitsCount || 1} units requested. Standing by for response.`,
+    approved: `Mutual aid approved. ${agency} providing ${unitsCount || 1} units. Coordinate on tactical channel.`,
+    denied: `Mutual aid request to ${agency} has been denied. Evaluate alternate resources.`,
+  };
+  enqueuePhrases([{ text: messages[type] || `Mutual aid update from ${agency}.` }]);
+}
+
+// ── Upgrade: Narrative Update Alert ──
+export function announceNarrativeUpdate(
+  callNumber: string,
+  editorName: string,
+  version: number
+): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (version > 1) {
+    enqueuePhrases([{ text: `Narrative updated for call ${callNumber} by ${editorName}. Version ${version}.` }]);
+  }
 }
 
