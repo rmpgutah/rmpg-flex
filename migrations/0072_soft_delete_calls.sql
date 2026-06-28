@@ -1,0 +1,16 @@
+-- 0072_soft_delete_calls.sql
+-- Adds a soft-delete tombstone column to the calls_for_service overflow table.
+-- The base table (calls_for_service) is at the D1 100-column cap, so this MUST
+-- live on the 1:1 _ext table (see CLAUDE.md / project-live-d1-schema-patches).
+--
+-- A non-NULL deleted_at means the call has been "deleted" (removed from the
+-- dispatch board) but is preserved for admin recovery. The list handler in
+-- src/routes/dispatch/calls.ts excludes rows where deleted_at IS NOT NULL; the
+-- single-call GET (/:id) still returns soft-deleted calls so they can be
+-- recovered.
+--
+-- NOTE: D1 does NOT support `IF NOT EXISTS` on `ADD COLUMN`. On re-apply this
+-- statement will error with "duplicate column name: deleted_at" — that failure
+-- is acceptable (deploy.yml runs migrations with continue-on-error: true, and
+-- the Worker tolerates the column already existing).
+ALTER TABLE calls_for_service_ext ADD COLUMN deleted_at TEXT;

@@ -1,0 +1,12 @@
+-- Court name for PSO Client Request calls. Lives on the _ext overflow
+-- table because calls_for_service is at the D1 100-column cap. Surfaced
+-- in the Notice of Attempt to Serve PDF's "4. Court" field when a
+-- dispatcher closes a PSO call — without this, the field rendered "N/A"
+-- because the call schema had no place to store the court name.
+--
+-- D1 does NOT support `IF NOT EXISTS` on `ADD COLUMN`. Re-applying this
+-- against a database that already has the column raises "duplicate
+-- column name", which the deploy step swallows (continue-on-error per
+-- CLAUDE.md). After merging, also apply this DDL directly to live D1
+-- 785de7ae and verify with `pragma_table_info('calls_for_service_ext')`.
+ALTER TABLE calls_for_service_ext ADD COLUMN court_name TEXT;

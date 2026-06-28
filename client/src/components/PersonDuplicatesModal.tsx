@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { X, Loader2, AlertTriangle, Users, ChevronRight, Merge } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, Loader2, Users, ChevronRight, Merge } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 
 interface DuplicatePair {
@@ -64,7 +64,7 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-2xl mx-4 shadow-md panel-beveled" style={{ background: '#0a0a0a' }} onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-2xl mx-4 shadow-md panel-beveled" style={{ background:"var(--surface-sunken)" }} onClick={e => e.stopPropagation()}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: '#d4a017' }} />
@@ -97,7 +97,7 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
               <div className="flex items-center gap-2 px-3 py-2">
                 {/* Person A */}
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-white">{p.first_name1} {p.last_name1}</div>
+                  <div className="text-xs font-bold text-rmpg-100">{p.first_name1} {p.last_name1}</div>
                   <div className="text-[9px] text-rmpg-400">ID #{p.id1} {p.dob1 && `• DOB: ${p.dob1}`}</div>
                 </div>
 
@@ -105,7 +105,7 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
 
                 {/* Person B */}
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-white">{p.first_name2} {p.last_name2}</div>
+                  <div className="text-xs font-bold text-rmpg-100">{p.first_name2} {p.last_name2}</div>
                   <div className="text-[9px] text-rmpg-400">ID #{p.id2} {p.dob2 && `• DOB: ${p.dob2}`}</div>
                 </div>
 
@@ -140,13 +140,13 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
           <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={() => setConfirmMerge(null)}>
             <div className="absolute inset-0 bg-black/50" />
             <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-md" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)' }}>
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-sunken) 100%)' }}>
                 <Merge className="w-4 h-4 text-amber-400" />
-                <h2 className="text-xs font-bold text-white uppercase tracking-wider">Confirm Merge</h2>
+                <h2 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Confirm Merge</h2>
               </div>
               <div className="p-5 space-y-3">
                 <p className="text-sm text-rmpg-200">
-                  Keep <strong className="text-white">{confirmMerge.keepName}</strong> and merge
+                  Keep <strong className="text-rmpg-100">{confirmMerge.keepName}</strong> and merge
                   <strong className="text-amber-400"> {confirmMerge.mergeName}</strong> into it?
                 </p>
                 <p className="text-[10px] text-rmpg-400">

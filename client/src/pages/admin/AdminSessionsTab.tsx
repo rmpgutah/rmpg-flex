@@ -11,6 +11,8 @@ import { toDisplayLabel } from '../../utils/formatters';
 import LoginHistoryTable from '../../components/security/LoginHistoryTable';
 import { useToast } from '../../components/ToastProvider';
 import { safeDateTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Session {
   id: number;
@@ -42,20 +44,6 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Props) {
   const { addToast } = useToast();
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -86,6 +74,18 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
     }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildSessionMenu = (s: Session): ContextMenuItem[] => [
+    m.copy('Copy user', `${s.full_name || ''} (${s.username || ''})`.trim()),
+    ...(s.ip_address ? [m.copy('Copy IP', s.ip_address, <Globe size={12} />)] : []),
+    m.copyId(s.id, 'Copy session ID'),
+    m.separator(),
+    m.action('Revoke session', () => handleRevoke(s.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   if (loading) return <LoadingSpinner />;
 
   const activeSessions = sessions.filter(s => s.is_active && !isExpired(s.expires_at));
@@ -114,11 +114,11 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
           </div>
         </div>
         <div className="panel-beveled p-3 flex items-center gap-3">
-          <div className="w-8 h-8 flex items-center justify-center bg-blue-900/30 border border-blue-700/40 shrink-0" aria-hidden="true">
-            <Monitor style={{ width: 14, height: 14 }} className="text-blue-400" />
+          <div className="w-8 h-8 flex items-center justify-center bg-surface-sunken/30 border border-border-default/40 shrink-0" aria-hidden="true">
+            <Monitor style={{ width: 14, height: 14 }} className="text-rmpg-400" />
           </div>
           <div>
-            <div className="text-[18px] font-black text-blue-400 tabular-nums leading-tight">
+            <div className="text-[18px] font-black text-rmpg-400 tabular-nums leading-tight">
               {new Set(activeSessions.map(s => s.user_id)).size}
             </div>
             <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Unique Users Online</div>
@@ -127,16 +127,16 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       </div>
 
       {/* Active Sessions Table */}
-      <div className="flex items-center gap-2 mb-2 border-b border-[#242424] pb-1.5">
+      <div className="flex items-center gap-2 mb-2 border-b border-border-default pb-1.5">
         <Shield style={{ width: 11, height: 11 }} className="text-green-400" aria-hidden="true" />
         <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Active Sessions ({activeSessions.length})</span>
-        <button type="button" onClick={fetchSessions} className="ml-auto p-1 text-rmpg-500 hover:text-white hover:bg-surface-raised/50 transition-colors" aria-label="Refresh sessions">
+        <button type="button" onClick={fetchSessions} className="ml-auto p-1 text-rmpg-500 hover:text-rmpg-100 hover:bg-surface-raised/50 transition-colors" aria-label="Refresh sessions">
           <RefreshCw style={{ width: 11, height: 11 }} />
         </button>
       </div>
-      <table className="w-full text-[10px] mb-6" aria-label="Active sessions">
+      <div className="overflow-x-auto"><table className="w-full text-[10px] mb-6" aria-label="Active sessions">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider sticky top-0 z-10 border-b border-[#242424]" style={{ background: '#050505' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider sticky top-0 z-10 border-b border-border-default" style={{ background: 'var(--surface-overlay)' }}>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">User</th>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Role</th>
             <th className="text-left px-3 py-2.5 font-bold whitespace-nowrap" scope="col">Device</th>
@@ -150,9 +150,9 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
           {activeSessions.map((s, idx) => {
             const { device, icon: DeviceIcon } = parseUserAgent(s.user_agent);
             return (
-              <tr key={s.id} className={`border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors ${idx % 2 !== 0 ? 'bg-rmpg-800/10' : ''}`}>
+              <tr key={s.id} onContextMenu={(e) => openMenu(e, buildSessionMenu(s))} className={`border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors ${idx % 2 !== 0 ? 'bg-rmpg-800/10' : ''}`}>
                 <td className="px-3 py-2">
-                  <span className="font-semibold text-white">{s.full_name}</span>
+                  <span className="font-semibold text-rmpg-100">{s.full_name}</span>
                   <span className="text-rmpg-500 ml-1">({s.username})</span>
                 </td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(s.role)}</td>
@@ -192,11 +192,11 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
             </td></tr>
           )}
         </tbody>
-      </table>
+      </table></div>
 
       {/* Login History */}
-      <div className="flex items-center gap-2 mb-2 border-b border-[#242424] pb-1.5">
-        <History style={{ width: 11, height: 11 }} className="text-blue-400" aria-hidden="true" />
+      <div className="flex items-center gap-2 mb-2 border-b border-border-default pb-1.5">
+        <History style={{ width: 11, height: 11 }} className="text-rmpg-400" aria-hidden="true" />
         <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Recent Login History</span>
       </div>
       <div className="panel-surface mb-4">

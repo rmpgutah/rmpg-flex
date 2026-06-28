@@ -5,8 +5,8 @@
 // when position is being obtained via WiFi instead of GPS.
 // ============================================================
 
-import React, { useState } from 'react';
-import { AlertTriangle, X, Wifi, WifiOff } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, X, Wifi } from 'lucide-react';
 import type { ConnectionType, PositionSource } from '../hooks/useGpsTracking';
 
 interface LocationGateProps {
@@ -38,7 +38,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
         fontSize: 11,
       }}>
         <AlertTriangle size={14} color="#ef4444" style={{ flexShrink: 0 }} />
-        <span style={{ color: '#ccc', flex: 1 }}>
+        <span style={{ color: 'var(--rmpg-300)', flex: 1 }}>
           <strong style={{ color: '#ef4444' }}>Location disabled</strong>
           {' — '}GPS tracking is not active. Enable location access in your browser or device settings for full functionality.
         </span>
@@ -64,13 +64,14 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
           style={{
             background: 'none',
             border: 'none',
-            color: '#666666',
+            color: 'var(--rmpg-500)',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',
             flexShrink: 0,
           }}
           title="Dismiss"
+          aria-label="Dismiss location warning"
         >
           <X size={14} />
         </button>
@@ -83,7 +84,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
     return (
       <div style={{
         background: 'rgba(136, 136, 136, 0.08)',
-        borderBottom: '1px solid #222222',
+        borderBottom: '1px solid var(--border-subtle)',
         padding: '4px 16px',
         display: 'flex',
         alignItems: 'center',
@@ -99,13 +100,14 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
           style={{
             background: 'none',
             border: 'none',
-            color: '#666666',
+            color: 'var(--rmpg-500)',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',
             flexShrink: 0,
           }}
           title="Dismiss"
+          aria-label="Dismiss WiFi tracking indicator"
         >
           <X size={12} />
         </button>
