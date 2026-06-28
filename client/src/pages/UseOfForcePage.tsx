@@ -504,13 +504,11 @@ export default function UseOfForcePage() {
       // 2) Review confirm dialog open (ConfirmDialog handles its own Esc,
       //    but covering it here keeps the order explicit when nested).
       if (reviewDialog) { e.stopPropagation(); setReviewDialog(null); setReviewNotes(''); return; }
-      // 3) Delete confirm dialog open
-      if (deleteTarget) { e.stopPropagation(); setDeleteTarget(null); return; }
-      // 4) Error banner
+      // 3) Error banner
       if (error) { e.stopPropagation(); setError(''); return; }
-      // 5) Detail panel selected
+      // 4) Detail panel selected
       if (selected) { e.stopPropagation(); setSelected(null); return; }
-      // 6) Active filters
+      // 5) Active filters
       if (filterStatus || searchQuery || filterIncidentId || filterSubjectId) {
         e.stopPropagation();
         setFilterStatus(''); setSearchQuery(''); setFilterIncidentId(''); setFilterSubjectId('');

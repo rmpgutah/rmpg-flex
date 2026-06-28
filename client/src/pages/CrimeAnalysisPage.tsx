@@ -92,8 +92,7 @@ export default function CrimeAnalysisPage() {
   /* ── Derived data ──────────────────────────────────────────── */
   // filterActive = user has chosen a custom or non-default period, so "no
   // data" means the filter returned nothing rather than the system being empty.
-  const isCustomRange = dateRange === 'custom';
-  const filterActive = dateRange !== '90' || (isCustomRange && !!(startDate || endDate));
+  const filterActive = dateRange !== '90' || !!(startDate || endDate);
   const emptyHint = filterActive ? 'No data for this period' : 'No data available';
 
   const totalIncidents = data?.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0;
@@ -183,6 +182,16 @@ export default function CrimeAnalysisPage() {
       <div className="h-full flex items-center justify-center">
         <div className="text-xs text-rmpg-500">
           {filterActive ? 'No data for the selected period' : 'No data available'}
+        </div>
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" role="status" aria-label="Loading" />
+          <div className="text-xs text-rmpg-500">Loading crime analysis...</div>
         </div>
       </div>
     );

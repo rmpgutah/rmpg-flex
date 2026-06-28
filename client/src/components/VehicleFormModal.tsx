@@ -493,6 +493,27 @@ export default function VehicleFormModal({
             </FormField>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Title Status</label>
+              <select name="title_status" className="select-dark mt-1" value={form.title_status} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {TITLE_STATUS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Registration State</label>
+              <select name="registration_state" className="select-dark mt-1" value={form.registration_state} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Estimated Value</label>
+              <input name="estimated_value" type="text" className="input-dark mt-1" placeholder="$" value={form.estimated_value} onChange={handleChange} />
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Insurance Company">
               <input name="insurance_company" type="text" className="input-dark mt-1" value={form.insurance_company} onChange={handleChange} />
@@ -521,6 +542,31 @@ export default function VehicleFormModal({
             <FormField label="NCIC Entry #">
               <input name="ncic_entry_number" type="text" className="input-dark mt-1" placeholder="NCIC stolen vehicle entry number" value={form.ncic_entry_number} onChange={handleChange} />
             </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Insurance Expiry</label>
+              <input name="insurance_expiry" type="date" className="input-dark mt-1" value={form.insurance_expiry} onChange={handleChange} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Vehicle Use</label>
+              <select name="vehicle_use" className="select-dark mt-1" value={form.vehicle_use} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {VEHICLE_USE_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Primary Driver</label>
+              <input name="primary_driver_name" type="text" className="input-dark mt-1" placeholder="Name of primary driver" value={form.primary_driver_name} onChange={handleChange} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">NCIC Entry #</label>
+              <input name="ncic_entry_number" type="text" className="input-dark mt-1" placeholder="NCIC stolen vehicle entry number" value={form.ncic_entry_number} onChange={handleChange} />
+            </div>
           </div>
 
           <div className="border-t border-rmpg-700 pt-3">
@@ -659,6 +705,18 @@ export default function VehicleFormModal({
             <FormField label="Equipment Notes">
               <RichTextArea name="equipment_notes" rows={2} className="input-dark mt-1" placeholder="Aftermarket parts, accessories, etc." value={form.equipment_notes} onChange={handleChange} maxLength={2000} />
             </FormField>
+          </div>
+
+          {/* Modifications / Equipment */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications</label>
+              <textarea name="modifications" rows={2} className="input-dark mt-1" placeholder="Lift kit, exhaust, aftermarket bumper, etc." value={form.modifications} onChange={handleChange} maxLength={2000} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes</label>
+              <textarea name="equipment_notes" rows={2} className="input-dark mt-1" placeholder="Aftermarket parts, accessories, etc." value={form.equipment_notes} onChange={handleChange} maxLength={2000} />
+            </div>
           </div>
 
           {/* Notes */}
