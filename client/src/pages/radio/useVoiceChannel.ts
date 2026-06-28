@@ -14,7 +14,22 @@
 // WebM (concatenating headers into one buffer breaks decoding).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StreamPlayer } from '../../utils/StreamPlayer';
+import { RadioHazePlayer } from '../../utils/radioProcessor';
 import { voiceWsUrl } from '../../utils/voiceWs';
+
+// AI-dispatcher replies arrive as a single inline clip (base64), not a
+// chunk stream, so they play through RadioHazePlayer (full P25 haze)
+// rather than StreamPlayer. A synthetic userId marks the active speaker.
+const DISPATCH_USER_ID = -1;
+
+function base64ToArrayBuffer(b64: string): ArrayBuffer | null {
+  try {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  } catch { return null; }
+}
 
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -31,9 +46,17 @@ export interface VoiceChannelState {
   pttUp: () => void;
 }
 
+// A pointer to a record file the AI dispatcher looked up, carried on a
+// dispatch_speak message so the operator console can auto-open it.
+export interface DispatchRecordRef { kind: 'person' | 'vehicle'; id: number }
+
 export function useVoiceChannel(
   channelId: number | null,
   onRecorded?: (transmission: any) => void,
+  // `fromMe` = the looked-up record was THIS device's own request. The operator
+  // console opens regardless (it monitors all traffic); a field MDT opens only
+  // its own. See DispatchRecordPanel consumers.
+  onRecordOpen?: (ref: DispatchRecordRef, ctx: { fromMe: boolean }) => void,
 ): VoiceChannelState {
   const [connected, setConnected] = useState(false);
   const [members, setMembers] = useState(0);
@@ -46,9 +69,12 @@ export function useVoiceChannel(
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const playerRef = useRef<StreamPlayer | null>(null);
+  const dispatchPlayerRef = useRef<RadioHazePlayer | null>(null);
   const playerDestroyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onRecordedRef = useRef(onRecorded);
   onRecordedRef.current = onRecorded;
+  const onRecordOpenRef = useRef(onRecordOpen);
+  onRecordOpenRef.current = onRecordOpen;
 
   const supported = typeof navigator !== 'undefined'
     && !!navigator.mediaDevices?.getUserMedia
@@ -118,6 +144,46 @@ export function useVoiceChannel(
           case 'radio_recorded':
             onRecordedRef.current?.(msg.transmission);
             break;
+          case 'dispatch_speak': {
+            // AI dispatcher reply: drop it into the feed AND play it live
+            // through the radio-haze chain so the channel hears DISPATCH.
+            if (msg.transmission) onRecordedRef.current?.(msg.transmission);
+            // If the dispatcher ran a plate/person check, auto-open the record
+            // file (operator-gated server-side via ai_auto_open_records).
+            // source_user_id is the requesting officer — fromMe lets a field MDT
+            // open only its own request while the operator console opens all.
+            if (msg.record && (msg.record.kind === 'person' || msg.record.kind === 'vehicle') && typeof msg.record.id === 'number') {
+              const fromMe = msg.source_user_id != null && msg.source_user_id === myIdRef.current;
+              onRecordOpenRef.current?.(msg.record as DispatchRecordRef, { fromMe });
+            }
+            const buf = typeof msg.audio === 'string' ? base64ToArrayBuffer(msg.audio) : null;
+            if (buf) {
+              setActiveSpeaker({ userId: DISPATCH_USER_ID, label: msg.transmission?.unit_label || 'DISPATCH' });
+              const p = dispatchPlayerRef.current ?? (dispatchPlayerRef.current = new RadioHazePlayer());
+              p.playBytes(buf, () => setActiveSpeaker((cur) => (cur?.userId === DISPATCH_USER_ID ? null : cur)))
+                .catch(() => setActiveSpeaker((cur) => (cur?.userId === DISPATCH_USER_ID ? null : cur)));
+            }
+            break;
+          }
+          case 'dispatch_action': {
+            // The AI dispatcher wrote to the CAD (created/cleared a call,
+            // changed a unit status, dispatched backup). Surface it live so the
+            // operator console / dispatch board can badge it without waiting for
+            // a poll. Emitted as a window event — non-invasive, any mounted view
+            // can listen. (The spoken confirmation also lands in the feed via
+            // dispatch_speak, so operators see it regardless.)
+            try {
+              window.dispatchEvent(new CustomEvent('rmpg:dispatch-action', {
+                detail: {
+                  channelId: msg.channel_id ?? null,
+                  unit: msg.unit ?? null,
+                  action: msg.action ?? null,
+                  summary: msg.summary ?? null,
+                },
+              }));
+            } catch { /* SSR / no-DOM */ }
+            break;
+          }
         }
       };
 
@@ -138,6 +204,8 @@ export function useVoiceChannel(
       alive = false;
       if (retry) clearTimeout(retry);
       teardownPlayer();
+      try { dispatchPlayerRef.current?.stop(); } catch { /* noop */ }
+      dispatchPlayerRef.current = null;
       try { wsRef.current?.close(); } catch { /* noop */ }
       wsRef.current = null;
       setConnected(false); setActiveSpeaker(null); setMembers(0);

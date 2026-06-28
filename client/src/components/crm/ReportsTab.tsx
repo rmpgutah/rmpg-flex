@@ -19,19 +19,22 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import { toDisplayLabel } from '../../utils/formatters';
 import type { PipelineSummary, PipelineStage } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────
+// Worker /crm/reports/revenue returns accepted-proposal value per month —
+// a single series, NOT an invoiced-vs-paid split (that data doesn't exist).
 interface RevenueRow {
   month: string;
-  invoiced: number;
-  paid: number;
+  total: number;
 }
 
+// Worker /crm/reports/retention returns clients grouped BY STATUS, not a
+// monthly active/inactive time series.
 interface RetentionRow {
-  month: string;
-  active: number;
-  inactive: number;
+  status: string;
+  count: number;
 }
 
 interface LeadSourceROI {
@@ -61,7 +64,7 @@ const STAGE_COLORS: Record<PipelineStage, string> = {
   negotiation: '#f97316',
   won: '#22c55e',
   lost: '#ef4444',
-  dismissed: '#666666',
+  dismissed: 'var(--rmpg-500)',
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -75,10 +78,6 @@ const SOURCE_LABELS: Record<string, string> = {
 function formatCurrency(val: number | null | undefined): string {
   if (!val) return '$0';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-}
-
-function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ════════════════════════════════════════════════════════
@@ -102,13 +101,26 @@ export default function ReportsTab() {
         apiFetch<RevenueRow[]>('/crm/reports/revenue'),
         apiFetch<{ stages: PipelineSummary[] }>('/crm/reports/pipeline'),
         apiFetch<RetentionRow[]>('/crm/reports/retention'),
-        apiFetch<LeadSourceROI[]>('/crm/reports/lead-source-roi'),
+        apiFetch<Array<{ source: string; leads: number; won: number; pipeline_value: number }>>('/crm/reports/lead-source-roi'),
       ]);
       if (m) setMetrics(m);
-      if (rev) setRevenue(rev);
+      if (rev) setRevenue(Array.isArray(rev) ? rev : []);
       if (pip) setPipeline(Array.isArray(pip) ? pip : pip.stages || []);
-      if (ret) setRetention(ret);
-      if (roi) setLeadSourceROI(roi.sort((a, b) => b.conversion_rate - a.conversion_rate));
+      if (ret) setRetention(Array.isArray(ret) ? ret : []);
+      if (Array.isArray(roi)) {
+        // Worker returns { source, leads, won, pipeline_value } — derive the
+        // table's display fields (conversion = won/leads). Reading row.conversion_rate
+        // raw was undefined → .toFixed(1) crashed the entire CRM Reports tab.
+        const mapped: LeadSourceROI[] = roi.map((r) => ({
+          source: r.source,
+          total: r.leads ?? 0,
+          won: r.won ?? 0,
+          lost: Math.max((r.leads ?? 0) - (r.won ?? 0), 0),
+          conversion_rate: r.leads > 0 ? (r.won / r.leads) * 100 : 0,
+          total_won_value: r.pipeline_value ?? 0,
+        }));
+        setLeadSourceROI(mapped.sort((a, b) => b.conversion_rate - a.conversion_rate));
+      }
     } catch {
       addToast('Failed to load reports', 'error');
     } finally {
@@ -127,9 +139,9 @@ export default function ReportsTab() {
   }
 
   // ── Computed values for charts ───────────────────────
-  const maxRevenue = revenue.length > 0 ? Math.max(...revenue.map(r => Math.max(r.invoiced, r.paid)), 1) : 1;
+  const maxRevenue = revenue.length > 0 ? Math.max(...revenue.map(r => r.total), 1) : 1;
   const pipelineTotal = pipeline.reduce((s, p) => s + p.count, 0);
-  const maxRetention = retention.length > 0 ? Math.max(...retention.map(r => Math.max(r.active, r.inactive)), 1) : 1;
+  const maxRetention = retention.length > 0 ? Math.max(...retention.map(r => r.count), 1) : 1;
 
   return (
     <div className="overflow-y-auto p-3 space-y-4">
@@ -163,7 +175,7 @@ export default function ReportsTab() {
             icon={Target}
             label="Leads This Month"
             value={String(metrics?.leads_this_month || 0)}
-            color="text-gray-400"
+            color="text-rmpg-400"
           />
           <MetricCard
             icon={FileText}
@@ -189,22 +201,15 @@ export default function ReportsTab() {
             <DollarSign className="w-3.5 h-3.5" /> Monthly Revenue
           </div>
           <div className="flex items-center gap-3 mb-2 text-[10px]">
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-gray-500 rounded-sm" /> Invoiced</div>
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-green-500 rounded-sm" /> Paid</div>
+            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-green-500 rounded-sm" /> Accepted proposal value</div>
           </div>
           <div className="space-y-1.5">
             {revenue.map(row => (
               <div key={row.month} className="flex items-center gap-2">
                 <div className="w-16 text-[10px] text-rmpg-400 text-right font-mono shrink-0">{row.month}</div>
-                <div className="flex-1 space-y-0.5">
-                  <div className="flex items-center gap-1">
-                    <div className="h-3 bg-gray-500/70 rounded-sm transition-all" style={{ width: `${(row.invoiced / maxRevenue) * 100}%`, minWidth: row.invoiced > 0 ? '2px' : 0 }} />
-                    <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{formatCurrency(row.invoiced)}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="h-3 bg-green-500/70 rounded-sm transition-all" style={{ width: `${(row.paid / maxRevenue) * 100}%`, minWidth: row.paid > 0 ? '2px' : 0 }} />
-                    <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{formatCurrency(row.paid)}</span>
-                  </div>
+                <div className="flex-1 flex items-center gap-1">
+                  <div className="h-3 bg-green-500/70 rounded-sm transition-all" style={{ width: `${(row.total / maxRevenue) * 100}%`, minWidth: row.total > 0 ? '2px' : 0 }} />
+                  <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{formatCurrency(row.total)}</span>
                 </div>
               </div>
             ))}
@@ -242,7 +247,7 @@ export default function ReportsTab() {
                 <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: STAGE_COLORS[ps.stage] }} />
                 <div>
                   <div className="text-[10px] text-rmpg-400">{toDisplayLabel(ps.stage)}</div>
-                  <div className="text-xs text-white font-mono">{ps.count} <span className="text-rmpg-500">({formatCurrency(ps.total_value)})</span></div>
+                  <div className="text-xs text-rmpg-100 font-mono">{ps.count} <span className="text-rmpg-500">({formatCurrency(ps.total_value)})</span></div>
                 </div>
               </div>
             ))}
@@ -258,7 +263,7 @@ export default function ReportsTab() {
           <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-3 flex items-center gap-1">
             <Target className="w-3.5 h-3.5" /> Lead Source ROI
           </div>
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full">
             <thead>
               <tr className="border-b border-rmpg-700">
                 <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Source</th>
@@ -271,24 +276,24 @@ export default function ReportsTab() {
             </thead>
             <tbody>
               {leadSourceROI.map(row => (
-                <tr key={row.source} className="border-b border-rmpg-700/30 hover:bg-[#181818]">
-                  <td className="px-2 py-1.5 text-xs text-white">{SOURCE_LABELS[row.source] || toDisplayLabel(row.source)}</td>
+                <tr key={row.source} className="border-b border-rmpg-700/30 hover:bg-surface-raised">
+                  <td className="px-2 py-1.5 text-xs text-rmpg-100">{SOURCE_LABELS[row.source] || toDisplayLabel(row.source)}</td>
                   <td className="px-2 py-1.5 text-xs text-rmpg-300 text-right font-mono">{row.total}</td>
                   <td className="px-2 py-1.5 text-xs text-green-400 text-right font-mono">{row.won}</td>
                   <td className="px-2 py-1.5 text-xs text-red-400 text-right font-mono">{row.lost}</td>
                   <td className="px-2 py-1.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <div className="w-12 h-1.5 bg-rmpg-800 rounded-sm overflow-hidden">
-                        <div className="h-full bg-brand-500 rounded-sm" style={{ width: `${Math.min(row.conversion_rate, 100)}%` }} />
+                        <div className="h-full bg-brand-500 rounded-sm" style={{ width: `${Math.min(row.conversion_rate ?? 0, 100)}%` }} />
                       </div>
-                      <span className="text-xs text-rmpg-300 font-mono w-10 text-right">{row.conversion_rate.toFixed(1)}%</span>
+                      <span className="text-xs text-rmpg-300 font-mono w-10 text-right">{(row.conversion_rate ?? 0).toFixed(1)}%</span>
                     </div>
                   </td>
                   <td className="px-2 py-1.5 text-xs text-green-400 text-right font-mono">{formatCurrency(row.total_won_value)}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
@@ -298,25 +303,15 @@ export default function ReportsTab() {
       {retention.length > 0 && (
         <div className="panel-beveled p-3">
           <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-3 flex items-center gap-1">
-            <Users className="w-3.5 h-3.5" /> Client Retention
-          </div>
-          <div className="flex items-center gap-3 mb-2 text-[10px]">
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-green-500 rounded-sm" /> Active</div>
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-red-500/60 rounded-sm" /> Inactive</div>
+            <Users className="w-3.5 h-3.5" /> Clients by Status
           </div>
           <div className="space-y-1.5">
             {retention.map(row => (
-              <div key={row.month} className="flex items-center gap-2">
-                <div className="w-16 text-[10px] text-rmpg-400 text-right font-mono shrink-0">{row.month}</div>
-                <div className="flex-1 space-y-0.5">
-                  <div className="flex items-center gap-1">
-                    <div className="h-3 bg-green-500/70 rounded-sm transition-all" style={{ width: `${(row.active / maxRetention) * 100}%`, minWidth: row.active > 0 ? '2px' : 0 }} />
-                    <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{row.active}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="h-3 bg-red-500/50 rounded-sm transition-all" style={{ width: `${(row.inactive / maxRetention) * 100}%`, minWidth: row.inactive > 0 ? '2px' : 0 }} />
-                    <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{row.inactive}</span>
-                  </div>
+              <div key={row.status} className="flex items-center gap-2">
+                <div className="w-20 text-[10px] text-rmpg-400 text-right font-mono shrink-0">{toDisplayLabel(row.status || 'unknown')}</div>
+                <div className="flex-1 flex items-center gap-1">
+                  <div className="h-3 bg-green-500/70 rounded-sm transition-all" style={{ width: `${(row.count / maxRetention) * 100}%`, minWidth: row.count > 0 ? '2px' : 0 }} />
+                  <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{row.count}</span>
                 </div>
               </div>
             ))}

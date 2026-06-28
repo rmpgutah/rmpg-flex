@@ -17,6 +17,21 @@ const EXPORT_ROLES = ['admin', 'manager', 'supervisor'];
 
 const nibrs = new Hono<Env>();
 
+// Live `incidents` stores occurrence as occurred_date (+ occurred_time); there
+// is NO occurred_at/reported_at column (referencing them 500'd export + always
+// failed the submit gate). Build an ISO-ish datetime from those, falling back
+// to created_at (the report time). Sentinels ('', 'None') are treated as empty.
+function occurrenceDateTime(inc: any): string {
+  const raw = inc?.occurred_date == null ? '' : String(inc.occurred_date).trim();
+  const d = raw && raw !== 'None' && raw !== 'N/A' ? raw : '';
+  if (d) {
+    const tRaw = inc?.occurred_time == null ? '' : String(inc.occurred_time).trim();
+    const t = tRaw && tRaw !== 'None' ? (tRaw.length === 5 ? `${tRaw}:00` : tRaw) : '00:00:00';
+    return `${d}T${t}`;
+  }
+  return inc?.created_at || '';
+}
+
 // ── Validator (used by /export and the incident-submit gate) ──
 export interface NibrsValidationIssue {
   offense_id: number | null;
@@ -49,7 +64,7 @@ export async function validateIncidentForNibrs(db: D1Database, incidentId: numbe
 
   if (isMissing(incident.narrative)) issues.push({ offense_id: null, offense_code: null, missing_field: 'narrative', severity: 'error', message: 'Incident narrative is required' });
   if (isMissing(incident.location_address)) issues.push({ offense_id: null, offense_code: null, missing_field: 'location_address', severity: 'error', message: 'Incident location is required' });
-  if (isMissing(incident.occurred_at) && isMissing(incident.reported_at)) issues.push({ offense_id: null, offense_code: null, missing_field: 'occurred_at', severity: 'error', message: 'Occurrence date/time is required' });
+  if (isMissing(incident.occurred_date)) issues.push({ offense_id: null, offense_code: null, missing_field: 'occurred_date', severity: 'error', message: 'Occurrence date is required' });
 
   const officerCount = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM incident_officers WHERE incident_id = ?', incidentId);
   if (!officerCount?.n) issues.push({ offense_id: null, offense_code: null, missing_field: 'officer', severity: 'error', message: 'At least one officer must be assigned' });
@@ -198,8 +213,8 @@ nibrs.post('/export', requireRole(...EXPORT_ROLES), async (c) => {
     const incidents = await query<any>(db, `
       SELECT * FROM incidents
       WHERE status IN ('approved', 'closed')
-        AND COALESCE(occurred_at, reported_at, created_at) >= ?
-        AND COALESCE(occurred_at, reported_at, created_at) <= ?
+        AND COALESCE(NULLIF(occurred_date, ''), created_at) >= ?
+        AND COALESCE(NULLIF(occurred_date, ''), created_at) <= ?
       ORDER BY id`, fromDate.toISOString(), toDate.toISOString());
 
     const segments: string[] = [withLength('00', ORI + nibrsDate(new Date()) + nibrsDate(fromDate) + nibrsDate(toDate))];
@@ -217,7 +232,7 @@ nibrs.post('/export', requireRole(...EXPORT_ROLES), async (c) => {
       const incidentNumber = inc.incident_number || `RMP${inc.id}`;
       let perIncidentCount = 0;
 
-      segments.push(withLength('01', ORI + f(incidentNumber, 12) + nibrsDateTime(inc.occurred_at || inc.reported_at || inc.created_at) + f('N', 1) + nibrsDate(null) + f('N', 1)));
+      segments.push(withLength('01', ORI + f(incidentNumber, 12) + nibrsDateTime(occurrenceDateTime(inc)) + f('N', 1) + nibrsDate(null) + f('N', 1)));
       perIncidentCount++;
 
       const offenses = await query<any>(db, 'SELECT * FROM incident_offenses WHERE incident_id = ?', inc.id);
@@ -238,7 +253,7 @@ nibrs.post('/export', requireRole(...EXPORT_ROLES), async (c) => {
         JOIN persons p ON p.id = ip.person_id
         WHERE ip.incident_id = ? ORDER BY ip.id`, inc.id);
       let victimSeq = 0, offenderSeq = 0;
-      const asOf = new Date(inc.occurred_at || inc.reported_at || inc.created_at);
+      const asOf = new Date(occurrenceDateTime(inc)); // new-date-ok: occurrence date (YYYY-MM-DD[THH:MM:SS]) or created_at, parsed for age math
       for (const p of persons) {
         if (p.role === 'victim') {
           victimSeq++;

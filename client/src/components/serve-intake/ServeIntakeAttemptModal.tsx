@@ -149,14 +149,14 @@ export default function ServeIntakeAttemptModal({
       onClick={onClose}
     >
       <div
-        className="bg-surface-base border border-[#222] rounded-sm w-full max-w-xl max-h-[90vh] overflow-y-auto"
+        className="bg-surface-base border border-border-default rounded-sm w-full max-w-xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#222] sticky top-0 bg-surface-base">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-default sticky top-0 bg-surface-base">
           <div>
             <div className="text-[10px] uppercase tracking-wider text-rmpg-500 font-bold">Log Service Attempt</div>
-            <div className="text-sm text-white font-bold truncate">{recipientName}</div>
+            <div className="text-sm text-rmpg-100 font-bold truncate">{recipientName}</div>
             <div className="text-[10px] text-rmpg-400 truncate">
               {recipientAddress}
               {callNumber && <span className="ml-2 text-brand-400">· {callNumber}</span>}
@@ -179,7 +179,7 @@ export default function ServeIntakeAttemptModal({
             {submittedWindow && !submittedWindow.terminal && (
               <div className="border border-amber-700/50 bg-amber-900/20 rounded-sm p-3 space-y-1">
                 <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">Suggested next attempt</div>
-                <div className="text-sm text-white">
+                <div className="text-sm text-rmpg-100">
                   {submittedWindow.dayOffset === 0 ? 'Later today'
                     : submittedWindow.dayOffset === 1 ? 'Tomorrow'
                     : `In ${submittedWindow.dayOffset} days`}
@@ -195,7 +195,7 @@ export default function ServeIntakeAttemptModal({
             )}
             <button
               onClick={onClose}
-              className="w-full px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs uppercase rounded-sm"
+              className="w-full px-4 py-2 bg-brand-600 hover:bg-brand-500 text-rmpg-100 font-bold text-xs uppercase rounded-sm"
             >
               Close
             </button>
@@ -236,7 +236,7 @@ export default function ServeIntakeAttemptModal({
                     className={`flex-1 text-[10px] font-bold px-2 py-1.5 border rounded-sm transition-colors ${
                       attemptType === t.value
                         ? 'border-brand-500 bg-brand-900/40 text-brand-300'
-                        : 'border-[#2e2e2e] text-rmpg-400 hover:bg-surface-raised'
+                        : 'border-rmpg-700 text-rmpg-400 hover:bg-surface-raised'
                     }`}
                   >
                     {t.label}
@@ -248,12 +248,12 @@ export default function ServeIntakeAttemptModal({
             {/* Notes */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Notes</div>
-              <textarea
+              <textarea id="ff-serveintakeattemptmodal-0"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
                 placeholder="Description, recipient demographics, witness, etc."
-                className="w-full bg-surface-sunken border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:outline-none focus:border-brand-500"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:outline-none focus:border-brand-500"
               />
             </div>
 
@@ -283,14 +283,14 @@ export default function ServeIntakeAttemptModal({
               <button
                 onClick={onClose}
                 disabled={submitting}
-                className="px-4 py-2 border border-[#2e2e2e] text-rmpg-400 hover:bg-surface-raised text-xs font-bold uppercase rounded-sm"
+                className="px-4 py-2 border border-rmpg-700 text-rmpg-400 hover:bg-surface-raised text-xs font-bold uppercase rounded-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={!result || submitting}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-rmpg-800 disabled:text-rmpg-600 text-white font-bold text-xs uppercase rounded-sm transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-rmpg-800 disabled:text-rmpg-600 text-rmpg-100 font-bold text-xs uppercase rounded-sm transition-colors"
               >
                 {submitting ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>

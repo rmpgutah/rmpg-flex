@@ -11,6 +11,7 @@ import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark, finalizePoliceReport } from './pdfGenerator';
 import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, applyPrintTarget, topMarginY, type PrintTarget } from './pdfTokens';
 import { localToday, parseTimestamp } from './dateUtils';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 export interface PatrolTrackingPdfOptions {
   printTarget?: PrintTarget;
@@ -139,6 +140,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
   const logoB64 = await loadLogoDarkBase64();
 
   const doc = new jsPDF('landscape', 'mm', 'letter');
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -560,7 +562,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
         const rRowData = [
           (seg.call_number || 'N/A').toUpperCase(),
           (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
-          `P${seg.priority}`.toUpperCase(),
+          (seg.priority ? (String(seg.priority).toUpperCase().startsWith('P') ? String(seg.priority).toUpperCase() : `P${seg.priority}`.toUpperCase()) : 'N/A'),
           seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : 'N/A',
           seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
           seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : 'N/A',

@@ -6,9 +6,11 @@
 // already in SETTINGS_KEYS) so a reload lands you on the same tab.
 // Keyboard: 1..6 jump to a tab when no input is focused.
 // ──────────────────────────────────────────────────────────────────
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Radio, Antenna, Bookmark, BookOpen, BarChart3, Settings as SettingsIcon } from 'lucide-react';
 import PanelTitleBar from '../../components/PanelTitleBar';
+import { apiFetch } from '../../hooks/useApi';
+import { setRadioHazeConfig, type HazeIntensity } from '../../utils/radioProcessor';
 import { ls } from './helpers';
 import { THEME_VARS, type Theme, THEMES, FONT_SCALES, type FontScale } from './constants';
 import { TAB_KEYS, TAB_LABELS, type TabKey } from './types';
@@ -58,6 +60,35 @@ export default function RadioPage() {
   useEffect(() => { ls.set('radio_last_page', tab); }, [tab]);
   useEffect(() => { ls.set('radio_theme', theme); }, [theme]);
   useEffect(() => { ls.set('radio_font_scale', fontScale); }, [fontScale]);
+
+  // ── Apply org-wide radio settings (Admin → Radio) once on load ──
+  // Audio/haze is a pure org default (no device override exists for it).
+  // Operator-UX defaults (landing tab + notification/quiet hours) only SEED
+  // a device that hasn't chosen its own — local prefs always win.
+  const deviceHadTab = useRef(ls.get('radio_last_page') != null);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ settings: {
+      tts_over_radio?: boolean; haze_intensity?: HazeIntensity; noise_bed_level?: number;
+      default_operator_tab?: string; notif_enabled_default?: boolean; notif_sound_default?: string;
+      quiet_start_default?: string; quiet_end_default?: string;
+    } }>('/radio/settings').then(({ settings: s }) => {
+      if (cancelled || !s) return;
+      setRadioHazeConfig({
+        enabled: s.tts_over_radio !== false,
+        intensity: s.haze_intensity || 'standard',
+        noiseLevel: typeof s.noise_bed_level === 'number' ? s.noise_bed_level : 0.15,
+      });
+      if (!deviceHadTab.current && isTabKey(s.default_operator_tab ?? null)) {
+        setTab(s.default_operator_tab as TabKey);
+      }
+      if (ls.get('radio_notif_enabled') == null) ls.set('radio_notif_enabled', String(s.notif_enabled_default !== false));
+      if (ls.get('radio_notif_sound') == null && s.notif_sound_default) ls.set('radio_notif_sound', s.notif_sound_default);
+      if (ls.get('radio_quiet_start') == null && s.quiet_start_default) ls.set('radio_quiet_start', s.quiet_start_default);
+      if (ls.get('radio_quiet_end') == null && s.quiet_end_default) ls.set('radio_quiet_end', s.quiet_end_default);
+    }).catch(() => { /* org settings optional — device defaults stand */ });
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     if (selectedChannelId == null) return;
     ls.set('radio_pinned_channel', String(selectedChannelId));

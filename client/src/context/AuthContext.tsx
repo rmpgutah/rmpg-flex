@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { User } from '../types';
 import { resetVoiceState } from '../utils/voiceAlerts';
+import { playStartupSound } from '../utils/startupSound';
+import { refreshAccessToken, onAuthEvent } from '../utils/tokenRefresh';
 
 export type LoginStep =
   | 'username'
@@ -36,6 +38,14 @@ interface AuthContextType {
   tempToken: string | null;
   cancel2FA: () => void;
   logout: () => void;
+  /**
+   * User-initiated sign-out from the top-bar / drawer. Strictly blocks while
+   * the officer is still on shift — payroll integrity wins over UX here per
+   * the workflow spec. Returns the on-shift state so the UI can route the
+   * officer to End Shift (which prompts ending mileage). For force-flows
+   * (password change, etc.) call `logout()` directly instead.
+   */
+  signOut: () => Promise<{ ok: true } | { ok: false; reason: 'on_shift'; message: string }>;
   refreshUser: () => Promise<void>;
   error: string | null;
   clearError: () => void;
@@ -48,7 +58,10 @@ interface AuthContextType {
   requiresPasswordChange: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// Exported (v1047) so opt-in consumers like IntelProvider can read the
+// current user safely without requiring an AuthProvider wrapper in unit
+// tests. Most callers should still use the throwing `useAuth()` hook.
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'rmpg_token';
 const REFRESH_TOKEN_KEY = 'rmpg_refresh_token';
@@ -81,6 +94,37 @@ function parseJwtExpiry(token: string): number | null {
   } catch {
     return null;
   }
+}
+
+// Last server-confirmed user, persisted so a returning field device can render
+// optimistically on the next cold boot instead of blocking the "Initializing"
+// splash on a slow-cellular /auth/me round-trip.
+const CACHED_USER_KEY = 'rmpg_cached_user';
+
+function readCachedUser(): User | null {
+  try {
+    const raw = localStorage.getItem(CACHED_USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch { return null; }
+}
+
+function writeCachedUser(u: User): void {
+  try { localStorage.setItem(CACHED_USER_KEY, JSON.stringify(u)); } catch { /* quota / private mode */ }
+}
+
+/**
+ * Optimistic-boot user. Returns a cached user ONLY when a stored token exists
+ * and is NOT locally expired — so we never render the UI behind an obviously
+ * dead token. The token is still validated server-side on the background
+ * /auth/me call (and on every data fetch), so this is purely a perceived-speed
+ * win, not a security relaxation.
+ */
+function initialOptimisticUser(): User | null {
+  const tok = localStorage.getItem(TOKEN_KEY);
+  if (!tok) return null;
+  const exp = parseJwtExpiry(tok);
+  if (exp !== null && exp <= Date.now()) return null; // expired → must refresh first
+  return readCachedUser();
 }
 
 /** Fetch with an AbortController timeout so auth requests never hang indefinitely. */
@@ -139,13 +183,30 @@ function safeSetItem(key: string, value: string): void {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  // Optimistic boot: render from the cached user when the stored token is still
+  // locally valid, so a returning field device is interactive immediately rather
+  // than blocking the splash on a slow-cellular /auth/me round-trip. The loadUser
+  // effect below revalidates in the background.
+  const [user, setUser] = useState<User | null>(initialOptimisticUser);
   const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => user === null);
   const [error, setError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRefreshingRef = useRef(false);
   const refreshFailCountRef = useRef(0);
+  // One-shot flag: true when `user` came from cache at boot and therefore still
+  // owes a single background /auth/me validation. Seeded from the first-render
+  // `user` value (no extra localStorage read), consumed inside loadUser.
+  const needsBootValidationRef = useRef<boolean | null>(null);
+  if (needsBootValidationRef.current === null) needsBootValidationRef.current = user !== null;
+
+  // Persist the authenticated user on every change so the NEXT cold boot can
+  // render optimistically (see initialOptimisticUser). Centralized here so all
+  // login/refresh paths are covered; cleared on logout (setUser(null)).
+  useEffect(() => {
+    if (user) writeCachedUser(user);
+    else { try { localStorage.removeItem(CACHED_USER_KEY); } catch { /* ignore */ } }
+  }, [user]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -169,70 +230,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (isRefreshingRef.current) return;
       isRefreshingRef.current = true;
 
-      try {
-        const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-        if (!refreshToken) {
-          // No refresh token — force logout
-          isRefreshingRef.current = false;
-          clearTokens();
-          setToken(null);
-          setUser(null);
-          return;
-        }
+      // Delegate to the shared, cross-tab-coordinated refresher. It owns the
+      // /refresh request (single in-flight across all tabs via Web Locks),
+      // token persistence, and the cross-tab `token`/`logout` broadcast. This
+      // eliminates the rotation race that used to log officers out mid-shift:
+      // the worker rotates the refresh token on every call, and a background
+      // apiFetch refresh used to race this scheduled one — the loser got a 401
+      // and force-logged-out. See utils/tokenRefresh.ts.
+      const newToken = await refreshAccessToken();
 
-        const res = await fetchWithTimeout('/api/auth/refresh', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          // Send both spellings so the request works against either the legacy
-          // worker (reads `refreshToken`) or the /src/ worker (reads `refresh_token`).
-          body: JSON.stringify({ refreshToken, refresh_token: refreshToken }),
-        });
+      if (newToken) {
+        // Shared module already persisted + broadcast; sync local React state.
+        setToken(newToken);
+        refreshFailCountRef.current = 0; // reset backoff on success
+        isRefreshingRef.current = false;
+        scheduleRefresh(newToken);
+        return;
+      }
 
-        if (res.ok) {
-          const data = await res.json();
-          safeSetItem(TOKEN_KEY, data.token);
-          safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
-          setToken(data.token);
-          refreshFailCountRef.current = 0; // reset backoff on success
-          scheduleRefresh(data.token);
-        } else {
-          // Refresh failed — only force logout if we're online
-          // (when offline in Electron, keep the cached user session alive)
-          if (electron?.getOfflineState) {
-            try {
-              const state = await electron.getOfflineState();
-              if (!state.isOnline) {
-                // Offline — don't force logout, retry with backoff
-                refreshFailCountRef.current++;
-                const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
-                refreshTimerRef.current = setTimeout(() => {
-                  isRefreshingRef.current = false;
-                  const ct = localStorage.getItem(TOKEN_KEY);
-                  if (ct) scheduleRefresh(ct);
-                }, backoff);
-                return;
-              }
-            } catch (err) { console.warn('[Auth] Token refresh retry failed:', err); /* fall through to logout */ }
-          }
-          clearTokens();
-          setToken(null);
-          setUser(null);
-        }
-      } catch (err) {
-        console.warn('[Auth] Token refresh failed, retrying with backoff:', err);
-        // Network/timeout error — retry with exponential backoff (1s, 2s, 4s, ... max 30s)
+      // No token returned. Two cases:
+      //  (a) Auth was cleared (genuine 401/403 while online) — the shared
+      //      module emitted a `logout` event; our onAuthEvent subscription
+      //      below tears down user state. Nothing to do here.
+      //  (b) Transient failure (offline / network / timeout / 5xx) — the token
+      //      is still in storage. Reschedule on it with exponential backoff so
+      //      a flaky-cellular blip doesn't end the shift.
+      const current = localStorage.getItem(TOKEN_KEY);
+      if (current) {
         refreshFailCountRef.current++;
         const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
         refreshTimerRef.current = setTimeout(() => {
           isRefreshingRef.current = false;
-          const currentToken = localStorage.getItem(TOKEN_KEY);
-          if (currentToken) scheduleRefresh(currentToken);
+          const ct = localStorage.getItem(TOKEN_KEY);
+          if (ct) scheduleRefresh(ct);
         }, backoff);
-        // Note: isRefreshingRef stays true until the backoff timer fires,
-        // preventing duplicate concurrent refresh attempts during retry.
         return;
       }
-      // Only clear the flag when we're NOT scheduling a retry
       isRefreshingRef.current = false;
     }, refreshIn);
   }, []);
@@ -246,6 +279,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshTimerRef.current = null;
     }
   }
+
+  // Mirror of the latest access token, so the cross-tab subscription below can
+  // cheaply skip events that merely echo this tab's own refresh.
+  const lastTokenRef = useRef(token);
+  useEffect(() => { lastTokenRef.current = token; }, [token]);
+
+  // ─── Cross-tab auth sync ────────────────────────────────────
+  // The shared refresher (utils/tokenRefresh.ts) emits an event whenever the
+  // access token is rotated or auth is cleared — in THIS tab or any other.
+  // Adopt those so a refresh performed by one tab (or a logout) is reflected
+  // everywhere, instead of each tab independently re-refreshing (and racing the
+  // worker's single-use rotation into a 401).
+  useEffect(() => {
+    const unsubscribe = onAuthEvent((e) => {
+      if (e.type === 'token') {
+        if (e.token && e.token !== lastTokenRef.current) {
+          lastTokenRef.current = e.token;
+          refreshFailCountRef.current = 0;
+          setToken(e.token);
+          scheduleRefresh(e.token); // reschedule on the freshly-rotated token's expiry
+        }
+      } else if (e.type === 'logout') {
+        if (lastTokenRef.current !== null) {
+          lastTokenRef.current = null;
+          clearTokens();
+          setToken(null);
+          setUser(null);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [scheduleRefresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Monotonically-increasing "generation" counter.
   // Every time login/logout/mount kicks off an async load we bump this.
@@ -265,9 +330,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // If we already have a user for this token (login() just set both)
-      // there is nothing to fetch — just make sure loading is off.
-      if (user) {
+      // Did this user come from the optimistic cache at boot? If so we still owe
+      // ONE background /auth/me validation — fall through (the splash is already
+      // down, so this validates silently). A network failure of it must NOT log
+      // the user out (see the catch below).
+      const optimisticBoot = !!user && needsBootValidationRef.current === true;
+      needsBootValidationRef.current = false; // consume the one-shot
+
+      // If we already have a user and it isn't an optimistic boot (login() just
+      // set it, or we already validated) there is nothing to fetch.
+      if (user && !optimisticBoot) {
         setIsLoading(false);
         return;
       }
@@ -282,38 +354,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           setUser(data.user || data);
+          void mergeProfileImage(token); // hydrate app-wide avatar (not in /me)
           scheduleRefresh(token);
         } else if (res.status === 401) {
-          // Token expired — try refresh
-          const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-          if (refreshToken) {
-            const refreshRes = await fetchWithTimeout('/api/auth/refresh', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-              // Both spellings — legacy worker reads `refreshToken`, /src/ reads `refresh_token`.
-              body: JSON.stringify({ refreshToken, refresh_token: refreshToken }),
-            });
+          // Access token expired on boot — refresh via the shared, cross-tab
+          // coordinated refresher (same single in-flight /refresh the scheduled
+          // path uses, so a returning multi-tab device can't race itself out).
+          const newToken = await refreshAccessToken();
 
-            if (gen !== generationRef.current) return; // stale
+          if (gen !== generationRef.current) return; // stale
 
-            if (refreshRes.ok) {
-              const data = await refreshRes.json();
-              safeSetItem(TOKEN_KEY, data.token);
-              safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
-              setToken(data.token);
-              // setToken will re-trigger this effect — new generation will handle it
-              return;
-            } else {
-              clearTokens();
-              setToken(null);
-              setUser(null);
-            }
-          } else {
+          if (newToken) {
+            setToken(newToken);
+            // setToken re-triggers this effect — a new generation handles it.
+            return;
+          }
+          // Refresh returned null. If auth was genuinely cleared, the shared
+          // module emitted a `logout` event (handled by the subscription
+          // below) and TOKEN_KEY is gone → reflect logout. If a token is still
+          // present it was a transient failure; keep the optimistic user and
+          // let the scheduled refresh recover.
+          if (!localStorage.getItem(TOKEN_KEY)) {
             clearTokens();
             setToken(null);
             setUser(null);
           }
+        } else if (res.status >= 500) {
+          // Server error (502/503 during deploy or cellular blip) — keep the
+          // session alive and let scheduled refresh recover. Logging out on a
+          // transient 5xx drops officers mid-shift.
+          console.warn(`[Auth] /me returned ${res.status} — keeping session, will retry`);
+          if (user) scheduleRefresh(token);
         } else {
+          // 403 or other definitive rejection — clear auth
           clearTokens();
           setToken(null);
           setUser(null);
@@ -322,20 +395,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[Auth] Initial auth check failed:', err);
         if (gen !== generationRef.current) return; // stale
 
-        // API not available — attempt offline auth via Electron local cache
-        const lastUsername = localStorage.getItem(LAST_USERNAME_KEY);
-        if (electron?.getCachedUser && lastUsername) {
-          try {
-            const cachedUser = await electron.getCachedUser(lastUsername);
-            if (cachedUser) {
-              setUser(cachedUser);
-              return; // loaded from local DB — skip mock
-            }
-          } catch (err) { console.warn('[Auth] Cached user fetch failed:', err); /* fall through to mock */ }
+        // Network/timeout error — NOT a token rejection. Keep the user signed
+        // in; the scheduled refresh will recover when connectivity returns.
+        // A false logout here would drop officers mid-shift on flaky cellular.
+        if (token && localStorage.getItem(TOKEN_KEY)) {
+          scheduleRefresh(token);
+          setIsLoading(false);
+          return;
         }
 
-        // Fallback mock user for pure-browser development ONLY
-        if (import.meta.env.DEV) {
+        // No token in storage — genuinely logged out
+        if (!import.meta.env.DEV) {
+          setToken(null);
+          setUser(null);
+        } else {
           setUser({
             id: 'dev-1',
             username: 'dispatcher',
@@ -348,11 +421,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-        } else {
-          // In production, clear auth state if server is unreachable
-          clearTokens();
-          setToken(null);
-          setUser(null);
         }
       } finally {
         if (gen === generationRef.current) {
@@ -438,6 +506,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
       } else {
         const errData = await res.json().catch(() => ({}));
         if (errData.code === 'MFA_EXPIRED' || errData.code === 'VERIFICATION_SESSION_EXPIRED_PLEASE') {
@@ -511,6 +580,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
       } else {
         const errData = await verifyRes.json().catch(() => ({}));
         const message = errData.error || 'Security key verification failed';
@@ -605,6 +675,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
 
         // Trigger offline sync to seed local DB (fire-and-forget)
         if (electron?.triggerSync) {
@@ -646,6 +717,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(mockToken);
         setIsLoading(false);
         setLoginStep('complete');
+        playStartupSound();
         return { requires2FA: false, success: true };
       } else {
         const message = err instanceof Error ? err.message : 'Login failed';
@@ -695,6 +767,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
       } else {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || 'Invalid backup code');
@@ -831,6 +904,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
       scheduleRefresh(data.token);
       setLoginStep('complete');
+        playStartupSound();
       setTempToken(null);
       setRequiresPasswordChange(false);
     } catch (err: unknown) {
@@ -873,6 +947,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // User-facing sign-out — gated on shift state. If the officer is on duty,
+  // refuse to clear the session and return a typed reason so the UI can route
+  // them to the ShiftCard's End Shift (which prompts ending mileage). Network
+  // failure on the duty/me probe is treated as "unknown → safer to block" so
+  // a cellular dropout can't sidestep the gate.
+  const signOut = useCallback(async (): Promise<{ ok: true } | { ok: false; reason: 'on_shift'; message: string }> => {
+    const currentToken = localStorage.getItem(TOKEN_KEY);
+    if (!currentToken) { logout(); return { ok: true }; }
+    try {
+      const res = await fetchWithTimeout('/api/dispatch/duty/me', {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      });
+      if (res.ok) {
+        const state = await res.json().catch(() => null);
+        if (state && state.on_shift) {
+          return { ok: false, reason: 'on_shift', message: 'End your shift before signing out — open the SHIFT card and tap End Shift.' };
+        }
+      } else if (res.status !== 401 && res.status !== 404) {
+        // Treat any other server error as "unknown shift state" → block.
+        return { ok: false, reason: 'on_shift', message: 'Could not confirm shift state — end your shift, then sign out.' };
+      }
+    } catch (err) {
+      console.warn('[Auth] signOut shift check failed — blocking sign-out:', err);
+      return { ok: false, reason: 'on_shift', message: 'Offline — end your shift before signing out.' };
+    }
+    logout();
+    return { ok: true };
+  }, [logout]);
+
+  // The avatar shown app-wide (topbar, mobile drawer) reads user.profile_image,
+  // but /auth/me only returns avatar_url — the base64 avatar lives on a
+  // separate endpoint. Fetch it and merge so the avatar updates everywhere
+  // after an upload, not just inside the profile modal. Best-effort: a failure
+  // (offline / not set) leaves the user object untouched.
+  const mergeProfileImage = useCallback(async (currentToken: string) => {
+    try {
+      const res = await fetchWithTimeout('/api/auth/profile-image', {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      });
+      if (!res.ok) return;
+      const { profile_image } = await res.json();
+      setUser(prev => (prev ? { ...prev, profile_image: profile_image || undefined } : prev));
+    } catch { /* offline / not set — keep existing user */ }
+  }, []);
+
   // Re-fetch user from /auth/me to pick up profile changes (name, email, etc.)
   const refreshUser = useCallback(async () => {
     const currentToken = localStorage.getItem(TOKEN_KEY);
@@ -884,9 +1003,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user || data);
+        void mergeProfileImage(currentToken);
       }
     } catch (err) { console.warn('[Auth] User refresh failed:', err); }
-  }, []);
+  }, [mergeProfileImage]);
 
    // Auto-signout mechanisms removed per user request
    // Session idle timeout and absolute session duration timer have been disabled
@@ -923,6 +1043,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tempToken,
     cancel2FA,
     logout,
+    signOut,
     refreshUser,
     error,
     clearError,
@@ -932,7 +1053,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoginUsername,
     pendingBackupCodes,
     requiresPasswordChange,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
+  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, signOut, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
 
   return (
     <AuthContext.Provider value={contextValue}>

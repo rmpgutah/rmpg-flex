@@ -31,12 +31,25 @@ export class LayoutEngine {
     this._cursorY = y;
   }
 
-  pageBreakIfNeeded(heightNeeded: number): void {
+  /**
+   * Start a new page if `heightNeeded` won't fit before the bottom margin.
+   * Returns `true` when a page break happened, `false` otherwise.
+   *
+   * `onBeforeBreak` (when supplied) runs AFTER overflow is detected but BEFORE
+   * `doc.addPage()` — i.e. while jsPDF's current page and the cursor are still
+   * those of the page being closed. Per-page drawing that must land on the page
+   * it belongs to (e.g. a long table's fragment borders) MUST use this hook,
+   * because anything drawn after `addPage()` paints onto the new page instead.
+   */
+  pageBreakIfNeeded(heightNeeded: number, onBeforeBreak?: () => void): boolean {
     const bottomLimit = this.pageHeight - this.margins.bottomMargin;
     if (this._cursorY + heightNeeded > bottomLimit) {
+      onBeforeBreak?.();
       this.doc.addPage();
       this._pageNumber += 1;
       this._cursorY = this.margins.topMargin;
+      return true;
     }
+    return false;
   }
 }

@@ -4,17 +4,43 @@
 // useVoiceChannel → VoiceHubDO. Recorded clips replay from R2.
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Filter, Star, Volume2, Mic, Radio as RadioIcon, Play, Pause } from 'lucide-react';
+import { Search, Filter, Star, Volume2, Mic, Radio as RadioIcon, Play, Pause, Download } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { matchesSearch, COMPARE_DATE, ls, playBeep, isInQuietHours } from '../helpers';
 import { DATE_RANGES, DURATION_FILTERS } from '../constants';
 import { FilterChip, SectionHeader, EmptyConsole, Waveform, Sep } from '../components';
-import { useVoiceChannel } from '../useVoiceChannel';
+import { useVoiceChannel, type DispatchRecordRef } from '../useVoiceChannel';
+import DispatchRecordPanel from '../../../components/DispatchRecordPanel';
+import { RadioHazePlayer } from '../../../utils/radioProcessor';
+import { getSignedParams, buildSignedQuerySync } from '../../../utils/signedUrls';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel, RadioTransmission } from '../types';
 
 interface Props {
   selectedChannelId: number | null;
   onSelectChannel: (id: number | null) => void;
+}
+
+// Render a VoiceHubDO `dispatch_action` summary as a human-readable line.
+// Summaries are "kind:value" — e.g. "call_created:CFS26-0042",
+// "unit_status:12-Adam=onscene", "bolo_created:BOLO26-0001".
+function describeDispatchAction(d: { unit?: string | null; summary?: string | null }): string {
+  const s = String(d?.summary || '');
+  if (!s) return '';
+  const i = s.indexOf(':');
+  const kind = i >= 0 ? s.slice(0, i) : s;
+  const val = i >= 0 ? s.slice(i + 1) : '';
+  switch (kind) {
+    case 'call_created': return `created call ${val}`;
+    case 'call_cleared': return `cleared ${val}`;
+    case 'call_clear_noop': return `${val} already cleared`;
+    case 'unit_status': { const [u, st] = val.split('='); return `set ${u} → ${st}`; }
+    case 'backup_dispatched': return `dispatched ${val} for backup`;
+    case 'backup_none': return 'no units available for backup';
+    case 'bolo_created': return `issued BOLO ${val}`;
+    default: return s;
+  }
 }
 
 export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
@@ -25,6 +51,26 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   const [minDur, setMinDur] = useState('0');
   const [showFilters, setShowFilters] = useState(false);
   const [favsOnly, setFavsOnly] = useState(false);
+  // Record file the AI dispatcher auto-opened (plate/person check) — shown in
+  // the side panel beside the live feed. Null = panel closed.
+  const [openRecord, setOpenRecord] = useState<DispatchRecordRef | null>(null);
+
+  // Live feed of CAD WRITES the AI dispatcher just made (created/cleared a call,
+  // changed a status, dispatched backup, issued a BOLO) — surfaced from the
+  // VoiceHubDO `dispatch_action` broadcast (re-emitted by useVoiceChannel as a
+  // window event). Each badge auto-expires so the strip stays current.
+  const [aiActions, setAiActions] = useState<{ id: number; text: string }[]>([]);
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const text = describeDispatchAction((e as CustomEvent).detail || {});
+      if (!text) return;
+      const id = Date.now() + Math.random();
+      setAiActions((prev) => [{ id, text }, ...prev].slice(0, 3));
+      setTimeout(() => setAiActions((prev) => prev.filter((a) => a.id !== id)), 12000);
+    };
+    window.addEventListener('rmpg:dispatch-action', onAction as EventListener);
+    return () => window.removeEventListener('rmpg:dispatch-action', onAction as EventListener);
+  }, []);
 
   // Highest transmission id seen so far. `null` until the first poll
   // lands so we never beep for the backlog that's already on screen
@@ -32,7 +78,7 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   const lastSeenIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    apiFetch<RadioChannel[]>('/radio/channels').then(setChannels).catch(console.error);
+    apiFetch<RadioChannel[]>('/radio/channels').then(setChannels).catch(err => console.warn('[LiveTab] channels load failed:', err));
   }, []);
 
   // Reset the new-TX baseline whenever the feed query changes, so
@@ -46,6 +92,10 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   // does the real OR/negation parse on the returned set.
   useEffect(() => {
     let alive = true;
+    // Transient poll failures (e.g. one tick racing the 15-min token refresh)
+    // self-heal on the next 5s tick — log once per failure STREAK at warn, not
+    // an error per tick, so the console only flags sustained outages.
+    let failStreak = 0;
     const fetchTx = () => {
       const params = new URLSearchParams();
       if (selectedChannelId != null) params.set('channel_id', String(selectedChannelId));
@@ -55,10 +105,16 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
       apiFetch<RadioTransmission[]>(`/radio/transmissions?${params.toString()}`)
         .then((rows) => {
           if (!alive) return;
+          failStreak = 0;
           setTx(rows);
           notifyOnNewTx(rows);
         })
-        .catch((err) => { console.error('[radio] tx fetch', err); });
+        .catch((err) => {
+          if (!alive) return;
+          failStreak += 1;
+          if (failStreak === 1) console.warn('[radio] tx fetch failed (will retry on the next poll):', err);
+          else if (failStreak === 4) console.error('[radio] tx fetch failing repeatedly:', err);
+        });
     };
     fetchTx();
     const t = setInterval(fetchTx, 5000);
@@ -106,13 +162,20 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   // Live voice for the selected channel. A new recorded transmission
   // is prepended immediately (radio_recorded) so the operator doesn't
   // wait for the next 5s poll.
-  const voice = useVoiceChannel(selectedChannelId, (txn: RadioTransmission) => {
-    if (!txn) return;
-    setTx((prev) => [txn, ...prev.filter((t) => t.id !== txn.id)]);
-  });
+  const voice = useVoiceChannel(
+    selectedChannelId,
+    (txn: RadioTransmission) => {
+      if (!txn) return;
+      setTx((prev) => [txn, ...prev.filter((t) => t.id !== txn.id)]);
+    },
+    // AI dispatcher ran a plate/person check — pop the record into the side
+    // panel so the operator sees the file the moment dispatch reads it back.
+    (ref) => setOpenRecord(ref),
+  );
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex min-h-0">
+      <div className="flex-1 min-w-0 flex flex-col">
       <SectionHeader
         icon={<Volume2 className="w-3 h-3" style={{ color: 'var(--rt-accent)' }} />}
         label={currentChannel ? `LIVE — ${currentChannel.name.toUpperCase()}` : 'LIVE — NO CHANNEL'}
@@ -127,7 +190,7 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
       {/* Search row + channel picker */}
       <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderBottom: '1px solid var(--rt-border)' }}>
         <Search className="w-3 h-3" style={{ color: 'var(--rt-muted)' }} />
-        <input
+        <input id="ff-livetab-0"
           type="text" value={q} onChange={(e) => setQ(e.target.value)}
           placeholder='search: "10-50" | "code 4" -test'
           className="flex-1 bg-transparent outline-none text-[10px] font-mono"
@@ -135,7 +198,7 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
           aria-label="Search transmissions"
         />
         <Sep />
-        <select
+        <select id="ff-livetab-1"
           value={selectedChannelId ?? ''}
           onChange={(e) => onSelectChannel(e.target.value ? parseInt(e.target.value, 10) : null)}
           aria-label="Select channel"
@@ -164,6 +227,20 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
       {/* Push-to-talk bar — live voice for the selected channel */}
       <PttBar channelSelected={selectedChannelId != null} voice={voice} />
 
+      {/* AI dispatcher action strip — what the AI just wrote to the CAD, live */}
+      {aiActions.length > 0 && (
+        <div className="px-3 py-1 space-y-0.5"
+          style={{ borderBottom: '1px solid var(--rt-border)', background: 'var(--rt-panel)' }}>
+          {aiActions.map((a) => (
+            <div key={a.id} className="flex items-center gap-1.5 text-[10px] font-mono animate-fade-in"
+              style={{ color: 'var(--rt-accent)' }}>
+              <span className="tracking-[0.2em] text-[8px]" style={{ opacity: 0.7 }}>DISPATCH ▸</span>
+              <span>{a.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* TX list */}
       <div className="flex-1 min-h-0 overflow-auto">
         {visibleTx.length === 0
@@ -174,17 +251,48 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
             </ul>
           )}
       </div>
+      </div>
+      {openRecord && <DispatchRecordPanel record={openRecord} onClose={() => setOpenRecord(null)} />}
     </div>
   );
 }
 
+// Shared one-at-a-time haze player for the context-menu "Play" action
+// (mirrors AudioPlayButton's DSP chain). Stops any prior clip first.
+let menuPlayer: RadioHazePlayer | null = null;
+function playTransmissionAudio(transmissionId: number) {
+  try { menuPlayer?.stop(); } catch { /* noop */ }
+  menuPlayer = new RadioHazePlayer();
+  menuPlayer.playUrl(transmissionAudioUrl(transmissionId)).catch((err) => {
+    console.error('[radio] haze playback failed', err);
+  });
+}
+
 function TxRow({ tx }: { tx: RadioTransmission }) {
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const time = useMemo(() => {
     try { return new Date(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
   }, [tx.transmitted_at]);
   const isLive = tx.duration_seconds > 0 && Date.now() - new Date(tx.transmitted_at).getTime() < 10_000;
+
+  const buildTxMenu = (): ContextMenuItem[] => [
+    ...(tx.audio_url
+      ? [
+          m.action('Play recording', () => playTransmissionAudio(tx.id), { icon: <Play size={12} /> }),
+          m.openExternal('Download audio', transmissionAudioUrl(tx.id), <Download size={12} />),
+          m.separator(),
+        ]
+      : []),
+    m.copy('Copy transcript', tx.transcript),
+    m.copy('Copy unit', tx.unit_label || tx.user_name),
+    m.copy('Copy channel', tx.channel_name),
+    m.copyId(tx.id),
+  ];
+
   return (
-    <li className="flex items-start gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30">
+    <li className="flex items-start gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30"
+      onContextMenu={(e) => openMenu(e, buildTxMenu())}>
       <span className="tabular-nums" style={{ color: 'var(--rt-muted)', minWidth: 70 }}>{time}</span>
       {isLive ? <Waveform color="var(--rt-tx)" /> : <span style={{ width: 24 }} />}
       <span className="font-bold" style={{ color: 'var(--rt-accent)', minWidth: 80 }}>{tx.unit_label || tx.user_name || '—'}</span>
@@ -196,33 +304,51 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
   );
 }
 
-// Same-origin relative URL so it passes CSP media-src 'self'; the zone
-// proxy forwards /api/radio/* to the rewrite worker. <audio> can't set
-// an Authorization header, so the JWT rides the ?token= fallback the
-// auth middleware accepts (same trick as bodycam video streams).
+// Same-origin relative URL so it passes CSP connect-src 'self'; the zone
+// proxy forwards /api/radio/* to the rewrite worker. The clip is fetched via
+// the Web Audio path (not an <audio> element), so auth rides the query
+// string. LEGACY sync form — embeds the session JWT as ?token=; kept only
+// for synchronous call sites (context-menu download links). Playback paths
+// should use transmissionAudioUrlSigned() below.
 export function transmissionAudioUrl(transmissionId: number): string {
   const token = localStorage.getItem('rmpg_token') || '';
   return `/api/radio/transmissions/${transmissionId}/audio${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 }
 
+// Preferred form: per-resource HMAC params from /api/auth/sign-urls — keeps
+// the session JWT out of URLs (CF tail logs, proxy logs, browser history).
+// Falls back to the legacy ?token= URL if signing fails.
+export async function transmissionAudioUrlSigned(transmissionId: number): Promise<string> {
+  const params = await getSignedParams('radio', transmissionId);
+  if (params) {
+    return `/api/radio/transmissions/${transmissionId}/audio?${buildSignedQuerySync(params)}`;
+  }
+  return transmissionAudioUrl(transmissionId);
+}
+
+// Recorded clips replay through the SAME P25 radio-haze chain as live
+// dispatch voice (bandpass + bitcrusher + AGC + receiver hiss), so a
+// saved transmission sounds like it did over the air rather than like a
+// dry mic file. The native <audio> element can't do Web Audio DSP, so we
+// fetch + decode + play through RadioHazePlayer instead.
 export function AudioPlayButton({ transmissionId }: { transmissionId: number }) {
   const [playing, setPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playerRef = useRef<RadioHazePlayer | null>(null);
 
-  useEffect(() => () => { try { audioRef.current?.pause(); } catch { /* noop */ } }, []);
+  useEffect(() => () => { try { playerRef.current?.stop(); } catch { /* noop */ } }, []);
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    let a = audioRef.current;
-    if (!a) {
-      a = new Audio(transmissionAudioUrl(transmissionId));
-      a.onended = () => setPlaying(false);
-      a.onerror = () => setPlaying(false);
-      a.onpause = () => setPlaying(false);
-      audioRef.current = a;
+    if (playing) {
+      playerRef.current?.stop();
+      setPlaying(false);
+      return;
     }
-    if (a.paused) a.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
-    else a.pause();
+    const player = playerRef.current ?? (playerRef.current = new RadioHazePlayer());
+    setPlaying(true);
+    transmissionAudioUrlSigned(transmissionId)
+      .then((url) => player.playUrl(url, () => setPlaying(false)))
+      .catch((err) => { console.error('[radio] haze playback failed', err); setPlaying(false); });
   };
 
   return (

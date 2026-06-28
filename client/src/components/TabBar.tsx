@@ -1,9 +1,10 @@
 // ============================================================
 // RMPG Flex — Tab Bar (Spillman Flex Tabs)
-// Sharp-cornered tab bar for switching views within panels
+// Sharp-cornered, keyboard-navigable tab bar for switching
+// views within panels. Arrow keys, Home/End supported.
 // ============================================================
 
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 
 interface Tab {
   id: string;
@@ -17,49 +18,84 @@ interface TabBarProps {
   activeTab: string;
   onTabChange: (tabId: string) => void;
   className?: string;
+  /** Spillman Flex mode — thicker tabs with gold active indicator */
+  spillman?: boolean;
 }
 
-export default function TabBar({
+function TabBar({
   tabs,
   activeTab,
   onTabChange,
   className = '',
+  spillman = false,
 }: TabBarProps) {
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent, tabId: string) => {
+    const idx = tabs.findIndex(t => t.id === tabId);
+    let nextIdx = -1;
+
+    switch (e.key) {
+      case 'ArrowRight':
+        nextIdx = idx < tabs.length - 1 ? idx + 1 : 0;
+        break;
+      case 'ArrowLeft':
+        nextIdx = idx > 0 ? idx - 1 : tabs.length - 1;
+        break;
+      case 'Home':
+        nextIdx = 0;
+        break;
+      case 'End':
+        nextIdx = tabs.length - 1;
+        break;
+    }
+
+    if (nextIdx >= 0 && nextIdx !== idx) {
+      e.preventDefault();
+      onTabChange(tabs[nextIdx].id);
+    }
+  }, [tabs, onTabChange]);
+
   return (
-    <div className={`tab-bar ${className}`} role="tablist">
+    <div
+      ref={tabListRef}
+      className={`${spillman ? 'spillman-tab-bar' : 'tab-bar'} ${className}`}
+      role="tablist"
+      aria-label="Section tabs"
+    >
       {tabs.map((tab) => {
         const Icon = tab.icon;
+        const isActive = activeTab === tab.id;
         return (
-          <button type="button"
+          <button
+            type="button"
             key={tab.id}
             role="tab"
             id={`tab-${tab.id}`}
-            aria-selected={activeTab === tab.id}
+            aria-selected={isActive}
             aria-controls={`tabpanel-${tab.id}`}
-            tabIndex={activeTab === tab.id ? 0 : -1}
+            tabIndex={isActive ? 0 : -1}
             onClick={() => onTabChange(tab.id)}
-            onKeyDown={(e) => {
-              const idx = tabs.findIndex(t => t.id === tab.id);
-              if (e.key === 'ArrowRight' && idx < tabs.length - 1) {
-                e.preventDefault();
-                onTabChange(tabs[idx + 1].id);
-              } else if (e.key === 'ArrowLeft' && idx > 0) {
-                e.preventDefault();
-                onTabChange(tabs[idx - 1].id);
-              } else if (e.key === 'Home') {
-                e.preventDefault();
-                onTabChange(tabs[0].id);
-              } else if (e.key === 'End') {
-                e.preventDefault();
-                onTabChange(tabs[tabs.length - 1].id);
-              }
-            }}
-            className={`tab-bar-item ${activeTab === tab.id ? 'active' : ''}`}
+            onKeyDown={(e) => handleKeyDown(e, tab.id)}
+            className={`${spillman ? 'spillman-tab' : 'tab-bar-item'} ${isActive ? 'active' : ''}`}
+            title={tab.label}
           >
-            {Icon && <Icon style={{ width: 14, height: 14, marginRight: 6, display: 'inline', color: activeTab === tab.id ? 'var(--brand-gold)' : 'inherit' }} />}
+            {Icon && (
+              <Icon
+                style={{
+                  width: spillman ? 12 : 14,
+                  height: spillman ? 12 : 14,
+                  marginRight: spillman ? 5 : 6,
+                  display: 'inline',
+                  color: isActive ? 'var(--brand-gold)' : 'inherit',
+                }}
+              />
+            )}
             {tab.label}
             {tab.count !== undefined && (
-              <span className="font-mono tabular-nums" style={{ marginLeft: 6, opacity: 0.6, fontSize: '0.9em' }}>({tab.count})</span>
+              <span className={`font-mono tabular-nums ${spillman ? 'ml-1.5 text-[9px] opacity-60' : ''}`} style={{ marginLeft: spillman ? undefined : 6, opacity: spillman ? undefined : 0.6, fontSize: spillman ? undefined : '0.9em' }}>
+                {spillman ? `[${tab.count}]` : `(${tab.count})`}
+              </span>
             )}
           </button>
         );
@@ -67,3 +103,5 @@ export default function TabBar({
     </div>
   );
 }
+
+export default React.memo(TabBar);
