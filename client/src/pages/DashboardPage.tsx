@@ -406,11 +406,6 @@ export default function DashboardPage() {
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
 
-  const { openMenu } = useContextMenu();
-  const m = useMenuActions();
-
-  const refreshAll = () => fetchDashboardData({ silent: false });
-
   // Role gates
   // canCreate: any operational role may create records (calls, incidents, citations)
   const canCreate = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'].includes(role);
@@ -849,10 +844,7 @@ export default function DashboardPage() {
 
       {/* Stats Cards Row */}
       {hasPanel('activeCalls') && (
-      <div id="dashboard-panel-activeCalls" onContextMenu={(e) => openMenu(e, [
-        m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
-        m.go('Go to Dispatch', '/dispatch', <ArrowRight size={12} />),
-      ])}>
+      <div id="dashboard-panel-activeCalls">
       <SpmGroup title="Active Calls — Priority & Volume">
       <div className="space-y-4">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`} role="region" aria-label="Key statistics">
@@ -932,7 +924,7 @@ export default function DashboardPage() {
 
       {/* Secondary Stats Row — expanded to 5 cols 2026-05-24 to add Warrant Poll card */}
       {hasPanel('statusSummary') && (
-      <div id="dashboard-panel-statusSummary" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
+      <div id="dashboard-panel-statusSummary">
       <SpmGroup title="Status Summary">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2'}`} role="region" aria-label="Record statistics">
         <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants?status=active')}>
@@ -1132,10 +1124,7 @@ export default function DashboardPage() {
 
       {/* BOLO Ticker */}
       {hasPanel('activeBolos') && (
-      <div id="dashboard-panel-activeBolos" onContextMenu={(e) => openMenu(e, [
-        m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
-        m.go('View all BOLOs', '/intel/bolos', <ArrowRight size={12} />),
-      ])}>
+      <div id="dashboard-panel-activeBolos">
         <SpmGroup title="Active BOLOs" tone="red">
         {loading && bolos.length === 0 ? (
           <div className="flex items-center justify-center py-4 gap-2" role="status">
@@ -1356,7 +1345,7 @@ export default function DashboardPage() {
 
       {/* Main Content Grid */}
       {hasPanel('callAnalytics') && (
-      <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
+      <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
           <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
