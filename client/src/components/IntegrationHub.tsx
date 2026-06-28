@@ -34,7 +34,7 @@ const HEALTH_LABEL: Record<string, { text: string; color: string }> = {
   healthy: { text: 'ONLINE', color: '#22c55e' },
   degraded: { text: 'DEGRADED', color: '#f59e0b' },
   error: { text: 'ERROR', color: '#ef4444' },
-  unconfigured: { text: 'NOT CONFIGURED', color: '#6b7280' },
+  unconfigured: { text: 'NOT CONFIGURED', color: 'var(--rmpg-500)' },
 };
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -135,7 +135,7 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
                     <div className="flex items-center gap-2">
                       {intg.health !== 'unconfigured' && <span className={`led-dot ${healthLed}`} />}
                       <Icon className="w-3.5 h-3.5 text-rmpg-400" />
-                      <span className="text-[11px] text-white font-semibold">{intg.name}</span>
+                      <span className="text-[11px] text-rmpg-100 font-semibold">{intg.name}</span>
                     </div>
                     <span
                       className="text-[8px] font-bold uppercase tracking-wide"

@@ -18,6 +18,6 @@ trespass.get('/check', (c) => {
   return c.json({ orders: [], count: 0 });
 });
 
-trespass.get('/', (c) => c.json([]));
+trespass.get('/', (c) => c.json({ data: [], pagination: { page: 1, limit: 50, total: 0 } }));
 
 export default trespass;

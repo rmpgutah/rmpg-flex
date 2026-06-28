@@ -29,8 +29,10 @@ const TE = new TextEncoder();
 interface PageBuild {
   /** Bytes of original /Contents stream(s) concatenated (decoded). May be empty. */
   originalContent: Uint8Array;
-  /** Original /Resources dict raw bytes — copied verbatim into the new page. */
-  originalResources: WriterValue | null;
+  /** Resolved source /Resources dict (a parser PdfValue). Converted to writer
+   *  values at save() time so indirect font/XObject references can be copied
+   *  into the output as fresh indirect objects (verbatim streams). */
+  originalResourcesSource: PdfValue | null;
   /** Original /MediaBox. */
   mediaBox: [number, number, number, number];
   /** Effective rotation (original + edits, 0/90/180/270). */
@@ -201,6 +203,65 @@ export class RmpgPdfBuilder {
       objects.push({ num, bytes: concat(parts) });
     };
 
+    // ── Source object-graph copier ──────────────────────────────────────────
+    // Copies a referenced source object (and, transitively, everything it
+    // points at) into the output as fresh indirect objects, returning a writer
+    // REF to the new object. Memoized by source object number so shared and
+    // cyclic references are copied exactly once. Streams are copied verbatim
+    // (raw bytes + original /Filter) so embedded fonts and images survive
+    // without re-encoding.
+    const copiedBySourceNum = new Map<number, WriterValue>();
+    const parser = this.parser!;
+    const xref = this.xref!;
+
+    const convertSourceValue = (v: PdfValue): WriterValue => {
+      switch (v.kind) {
+        case 'null': return NULL;
+        case 'boolean': return BOOL(v.value);
+        case 'number': return N(v.value);
+        case 'name': return NAME(v.value);
+        case 'string': return literalString(new TextDecoder('latin1').decode(v.bytes));
+        case 'array': return ARR(...v.items.map(convertSourceValue));
+        case 'dict': {
+          const entries: Record<string, WriterValue> = {};
+          for (const [k, val] of v.entries) entries[k] = convertSourceValue(val);
+          return DICT(entries);
+        }
+        case 'stream': {
+          // A stream encountered inline (rare) — promote to an indirect object.
+          const num = allocate();
+          writeSourceStream(num, v);
+          return REF(num);
+        }
+        case 'ref': return copyIndirect(v.objNum);
+      }
+    };
+
+    const writeSourceStream = (num: number, s: Extract<PdfValue, { kind: 'stream' }>): void => {
+      const dictEntries: Record<string, WriterValue> = {};
+      for (const [k, val] of s.dict) {
+        if (k === 'Length') continue; // re-derive from the verbatim bytes
+        dictEntries[k] = convertSourceValue(val);
+      }
+      dictEntries.Length = N(s.raw.byteLength);
+      writeStreamObject(num, DICT(dictEntries), s.raw);
+    };
+
+    const copyIndirect = (sourceObjNum: number): WriterValue => {
+      const memo = copiedBySourceNum.get(sourceObjNum);
+      if (memo) return memo;
+      const newNum = allocate();
+      const ref = REF(newNum);
+      copiedBySourceNum.set(sourceObjNum, ref); // set before recursing to break cycles
+      const resolved = parser.resolve(xref, { kind: 'ref', objNum: sourceObjNum, gen: 0 });
+      if (resolved.kind === 'stream') {
+        writeSourceStream(newNum, resolved);
+      } else {
+        writeObject(newNum, convertSourceValue(resolved));
+      }
+      return ref;
+    };
+
     // Pre-allocate Catalog + Pages so children can /Parent them.
     const catalogNum = allocate();
     const pagesNum = allocate();
@@ -251,12 +312,19 @@ export class RmpgPdfBuilder {
       }
 
       // 4) Resources: keep originals where present + add fonts + xobjects.
+      // Deep-copy the source /Resources now so indirect font/XObject objects are
+      // emitted into the output document (verbatim streams). Leaf refs are
+      // copied indirectly; the /Font and /XObject sub-dicts stay inline so the
+      // overlay's own entries can be merged below.
+      const originalResources = p.originalResourcesSource
+        ? convertSourceValue(p.originalResourcesSource)
+        : null;
       const fontDict = new Map<string, WriterValue>();
       // If the original page already has fonts, preserve them so original
       // /Contents continues to render. Then add Standard 14 entries used by
       // the overlay under their canonical resource names.
-      if (p.originalResources && p.originalResources.kind === 'dict') {
-        const f = p.originalResources.v.get('Font');
+      if (originalResources && originalResources.kind === 'dict') {
+        const f = originalResources.v.get('Font');
         if (f) fontDict.set('__inheritFont', { kind: 'raw', bytes: TE.encode('') });
       }
       for (const fontKey of p.fonts) {
@@ -272,7 +340,7 @@ export class RmpgPdfBuilder {
         fontDict.set(fontKey, REF(num));
       }
       // Build the resources dict, merging original + overlay.
-      const resources = mergeResources(p.originalResources, fontDict, xobjects);
+      const resources = mergeResources(originalResources, fontDict, xobjects);
 
       // 5) Build the page dict.
       const contentsValue = buildContentsArray(originalContentRef, overlayRef);
@@ -417,17 +485,17 @@ export class RmpgPdfBuilder {
       }
     }
 
-    // Convert original /Resources to a writer value via raw passthrough — we
-    // re-serialize it without modification for the output document.
-    let originalResources: WriterValue | null = null;
+    // Capture the resolved source /Resources value. The deep copy (resolving and
+    // re-emitting any indirect font/XObject objects) is deferred to save(), where
+    // the object allocator is available.
+    let originalResourcesSource: PdfValue | null = null;
     if (resources) {
-      const r = this.parser.resolve(this.xref, resources);
-      originalResources = pdfValueToWriter(r);
+      originalResourcesSource = this.parser.resolve(this.xref, resources);
     }
 
     this.pages.push({
       originalContent,
-      originalResources,
+      originalResourcesSource,
       mediaBox: resolvedMediaBox,
       rotation,
       overlay: new ContentStreamBuilder(),
@@ -444,33 +512,6 @@ export class RmpgPdfBuilder {
       out.push(it.value);
     }
     return [out[0], out[1], out[2], out[3]];
-  }
-}
-
-/** Convert a parser-side PdfValue to a writer-side WriterValue. */
-function pdfValueToWriter(v: PdfValue): WriterValue {
-  switch (v.kind) {
-    case 'null': return NULL;
-    case 'boolean': return BOOL(v.value);
-    case 'number': return N(v.value);
-    case 'name': return NAME(v.value);
-    case 'string': return literalString(new TextDecoder('latin1').decode(v.bytes));
-    case 'array': return ARR(...v.items.map(pdfValueToWriter));
-    case 'dict': {
-      const entries: Record<string, WriterValue> = {};
-      for (const [k, val] of v.entries) entries[k] = pdfValueToWriter(val);
-      return DICT(entries);
-    }
-    case 'stream':
-      // We don't support inlining source streams as writer values — they're
-      // handled separately via the per-page content concatenation. Encountering
-      // one here means we hit an unexpected nested stream.
-      throw new Error('Nested stream in resources is not supported');
-    case 'ref':
-      // A ref pointing to a resource sub-dict we haven't materialized; emit
-      // the target dict resolved to a writer value. Caller should have already
-      // resolved before reaching here.
-      throw new Error('Unresolved /Resources ref reached the writer');
   }
 }
 

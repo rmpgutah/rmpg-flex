@@ -2,6 +2,8 @@
 import { useRef, useCallback, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { matchToRoad } from '../utils/mapboxServices';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 const SOURCE_ID = 'rmpg-matched-source';
 const RAW_SOURCE_ID = 'rmpg-matched-raw-source';
@@ -24,10 +26,10 @@ export function useMapboxMapMatching(map: mapboxgl.Map | null) {
     if (!map) return;
     visibleRef.current = false;
     try {
-      if (map.getLayer(MATCHED_LAYER_ID)) map.removeLayer(MATCHED_LAYER_ID);
-      if (map.getLayer(RAW_LAYER_ID)) map.removeLayer(RAW_LAYER_ID);
-      if (map.getSource(MATCHED_LAYER_ID)) map.removeSource(SOURCE_ID);
-      if (map.getSource(RAW_LAYER_ID)) map.removeSource(RAW_SOURCE_ID);
+      safeRemoveLayer(map, MATCHED_LAYER_ID);
+      safeRemoveLayer(map, RAW_LAYER_ID);
+      if (hasSource(map, MATCHED_LAYER_ID)) map.removeSource(SOURCE_ID);
+      if (hasSource(map, RAW_LAYER_ID)) map.removeSource(RAW_SOURCE_ID);
     } catch { /* ignore */ }
   }, [map]);
 
@@ -87,14 +89,16 @@ export function useMapboxMapMatching(map: mapboxgl.Map | null) {
     try {
       const result = await matchToRoad(coordinates, profile);
       const bestMatch = result.matchings?.[0];
-      if (bestMatch && map.loaded()) {
+      if (bestMatch) {
         const r: MatchResult = {
           geometry: bestMatch.geometry,
           confidence: bestMatch.confidence,
           distance: bestMatch.distance,
           duration: bestMatch.duration,
         };
-        renderOnMap(coordinates, bestMatch.geometry, map);
+        whenStyleReady(map, () => {
+          renderOnMap(coordinates, bestMatch.geometry, map);
+        });
         setMatchResult(r);
       }
     } catch (err) {
