@@ -9,7 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { localToday, safeDateStr } from '../utils/dateUtils';
-import { UserPlus, Users, CheckCircle, GraduationCap, Clock, Plus, Pencil, Trash2, XCircle } from 'lucide-react';
+import { UserPlus, Users, CheckCircle, GraduationCap, Clock, Plus, Pencil, Trash2 } from 'lucide-react';
 
 interface Candidate {
   id: number;
@@ -53,8 +53,6 @@ export default function RecruitmentPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Candidate | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [rejectTarget, setRejectTarget] = useState<Candidate | null>(null);
-  const [rejecting, setRejecting] = useState(false);
   const { addToast } = useToast();
   const m = useMenuActions();
 
@@ -128,7 +126,6 @@ export default function RecruitmentPage() {
 
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (rejectTarget) { e.stopPropagation(); setRejectTarget(null); return; }
         if (deleteTarget) { e.stopPropagation(); setDeleteTarget(null); return; }
         if (formOpen)     { e.stopPropagation(); setFormOpen(false);    return; }
         return;
@@ -143,7 +140,7 @@ export default function RecruitmentPage() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [rejectTarget, deleteTarget, formOpen, canManage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [deleteTarget, formOpen, canManage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openNew = () => {
     setEditingRecord(null);
@@ -202,24 +199,6 @@ export default function RecruitmentPage() {
     }
   };
 
-  const handleReject = async () => {
-    if (!rejectTarget) return;
-    setRejecting(true);
-    try {
-      await apiFetch(`/recruitment/candidates/${rejectTarget.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ ...rejectTarget, stage: 'rejected' }),
-      });
-      setRejectTarget(null);
-      fetchData();
-      addToast('Candidate rejected', 'success');
-    } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Reject failed', 'error');
-    } finally {
-      setRejecting(false);
-    }
-  };
-
   // Filtered view — driven by search input.
   const filtered = useMemo(() => {
     if (!search.trim()) return candidates;
@@ -249,7 +228,7 @@ export default function RecruitmentPage() {
       render: (r: Candidate) => safeDateStr(r.applied_date),
     },
     ...(canManage ? [{
-      key: 'actions', label: '', width: '96px',
+      key: 'actions', label: '', width: '80px',
       render: (r: Candidate) => (
         <div className="flex gap-2">
           <button
@@ -259,15 +238,6 @@ export default function RecruitmentPage() {
           >
             <Pencil size={12} />
           </button>
-          {r.stage !== 'rejected' && r.stage !== 'withdrawn' && r.stage !== 'hired' && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setRejectTarget(r); }}
-              className="text-amber-500 hover:text-amber-300"
-              title="Reject Applicant"
-            >
-              <XCircle size={12} />
-            </button>
-          )}
           <button
             onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}
             className="text-red-500 hover:text-red-300"
@@ -306,12 +276,7 @@ export default function RecruitmentPage() {
           m.copy('Copy name', row.candidate_name),
           m.copyId(row.id),
           ...(canManage
-            ? [
-                ...(row.stage !== 'rejected' && row.stage !== 'withdrawn' && row.stage !== 'hired'
-                  ? [m.action('Reject Applicant', () => setRejectTarget(row), { danger: true, icon: <XCircle size={12} /> })]
-                  : []),
-                m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> }),
-              ]
+            ? [m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> })]
             : []),
         ]}
       />
@@ -454,25 +419,6 @@ export default function RecruitmentPage() {
           </div>
         </div>
       )}
-
-      {/* -- Reject confirm -- */}
-      <ConfirmDialog
-        isOpen={rejectTarget !== null}
-        onClose={() => setRejectTarget(null)}
-        onConfirm={handleReject}
-        title="Reject Applicant"
-        message="This will move the candidate to Rejected status. The record is kept for audit purposes."
-        details={rejectTarget && (
-          <>
-            <div><span className="text-rmpg-400">Name:</span> {rejectTarget.candidate_name}</div>
-            <div><span className="text-rmpg-400">Position:</span> {rejectTarget.position || '—'}</div>
-            <div><span className="text-rmpg-400">Stage:</span> {rejectTarget.stage?.replace(/_/g, ' ')}</div>
-          </>
-        )}
-        confirmLabel="Reject"
-        confirmVariant="warning"
-        isLoading={rejecting}
-      />
 
       {/* -- Delete confirm -- */}
       <ConfirmDialog
