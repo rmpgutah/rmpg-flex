@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { PRIORITY_COLORS } from '../utils/mapConstants';
 import { buildHistoricalCallMarkerContent, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { escapeHtml } from '../../../utils/sanitize';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface HistoricalCall {
   id: number;
@@ -52,7 +54,7 @@ function formatResponseTime(minutes: number | null): string {
 function formatTimestamp(iso: string | null): string {
   if (!iso) return '-';
   try {
-    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+    const d = parseTimestamp(iso);
     return d.toLocaleString('en-US', {
       month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit',
@@ -64,9 +66,9 @@ function formatTimestamp(iso: string | null): string {
 function getStatusColor(status: string): string {
   switch (status) {
     case 'cleared': return '#22c55e';
-    case 'closed': return '#666666';
+    case 'closed': return 'var(--rmpg-500)';
     case 'archived': return '#555555';
-    default: return '#666666';
+    default: return 'var(--rmpg-500)';
   }
 }
 
@@ -128,30 +130,31 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
       },
     }));
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': [
-          'case',
-          ['==', ['get', 'priority'], 'P1'], '#dc2626',
-          ['==', ['get', 'priority'], 'P2'], '#f59e0b',
-          ['==', ['get', 'priority'], 'P3'], '#888888',
-          '#666666',
-        ],
-        'circle-radius': 8,
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 1,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['==', ['get', 'priority'], 'P1'], '#dc2626',
+            ['==', ['get', 'priority'], 'P2'], '#f59e0b',
+            ['==', ['get', 'priority'], 'P3'], '#888888',
+            'var(--rmpg-500)',
+          ],
+          'circle-radius': 8,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 1,
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
+      map.on('click', sourceId, (e) => {
       const feature = e.features?.[0];
       if (!feature || !feature.properties) return;
       const p = feature.properties;
-      const pColor = PRIORITY_COLORS[p.priority as string] || '#666666';
+      const pColor = PRIORITY_COLORS[p.priority as string] || 'var(--rmpg-500)';
       const sColor = getStatusColor(p.status as string);
 
       const html = `
@@ -182,6 +185,7 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
       if (popupRef.current) {
         popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
       }
+      });
     });
   }, [map, clearMarkers]);
 

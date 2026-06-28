@@ -59,7 +59,7 @@ export interface PrintButtonGroupProps {
 const BTN_BASE =
   'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider ' +
   'border transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-const BTN_DEFAULT = 'bg-[#141414] hover:bg-[#1a1a1a] border-[#2e2e2e] text-[#d4a017]';
+const BTN_DEFAULT = 'bg-surface-base hover:bg-surface-raised border-rmpg-700 text-[#d4a017]';
 const BTN_PRIMARY = 'bg-[#d4a017] hover:bg-[#b8881a] border-[#d4a017] text-black';
 
 export default function PrintButtonGroup({

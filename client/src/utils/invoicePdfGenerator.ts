@@ -23,6 +23,9 @@ export interface InvoicePdfOptions {
   printTarget?: PrintTarget;
 }
 import { FORM_NUMBERS } from './pdfAssets';
+// Vite-bundled URL — see pdfAssets.ts for why we don't use `/rmpg-seal.png`.
+import sealUrl from '../assets/rmpg-seal.png?url';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 // ── Data interface ────────────────────────────────────────
 
@@ -87,6 +90,7 @@ export async function generateInvoicePdf(data: InvoicePdfData, options: InvoiceP
   }));
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageWidth = doc.internal.pageSize.getWidth();
   const cw = getContentWidth(doc);
@@ -141,7 +145,7 @@ export async function generateInvoicePdf(data: InvoicePdfData, options: InvoiceP
     const sec = openAutoSection(doc, 'Line Items', y);
     y = sec.contentY;
 
-    const items = data.line_items || [];
+    const items = Array.isArray(data.line_items) ? data.line_items : [];
     if (items.length > 0) {
       // Custom table for line items (needs right-aligned columns)
       const headerBg = hexToRgb(brand.header_bg_color);
@@ -294,7 +298,7 @@ export async function generateInvoicePdf(data: InvoicePdfData, options: InvoiceP
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
   // ── Payments Section ─────────────────────────────────
-  const payments = data.payments || [];
+  const payments = Array.isArray(data.payments) ? data.payments : [];
   if (payments.length > 0) {
     y = checkPageBreak(doc, y, 25);
 
@@ -356,8 +360,8 @@ function escHtml(s: string | null | undefined): string {
 }
 
 export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
-  const items = data.line_items || [];
-  const payments = data.payments || [];
+  const items = Array.isArray(data.line_items) ? data.line_items : [];
+  const payments = Array.isArray(data.payments) ? data.payments : [];
 
   const lineItemRows = items.map(item => `
     <tr>
@@ -415,7 +419,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 </head>
 <body>
   <div class="header">
-    <img src="/rmpg-seal.png" alt="RMPG Seal" onerror="this.style.display='none'" />
+    <img src="${sealUrl}" alt="RMPG Seal" onerror="this.style.display='none'" />
     <div class="header-text">
       <h1>RMPG SECURITY SERVICES</h1>
       <p>Private Security</p>

@@ -6,9 +6,11 @@
 // Click a row to one-click attach the unit to the call.
 // ============================================================
 
-import { useEffect, useState, useCallback } from 'react';
-import { Navigation, Clock, MapPin, RefreshCw, Loader2 } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Navigation, Clock, MapPin, RefreshCw, Loader2, Satellite } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
+import { useWebSocket } from '../context/WebSocketContext';
 
 export interface RecommendedUnit {
   callSign: string;
@@ -20,14 +22,28 @@ export interface RecommendedUnit {
   officerName: string | null;
   badgeNumber: string | null;
   currentCallId: string | null;
+  /** Age of the unit's last GPS fix in seconds (null = never reported). */
+  gpsAgeSeconds?: number | null;
+  /** True when the fix is older than the server's freshness window. */
+  gpsStale?: boolean;
 }
 
 interface RecommendResponse {
   callId: number;
   callNumber: string;
   callPriority?: string;
+  freshWindowSeconds?: number;
+  freshCount?: number;
   recommended: RecommendedUnit[];
   reason?: string;
+}
+
+/** Compact GPS-age label, e.g. "8s", "3m", "no GPS". */
+function gpsAgeLabel(s: number | null | undefined): string {
+  if (s == null) return 'no GPS';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${Math.round(s / 3600)}h`;
 }
 
 interface Props {
@@ -63,9 +79,15 @@ export default function RecommendedUnitsInline({
   const [data, setData] = useState<RecommendResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { subscribe } = useWebSocket();
 
   const fetchRecommendations = useCallback(async () => {
-    if (!callId) return;
+    // Reject empty / undefined / string-"undefined" call IDs. A bug elsewhere
+    // (selectedCall hydrated from stale state) lets the string "undefined"
+    // slip through `!callId` because it's truthy. See dispatch:1 prod console
+    // 2026-05-27 ~10:10 UTC — `/dispatch/calls/undefined/recommended-units`
+    // hammered the API on every render until this guard.
+    if (!callId || callId === 'undefined' || callId === 'null' || callId === '') return;
     setLoading(true);
     setErr(null);
     try {
@@ -85,6 +107,23 @@ export default function RecommendedUnitsInline({
     return () => clearInterval(t);
   }, [fetchRecommendations, refreshIntervalMs]);
 
+  // Real-time refresh: when units broadcast new GPS positions, re-rank — but
+  // debounce so a burst of position updates triggers a single refetch (the
+  // server re-computes fresh-GPS distances; we don't want it per-tick).
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const unsub = subscribe('unit_update', (msg: any) => {
+      const action = (msg?.data || msg)?.action;
+      if (action !== 'unit_position_update') return;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(fetchRecommendations, 4000);
+    });
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      unsub();
+    };
+  }, [subscribe, fetchRecommendations]);
+
   if (!callId) return null;
 
   const rows = data?.recommended ?? [];
@@ -93,7 +132,7 @@ export default function RecommendedUnitsInline({
   return (
     <div
       className="border p-1.5 space-y-1"
-      style={{ background: '#0a0a0a', borderColor: '#222', borderRadius: 2 }}
+      style={{ background:"var(--surface-sunken)", borderColor: 'var(--border-subtle)', borderRadius: 2 }}
       data-testid="recommended-units-inline"
     >
       <div className="flex items-center justify-between">
@@ -107,7 +146,7 @@ export default function RecommendedUnitsInline({
           type="button"
           onClick={fetchRecommendations}
           aria-label="Refresh recommended units"
-          className="text-rmpg-400 hover:text-white"
+          className="text-rmpg-400 hover:text-rmpg-100"
           title="Refresh"
         >
           {loading ? (
@@ -141,12 +180,12 @@ export default function RecommendedUnitsInline({
               key={u.callSign}
               type="button"
               onClick={() => onAssign?.(u.callSign)}
-              className="w-full text-left flex items-center gap-1.5 px-1.5 py-1 hover:bg-[#1a1a1a] transition-colors"
+              className="w-full text-left flex items-center gap-1.5 px-1.5 py-1 hover:bg-surface-raised transition-colors"
               style={{ borderLeft: `2px solid ${statusColor(u.status)}`, borderRadius: 2 }}
               disabled={!onAssign}
               title={onAssign ? `Attach ${u.callSign} to this call` : undefined}
             >
-              <span className="text-[10px] font-bold text-white font-mono w-12">
+              <span className="text-[10px] font-bold text-rmpg-100 font-mono w-12">
                 {u.callSign}
               </span>
               <span className="text-[9px] text-rmpg-300 flex items-center gap-0.5">
@@ -157,8 +196,16 @@ export default function RecommendedUnitsInline({
                 <Clock className="w-2.5 h-2.5" />
                 {u.etaMinutes < 1 ? '<1' : Math.round(u.etaMinutes)}m
               </span>
+              <span
+                className="text-[9px] flex items-center gap-0.5"
+                style={{ color: u.gpsStale ? '#f59e0b' : '#22c55e' }}
+                title={u.gpsStale ? 'GPS fix is stale — position uncertain' : 'Live GPS fix'}
+              >
+                <Satellite className="w-2.5 h-2.5" />
+                {gpsAgeLabel(u.gpsAgeSeconds)}
+              </span>
               {u.officerName && (
-                <span className="text-[9px] text-rmpg-400 truncate flex-1">
+                <span className="text-[9px] text-rmpg-400 min-w-0 truncate flex-1">
                   {u.badgeNumber ? `#${u.badgeNumber} ` : ''}{u.officerName}
                 </span>
               )}
@@ -166,7 +213,7 @@ export default function RecommendedUnitsInline({
                 className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5"
                 style={{ background: statusColor(u.status), color: '#0a0a0a', borderRadius: 2 }}
               >
-                {u.status.replace('_', ' ')}
+                {toDisplayLabel(u.status)}
               </span>
             </button>
           ))}

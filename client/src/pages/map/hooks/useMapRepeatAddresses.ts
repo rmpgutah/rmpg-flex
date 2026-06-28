@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface RepeatAddress {
   location_address: string;
@@ -29,7 +31,7 @@ function getColor(count: number): string {
 function buildInfoContent(addr: RepeatAddress): string {
   const color = getColor(addr.call_count);
   const types = addr.incident_types ? addr.incident_types.split(',').map((t) => t.trim()).join(', ') : '';
-  const lastDate = addr.last_call ? new Date(addr.last_call).toLocaleDateString() : '';
+  const lastDate = addr.last_call ? parseTimestamp(addr.last_call).toLocaleDateString() : '';
 
   return `
     <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
@@ -111,40 +113,42 @@ export function useMapRepeatAddresses(
 
     if (features.length === 0) return;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': [
-          'case',
-          ['>=', ['get', 'call_count'], 20], '#991b1b',
-          ['>=', ['get', 'call_count'], 11], '#dc2626',
-          ['>=', ['get', 'call_count'], 6], '#f97316',
-          ['>=', ['get', 'call_count'], 4], '#f59e0b',
-          '#eab308',
-        ],
-        'circle-radius': [
-          'case',
-          ['>=', ['get', 'call_count'], 20], 19,
-          ['>=', ['get', 'call_count'], 11], 16,
-          ['>=', ['get', 'call_count'], 6], 14,
-          12,
-        ],
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 2,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['>=', ['get', 'call_count'], 20], '#991b1b',
+            ['>=', ['get', 'call_count'], 11], '#dc2626',
+            ['>=', ['get', 'call_count'], 6], '#f97316',
+            ['>=', ['get', 'call_count'], 4], '#f59e0b',
+            '#eab308',
+          ],
+          'circle-radius': [
+            'case',
+            ['>=', ['get', 'call_count'], 20], 19,
+            ['>=', ['get', 'call_count'], 11], 16,
+            ['>=', ['get', 'call_count'], 6], 14,
+            12,
+          ],
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const addr = addresses.find(a => a.lat === e.lngLat.lat && a.lng === e.lngLat.lng);
-      if (!addr) return;
-      if (popupRef.current) {
-        popupRef.current.setLngLat(e.lngLat).setHTML(buildInfoContent(addr)).addTo(map);
-      }
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const addr = addresses.find(a => a.lat === e.lngLat.lat && a.lng === e.lngLat.lng);
+        if (!addr) return;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(buildInfoContent(addr)).addTo(map);
+        }
+      });
     });
 
     return () => {

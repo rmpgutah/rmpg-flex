@@ -1,0 +1,12 @@
+-- Next-attempt note for the Notice of Attempt to Serve PDF.
+-- Operator-set free text describing when/how the next attempt will happen
+-- (e.g. "Will return Tuesday Jun 25 between 6:00 PM and 8:00 PM"). NULL
+-- means the PDF falls back to the generic "contact our office" boilerplate.
+--
+-- D1 does NOT support `IF NOT EXISTS` on `ADD COLUMN`. Re-applying this
+-- against a database that already has the column produces a "duplicate
+-- column name" error, which the deploy step swallows (continue-on-error)
+-- — and the Worker's boot-time reconciler is the safety net for new
+-- callsites. After merging, also apply this DDL directly to live D1
+-- 785de7ae and verify with `pragma_table_info('serve_queue')`.
+ALTER TABLE serve_queue ADD COLUMN next_attempt_note TEXT;
