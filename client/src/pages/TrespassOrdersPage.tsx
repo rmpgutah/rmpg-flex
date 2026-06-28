@@ -72,6 +72,20 @@ const timeAgo = (date: string): string => {
   return `${days}d ago`;
 };
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -454,7 +468,7 @@ export default function TrespassOrdersPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderToDelete, orderToLift, expirationCalendar, bulkMode, formOpen, canManage]);
+  }, [orderToDelete, expirationCalendar, bulkMode, formOpen, canManage]);
 
   // \u2500\u2500 Deep-link: ?order_id=<id> and ?person_id=<id> \u2500\u2500
   // Honors the Dashboard-emit / page-consume contract used across the
@@ -525,7 +539,7 @@ export default function TrespassOrdersPage() {
       <PanelTitleBar icon={ShieldBan} title="TRESPASS ORDERS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
-        <ExportButton exportUrl="/trespass-orders?per_page=9999" exportFilename="trespass_orders_export.csv" />
+        <ExportButton exportUrl="/trespass-orders/export/csv" exportFilename="trespass_orders_export.csv" />
         {/* Feature 18: Expiration Calendar */}
         <button type="button" onClick={handleLoadExpirationCalendar} className="toolbar-btn" title="Expiration calendar">
           <Calendar style={{ width: 11, height: 11 }} /> Expirations
@@ -632,6 +646,14 @@ export default function TrespassOrdersPage() {
           </label>
         </div>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-3 h-3" /> {error}
+          <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
@@ -755,7 +777,7 @@ export default function TrespassOrdersPage() {
                   </>
                 )}
                 {canManage && (selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
-                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn text-rmpg-400" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'var(--rmpg-400)', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                   </button>
                 )}

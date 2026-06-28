@@ -92,7 +92,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'calls', label: 'Calls', countKey: 'calls' },
   { id: 'incidents', label: 'Incidents', countKey: 'incidents' },
-  { id: 'persons', label: 'Persons', countKey: 'persons' },
+  { id: 'persons', label: 'Individual', countKey: 'persons' },
   { id: 'vehicles', label: 'Vehicles', countKey: 'vehicles' },
   { id: 'properties', label: 'Properties', countKey: 'properties' },
   { id: 'evidence', label: 'Evidence', countKey: 'evidence' },
@@ -397,6 +397,7 @@ function LinkedIncidentsGraph({ caseId, caseFull }: { caseId: string | number; c
 
 export default function CaseManagementPage() {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
@@ -743,7 +744,7 @@ export default function CaseManagementPage() {
     setStatusChanging(true);
     try {
       await apiFetch(`/cases/${selected.id}/status`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
-      addToast(`Case status → ${newStatus.replace(/_/g, ' ')}`, 'success');
+      addToast(`Case status → ${newStatus.replace(/_/g, ' ').toUpperCase()}`, 'success');
       const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
       setSelected(updated.data);
       fetchCases({ silent: true });
@@ -1302,7 +1303,7 @@ export default function CaseManagementPage() {
                   {/* Link Person Quick Action */}
                   <div className="panel-beveled p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-[9px] font-mono text-rmpg-500 uppercase">Linked Persons</div>
+                      <div className="text-[9px] font-mono text-rmpg-500 uppercase">Linked Individuals</div>
                       <button type="button" onClick={() => setLinkPersonOpen(true)} className="toolbar-btn text-[10px]">
                         <Link style={{ width: 10, height: 10 }} /> Link Person
                       </button>
