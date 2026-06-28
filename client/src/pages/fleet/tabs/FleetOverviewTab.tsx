@@ -437,7 +437,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                       <div className="flex items-center gap-2 justify-between">
                         <div className="flex items-center gap-2">
                           <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase border bg-brand-900/30 text-brand-400 border-brand-700/30">
-                            {m.type.replace(/_/g, ' ')}
+                            {m.type.replace(/_/g, ' ').toUpperCase()}
                           </span>
                           <span className="text-[10px] text-rmpg-300 font-mono">
                             {formatMilitary(m.performed_at)}

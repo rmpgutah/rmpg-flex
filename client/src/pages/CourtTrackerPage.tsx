@@ -865,7 +865,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Outcomes</div>
                   {(stats.byOutcome || []).map((r: any) => (
                     <div key={r.outcome} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
-                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ')}</span>
+                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ').toUpperCase()}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 bg-rmpg-800 overflow-hidden">
                           <div

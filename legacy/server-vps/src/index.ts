@@ -29,6 +29,9 @@ import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
 import { runScraperNightly } from './utils/scraperNightlyJob';
 import { getDb } from './models/database';
 import { logger, httpLogger } from './utils/logger';
+import { requestContext } from './utils/requestContext';
+import { setupGracefulShutdown } from './utils/gracefulShutdown';
+import { runStartupChecks } from './utils/configValidator';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -132,9 +135,25 @@ import firecrawlToolsRoutes from './routes/firecrawlTools';
 import geocodeRoutes from './routes/geocode';
 import drivingEventsRoutes from './routes/drivingEvents';
 import evidenceRoutes from './routes/evidence';
+import intelBulletinsRoutes from './routes/intelBulletins';
+import shiftBriefingsRoutes from './routes/shiftBriefings';
 import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
+import apiDocsRoutes from './routes/apiDocs';
+import pawnRoutes from './routes/pawn';
+import impoundRoutes from './routes/impounds';
+import alarmRoutes from './routes/alarms';
+import animalControlRoutes from './routes/animalControl';
+import communityReportRoutes from './routes/communityReports';
+import crashReportRoutes from './routes/crashReports';
+import tipRoutes from './routes/tips';
+import alprRoutes from './routes/alpr';
+import jailRoutes from './routes/jail';
+import fireRmsRoutes from './routes/fireRms';
+import custodyLogRoutes from './routes/custodyLog';
+import accreditationRoutes from './routes/accreditations';
+import { getSchedulerStatus, runJobNow } from './utils/scheduler';
 
 const app = express();
 
@@ -175,12 +194,26 @@ app.use('/api/dashcam-ai', dashcamAiRouter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Improvement 73: Response compression negotiation headers
+app.use((req, res, next) => {
+  // Signal to reverse proxy what compression we accept
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (typeof acceptEncoding === 'string' && acceptEncoding.includes('br')) {
+    res.setHeader('X-Compression-Available', 'br, gzip');
+  } else if (typeof acceptEncoding === 'string' && acceptEncoding.includes('gzip')) {
+    res.setHeader('X-Compression-Available', 'gzip');
+  }
+  next();
+});
+
 app.use(sanitizeInput);
 
 // Structured logging + per-request X-Request-Id tracing via pino-http.
 // Replaces the prior timestamp+random-suffix scheme with crypto.randomUUID().
 // Attaches req.log (child logger carrying request ID) for downstream handlers.
 app.use(httpLogger);
+app.use(requestContext);
 
 // Fix 72: Add response compression for large GeoJSON payloads
 // Using built-in compression by setting headers — actual compression handled by reverse proxy in production
@@ -479,6 +512,35 @@ app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
 app.use('/api/pdf-tools', pdfToolsRoutes);
 app.use('/api/geocode', geocodeRoutes);
+app.use('/api/intel-bulletins', intelBulletinsRoutes);
+app.use('/api/shift-briefings', shiftBriefingsRoutes);
+app.use('/api/docs', apiDocsRoutes);        // OpenAPI/Swagger interactive docs
+
+// ─── Spillman-inspired new modules (2026-05-10) ──────────
+app.use('/api/pawn', pawnRoutes);
+app.use('/api/impounds', impoundRoutes);
+app.use('/api/alarms', alarmRoutes);
+app.use('/api/animal-control', animalControlRoutes);
+app.use('/api/community-reports', communityReportRoutes);
+app.use('/api/crash-reports', crashReportRoutes);
+app.use('/api/tips', tipRoutes);
+app.use('/api/alpr', alprRoutes);
+app.use('/api/jail', jailRoutes);
+app.use('/api/fire-rms', fireRmsRoutes);
+app.use('/api/custody-log', custodyLogRoutes);
+app.use('/api/accreditations', accreditationRoutes);
+
+// ─── Scheduler status endpoint (admin) ────────────────────
+app.get('/api/admin/scheduler', authenticateToken, (_req, res) => {
+  res.json({ jobs: getSchedulerStatus() });
+});
+app.post('/api/admin/scheduler/:name/run', authenticateToken, async (req, res) => {
+  const name = req.params.name as string;
+  const ran = await runJobNow(name);
+  if (!ran) { res.status(404).json({ error: 'Job not found' }); return; }
+  res.json({ success: true, message: `Job ${name} triggered` });
+});
+
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
@@ -657,6 +719,14 @@ try {
   // Initialize WebSocket on the primary server
   initWebSocket(primaryServer);
   logger.info('WebSocket server initialized');
+
+  // Set up enhanced graceful shutdown for all servers
+  setupGracefulShutdown([primaryServer]);
+
+  // Run startup configuration checks
+  runStartupChecks().then(({ passed, results }) => {
+    logger.info({ passed, results }, 'Startup checks completed');
+  });
 
   // Start listening
   const listenPort = config.ssl.enabled ? config.httpsPort : config.port;

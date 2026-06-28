@@ -43,6 +43,8 @@ export function mergeCallUpdate(prev: CallForService, rawRow: any): CallForServi
     if (sourceKeys.has(key) || sourceKeys.has(fieldSourceMap[key] ?? '')) {
       (merged as any)[key] = incoming[key];
     }
+    // Any other shape (object, number, etc.) is silently dropped — better an
+    // empty notes panel than a hard crash.
   }
   if (sourceKeys.has('status')) merged.status = incoming.status;
   if (sourceKeys.has('updated_at')) merged.updated_at = incoming.updated_at;

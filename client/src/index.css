@@ -449,6 +449,7 @@ html:not(.theme-light) [style*="rgb(59 130 246"] {
    Covers the full Tailwind blue/sky/cyan/indigo palettes plus common
    custom blues. Updates background, border-color, color, outline,
    box-shadow, fill, and stroke so the blue never reaches the pixel.
+   Scoped to dark mode only — light (navy) mode uses blue-hued colors.
    ═══════════════════════════════════════════════════════════════════ */
 [style*="#3b82f6"], [style*="#60a5fa"], [style*="#93c5fd"],
 [style*="#bfdbfe"], [style*="#dbeafe"], [style*="#eff6ff"],
@@ -4589,7 +4590,7 @@ html:not(.theme-light) :focus-visible {
   outline-offset: 2px;
 }
 html.theme-light :focus-visible {
-  outline: 2px solid #94a3b8;
+  outline: 2px solid #264a80;
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) {

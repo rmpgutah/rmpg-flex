@@ -590,6 +590,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           <div style={{
             background: 'rgba(0,0,0,0.9)', border: `1px solid ${STATUS_COLORS.warning}55`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+            borderRadius: 2,
           }}>
             <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.warning }} className="animate-spin" />
             <span style={{ fontSize: 8, color: STATUS_COLORS.warning, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
