@@ -15,6 +15,14 @@
 # NOT include api.rmpgutah.us. It must be removed manually — code cannot
 # override Dashboard-level response headers (they are applied last).
 
+# The service worker must never be cached by the Cloudflare edge or the
+# browser HTTP cache. Without this, the zone's default Browser Cache TTL
+# (4 h) lets individual colos serve stale sw.js bytes after a deploy,
+# which makes the SW updater see alternating versions and reload-loop
+# (observed 2026-06-11; mitigated client-side in WebUpdateBanner.tsx).
+/sw.js
+  Cache-Control: no-store, max-age=0
+
 /*
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   Permissions-Policy: camera=(self), microphone=(self), geolocation=(self), payment=()

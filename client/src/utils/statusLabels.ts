@@ -6,6 +6,7 @@
 // ============================================================
 
 import { parseTimestamp } from './dateUtils';
+import { cleanAddressText } from './addressClean';
 import { toDisplayLabel } from './formatters';
 import { DISPOSITION_DESCRIPTION_BY_CODE } from '../constants/dispositionCodes';
 
@@ -440,6 +441,10 @@ const ADDRESS_UPPER_TOKENS = new Set([
 
 /** Title-case street names while keeping state abbrevs, directionals, and USA uppercase */
 export function formatAddressDisplay(address: string | null | undefined): string {
+  if (!address) return '\u2014';
+  // Strip trailing junk (unbalanced ")", dangling commas) from dirty stored
+  // data before title-casing, so the panel never shows "\u2026UNITED STATES)".
+  address = cleanAddressText(address);
   if (!address) return '\u2014';
   // Split on whitespace and commas, preserving delimiters
   return address.split(/(\s+|,)/).map(token => {

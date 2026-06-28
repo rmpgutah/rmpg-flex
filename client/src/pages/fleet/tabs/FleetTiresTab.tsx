@@ -37,12 +37,20 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
   const EMPTY = { position: 'front_left', brand: '', model: '', size: '', install_date: '', tread_depth: '' };
   const [form, setForm] = useState(EMPTY);
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<Tire[]>(`/fleet/${vehicleId}/tires`);
-      setTires(data);
+      const data = await apiFetch<any[]>(`/fleet/${vehicleId}/tires`);
+      // Normalize DB column names (tire_position / installed_date) to the
+      // UI shape — the raw rows never matched the diagram's `position`
+      // lookup, so logged tires rendered as "No tire logged".
+      setTires((data || []).map((t) => ({
+        ...t,
+        position: t.position ?? t.tire_position,
+        install_date: t.install_date ?? t.installed_date,
+      })));
     } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load tires', 'error'); } finally { setLoading(false); }
   };
 
@@ -60,22 +68,44 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
     if (!form.position) { addToast('Position is required', 'error'); return; }
     if (submitting) return;
     setSubmitting(true);
+    // Map UI field names to the handler's columns (tire_position / installed_date).
+    const payload = {
+      tire_position: form.position,
+      brand: form.brand || null,
+      model: form.model || null,
+      size: form.size || null,
+      installed_date: form.install_date || null,
+      tread_depth: form.tread_depth ? Number(form.tread_depth) : null,
+    };
     try {
-      // Map UI field names to the handler's columns (tire_position / installed_date).
-      await apiFetch(`/fleet/${vehicleId}/tires`, { method: 'POST', body: JSON.stringify({
-        tire_position: form.position,
-        brand: form.brand || null,
-        model: form.model || null,
-        size: form.size || null,
-        installed_date: form.install_date || null,
-        tread_depth: form.tread_depth ? Number(form.tread_depth) : null,
-      }) });
-      addToast('Tire added', 'success'); setShowForm(false); setForm(EMPTY); load();
-    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to add tire', 'error'); } finally { setSubmitting(false); }
+      if (editingId != null) {
+        await apiFetch(`/fleet/tires/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Tire updated', 'success');
+      } else {
+        await apiFetch(`/fleet/${vehicleId}/tires`, { method: 'POST', body: JSON.stringify(payload) });
+        addToast('Tire added', 'success');
+      }
+      setShowForm(false); setForm(EMPTY); setEditingId(null); load();
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to save tire', 'error'); } finally { setSubmitting(false); }
   };
 
-  const updateTread = async (tireId: number, depth: string) => {
-    try { await apiFetch(`/fleet/tires/${tireId}`, { method: 'PUT', body: JSON.stringify({ tread_depth: Number(depth) }) }); addToast('Tread updated', 'success'); load(); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to update tread depth', 'error'); }
+  const startEdit = (t: Tire) => {
+    setForm({
+      position: t.position || 'front_left',
+      brand: t.brand || '',
+      model: t.model || '',
+      size: t.size || '',
+      install_date: (t.install_date || '').slice(0, 10),
+      tread_depth: t.tread_depth != null ? String(t.tread_depth) : '',
+    });
+    setEditingId(t.id);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (t: Tire) => {
+    if (!window.confirm(`Delete ${POSITION_LABELS[t.position] || t.position} tire (${t.brand || 'unknown'})?`)) return;
+    try { await apiFetch(`/fleet/tires/${t.id}`, { method: 'DELETE' }); addToast('Tire deleted', 'success'); load(); }
+    catch (e) { addToast(e instanceof Error ? e.message : 'Failed to delete tire', 'error'); }
   };
 
   // Set document title
@@ -84,7 +114,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold text-white">Tire Tracking</h3>
+        <h3 className="text-xs font-bold text-rmpg-100">Tire Tracking</h3>
         <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add Tire</button>
       </div>
 
@@ -119,7 +149,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
               <p className="text-[10px] text-rmpg-300 mt-1">{POSITION_LABELS[pos]}</p>
               {tire ? (
                 <>
-                  <p className="text-[10px] text-white font-mono">{tire.brand} {tire.size}</p>
+                  <p className="text-[10px] text-rmpg-100 font-mono">{tire.brand} {tire.size}</p>
                   <p className={`text-[10px] font-bold ${treadColor(tire.tread_depth)}`}>
                     {tire.tread_depth ? `${tire.tread_depth}/32"` : 'N/A'}
                   </p>
@@ -141,6 +171,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
 
       {/* Table view */}
       {tires.length > 0 && (
+        <div className="overflow-x-auto">
         <table className="w-full text-[10px]">
           <thead>
             <tr className="text-rmpg-400 border-b border-rmpg-700">
@@ -150,21 +181,27 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
               <th className="text-right">Tread</th>
               <th className="text-right">Installed</th>
               <th className="text-right">Last Measured</th>
+              <th className="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {tires.map(t => (
               <tr key={t.id} className="border-b border-rmpg-800 text-rmpg-200">
-                <td className="py-1 text-white">{POSITION_LABELS[t.position] || t.position}</td>
+                <td className="py-1 text-rmpg-100">{POSITION_LABELS[t.position] || t.position}</td>
                 <td>{t.brand} {t.model}</td>
                 <td>{t.size}</td>
                 <td className={`text-right font-mono font-bold ${treadColor(t.tread_depth)}`}>{t.tread_depth ? `${t.tread_depth}/32"` : '-'}</td>
-                <td className="text-right">{t.install_date || '-'}</td>
+                <td className="text-right">{(t.install_date || '-').slice(0, 10)}</td>
                 <td className="text-right">{t.last_measured || '-'}</td>
+                <td className="text-right">
+                  <button type="button" onClick={() => startEdit(t)} className="toolbar-btn text-[9px] mr-1">Edit</button>
+                  <button type="button" onClick={() => handleDelete(t)} className="toolbar-btn text-[9px] text-red-400">Del</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

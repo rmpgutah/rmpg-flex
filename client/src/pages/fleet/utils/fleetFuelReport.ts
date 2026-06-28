@@ -19,6 +19,7 @@ import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary } from '../../../types';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
 interface Args {
   vehicle: FleetVehicle;
@@ -55,6 +56,7 @@ function asciify(s: string): string {
 
 export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabel }: Args): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();

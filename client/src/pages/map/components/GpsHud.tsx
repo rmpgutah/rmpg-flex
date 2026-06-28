@@ -67,7 +67,7 @@ function SourceBadge({ source }: { source: string }) {
     gps: { icon: Satellite, color: '#22c55e', label: 'GPS' },
     wifi: { icon: Wifi, color: '#d4a017', label: 'WiFi' },
     ip: { icon: Globe, color: '#ef4444', label: 'IP' },
-    unknown: { icon: Globe, color: '#666', label: '—' },
+    unknown: { icon: Globe, color: 'var(--rmpg-500)', label: '—' },
   };
   const s = map[source] || map.unknown;
   const Icon = s.icon;
@@ -83,7 +83,7 @@ const CONGESTION: Record<CongestionLevel, { color: string; label: string }> = {
   moderate: { color: '#d4a017', label: 'MODERATE' },
   heavy: { color: '#f97316', label: 'HEAVY' },
   severe: { color: '#ef4444', label: 'SEVERE' },
-  unknown: { color: '#666', label: '—' },
+  unknown: { color: 'var(--rmpg-500)', label: '—' },
 };
 
 /** Map a Mapbox maneuver to a directional arrow icon. */
@@ -269,14 +269,14 @@ export default function GpsHud({ gps, nav, onExport, onClear, onClose }: Props) 
         <button
           onClick={() => onExport('csv')}
           disabled={gps.capturedCount === 0}
-          className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-rmpg-300 hover:text-white hover:bg-rmpg-700/60 disabled:opacity-30 transition-colors"
+          className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60 disabled:opacity-30 transition-colors"
           style={{ borderRadius: 2 }}
           title="Export track as CSV"
         ><Download className="w-2.5 h-2.5" />CSV</button>
         <button
           onClick={() => onExport('geojson')}
           disabled={gps.capturedCount === 0}
-          className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-rmpg-300 hover:text-white hover:bg-rmpg-700/60 disabled:opacity-30 transition-colors"
+          className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60 disabled:opacity-30 transition-colors"
           style={{ borderRadius: 2 }}
           title="Export track as GeoJSON"
         ><Download className="w-2.5 h-2.5" />GEO</button>

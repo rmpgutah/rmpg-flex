@@ -102,13 +102,13 @@ export default function AdminSettingsTab(_props: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Action Bar */}
-      <div className="flex items-center gap-3 p-3 bg-[#060606] border-b border-[#1a1a1a]">
+      <div className="flex items-center gap-3 p-3 bg-surface-overlay border-b border-border-subtle">
         <Settings size={14} color="#d4a017" />
         <span className="text-[10px] font-bold uppercase text-[#d4a017] tracking-wider flex-1">System Settings</span>
         <input id="ff-adminsettingstab-0"
           type="text" placeholder="Search settings..."
           value={search} onChange={e => setSearch(e.target.value)}
-          className="px-3 py-1.5 text-[10px] bg-[#080808] border border-[#1a1a1a] text-[#aaa] w-48 focus:border-[#d4a017]"
+          className="px-3 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 w-48 focus:border-[#d4a017]"
         />
         <button onClick={resetAll} disabled={saving} className="btn-secondary btn-xs flex items-center gap-1"><RotateCcw size={10} />Reset</button>
         <button onClick={saveAll} disabled={saving} className="btn-gold btn-xs flex items-center gap-1"><Save size={10} />{saving ? 'Saving...' : 'Save All'}</button>
@@ -116,7 +116,7 @@ export default function AdminSettingsTab(_props: Props) {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Category Nav */}
-        <div className="w-48 bg-[#050505] border-r border-[#1a1a1a] overflow-y-auto flex-shrink-0">
+        <div className="w-48 bg-surface-deep border-r border-border-subtle overflow-y-auto flex-shrink-0">
           {filteredSettings.map(([cat]) => (
             <button
               key={cat}
@@ -124,30 +124,30 @@ export default function AdminSettingsTab(_props: Props) {
               className={`w-full text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider border-l-3 transition-all ${
                 activeCategory === cat
                   ? 'text-[#d4a017] border-l-[3px] border-l-[#d4a017] bg-[rgba(212,160,23,0.06)]'
-                  : 'text-[#666] border-l-[3px] border-l-transparent hover:text-[#999] hover:bg-[rgba(255,255,255,0.02)]'
+                  : 'text-rmpg-500 border-l-[3px] border-l-transparent hover:text-rmpg-400 hover:bg-[rgba(255,255,255,0.02)]'
               }`}
             >
               {CATEGORY_LABELS[cat] || cat}
-              <span className="block text-[8px] text-[#555] normal-case font-normal mt-0.5">{(settings[cat] || []).length} settings</span>
+              <span className="block text-[8px] text-rmpg-500 normal-case font-normal mt-0.5">{(settings[cat] || []).length} settings</span>
             </button>
           ))}
         </div>
 
         {/* Settings Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
           {activeCategory && settings[activeCategory] && (
             <div className="space-y-4 max-w-2xl">
-              <h2 className="text-[11px] font-bold uppercase text-[#d4a017] tracking-wider border-b border-[#1a1a1a] pb-2 mb-4">
+              <h2 className="text-[11px] font-bold uppercase text-[#d4a017] tracking-wider border-b border-border-subtle pb-2 mb-4">
                 {CATEGORY_LABELS[activeCategory] || activeCategory}
               </h2>
               {(settings[activeCategory] || []).map((setting) => (
-                <div key={setting.key} className="flex items-start gap-4 py-3 border-b border-[#0f0f0f]">
+                <div key={setting.key} className="flex items-start gap-4 py-3 border-b border-border-subtle">
                   <div className="flex-1 min-w-0">
-                    <label className="text-[10px] font-semibold text-[#ccc] block">{setting.label}</label>
+                    <label htmlFor="ff-adminsettingstab-2" className="text-[10px] font-semibold text-rmpg-300 block">{setting.label}</label>
                     {setting.description && (
-                      <p className="text-[9px] text-[#666] mt-0.5">{setting.description}</p>
+                      <p className="text-[9px] text-rmpg-500 mt-0.5">{setting.description}</p>
                     )}
-                    <p className="text-[8px] text-[#444] font-mono mt-0.5">{setting.key}</p>
+                    <p className="text-[8px] text-rmpg-500 font-mono mt-0.5">{setting.key}</p>
                   </div>
                   <div className="flex-shrink-0" style={{ minWidth: '200px' }}>
                     {setting.type === 'boolean' ? (
@@ -164,7 +164,7 @@ export default function AdminSettingsTab(_props: Props) {
                       <select id="ff-adminsettingstab-2"
                         value={editValues[setting.key] || ''}
                         onChange={e => updateValue(setting.key, e.target.value)}
-                        className="w-full px-2 py-1.5 text-[10px] bg-[#080808] border border-[#1a1a1a] text-[#aaa] focus:border-[#d4a017]"
+                        className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 focus:border-[#d4a017]"
                       >
                         {(() => { try { return JSON.parse(setting.options) as string[]; } catch { return []; } })().map((opt: string) => (
                           <option key={opt} value={opt}>{opt}</option>
@@ -176,13 +176,13 @@ export default function AdminSettingsTab(_props: Props) {
                           type="color"
                           value={editValues[setting.key] || '#000000'}
                           onChange={e => updateValue(setting.key, e.target.value)}
-                          className="w-8 h-8 bg-transparent border border-[#1a1a1a] cursor-pointer p-0"
+                          className="w-8 h-8 bg-transparent border border-border-subtle cursor-pointer p-0"
                         />
                         <input id="ff-adminsettingstab-4"
                           type="text"
                           value={editValues[setting.key] || ''}
                           onChange={e => updateValue(setting.key, e.target.value)}
-                          className="flex-1 px-2 py-1.5 text-[10px] bg-[#080808] border border-[#1a1a1a] text-[#aaa] font-mono focus:border-[#d4a017]"
+                          className="flex-1 px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 font-mono focus:border-[#d4a017]"
                         />
                       </div>
                     ) : setting.type === 'number' ? (
@@ -192,14 +192,14 @@ export default function AdminSettingsTab(_props: Props) {
                         onChange={e => updateValue(setting.key, e.target.value)}
                         min={setting.min_value ?? undefined}
                         max={setting.max_value ?? undefined}
-                        className="w-full px-2 py-1.5 text-[10px] bg-[#080808] border border-[#1a1a1a] text-[#aaa] font-mono focus:border-[#d4a017]"
+                        className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 font-mono focus:border-[#d4a017]"
                       />
                     ) : (
                       <input id="ff-adminsettingstab-6"
                         type="text"
                         value={editValues[setting.key] || ''}
                         onChange={e => updateValue(setting.key, e.target.value)}
-                        className="w-full px-2 py-1.5 text-[10px] bg-[#080808] border border-[#1a1a1a] text-[#aaa] focus:border-[#d4a017]"
+                        className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 focus:border-[#d4a017]"
                       />
                     )}
                   </div>

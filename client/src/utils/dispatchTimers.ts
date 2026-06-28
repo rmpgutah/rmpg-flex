@@ -209,7 +209,7 @@ export function getTimerState(call: CallForService): TimerState {
       threshold: Infinity,
       progress: 0,
       severity: 'normal',
-      color: '#666666', // muted gray for terminal calls
+      color: 'var(--rmpg-500)', // muted gray for terminal calls
       isOverdue: false,
     };
   }

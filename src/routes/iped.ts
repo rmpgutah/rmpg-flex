@@ -88,7 +88,7 @@ iped.get('/status', async (c) => {
       db, `SELECT COUNT(*) AS sets, COALESCE(SUM(hash_count), 0) AS hashes FROM forensic_hash_sets`,
     );
     const flagged = await queryFirst<{ c: number }>(
-      db, `SELECT COUNT(*) AS c FROM forensic_hash_results WHERE is_match = 1`,
+      db, `SELECT COUNT(*) AS c FROM forensic_hash_results WHERE match_found = 1`,
     ).catch(() => ({ c: 0 }));
     const totalJobs = jobs?.total ?? 0;
     const configured = !!c.env.IPED_API_KEY || !!cfg.installPath || !!cfg.webApiUrl;
@@ -282,6 +282,24 @@ iped.get('/hash-sets/:id', async (c) => {
       detail: err instanceof Error ? err.message : String(err),
     }, 500);
   }
+});
+
+// GET /download/info — Pointer to IPED's official installer downloads.
+// AdminIPEDTab fetches this on mount; without it the request 404'd into
+// the console. We don't host IPED binaries (~1.2 GB); we point operators
+// at the upstream GitHub releases page. Returning a static shape keeps
+// the response Worker-cheap and avoids GitHub API rate limits.
+//
+// If we ever decide to mirror binaries to R2 we can swap `available: true`
+// + populate `bundles` from a config row, and the client UI lights up.
+iped.get('/download/info', async (c) => {
+  return c.json({
+    available: false,
+    bundles: {},
+    downloadUrl: 'https://github.com/sepinf-inc/IPED/releases/latest',
+    githubUrl:   'https://github.com/sepinf-inc/IPED',
+    notes: 'IPED installers are distributed via GitHub Releases; RMPG does not host the binaries.',
+  });
 });
 
 // GET /downloads — IPED import history. Name retained for client

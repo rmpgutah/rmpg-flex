@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { coded } from '../../../utils/searchText';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import { Heart, Plus, Loader2, Search } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
@@ -86,7 +88,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
   const filteredBenefits = benefits.filter(b => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return b.officer_name?.toLowerCase().includes(q) || b.benefit_type.toLowerCase().includes(q) || b.plan_name?.toLowerCase().includes(q) || b.provider?.toLowerCase().includes(q);
+    return b.officer_name?.toLowerCase().includes(q) || coded(b.benefit_type, formatEnumValue).includes(q) || b.plan_name?.toLowerCase().includes(q) || b.provider?.toLowerCase().includes(q);
   });
 
   const grouped = filteredBenefits.reduce<Record<string, Benefit[]>>((acc, b) => {
@@ -99,7 +101,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2"><Heart className="w-4 h-4" /> Benefits Enrollment</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2"><Heart className="w-4 h-4" /> Benefits Enrollment</h2>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
@@ -113,30 +115,30 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="field-label">Officer *</label>
+              <label htmlFor="ff-benefitstab-1" className="field-label">Officer *</label>
               <select id="ff-benefitstab-1" value={form.officer_id} onChange={e => setForm(f => ({ ...f, officer_id: e.target.value }))} className="input-field w-full text-xs">
                 <option value="">Select...</option>
                 {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
               </select>
             </div>
             <div>
-              <label className="field-label">Type *</label>
+              <label htmlFor="ff-benefitstab-2" className="field-label">Type *</label>
               <select id="ff-benefitstab-2" value={form.benefit_type} onChange={e => setForm(f => ({ ...f, benefit_type: e.target.value }))} className="input-field w-full text-xs">
                 {BENEFIT_TYPES.map(t => <option key={t} value={t}>{t === '401k' ? '401(k)' : t === 'hsa' ? 'HSA' : t === 'fsa' ? 'FSA' : t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
               </select>
             </div>
             <div>
-              <label className="field-label">Plan Name</label>
+              <label htmlFor="ff-benefitstab-3" className="field-label">Plan Name</label>
               <input id="ff-benefitstab-3" value={form.plan_name} onChange={e => setForm(f => ({ ...f, plan_name: e.target.value }))} className="input-field w-full text-xs" placeholder="e.g. Blue Cross PPO" />
             </div>
             <div>
-              <label className="field-label">Provider</label>
+              <label htmlFor="ff-benefitstab-4" className="field-label">Provider</label>
               <input id="ff-benefitstab-4" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} className="input-field w-full text-xs" placeholder="e.g. Blue Cross" />
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="field-label">Coverage</label>
+              <label htmlFor="ff-benefitstab-5" className="field-label">Coverage</label>
               <select id="ff-benefitstab-5" value={form.coverage_level} onChange={e => setForm(f => ({ ...f, coverage_level: e.target.value }))} className="input-field w-full text-xs">
                 <option value="individual">Individual</option>
                 <option value="individual_spouse">Individual + Spouse</option>
@@ -144,15 +146,15 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
               </select>
             </div>
             <div>
-              <label className="field-label">Employee Cost ($/mo)</label>
+              <label htmlFor="ff-benefitstab-6" className="field-label">Employee Cost ($/mo)</label>
               <input id="ff-benefitstab-6" type="number" min="0" step="0.01" value={form.employee_cost} onChange={e => setForm(f => ({ ...f, employee_cost: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
             </div>
             <div>
-              <label className="field-label">Employer Cost ($/mo)</label>
+              <label htmlFor="ff-benefitstab-7" className="field-label">Employer Cost ($/mo)</label>
               <input id="ff-benefitstab-7" type="number" min="0" step="0.01" value={form.employer_cost} onChange={e => setForm(f => ({ ...f, employer_cost: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
             </div>
             <div>
-              <label className="field-label">Effective Date</label>
+              <label htmlFor="ff-benefitstab-8" className="field-label">Effective Date</label>
               <input id="ff-benefitstab-8" type="date" value={form.effective_date} onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))} className="input-field w-full text-xs" />
             </div>
           </div>
@@ -176,12 +178,12 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
         <div className="space-y-4">
           {Object.entries(grouped).map(([name, bens]) => (
             <div key={name} className="panel-beveled p-3">
-              <h3 className="text-xs font-bold text-white mb-2">{name}</h3>
+              <h3 className="text-xs font-bold text-rmpg-100 mb-2">{name}</h3>
               <div className="space-y-1">
                 {bens.map(b => (
                   <div key={b.id} onContextMenu={(e) => openMenu(e, buildBenefitMenu(b))} className="flex items-center justify-between text-[10px] py-1.5 border-b border-rmpg-700 last:border-0 hover:bg-surface-raised/30 transition-colors duration-150">
                     <div className="flex items-center gap-3">
-                      <span className="text-white font-bold uppercase">{b.benefit_type === '401k' ? '401(k)' : b.benefit_type === 'hsa' ? 'HSA' : b.benefit_type === 'fsa' ? 'FSA' : b.benefit_type}</span>
+                      <span className="text-rmpg-100 font-bold uppercase">{b.benefit_type === '401k' ? '401(k)' : b.benefit_type === 'hsa' ? 'HSA' : b.benefit_type === 'fsa' ? 'FSA' : b.benefit_type}</span>
                       <span className="text-rmpg-300">{b.plan_name}</span>
                       <span className="text-rmpg-400">{b.provider}</span>
                       <span className="text-rmpg-400">{COVERAGE_LABELS[b.coverage_level] || b.coverage_level}</span>
@@ -189,7 +191,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
                     <div className="flex items-center gap-3">
                       <span className="text-rmpg-300 tabular-nums">EE: ${b.employee_cost.toFixed(2)}/mo</span>
                       <span className="text-rmpg-300 tabular-nums">ER: ${b.employer_cost.toFixed(2)}/mo</span>
-                      <span className={`px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${b.status === 'active' ? 'bg-green-900/50 text-green-400 border border-green-700/50' : 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700'}`}>{(b.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className={`px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${b.status === 'active' ? 'bg-green-900/50 text-green-400 border border-green-700/50' : 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700'}`}>{toDisplayLabel(b.status)}</span>
                     </div>
                   </div>
                 ))}

@@ -21,6 +21,7 @@ interface TripStartBody {
   vehicle_id?: number;
   purpose?: string;
   device_type?: string;
+  detected_by?: string; // 'auto' (movement detector) | 'manual' (officer Start button)
 }
 
 interface TripUpdateBody {
@@ -63,11 +64,37 @@ function routeDistance(points: RoutePoint[]): number {
   return dist;
 }
 
+/** Auto-finalize abandoned active trips for an officer.
+ *
+ *  A live trip updates every ~15s while the app is open, so an active row whose
+ *  last update is older than STALE_ACTIVE_MIN minutes was left open by an app
+ *  close / lost signal / crash — never legitimately in progress. Without this,
+ *  the single-active-trip guard in /trip/start 409s forever and the officer can
+ *  never log another trip (poison-pill state). We end the trip at its last known
+ *  activity (updated_at) so distance/duration stay accurate. Idempotent + cheap;
+ *  safe to call at the top of the read + start paths. */
+const STALE_ACTIVE_MIN = 10;
+async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: number): Promise<void> {
+  await execute(db,
+    `UPDATE nav_trip_log
+     SET status = 'completed',
+         end_time = COALESCE(updated_at, start_time),
+         duration_seconds = CAST((julianday(COALESCE(updated_at, start_time)) - julianday(start_time)) * 86400 AS INTEGER),
+         notes = COALESCE(notes, '') || ' [auto-closed: stale active trip — no update in ${STALE_ACTIVE_MIN}+ min]',
+         updated_at = datetime('now','localtime')
+     WHERE officer_id = ? AND status = 'active'
+       AND COALESCE(updated_at, start_time) < datetime('now','localtime','-${STALE_ACTIVE_MIN} minutes')`,
+    userId);
+}
+
 // ── GET /nav/trip/current — active/pending trip for this user ─
 nav.get('/trip/current', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
+    // Reap any abandoned active trip first so the client stops seeing it as the
+    // current trip (which would skip detection + block new trips via /start's 409).
+    await closeStaleActiveTrips(db, userId);
     const trip = await queryFirst<Record<string, unknown>>(db,
       `SELECT ntl.*, fv.vehicle_number, fv.make, fv.model, fv.plate_number,
               u.call_sign as unit_call_sign,
@@ -102,12 +129,17 @@ nav.post('/trip/start', async (c) => {
       return c.json({ error: 'start_lat and start_lng required' }, 400);
     }
 
+    // Reap abandoned active trips so a trip left open by a prior session can't
+    // permanently 409-block new trips below.
+    await closeStaleActiveTrips(db, userId);
+
     // Cancel any existing pending trips for this user
     await execute(db,
       `UPDATE nav_trip_log SET status = 'cancelled', updated_at = datetime('now','localtime')
        WHERE officer_id = ? AND status = 'pending'`, userId);
 
-    // Prevent duplicate active trips
+    // Prevent duplicate active trips (a genuinely fresh active trip still blocks —
+    // you're already on one; stale ones were just auto-closed above)
     const existing = await queryFirst<{ id: number }>(db,
       `SELECT id FROM nav_trip_log WHERE officer_id = ? AND status = 'active' LIMIT 1`, userId);
     if (existing) {
@@ -142,15 +174,20 @@ nav.post('/trip/start', async (c) => {
       if (activeCall?.current_call_id) callId = activeCall.current_call_id;
     }
 
+    // Honor the caller's origin so trip history can distinguish a movement-
+    // detected trip from one the officer started by hand. The endpoint is shared
+    // by both flows, so it previously hardcoded 'auto' and every manual trip was
+    // mislabeled. Default to 'auto' for any non-'manual' value.
+    const detectedBy = body.detected_by === 'manual' ? 'manual' : 'auto';
     const result = await execute(db,
       `INSERT INTO nav_trip_log
        (officer_id, vehicle_id, unit_id, call_id, start_lat, start_lng, start_accuracy,
         start_location, start_time, status, detected_by, purpose, device_type, route_points)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), 'pending', 'auto',
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), 'pending', ?,
                ?, ?, '[]')`,
       userId, vehicleId, unitId, callId,
       body.start_lat, body.start_lng, body.start_accuracy ?? null,
-      body.start_location ?? null,
+      body.start_location ?? null, detectedBy,
       body.purpose ?? 'patrol', body.device_type ?? null);
 
     const tripId = Number(result.meta.last_row_id);
@@ -249,28 +286,45 @@ nav.put('/trip/:id/end', async (c) => {
       return c.json({ error: `Trip is ${trip.status}` }, 400);
     }
 
-    // Calculate final distance
+    // Calculate final distance. The client's end call sends neither
+    // distance_miles nor route_points, so prefer the points already accumulated
+    // on the row by /trip/:id/update — otherwise finalDistance would be 0 and
+    // (with the old `?:null` binding) WIPE the distance /update had computed,
+    // leaving every completed trip at "—" miles. Order of preference:
+    // explicit body distance → body route_points → the trip's stored route_points.
     let finalDistance = body.distance_miles ?? 0;
     if (body.route_points && body.route_points.length > 0) {
       finalDistance = routeDistance(body.route_points);
+    } else if (trip.route_points) {
+      try {
+        const stored = JSON.parse(trip.route_points);
+        if (Array.isArray(stored) && stored.length > 1) finalDistance = routeDistance(stored);
+      } catch { /* keep finalDistance */ }
     }
 
-    // Duration
-    const startTime = new Date(trip.start_time.replace(' ', 'T') + (trip.start_time.includes('Z') ? '' : 'Z'));
-    const endTime = new Date();
-    const durationSec = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+    // Duration. start_time is stored as datetime('now','localtime') — a NAIVE
+    // America/Denver wall-clock string with no zone. The old code appended 'Z'
+    // and diffed against `new Date()` (true UTC), so every trip's duration was
+    // inflated by the Denver UTC offset (~6-7h). Compute it in SQL instead:
+    // both julianday('now','localtime') and julianday(start_time) are in the same
+    // Denver frame, so the offset cancels. (closeStaleActiveTrips already does
+    // this correctly; this brings the manual/stationary end path in line.)
+    const durRow = await queryFirst<{ dur: number }>(db,
+      `SELECT CAST((julianday('now','localtime') - julianday(start_time)) * 86400 AS INTEGER) AS dur
+       FROM nav_trip_log WHERE id = ?`, tripId);
+    const durationSec = Math.max(0, durRow?.dur ?? 0);
 
     await execute(db,
       `UPDATE nav_trip_log
        SET status = 'completed', end_lat = ?, end_lng = ?, end_accuracy = ?,
            end_location = ?, end_time = datetime('now','localtime'),
-           distance_miles = ?, max_speed_mph = COALESCE(?, max_speed_mph),
+           distance_miles = COALESCE(NULLIF(?, 0), distance_miles), max_speed_mph = COALESCE(?, max_speed_mph),
            duration_seconds = ?, route_points = COALESCE(?, route_points),
            notes = COALESCE(?, notes), updated_at = datetime('now','localtime')
        WHERE id = ?`,
       body.end_lat ?? null, body.end_lng ?? null, body.end_accuracy ?? null,
       body.end_location ?? null,
-      finalDistance > 0 ? finalDistance : null,
+      finalDistance > 0 ? finalDistance : 0,
       body.max_speed_mph ?? null,
       durationSec > 0 ? durationSec : null,
       body.route_points ? JSON.stringify(body.route_points) : null,
@@ -394,6 +448,28 @@ nav.get('/trip/check-take-home', async (c) => {
     return c.json({ take_home: !!hasTakeHome, vehicle_id: user?.take_home_vehicle_id ?? null });
   } catch (err) {
     console.error('[nav] GET /trip/check-take-home failed:', err);
+    return c.json({ error: 'Failed to check take-home status' }, 500);
+  }
+});
+
+// ── GET /nav/vehicle-take-home — take-home status (client contract) ──
+// The client (useNavTripDetection) calls this path and reads `has_take_home`.
+// It is the same data as /trip/check-take-home but under the path + key the
+// client expects; without it the request 404s and take-home officers (no unit)
+// can never start a trip. The proxy routes the whole /api/nav/* prefix here.
+nav.get('/vehicle-take-home', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+
+    const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
+      db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);
+
+    const hasTakeHome = user?.has_take_home === 1 && user?.take_home_vehicle_id != null;
+
+    return c.json({ has_take_home: hasTakeHome, vehicle_id: user?.take_home_vehicle_id ?? null });
+  } catch (err) {
+    console.error('[nav] GET /vehicle-take-home failed:', err);
     return c.json({ error: 'Failed to check take-home status' }, 500);
   }
 });

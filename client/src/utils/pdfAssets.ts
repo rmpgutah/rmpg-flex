@@ -174,6 +174,10 @@ export const FORM_NUMBERS: Record<string, string> = {
   // Financial (PS-3xx cont.)
   invoice: 'FORM PS-301',
   proposal: 'FORM PS-302',
+  // Communications (PS-4xx)
+  radio_log:      'FORM PS-401',
+  comms_message:  'FORM PS-402',
+  bolo_broadcast: 'FORM PS-403',
 };
 
 export const FORM_REVISION = 'Rev. 2026-03';

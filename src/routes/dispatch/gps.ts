@@ -1,17 +1,21 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
+import { emitAnalytics, flexEvent } from '../../utils/analytics';
 import { emitAlert } from '../../utils/alertHub';
+import { haversineM } from '../../utils/tripTelemetry';
 import { applyTripEvent, type ApplyArgs } from '../../utils/tripStore';
+import { setFleetOdometer, vehicleOdometerForUnit } from '../../utils/fleetOdometer';
 import { type IncomingFix } from '../../utils/tripTelemetry';
 import type { TripEvent } from '../../utils/tripEngine';
+import { log } from '../../utils/logger';
 
 const gps = new Hono<Env>();
 
 // Normalize a GPS point from either client format ({ lat, lng }) or
 // server-previous format ({ latitude, longitude }). Returns normalized
 // { latitude, longitude, ... } so the rest of the handler only sees one shape.
-function norm(pt: Record<string, unknown>): { latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number; timestamp?: string; source?: string } {
+function norm(pt: Record<string, unknown>): { latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number; timestamp?: string; source?: string; activity?: string; activity_confidence?: string } {
   const lat = Number(pt.lat ?? pt.latitude);
   const lng = Number(pt.lng ?? pt.longitude);
   return {
@@ -22,6 +26,8 @@ function norm(pt: Record<string, unknown>): { latitude: number; longitude: numbe
     speed: pt.speed != null ? Number(pt.speed) : undefined,
     timestamp: typeof pt.timestamp === 'string' ? pt.timestamp : undefined,
     source: typeof pt.source === 'string' ? pt.source : undefined,
+    activity: typeof pt.activity === 'string' ? pt.activity : undefined,
+    activity_confidence: typeof pt.activity_confidence === 'string' ? pt.activity_confidence : undefined,
   };
 }
 
@@ -36,6 +42,23 @@ function norm(pt: Record<string, unknown>): { latitude: number; longitude: numbe
 // shape) 500'd with "NOT NULL constraint failed: gps_breadcrumbs.latitude".
 export { norm as _normalizePointForTest };
 
+// Canonical "officer is off the clock" status set. Mirrors the set used by
+// the on-duty aggregates (aggregates.ts:392) and the unit availability
+// queries (gps.ts:515, geography.ts:368). VALID_UNIT_STATUSES is declared in
+// extensions.ts:651 — keep these two in sync.
+const OFF_DUTY_UNIT_STATUSES = new Set<string>(['off_duty', 'out_of_service']);
+
+// Pure status classifier — null/undefined/empty means "not known to be off
+// duty" so the caller's take-home / no-unit branches stay in control. The
+// canonical set is lowercase; we lowercase here so a future `OFF_DUTY` typo
+// downstream doesn't smuggle stale pings through.
+function isUnitOffDuty(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return OFF_DUTY_UNIT_STATUSES.has(status.toLowerCase());
+}
+
+export { isUnitOffDuty as _isUnitOffDutyForTest };
+
 gps.post('/', async (c) => {
   try {
     const db = getDb(c.env);
@@ -45,7 +68,29 @@ gps.post('/', async (c) => {
     const rawPoints: Record<string, unknown>[] = Array.isArray(body.points) ? body.points : [body];
     if (rawPoints.length === 0) return c.json({ error: 'No points' }, 400);
 
-    const points = rawPoints.map(norm);
+    // Drop points with a non-finite lat/lng BEFORE building the batch. A NaN
+    // coordinate binds and fails the NOT NULL/typing check, and because
+    // executeBatch is an ATOMIC db.batch() the whole batch would roll back and
+    // 500 — so the client re-queues the same poisoned batch forever and every
+    // GOOD fix in it is blocked indefinitely (silent loss). Drop only the bad
+    // point so the good ones still persist.
+    const normalized = rawPoints.map(norm);
+    // Validity = finite, in-range, and not "null island". A single (0,0)
+    // breadcrumb on 2026-06-10 put a 15,000-mile day on the fleet Daily
+    // Mileage Run chart (SLC → west Africa and back via haversine), so the
+    // filter also guards the trip engine + units mirror downstream.
+    const points = normalized.filter((pt) =>
+      Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude) &&
+      Math.abs(pt.latitude) <= 90 && Math.abs(pt.longitude) <= 180 &&
+      !(Math.abs(pt.latitude) < 0.1 && Math.abs(pt.longitude) < 0.1));
+    if (points.length !== normalized.length) {
+      log.warn(`[gps] dropped ${normalized.length - points.length} fix(es) with non-finite coords`);
+    }
+    if (points.length === 0) {
+      // Every point was invalid — succeed with 0 stored so the client clears
+      // these unrecoverable fixes instead of re-queuing garbage forever.
+      return c.json({ inserted: 0, accepted: 0, dropped: normalized.length }, 200);
+    }
     const lastPt = points[points.length - 1];
 
     // Unit identity: officer → units row. Take-home officers (has_take_home = 1
@@ -55,10 +100,32 @@ gps.post('/', async (c) => {
       'SELECT has_take_home FROM users WHERE id = ?', userId);
     const isTakeHome = userRow?.has_take_home === 1;
 
-    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null }>(db,
-      'SELECT id, call_sign, status, gps_source, vehicle_id FROM units WHERE officer_id = ? LIMIT 1', userId);
+    // NOTE: keep this critical-path SELECT to columns guaranteed present on
+    // every deployed DB. on_foot (migration 0102) is OPTIONAL and only used by
+    // best-effort on-foot detection below — reading it here would let a single
+    // unlanded migration 500 the entire GPS write path (breadcrumbs, unit
+    // position, trips). It is read separately, guarded, inside that block.
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null; current_call_id: number | null }>(db,
+      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
+
+    // Privacy + data-integrity guard: drop pings from a non-take-home officer
+    // whose unit is off-duty. iOS keeps the GpsTracker running until the user
+    // backgrounds the app, so post-shift pings can leak into mileage, trip
+    // logs, and the AVL map if persisted. Take-home officers (vehicle audit
+    // trail) and units in active patrol statuses pass through unchanged.
+    // 200 (not 4xx) so the offline queue clears its buffer instead of
+    // retrying — repeated rejection would re-drain the same poisoned batch.
+    if (unit && !isTakeHome && isUnitOffDuty(unit.status)) {
+      log.info(`[gps] dropped ${points.length} fix(es) from off-duty unit ${unit.call_sign ?? unit.id} (status=${unit.status}) user=${userId}`);
+      return c.json({
+        accepted: 0,
+        dropped: points.length,
+        reason: 'unit_off_duty',
+        unit_status: unit.status,
+      }, 200);
+    }
 
     const unitId = unit?.id ?? null;
     const callSign = unit?.call_sign ?? (isTakeHome ? 'take-home' : null);
@@ -75,13 +142,24 @@ gps.post('/', async (c) => {
 
     // Batch-insert breadcrumbs — single D1 round-trip instead of N.
     const stmts = points.map((pt) => ({
-      sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      bindings: [unitId, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, callSign],
+      sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, activity, activity_confidence, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      bindings: [unitId, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, callSign, pt.activity ?? null, pt.activity_confidence ?? null],
     }));
     const results = await executeBatch(db, stmts);
     const inserted = results.map((r) => Number(r.meta.last_row_id)).filter(Boolean);
 
+    // Analytics lakehouse: one AVL position sample per ingest (best-effort,
+    // no-op until the EVENTS pipeline is provisioned). Never blocks the response.
+    if (lastPt && unitId) {
+      emitAnalytics(c, c.env.EVENTS, [flexEvent({
+        event_type: 'gps_ping', occurred_at: new Date().toISOString(),
+        actor_id: userId, entity_type: 'unit', entity_id: unitId,
+        unit_id: callSign ?? unitId, lat: lastPt.latitude, lng: lastPt.longitude,
+        value: lastPt.speed, category: 'avl',
+        payload: { points: points.length, heading: lastPt.heading ?? null, call_id: unit?.current_call_id ?? null },
+      })]);
+    }
     // Mirror latest fix onto units row, including heading + speed so the
     // NavigationPage map turning arrow and speed label work.
     if (lastPt && lastPt.latitude != null && lastPt.longitude != null && unitId) {
@@ -93,29 +171,188 @@ gps.post('/', async (c) => {
         unitId);
     }
 
+    // ── On-foot detection (CoreMotion activity) ──────────────
+    // Only runs when this batch carried activity data (native iOS apps);
+    // best-effort — never blocks the breadcrumb write.
+    if (unitId && unit && lastPt && points.some((p) => p.activity)) {
+      try {
+        // Read the optional on_foot state here (not in the critical SELECT) so
+        // a missing migration-0102 column degrades on-foot detection instead of
+        // failing the whole GPS write. Guarded by this block's catch.
+        const prevRow = await queryFirst<{ on_foot: number | null }>(db,
+          'SELECT on_foot FROM units WHERE id = ? LIMIT 1', unitId);
+        const { runOnFootTransition } = await import('../../utils/onFootDetection');
+        const t = await runOnFootTransition(db, {
+          unitId,
+          officerId: userId,
+          callSign,
+          prevOnFoot: prevRow?.on_foot === 1,
+          lastLat: lastPt.latitude,
+          lastLng: lastPt.longitude,
+          source: lastPt.source ?? null,
+        });
+        if (t) log.info(`[gps] unit ${callSign} on-foot transition: ${t}`);
+      } catch (err) {
+        log.error('[gps] on-foot detection failed (non-fatal)', {}, err);
+      }
+    }
+
+    // ── GPS auto status transitions ───────────────────────────
+    // DISPATCHED → ENROUTE when the unit starts moving (≥3 m/s ≈ 7 mph), and
+    // DISPATCHED/ENROUTE → ONSCENE on arrival (within 75 m of the call's
+    // coordinates — comfortably above typical ±35 m fix accuracy). The call
+    // row follows in lockstep (status + COALESCE'd enroute_at/onscene_at
+    // timeline stamps) since the board and call timeline read the call.
+    // Manual transitions always win: we only ever move FORWARD from the
+    // unit's current status, and only while the call itself is still in an
+    // engaged status. Best-effort — never breaks the breadcrumb write.
+    if (unitId && unit && unit.current_call_id != null
+        && lastPt && lastPt.latitude != null && lastPt.longitude != null
+        && (unit.status === 'dispatched' || unit.status === 'enroute')) {
+      try {
+        const callId = unit.current_call_id!;
+        const call = await queryFirst<{ id: number; status: string; latitude: number | null; longitude: number | null; starting_mileage: number | null; ending_mileage: number | null }>(
+          db, 'SELECT id, status, latitude, longitude, starting_mileage, ending_mileage FROM calls_for_service WHERE id = ?', callId);
+        if (call && ['dispatched', 'enroute', 'onscene'].includes(call.status)) {
+          let next: 'enroute' | 'onscene' | null = null;
+          if (call.latitude != null && call.longitude != null
+              && haversineM(lastPt.latitude, lastPt.longitude, call.latitude, call.longitude) <= 75) {
+            next = 'onscene';
+          } else if (unit.status === 'dispatched'
+              && typeof lastPt.speed === 'number' && lastPt.speed >= 3) {
+            next = 'enroute';
+          }
+          if (next && next !== unit.status) {
+            await execute(db,
+              `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+              next, unitId);
+            const timeField = next === 'enroute' ? 'enroute_at' : 'onscene_at';
+            await execute(db,
+              `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'),
+                      ${timeField} = COALESCE(${timeField}, datetime('now')), updated_at = datetime('now')
+                WHERE id = ? AND status IN ('dispatched','enroute')`,
+              next, callId);
+            (unit as { status: string }).status = next; // echo the fresh status in the response
+
+            // Auto-mileage from the fleet odometer + GPS travel — no manual
+            // prompt anywhere in the chain:
+            //   enroute  → snapshot the vehicle's current_mileage into the
+            //              call's starting_mileage (the odometer is kept
+            //              accurate by duty readings + trip accruals).
+            //   onscene  → ending_mileage = starting + the active trip's
+            //              GPS-accumulated distance; the fleet odometer
+            //              re-anchors to the same derived reading. A direct
+            //              dispatched→onscene arrival backfills starting from
+            //              the odometer first so the pair still completes.
+            // Only ever fills BLANK fields — manual entries always win.
+            try {
+              if (next === 'enroute' && call.starting_mileage == null) {
+                const odo = await vehicleOdometerForUnit(db, unitId);
+                if (odo != null) {
+                  await execute(db,
+                    `UPDATE calls_for_service SET starting_mileage = ?, updated_at = datetime('now')
+                      WHERE id = ? AND starting_mileage IS NULL`, odo, callId);
+                }
+              } else if (next === 'onscene' && call.ending_mileage == null) {
+                let startMi: number | null = call.starting_mileage != null ? Number(call.starting_mileage) : null;
+                if (startMi == null) {
+                  startMi = await vehicleOdometerForUnit(db, unitId);
+                  if (startMi != null) {
+                    await execute(db,
+                      `UPDATE calls_for_service SET starting_mileage = ?, updated_at = datetime('now')
+                        WHERE id = ? AND starting_mileage IS NULL`, startMi, callId);
+                  }
+                }
+                const trip = await queryFirst<{ distance_m: number | null }>(db,
+                  `SELECT distance_m FROM unit_trips WHERE unit_id = ? AND status = 'active'
+                   ORDER BY start_time DESC LIMIT 1`, unitId);
+                const miles = trip?.distance_m != null ? trip.distance_m / 1609.344 : null;
+                if (startMi != null && miles != null && miles >= 0.05) {
+                  const arrivalMi = Math.round((startMi + miles) * 10) / 10;
+                  await execute(db,
+                    `UPDATE calls_for_service SET ending_mileage = ?, updated_at = datetime('now')
+                      WHERE id = ? AND ending_mileage IS NULL`, arrivalMi, callId);
+                  await setFleetOdometer(db, resolvedVehicleId, arrivalMi);
+                }
+              }
+            } catch (err) {
+              log.warn('[gps] auto-mileage failed (non-fatal)', { err });
+            }
+
+            await emitAlert(c.env, 'dispatch_update', {
+              action: 'unit_status_changed',
+              unit: { id: unitId, call_sign: callSign, status: next, current_call_id: callId },
+            });
+          }
+        }
+      } catch (err) {
+        log.warn('[gps] auto status transition failed (non-fatal)', { err });
+      }
+    }
+
     // Trip engine: feed every fix through applyTripEvent so the pure engine
     // creates/closes unit_trips rows. The cron sweep closes orphaned trips;
     // live GPS writes are what OPEN and append them.
     if (unitId) {
+      // prev = the PREVIOUS fix in this batch (null on the first). Threading it
+      // lets the engine's distance-from-prev open check actually see movement;
+      // the old code passed prev == cur, so that check was always 0 and opens
+      // relied solely on speed.
+      let prevLat: number | null = null;
+      let prevLng: number | null = null;
       for (const pt of points) {
-        const ts = pt.timestamp ? Date.parse(pt.timestamp.replace(' ', 'T') + 'Z') : Date.now();
-        if (!isNaN(ts) && pt.latitude != null && pt.longitude != null) {
-          const fix: IncomingFix = { lat: pt.latitude, lng: pt.longitude, speed: pt.speed ?? null, heading: pt.heading ?? null, ts };
-          const event: TripEvent = { kind: 'gps', fix };
-          try {
-            await applyTripEvent({
-              db, env: c.env, unitId,
-              officerId: userId,
-              vehicleId: resolvedVehicleId,
-              event,
-              ctx: {
-                now: Date.now(),
-                curLat: pt.latitude, curLng: pt.longitude,
-                prevLat: pt.latitude, prevLng: pt.longitude,
-              },
-            });
-          } catch { /* trip engine is non-fatal — never break GPS write */ }
-        }
+        if (pt.latitude == null || pt.longitude == null) continue;
+        // pt.timestamp is ISO-8601 from the client (new Date().toISOString()).
+        // The old code did `Date.parse(ts.replace(' ','T') + 'Z')` — meant to
+        // force-UTC a SQLite space-format timestamp, but on a real ISO string it
+        // appended a second 'Z' ("…ZZ") → Date.parse returns NaN, and the old
+        // `!isNaN(ts)` guard then SKIPPED EVERY FIX. The trip engine was never
+        // invoked, so no unit_trips (PATROL/RESPONSE) were created even while the
+        // unit drove — breadcrumbs still wrote (they use datetime('now')), which
+        // masked the breakage. Parse directly; fall back to now() if unparseable
+        // so a bad timestamp never silently drops the fix.
+        const parsed = pt.timestamp ? Date.parse(pt.timestamp) : NaN;
+        const ts = Number.isFinite(parsed) ? parsed : Date.now();
+        const fix: IncomingFix = { lat: pt.latitude, lng: pt.longitude, speed: pt.speed ?? null, heading: pt.heading ?? null, ts };
+        const event: TripEvent = { kind: 'gps', fix };
+        try {
+          await applyTripEvent({
+            db, env: c.env, unitId,
+            officerId: userId,
+            vehicleId: resolvedVehicleId,
+            event,
+            ctx: {
+              now: Date.now(),
+              curLat: pt.latitude, curLng: pt.longitude,
+              prevLat, prevLng,
+            },
+          });
+        } catch { log.warn('[gps] trip engine failed', { unitId, pointCount: points.length }); /* trip engine is non-fatal — never break GPS write */ }
+        prevLat = pt.latitude;
+        prevLng = pt.longitude;
+      }
+
+      // Stamp this batch's breadcrumbs with the unit's active trip so trip replay
+      // (GET /dispatch/trips/:id → SELECT ... WHERE trip_id = ?) can reconstruct
+      // the path. The breadcrumb INSERT above can't know the trip id (the engine
+      // may OPEN the trip on the first fix of this very batch), so we back-fill
+      // after applyTripEvent has run — loadActive now reflects the open trip.
+      // gps_breadcrumbs.trip_id was otherwise never written, so every replay
+      // returned an empty track. Best-effort + non-fatal (only stamps rows still
+      // NULL, so a later batch can't reassign an earlier trip's breadcrumbs).
+      if (inserted.length) {
+        try {
+          const activeTrip = await queryFirst<{ id: number }>(db,
+            `SELECT id FROM unit_trips WHERE unit_id = ? AND status = 'active'
+             ORDER BY start_time DESC LIMIT 1`, unitId);
+          if (activeTrip?.id) {
+            const placeholders = inserted.map(() => '?').join(',');
+            await execute(db,
+              `UPDATE gps_breadcrumbs SET trip_id = ?
+               WHERE id IN (${placeholders}) AND trip_id IS NULL`,
+              activeTrip.id, ...inserted);
+          }
+        } catch { log.warn('[gps] breadcrumb trip_id backfill failed', { unitId, insertedCount: inserted.length }); /* non-fatal — replay degrades, GPS write still succeeds */ }
       }
     }
 
@@ -130,7 +367,7 @@ gps.post('/', async (c) => {
         speed: lastPt?.speed ?? null,
         at: new Date().toISOString(),
       });
-    } catch { /* non-fatal */ }
+    } catch { log.warn('[gps] live fan-out (emitAlert) failed', { unitId, callSign }); /* non-fatal */ }
 
     // Echo the resolved unit back so the client's useGpsTracking can populate
     // unitId/callSign without a separate GET /dispatch/gps/my-unit (which can
@@ -142,13 +379,36 @@ gps.post('/', async (c) => {
       ...(isTakeHome ? { take_home: true } : {}),
     }, 201);
   } catch (err) {
-    console.error('[gps] POST failed:', err);
+    log.error('[gps] POST failed', {}, err);
     const detail = err instanceof Error ? err.message : String(err);
     if (err && typeof err === 'object' && 'code' in err) {
-      const code = (err as any).code;
-      console.error('[gps] D1 error code:', code);
+      const code = (err as { code?: unknown }).code;
+      log.error('[gps] D1 error code', { code });
     }
     return c.json({ error: 'GPS update failed', detail }, 500);
+  }
+});
+
+// GET /dispatch/gps/on-foot-segments?unit_id=&officer_id=&limit=
+// Recent on-foot segments for after-action review. ended_at IS NULL
+// means the segment is still open (officer currently on foot).
+gps.get('/on-foot-segments', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const unitId = c.req.query('unit_id');
+    const officerId = c.req.query('officer_id');
+    const limit = Math.min(Number(c.req.query('limit')) || 25, 200);
+    let sql = `SELECT id, officer_id, unit_id, call_sign, started_at, ended_at,
+                      start_lat, start_lng, end_lat, end_lng, duration_s, distance_m, peak_activity
+               FROM foot_segments WHERE 1=1`;
+    const params: unknown[] = [];
+    if (unitId) { sql += ' AND unit_id = ?'; params.push(unitId); }
+    if (officerId) { sql += ' AND officer_id = ?'; params.push(officerId); }
+    sql += ' ORDER BY started_at DESC LIMIT ?'; params.push(limit);
+    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    return c.json({ data: rows, count: rows.length });
+  } catch {
+    return c.json({ data: [], count: 0, error: 'Failed to list foot segments' }, 500);
   }
 });
 
@@ -168,28 +428,12 @@ gps.get('/current', async (c) => {
     `);
     return c.json(rows);
   } catch (err) {
-    console.error('[gps] GET /current failed:', err);
+    log.error('[gps] GET /current failed', {}, err);
     return c.json({ error: 'Failed to get GPS' }, 500);
   }
 });
 
 // GET /dispatch/gps/my-unit
-//
-// CROSS-INTEGRATION NOTE (Claude Opus 4.8 — d3001d25):
-//   Returns the calling user's assigned unit if one exists. The
-//   NAV page + DispatchMiniMap use this to resolve the officer's
-//   call sign and GPS source for the instrument panel + vehicle
-//   marker. The response shape is the full units row joined with
-//   the officer's name from users.
-//
-//   The pre-Claude version returned { message: 'No unit assigned' }
-//   with a 404 status code, which causes apiFetch to reject. The
-//   useGpsTracking + NavPage consumers both .catch() this, so it
-//   didn't crash the page — but the NavPage instrument panel
-//   rendered "No unit assigned" permanently even when the unit
-//   existed (the 404 is swallowed as a rejection, so the consumer
-//   never retries). Now returns 200 with a null unit so the
-//   consumer can distinguish "no unit yet" from "fetch error".
 gps.get('/my-unit', async (c) => {
   try {
     const db = getDb(c.env);
@@ -201,7 +445,7 @@ gps.get('/my-unit', async (c) => {
     if (!unit) return c.json(null, 200);
     return c.json(unit);
   } catch (err) {
-    console.error('[gps] GET /my-unit failed:', err);
+    log.error('[gps] GET /my-unit failed', {}, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -211,19 +455,6 @@ gps.get('/my-unit', async (c) => {
 // breadcrumb position (lat, lng, gps_updated_at) so the NAV panel
 // can render the vehicle marker on the mini-map and show speed/
 // heading in the instrument cluster.
-//
-// CROSS-INTEGRATION (Claude Opus 4.8 — d3001d25):
-//   The pre-Claude DispatchMiniMap had no awareness of "which car
-//   does this officer drive right now" — it plotted the unit's GPS
-//   pin but couldn't add the vehicle outline. This endpoint bridges
-//   officer → unit → fleet_vehicle → gps_breadcrumb in one call,
-//   read by useNavTravel (or the DispatchMiniMap on non-nav pages)
-//   to render the gold-border vehicle marker.
-//
-//   Steps: (1) units.officer_id = user.id → unit.id
-//          (2) fleet_vehicles.assigned_unit_id = unit.id → vehicle
-//          (3) gps_breadcrumbs.unit_id = unit.id, MAX(recorded_at)
-//              → latest position fix
 gps.get('/my-vehicle', async (c) => {
   try {
     const db = getDb(c.env);
@@ -273,7 +504,7 @@ gps.get('/my-vehicle', async (c) => {
       vehicle: vehicle || null,
     });
   } catch (err) {
-    console.error('[gps] GET /my-vehicle failed:', err);
+    log.error('[gps] GET /my-vehicle failed', {}, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -309,16 +540,144 @@ gps.get('/speed-zones', async (c) => {
   } catch (err) { return c.json([]); }
 });
 
-// GET /dispatch/gps/units-with-trails — units that have recent breadcrumb data.
+// ── Breadcrumb trail aggregation (Map "Breadcrumbs" layer + replay panel) ──
+// Three client surfaces, three contracts (all in client/src/pages/map/):
+//   MapPage breadcrumbs layer:  GET /trails?hours=N         → Trail[]
+//   GpsBreadcrumbPanel replay:  GET /history?unit_id&from&to → HistoryTrail
+//   GpsBreadcrumbPanel picker:  GET /units-with-trails       → UnitOption[]
+// /trails was only ever a proxy STUB ({trails:[]}) and /history 404'd on
+// BOTH workers — the entire breadcrumbs UI shipped against endpoints that
+// never existed, so the layer rendered nothing despite 60k+ live rows.
+
+type TrailPointRow = {
+  lat: number; lng: number; accuracy: number | null; heading: number | null;
+  speed: number | null; status: string | null; call_number: string | null;
+  call_type: string | null; time: string; road_name: string | null;
+  intersection: string | null;
+};
+
+const TRAIL_POINT_SELECT = `g.latitude AS lat, g.longitude AS lng, g.accuracy, g.heading, g.speed,
+       COALESCE(g.unit_status, '') AS status,
+       COALESCE(g.call_number, g.current_call_number) AS call_number,
+       COALESCE(g.call_type, g.current_call_type) AS call_type,
+       g.recorded_at AS time, g.road_name, g.nearest_intersection AS intersection`;
+
+/** Evenly downsample to ≤cap points, always keeping the first + last. */
+function downsample<T>(points: T[], cap: number): T[] {
+  if (points.length <= cap) return points;
+  const out: T[] = [];
+  const step = (points.length - 1) / (cap - 1);
+  for (let i = 0; i < cap; i++) out.push(points[Math.round(i * step)]);
+  return out;
+}
+
+// GET /dispatch/gps/trails?hours=N[&unit_id=] — live per-unit breadcrumb
+// trails for the map layer. Bare ARRAY (the client Array.isArray-checks the
+// response). Points come back oldest→newest (the renderer fades by index).
+gps.get('/trails', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const hoursRaw = Number.parseInt(c.req.query('hours') ?? '8', 10);
+    const hours = Number.isFinite(hoursRaw) ? Math.min(Math.max(hoursRaw, 1), 24) : 8;
+    const unitFilter = c.req.query('unit_id');
+    const unitSql = unitFilter ? ' AND g.unit_id = ?' : '';
+    const binds: unknown[] = [`-${hours} hours`];
+    if (unitFilter) binds.push(unitFilter);
+    // 24h at the ~2s accepted cadence can be ~40k rows; cap the scan and
+    // downsample per unit so the map payload stays drawable.
+    const rows = await query<TrailPointRow & { unit_id: number; call_sign: string | null; officer_name: string | null; badge_number: string | null }>(db,
+      `SELECT g.unit_id, g.call_sign, g.officer_name, g.badge_number, ${TRAIL_POINT_SELECT}
+         FROM gps_breadcrumbs g
+        WHERE g.recorded_at >= datetime('now', ?)${unitSql}
+          AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+        ORDER BY g.unit_id, g.recorded_at ASC
+        LIMIT 50000`, ...binds);
+    const byUnit = new Map<number, { unit_id: number; call_sign: string; officer_name: string; badge_number: string; points: TrailPointRow[] }>();
+    for (const r of rows) {
+      let t = byUnit.get(r.unit_id);
+      if (!t) {
+        t = {
+          unit_id: r.unit_id,
+          call_sign: r.call_sign || `Unit ${r.unit_id}`,
+          officer_name: r.officer_name || '',
+          badge_number: r.badge_number || '',
+          points: [],
+        };
+        byUnit.set(r.unit_id, t);
+      }
+      // Prefer the freshest non-empty identity fields (older rows may predate them).
+      if (r.call_sign) t.call_sign = r.call_sign;
+      if (r.officer_name) t.officer_name = r.officer_name;
+      if (r.badge_number) t.badge_number = r.badge_number;
+      t.points.push({
+        lat: r.lat, lng: r.lng, accuracy: r.accuracy, heading: r.heading, speed: r.speed,
+        status: r.status, call_number: r.call_number, call_type: r.call_type,
+        time: r.time, road_name: r.road_name, intersection: r.intersection,
+      });
+    }
+    const trails = [...byUnit.values()].map((t) => ({ ...t, points: downsample(t.points, 1200) }));
+    return c.json(trails);
+  } catch (err) {
+    log.error('[gps] GET /trails failed', {}, err);
+    return c.json([]);
+  }
+});
+
+// GET /dispatch/gps/history?unit_id&from&to — historical trail for the
+// replay panel. from/to are 'YYYY-MM-DD HH:MM:SS' local-style strings; the
+// breadcrumb recorded_at is UTC SQLite text, so we compare lexically — the
+// client sends a full datetime range and tolerates edge drift.
+gps.get('/history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const unitId = c.req.query('unit_id');
+    const from = c.req.query('from');
+    const to = c.req.query('to');
+    if (!unitId || !from || !to) return c.json({ error: 'unit_id, from, to are required' }, 400);
+    const rows = await query<TrailPointRow>(db,
+      `SELECT ${TRAIL_POINT_SELECT}
+         FROM gps_breadcrumbs g
+        WHERE g.unit_id = ? AND g.recorded_at >= ? AND g.recorded_at <= ?
+          AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+        ORDER BY g.recorded_at ASC
+        LIMIT 50000`, unitId, from, to);
+    const meta = await queryFirst<{ call_sign: string | null; officer_name: string | null; badge_number: string | null }>(db,
+      `SELECT call_sign, officer_name, badge_number FROM gps_breadcrumbs
+        WHERE unit_id = ? AND call_sign IS NOT NULL ORDER BY recorded_at DESC LIMIT 1`, unitId);
+    return c.json({
+      unit_id: Number(unitId),
+      call_sign: meta?.call_sign || `Unit ${unitId}`,
+      officer_name: meta?.officer_name || '',
+      badge_number: meta?.badge_number || '',
+      total_raw: rows.length,
+      points: downsample(rows, 4000),
+    });
+  } catch (err) {
+    log.error('[gps] GET /history failed', {}, err);
+    return c.json({ error: 'Failed to load GPS history' }, 500);
+  }
+});
+
+// GET /dispatch/gps/units-with-trails — units that have breadcrumb data.
+// Returns the replay panel's UnitOption contract: { unit_id, call_sign,
+// officer_name, badge_number, earliest, latest, point_count }. The previous
+// shape ({ id, call_sign }) left unit_id undefined in the picker, so the
+// replay query always fired with unit_id=undefined and found nothing.
+// Window: 30 days (the panel replays history, not just the live shift).
 gps.get('/units-with-trails', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT DISTINCT g.unit_id AS id, u.call_sign
-       FROM gps_breadcrumbs g
-       JOIN units u ON u.id = g.unit_id
-       WHERE g.recorded_at >= datetime('now', '-8 hours')
-       ORDER BY u.call_sign`);
+      `SELECT g.unit_id, COALESCE(u.call_sign, MAX(g.call_sign), 'Unit ' || g.unit_id) AS call_sign,
+              COALESCE(MAX(g.officer_name), '') AS officer_name,
+              COALESCE(MAX(g.badge_number), '') AS badge_number,
+              MIN(g.recorded_at) AS earliest, MAX(g.recorded_at) AS latest,
+              COUNT(*) AS point_count
+         FROM gps_breadcrumbs g
+         LEFT JOIN units u ON u.id = g.unit_id
+        WHERE g.recorded_at >= datetime('now', '-30 days') AND g.unit_id IS NOT NULL
+        GROUP BY g.unit_id
+        ORDER BY call_sign`);
     return c.json(rows);
   } catch (err) { return c.json([]); }
 });
@@ -363,12 +722,13 @@ gps.get('/pursuit-segments', async (c) => {
               MAX(g.speed) AS max_speed, AVG(g.speed) AS avg_speed,
               COUNT(g.id) AS point_count
        FROM calls_for_service cfs
+       JOIN calls_for_service_ext ext ON ext.id = cfs.id
        JOIN units u ON JSON_EXTRACT(cfs.assigned_unit_ids, '$[0]') = u.id
        LEFT JOIN users usr ON usr.id = u.officer_id
        LEFT JOIN gps_breadcrumbs g ON g.unit_id = u.id
          AND g.recorded_at >= cfs.received_at
          AND (cfs.closed_at IS NULL OR g.recorded_at <= cfs.closed_at)
-       WHERE (cfs.vehicle_pursuit = 1 OR cfs.foot_pursuit = 1)
+       WHERE (ext.vehicle_pursuit = 1 OR ext.foot_pursuit = 1)
          AND cfs.received_at >= datetime('now', '-' || ? || ' hours')
        GROUP BY cfs.id
        ORDER BY cfs.received_at DESC LIMIT 50`, hours);
@@ -393,6 +753,88 @@ gps.get('/speed-heatmap', async (c) => {
        ORDER BY avg_speed DESC LIMIT 500`, hours);
     return c.json(rows);
   } catch { return c.json([]); }
+});
+
+// GET /dispatch/gps/call-trail/:callId — GPS breadcrumb trail for all units
+// assigned to a specific call, used by PrintRecordButton to attach a route
+// map to printed call records.
+//
+// Response: { call_id, points: TrailPointRow[], stats: { total_points,
+//   total_distance_miles, duration_minutes, avg_speed_mph, max_speed_mph } }
+// An empty trail (no assigned units, no breadcrumbs) still returns 200 with
+// points: [] so the client can distinguish "no data" from a fetch error.
+gps.get('/call-trail/:callId', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const callId = Number(c.req.param('callId'));
+    if (!Number.isFinite(callId) || callId <= 0) return c.json({ error: 'Invalid call ID' }, 400);
+
+    const call = await queryFirst<{ received_at: string; closed_at: string | null; assigned_unit_ids: string | null }>(
+      db, 'SELECT received_at, closed_at, assigned_unit_ids FROM calls_for_service WHERE id = ?', callId);
+    if (!call) return c.json({ error: 'Call not found' }, 404);
+
+    let unitIds: number[] = [];
+    try {
+      const parsed = call.assigned_unit_ids ? JSON.parse(call.assigned_unit_ids) : [];
+      unitIds = Array.isArray(parsed)
+        ? (parsed as unknown[]).map(Number).filter((n) => Number.isFinite(n) && n > 0)
+        : [];
+    } catch { unitIds = []; }
+
+    const emptyStats = { total_points: 0, total_distance_miles: 0, duration_minutes: 0, avg_speed_mph: 0, max_speed_mph: 0 };
+    if (unitIds.length === 0) return c.json({ call_id: callId, points: [], stats: emptyStats });
+
+    const placeholders = unitIds.map(() => '?').join(',');
+    const rows = await query<TrailPointRow & { unit_id: number; call_sign: string | null }>(db,
+      `SELECT g.unit_id, g.call_sign, ${TRAIL_POINT_SELECT}
+         FROM gps_breadcrumbs g
+        WHERE g.unit_id IN (${placeholders})
+          AND g.recorded_at >= ?
+          AND (? IS NULL OR g.recorded_at <= ?)
+          AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+        ORDER BY g.unit_id, g.recorded_at ASC
+        LIMIT 10000`,
+      ...unitIds, call.received_at, call.closed_at, call.closed_at);
+
+    // Compute haversine distance per unit track, then sum.
+    let totalDistM = 0;
+    const byUnit = new Map<number, TrailPointRow[]>();
+    for (const r of rows) {
+      let pts = byUnit.get(r.unit_id);
+      if (!pts) { pts = []; byUnit.set(r.unit_id, pts); }
+      pts.push(r);
+    }
+    for (const pts of byUnit.values()) {
+      for (let i = 1; i < pts.length; i++) {
+        totalDistM += haversineM(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng);
+      }
+    }
+
+    const speedsMs = rows.map((r) => r.speed).filter((s): s is number => s != null && s > 0);
+    const avgSpeedMph = speedsMs.length > 0
+      ? speedsMs.reduce((a, b) => a + b, 0) / speedsMs.length * 2.237
+      : 0;
+    const maxSpeedMph = speedsMs.length > 0 ? Math.max(...speedsMs) * 2.237 : 0;
+    const times = rows.map((r) => r.time).filter(Boolean);
+    const durationMin = times.length >= 2
+      ? (Date.parse(times[times.length - 1]) - Date.parse(times[0])) / 60000
+      : 0;
+
+    return c.json({
+      call_id: callId,
+      points: downsample(rows, 3000),
+      stats: {
+        total_points: rows.length,
+        total_distance_miles: Math.round(totalDistM / 1609.344 * 100) / 100,
+        duration_minutes: Math.round(durationMin * 10) / 10,
+        avg_speed_mph: Math.round(avgSpeedMph * 10) / 10,
+        max_speed_mph: Math.round(maxSpeedMph * 10) / 10,
+      },
+    });
+  } catch (err) {
+    log.error('[gps] GET /call-trail failed', {}, err);
+    return c.json({ error: 'Failed to fetch call trail' }, 500);
+  }
 });
 
 // ── GET /dispatch/gps/history-map — breadcrumb trail for a unit ─

@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-desktop",
-  "version": "5.8.4",
+  "version": "5.8.6",
   "description": "RMPG Flex CAD/RMS — Desktop Application",
   "author": "Rocky Mountain Protective Group",
   "license": "UNLICENSED",
@@ -81,6 +81,7 @@
       "icon": "../client/public/rmpg-seal.ico"
     },
     "nsis": {
+      "artifactName": "RMPG-Flex-Setup-${version}.${ext}",
       "oneClick": false,
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
@@ -101,19 +102,18 @@
     }
   },
   "dependencies": {
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",
     "serialport": "^13.0.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
-    "electron": "^40.10.2",
+    "electron": "^40.10.4",
     "electron-builder": "^26.15.2"
   },
   "overrides": {
     "@xmldom/xmldom": "0.8.13",
     "lodash": ">=4.18.0",
-    "tar": ">=6.2.1",
-    "@xmldom/xmldom": ">=0.8.13"
+    "tar": ">=6.2.1"
   }
 }

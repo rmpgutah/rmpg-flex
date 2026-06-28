@@ -9,6 +9,7 @@ import { AlertTriangle, Clock, Shield, ShieldBan, MapPin, X } from 'lucide-react
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
 import { formatIncidentType } from '../utils/caseNumbers';
+import { toDisplayLabel } from '../utils/formatters';
 import { safeDateStr } from '../utils/dateUtils';
 
 interface PremiseCall {
@@ -168,7 +169,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#666666';
+      default: return 'var(--rmpg-500)';
     }
   };
 
@@ -188,7 +189,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           </span>
         </div>
         {onClose && (
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100">
             <X style={{ width: 12, height: 12 }} />
           </button>
         )}
@@ -220,7 +221,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           <Shield style={{ width: 11, height: 11 }} />
           <span>OFFICER SAFETY:</span>
           {data.warningTypes.map(w => (
-            <span key={w} className="premise-warning-tag">{w.replace(/_/g, ' ')}</span>
+            <span key={w} className="premise-warning-tag">{toDisplayLabel(w)}</span>
           ))}
         </div>
       )}
@@ -294,17 +295,17 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
                   textAlign: 'center',
                 }}
               >
-                {call.priority}
+                {(call.priority || '').toUpperCase()}
               </span>
               <span className="text-[10px] font-mono text-rmpg-300">{call.call_number}</span>
-              <span className="text-[10px] font-semibold text-white">
+              <span className="text-[10px] font-semibold text-rmpg-100">
                 {formatIncidentType(call.incident_type)}
               </span>
             </div>
             <div className="flex items-center gap-2 text-[9px] text-rmpg-500">
               <Clock style={{ width: 9, height: 9 }} />
               <span>{safeDateStr(call.created_at)}</span>
-              {call.disposition && <span>• {call.disposition.replace(/_/g, ' ')}</span>}
+              {call.disposition && <span>• {toDisplayLabel(call.disposition)}</span>}
               {call.weapons_involved && <span className="text-red-500 font-bold">WEAPONS</span>}
               {call.domestic_violence && <span className="text-orange-500 font-bold">DV</span>}
             </div>

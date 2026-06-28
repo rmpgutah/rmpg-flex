@@ -18,6 +18,11 @@ contextBridge.exposeInMainWorld('electron', {
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
 
+  // Crash-safe printing — renders the page to PDF in Chromium and opens
+  // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
+  // segfaults the app on macOS 26 (see main.js 'print:to-pdf').
+  printToPdf: () => ipcRenderer.invoke('print:to-pdf'),
+
   // Notifications (native OS notifications)
   showNotification: (title, body) => {
     new Notification(title, { body });
@@ -27,6 +32,12 @@ contextBridge.exposeInMainWorld('electron', {
   // IP-based geolocation via Google's Geolocation API when
   // navigator.geolocation fails (common on desktop without GPS)
   getIpLocation: () => ipcRenderer.invoke('geo:ip-locate'),
+
+  // ─── Power management (keep navigation alive off-screen) ───
+  // While a trip is active the renderer holds a wake lock so the machine
+  // doesn't suspend mid-patrol (display may still sleep). Released on trip end.
+  keepAwake: () => ipcRenderer.invoke('power:keep-awake'),
+  allowSleep: () => ipcRenderer.invoke('power:allow-sleep'),
 
   // ─── Internal GPS (Panasonic Toughbook) ────────────
   // Reads raw NMEA from the Toughbook's internal u-blox module

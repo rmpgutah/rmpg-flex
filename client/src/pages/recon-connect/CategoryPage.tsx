@@ -25,7 +25,7 @@ export default function CategoryPage({ title, icon, authorizationBanner, tools, 
   if (!user?.role || !ALLOWED_ROLES.includes(user.role as UserRole)) {
     return (
       <div className="p-6">
-        <div className="bg-[#141414] border border-[#2e2e2e] p-4 text-[#888] text-xs">ACCESS RESTRICTED</div>
+        <div className="bg-surface-base border border-rmpg-700 p-4 text-[#888] text-xs">ACCESS RESTRICTED</div>
       </div>
     );
   }
@@ -40,7 +40,7 @@ export default function CategoryPage({ title, icon, authorizationBanner, tools, 
       <div className="flex items-center gap-3">
         <button
           onClick={() => navigate('/recon-connect')}
-          className="px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#888] text-xs hover:bg-[#242424] flex items-center gap-1.5"
+          className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#888] text-xs hover:bg-surface-raised flex items-center gap-1.5"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Recon Connect
         </button>
@@ -48,15 +48,15 @@ export default function CategoryPage({ title, icon, authorizationBanner, tools, 
 
       <PanelTitleBar title={title.toUpperCase()} icon={icon} />
 
-      <div className={`bg-[#141414] border p-3 flex items-start gap-3 ${
-        banner.kind === 'critical' ? 'border-[#b33]/40' : 'border-[#222]'
+      <div className={`bg-surface-base border p-3 flex items-start gap-3 ${
+        banner.kind === 'critical' ? 'border-[#b33]/40' : 'border-border-default'
       }`}>
         <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${banner.kind === 'critical' ? 'text-[#ff8888]' : 'text-[#d4a017]'}`} />
-        <div className="text-[11px] text-[#bbb] leading-relaxed">{banner.text}</div>
+        <div className="text-[11px] text-rmpg-300 leading-relaxed">{banner.text}</div>
       </div>
 
       {!isElectron && (
-        <div className="bg-[#141414] border border-[#2e2e2e] text-[#d4a017] text-[11px] p-3">
+        <div className="bg-surface-base border border-rmpg-700 text-[#d4a017] text-[11px] p-3">
           These tools execute on the local workstation — open Flex in the desktop app to use them.
         </div>
       )}

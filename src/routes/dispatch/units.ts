@@ -1,19 +1,11 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
+import { log } from '../../utils/logger';
 
 const units = new Hono<Env>();
-
-// CROSS-INTEGRATION NOTE (Claude Opus 4.8 — see PR #1025 / ed5d0e99):
-//   `units.vehicle_id` is a TEXT column holding the denormalized
-//   vehicle_NUMBER string (e.g. "PS-D19"). It has no FK to
-//   fleet_vehicles. The authoritative link is
-//   `fleet_vehicles.assigned_unit_id → units.id`. Callers that pass an
-//   integer fleet_vehicles.id by accident will silently store "5" or
-//   "12" — the NAV-side `/dispatch/gps/my-unit` then has nothing to
-//   match, the duty/me card shows "No vehicle", and the fleet LIST
-//   LEFT JOIN sees the orphan as an unassigned unit. We coerce here.
 
 // GET /dispatch/units
 units.get('/', async (c) => {
@@ -65,7 +57,7 @@ units.post('/', async (c) => {
 
     const { call_sign, officer_id, vehicle_id, capabilities } = body;
 
-    // ── Coerce vehicle_id to vehicle_NUMBER string (Claude: ed5d0e99) ──
+    // ── Coerce vehicle_id to vehicle_NUMBER string ──
     // If it's a positive integer we look up the row; if we don't find
     // a matching fleet_vehicles.id, we treat the value as already a
     // vehicle_number and pass it through unchanged (defensive — the
@@ -127,6 +119,10 @@ units.post('/', async (c) => {
 // through their dedicated dispatch pathways, not a general PUT.
 const UNIT_WRITABLE_COLUMNS = new Set([
   'call_sign', 'officer_id', 'status', 'capabilities',
+  // assigned_beat was missing here — the dispatcher edit modal sends it on
+  // every save (useDispatchUnitActions.handleSaveUnit) and the value was
+  // silently dropped, so beat assignments never persisted via edit.
+  'assigned_beat',
   'audio_mode', 'emergency_active', 'emergency_call_id', 'emergency_since',
   'gps_heading', 'gps_speed',
 ]);
@@ -156,21 +152,48 @@ units.put('/:id', async (c) => {
     for (const [k, v] of Object.entries(body)) {
       if (!UNIT_WRITABLE_COLUMNS.has(k)) continue;
       sets.push(`${k} = ?`);
-      params.push(v ?? null);
+      // D1 .bind() throws on arrays/objects. The dispatch edit modal sends
+      // `capabilities` as a raw string[] (the POST handler JSON.stringifies it,
+      // this PUT bound it directly) — so EVERY unit-edit save from the dispatch
+      // modal 500'd. Coerce composites to JSON text, matching the column format.
+      params.push(v == null ? null : (typeof v === 'object' ? JSON.stringify(v) : v));
     }
     if (!sets.length) return c.json({ message: 'No changes' });
+    if (typeof body.status === 'string') {
+      // Status is changing → restart the board's time-in-status dwell timer.
+      // Without this, a manual edit kept the OLD last_status_change and the
+      // dwell column showed days-old times after a fix.
+      sets.push("last_status_change = datetime('now')");
+      // Moving to a disengaged status detaches the unit from its call —
+      // otherwise the stale current_call_id kept the unit pinned to a dead
+      // call (and DELETE refused with UNIT_ON_CALL).
+      if (['available', 'off_duty', 'out_of_service'].includes(body.status)) {
+        sets.push('current_call_id = NULL');
+      }
+    }
     sets.push("updated_at = datetime('now')");
     params.push(id);
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
+    try {
+      await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: updated });
+    } catch { log.warn('Broadcast unit_updated failed after PUT', { unitId: id }); /* non-fatal */ }
     return c.json(updated);
   } catch (err: any) {
-    console.error('PUT /dispatch/units/:id failed:', err);
+    log.error('PUT /dispatch/units/:id failed', {}, err);
     if (err?.message?.includes('CHECK constraint')) {
       return c.json({ error: 'Invalid value for a constrained field (status, etc.)', code: 'CHECK_CONSTRAINT' }, 400);
     }
+    // units.call_sign is UNIQUE NOT NULL — renaming a unit to an existing call
+    // sign is a user-fixable conflict, not a server error.
+    if (err?.message?.includes('UNIQUE constraint')) {
+      return c.json({ error: 'That call sign is already in use by another unit', code: 'CALL_SIGN_TAKEN' }, 409);
+    }
+    if (err?.message?.includes('FOREIGN KEY constraint')) {
+      return c.json({ error: 'officer_id does not reference a valid user', code: 'INVALID_OFFICER' }, 400);
+    }
     if (err?.message?.includes('no such column')) {
-      console.error('PUT /dispatch/units/:id column mismatch:', err.message);
+      log.error('PUT /dispatch/units/:id column mismatch', { message: err.message });
       return c.json({ error: 'Update failed: schema mismatch', code: 'COLUMN_MISSING' }, 500);
     }
     return c.json({ error: 'Failed to update unit' }, 500);
@@ -178,15 +201,6 @@ units.put('/:id', async (c) => {
 });
 
 // DELETE /dispatch/units/:id — admin/manager only.
-//
-// CROSS-INTEGRATION (Claude Opus 4.8): if the unit being deleted owns
-// a vehicle (fleet_vehicles.assigned_unit_id = :id), the back-link on
-// the fleet side is the only FK-free link. Without clearing it, the
-// fleet LIST view (LEFT JOIN units u ON u.id = v.assigned_unit_id)
-// silently drops that row from the join, but the vehicle still
-// appears with its old assigned_unit_id in any /api/fleet/:id fetch.
-// We close the open fleet_assignments row + clear the back-link in the
-// same handler so the unit deletion is a true two-sided teardown.
 units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
   try {
     const db = getDb(c.env);
@@ -235,47 +249,28 @@ units.put('/:id/status', async (c) => {
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
-    await execute(db, `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, body.status, id);
+    const detach = ['available', 'off_duty', 'out_of_service'].includes(body.status)
+      ? ', current_call_id = NULL' : '';
+    // Going off duty / out of service ends any on-foot episode — otherwise the
+    // on_foot flag (and its board/map badge + overdue sweep) stays stuck on a
+    // unit that's no longer in the field.
+    const clearFoot = ['off_duty', 'out_of_service'].includes(body.status)
+      ? ', on_foot = 0, on_foot_since = NULL, on_foot_alerted = 0' : '';
+    await execute(db, `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now')${detach}${clearFoot} WHERE id = ?`, body.status, id);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
+    try {
+      await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit: updated });
+    } catch { log.warn('Broadcast unit_status_changed failed after status update', { unitId: id }); /* non-fatal */ }
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update unit status' }, 500);
   }
 });
 
-// POST /dispatch/calls/:callId/assign-unit
-//
-// CROSS-INTEGRATION GUARD (Claude Opus 4.8): unit.current_call_id is a
-// single-pointer column. Reassigning a unit to a SECOND call without
-// unassigning it from the first leaves call A's assigned_unit_ids JSON
-// still containing the unit while unit.current_call_id points at
-// call B — the dispatcher's call list shows the unit on B but call A's
-// detail panel shows it on a unit that's "actually" elsewhere. Guard
-// with a 409 when the unit is currently committed to a different call.
-units.post('/assign-unit', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const { call_id, unit_id } = await c.req.json<{ call_id: number; unit_id: number }>();
-    if (!Number.isFinite(call_id) || call_id <= 0) return c.json({ error: 'Invalid call_id' }, 400);
-    if (!Number.isFinite(unit_id) || unit_id <= 0) return c.json({ error: 'Invalid unit_id' }, 400);
-    const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', call_id);
-    if (!call) return c.json({ error: 'Call not found' }, 404);
-    const unit = await queryFirst<{ id: number; current_call_id: number | null; call_sign: string | null }>(
-      db, 'SELECT id, current_call_id, call_sign FROM units WHERE id = ?', unit_id);
-    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
-    if (unit.current_call_id != null && unit.current_call_id !== call_id) {
-      return c.json({
-        error: `Unit ${unit.call_sign ?? unit_id} is already committed to call ${unit.current_call_id} — unassign first`,
-        code: 'UNIT_ON_OTHER_CALL',
-        current_call_id: unit.current_call_id,
-      }, 409);
-    }
-    const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
-    assigned.add(unit_id);
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify([...assigned]), call_id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", call_id, unit_id);
-    return c.json({ message: 'Unit assigned', unit_id, call_id });
-  } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
-});
+// NOTE: the unit-assignment handler lives at POST /dispatch/calls/:id/assign-unit
+// (src/routes/dispatch/calls.ts) — that is the path the client and proxy use. A
+// duplicate POST /dispatch/units/assign-unit handler previously sat here with a
+// weaker guard and a misleading comment; it had no client caller and no proxy
+// route (dead code) and was removed to avoid confusion over which one is live.
 
 export default units;

@@ -1,3 +1,6 @@
+import { bytesToBase64 } from './anthropic';
+import { callAi } from './callAi';
+
 // ============================================================
 // RMPG Flex — Serve Intake structured-field extraction
 // ============================================================
@@ -359,7 +362,7 @@ function normalize(parsed: any, rawText: string, model: string, ms: number): Ext
   };
 }
 
-function tryParseModelJson(out: any): any {
+export function tryParseModelJson(out: any): any {
   // Workers AI returns either { response: string } or
   // { response: { … parsed JSON object … } } depending on whether
   // response_format coerced server-side. Handle both.
@@ -491,6 +494,60 @@ export async function extractFromImage(
       rawText: '', allDates: [], model: VISION_MODEL, ms: Date.now() - started,
       error: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+// ── Advanced OCR: Claude vision (when anthropic_api_key is configured) ─────
+// Drop-in for extractFromImage that uses the Claude Messages API instead of the
+// Workers-AI llama vision model — markedly stronger document OCR + structured
+// extraction. Reuses the SAME prompt + parser + normalizer so the result shape
+// is identical. Returns null (NOT a failure result) when the key is absent or
+// the call errors, so callers fall back to the Workers-AI path.
+export async function extractFromImageClaude(
+  env: { DB: D1Database; AI: Ai },
+  imageBytes: Uint8Array,
+  mediaType = 'image/jpeg',
+): Promise<ExtractionResult | null> {
+  if (imageBytes.byteLength === 0 || imageBytes.byteLength > MAX_VISION_BYTES) return null;
+  const started = Date.now();
+  try {
+    const r = await callAi(env, {
+      system: SYSTEM_PROMPT,
+      text: `${buildUserPrompt('(image-only document — OCR the visible text, then extract)')}\n\nReturn ONLY the JSON object, no prose.`,
+      image: { base64: bytesToBase64(imageBytes), mediaType },
+      maxTokens: 2048,
+      providers: ['claude', 'openai'], // paid only — caller falls back to Workers AI
+    });
+    const parsed = tryParseModelJson({ response: r.text });
+    const synthesized = Object.values<any>(parsed?.fields ?? {})
+      .map((f) => f?.value).filter(Boolean).join(' | ');
+    return normalize(parsed, synthesized, `${r.provider}:${r.model}`, Date.now() - started);
+  } catch {
+    return null; // fall back to Workers AI
+  }
+}
+
+// Advanced OCR: Claude text extraction (when anthropic_api_key is configured) —
+// drop-in for extractFromText that runs the SAME rich serve-doc system prompt on
+// Claude instead of Llama-70B. Returns null (not a failure result) when the key
+// is absent or the call errors, so callers fall back to the Workers-AI path.
+export async function extractFromTextClaude(
+  env: { DB: D1Database; AI: Ai }, rawText: string,
+): Promise<ExtractionResult | null> {
+  const trimmed = (rawText || '').trim();
+  if (trimmed.length < 20) return null;
+  const started = Date.now();
+  try {
+    const r = await callAi(env, {
+      system: SYSTEM_PROMPT,
+      text: `${buildUserPrompt(trimmed)}\n\nReturn ONLY the JSON object, no prose.`,
+      maxTokens: 2048,
+      providers: ['claude', 'openai'],
+    });
+    const parsed = tryParseModelJson({ response: r.text });
+    return normalize(parsed, rawText, `${r.provider}:${r.model}`, Date.now() - started);
+  } catch {
+    return null;
   }
 }
 

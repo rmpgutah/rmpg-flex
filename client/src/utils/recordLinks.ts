@@ -41,11 +41,11 @@ export interface EntityMeta {
 export const ENTITY_META: Record<RecordEntityType, EntityMeta> = {
   person: {
     label: 'Person', plural: 'People', icon: UserCircle,
-    color: { text: 'text-gray-300', bg: 'bg-gray-900/30', border: 'border-gray-700/50' },
+    color: { text: 'text-rmpg-300', bg: 'bg-surface-sunken/30', border: 'border-border-default/50' },
   },
   vehicle: {
     label: 'Vehicle', plural: 'Vehicles', icon: Car,
-    color: { text: 'text-gray-300', bg: 'bg-[#1f1f1f]', border: 'border-[#2e2e2e]' },
+    color: { text: 'text-rmpg-300', bg: 'bg-[#1f1f1f]', border: 'border-[#2e2e2e]' },
   },
   property: {
     label: 'Property', plural: 'Property', icon: Building2,

@@ -1,22 +1,23 @@
 // Cloudflare Pages middleware that runs before every response.
 //
-// NOTE: Cloudflare's response header ordering is:
-//   Application (this middleware) → _headers file → Cloudflare Dashboard
-// Each step OVERWRITES headers with the same name from the previous step.
-// This means Dashboard-set Content-Security-Policy wins over this
-// middleware AND _headers. This middleware can only handle the static
-// asset + _headers response; it CANNOT override Dashboard headers.
+// HEADER ORDERING (highest priority wins last):
+//   1. This middleware (runs first)
+//   2. _headers file
+//   3. Pages project → Settings → Custom Headers (Cloudflare Dashboard)
+//   4. Zone → Rules → Transform Rules (runs last, cannot be overridden by code)
 //
-// If CSP-connected requests to api.rmpgutah.us are blocked, the fix is
-// to remove the Content-Security-Policy header from the Cloudflare
-// Dashboard (Pages project → Settings → Custom Headers). After removal,
-// this middleware and the <meta> tag CSP will be the only sources.
+// IMPORTANT: If CSP-Report-Only violations flood the browser console
+// (connect-src 'none' / script-src missing 'self'), a zone-level rule or
+// Pages Custom Header is injecting a bad Content-Security-Policy-Report-Only
+// header AFTER this middleware runs. Fix by removing it in one of:
+//   A. dash.cloudflare.com → Workers & Pages → rmpg-flex → Settings → Custom Headers
+//   B. dash.cloudflare.com → Zone rmpgutah.us → Rules → Transform Rules → Modify Response Header
+//   C. dash.cloudflare.com → Zone rmpgutah.us → Speed → Observatory (disable if on)
+// Code cannot suppress a zone-level header injection — it must be removed from the Dashboard.
 //
-// What this middleware CAN do:
-// 1. Remove the Dashboard's Content-Security-Policy-Report-Only header
-//    (reduces console noise from report-only violations).
-// 2. Set a comprehensive Content-Security-Policy that applies when the
-//    Dashboard does NOT have a conflicting header (e.g., preview branches).
+// If the enforcing Content-Security-Policy blocks requests to api.rmpgutah.us,
+// the same fix applies (remove the Dashboard CSP entry so this middleware's
+// correct policy takes effect, and the <meta> tag CSP in index.html is the fallback).
 
 interface Env {}
 
@@ -38,11 +39,19 @@ const ALLOWED_CONNECT = [
   'https://api.fbi.gov',
   'https://photon.komoot.io',
   'https://static.cloudflareinsights.com',
+  // TensorFlow.js COCO-SSD (forensic dashcam AI vehicle tracking): the ESM
+  // module CDN + the model-weights origin.
+  'https://esm.sh',
+  'https://cdn.esm.sh',
+  'https://storage.googleapis.com',
+  // ffmpeg.wasm core (in-browser dashcam redaction MP4 encode) — fetched via
+  // toBlobURL(), which is a connect-src request.
+  'https://unpkg.com',
 ].join(' ');
 
 const FULL_CSP = [
   `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://unpkg.com`,
   `style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com`,
   `img-src 'self' data: blob: https: http:`,
   `font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`,
@@ -65,12 +74,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // when the response came from upstream).
   const out = new Response(response.body, response);
   out.headers.set('Content-Security-Policy', FULL_CSP);
-  // The Cloudflare Dashboard also injects a restrictive
-  // Content-Security-Policy-Report-Only that is NOT overridden by
-  // _headers or <meta> tags. If it has connect-src 'none', every
-  // API call generates a violation in the browser console even
-  // though the request succeeds. Deleting it here silences the
-  // noise so the console only shows real errors.
-  out.headers.delete('Content-Security-Policy-Report-Only');
+  // Mirror the enforcing policy as report-only so the browser logs zero
+  // violations. This silences a bad CSPO injected by the Pages Custom Headers
+  // layer. It does NOT fix a zone-level Transform Rule — if violations persist
+  // after deploy, remove the source in the Cloudflare Dashboard (see comment
+  // at the top of this file for exact locations).
+  out.headers.set('Content-Security-Policy-Report-Only', FULL_CSP);
   return out;
 };

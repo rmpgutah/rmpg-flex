@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
+import { log } from '../../utils/logger';
 import { LIST_VIEW_COLUMNS } from './calls';
 
 // Shared with /dispatch/calls — keeps the queue rows shape-compatible with
@@ -121,7 +122,7 @@ aggregates.get('/queue', async (c) => {
     });
     return c.json(enriched);
   } catch (err) {
-    console.error('Queue error:', err);
+    log.error('Queue error', {}, err);
     return c.json({ error: 'Failed to get active calls', details: String(err) }, 500);
   }
 });
@@ -159,6 +160,119 @@ aggregates.get('/districts', async (c) => {
     return c.json([]);
   }
 });
+
+// GET /dispatch/heatmap?days=N&mode=all|risk|type&type=incident_type
+// Aggregated call locations for the call-density heatmap layer
+// (useMapboxHeatmap, useMapboxSafetyZones risk overlay, MapPage heatmap toggle).
+// Ported from legacy VPS route — the path was lost in the Workers migration, leaving every heatmap-related
+// hook on the client 404'ing silently into an empty layer.
+// Fully defensive: schema drift / empty tables degrade to [] so the optional
+// overlay never 500s the dispatch UI.
+aggregates.get('/heatmap', async (c) => {
+  try {
+    const daysRaw = Number(c.req.query('days') ?? 30);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 365) : 30;
+    const mode = (c.req.query('mode') || 'all').toLowerCase();
+    const typeFilter = c.req.query('type');
+    const validModes = new Set(['all', 'risk', 'type']);
+    if (!validModes.has(mode)) {
+      return c.json({ error: `Invalid mode. Must be one of: all, risk, type`, code: 'INVALID_MODE' }, 400);
+    }
+    if (typeFilter !== undefined && typeFilter.length > 100) {
+      return c.json({ error: 'Type filter must be a string under 100 characters', code: 'INVALID_TYPE_FILTER' }, 400);
+    }
+    if (mode === 'type' && !typeFilter) {
+      return c.json({ error: 'type parameter is required when mode is "type"', code: 'MISSING_TYPE' }, 400);
+    }
+    const cutoff = `-${days} days`;
+    const db = getDb(c.env);
+
+    if (mode === 'risk') {
+      // Risk-weighted: only calls with risk flags; weight ranks by severity.
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT
+          ROUND(latitude, 3)  AS latitude,
+          ROUND(longitude, 3) AS longitude,
+          COUNT(*)             AS count,
+          SUM(
+            CASE WHEN weapons_involved IS NOT NULL AND weapons_involved NOT IN ('','0','None','N/A') THEN 3 ELSE 0 END
+            + CASE WHEN domestic_violence IN (1, '1', 'true') THEN 2 ELSE 0 END
+            + CASE WHEN injuries_reported IN (1, '1', 'true') THEN 2 ELSE 0 END
+            + CASE WHEN alcohol_involved IN (1, '1', 'true') THEN 1 ELSE 0 END
+            + CASE WHEN drugs_involved IN (1, '1', 'true') THEN 1 ELSE 0 END
+          ) AS risk_weight,
+          SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved NOT IN ('','0','None','N/A') THEN 1 ELSE 0 END) AS weapons_count,
+          SUM(CASE WHEN domestic_violence IN (1, '1', 'true') THEN 1 ELSE 0 END) AS dv_count,
+          SUM(CASE WHEN injuries_reported IN (1, '1', 'true') THEN 1 ELSE 0 END) AS injuries_count
+        FROM calls_for_service
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND created_at >= datetime('now', ?)
+          AND (
+            (weapons_involved IS NOT NULL AND weapons_involved NOT IN ('','0','None','N/A'))
+            OR domestic_violence IN (1, '1', 'true')
+            OR injuries_reported IN (1, '1', 'true')
+            OR alcohol_involved IN (1, '1', 'true')
+            OR drugs_involved IN (1, '1', 'true')
+          )
+        GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+        ORDER BY risk_weight DESC
+        LIMIT 10000
+      `, cutoff);
+      return c.json(filterValidLatLng(rows));
+    }
+
+    if (mode === 'type' && typeFilter) {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT
+          ROUND(latitude, 3)  AS latitude,
+          ROUND(longitude, 3) AS longitude,
+          COUNT(*)             AS count
+        FROM calls_for_service
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND created_at >= datetime('now', ?)
+          AND incident_type = ?
+        GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+        ORDER BY count DESC
+        LIMIT 10000
+      `, cutoff, typeFilter);
+      return c.json(filterValidLatLng(rows));
+    }
+
+    // mode === 'all'
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        ROUND(latitude, 3)  AS latitude,
+        ROUND(longitude, 3) AS longitude,
+        COUNT(*)             AS count,
+        GROUP_CONCAT(DISTINCT incident_type) AS incident_types,
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) AS p1_count,
+        SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved NOT IN ('','0','None','N/A') THEN 1 ELSE 0 END) AS weapons_count,
+        SUM(CASE WHEN domestic_violence IN (1, '1', 'true') THEN 1 ELSE 0 END) AS dv_count,
+        SUM(CASE WHEN injuries_reported IN (1, '1', 'true') THEN 1 ELSE 0 END) AS injuries_count
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', ?)
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      ORDER BY count DESC
+      LIMIT 10000
+    `, cutoff);
+    return c.json(filterValidLatLng(rows));
+  } catch (err) {
+    log.error('GET /dispatch/heatmap failed (degrading to [])', {}, err);
+    return c.json([]);
+  }
+});
+
+/** Reject points outside the lat/lng globe + the exact (0,0) no-fix signature. */
+function filterValidLatLng<T extends { latitude?: unknown; longitude?: unknown }>(rows: T[]): T[] {
+  return rows.filter((r) => {
+    const lat = typeof r.latitude === 'number' ? r.latitude : Number(r.latitude);
+    const lng = typeof r.longitude === 'number' ? r.longitude : Number(r.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    if (lat === 0 && lng === 0) return false;
+    return Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  });
+}
 
 // GET /dispatch/heatmap/enforcement?type=citations&days=90
 // Enforcement-activity clusters for the Map "Enforcement" overlay
@@ -209,7 +323,7 @@ aggregates.get('/heatmap/enforcement', async (c) => {
     }));
     return c.json(clusters);
   } catch (err) {
-    console.error('GET /dispatch/heatmap/enforcement failed (degrading to []):', err);
+    log.error('GET /dispatch/heatmap/enforcement failed (degrading to [])', {}, err);
     return c.json([]);
   }
 });
@@ -264,7 +378,7 @@ aggregates.get('/heatmap/predictions', async (c) => {
 
     return c.json({ hotspots, shift, total: hotspots.length });
   } catch (err) {
-    console.error('GET /dispatch/heatmap/predictions failed:', err);
+    log.error('GET /dispatch/heatmap/predictions failed', {}, err);
     return c.json({ hotspots: [], shift: c.req.query('shift') || 'day', total: 0 });
   }
 });
@@ -351,7 +465,7 @@ aggregates.get('/analysis/summary', async (c) => {
       },
     });
   } catch (err) {
-    console.error('GET /dispatch/analysis/summary failed:', err);
+    log.error('GET /dispatch/analysis/summary failed', {}, err);
     return c.json({
       overlapZones: { count: 0, locations: [] },
       repeatInRiskZones: { count: 0, addresses: [] },
@@ -394,7 +508,7 @@ aggregates.get('/stats/dashboard', async (c) => {
       queryFirst<Record<string, unknown>>(db,
         `SELECT COUNT(*) AS p1_count
          FROM calls_for_service
-         WHERE priority = 1 AND status = 'active'`),
+         WHERE priority = 'P1' AND status = 'active'`),
     ]);
     return c.json({ calls: calls || {}, units: units || {}, priority: priority || {} });
   } catch (err) { return c.json({ calls: {}, units: {}, priority: {} }); }
@@ -415,8 +529,8 @@ aggregates.get('/integration-dashboard', async (c) => {
           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
           SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed,
-          SUM(CASE WHEN priority = 1 THEN 1 ELSE 0 END) as priority1,
-          SUM(CASE WHEN priority = 2 THEN 1 ELSE 0 END) as priority2,
+          SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as priority1,
+          SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as priority2,
           AVG(CASE WHEN starting_mileage IS NOT NULL AND ending_mileage IS NOT NULL
                THEN ending_mileage - starting_mileage END) as avg_call_miles
         FROM calls_for_service
@@ -499,8 +613,63 @@ aggregates.get('/integration-dashboard', async (c) => {
       navigation: navSummary,
     });
   } catch (err) {
-    console.error('GET /dispatch/aggregates/integration-dashboard error:', err);
+    log.error('GET /dispatch/aggregates/integration-dashboard error', {}, err);
     return c.json({ error: 'Failed to build integration dashboard' }, 500);
+  }
+});
+
+// ── GET /history-map — historical CALL locations for the Map overlay ──
+// Backs the "Historical Calls" map overlay (client useMapboxHistoryCalls +
+// useMapCallHistory): a flat array of past calls with coordinates so the map
+// renders color-coded dots by priority + age.
+//
+// ⚠️ Distinct from /dispatch/gps/history-map, which is a per-UNIT GPS breadcrumb
+// TRAIL (needs unit_id, returns { points }). These two same-named endpoints are
+// different features. The client was calling the bare /dispatch/history-map
+// path, which NO worker served (the gps handler is mounted under /dispatch/gps)
+// — so the historical-call overlay silently returned nothing and was always
+// empty. This is the missing handler.
+//
+// Filters (all optional CSV): status, types (incident_type), priority. days +
+// limit are clamped. Read-only and fully defensive — degrades to [] on any
+// schema drift so the map overlay never throws.
+aggregates.get('/history-map', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(365, Math.max(1, parseInt(c.req.query('days') || '30', 10) || 30));
+    const limit = Math.min(10000, Math.max(1, parseInt(c.req.query('limit') || '5000', 10) || 5000));
+    const csv = (q?: string) => (q ? q.split(',').map((s) => s.trim()).filter(Boolean) : []);
+    const statuses = csv(c.req.query('status'));
+    const types = csv(c.req.query('types'));
+    const priorities = csv(c.req.query('priority'));
+
+    const where: string[] = ['latitude IS NOT NULL', 'longitude IS NOT NULL', "created_at >= datetime('now', ?)"];
+    const params: unknown[] = [`-${days} days`];
+    const addIn = (col: string, vals: string[]) => {
+      where.push(`${col} IN (${vals.map(() => '?').join(',')})`);
+      params.push(...vals);
+    };
+    if (statuses.length) addIn('status', statuses);
+    if (types.length) addIn('incident_type', types);
+    if (priorities.length) addIn('priority', priorities);
+
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, call_number, incident_type, priority, status, disposition,
+             location_address, latitude, longitude, created_at, cleared_at,
+             description, source,
+             assigned_unit_ids AS assigned_units,
+             CASE WHEN response_time_seconds IS NOT NULL
+                  THEN CAST(response_time_seconds / 60 AS INTEGER) END AS response_time_min
+      FROM calls_for_service
+      WHERE ${where.join(' AND ')}
+      ORDER BY created_at DESC
+      LIMIT ?
+    `, ...params, limit);
+
+    return c.json(rows);
+  } catch (err) {
+    log.error('GET /dispatch/history-map failed', {}, err);
+    return c.json([]);
   }
 });
 

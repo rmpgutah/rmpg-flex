@@ -166,7 +166,9 @@ function titleCase(s: string): string {
 }
 
 // ── Field extraction ────────────────────────────────────────
-const STOP_PAT = new RegExp(`\\b(?:${STOP_LABELS.map((l) => l.replace(/\./g, '\\.')).join('|')})\\b`, 'i');
+// STOP_LABELS are plain literals — escape ALL regex metacharacters (not just '.')
+// before joining them into the alternation, so none can be misread as regex syntax.
+const STOP_PAT = new RegExp(`\\b(?:${STOP_LABELS.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'i');
 const DATE_PAT = /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{4}-\d{2}-\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})\b/i;
 const MONEY_PAT = /\$?\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?/;
 

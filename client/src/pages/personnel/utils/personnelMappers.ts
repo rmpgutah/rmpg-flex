@@ -28,6 +28,12 @@ export function mapUser(row: any): OfficerWithStatus {
     middle_name: row.middle_name || undefined,
     role: row.role || 'officer',
     badge_number: row.badge_number || undefined,
+    // employee_id, notes and full_name were omitted here, so openEditOfficer
+    // pre-filled them blank — and saving the edit could WIPE an officer's
+    // employee_id/notes back to empty. Carry them through from the row.
+    employee_id: row.employee_id || undefined,
+    notes: row.notes || undefined,
+    full_name: row.full_name || `${firstName} ${lastName}`.trim() || undefined,
     phone: row.phone || undefined,
     rank: row.rank || undefined,
     department: row.department || undefined,
@@ -111,6 +117,9 @@ export function mapTimeEntry(row: any): TimeEntry {
     break_start: row.break_start || undefined,
     break_minutes: Number(row.break_minutes) || 0,
     total_hours: row.total_hours != null ? Number(row.total_hours) : undefined,
+    starting_mileage: row.starting_mileage != null ? Number(row.starting_mileage) : undefined,
+    ending_mileage: row.ending_mileage != null ? Number(row.ending_mileage) : undefined,
+    total_miles: row.total_miles != null ? Number(row.total_miles) : undefined,
     status,
     notes: undefined,
     created_at: row.created_at || '',

@@ -8,6 +8,7 @@ import {
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
   DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
+  Globe, ScanSearch, Film, CalendarDays,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -54,19 +55,21 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     id: 'enforce',
     label: 'Enforcement',
     items: [
-      { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
+      { path: '/warrants', icon: AlertTriangle, label: 'Warrant Search' },
+      { path: '/national-warrants', icon: Globe, label: 'National Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
       { path: '/law-book', icon: Scale, label: 'Law Book' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
-      { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+      { path: '/nsopw', icon: UserX, label: 'Sex Offender Registry' },
     ],
   },
   {
     id: 'serve',
     label: 'Process Service',
     items: [
+      { path: '/serve-intake/scheduler', icon: CalendarDays, label: 'Scheduler' },
       { path: '/serve-intake', icon: Upload, label: 'Serve Intake' },
       { path: '/serve', icon: Briefcase, label: 'Process Server' },
     ],
@@ -79,6 +82,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/fleet', icon: Car, label: 'Fleet' },
       { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
       { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
+      { path: '/flexcam', icon: Film, label: 'Trip Footage' },
     ],
   },
   {
@@ -98,9 +102,20 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/reports', icon: BarChart3, label: 'Reports' },
       { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
       { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
+      { path: '/analytics', icon: ScanSearch, label: 'Plate Analytics' },
       { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
       { path: '/reports/custom', icon: Database, label: 'Report Builder' },
-      { path: '/forensics', icon: Network, label: 'Connections', adminOnly: true },
+      { path: '/connections', icon: Network, label: 'Connections', adminOnly: true },
+    ],
+  },
+  {
+    id: 'intel',
+    label: 'Intelligence',
+    items: [
+      { path: '/intel/reports', icon: FileText, label: 'Intel Products' },
+      { path: '/intel/sources', icon: Network, label: 'Source Registry' },
+      { path: '/intel/workbench', icon: Share2, label: 'Intel Workbench' },
+      { path: '/person-intel', icon: ScanSearch, label: 'Person Intel' },
     ],
   },
   {
@@ -142,7 +157,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
 const CONTRACT_MANAGER_BLOCKED = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/patrol', '/shift-plans', '/statute-analytics',
-  '/reports/custom', '/crime-analysis', '/dar',
+  '/reports/custom', '/crime-analysis', '/dar', '/analytics',
 ]);
 
 interface SidebarProps {
@@ -187,18 +202,17 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       style={{
         width: collapsed ? 56 : 220,
         background: 'linear-gradient(180deg, #121212 0%, #0c0c0c 100%)',
-        borderRight: '1px solid #2b2b2b',
+        borderRight: '1px solid var(--border-default)',
       }}
     >
       {/* Scrollable nav sections */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden py-2" style={{ scrollbarWidth: 'none' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-2" style={{ scrollbarWidth: 'none' }}>
         {filteredSections.map((section) => (
           <div key={section.id} className="mb-1">
             {/* Section label — visible only when expanded */}
             {!collapsed && (
               <div
-                className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em]"
-                style={{ color: '#666666' }}
+                                className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-rmpg-500"
               >
                 {section.label}
               </div>
@@ -206,7 +220,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
 
             {/* Collapsed: thin separator between groups */}
             {collapsed && section.id !== 'ops' && (
-              <div className="mx-3 my-1" style={{ borderTop: '1px solid #2b2b2b' }} />
+              <div className="mx-3 my-1" style={{ borderTop: '1px solid var(--border-default)' }} />
             )}
 
             {section.items.map((item) => {
@@ -219,7 +233,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                   onClick={() => navigate(item.path)}
                   onMouseEnter={() => collapsed ? setHoveredSection(item.path) : undefined}
                   onMouseLeave={() => setHoveredSection(null)}
-                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-[#181818]' : ''}`}
+                  className={`relative w-full flex items-center gap-3 transition-all duration-100 ${!active ? 'hover:bg-surface-raised' : ''}`}
                   style={{
                     height: 34,
                     padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',
@@ -235,7 +249,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       width: 16,
                       height: 16,
                       flexShrink: 0,
-                      color: active ? '#aaaaaa' : '#666666',
+                      color: active ? '#aaaaaa' : 'var(--rmpg-500)',
                       transition: 'color 0.1s',
                     }}
                   />
@@ -253,14 +267,14 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                     <div
                       className="absolute left-full ml-2 px-2.5 py-1.5 whitespace-nowrap z-50"
                       style={{
-                        background: '#141414',
-                        border: '1px solid #2a2a2a',
+                        background: 'var(--surface-base)',
+                        border: '1px solid var(--border-default)',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                         top: '50%',
                         transform: 'translateY(-50%)',
                       }}
                     >
-                      <span className="text-[10px] font-medium text-white">{item.label}</span>
+                      <span className="text-[10px] font-medium text-rmpg-100">{item.label}</span>
                     </div>
                   )}
                 </button>
@@ -276,9 +290,9 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
         className="flex items-center justify-center gap-2 py-2 transition-colors"
         style={{
           height: 36,
-          borderTop: '1px solid #2b2b2b',
-          background: '#050505',
-          color: '#666666',
+          borderTop: '1px solid var(--border-default)',
+          background: 'var(--surface-overlay)',
+          color: 'var(--rmpg-500)',
         }}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >

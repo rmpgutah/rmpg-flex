@@ -1,0 +1,50 @@
+{
+  "_comment": "Per-county scraper config. selectors are CSS; the runner reads each row element and pulls text from the named sub-selectors (relative to the row). status 'verified' = confirmed against the live page; 'needs-verification' = a starting guess an operator must confirm (portal DOM drifts). Set enabled:false to skip. Add counties by inspecting the roster page in a browser and filling selectors.",
+  "counties": [
+    {
+      "key": "ut-davis",
+      "name": "Davis County Jail",
+      "county": "Davis",
+      "url": "https://www.daviscountyutah.gov/sheriff/inmate-roster",
+      "enabled": false,
+      "status": "needs-verification",
+      "waitFor": "table tbody tr",
+      "selectors": {
+        "row": "table tbody tr",
+        "name": "td:nth-child(1)",
+        "bookingDate": "td:nth-child(2)",
+        "charges": "td:nth-child(3)"
+      }
+    },
+    {
+      "key": "ut-utah",
+      "name": "Utah County Sheriff Jail",
+      "county": "Utah",
+      "url": "https://sheriff.utahcounty.gov/corrections/inmatesearch",
+      "enabled": false,
+      "status": "needs-verification",
+      "waitFor": ".inmate-row",
+      "selectors": {
+        "row": ".inmate-row",
+        "name": ".inmate-name",
+        "bookingDate": ".booking-date",
+        "charges": ".charges"
+      }
+    },
+    {
+      "key": "ut-salt-lake",
+      "name": "Salt Lake County Jail (IML)",
+      "county": "Salt Lake",
+      "url": "http://iml.slsheriff.org/IML",
+      "enabled": false,
+      "status": "needs-verification",
+      "waitFor": "table tr",
+      "selectors": {
+        "row": "table tr",
+        "name": "td:nth-child(2)",
+        "bookingDate": "td:nth-child(4)",
+        "charges": "td:nth-child(5)"
+      }
+    }
+  ]
+}

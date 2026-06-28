@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { initMapbox, resolveMapboxAccessToken, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_NIGHT, MAPBOX_STYLE_SATELLITE, MAPBOX_STYLE_STREETS, MAPBOX_STYLE_OUTDOORS, registerMapInstance, unregisterMapInstance, updateMapStyle, monitorTileLoading } from '../../utils/mapboxLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import { installWebglContextRecovery, type MapCamera } from '../../utils/webglRecovery';
@@ -71,7 +72,7 @@ import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
-import { getMapPreferences } from '../../utils/mapPreferences';
+import { getMapPreferences, loadMapPref } from '../../utils/mapPreferences';
 import { subscribeSettings } from '../../utils/settingsBus';
 import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
@@ -97,10 +98,13 @@ import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId }
 import { whenStyleReady } from './utils/safeAddSource';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, buildDirectionArrow, injectKeyframes } from './utils/mapMarkerBuilders';
+import { isValidLngLat } from '../../utils/mapMarkers';
 import { roadLegendRows, propertyLegendRows } from './utils/landTypes';
 import { useMapPredictions } from './hooks/useMapPredictions';
 import { useMapIntelLayers } from './hooks/useMapIntelLayers';
 import { useMapClustering } from './hooks/useMapClustering';
+import { humanizeType } from '../../utils/statusLabels';
+import { coded } from '../../utils/searchText';
 import { useMapDragDispatch } from './hooks/useMapDragDispatch';
 import { useMapPatrolCheckpoints } from './hooks/useMapPatrolCheckpoints';
 import { useMapResponseRadius } from './hooks/useMapResponseRadius';
@@ -119,9 +123,25 @@ import AnalysisDashboardPanel from './components/AnalysisDashboardPanel';
 import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 import MultiStopRoutePanel, { type QueuedStop } from './components/MultiStopRoutePanel';
 import MapExportMenu from './components/MapExportMenu';
+import MapCompassRose from './components/MapCompassRose';
+import MapScaleBar from './components/MapScaleBar';
+import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
+import { MAP_SHORTCUT_BINDINGS } from '../../hooks/useMapKeyboardShortcuts';
 import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
 import { useAuth } from '../../context/AuthContext';
-import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource } from '../../utils/mapboxSafeLayer';
+import { applyRmpgBasemap, type BasemapVariant } from '../../utils/mapboxBasemap';
+import MapToolbar, { type MapTool } from '../../components/MapToolbar';
+import DrawGeofenceTool from './components/DrawGeofenceTool';
+import AnnotationTool from './components/AnnotationTool';
+import BufferRingTool from './components/BufferRingTool';
+import RulerTool from './components/RulerTool';
+import GpsReplayTool from './components/GpsReplayTool';
+import NavOverlayTool from './components/NavOverlayTool';
+import { useBuildingsLayer } from './components/BuildingsLayer';
+import MinimapControl from './components/MinimapControl';
+import { useScaleControl, useFullscreenControl } from './components/ScaleFullscreenControls';
+import { useFeatureFlags } from '../../context/FeatureFlagsContext';
 
 // ============================================================
 // Constants
@@ -150,8 +170,8 @@ const INTEL_LAYER_CLASSES: Record<string, { active: string; }> = {
 const PRIORITY_PILL_CLASSES: Record<string, { active: string; }> = {
   red: { active: 'bg-red-900/40 text-red-400 border border-red-700/40' },
   amber: { active: 'bg-amber-900/40 text-amber-400 border border-amber-700/40' },
-  blue: { active: 'bg-gray-900/40 text-gray-400 border border-gray-700/40' },
-  gray: { active: 'bg-[#0c0c0c]/40 text-gray-400 border border-gray-700/40' },
+  blue: { active: 'bg-gray-900/40 text-gray-400 border border-border-default/40' },
+  gray: { active: 'bg-[#0c0c0c]/40 text-gray-400 border border-border-default/40' },
 };
 
 // Default map center (Salt Lake City)
@@ -231,6 +251,7 @@ export default function MapPage() {
   const [mobileSheetTab, setMobileSheetTab] = useState<'layers' | 'units' | 'calls'>('layers');
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
+  const basemapVariantRef = useRef<BasemapVariant>('dark');
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
   const heatmapLayerRef = useRef<any | null>(null);
@@ -347,6 +368,20 @@ export default function MapPage() {
   });
   const [sidebarTab, setSidebarTab] = usePersistedTab('rmpg_map_sidebar', 'units', ['units', 'calls'] as const);
 
+  // Sidebar focused-row id — clicking a unit/call in the rail pans the map but
+  // previously didn't mark the row as selected, so operators panned and lost
+  // context about WHICH row they clicked. Now: the focused row gets a brand-
+  // gold rail, the sidebar auto-scrolls it into view on URL deep-link, and the
+  // selection clears when sidebarTab changes (focus belongs to the active list).
+  const [focusedUnitId, setFocusedUnitId] = useState<string | null>(null);
+  const [focusedCallId, setFocusedCallId] = useState<string | null>(null);
+
+  // Keyboard-shortcuts help modal — toggled by `?` (Shift+/). Pulls binding
+  // labels from MAP_SHORTCUT_BINDINGS so the displayed list always matches
+  // the inline keydown handler. (Previous: the modal didn't exist, operators
+  // had to read the source to discover L/H/B/C/+/-/Esc.)
+  const [showKbdHelp, setShowKbdHelp] = useState(false);
+
   // Fix 32: persist sidebar open/closed state
   useEffect(() => {
     try { localStorage.setItem('rmpg_map_sidebar_open', String(sidebarOpen)); } catch { /* noop */ }
@@ -356,6 +391,12 @@ export default function MapPage() {
   const serverDefaultStyle = (userPrefs?.default_map_style || 'dark') as MapStyleId;
   const [mapStyle, setMapStyle] = usePersistedTab('rmpg_map_style', serverDefaultStyle, ['dark', 'satellite', 'hybrid', 'streets', 'terrain', 'night_nav'] as const);
   const [showMapStyles, setShowMapStyles] = useState(false);
+
+  // Branded basemap variant derived from the current style (drives applyRmpgBasemap).
+  const basemapVariant: BasemapVariant =
+    isSatelliteStyle(mapStyle) ? 'satellite'
+    : isLightMapStyle(mapStyle) ? 'light'
+    : 'dark';
 
   // Live-apply: when map preferences change (Settings page, or another tab),
   // update style / base layers / overlay defaults in place — no reload.
@@ -821,19 +862,32 @@ export default function MapPage() {
       place: { fillId: 'geojson-place-fill', lineId: 'geojson-place-line' },
     };
 
+    // Reject any persisted color value that Mapbox can't parse — most often a
+    // CSS variable string left over from an old config (e.g. 'var(--surface-base)'
+    // hardcoded in the AdminMapSettingsTab defaults before it shipped a real
+    // hex). Without this guard a single bad cell in `map_config` crashes the
+    // whole addLayer call and the map renders nothing.
+    const safeColor = (v: unknown): string | null => {
+      if (typeof v !== 'string') return null;
+      const s = v.trim();
+      if (!s) return null;
+      if (s.toLowerCase().startsWith('var(')) return null;
+      return s;
+    };
+
     for (const [layerId, ids] of Object.entries(LAYER_STYLE_MAP)) {
       const visible = cfg.default_visible_layers.includes(layerId);
 
       if (ids.fillId && hasLayer(map, ids.fillId)) {
         map.setLayoutProperty(ids.fillId, 'visibility', visible ? 'visible' : 'none');
-        const fillColor = (cfg as any)[`layer_${layerId}_fill`];
+        const fillColor = safeColor((cfg as any)[`layer_${layerId}_fill`]);
         const fillOpacity = (cfg as any)[`layer_${layerId}_fill_opacity`];
         if (fillColor) map.setPaintProperty(ids.fillId, 'fill-color', fillColor);
         if (fillOpacity != null) map.setPaintProperty(ids.fillId, 'fill-opacity', fillOpacity);
       }
       if (ids.lineId && hasLayer(map, ids.lineId)) {
         map.setLayoutProperty(ids.lineId, 'visibility', visible ? 'visible' : 'none');
-        const strokeColor = (cfg as any)[`layer_${layerId}_stroke`];
+        const strokeColor = safeColor((cfg as any)[`layer_${layerId}_stroke`]);
         const strokeOpacity = (cfg as any)[`layer_${layerId}_stroke_opacity`];
         const strokeWeight = (cfg as any)[`layer_${layerId}_stroke_weight`];
         if (strokeColor) map.setPaintProperty(ids.lineId, 'line-color', strokeColor);
@@ -917,6 +971,12 @@ export default function MapPage() {
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
   const [showDaylight, setShowDaylight] = useState(false);
 
+  // MapToolbar feature flags + toolbar-driven state
+  const flags = useFeatureFlags();
+  const [showMinimap, setShowMinimap] = useState(false);
+  const [showScale, setShowScale] = useState(() => Boolean(loadMapPref('scale_visible')));
+  const [showFullscreen, setShowFullscreen] = useState(() => Boolean(loadMapPref('fullscreen_visible')));
+
   // Tactical map hooks
   const predictions = useMapPredictions(mapInstanceRef.current, showPredictions);
   const intelLayerData = useMapIntelLayers(mapInstanceRef.current, intelLayers);
@@ -956,6 +1016,11 @@ export default function MapPage() {
 
   // Tactical tools hook (pure client-side, always active)
   const tactical = useMapTactical(mapInstanceRef.current);
+
+  // MapToolbar-driven hooks
+  const { enabled: buildingsEnabled, toggle: toggleBuildings } = useBuildingsLayer(mapInstanceRef.current);
+  useScaleControl(mapInstanceRef.current, showScale);
+  useFullscreenControl(mapInstanceRef.current, showFullscreen);
 
   // ============================================================
   // Data Fetching
@@ -1152,8 +1217,14 @@ export default function MapPage() {
       const data = msg.data || msg;
       const unitId = data.unit_id ?? data.unit?.id;
       if (unitId == null) return;
-      const lat = data.lat ?? data.unit?.latitude;
-      const lng = data.lng ?? data.unit?.longitude;
+      // gps.ts emits via emitAlert('unit_position', { latitude, longitude, ... }),
+      // and AlertHubDO flattens it to a top-level frame { type, unit_id, latitude,
+      // longitude, heading, speed, ... } — there is NO `data` wrapper and NO
+      // lat/lng keys. Reading only data.lat/data.lng (or data.unit.*) resolved to
+      // undefined on every fix, so this whole instant-glide path was dead and units
+      // only moved on the ~7s poll. Accept latitude/longitude (the real keys) too.
+      const lat = data.lat ?? data.latitude ?? data.unit?.latitude;
+      const lng = data.lng ?? data.longitude ?? data.unit?.longitude;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       const heading = data.heading ?? data.unit?.gps_heading ?? null;
       const speed = data.speed ?? data.unit?.gps_speed ?? null;
@@ -1348,6 +1419,9 @@ export default function MapPage() {
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
+
+      // Re-skin every (re)loaded style into the RMPG pure-black/gold theme.
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: basemapVariantRef.current }));
 
       // WebGL context-loss recovery. On a long shift the GPU can reclaim the
       // map's WebGL context (Toughbook GPU pressure, device sleep/wake, driver
@@ -1548,6 +1622,9 @@ export default function MapPage() {
     }
   }, [mapStyle, mapLoaded]);
 
+  // Keep the long-lived style.load listener reading the current branded variant.
+  useEffect(() => { basemapVariantRef.current = basemapVariant; }, [basemapVariant]);
+
   // ============================================================
   // Update Markers
   // ============================================================
@@ -1638,7 +1715,9 @@ export default function MapPage() {
     const nextUnitIds = new Set<string>();
     if (layers.units) {
       units.forEach((unit) => {
-        if (unit.latitude != null && unit.longitude != null) {
+        // isValidLngLat also rejects (0,0) — the ClearPath no-fix signature that
+        // would otherwise plot the unit on the equator off the African coast.
+        if (isValidLngLat(unit.longitude, unit.latitude)) {
           const id = String(unit.id);
           nextUnitIds.add(id);
           const statusColor = UNIT_STATUS_COLORS[unit.status];
@@ -1702,7 +1781,7 @@ export default function MapPage() {
           prevUnitStateRef.current.set(id, { lat: unit.latitude!, lng: unit.longitude!, status: unit.status, heading: unit.gps_heading ?? null, speed: unit.gps_speed ?? null });
 
           if (existing) {
-            existing.setLngLat([unit.longitude, unit.latitude]);
+            existing.setLngLat([unit.longitude!, unit.latitude!]);
             const el = existing.getElement?.();
             if (el) {
               const label = el.querySelector('[data-unit-label]') as HTMLElement | null;
@@ -1735,7 +1814,7 @@ export default function MapPage() {
             content.addEventListener('contextmenu', (ev) => openMenu(ev, buildUnitMarkerMenu(unit)));
             const marker = createMarker({
               map,
-              position: [unit.longitude, unit.latitude],
+              position: [unit.longitude!, unit.latitude!],
               content,
               zIndex: 1000,
               title: `${unit.call_sign} - ${unit.officer_name}`,
@@ -1766,14 +1845,14 @@ export default function MapPage() {
     }
     if (callsChanged && layers.incidents) {
       calls.forEach((call) => {
-        if (call.latitude != null && call.longitude != null) {
+        if (isValidLngLat(call.longitude, call.latitude)) {
           const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number);
           content.addEventListener('contextmenu', (ev) => openMenu(ev, buildCallMarkerMenu(call)));
           const pColor = PRIORITY_COLORS[call.priority] || '#666666';
 
           const marker = createMarker({
             map,
-            position: [call.longitude, call.latitude],
+            position: [call.longitude!, call.latitude!],
             content,
             zIndex: call.priority === 'P1' ? 2000 : 500,
             title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
@@ -1878,7 +1957,12 @@ export default function MapPage() {
               // Fetch full property details (includes recent calls, contacts, schedules)
               try {
                 const details = await apiFetch<any>(`/records/properties/${prop.id}`);
+                // Race guard + teardown guard: bail if the user clicked another
+                // property mid-flight OR if the map itself unmounted/recovered
+                // (a WebGL context loss + rebuild swaps `mapInstanceRef.current`,
+                // so an in-flight setHTML against the old infoWindow could fail).
                 if (lastClickedPropRef.current !== propId) return;
+                if (!mapInstanceRef.current) return;
                 const recentCalls = details.recentCalls || [];
                 const schedules = details.todaySchedules || [];
                 const linkedPersons: any[] = details.linkedPersons || [];
@@ -2733,26 +2817,29 @@ export default function MapPage() {
 
         // Create or update breadcrumb line source & layer via setData()
         // (same pattern as dots/arrows — avoids source-teardown blink).
+        // upsertGeoJsonSource is setStyle-race-safe: when the user switches
+        // basemap/theme the diff pipeline can preserve our source while our
+        // hasSource check sees it as absent — the helper swallows the
+        // resulting "already a source with ID" throw.
         const linesData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: lineFeatures };
         const existingLineSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-breadcrumb-lines');
         if (existingLineSrc) {
           existingLineSrc.setData(linesData);
         } else if (lineFeatures.length > 0) {
           whenStyleReady(map, () => {
-            map.addSource('rmpg-breadcrumb-lines', {
-              type: 'geojson',
-              data: linesData,
-            });
-            map.addLayer({
-              id: 'rmpg-breadcrumb-lines',
-              type: 'line',
-              source: 'rmpg-breadcrumb-lines',
-              paint: {
-                'line-color': ['get', 'strokeColor'],
-                'line-opacity': ['get', 'strokeOpacity'],
-                'line-width': 3,
-              },
-            });
+            upsertGeoJsonSource(map, 'rmpg-breadcrumb-lines', linesData);
+            if (!hasLayer(map, 'rmpg-breadcrumb-lines')) {
+              map.addLayer({
+                id: 'rmpg-breadcrumb-lines',
+                type: 'line',
+                source: 'rmpg-breadcrumb-lines',
+                paint: {
+                  'line-color': ['get', 'strokeColor'],
+                  'line-opacity': ['get', 'strokeOpacity'],
+                  'line-width': 3,
+                },
+              });
+            }
           });
         }
 
@@ -2765,21 +2852,28 @@ export default function MapPage() {
           existingDotSrc.setData(dotsData);
         } else {
           whenStyleReady(map, () => {
-            map.addSource(DOTS_SOURCE_ID, { type: 'geojson', data: dotsData });
-            map.addLayer({
-              id: DOTS_LAYER_ID,
-              type: 'circle',
-              source: DOTS_SOURCE_ID,
-              paint: {
-                'circle-color': ['get', 'color'],
-                // Last point of each trail renders slightly larger / brighter
-                // outline (preserves the visual emphasis the old DOM marker had).
-                'circle-radius': ['case', ['get', 'isLast'], 5, 4],
-                'circle-stroke-color': ['case', ['get', 'isLast'], '#fbbf24', '#fff'],
-                'circle-stroke-width': ['case', ['get', 'isLast'], 2, 0.5],
-                'circle-opacity': ['case', ['get', 'isLast'], 1, 0.6],
-              },
-            });
+            // upsertGeoJsonSource handles BOTH the two-back-to-back-refresh
+            // race AND the setStyle diff-preservation race (the original
+            // guard `if (!hasSource(...)) addSource(...)` was only safe for
+            // the first; setStyle can transiently hide the source from
+            // getSource while mapbox's diff has already preserved it).
+            upsertGeoJsonSource(map, DOTS_SOURCE_ID, dotsData);
+            if (!hasLayer(map, DOTS_LAYER_ID)) {
+              map.addLayer({
+                id: DOTS_LAYER_ID,
+                type: 'circle',
+                source: DOTS_SOURCE_ID,
+                paint: {
+                  'circle-color': ['get', 'color'],
+                  // Last point of each trail renders slightly larger / brighter
+                  // outline (preserves the visual emphasis the old DOM marker had).
+                  'circle-radius': ['case', ['get', 'isLast'], 5, 4],
+                  'circle-stroke-color': ['case', ['get', 'isLast'], '#fbbf24', '#fff'],
+                  'circle-stroke-width': ['case', ['get', 'isLast'], 2, 0.5],
+                  'circle-opacity': ['case', ['get', 'isLast'], 1, 0.6],
+                },
+              });
+            }
           });
         }
 
@@ -2809,7 +2903,7 @@ export default function MapPage() {
                 map.addImage(ARROW_IMAGE_ID, ctx.getImageData(0, 0, S, S), { sdf: true });
               }
             }
-            if (!hasSource(map, ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
+            upsertGeoJsonSource(map, ARROWS_SOURCE_ID, arrowsData);
             if (!hasLayer(map, ARROWS_LAYER_ID)) {
               map.addLayer({
                 id: ARROWS_LAYER_ID,
@@ -3207,7 +3301,7 @@ export default function MapPage() {
   const filteredCalls = useMemo(() => calls.filter(c => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return (c.call_number || '').toLowerCase().includes(q) || (c.incident_type || '').toLowerCase().includes(q) || (c.location_address || '').toLowerCase().includes(q);
+    return (c.call_number || '').toLowerCase().includes(q) || coded(c.incident_type, humanizeType).includes(q) || (c.location_address || '').toLowerCase().includes(q);
   }), [calls, searchQuery]);
 
   // Quick call status change from map sidebar
@@ -3524,10 +3618,20 @@ export default function MapPage() {
             if (z != null) mapInstanceRef.current.setZoom(z - 1);
           }
           break;
-        case 'escape': // Close all panels
+        case '?': // Toggle keyboard-shortcuts help modal (Shift+/ on US layouts)
           e.preventDefault();
-          infoWindowRef.current?.remove();
-          setLayersPanelOpen(false);
+          setShowKbdHelp(prev => !prev);
+          break;
+        case 'escape':
+          // Smart-cancel cascade — Esc closes the SMALLEST open thing first
+          // so a quick "cancel my typing" Esc doesn't blast the whole UI.
+          // Order: kbd help → address search dropdown → info popup → layers
+          // panel → sidebar.
+          e.preventDefault();
+          if (showKbdHelp) { setShowKbdHelp(false); break; }
+          if (showAddressResults) { setShowAddressResults(false); break; }
+          if (infoWindowRef.current) { infoWindowRef.current.remove(); break; }
+          if (layersPanelOpen) { setLayersPanelOpen(false); break; }
           setSidebarOpen(false);
           break;
       }
@@ -3535,14 +3639,116 @@ export default function MapPage() {
 
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [units, layersPanelOpen]);
+  }, [units, layersPanelOpen, showKbdHelp, showAddressResults]);
+
+  // ============================================================
+  // Deep-link URL handlers: /map?call_id=… and /map?unit_id=…
+  // Mirrors the pattern Dispatch picked up in PR #1583 — every page that
+  // can be the destination of a "View on Map" / "Drill in" link needs a
+  // useSearchParams reader. One-shot per page load via the ref gate, then
+  // the params are stripped so a refresh doesn't re-select. Cross-tab
+  // handling: a call_id auto-switches sidebarTab to 'calls' so the row
+  // is visible in the rail; unit_id does the same for 'units'.
+  // ============================================================
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingCallIdRef = useRef<string | null>(searchParams.get('call_id'));
+  const pendingUnitIdRef = useRef<string | null>(searchParams.get('unit_id'));
+
+  useEffect(() => {
+    const target = pendingCallIdRef.current;
+    if (!target || !mapLoaded) return;
+    const call = calls.find((c) => String(c.id) === String(target));
+    if (!call) return;
+    pendingCallIdRef.current = null;
+    setSidebarTab('calls');
+    setFocusedCallId(String(call.id));
+    if (call.latitude != null && call.longitude != null) {
+      panTo(call.latitude, call.longitude);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('call_id');
+    setSearchParams(next, { replace: true });
+  }, [calls, mapLoaded, searchParams, setSearchParams, setSidebarTab]);
+
+  useEffect(() => {
+    const target = pendingUnitIdRef.current;
+    if (!target || !mapLoaded) return;
+    // Match by id OR call_sign — the dashboard might send a human-readable
+    // unit identifier like "U-12" rather than the database id.
+    const unit = units.find((u) =>
+      String(u.id) === String(target) || String((u as any).call_sign) === String(target));
+    if (!unit) return;
+    pendingUnitIdRef.current = null;
+    setSidebarTab('units');
+    setFocusedUnitId(String(unit.id));
+    if (unit.latitude != null && unit.longitude != null) {
+      panTo(unit.latitude, unit.longitude);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('unit_id');
+    setSearchParams(next, { replace: true });
+  }, [units, mapLoaded, searchParams, setSearchParams, setSidebarTab]);
+
+  // Clear the focused-row id when the sidebar tab changes — focus belongs to
+  // whichever list is currently visible, not the hidden one.
+  useEffect(() => {
+    if (sidebarTab === 'units') setFocusedCallId(null);
+    if (sidebarTab === 'calls') setFocusedUnitId(null);
+  }, [sidebarTab]);
 
   // ============================================================
   // Render
   // ============================================================
 
+  // MapToolbar tool definitions — flag=null means always visible
+  const MAP_TOOLS: MapTool[] = [
+    { id: 'draw', icon: '✏️', label: 'Draw Geofence', flag: 'draw', component: DrawGeofenceTool },
+    { id: 'annotations', icon: '📍', label: 'Annotations', flag: 'annotations', component: AnnotationTool },
+    { id: 'buffer', icon: '⭕', label: 'Buffer Rings', flag: 'buffer_rings', component: BufferRingTool },
+    { id: 'ruler', icon: '📏', label: 'Ruler', flag: 'ruler', component: RulerTool },
+    { id: 'gps_replay', icon: '▶️', label: 'GPS Replay', flag: 'gps_replay', component: GpsReplayTool },
+    { id: 'nav', icon: '🧭', label: 'Nav Overlay', flag: 'nav_overlay', component: NavOverlayTool },
+    {
+      id: 'buildings',
+      icon: '🏢',
+      label: buildingsEnabled ? '3D Buildings (on)' : '3D Buildings',
+      flag: 'buildings_3d',
+      component: ({ onClose }: { map: mapboxgl.Map; onClose: () => void }) => {
+        toggleBuildings();
+        onClose();
+        return null;
+      },
+    },
+    {
+      id: 'minimap',
+      icon: '🗺️',
+      label: 'Minimap',
+      flag: 'minimap',
+      component: ({ map, onClose }: { map: mapboxgl.Map; onClose: () => void }) =>
+        showMinimap ? (
+          <MinimapControl parentMap={map} onClose={() => { setShowMinimap(false); onClose(); }} />
+        ) : (
+          (() => { setShowMinimap(true); return null; })()
+        ),
+    },
+    {
+      id: 'scale',
+      icon: '📐',
+      label: showScale ? 'Scale Bar (on)' : 'Scale Bar',
+      flag: null,
+      component: ({ onClose }: { map: mapboxgl.Map; onClose: () => void }) => { setShowScale(p => !p); onClose(); return null; },
+    },
+    {
+      id: 'fullscreen',
+      icon: '⛶',
+      label: 'Fullscreen',
+      flag: null,
+      component: ({ onClose }: { map: mapboxgl.Map; onClose: () => void }) => { setShowFullscreen(p => !p); onClose(); return null; },
+    },
+  ];
+
   return (
-    <div className={`relative h-full flex ${isMobile ? 'overflow-hidden' : ''}`}>
+    <div className={`tactical-dark relative h-full flex ${isMobile ? 'overflow-hidden' : ''}`}>
       {/* Map Container — full-bleed on mobile, flex-1 on desktop */}
       <div className="flex-1 relative" style={isMobile ? { flex: 1, minHeight: 0, paddingBottom: 'env(safe-area-inset-bottom, 0px)' } : undefined}>
         <div
@@ -3552,6 +3758,14 @@ export default function MapPage() {
           role="application"
           aria-label="Tactical Map"
         />
+
+        {/* Map Toolbar — floating tool launcher (draw, buildings, minimap, scale, fullscreen) */}
+        <MapToolbar map={mapInstanceRef.current} tools={MAP_TOOLS} />
+
+        {/* Minimap overlay (rendered when showMinimap is true) */}
+        {showMinimap && mapInstanceRef.current && (
+          <MinimapControl parentMap={mapInstanceRef.current} onClose={() => setShowMinimap(false)} />
+        )}
 
         {/* WebGL recovery badge — non-blocking. Shows for the ~1s rebuild after
             the GPU dropped the map's WebGL context. Centered up top so the
@@ -3767,7 +3981,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a0a0a]/95 border border-[#2e2e2e] shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 260 }} role="listbox">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-surface-overlay/95 border border-border-default shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 260 }} role="listbox">
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -3775,7 +3989,7 @@ export default function MapPage() {
                       onMouseDown={(e) => e.preventDefault()}
                       onTouchStart={(e) => e.preventDefault()}
                       onClick={() => handleAddressSelect(r.center, r.description)}
-                      className="w-full text-left px-4 py-3 text-[12px] text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
+                      className="w-full text-left px-4 py-3 text-[12px] text-white/80 hover:bg-rmpg-700/50 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
                       style={{ minHeight: 44 }}
                     >
                       <MapPin className="w-4 h-4 text-gray-400 shrink-0" />
@@ -3810,7 +4024,7 @@ export default function MapPage() {
                   aria-label="Search address"
                   className={`text-[11px] pl-8 pr-8 py-1.5 w-[240px] focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors ${
                     isLightMapStyle(mapStyle)
-                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-gray-400 focus:bg-white/90'
+                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-rmpg-400 focus:border-rmpg-400 focus:bg-white/90'
                       : 'bg-black/30 border border-white/15 text-white placeholder:text-white/40 focus:border-white/40 focus:bg-black/50'
                   }`}
                   style={{ borderRadius: 2 }}
@@ -3836,7 +4050,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a0a0a]/95 border border-[#2e2e2e] shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 240 }} role="listbox">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-surface-overlay/95 border border-border-default shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 240 }} role="listbox">
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -3854,7 +4068,7 @@ export default function MapPage() {
               )}
               {/* Navigate / Dispatch action panel for a selected address */}
               {selectedAddr && !showAddressResults && !navActive && (
-                <div className="absolute top-full left-0 mt-1 bg-[#0a0a0a]/95 border border-[#2e2e2e] shadow-md backdrop-blur-md p-2 space-y-1.5" style={{ borderRadius: 2, width: 240 }}>
+                <div className="absolute top-full left-0 mt-1 bg-surface-overlay/95 border border-border-default shadow-md backdrop-blur-md p-2 space-y-1.5" style={{ borderRadius: 2, width: 240 }}>
                   <div className="text-[9px] text-rmpg-300 truncate flex items-center gap-1">
                     <MapPin className="w-3 h-3 text-brand-400 shrink-0" />
                     <span className="truncate">{selectedAddr.label}</span>
@@ -3876,7 +4090,7 @@ export default function MapPage() {
                     </button>
                   </div>
                   {showDispatchHere && (
-                    <div className="space-y-1 pt-1 border-t border-[#1a1a1a]">
+                    <div className="space-y-1 pt-1 border-t border-border-subtle">
                       <input id="ff-mappage-2"
                         value={dispatchIncidentType}
                         onChange={(e) => setDispatchIncidentType(e.target.value)}
@@ -4157,7 +4371,7 @@ export default function MapPage() {
                         onClick={() => setBreadcrumbHours(h)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbHours === h
-                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-border-default/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
@@ -4192,7 +4406,7 @@ export default function MapPage() {
                         onClick={() => setBreadcrumbColorMode(mode)}
                         className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
                           breadcrumbColorMode === mode
-                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
+                            ? 'bg-gray-900/50 text-gray-400 border border-border-default/50'
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
@@ -4301,7 +4515,7 @@ export default function MapPage() {
                             setPlaybackIdx(0);
                             setIsPlaying(false);
                           }}
-                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-gray-600"
+                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-rmpg-600"
                           style={{ borderRadius: 2 }}
                         >
                           <option value="">Replay trail...</option>
@@ -4364,7 +4578,7 @@ export default function MapPage() {
                                   onClick={() => setPlaybackSpeed(spd)}
                                   className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
                                     playbackSpeed === spd
-                                      ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
+                                      ? 'bg-gray-900/50 text-gray-400 border border-border-default/50'
                                       : 'text-rmpg-500 hover:text-rmpg-300'
                                   }`}
                                 >
@@ -5195,7 +5409,7 @@ export default function MapPage() {
                                                 setAssignUnitIds((prev) => prev.filter((id) => id !== unit.id));
                                               }
                                             }}
-                                            className="w-2.5 h-2.5 accent-gray-500"
+                                            className="w-2.5 h-2.5 accent-rmpg-500"
                                           />
                                           <span className="text-[8px] flex-1">{unit.call_sign}</span>
                                           {unit.officer_name && (
@@ -5235,7 +5449,7 @@ export default function MapPage() {
                                       setAssignNotes('');
                                     }}
                                     disabled={assignOfficerIds.length === 0 && assignUnitIds.length === 0}
-                                    className="toolbar-btn-success flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[8px] font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    className="toolbar-btn toolbar-btn-success flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[8px] font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                   >
                                     <UserCheck className="w-2.5 h-2.5" />
                                     Assign
@@ -5338,7 +5552,7 @@ export default function MapPage() {
                         {shiftPlanning.activePlan?.assignments?.length > 0 && (
                           <button
                             onClick={() => shiftPlanning.removeAllAssignments()}
-                            className="toolbar-btn-danger flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
+                            className="toolbar-btn toolbar-btn-danger flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
                           >
                             <Trash2 className="w-2 h-2" /> Clear All
                           </button>
@@ -5474,14 +5688,14 @@ export default function MapPage() {
                             {(eventPlanning.drawMode === 'perimeter' || eventPlanning.drawMode === 'route') && (
                               <button
                                 onClick={() => eventPlanning.finishDrawing()}
-                                className="toolbar-btn-success text-[8px] px-1.5 py-0.5"
+                                className="toolbar-btn toolbar-btn-success text-[8px] px-1.5 py-0.5"
                               >
                                 <Check className="w-2.5 h-2.5 inline mr-0.5" />Finish
                               </button>
                             )}
                             <button
                               onClick={() => eventPlanning.cancelDrawing()}
-                              className="toolbar-btn-danger text-[8px] px-1.5 py-0.5"
+                              className="toolbar-btn toolbar-btn-danger text-[8px] px-1.5 py-0.5"
                             >
                               <X className="w-2.5 h-2.5 inline mr-0.5" />Cancel
                             </button>
@@ -5733,6 +5947,30 @@ export default function MapPage() {
           </div>
         </div>}
 
+        {/* Compass rose (bottom-right, desktop) — rotates with map bearing,
+            click to reset north. Tiny, mapInstance-driven; the component was
+            already built and tokenized but never mounted (see PR notes). */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[10]" style={{ right: 16, bottom: 92 }}>
+            <MapCompassRose mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* Scale bar (bottom-right corner, desktop) — distance scale matters
+            for tactical ops ("how far is that perimeter?"). Re-renders on every
+            zoom/pan via the mapboxgl 'move' event inside the component. */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[10]" style={{ right: 16, bottom: 56 }}>
+            <MapScaleBar mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* Keyboard-shortcuts help modal — opened by `?` (handled in the
+            inline keydown switch above). Pulls the binding list from the
+            single source of truth (MAP_SHORTCUT_BINDINGS) so what the modal
+            shows is what the keydown handler actually does. */}
+        <KeyboardShortcutsHelp open={showKbdHelp} onClose={() => setShowKbdHelp(false)} />
+
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
         {/* Unified always-visible legend for every active overlay */}
         {!isMobile && (
@@ -5969,7 +6207,7 @@ export default function MapPage() {
               className={`backdrop-blur-md shadow-xl transition-colors ${
                 isLightMapStyle(mapStyle)
                   ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
-                  : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
+                  : 'bg-surface-deep/95 border border-rmpg-500/50 hover:bg-gray-900/30'
               }`}
               style={isMobile
                 ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
@@ -6127,20 +6365,31 @@ export default function MapPage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
+            <div className="flex-1 min-h-0 overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
               {sidebarTab === 'units' && (
                 <div className="divide-y divide-rmpg-700/50">
                   {filteredUnits.map((unit) => {
                     const hasCoords = unit.latitude != null && unit.longitude != null;
                     const statusColor = UNIT_STATUS_COLORS[unit.status];
+                    const isFocused = focusedUnitId === String(unit.id);
                     return (
                       <button
                         key={unit.id}
-                        onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
-                        disabled={!hasCoords}
-                        className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
-                          hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
-                        }`}
+                        onClick={() => {
+                          // Always remember the click — even units without
+                          // coords get a focus marker so the operator can
+                          // see "I clicked U-12, it has no GPS fix" rather
+                          // than the click feeling silently dropped.
+                          setFocusedUnitId(String(unit.id));
+                          if (hasCoords) panTo(unit.latitude!, unit.longitude!);
+                        }}
+                        disabled={false}
+                        aria-current={isFocused ? 'true' : undefined}
+                        className={`w-full text-left px-3 py-2.5 transition-colors border-l-2 ${
+                          isFocused
+                            ? 'bg-rmpg-800/60 border-l-[var(--brand-gold)]'
+                            : 'border-l-transparent hover:bg-rmpg-800/50'
+                        } ${hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'}`}
                       >
                         <div className="flex items-center gap-2">
                           <div
@@ -6149,7 +6398,7 @@ export default function MapPage() {
                           />
                           <span className="text-[11px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                           {unit.gps_source === 'clearpathgps' && (
-                            <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                            <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-border-default/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                           )}
                           <span className="text-[9px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                         </div>
@@ -6177,22 +6426,30 @@ export default function MapPage() {
                     const hasCoords = call.latitude != null && call.longitude != null;
                     const pColor = PRIORITY_COLORS[call.priority] || '#666666';
                     const { category } = getIncidentCategory(call.incident_type);
+                    const isFocused = focusedCallId === String(call.id);
+                    const focusCall = () => {
+                      setFocusedCallId(String(call.id));
+                      if (hasCoords) panTo(call.latitude!, call.longitude!);
+                    };
                     return (
                       <div
                         role="button"
                         tabIndex={0}
                         key={call.id}
-                        onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hasCoords && panTo(call.latitude!, call.longitude!); } }}
-                        className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
-                          hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
-                        }`}
+                        onClick={focusCall}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); focusCall(); } }}
+                        aria-current={isFocused ? 'true' : undefined}
+                        className={`w-full text-left px-3 py-2.5 transition-colors border-l-2 ${
+                          isFocused
+                            ? 'bg-rmpg-800/60 border-l-[var(--brand-gold)]'
+                            : 'border-l-transparent hover:bg-rmpg-800/50'
+                        } ${hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'}`}
                       >
                         <div className="flex items-center gap-2">
                           <span
                             className="text-[8px] font-mono font-bold px-1.5 py-0.5"
                             style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}
-                          >{call.priority}</span>
+                          >{(call.priority || '').toUpperCase()}</span>
                           <span className="text-[10px] font-mono font-bold text-rmpg-100 flex-1">{call.call_number}</span>
                           <span className="text-[8px] font-mono text-rmpg-400 uppercase font-bold">{call.status.replace(/_/g, ' ')}</span>
                         </div>
@@ -6217,7 +6474,7 @@ export default function MapPage() {
                           {call.status === 'dispatched' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCallStatusChange(call.id, 'enroute'); }}
-                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-gray-900/30 text-gray-400 border border-gray-700/40 hover:bg-gray-800/40 transition-colors"
+                              className="px-1.5 py-0.5 text-[8px] font-bold font-mono bg-gray-900/30 text-gray-400 border border-border-default/40 hover:bg-gray-800/40 transition-colors"
                             >
                               EN ROUTE
                             </button>
@@ -6456,7 +6713,7 @@ export default function MapPage() {
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }} />
                         <span className="text-[12px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
                         {unit.gps_source === 'clearpathgps' && (
-                          <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-gray-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                          <span className="text-[7px] font-bold px-1 py-0 bg-gray-900/40 text-gray-400 border border-border-default/30" title="ClearPathGPS Hardware Tracker">CPG</span>
                         )}
                         <span className="text-[10px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>

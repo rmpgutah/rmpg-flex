@@ -49,8 +49,10 @@ export interface TripDetail extends Trip {
 export function useUnitTrips(unitId?: number) {
   const [trips, setTrips] = useState<Trip[]>([]);
   const reload = useCallback(() => {
-    if (!unitId) return;
-    apiFetch<Trip[]>(`/dispatch/trips?unit_id=${unitId}&limit=50`).then(setTrips).catch(console.error);
+    // No unit assigned → fall back to the agency-wide recent trip log so the
+    // TRIPS view is always viewable (unit_id is optional on the endpoint).
+    const q = unitId ? `unit_id=${unitId}&limit=50` : 'limit=50';
+    apiFetch<Trip[]>(`/dispatch/trips?${q}`).then(setTrips).catch(console.error);
   }, [unitId]);
   useEffect(reload, [reload]);
   return { trips, reload };

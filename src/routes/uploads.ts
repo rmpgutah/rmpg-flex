@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { jwtVerify } from 'jose';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { ensureDefaultDocumentsFolder } from './documents/folders';
 
 const uploads = new Hono<Env>();
 
@@ -13,6 +14,16 @@ const ALLOWED_MIME = new Set([
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/plain', 'text/csv',
+  // Document Writer saves rich documents as .html (see client/src/pages/
+  // document-writer). The route was built to accept those uploads (folder_id
+  // handling below) but this allowlist omitted the MIME, so every save 400'd
+  // ("File type text/html is not allowed") and the page stayed "Unsaved".
+  'text/html',
+  // Text-editor editable types — open in the in-app TextEditorPage
+  'application/json', 'text/markdown', 'text/x-markdown',
+  'text/xml', 'application/xml',
+  'text/javascript', 'application/javascript',
+  'text/x-python', 'text/x-sh', 'text/x-yaml', 'application/x-yaml',
   'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
   'audio/mpeg', 'audio/wav', 'audio/ogg',
 ]);
@@ -173,6 +184,7 @@ uploads.get('/:fileId/thumbnail', async (c) => {
     c.header('Content-Type', att.mime_type);
     c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
     c.header('Cache-Control', 'private, max-age=600');
+    c.header('X-Content-Type-Options', 'nosniff');
     return c.body(data);
   } catch (err) {
     console.error('Thumbnail error:', err);
@@ -220,6 +232,8 @@ uploads.get('/:fileId', async (c) => {
     c.header('Content-Type', att.mime_type);
     c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
     c.header('Cache-Control', 'private, max-age=300');
+    c.header('X-Content-Type-Options', 'nosniff');
+    c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
     return c.body(data);
   } catch (err) {
     console.error('Download error:', err);
@@ -249,6 +263,31 @@ uploads.post('/', async (c) => {
     const entityType = formData.get('entity_type') ? String(formData.get('entity_type')) : null;
     const entityIdRaw = formData.get('entity_id') ? String(formData.get('entity_id')) : null;
     const entityId = entityIdRaw ? parseInt(entityIdRaw, 10) : null;
+
+    // Direct folder placement: callers (PDF editor, document writer, Documents
+    // page) may pass `folder_id` to file the upload straight into a
+    // document_folders row via attachments.folder_id, avoiding a second
+    // move-file round-trip. Also accept entity_type=document_folder as an alias.
+    const folderIdRaw = formData.get('folder_id')
+      ? String(formData.get('folder_id'))
+      : (entityType === 'document_folder' && entityIdRaw ? entityIdRaw : null);
+    const folderId = folderIdRaw && /^\d+$/.test(folderIdRaw) ? parseInt(folderIdRaw, 10) : null;
+
+    // Loose documents — no explicit folder AND no entity binding (Document
+    // Writer, blank PDF, PDF editor saved without a source folder) — auto-file
+    // into the default "Saved Documents" bucket so every saved document is
+    // preserved + organized instead of landing unfiled and invisible. Entity
+    // attachments (evidence, person/ID images, call/company docs — entityType set)
+    // and explicitly-foldered uploads are untouched. Best-effort: if the folder
+    // can't be resolved, the upload still succeeds (just unfiled).
+    let effectiveFolderId = folderId;
+    if (effectiveFolderId == null && entityType == null) {
+      try {
+        effectiveFolderId = await ensureDefaultDocumentsFolder(db, userId);
+      } catch (e) {
+        console.warn('[uploads] default documents folder resolve failed', e);
+      }
+    }
 
     const results: any[] = [];
 
@@ -284,6 +323,16 @@ uploads.post('/', async (c) => {
         userId,
       );
 
+      if (effectiveFolderId != null) {
+        // Best-effort: file the attachment into the requested (or default) folder.
+        // Guarded so a missing/invalid folder never fails the whole upload.
+        try {
+          await execute(db, 'UPDATE attachments SET folder_id = ? WHERE file_id = ?', effectiveFolderId, fileId);
+        } catch (e) {
+          console.warn('Upload: folder placement failed for', fileId, e);
+        }
+      }
+
       const row = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
       if (row) results.push(row);
     }
@@ -306,10 +355,78 @@ uploads.post('/', async (c) => {
   }
 });
 
+// Create a blank named file in R2+DB — used by the text editor "New file" flow.
+// POST /api/uploads/create  { name, mime_type, folder_id? }
+uploads.post('/create', async (c) => {
+  try {
+    const auth = await resolveAuth(c);
+    if (!auth || !auth.userId) return c.json({ error: 'Authentication required' }, 401);
+    const db = getDb(c.env);
+    const body = await c.req.json() as { name?: string; mime_type?: string; folder_id?: number | null };
+    const name = (body.name || 'untitled.txt').trim();
+    const mimeType = (body.mime_type || 'text/plain').trim();
+    if (!ALLOWED_MIME.has(mimeType)) return c.json({ error: `File type ${mimeType} is not allowed` }, 400);
+
+    const fileId = crypto.randomUUID();
+    const ext = extFor(name, mimeType);
+    const r2Key = `attachments/${fileId}${ext}`;
+
+    await c.env.UPLOADS.put(r2Key, new Uint8Array(0), {
+      httpMetadata: { contentType: mimeType },
+    });
+
+    await execute(
+      db,
+      `INSERT INTO attachments (file_id, original_name, stored_name, file_path, mime_type, file_size, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, 0, ?)`,
+      fileId, name, `${fileId}${ext}`, r2Key, mimeType, auth.userId,
+    );
+
+    let effectiveFolderId: number | null = body.folder_id ?? null;
+    if (effectiveFolderId == null) {
+      try { effectiveFolderId = await ensureDefaultDocumentsFolder(db, auth.userId); } catch { /* non-fatal */ }
+    }
+    if (effectiveFolderId != null) {
+      await execute(db, 'UPDATE attachments SET folder_id = ? WHERE file_id = ?', effectiveFolderId, fileId).catch(() => {});
+    }
+
+    const row = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
+    return c.json(row, 201);
+  } catch (err) {
+    console.error('Create file error:', err);
+    return c.json({ error: 'Failed to create file', code: 'CREATE_FILE_ERROR' }, 500);
+  }
+});
+
+// Save text content back into an existing attachment in R2.
+// PUT /api/uploads/:fileId/content  body = raw text
+uploads.put('/:fileId/content', async (c) => {
+  try {
+    const auth = await resolveAuth(c);
+    if (!auth || auth.username === 'signed-access') return c.json({ error: 'Authentication required' }, 401);
+    const db = getDb(c.env);
+    const fileId = c.req.param('fileId');
+    const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
+    if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
+
+    const text = await c.req.text();
+    const encoded = new TextEncoder().encode(text);
+    await c.env.UPLOADS.put(att.file_path, encoded, {
+      httpMetadata: { contentType: att.mime_type || 'text/plain' },
+    });
+    await execute(db, 'UPDATE attachments SET file_size = ? WHERE file_id = ?', encoded.byteLength, fileId);
+
+    return c.json({ ok: true, file_id: fileId, file_size: encoded.byteLength });
+  } catch (err) {
+    console.error('Save content error:', err);
+    return c.json({ error: 'Failed to save content', code: 'SAVE_CONTENT_ERROR' }, 500);
+  }
+});
+
 uploads.put('/:fileId/link', async (c) => {
   try {
     const auth = await resolveAuth(c);
-    if (!auth) return c.json({ error: 'Authentication required' }, 401);
+    if (!auth || auth.username === 'signed-access') return c.json({ error: 'Authentication required' }, 401);
     const db = getDb(c.env);
     const fileId = c.req.param('fileId');
     const body = await c.req.json();
@@ -337,17 +454,19 @@ uploads.put('/:fileId/link', async (c) => {
 
 uploads.delete('/:fileId', async (c) => {
   try {
-    const db = getDb(c.env);
     const auth = await resolveAuth(c);
-    if (!auth || !auth.userId) return c.json({ error: 'Authentication required' }, 401);
+    if (!auth || auth.username === 'signed-access') return c.json({ error: 'Authentication required' }, 401);
+    const db = getDb(c.env);
     const userId = auth.userId;
     const fileId = c.req.param('fileId');
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const user = c.get('user') as { id: number; role: string } | undefined;
+    // This router is mounted auth:'public', so the global authMiddleware never
+    // runs and c.get('user') is always undefined here — use the role from
+    // resolveAuth()'s verified JWT instead, or the admin override never fires.
     const ADMIN_ROLES = new Set(['admin', 'manager', 'supervisor']);
-    if (att.uploaded_by !== userId && !ADMIN_ROLES.has(user?.role ?? '')) {
+    if (att.uploaded_by !== userId && !ADMIN_ROLES.has(auth.role)) {
       return c.json({ error: 'Not authorized to delete this file', code: 'FORBIDDEN' }, 403);
     }
 

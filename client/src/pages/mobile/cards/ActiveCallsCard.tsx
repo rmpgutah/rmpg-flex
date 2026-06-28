@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, Copy } from 'lucide-react';
+import { Eye, Copy, ScanLine } from 'lucide-react';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../../hooks/useApi';
@@ -131,6 +131,11 @@ export default function ActiveCallsCard() {
     if (call.call_number) navigate(`/dispatch?call=${call.call_number}`);
   };
 
+  // On-scene ALPR: open the field camera scoped to this call. Photos taken
+  // there auto-attach to the call and every vehicle is extracted → a record
+  // is created/linked to the call.
+  const scanForCall = (call: CallRow) => navigate(`/field-camera?call_id=${call.id}&alpr=1`);
+
   // Right-click menu for a call row. 'Open call' reuses handleRowClick;
   // copy items use the standalone clipboard helper (no toast).
   const buildCallMenu = (c: CallRow, addr: string): ContextMenuItem[] => {
@@ -143,6 +148,11 @@ export default function ActiveCallsCard() {
         onClick: () => handleRowClick(c),
       },
       separator(),
+      {
+        label: 'Scan vehicles (ALPR)',
+        icon: <ScanLine size={12} />,
+        onClick: () => scanForCall(c),
+      },
       {
         label: 'Copy call #',
         icon: <Copy size={12} />,
@@ -173,23 +183,23 @@ export default function ActiveCallsCard() {
   // ─── Render ───────────────────────────────────────────────
   if (loading) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">ACTIVE CALLS</h2>
-        <div className="h-[200px] animate-pulse bg-[#1a1a1a] border border-[#222]" />
+        <div className="h-[200px] animate-pulse bg-surface-raised border border-border-default" />
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">ACTIVE CALLS</h2>
         <div className="flex items-center justify-between gap-2">
           <span className="text-amber-400 text-xs">{error}</span>
           <button
             type="button"
             onClick={() => { setLoading(true); fetchCalls(); }}
-            className="min-h-[44px] h-11 px-3 bg-[#1a1a1a] border border-[#222] text-gray-300 text-xs uppercase tracking-widest"
+            className="min-h-[44px] h-11 px-3 bg-surface-raised border border-border-default text-rmpg-300 text-xs uppercase tracking-widest"
           >
             Retry
           </button>
@@ -199,11 +209,11 @@ export default function ActiveCallsCard() {
   }
 
   return (
-    <section className="bg-[#141414] border border-[#222] p-3">
+    <section className="bg-surface-base border border-border-default p-3">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest">ACTIVE CALLS</h2>
         {geoStatus === 'denied' ? (
-          <span className="text-gray-500 text-[10px] italic">Enable Location in Settings</span>
+          <span className="text-rmpg-500 text-[10px] italic">Enable Location in Settings</span>
         ) : (
           <button
             type="button"
@@ -211,7 +221,7 @@ export default function ActiveCallsCard() {
             aria-pressed={showDistance}
             className={[
               'h-8 px-2 text-[10px] uppercase tracking-widest border',
-              showDistance ? 'text-[#d4a017] border-[#d4a017]' : 'text-gray-400 border-[#222]',
+              showDistance ? 'text-[#d4a017] border-[#d4a017]' : 'text-rmpg-400 border-border-default',
             ].join(' ')}
           >
             {showDistance ? 'Distance ON' : 'Show Distance'}
@@ -225,7 +235,7 @@ export default function ActiveCallsCard() {
       </div>
 
       {visible.length === 0 ? (
-        <p className="text-gray-500 text-xs italic">No active calls.</p>
+        <p className="text-rmpg-500 text-xs italic">No active calls.</p>
       ) : (
         <ul>
           {visible.map((c, i) => {
@@ -233,24 +243,33 @@ export default function ActiveCallsCard() {
             const dist = distanceFor(c);
             const isLast = i === visible.length - 1;
             return (
-              <li key={c.id}>
+              <li
+                key={c.id}
+                className={['flex items-center', isLast ? '' : 'border-b border-border-default'].join(' ')}
+              >
                 <button
                   type="button"
                   onClick={() => handleRowClick(c)}
                   onContextMenu={(e) => openMenu(e, buildCallMenu(c, addr))}
-                  className={[
-                    'w-full min-h-[44px] py-2 text-white text-xs flex items-center justify-between gap-2 text-left',
-                    isLast ? '' : 'border-b border-[#1a1a1a]',
-                  ].join(' ')}
+                  className="flex-1 min-w-0 min-h-[44px] py-2 text-rmpg-100 text-xs flex items-center justify-between gap-2 text-left"
                 >
                   <span className="flex-1 min-w-0 truncate">
                     <span className="font-mono text-[#d4a017]">{c.call_number || `#${c.id}`}</span>
-                    {c.incident_type ? <span className="text-gray-300"> · {c.incident_type}</span> : null}
-                    {addr ? <span className="text-gray-500"> · {addr}</span> : null}
+                    {c.incident_type ? <span className="text-rmpg-300"> · {c.incident_type}</span> : null}
+                    {addr ? <span className="text-rmpg-500"> · {addr}</span> : null}
                   </span>
-                  <span className="text-gray-400 text-[10px] font-mono shrink-0">
+                  <span className="text-rmpg-400 text-[10px] font-mono shrink-0">
                     {dist ? `${dist} · ` : ''}{ageLabel(c.created_at)}
                   </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scanForCall(c)}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-[#888] hover:text-[#d4a017] shrink-0"
+                  aria-label={`Scan vehicles on call ${c.call_number || c.id}`}
+                  title="Scan vehicles (ALPR)"
+                >
+                  <ScanLine className="w-4 h-4" />
                 </button>
               </li>
             );
