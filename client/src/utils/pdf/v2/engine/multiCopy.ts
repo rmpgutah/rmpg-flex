@@ -124,10 +124,6 @@ function renderLeftPanel<T>(
       if (typeof section === 'function') {
         const ctx = makeRenderContext(doc, layout, prims, data);
         (section as RenderCallback<T>)(ctx, data);
-      } else if ((section as FixedLayoutSection<T>).kind === 'fixed-layout') {
-        const fixed = section as FixedLayoutSection<T>;
-        if (fixed.visibleIf && !fixed.visibleIf(data)) continue;
-        renderFixedLayoutSection(doc, layout, fixed, data);
       } else {
         const s = section as SchemaSection<T>;
         if (s.visibleIf && !s.visibleIf(data)) continue;
