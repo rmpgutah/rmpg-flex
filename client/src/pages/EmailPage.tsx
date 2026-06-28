@@ -2804,8 +2804,18 @@ export default function EmailPage() {
         if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
         if (searchFilters.isFlagged && !msg.isFlagged) return false;
         if (searchFilters.unreadOnly && msg.isRead) return false;
-        if (searchFilters.dateFrom && msg.receivedAt < searchFilters.dateFrom) return false;
-        if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
+        if (searchFilters.dateFrom) {
+          const msgTime = new Date(msg.receivedAt).getTime();
+          const fromTime = new Date(searchFilters.dateFrom).getTime();
+          if (!Number.isNaN(msgTime) && !Number.isNaN(fromTime) && msgTime < fromTime) return false;
+        }
+        if (searchFilters.dateTo) {
+          const msgTime = new Date(msg.receivedAt).getTime();
+          const endOfDay = new Date(searchFilters.dateTo);
+          endOfDay.setHours(23, 59, 59, 999);
+          const toTime = endOfDay.getTime();
+          if (!Number.isNaN(msgTime) && !Number.isNaN(toTime) && msgTime > toTime) return false;
+        }
         return true;
       })
     : displayedMessages;
