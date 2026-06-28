@@ -1618,7 +1618,7 @@ export default function Layout() {
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main
           id="main-content"
-          className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
+          className="spm-page flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
           key={location.pathname}
           style={{ background: 'var(--surface-sunken)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
           // Persist scroll per-path so SW-update reloads (and any other full

@@ -7,157 +7,286 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F07C2D3E2FE99AE4005907A2 /* CoreAPI in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000201 /* CoreAPI */; };
-		F07C2D3F2FE99AE4005907A2 /* CoreAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000202 /* CoreAuth */; };
-		F07C2D402FE99AE4005907A2 /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000203 /* DesignSystem */; };
-		F07C2D412FE99AE4005907A2 /* FeatureShell in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000204 /* FeatureShell */; };
-		F07C2D422FE99AE4005907A2 /* FeatureQuickActions in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000000000000000000205 /* FeatureQuickActions */; };
+		06EB912CC10ED28DB5213ED2 /* FeatureRunPlate in Frameworks */ = {isa = PBXBuildFile; productRef = 59E66F9FE07259E6D20CF421 /* FeatureRunPlate */; };
+		0A9737D94A71434F737886F0 /* CoreOffline in Frameworks */ = {isa = PBXBuildFile; productRef = AF117CDBE9058A1FF932076F /* CoreOffline */; };
+		156466D804299AEC4A545FA0 /* FeatureQuickActions in Frameworks */ = {isa = PBXBuildFile; productRef = DBAA3470FDEE6BE81DB9CEC5 /* FeatureQuickActions */; };
+		168CA34185EBE4E30E48BBD5 /* FeatureDuty in Frameworks */ = {isa = PBXBuildFile; productRef = D5BEEE071D31E0FAF865E712 /* FeatureDuty */; };
+		2C5555CA845BC44E708365AA /* CoreAPI in Frameworks */ = {isa = PBXBuildFile; productRef = 680664566D68586AE435103B /* CoreAPI */; };
+		39FADE99DEB7260981D286B6 /* FeatureLiveActivity in Frameworks */ = {isa = PBXBuildFile; productRef = 960E735C132970B00152992F /* FeatureLiveActivity */; };
+		92F3C59419AE940AE902A900 /* RMPGFlexConnectApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7E5783C259168E1A8D4A17 /* RMPGFlexConnectApp.swift */; };
+		A3D8C2E99E4DB62F2A1A2093 /* CoreAudioService in Frameworks */ = {isa = PBXBuildFile; productRef = 5FFB7548B40A1EB36E9C4F29 /* CoreAudioService */; };
+		B31418CCB1D8E2E115039C69 /* FeatureReports in Frameworks */ = {isa = PBXBuildFile; productRef = 65A37732CBA55E86881754E2 /* FeatureReports */; };
+		B3BF904DB29F48D8B4C8146A /* CorePush in Frameworks */ = {isa = PBXBuildFile; productRef = 677FE4CF539A230385F20F5D /* CorePush */; };
+		B58189010961A5CC5CCF9487 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8CB314143260A05599117A57 /* Assets.xcassets */; };
+		CE5FE58CA4571A402AADB9D7 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A313F8A8FF353ED28953B20A /* ContentView.swift */; };
+		DBB13AD3BD47B75B386DA417 /* FeatureShell in Frameworks */ = {isa = PBXBuildFile; productRef = F7210D6B99F15053526221A9 /* FeatureShell */; };
+		E07C61BF57C3EF58998637A6 /* FeatureRunID in Frameworks */ = {isa = PBXBuildFile; productRef = 5EF5C6908311F2108DEDE5D2 /* FeatureRunID */; };
+		E49D921BA930AC59E5CE0349 /* CoreLocationService in Frameworks */ = {isa = PBXBuildFile; productRef = DFC777C5C7373664D8AC54B8 /* CoreLocationService */; };
+		E8A0F21D29A71C00CA49E13C /* FeatureCFS in Frameworks */ = {isa = PBXBuildFile; productRef = DFC531B0A86D55ADD23D92E8 /* FeatureCFS */; };
+		E8A427A5E6A0B8E5D8F5A170 /* CoreAuth in Frameworks */ = {isa = PBXBuildFile; productRef = DA706AAD57438459F3B454DC /* CoreAuth */; };
+		EA2B740D891DBC5DF5A265E0 /* FeatureMap in Frameworks */ = {isa = PBXBuildFile; productRef = 57BEC3D59510E2BBC58FB992 /* FeatureMap */; };
+		F257934C2A6CE641A6F82B0E /* FeatureWidgets in Frameworks */ = {isa = PBXBuildFile; productRef = 6CA2021EC5F0B786E008BD8C /* FeatureWidgets */; };
+		FC644B412B11381FFCF18AC1 /* DesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = 75B4EDC7B062A8824F77F885 /* DesignSystem */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		BB0000000000000000000020 /* RMPG Flex Connect.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "RMPG Flex Connect.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		0D7E5783C259168E1A8D4A17 /* RMPGFlexConnectApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RMPGFlexConnectApp.swift; sourceTree = "<group>"; };
+		0F1D0176DE9827B27643BC34 /* FeatureShell */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureShell; path = Packages/FeatureShell; sourceTree = SOURCE_ROOT; };
+		19DF5F44291F797AB29D4650 /* FeatureMap */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureMap; path = Packages/FeatureMap; sourceTree = SOURCE_ROOT; };
+		335244FC5EB04B076236E66E /* FeatureRunID */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureRunID; path = Packages/FeatureRunID; sourceTree = SOURCE_ROOT; };
+		39C93AED10E6AA3A80D2C552 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		3E30FB564DE9384E2FAC8B2A /* CoreAuth */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CoreAuth; path = Packages/CoreAuth; sourceTree = SOURCE_ROOT; };
+		436E9BAC9C007AEC00E9903C /* FeatureRunPlate */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureRunPlate; path = Packages/FeatureRunPlate; sourceTree = SOURCE_ROOT; };
+		4D93B79E4024DA3F2968E1E0 /* FeatureLiveActivity */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureLiveActivity; path = Packages/FeatureLiveActivity; sourceTree = SOURCE_ROOT; };
+		5516A0933A96B8F6C0DB7E5D /* FeatureWidgets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureWidgets; path = Packages/FeatureWidgets; sourceTree = SOURCE_ROOT; };
+		5CD74143DF18C152A4831338 /* CoreAudioService */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CoreAudioService; path = Packages/CoreAudioService; sourceTree = SOURCE_ROOT; };
+		65BA1CD0A829B98FF12560B1 /* CorePush */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CorePush; path = Packages/CorePush; sourceTree = SOURCE_ROOT; };
+		6E6E87EB37EDE28B32A55CFC /* CoreOffline */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CoreOffline; path = Packages/CoreOffline; sourceTree = SOURCE_ROOT; };
+		89D572558355532A36A0A521 /* FeatureDuty */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureDuty; path = Packages/FeatureDuty; sourceTree = SOURCE_ROOT; };
+		8CB314143260A05599117A57 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		993E3ECE59ED67325E13B617 /* FeatureQuickActions */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureQuickActions; path = Packages/FeatureQuickActions; sourceTree = SOURCE_ROOT; };
+		9A75085178A6547245FF0E82 /* FeatureCFS */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureCFS; path = Packages/FeatureCFS; sourceTree = SOURCE_ROOT; };
+		A313F8A8FF353ED28953B20A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		C14B0C6D115DAB73C4A44A1C /* DesignSystem */ = {isa = PBXFileReference; lastKnownFileType = folder; name = DesignSystem; path = Packages/DesignSystem; sourceTree = SOURCE_ROOT; };
+		C5E86608198005275835C7F0 /* CoreAPI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CoreAPI; path = Packages/CoreAPI; sourceTree = SOURCE_ROOT; };
+		CD47E80995EC0A78AB779EAB /* RMPGFlexConnect.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RMPGFlexConnect.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DDF83EC05EDD17900A4B02DB /* FeatureReports */ = {isa = PBXFileReference; lastKnownFileType = folder; name = FeatureReports; path = Packages/FeatureReports; sourceTree = SOURCE_ROOT; };
+		EBFE128E9B894A93E938054F /* CoreLocationService */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CoreLocationService; path = Packages/CoreLocationService; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		BB0000000000000000000001 /* RMPGFlexConnect */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = RMPGFlexConnect;
-			sourceTree = "<group>";
-		};
-/* End PBXFileSystemSynchronizedRootGroup section */
-
 /* Begin PBXFrameworksBuildPhase section */
-		BB0000000000000000000051 /* Frameworks */ = {
+		80A322414B4F160C2F2B662F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
-				F07C2D422FE99AE4005907A2 /* FeatureQuickActions in Frameworks */,
-				F07C2D412FE99AE4005907A2 /* FeatureShell in Frameworks */,
-				F07C2D402FE99AE4005907A2 /* DesignSystem in Frameworks */,
-				F07C2D3F2FE99AE4005907A2 /* CoreAuth in Frameworks */,
-				F07C2D3E2FE99AE4005907A2 /* CoreAPI in Frameworks */,
+				2C5555CA845BC44E708365AA /* CoreAPI in Frameworks */,
+				E8A427A5E6A0B8E5D8F5A170 /* CoreAuth in Frameworks */,
+				FC644B412B11381FFCF18AC1 /* DesignSystem in Frameworks */,
+				DBB13AD3BD47B75B386DA417 /* FeatureShell in Frameworks */,
+				156466D804299AEC4A545FA0 /* FeatureQuickActions in Frameworks */,
+				168CA34185EBE4E30E48BBD5 /* FeatureDuty in Frameworks */,
+				E8A0F21D29A71C00CA49E13C /* FeatureCFS in Frameworks */,
+				0A9737D94A71434F737886F0 /* CoreOffline in Frameworks */,
+				E49D921BA930AC59E5CE0349 /* CoreLocationService in Frameworks */,
+				B3BF904DB29F48D8B4C8146A /* CorePush in Frameworks */,
+				A3D8C2E99E4DB62F2A1A2093 /* CoreAudioService in Frameworks */,
+				06EB912CC10ED28DB5213ED2 /* FeatureRunPlate in Frameworks */,
+				E07C61BF57C3EF58998637A6 /* FeatureRunID in Frameworks */,
+				EA2B740D891DBC5DF5A265E0 /* FeatureMap in Frameworks */,
+				B31418CCB1D8E2E115039C69 /* FeatureReports in Frameworks */,
+				39FADE99DEB7260981D286B6 /* FeatureLiveActivity in Frameworks */,
+				F257934C2A6CE641A6F82B0E /* FeatureWidgets in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		BB0000000000000000000010 = {
+		210FE38547CCAE3F9183962C /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				BB0000000000000000000001 /* RMPGFlexConnect */,
-				BB0000000000000000000100 /* Packages */,
-				BB0000000000000000000011 /* Products */,
-			);
-			sourceTree = "<group>";
-			usesTabs = 0;
-		};
-		BB0000000000000000000011 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				BB0000000000000000000020 /* RMPG Flex Connect.app */,
+				CD47E80995EC0A78AB779EAB /* RMPGFlexConnect.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		BB0000000000000000000100 /* Packages */ = {
+		81CA0EDC63E93741B1786A2C /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				C5E86608198005275835C7F0 /* CoreAPI */,
+				5CD74143DF18C152A4831338 /* CoreAudioService */,
+				3E30FB564DE9384E2FAC8B2A /* CoreAuth */,
+				EBFE128E9B894A93E938054F /* CoreLocationService */,
+				6E6E87EB37EDE28B32A55CFC /* CoreOffline */,
+				65BA1CD0A829B98FF12560B1 /* CorePush */,
+				C14B0C6D115DAB73C4A44A1C /* DesignSystem */,
+				9A75085178A6547245FF0E82 /* FeatureCFS */,
+				89D572558355532A36A0A521 /* FeatureDuty */,
+				4D93B79E4024DA3F2968E1E0 /* FeatureLiveActivity */,
+				19DF5F44291F797AB29D4650 /* FeatureMap */,
+				993E3ECE59ED67325E13B617 /* FeatureQuickActions */,
+				DDF83EC05EDD17900A4B02DB /* FeatureReports */,
+				335244FC5EB04B076236E66E /* FeatureRunID */,
+				436E9BAC9C007AEC00E9903C /* FeatureRunPlate */,
+				0F1D0176DE9827B27643BC34 /* FeatureShell */,
+				5516A0933A96B8F6C0DB7E5D /* FeatureWidgets */,
 			);
-			name = Packages;
+			path = Packages;
+			sourceTree = "<group>";
+		};
+		938ADBADC155BD9E488AC91E /* RMPGFlexConnect */ = {
+			isa = PBXGroup;
+			children = (
+				8CB314143260A05599117A57 /* Assets.xcassets */,
+				A313F8A8FF353ED28953B20A /* ContentView.swift */,
+				39C93AED10E6AA3A80D2C552 /* Info.plist */,
+				0D7E5783C259168E1A8D4A17 /* RMPGFlexConnectApp.swift */,
+			);
+			path = RMPGFlexConnect;
+			sourceTree = "<group>";
+		};
+		DF53D150C29967B30A8ED56B = {
+			isa = PBXGroup;
+			children = (
+				81CA0EDC63E93741B1786A2C /* Packages */,
+				938ADBADC155BD9E488AC91E /* RMPGFlexConnect */,
+				210FE38547CCAE3F9183962C /* Products */,
+			);
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		BB0000000000000000000030 /* RMPG Flex Connect */ = {
+		3F94386851AB7A4DC2EA8686 /* RMPGFlexConnect */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BB0000000000000000000040 /* Build configuration list for PBXNativeTarget "RMPG Flex Connect" */;
+			buildConfigurationList = 08967EA739701063302F5451 /* Build configuration list for PBXNativeTarget "RMPGFlexConnect" */;
 			buildPhases = (
-				BB0000000000000000000050 /* Sources */,
-				BB0000000000000000000051 /* Frameworks */,
-				BB0000000000000000000052 /* Resources */,
+				EC71D0A486EA94994068E684 /* Sources */,
+				D910C049E7763B21543D1B9C /* Resources */,
+				80A322414B4F160C2F2B662F /* Frameworks */,
 			);
 			buildRules = (
 			);
-			fileSystemSynchronizedGroups = (
-				BB0000000000000000000001 /* RMPGFlexConnect */,
+			dependencies = (
 			);
-			name = "RMPG Flex Connect";
+			name = RMPGFlexConnect;
 			packageProductDependencies = (
-				BB0000000000000000000201 /* CoreAPI */,
-				BB0000000000000000000202 /* CoreAuth */,
-				BB0000000000000000000203 /* DesignSystem */,
-				BB0000000000000000000204 /* FeatureShell */,
-				BB0000000000000000000205 /* FeatureQuickActions */,
+				680664566D68586AE435103B /* CoreAPI */,
+				DA706AAD57438459F3B454DC /* CoreAuth */,
+				75B4EDC7B062A8824F77F885 /* DesignSystem */,
+				F7210D6B99F15053526221A9 /* FeatureShell */,
+				DBAA3470FDEE6BE81DB9CEC5 /* FeatureQuickActions */,
+				D5BEEE071D31E0FAF865E712 /* FeatureDuty */,
+				DFC531B0A86D55ADD23D92E8 /* FeatureCFS */,
+				AF117CDBE9058A1FF932076F /* CoreOffline */,
+				DFC777C5C7373664D8AC54B8 /* CoreLocationService */,
+				677FE4CF539A230385F20F5D /* CorePush */,
+				5FFB7548B40A1EB36E9C4F29 /* CoreAudioService */,
+				59E66F9FE07259E6D20CF421 /* FeatureRunPlate */,
+				5EF5C6908311F2108DEDE5D2 /* FeatureRunID */,
+				57BEC3D59510E2BBC58FB992 /* FeatureMap */,
+				65A37732CBA55E86881754E2 /* FeatureReports */,
+				960E735C132970B00152992F /* FeatureLiveActivity */,
+				6CA2021EC5F0B786E008BD8C /* FeatureWidgets */,
 			);
 			productName = RMPGFlexConnect;
-			productReference = BB0000000000000000000020 /* RMPG Flex Connect.app */;
+			productReference = CD47E80995EC0A78AB779EAB /* RMPGFlexConnect.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		BB0000000000000000000070 /* Project object */ = {
+		C6C258C52F394079C3960F61 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1640;
+				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					3F94386851AB7A4DC2EA8686 = {
+						DevelopmentTeam = D3LYU7YCCN;
+						ProvisioningStyle = Automatic;
+					};
+				};
 			};
-			buildConfigurationList = BB0000000000000000000042 /* Build configuration list for PBXProject "RMPGFlexConnect" */;
+			buildConfigurationList = 30FC483449DA39B5A4A95E9A /* Build configuration list for PBXProject "RMPGFlexConnect" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
 				Base,
+				en,
 			);
-			mainGroup = BB0000000000000000000010;
+			mainGroup = DF53D150C29967B30A8ED56B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				BB0000000000000000000301 /* XCLocalSwiftPackageReference "Packages/CoreAPI" */,
-				BB0000000000000000000302 /* XCLocalSwiftPackageReference "Packages/CoreAuth" */,
-				BB0000000000000000000303 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */,
-				BB0000000000000000000304 /* XCLocalSwiftPackageReference "Packages/FeatureShell" */,
-				BB0000000000000000000305 /* XCLocalSwiftPackageReference "Packages/FeatureQuickActions" */,
+				370EC26768961D8D612B9C37 /* XCLocalSwiftPackageReference "Packages/CoreAPI" */,
+				5DBAB7DEA22548D3BBA49342 /* XCLocalSwiftPackageReference "Packages/CoreAudioService" */,
+				4A9A66876AA794C1216BDDAD /* XCLocalSwiftPackageReference "Packages/CoreAuth" */,
+				E4CD2C2004537FE55F38FA07 /* XCLocalSwiftPackageReference "Packages/CoreLocationService" */,
+				AE2D9D877704C05C789D62C5 /* XCLocalSwiftPackageReference "Packages/CoreOffline" */,
+				A8A6532F0D86D07E48EED183 /* XCLocalSwiftPackageReference "Packages/CorePush" */,
+				04C0BCD3D2E6BBA080F2A817 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */,
+				5AEC9492E680CD967E5CA804 /* XCLocalSwiftPackageReference "Packages/FeatureCFS" */,
+				E1C4BE976BF4157A67B170A1 /* XCLocalSwiftPackageReference "Packages/FeatureDuty" */,
+				222BBB7293D01D6E6A460706 /* XCLocalSwiftPackageReference "Packages/FeatureLiveActivity" */,
+				730C44563254FB397389EBF0 /* XCLocalSwiftPackageReference "Packages/FeatureMap" */,
+				1BEDE1E261FE564F459A28B3 /* XCLocalSwiftPackageReference "Packages/FeatureQuickActions" */,
+				6555E5C0C7772C20DBE891A2 /* XCLocalSwiftPackageReference "Packages/FeatureReports" */,
+				19671ED8D0B34D35EAD79544 /* XCLocalSwiftPackageReference "Packages/FeatureRunID" */,
+				B007E4F1F41C624676C420EB /* XCLocalSwiftPackageReference "Packages/FeatureRunPlate" */,
+				BCD3612F65F45DBD9C91D710 /* XCLocalSwiftPackageReference "Packages/FeatureShell" */,
+				EAF6FCA9583106E96B2FBD9A /* XCLocalSwiftPackageReference "Packages/FeatureWidgets" */,
 			);
-			preferredProjectObjectVersion = 100;
-			productRefGroup = BB0000000000000000000011 /* Products */;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 210FE38547CCAE3F9183962C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				BB0000000000000000000030 /* RMPG Flex Connect */,
+				3F94386851AB7A4DC2EA8686 /* RMPGFlexConnect */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		BB0000000000000000000052 /* Resources */ = {
+		D910C049E7763B21543D1B9C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				B58189010961A5CC5CCF9487 /* Assets.xcassets in Resources */,
 			);
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		BB0000000000000000000050 /* Sources */ = {
+		EC71D0A486EA94994068E684 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				CE5FE58CA4571A402AADB9D7 /* ContentView.swift in Sources */,
+				92F3C59419AE940AE902A900 /* RMPGFlexConnectApp.swift in Sources */,
 			);
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		BB0000000000000000000080 /* Debug configuration for PBXProject "RMPGFlexConnect" */ = {
+		00B767411AF0A48716A2521C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D3LYU7YCCN;
+				INFOPLIST_FILE = RMPGFlexConnect/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				OTHER_LDFLAGS = (
+					"-Wl,-weak_framework,DeveloperToolsSupport,-weak_framework,_MapKit_SwiftUI,-weak_framework,_Translation_SwiftUI,-weak_framework,SwiftData,-weak_framework,Symbols,-weak_framework,ActivityKit,-weak_framework,WidgetKit,-weak_framework,CoreImage,-weak_framework,Vision",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = us.rmpgutah.flexconnect;
+				PRODUCT_NAME = "RMPG Flex Connect";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		1D7FD2732C58FBD4E481F7B0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
 				CLANG_WARN_BOOL_CONVERSION = YES;
 				CLANG_WARN_COMMA = YES;
 				CLANG_WARN_CONSTANT_CONVERSION = YES;
 				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_EMPTY_BODY = YES;
 				CLANG_WARN_ENUM_CONVERSION = YES;
 				CLANG_WARN_INFINITE_RECURSION = YES;
@@ -165,51 +294,88 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = D3LYU7YCCN;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				EXCLUDED_ARCHS = "";
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
 					"$(inherited)",
+					"DEBUG=1",
 				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
-		BB0000000000000000000081 /* Release configuration for PBXProject "RMPGFlexConnect" */ = {
+		9F083559D22E9B9B89BC6FBF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D3LYU7YCCN;
+				INFOPLIST_FILE = RMPGFlexConnect/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				OTHER_LDFLAGS = (
+					"-Wl,-weak_framework,DeveloperToolsSupport,-weak_framework,_MapKit_SwiftUI,-weak_framework,_Translation_SwiftUI,-weak_framework,SwiftData,-weak_framework,Symbols,-weak_framework,ActivityKit,-weak_framework,WidgetKit,-weak_framework,CoreImage,-weak_framework,Vision",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = us.rmpgutah.flexconnect;
+				PRODUCT_NAME = "RMPG Flex Connect";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		B8798EBCC9C039C694488EBB /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
 				CLANG_WARN_BOOL_CONVERSION = YES;
 				CLANG_WARN_COMMA = YES;
 				CLANG_WARN_CONSTANT_CONVERSION = YES;
 				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
 				CLANG_WARN_EMPTY_BODY = YES;
 				CLANG_WARN_ENUM_CONVERSION = YES;
 				CLANG_WARN_INFINITE_RECURSION = YES;
@@ -217,186 +383,202 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = D3LYU7YCCN;
+				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				EXCLUDED_ARCHS = "";
+				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				ONLY_ACTIVE_ARCH = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
-		BB0000000000000000000082 /* Debug configuration for PBXNativeTarget "RMPG Flex Connect" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = D3LYU7YCCN;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "RMPG Flex Connect";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
-				INFOPLIST_KEY_NFCReaderUsageDescription = "Field token scan";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "MDT Connection";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Used to capture license plates, IDs, and scene photos.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Used to re-unlock the app during a shift.";
-				INFOPLIST_KEY_NSIdentityUsageDescription = "Officer ID";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Used to broadcast unit location during an active shift.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Used to attach location to events, dispatch, and call response.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to dictate notes and record audio for evidence.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = us.rmpgutah.flexconnect;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Debug;
-		};
-		BB0000000000000000000083 /* Release configuration for PBXNativeTarget "RMPG Flex Connect" */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = D3LYU7YCCN;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "RMPG Flex Connect";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
-				INFOPLIST_KEY_NFCReaderUsageDescription = "Field token scan";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "MDT Connection";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Used to capture license plates, IDs, and scene photos.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Used to re-unlock the app during a shift.";
-				INFOPLIST_KEY_NSIdentityUsageDescription = "Officer ID";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Used to broadcast unit location during an active shift.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Used to attach location to events, dispatch, and call response.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to dictate notes and record audio for evidence.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = us.rmpgutah.flexconnect;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		BB0000000000000000000040 /* Build configuration list for PBXNativeTarget "RMPG Flex Connect" */ = {
+		08967EA739701063302F5451 /* Build configuration list for PBXNativeTarget "RMPGFlexConnect" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB0000000000000000000082 /* Debug configuration for PBXNativeTarget "RMPG Flex Connect" */,
-				BB0000000000000000000083 /* Release configuration for PBXNativeTarget "RMPG Flex Connect" */,
+				00B767411AF0A48716A2521C /* Debug */,
+				9F083559D22E9B9B89BC6FBF /* Release */,
 			);
-			defaultConfigurationName = Release;
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
 		};
-		BB0000000000000000000042 /* Build configuration list for PBXProject "RMPGFlexConnect" */ = {
+		30FC483449DA39B5A4A95E9A /* Build configuration list for PBXProject "RMPGFlexConnect" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BB0000000000000000000080 /* Debug configuration for PBXProject "RMPGFlexConnect" */,
-				BB0000000000000000000081 /* Release configuration for PBXProject "RMPGFlexConnect" */,
+				1D7FD2732C58FBD4E481F7B0 /* Debug */,
+				B8798EBCC9C039C694488EBB /* Release */,
 			);
-			defaultConfigurationName = Release;
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		BB0000000000000000000301 /* XCLocalSwiftPackageReference "Packages/CoreAPI" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/CoreAPI;
-		};
-		BB0000000000000000000302 /* XCLocalSwiftPackageReference "Packages/CoreAuth" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/CoreAuth;
-		};
-		BB0000000000000000000303 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */ = {
+		04C0BCD3D2E6BBA080F2A817 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/DesignSystem;
 		};
-		BB0000000000000000000304 /* XCLocalSwiftPackageReference "Packages/FeatureShell" */ = {
+		19671ED8D0B34D35EAD79544 /* XCLocalSwiftPackageReference "Packages/FeatureRunID" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureRunID;
+		};
+		1BEDE1E261FE564F459A28B3 /* XCLocalSwiftPackageReference "Packages/FeatureQuickActions" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureQuickActions;
+		};
+		222BBB7293D01D6E6A460706 /* XCLocalSwiftPackageReference "Packages/FeatureLiveActivity" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureLiveActivity;
+		};
+		370EC26768961D8D612B9C37 /* XCLocalSwiftPackageReference "Packages/CoreAPI" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CoreAPI;
+		};
+		4A9A66876AA794C1216BDDAD /* XCLocalSwiftPackageReference "Packages/CoreAuth" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CoreAuth;
+		};
+		5AEC9492E680CD967E5CA804 /* XCLocalSwiftPackageReference "Packages/FeatureCFS" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureCFS;
+		};
+		5DBAB7DEA22548D3BBA49342 /* XCLocalSwiftPackageReference "Packages/CoreAudioService" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CoreAudioService;
+		};
+		6555E5C0C7772C20DBE891A2 /* XCLocalSwiftPackageReference "Packages/FeatureReports" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureReports;
+		};
+		730C44563254FB397389EBF0 /* XCLocalSwiftPackageReference "Packages/FeatureMap" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureMap;
+		};
+		A8A6532F0D86D07E48EED183 /* XCLocalSwiftPackageReference "Packages/CorePush" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CorePush;
+		};
+		AE2D9D877704C05C789D62C5 /* XCLocalSwiftPackageReference "Packages/CoreOffline" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CoreOffline;
+		};
+		B007E4F1F41C624676C420EB /* XCLocalSwiftPackageReference "Packages/FeatureRunPlate" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureRunPlate;
+		};
+		BCD3612F65F45DBD9C91D710 /* XCLocalSwiftPackageReference "Packages/FeatureShell" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/FeatureShell;
 		};
-		BB0000000000000000000305 /* XCLocalSwiftPackageReference "Packages/FeatureQuickActions" */ = {
+		E1C4BE976BF4157A67B170A1 /* XCLocalSwiftPackageReference "Packages/FeatureDuty" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/FeatureQuickActions;
+			relativePath = Packages/FeatureDuty;
+		};
+		E4CD2C2004537FE55F38FA07 /* XCLocalSwiftPackageReference "Packages/CoreLocationService" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CoreLocationService;
+		};
+		EAF6FCA9583106E96B2FBD9A /* XCLocalSwiftPackageReference "Packages/FeatureWidgets" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/FeatureWidgets;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		BB0000000000000000000201 /* CoreAPI */ = {
+		57BEC3D59510E2BBC58FB992 /* FeatureMap */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BB0000000000000000000301 /* XCLocalSwiftPackageReference "Packages/CoreAPI" */;
+			productName = FeatureMap;
+		};
+		59E66F9FE07259E6D20CF421 /* FeatureRunPlate */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FeatureRunPlate;
+		};
+		5EF5C6908311F2108DEDE5D2 /* FeatureRunID */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FeatureRunID;
+		};
+		5FFB7548B40A1EB36E9C4F29 /* CoreAudioService */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreAudioService;
+		};
+		65A37732CBA55E86881754E2 /* FeatureReports */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FeatureReports;
+		};
+		677FE4CF539A230385F20F5D /* CorePush */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CorePush;
+		};
+		680664566D68586AE435103B /* CoreAPI */ = {
+			isa = XCSwiftPackageProductDependency;
 			productName = CoreAPI;
 		};
-		BB0000000000000000000202 /* CoreAuth */ = {
+		6CA2021EC5F0B786E008BD8C /* FeatureWidgets */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BB0000000000000000000302 /* XCLocalSwiftPackageReference "Packages/CoreAuth" */;
-			productName = CoreAuth;
+			productName = FeatureWidgets;
 		};
-		BB0000000000000000000203 /* DesignSystem */ = {
+		75B4EDC7B062A8824F77F885 /* DesignSystem */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BB0000000000000000000303 /* XCLocalSwiftPackageReference "Packages/DesignSystem" */;
 			productName = DesignSystem;
 		};
-		BB0000000000000000000204 /* FeatureShell */ = {
+		960E735C132970B00152992F /* FeatureLiveActivity */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BB0000000000000000000304 /* XCLocalSwiftPackageReference "Packages/FeatureShell" */;
-			productName = FeatureShell;
+			productName = FeatureLiveActivity;
 		};
-		BB0000000000000000000205 /* FeatureQuickActions */ = {
+		AF117CDBE9058A1FF932076F /* CoreOffline */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BB0000000000000000000305 /* XCLocalSwiftPackageReference "Packages/FeatureQuickActions" */;
+			productName = CoreOffline;
+		};
+		D5BEEE071D31E0FAF865E712 /* FeatureDuty */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FeatureDuty;
+		};
+		DA706AAD57438459F3B454DC /* CoreAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreAuth;
+		};
+		DBAA3470FDEE6BE81DB9CEC5 /* FeatureQuickActions */ = {
+			isa = XCSwiftPackageProductDependency;
 			productName = FeatureQuickActions;
+		};
+		DFC531B0A86D55ADD23D92E8 /* FeatureCFS */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FeatureCFS;
+		};
+		DFC777C5C7373664D8AC54B8 /* CoreLocationService */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreLocationService;
+		};
+		F7210D6B99F15053526221A9 /* FeatureShell */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FeatureShell;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = BB0000000000000000000070 /* Project object */;
+	rootObject = C6C258C52F394079C3960F61 /* Project object */;
 }

@@ -16,6 +16,14 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+interface CameraOnlineState {
+  cpg_device_id: string;
+  cpg_display_name: string | null;
+  ignition_state: string | null;
+  last_synced_at: string | null;
+  camera_offline: boolean;
+}
+
 interface CpgStatus {
   configured: boolean;
   enabled: boolean;
@@ -25,6 +33,8 @@ interface CpgStatus {
   media_sync_enabled?: boolean;
   media_poll_interval_seconds?: number;
   last_media_sync?: string | null;
+  any_camera_offline?: boolean;
+  cameras?: CameraOnlineState[];
 }
 
 interface TripClip {
@@ -680,6 +690,41 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         )}
       </div>
 
+      {/* Camera offline banner — surfaces why on-demand video requests are
+          sitting at "Waiting for Camera…" upstream. Dashcam can only deliver
+          mp4s when the LTE modem is awake (ignition on). While the vehicle is
+          parked the cron poller intentionally pauses these chunks instead of
+          burning their attempt counter, so they fulfill the next time the
+          vehicle drives. (Auto-uploaded events — FCW, hard brake, lane
+          departure — are NOT affected; the camera pushes those in real time.) */}
+      {status?.configured && status.any_camera_offline && (status.cameras?.length ?? 0) > 0 && (
+        <div className="panel-beveled p-3 bg-amber-950/30 border-l-2 border-amber-500/70 space-y-2">
+          <div className="flex items-center gap-2 text-[11px] font-bold text-amber-300 uppercase tracking-wider">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            Camera offline — pending video requests are paused
+          </div>
+          <div className="text-[10px] text-amber-200/80 leading-snug">
+            ClearPath only delivers on-demand clips when the dashcam is online
+            (vehicle ignition on, LTE modem awake). Queued requests stay in
+            "Waiting for Camera…" upstream and will resume automatically the
+            next time the vehicle drives. Auto-events (FCW, hard brake, lane
+            departure) are unaffected — those upload in real time.
+          </div>
+          <div className="text-[10px] text-amber-200/90 space-y-0.5">
+            {(status.cameras ?? []).filter((c) => c.camera_offline).map((c) => (
+              <div key={c.cpg_device_id} className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span className="font-medium">{c.cpg_display_name || c.cpg_device_id}</span>
+                <span className="text-amber-200/60">
+                  · ignition {c.ignition_state || 'unknown'}
+                  {c.last_synced_at ? ` · last GPS ${safeTimeStr(c.last_synced_at)}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ═══ Section 1: Credentials ═══ */}
       <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
@@ -697,6 +742,8 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               value={refreshToken}
               onChange={(e) => setRefreshToken(e.target.value)}
               placeholder={status?.configured ? 'Enter new Refresh Token to replace...' : 'ClearPath session refresh token...'}
+              autoComplete="new-password"
+              spellCheck={false}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
             <button type="button"

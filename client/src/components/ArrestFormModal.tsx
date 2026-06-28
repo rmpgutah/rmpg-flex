@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
+import { useAuth } from '../context/AuthContext';
 import AddressAutocomplete from './AddressAutocomplete';
 import { localToday } from '../utils/dateUtils';
 
@@ -99,6 +100,14 @@ export default function ArrestFormModal({
   editingRecord,
   submitError,
 }: ArrestFormModalProps) {
+  // Per-user draft scope — a half-typed bail amount, charge list, or
+  // booking note from operator A must not surface for operator B on a
+  // shared MDT. Falls back to the legacy global key when the auth
+  // context hasn't hydrated yet (login-screen pre-fill safety).
+  const { user } = useAuth();
+  const draftKey = user?.id
+    ? `rmpg_arrest_form_${user.id}`
+    : 'rmpg_arrest_form';
   const {
     form,
     setForm,
@@ -108,7 +117,7 @@ export default function ArrestFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<ArrestFormData>({
-    storageKey: 'rmpg_arrest_form',
+    storageKey: draftKey,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });

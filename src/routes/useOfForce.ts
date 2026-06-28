@@ -150,6 +150,68 @@ uof.post('/', async (c) => {
   }
 });
 
+// GET /api/use-of-force/:id — single-row fetch used by the page's deep-link
+// fallback. The list endpoint pages at 50; a `?uof_id=` link can target a
+// report that's not in the current page slice (or filtered out). This endpoint
+// returns the same joined shape the list does so the page can hydrate the
+// detail panel without re-paging.
+uof.get('/:id', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id') ?? '', 10);
+    if (!Number.isFinite(id)) return c.json({ error: 'Invalid report id', code: 'INVALID_ID' }, 400);
+    const db = getDb(c.env);
+    const row = await queryFirst<Record<string, unknown>>(db, `${REPORT_SELECT} WHERE u.id = ?`, id);
+    if (!row) return c.json({ error: 'Report not found', code: 'NOT_FOUND' }, 404);
+    return c.json(row);
+  } catch (err) {
+    return c.json({ error: 'Failed to load report', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /api/use-of-force/:id/footage — linked body-cam + dashcam clips for
+// court-package context. Resolves footage_evidence_links rows where
+// entity_type='use_of_force' (populated by autoPreserve on submission) AND
+// any bodycam_videos with a matching incident_id. Both feeds are best-effort
+// — a UoF report can ship before/without footage, and the page must still
+// render. Schema-tolerant: footage_requests + bodycam_videos may be missing
+// columns on older D1 slices (we COALESCE / SELECT only known fields).
+uof.get('/:id/footage', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id') ?? '', 10);
+    if (!Number.isFinite(id)) return c.json({ error: 'Invalid report id', code: 'INVALID_ID' }, 400);
+    const db = getDb(c.env);
+    // Pull the UoF row to discover the linked incident_id (BWC linkage path).
+    const uofRow = await queryFirst<{ incident_id: number | null }>(db,
+      'SELECT incident_id FROM use_of_force WHERE id = ?', id).catch(() => null);
+    const incidentId = uofRow?.incident_id ?? null;
+
+    // FlexCam dashcam — preserved by autoPreserve at submission time.
+    const flexcam = await query<Record<string, unknown>>(db,
+      `SELECT fr.id, fr.title, fr.classification, fr.status, fr.evidence_locked,
+              fr.evidence_number, fr.from_ts, fr.to_ts, fr.reason, fr.created_at
+       FROM footage_evidence_links fel
+       JOIN footage_requests fr ON fr.id = fel.footage_request_id
+       WHERE fel.entity_type = 'use_of_force' AND fel.entity_id = ?
+       ORDER BY fr.id DESC`, id).catch(() => []);
+
+    // BWC clips — linked via incident_id where available. Older bodycam_videos
+    // rows may lack incident_id; the IS NOT NULL guard avoids the empty match.
+    let bodycam: Record<string, unknown>[] = [];
+    if (incidentId != null) {
+      bodycam = await query<Record<string, unknown>>(db,
+        `SELECT id, title, classification, retention_status, recorded_at,
+                duration_seconds, file_size, officer_name, case_number, created_at
+         FROM bodycam_videos
+         WHERE incident_id = ?
+         ORDER BY recorded_at DESC`, incidentId).catch(() => []);
+    }
+    return c.json({ flexcam: flexcam || [], bodycam: bodycam || [] });
+  } catch (err) {
+    // Soft-fail: page renders the rest even if footage join fails.
+    return c.json({ flexcam: [], bodycam: [] });
+  }
+});
+
 // PUT /api/use-of-force/:id/review — supervisor decision. The page sends
 // { decision: 'approved' | 'returned' }; approved maps to status 'reviewed'
 // (the page's STATUS_COLORS green state), returned stays 'returned'.

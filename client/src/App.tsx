@@ -7,6 +7,7 @@ import { NavTripProvider } from './context/NavTripContext';
 import { ToastProvider } from './components/ToastProvider';
 import MDTBridge from './components/MDTBridge';
 import { ContextMenuProvider } from './context/ContextMenuContext';
+import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
@@ -164,6 +165,8 @@ const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
 const RiskPage = lazyRetry(() => import('./pages/RiskPage'));
 const InteragencyPage = lazyRetry(() => import('./pages/InteragencyPage'));
 const GangIntelPage = lazyRetry(() => import('./pages/GangIntelPage'));
+const PersonIntelPage = lazyRetry(() => import('./pages/PersonIntelPage'));
+const PersonIntelDossierPage = lazyRetry(() => import('./pages/PersonIntelDossierPage'));
 const SpecialOpsPage = lazyRetry(() => import('./pages/SpecialOpsPage'));
 const CrisisResponsePage = lazyRetry(() => import('./pages/CrisisResponsePage'));
 const VictimServicesPage = lazyRetry(() => import('./pages/VictimServicesPage'));
@@ -186,7 +189,9 @@ const PdfEditorPage = lazyRetry(() => import('./pages/pdf-editor'));
 const DocumentWriterPage = lazyRetry(() => import('./pages/document-writer'));
 const TextEditorPage = lazyRetry(() => import('./pages/TextEditorPage'));
 const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
-const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
+// ForgotPasswordPage was a legacy standalone email-based reset surface. The
+// route now redirects to /login?forgot=1 (the working username + security-
+// question flow lives inline on LoginPage), so the page no longer ships.
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
@@ -255,13 +260,20 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return <LoadingSplash message="Loading RMPG Flex" />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    // Preserve the originally-requested URL so LoginPage can route the
+    // operator back after auth. Excludes /login itself to avoid loops.
+    const returnTo = location.pathname + location.search;
+    const params = returnTo && returnTo !== '/login'
+      ? `?return=${encodeURIComponent(returnTo)}`
+      : '';
+    return <Navigate to={`/login${params}`} replace />;
   }
 
   return <>{children}</>;
@@ -426,7 +438,12 @@ function AppRoutes() {
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
           />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          {/* /forgot-password was a standalone email-based reset page, but the
+              live API (/api/auth/forgot-password) expects {username} + 3
+              security-question answers — the in-page panel on LoginPage is
+              the working flow. Redirect so the "Request New Link" affordance
+              on ResetPasswordPage doesn't dead-end on a mismatched contract. */}
+          <Route path="/forgot-password" element={<Navigate to="/login?forgot=1" replace />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           {/* QR-token-authed mobile vehicle inspection. Opened by scanning the
               per-shift QR on the ShiftCard; the :token IS the credential. */}
@@ -600,6 +617,8 @@ function AppRoutes() {
             <Route path="/risk" element={<RouteErrorBoundary><RiskPage /></RouteErrorBoundary>} />
             <Route path="/interagency" element={<RouteErrorBoundary><InteragencyPage /></RouteErrorBoundary>} />
             <Route path="/gang-intel" element={<RouteErrorBoundary><GangIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel" element={<RouteErrorBoundary><PersonIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel/:id" element={<RouteErrorBoundary><PersonIntelDossierPage /></RouteErrorBoundary>} />
             <Route path="/special-ops" element={<RouteErrorBoundary><SpecialOpsPage /></RouteErrorBoundary>} />
             <Route path="/crisis-response" element={<RouteErrorBoundary><CrisisResponsePage /></RouteErrorBoundary>} />
             <Route path="/victim-services" element={<RouteErrorBoundary><VictimServicesPage /></RouteErrorBoundary>} />
@@ -637,23 +656,25 @@ export default function App() {
   //    so the WebSocket + auth session survive a single page blowing up.
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <WebSocketProvider>
-          <UserPreferencesProvider>
-            <ToastProvider>
-              <ContextMenuProvider>
-                <ErrorBoundary>
-                  <WebUpdateBanner />
-                  <MDTBridge />
-                  <AndroidUpdateChecker />
-                  <ButtonHealthOverlay />
-                  <AppRoutes />
-                </ErrorBoundary>
-              </ContextMenuProvider>
-            </ToastProvider>
-          </UserPreferencesProvider>
-        </WebSocketProvider>
-      </AuthProvider>
+      <FeatureFlagsProvider>
+        <AuthProvider>
+          <WebSocketProvider>
+            <UserPreferencesProvider>
+              <ToastProvider>
+                <ContextMenuProvider>
+                  <ErrorBoundary>
+                    <WebUpdateBanner />
+                    <MDTBridge />
+                    <AndroidUpdateChecker />
+                    <ButtonHealthOverlay />
+                    <AppRoutes />
+                  </ErrorBoundary>
+                </ContextMenuProvider>
+              </ToastProvider>
+            </UserPreferencesProvider>
+          </WebSocketProvider>
+        </AuthProvider>
+      </FeatureFlagsProvider>
     </ErrorBoundary>
   );
 }
