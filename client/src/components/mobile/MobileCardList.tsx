@@ -148,20 +148,20 @@ export default function MobileCardList<T>({
         <div
           className="flex-shrink-0 px-3 py-2"
           style={{
-            background: '#0a0a0a',
-            borderBottom: '1px solid #2b2b2b',
+            background: 'var(--surface-overlay)',
+            borderBottom: '1px solid var(--border-default)',
           }}
         >
           <div
             className="flex items-center gap-2 px-3"
             style={{
               height: 40,
-              background: '#050505',
-              border: '1px solid #2b2b2b',
+              background: 'var(--surface-overlay)',
+              border: '1px solid var(--border-default)',
             }}
           >
-            <Search style={{ width: 16, height: 16, color: '#666666', flexShrink: 0 }} />
-            <input
+            <Search style={{ width: 16, height: 16, color: 'var(--rmpg-500)', flexShrink: 0 }} />
+            <input id="ff-mobilecardlist-0"
               type="text"
               value={searchValue}
               onChange={(e) => handleSearch(e.target.value)}
@@ -189,7 +189,7 @@ export default function MobileCardList<T>({
       {/* ── Scrollable list area ───────────────────────────── */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
         style={{
           WebkitOverflowScrolling: 'touch',
           transform: pullDistance > 0 ? `translateY(${pullDistance}px)` : undefined,
@@ -215,7 +215,7 @@ export default function MobileCardList<T>({
               style={{
                 width: 20,
                 height: 20,
-                color: pullReady || refreshing ? '#888888' : '#666666',
+                color: pullReady || refreshing ? '#888888' : 'var(--rmpg-500)',
                 transform: pullReady ? 'rotate(180deg)' : `rotate(${pullDistance * 3}deg)`,
                 transition: 'transform 0.2s ease',
                 animation: refreshing ? 'spin 1s linear infinite' : undefined,

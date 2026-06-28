@@ -25,16 +25,18 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { broadcastAll } from './ws';
+import { verifySignedResource } from '../utils/signedAccess';
 import {
   ocrImage,
+  ocrExtractStructured,
+  lookupFromOcr,
   decideDispatcherReply,
   phraseLookupReply,
   synthesizeDispatcherVoice,
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
-import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
+import { gatherAwareness, runLookup, runAction, VERBATIM_LOOKUPS } from '../utils/dispatcherAwareness';
 import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS, RADIO_SETTING_OPTIONS } from '../utils/radioSettings';
 import { generateIncidentNarrative, generateShiftSummary } from '../utils/aiReports';
 import type { Bindings } from '../types';
@@ -96,7 +98,6 @@ rt.post('/channels', async (c) => {
   const id = Number(result.meta.last_row_id);
   // Broadcast so other dispatchers' channel pickers update without a refresh.
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  broadcastAll('radio_update', { action: 'channel_created', channel });
   return c.json({ success: true, id });
 });
 
@@ -116,7 +117,6 @@ rt.patch('/channels/:id', async (c) => {
   const db = getDb(c.env);
   await execute(db, `UPDATE radio_channels SET ${fields.join(', ')} WHERE id = ?`, ...args);
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  broadcastAll('radio_update', { action: 'channel_updated', channel });
   return c.json({ success: true });
 });
 
@@ -131,7 +131,6 @@ rt.delete('/channels/:id', async (c) => {
     "UPDATE radio_channels SET archived_at = datetime('now') WHERE id = ? AND archived_at IS NULL",
     id,
   );
-  broadcastAll('radio_update', { action: 'channel_archived', channel_id: id });
   return c.json({ success: true });
 });
 
@@ -200,7 +199,6 @@ rt.post('/transmissions', async (c) => {
        WHERE t.id = ?`,
     id,
   );
-  broadcastAll('radio_update', { action: 'transmission_logged', transmission });
   return c.json({ success: true, id });
 });
 
@@ -220,6 +218,16 @@ rt.delete('/transmissions/:id', async (c) => {
 rt.get('/transmissions/:id/audio', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  // authMiddleware passes GET media paths through when the request carries
+  // sig/exp instead of a token — in that case no `user` is set and WE are
+  // the verification point. A JWT-authenticated request has `user` set.
+  if (!c.get('user')) {
+    const signedOk = await verifySignedResource(c.env.JWT_SECRET, 'radio', String(id), {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    if (!signedOk) return c.json({ error: 'Authentication required' }, 401);
+  }
   const key = `radio-audio/${id}.webm`;
 
   const rangeHeader = c.req.header('Range');
@@ -415,14 +423,35 @@ rt.post('/dispatcher/ocr', async (c) => {
   }
   const image = new Uint8Array(await file.arrayBuffer());
 
-  // 1. OCR — read the text off the image.
-  const ocrText = await ocrImage(c.env.AI, image);
+  const db = getDb(c.env);
+  const unit = (form?.get('unit') as string | null)?.trim() || null;
+
+  // 1. OCR — read AND STRUCTURE the image (doc type + runnable identifiers).
+  //    Falls back to plain-text OCR if structuring fails, so behavior never
+  //    regresses below the old endpoint.
+  const extraction = await ocrExtractStructured(c.env.AI, image).catch(() => null);
+  const ocrText = extraction?.rawText || (await ocrImage(c.env.AI, image).catch(() => null));
   if (!ocrText) {
     return c.json({ success: false, error: 'No legible text found in the image.' }, 200);
   }
 
-  const db = getDb(c.env);
-  const unit = (form?.get('unit') as string | null)?.trim() || null;
+  // 1a. AUTO-CHAIN — if the image yielded a plate / VIN / name, run THAT CAD
+  //     check now (deterministically), so the dispatcher reads the hit back in
+  //     this same turn instead of relying on the model to chain it. The result
+  //     is fed into the turn as a CAD AUTO-CHECK block (see buildUserPrompt).
+  let autoCheck: string | null = null;
+  let record: import('../utils/dispatcherAwareness').RecordRef | null = null;
+  let performed: string | null = null;
+  const autoReq = extraction ? lookupFromOcr(extraction) : null;
+  if (autoReq) {
+    const r = await runLookup(c.env as unknown as Bindings, db, autoReq, { speaker: unit }).catch(() => null);
+    if (r) {
+      autoCheck = r.text;
+      if (r.record) record = r.record;
+      performed = `auto_lookup:${autoReq.type}`;
+    }
+  }
+
   const transcript = (form?.get('transcript') as string | null)?.trim()
     || 'Dispatch, I am sending you an image — read it and advise.';
   const channelIdRaw = form?.get('channel_id');
@@ -441,34 +470,50 @@ rt.post('/dispatcher/ocr', async (c) => {
     recent: [],
     awareness,
     ocrText,
+    autoCheck,
   };
 
-  // 3. Reason — the brain may answer, run a lookup, or file a write.
+  // Structured payload the client UI can render (doc type + extracted fields).
+  const structured = extraction
+    ? { docType: extraction.docType, fields: extraction.fields }
+    : { docType: 'unknown' as const, fields: {} };
+
+  // 3. Reason — the brain may answer, read the auto-check back, run another
+  //    lookup, or file a write.
   const decision = await decideDispatcherReply(c.env.AI, turn);
   if (!decision) {
-    return c.json({ success: true, ocrText, reply: '', intent: 'unclear', note: 'Dispatcher had no reply.' });
+    // No model reply — but if we auto-ran a check, hand that back so the unit
+    // still gets the answer the image asked for.
+    return c.json({
+      success: true, ocrText, structured, autoCheck, record, performed,
+      reply: autoCheck ?? '', intent: autoCheck ? 'lookup_request' : 'unclear',
+      note: autoCheck ? undefined : 'Dispatcher had no reply.',
+    });
   }
 
   let reply = decision.reply;
-  let performed: string | null = null;
-  let record: import('../utils/dispatcherAwareness').RecordRef | null = null;
 
   if (decision.lookup) {
     const result = await runLookup(
-      c.env as unknown as Bindings, db, decision.lookup, { speaker: unit },
+      c.env as unknown as Bindings, db, decision.lookup, { speaker: unit, channelId },
     ).catch(() => null);
     if (result) {
-      // unit_location / eta already speak a complete line; record checks get
-      // re-phrased through the persona (mirrors VoiceHubDO.runDispatcher).
-      reply = (decision.lookup.type === 'unit_location' || decision.lookup.type === 'eta')
+      // Verbatim lookups (location/eta/call_status/closest_unit/say-again)
+      // already speak a complete line; record checks get re-phrased through the
+      // persona (mirrors VoiceHubDO.runDispatcher).
+      reply = VERBATIM_LOOKUPS.has(decision.lookup.type)
         ? result.text
         : await phraseLookupReply(c.env.AI, turn, decision.lookup, result.text);
-      record = result.record ?? null;
+      if (result.record) record = result.record;
       performed = `lookup:${decision.lookup.type}`;
     }
   }
   if (decision.action) {
-    const written = await runAction(c.env as unknown as Bindings, db, decision.action).catch(() => null);
+    const issuer = c.get('user') as { id: number } | undefined;
+    const written = await runAction(
+      c.env as unknown as Bindings, db, decision.action,
+      { issuedBy: issuer?.id ?? null },
+    ).catch(() => null);
     if (written) {
       reply = written.spoken;
       performed = written.summary;
@@ -476,7 +521,9 @@ rt.post('/dispatcher/ocr', async (c) => {
       // Honesty: a refused/failed write must not read back as success.
       reply = decision.action.type === 'set_unit_status'
         ? 'Unable to log that status — an unrecognized call-sign or unclear status.'
-        : 'Unable to start that call — a location and nature of the call are required.';
+        : decision.action.type === 'create_bolo'
+          ? 'Unable to put that BOLO out — the BOLO details are required.'
+          : 'Unable to start that call — a location and nature of the call are required.';
       performed = `action_refused:${decision.action.type}`;
     }
   }
@@ -491,6 +538,8 @@ rt.post('/dispatcher/ocr', async (c) => {
   return c.json({
     success: true,
     ocrText,
+    structured,
+    autoCheck,
     reply,
     intent: decision.intent,
     lookup: decision.lookup ?? null,

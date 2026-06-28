@@ -40,7 +40,6 @@ interface UseMapMarkersParams {
     longitude: number | null;
     accuracy: number | null;
     heading: number | null;
-    speed?: number | null;
     unitCallSign?: string | null;
   };
 }
@@ -122,7 +121,7 @@ export function useMapMarkers({
 
         if (existingMarker) {
           try {
-            const newContent = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed);
+            const newContent = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, undefined, unit.on_foot === 1 || unit.on_foot === true);
             const el = existingMarker.getElement();
             if (el) {
               el.innerHTML = '';
@@ -140,7 +139,7 @@ export function useMapMarkers({
           }
         } else {
           try {
-            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed);
+            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, undefined, unit.on_foot === 1 || unit.on_foot === true);
 
             const marker = createMapboxMarker(
               map,
@@ -332,14 +331,14 @@ export function useMapMarkers({
         const el = selfMarkerRef.current.getElement();
         if (el) {
           el.innerHTML = '';
-          el.appendChild(buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed));
+          el.appendChild(buildSelfPositionMarker(gps.accuracy, gps.heading));
         }
       } else {
         selfMarkerRef.current = createMapboxMarker(
           map,
           gps.longitude,
           gps.latitude,
-          buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed),
+          buildSelfPositionMarker(gps.accuracy, gps.heading),
           9999,
           `Your Position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`,
           undefined,

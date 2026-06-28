@@ -9,10 +9,12 @@ import React, { useState, useEffect } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
+import { useAuth } from '../context/AuthContext';
 import AddressAutocomplete from './AddressAutocomplete';
 import { localToday } from '../utils/dateUtils';
 
 import RichTextArea from './RichTextArea';
+import { composeAddressUnit } from '../utils/addressUnit';
 // ── Types ─────────────────────────────────────────────────
 
 export interface ArrestFormData {
@@ -98,15 +100,24 @@ export default function ArrestFormModal({
   editingRecord,
   submitError,
 }: ArrestFormModalProps) {
+  // Per-user draft scope — a half-typed bail amount, charge list, or
+  // booking note from operator A must not surface for operator B on a
+  // shared MDT. Falls back to the legacy global key when the auth
+  // context hasn't hydrated yet (login-screen pre-fill safety).
+  const { user } = useAuth();
+  const draftKey = user?.id
+    ? `rmpg_arrest_form_${user.id}`
+    : 'rmpg_arrest_form';
   const {
     form,
     setForm,
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<ArrestFormData>({
-    storageKey: 'rmpg_arrest_form',
+    storageKey: draftKey,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
@@ -167,6 +178,8 @@ export default function ArrestFormModal({
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
+  const [addressUnit, setAddressUnit] = useState('');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Convert charges textarea (one per line) to JSON array before submitting
@@ -174,8 +187,10 @@ export default function ArrestFormModal({
       .split('\n')
       .map(l => l.trim())
       .filter(l => l.length > 0);
+    signalSaved();
     onSubmit({
       ...form,
+      address: composeAddressUnit(form.address, addressUnit),
       charges: JSON.stringify(chargeLines),
     });
   };
@@ -220,7 +235,7 @@ export default function ArrestFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -239,6 +254,7 @@ export default function ArrestFormModal({
             <input
               name="full_name"
               type="text"
+              required
               className="input-dark mt-1"
               placeholder="Last, First Middle"
               value={form.full_name}
@@ -346,7 +362,8 @@ export default function ArrestFormModal({
           </div>
 
            {/* Address */}
-           <div>
+           <div className="flex gap-3">
+             <div className="flex-1">
              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Address</label>
              <AddressAutocomplete
                value={form.address}
@@ -355,6 +372,11 @@ export default function ArrestFormModal({
                className="input-dark mt-1 w-full"
                name="address"
              />
+             </div>
+             <div className="w-28">
+               <label htmlFor="ff-arrestformmodal-addrunit" className="text-[10px] text-rmpg-400 uppercase font-semibold">Apt / Unit</label>
+               <input id="ff-arrestformmodal-addrunit" type="text" className="input-dark mt-1 w-full" value={addressUnit} onChange={e => setAddressUnit(e.target.value)} placeholder="Apt 4B" />
+             </div>
            </div>
         </>
       )}
