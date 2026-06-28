@@ -1,0 +1,76 @@
+JOB
+
+15570133             633570         4/21/26                                                                                                                          Archive       Edit       
+
+
+
+CLIENT                                                                SERVER                                                          Job Type            G&A Service Type
+ Guglielmo & Associates, PLLC                                        ICU Investigations, LLC                                         Status              —
+                                                                      Christopher Zamora                                              Attempt Due        —
+                                                                      435-986-1200                                                    Due                Apr 21, 2026
+
+
+
+                                                                                                                                      Recipient
+Service Attempts                                                                                Field Sheet        New Attempt
+                                                                                                                                      Recipient:    Abbey Armstrong
+
+
+  No Service Attempts                                                                                                                 DOB: 10/13/1997
+
+                                                                                                                                      2361 E 3395 S *
+                                                                                                                                      Salt Lake City, UT 84109
+
+
+Affidavits                                                                                                         New Affidavit
+
+                                                                                                                                      Service Instructions
+  No Affidavits
+                                                                                                                                      ICU Investigations, LLC             Client
+                                                                                                                                      Sub-serve on 1st attempt to any occupant 16+.
+
+                                                                                                                                      Personal only at POE. If provided, call phone #s and
+Uploads                                                                                                                Upload Files   report status.
+
+                                                                                                                                      Diligence: 1 attempt between 6AM-9AM; 1 attempt
+         Summons and Complaint; Bilingual Notice                          Docs to Be Served                    Client      Share
+                                                                                                                                      between 9AM-6PM; and 1 attempt between 6PM-9PM.
+          4/1/26,    1.32 MB       11 pages     Edit
+                                                                                                                                      1 attempt must be on the weekend. Never serve at
+          12:01 pm
+                                                                                                                                      hospitals, churches or jails. If subject provides a BK
+                                                                                                                                      case #, DO NOT serve them.
+
+
+
+Notes                                                                                                                    New Note
+                                                                                                                                      Docs to Be Served 11 pages
+
+         Job Imported From CSV                                           Client                                                    Summons and Complaint;          
+                                                                                                                                      Bilingual Notice
+  System                                                                                                      4/1/26, 12:01 pm
+
+  Imported CSV Row:
+  {                                                                                                                                   Court Case
+  "client_job_number": "633570",                                                                                                      Case           [not provided]
+  "job_status": "G&A-Production",                                                                                                     Plaintiff     Capital One, N.A., successor by merger to
+  "rush": null,...                                                                                                                                  Discover Bank
+                                                                                                                                      Defendant     Abbey Armstrong
+                                                                                                            Show More                Filed         —
+                                                                                                                                      Court Date —
+                                                                                                                                      Court         THIRD JUDICIAL DISTRICT COURT, STATE
+                                                                                                                                                    OF UTAH - MATHESON
+Job Activity                                                                                                                          Address       450 S STATE ST PO BOX 1860
+                                                                                                                                                    SALT LAKE CITY, UT 84114
+4/13/26, 2:10 pm     Process server            Christopher Zamora was assigned to the job                      Jason Currie
+                     assigned                                                                                                         County        SALT LAKE
+4/7/26, 12:12 pm     Due Date Changed          Due date was changed from Apr 15, 2026 to Apr 21, 2026
+
+ 4/2/26, 6:07 am     Job Data Updated                                                                          David Blake            Job Created      Apr 1, 2026
+ 4/1/26, 3:05 pm     Job Data Updated                                                                          Julie Hercyk
+                                                                                                                                      Created By       ICU Investigations, LLC
+ 4/1/26, 3:05 pm     Acknowledgement           Changed to not require special instruction acknowledgement      Julie Hercyk
+                                                                                                                                      Last Update      Apr 13, 2026
+                     Requirement
+4/1/26, 12:01 pm     Due Date Changed          Due date was set to Apr 15, 2026
+

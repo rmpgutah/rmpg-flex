@@ -80,7 +80,20 @@ describe('validatePassword', () => {
   });
 
   it('rejects common passwords from blocklist', () => {
-    const commonPasswords = ['password', 'admin123', 'police', 'officer', 'dispatch', 'rmpgflex'];
+    const commonPasswords = [
+      'password',
+      'admin123',
+      'police',
+      'officer',
+      'dispatch',
+      'rmpgflex',
+      'badge123',
+      'sergeant',
+      'detective',
+      'trooper',
+      'sheriff',
+      'rmpg2025',
+    ];
     for (const pw of commonPasswords) {
       const result = validatePassword(pw);
       expect(result.valid).toBe(false);
