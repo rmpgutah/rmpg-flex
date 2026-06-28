@@ -4,9 +4,10 @@ import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
 import type { MapStyleId } from '../utils/mapConstants';
 import MapExportMenu from './MapExportMenu';
+import { mapboxgl } from '../../../utils/mapboxLoader';
 
 interface MapOverlaysProps {
-  mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
+  mapInstanceRef: React.MutableRefObject<mapboxgl.Map | null>;
   mapStyle: MapStyleId;
   isConnected: boolean;
   sidebarOpen: boolean;
@@ -21,7 +22,7 @@ interface MapOverlaysProps {
 
   // Tracking lines
   showTrackingLines: boolean;
-  trackingLinesRef: React.MutableRefObject<google.maps.Polyline[]>;
+  trackingLinesRef: React.MutableRefObject<mapboxgl.Map[] | null>;
 
   // Route (routing result from useMapRouting hook)
   activeRoute: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null;
@@ -59,8 +60,8 @@ export default function MapOverlays({
           aria-label="Map legend"
           style={{
             borderRadius: 2,
-            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.88)' : 'rgba(6,12,20,0.92)',
-            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(30,48,72,0.5)',
+            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(10,10,10,0.88)' : 'rgba(10,10,10,0.92)',
+            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(43,43,43,0.5)',
             padding: '4px 8px',
           }}
         >
@@ -79,7 +80,7 @@ export default function MapOverlays({
             {(['P1', 'P2', 'P3', 'P4'] as const).map(p => (
               <div key={p} className="flex items-center gap-0.5">
                 <div className="w-1.5 h-1.5 rounded-sm shrink-0" style={{ backgroundColor: PRIORITY_COLORS[p] }} />
-                <span className={`text-[7px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-500' : 'text-rmpg-400'}`}>{p}</span>
+                <span className={`text-[7px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-rmpg-500' : 'text-rmpg-400'}`}>{p}</span>
               </div>
             ))}
           </div>
@@ -97,30 +98,30 @@ export default function MapOverlays({
           aria-label="Map statistics"
           style={{
             borderRadius: 2,
-            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)',
-            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)',
+            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(10,10,10,0.92)' : 'rgba(10,10,10,0.95)',
+            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(43,43,43,0.6)',
           }}
         >
           <div className="flex items-center gap-0.5 px-1.5 py-1">
             {/* #9: Connection status LED with glow effect */}
-            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #222222' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b2b2b' }}>
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} style={{ boxShadow: isConnected ? '0 0 6px #22c55e80' : '0 0 6px #ef444480' }} />
               <span className={`text-[9px] font-mono font-black tracking-wider ${isConnected ? (isLightMapStyle(mapStyle) ? 'text-green-700' : 'text-green-400') : 'text-red-400'}`}>
                 {isConnected ? 'LIVE' : 'DISC'}
               </span>
             </div>
 
-            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #222222' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #2b2b2b' }}>
               <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
               {/* #10: Tabular-nums for monospaced number alignment in stats bar */}
-              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
+              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-rmpg-100'}`}>{callsWithCoords.length}</span>
               {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold tabular-nums text-red-500 bg-red-500/15 px-1 rounded-sm">P1:{callsByPriority['P1']}</span> : null}
               {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold tabular-nums text-amber-500 bg-amber-500/15 px-1 rounded-sm">P2:{callsByPriority['P2']}</span> : null}
             </div>
 
             <div className="flex items-center gap-1 px-2 py-0.5">
               <Shield className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-green-600' : 'text-green-400'}`} />
-              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{unitsWithCoords.length}</span>
+              <span className={`text-[13px] font-mono font-black tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-rmpg-100'}`}>{unitsWithCoords.length}</span>
               <div className="flex items-center gap-1.5 ml-1">
                 {([
                   { key: 'available', label: 'AVL', color: '#22c55e' },
@@ -135,10 +136,10 @@ export default function MapOverlays({
               </div>
             </div>
 
-            {showTrackingLines && trackingLinesRef.current.length > 0 && (
+            {showTrackingLines && trackingLinesRef.current && trackingLinesRef.current.length > 0 && (
               <div className="flex items-center gap-1 px-1.5">
-                <Navigation2 className="w-2.5 h-2.5 text-cyan-400" />
-                <span className="text-cyan-400 text-[8px] font-mono font-bold">{trackingLinesRef.current.length}</span>
+                <Navigation2 className="w-2.5 h-2.5 text-rmpg-400" />
+                <span className="text-rmpg-400 text-[8px] font-mono font-bold">{trackingLinesRef.current.length}</span>
               </div>
             )}
           </div>
@@ -155,8 +156,8 @@ export default function MapOverlays({
             ...(isMobile
               ? { top: 56, left: 8, right: 8 }
               : { bottom: 48, left: 16, minWidth: 200 }),
-            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
-            border: isLightMapStyle(mapStyle) ? '1px solid rgba(136,136,136,0.3)' : '1px solid #88888850',
+            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.95)',
+            border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
             padding: '8px 14px',
             fontFamily: "'JetBrains Mono', 'Courier New', monospace",
             borderRadius: 2,
@@ -169,7 +170,7 @@ export default function MapOverlays({
             </span>
             <button type="button"
               onClick={clearRoute}
-              className="hover:bg-[#141414] transition-all duration-150 active:scale-[0.97] rounded-sm"
+              className="hover:bg-surface-raised transition-all duration-150 active:scale-[0.97] rounded-sm"
               style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '2px 4px 2px 8px' }}
               aria-label="Clear route"
               title="Clear route"
@@ -178,7 +179,7 @@ export default function MapOverlays({
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#111827' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+            <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
             <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
           </div>
           {routeLoading && (
@@ -200,8 +201,8 @@ export default function MapOverlays({
             className="flex flex-col overflow-hidden"
             style={{
               borderRadius: 2,
-              background: 'rgba(13, 21, 32, 0.9)',
-              border: '1px solid #222222',
+              background: 'rgba(10, 10, 10, 0.9)',
+              border: '1px solid #2b2b2b',
             }}
           >
             <button type="button"
@@ -210,7 +211,7 @@ export default function MapOverlays({
                 if (map) map.setZoom((map.getZoom() || 12) + 1);
               }}
               className="flex items-center justify-center transition-all duration-150 hover:bg-white/10 active:bg-white/20 active:scale-[0.97]"
-              style={{ width: 48, height: 48, borderBottom: '1px solid #222222' }}
+              style={{ width: 48, height: 48, borderBottom: '1px solid #2b2b2b' }}
               aria-label="Zoom in"
               title="Zoom in"
             >
@@ -242,7 +243,7 @@ export default function MapOverlays({
             className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
                 ? 'bg-white/90 border border-gray-300 hover:bg-gray-50'
-                : 'bg-surface-deep/95 border border-gray-500/50 hover:bg-gray-900/30'
+                : 'bg-surface-deep/95 border border-rmpg-500/50 hover:bg-surface-sunken/30'
             }`}
             style={isMobile
               ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
@@ -250,7 +251,7 @@ export default function MapOverlays({
             }
             title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
           >
-            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-gray-400'}`} />
+            <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-400'}`} />
           </button>
         )}
         <MapExportMenu
@@ -266,7 +267,7 @@ export default function MapOverlays({
           }}
           className={`backdrop-blur-md shadow-xl transition-colors ${
             isLightMapStyle(mapStyle)
-              ? 'bg-white/90 border border-gray-300 hover:bg-[#141414]'
+              ? 'bg-white/90 border border-gray-300 hover:bg-surface-raised'
               : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
           }`}
           style={isMobile

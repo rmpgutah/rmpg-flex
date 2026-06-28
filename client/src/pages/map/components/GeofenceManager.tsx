@@ -7,6 +7,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Pencil, Shield, Loader2, MapPin, ChevronDown, ChevronRight, Bell, Navigation } from 'lucide-react';
 import type { Geofence, GeofenceAlert } from '../hooks/useMapGeofences';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface GeofenceManagerProps {
   geofences: Geofence[];
@@ -82,7 +83,7 @@ function getCentroid(coordStr: string): { lat: number; lng: number } | null {
 // ─── Time-ago helper ────────────────────────────────────────
 
 function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
+  const diff = Date.now() - parseTimestamp(ts).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -118,7 +119,7 @@ export default function GeofenceManager({
     }
     // Sort each list newest-first
     for (const [, list] of map) {
-      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      list.sort((a, b) => parseTimestamp(b.timestamp).getTime() - parseTimestamp(a.timestamp).getTime());
     }
     return map;
   }, [alerts]);
@@ -137,7 +138,7 @@ export default function GeofenceManager({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #222222' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -149,7 +150,7 @@ export default function GeofenceManager({
         {onClose && (
           <button type="button"
             onClick={onClose}
-            className="toolbar-btn p-1 hover:bg-[#141414] transition-colors duration-150 rounded-sm"
+            className="toolbar-btn p-1 hover:bg-surface-raised transition-colors duration-150 rounded-sm"
             aria-label="Close"
             title="Close"
           >
@@ -183,7 +184,7 @@ export default function GeofenceManager({
       </div>
 
       {/* Geofence list */}
-      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222]" style={{ scrollbarWidth: 'thin' }}>
+      <div className="p-2 space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700" style={{ scrollbarWidth: 'thin' }}>
         {loading && (
           <div className="flex items-center justify-center py-6 text-rmpg-500 animate-pulse">
             <Loader2 size={16} className="animate-spin" />
@@ -211,10 +212,10 @@ export default function GeofenceManager({
           return (
             <div
               key={fence.id}
-              className="rounded-sm hover:bg-[#141414]/50 transition-colors duration-100 cursor-pointer"
+              className="rounded-sm hover:bg-surface-raised/50 transition-colors duration-100 cursor-pointer"
               style={{
-                background: '#050505',
-                border: '1px solid #222222',
+                background: 'var(--surface-overlay)',
+                border: '1px solid var(--border-subtle)',
                 borderLeft: `2px solid ${fence.color || typeStyle.text}`,
                 opacity: isActive ? 1 : 0.5,
               }}
@@ -257,7 +258,7 @@ export default function GeofenceManager({
 
               {/* Expanded details */}
               {expanded && (
-                <div className="px-2 pb-2 pt-0.5 space-y-1.5" style={{ borderTop: '1px solid #222222' }}>
+                <div className="px-2 pb-2 pt-0.5 space-y-1.5" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                   {/* Meta row */}
                   <div className="flex items-center gap-3 text-[10px] text-rmpg-500 font-mono">
                     <span className="flex items-center gap-1">
@@ -268,14 +269,14 @@ export default function GeofenceManager({
                       <span className="text-amber-500">enter alert</span>
                     ) : null}
                     {fence.alert_on_exit ? (
-                      <span className="text-gray-400">exit alert</span>
+                      <span className="text-rmpg-400">exit alert</span>
                     ) : null}
                   </div>
 
                   {/* Alert history */}
                   {alerts && alertCount > 0 && (
                     <div className="space-y-0.5">
-                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-400/70 uppercase border-b border-[#222222]/50 pb-0.5 mb-1">
+                      <div className="flex items-center gap-1 text-[9px] font-mono text-amber-400/70 uppercase border-b border-rmpg-700/50 pb-0.5 mb-1">
                         <Bell size={8} />
                         <span className="flex-1">Recent alerts</span>
                         <span className="text-[8px] font-bold text-amber-400 bg-amber-900/30 px-1 py-0.5 rounded-sm">{alertCount}</span>
@@ -284,10 +285,10 @@ export default function GeofenceManager({
                         <div
                           key={i}
                           className="flex items-center justify-between text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
-                          style={{ background: '#0a0a0a' }}
+                          style={{ background:"var(--surface-sunken)" }}
                         >
                           <span className="text-rmpg-300">{a.unitCallSign}</span>
-                          <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-gray-400'}>
+                          <span className={a.eventType === 'enter' ? 'text-amber-400' : 'text-rmpg-400'}>
                             {a.eventType}
                           </span>
                           <span className="text-rmpg-600">{timeAgo(a.timestamp)}</span>
@@ -311,7 +312,7 @@ export default function GeofenceManager({
                     {onNavigate && centroid && (
                       <button type="button"
                         onClick={() => onNavigate(centroid.lat, centroid.lng)}
-                        className="toolbar-btn p-1 text-gray-400 hover:text-gray-300"
+                        className="toolbar-btn p-1 text-rmpg-400 hover:text-rmpg-300"
                         title="Navigate to zone"
                       >
                         <Navigation size={12} />
@@ -337,7 +338,7 @@ export default function GeofenceManager({
       {geofences.length > 0 && (
         <div
           className="px-3 py-1.5 text-[9px] text-rmpg-600 font-mono"
-          style={{ borderTop: '1px solid #222222' }}
+          style={{ borderTop: '1px solid var(--border-subtle)' }}
         >
           {geofences.filter((f) => f.is_active).length} active of {geofences.length} zone{geofences.length !== 1 ? 's' : ''}
         </div>

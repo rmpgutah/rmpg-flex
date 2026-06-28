@@ -3,8 +3,9 @@ import { Car, Search, Loader2, PlusCircle } from 'lucide-react';
 import FormModal from './FormModal';
 import VehicleFormModal, { type VehicleFormData } from './VehicleFormModal';
 import { apiFetch } from '../hooks/useApi';
-import type { VehicleRole } from '../types';
+import { useLinkOptions } from '../hooks/useLinkOptions';
 
+import RichTextArea from './RichTextArea';
 interface LinkVehicleModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -25,21 +26,13 @@ interface VehicleResult {
   owner_last_name?: string;
 }
 
-const VEHICLE_ROLES: { value: VehicleRole; label: string }[] = [
-  { value: 'suspect_vehicle', label: 'Suspect Vehicle' },
-  { value: 'victim_vehicle', label: 'Victim Vehicle' },
-  { value: 'witness_vehicle', label: 'Witness Vehicle' },
-  { value: 'involved', label: 'Involved' },
-  { value: 'evidence', label: 'Evidence' },
-  { value: 'other', label: 'Other' },
-];
-
 export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked }: LinkVehicleModalProps) {
+  const { options } = useLinkOptions();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<VehicleResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleResult | null>(null);
-  const [role, setRole] = useState<VehicleRole>('involved');
+  const [role, setRole] = useState<string>('involved');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -161,10 +154,10 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
 
       {/* Search */}
       <div>
-        <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Search Vehicle</label>
+        <label htmlFor="ff-linkvehiclemodal-0" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Search Vehicle</label>
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
-          <input
+          <input id="ff-linkvehiclemodal-0"
             type="text"
             className="input-dark pl-8"
             placeholder="Search by plate, make, model, VIN..."
@@ -186,7 +179,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
                 className="w-full text-left px-3 py-2 hover:bg-rmpg-800 transition-colors"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-white font-medium">
+                  <span className="text-sm text-rmpg-100 font-medium">
                     {vehicle.plate_number ? `${vehicle.plate_number}${vehicle.state ? ` (${vehicle.state})` : ''}` : 'No Plate'}
                   </span>
                   {vehicle.color && (
@@ -223,7 +216,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
       {selectedVehicle && (
         <div className="px-3 py-2 bg-brand-900/20 border border-brand-700/40 flex items-center justify-between">
           <div>
-            <span className="text-sm text-white font-medium">
+            <span className="text-sm text-rmpg-100 font-medium">
               {selectedVehicle.plate_number || 'No Plate'}{selectedVehicle.state ? ` (${selectedVehicle.state})` : ''}
             </span>
             <div className="text-[11px] text-rmpg-400 mt-0.5">
@@ -234,7 +227,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
           <button
             type="button"
             onClick={() => { setSelectedVehicle(null); setSearchQuery(''); }}
-            className="text-xs text-rmpg-300 hover:text-white"
+            className="text-xs text-rmpg-300 hover:text-rmpg-100"
           >
             Change
           </button>
@@ -243,9 +236,9 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
 
       {/* Role */}
       <div>
-        <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
-        <select className="select-dark" value={role} onChange={(e) => setRole(e.target.value as VehicleRole)}>
-          {VEHICLE_ROLES.map((r) => (
+        <label htmlFor="ff-linkvehiclemodal-1" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
+        <select id="ff-linkvehiclemodal-1" className="select-dark" value={role} onChange={(e) => setRole(e.target.value)}>
+          {options.vehicle_role.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>
           ))}
         </select>
@@ -254,7 +247,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
       {/* Notes */}
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes (Optional)</label>
-        <textarea
+        <RichTextArea
           className="textarea-dark"
           rows={2}
           placeholder="Additional details about this vehicle's involvement..."

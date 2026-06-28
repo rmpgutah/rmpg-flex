@@ -47,10 +47,8 @@
 - **Problem:** Root says 5.5.0, server/client/desktop say 5.7.0
 - **Action:** Update root `"version"` to `"5.7.0"`
 
-#### 3. Bump service worker cache version before deploy
-- **File:** `client/public/sw.js`
-- **Problem:** Currently `v145`. Must bump to `v146` (or higher) before any deploy to ensure clients get fresh assets.
-- **Action:** Change `CACHE_NAME` value
+#### 3. ~~Bump service worker cache version before deploy~~ (obsolete)
+- **No longer required.** `CACHE_NAME` in `client/public/sw.js` is the literal placeholder `'rmpg-flex-BUILD'`; the `stamp-sw-version` plugin in `client/vite.config.ts` rewrites it to `'rmpg-flex-<git-short-sha>'` in `dist/sw.js` during `closeBundle()` on every production build, so every commit gets a unique cache name automatically. Manual bumps are no-ops and were a chronic merge-conflict source — that's why the auto-stamp was added.
 
 ### HIGH PRIORITY (should fix before next deploy)
 
@@ -104,8 +102,9 @@
 ## Deployment Checklist (when ready)
 
 ```bash
-# 1. Bump SW cache
-# Edit client/public/sw.js — change CACHE_NAME to next version
+# 1. (SW cache bump no longer needed — auto-stamped from git short SHA
+#     by the stamp-sw-version plugin in client/vite.config.ts during
+#     `vite build`. Source CACHE_NAME stays as 'rmpg-flex-BUILD'.)
 
 # 2. TypeScript check
 cd client && npx tsc --noEmit

@@ -13,9 +13,9 @@ permissions:
 jobs:
   stale:
     name: Close stale PRs and issues
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/stale@v9
+      - uses: actions/stale@v10
         with:
           days-before-stale: 30
           days-before-close: 7
