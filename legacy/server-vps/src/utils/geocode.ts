@@ -31,22 +31,48 @@ interface GeocodeResult {
   longitude: number;
 }
 
+// ── Nominatim-specific 24h cache + 1-req/sec throttle (OSM usage policy) ──
+// Nominatim requires ≤1 req/sec and encourages aggressive client-side caching.
+// https://operations.osmfoundation.org/policies/nominatim/
+const osmCache = new Map<string, { at: number; result: GeocodeResult | null }>();
+const OSM_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+let lastOsmCall = 0;
+const OSM_MIN_INTERVAL_MS = 1000;
+
+async function throttledOsmGeocode(address: string): Promise<GeocodeResult | null> {
+  const key = address.toLowerCase().trim();
+  const cached = osmCache.get(key);
+  if (cached && Date.now() - cached.at < OSM_CACHE_TTL_MS) return cached.result;
+  const elapsed = Date.now() - lastOsmCall;
+  if (elapsed < OSM_MIN_INTERVAL_MS) await new Promise(r => setTimeout(r, OSM_MIN_INTERVAL_MS - elapsed));
+  lastOsmCall = Date.now();
+  const result = await geocodeWithNominatim(address);
+  osmCache.set(key, { at: Date.now(), result });
+  return result;
+}
+
 /**
- * Geocode an address string using the Google Geocoding API.
+ * Geocode an address string.
+ *
+ * NOTE: Despite the design doc naming "Google primary + Nominatim fallback",
+ * this server has no Google geocoding path — Nominatim has been the primary
+ * all along. Keeping Nominatim primary and layering a 24h in-memory cache
+ * plus the 1-req/sec throttle required by OSM usage policy.
+ *
  * Returns { latitude, longitude } or null if geocoding fails.
  */
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
   if (!address.trim()) return null;
   if (address.length > 500) return null;
 
-  // Rate limit
+  // Global rate limit (10 req/s for internal callers)
   const now = Date.now();
   const wait = MIN_GEOCODE_INTERVAL_MS - (now - lastGeocodeFetchMs);
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   lastGeocodeFetchMs = Date.now();
 
-  // Primary: Nominatim (free, no API key needed)
-  return geocodeWithNominatim(address);
+  // Cached + throttled Nominatim (24h TTL, 1 req/sec floor)
+  return throttledOsmGeocode(address);
 }
 
 /**

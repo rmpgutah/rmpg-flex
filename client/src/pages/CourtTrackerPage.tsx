@@ -82,6 +82,20 @@ const EMPTY_FORM = {
   notes: '',
 };
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CourtTrackerPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -122,6 +136,56 @@ export default function CourtTrackerPage() {
     isActive: formOpen,
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // Historical entry flag — when checked in the New form, auto-set
+  // status to 'completed' so the entry shows up under past events
+  // immediately and outcome/sentence can be entered without going through
+  // the live-event flow.
+  const [historicalEntry, setHistoricalEntry] = useState(false);
+
+  // Inline edit state for the detail panel header. When `editingHeader`
+  // is true, every top-level field (event_type, status, event_date,
+  // event_time, court_name, courtroom, judge_name, court_case_number,
+  // defendant_name, prosecutor, defense_attorney) becomes an input;
+  // Save calls PUT /api/court/events/:id with the draft.
+  const [editingHeader, setEditingHeader] = useState(false);
+  const [headerDraft, setHeaderDraft] = useState<Partial<CourtEvent>>({});
+  const [savingHeader, setSavingHeader] = useState(false);
+
+  const startEditHeader = useCallback((evt: CourtEvent | null) => {
+    if (!evt) return;
+    setHeaderDraft({
+      event_type: evt.event_type,
+      status: evt.status,
+      event_date: evt.event_date,
+      event_time: evt.event_time,
+      court_name: evt.court_name,
+      courtroom: evt.courtroom,
+      judge_name: evt.judge_name,
+      court_case_number: evt.court_case_number,
+      defendant_name: evt.defendant_name,
+      prosecutor: evt.prosecutor,
+      defense_attorney: (evt as any).defense_attorney,
+    });
+    setEditingHeader(true);
+  }, []);
+
+  const saveHeader = useCallback(async (evt: CourtEvent | null) => {
+    if (!evt) return;
+    setSavingHeader(true);
+    try {
+      await apiFetch(`/court/events/${evt.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(headerDraft),
+      });
+      setEditingHeader(false);
+      addToast('Event updated', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Update failed', 'error');
+    } finally {
+      setSavingHeader(false);
+    }
+  }, [headerDraft, addToast]);
 
   // Outcome modal
   const [outcomeOpen, setOutcomeOpen] = useState(false);
@@ -374,6 +438,33 @@ export default function CourtTrackerPage() {
   }, [selected?.id, fetchConflicts]);
   useLiveSync('records', () => { fetchEvents({ silent: true }); fetchUpcoming(); });
 
+  // Lookup-backed typeahead values (admin-managed under Admin → Court Tracker Lookups).
+  // Failure is silent — the inputs degrade to free-text. Auth-gated; when the
+  // user isn't logged in, lookups stay empty and the datalists are inert.
+  const [lookups, setLookups] = useState<{ court: string[]; judge: string[]; prosecutor: string[]; defense: string[] }>({ court: [], judge: [], prosecutor: [], defense: [] });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cats: Array<keyof typeof lookups> = ['court', 'judge', 'prosecutor', 'defense'];
+        const results = await Promise.all(cats.map(c =>
+          apiFetch<any[]>(`/court/lookups?category=${c}`).catch(() => [])
+        ));
+        if (cancelled) return;
+        const next: any = {};
+        cats.forEach((c, i) => {
+          const rows = Array.isArray(results[i]) ? results[i] : [];
+          next[c] = rows
+            .filter((r: any) => r.is_active !== 0 && r.is_active !== false)
+            .map((r: any) => r.display_label || r.value)
+            .filter(Boolean);
+        });
+        setLookups(next);
+      } catch { /* lookups stay empty — datalists become inert, inputs are free-text */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const handleCreate = async () => {
     const isValid = validateForm(formData, {
       event_date: { required: true, custom: isValidDate, customMessage: 'Valid date required (YYYY-MM-DD)' },
@@ -387,6 +478,7 @@ export default function CourtTrackerPage() {
       clearFormDraft();
       setFormOpen(false);
       setFormData({ ...EMPTY_FORM });
+      setHistoricalEntry(false);
       fetchEvents({ silent: true }); fetchUpcoming();
     } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
     finally { setSubmitting(false); }
@@ -787,7 +879,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Outcomes</div>
                   {(stats.byOutcome || []).map((r: any) => (
                     <div key={r.outcome} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
-                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ')}</span>
+                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ').toUpperCase()}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 bg-rmpg-800 overflow-hidden">
                           <div
@@ -917,7 +1009,7 @@ export default function CourtTrackerPage() {
                 <Printer style={{ width: 11, height: 11 }} /> Print PDF
               </button>
               {/* Feature 5: Confirm attendance */}
-              {selected.status !== 'completed' && (
+              {selected.status !== 'completed' && !editingHeader && (
                 <button type="button" onClick={handleConfirmAttendance} className="toolbar-btn text-[10px]" title="Confirm your attendance">
                   <Check style={{ width: 11, height: 11 }} /> Confirm
                 </button>
@@ -1000,8 +1092,29 @@ export default function CourtTrackerPage() {
                     <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '--'}</div>
                   </div>
-                ))}
-              </div>
+                  <div className="text-[10px] text-rmpg-500">
+                    Tip: dropdown values for Court / Judge / Prosecutor / Defense Attorney are admin-managed under Admin → Court Tracker Lookups.
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    ['Event Date', selected.event_date ? formatDate(selected.event_date) : '--'],
+                    ['Time', selected.event_time || '--'],
+                    ['Court', selected.court_name],
+                    ['Courtroom', selected.courtroom || '--'],
+                    ['Judge', selected.judge_name || '--'],
+                    ['Court Case #', selected.court_case_number || '--'],
+                    ['Defendant', selected.defendant_name || '--'],
+                    ['Prosecutor', selected.prosecutor || '--'],
+                  ].map(([label, value]) => (
+                    <div key={label as string}>
+                      <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
+                      <div className="text-xs text-white mt-0.5">{value || '--'}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Feature 6: Bail/Bond Info */}
               <div className="panel-beveled p-3">
