@@ -35,13 +35,13 @@ export function CommitDropdown({ allowedActions, onSelect }: Props) {
         ▼
       </button>
       {open && (
-        <div className="absolute right-0 bottom-full mb-1 bg-[#141414] border border-[#2e2e2e] min-w-[220px] z-10">
+        <div className="absolute right-0 bottom-full mb-1 bg-surface-base border border-rmpg-700 min-w-[220px] z-10">
           {allowedActions.map((action) => (
             <button
               key={action}
               type="button"
               onClick={() => { setOpen(false); onSelect(action); }}
-              className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#1f1f1f]"
+              className="block w-full text-left px-3 py-2 text-xs text-rmpg-100 hover:bg-surface-raised"
             >
               {LABELS[action]}
             </button>

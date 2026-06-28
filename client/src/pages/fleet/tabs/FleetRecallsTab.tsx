@@ -37,6 +37,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ vehicle_id: vehicleId || '', recall_number: '', manufacturer: '', description: '', severity: 'standard', remedy: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -63,20 +64,44 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
     if (!Number.isInteger(vid) || vid <= 0) { addToast('A valid vehicle is required for a recall', 'error'); return; }
     if (submitting) return;
     setSubmitting(true);
+    // Map UI fields to the handler's columns (nhtsa_number / issue_date / notes).
+    const payload = {
+      nhtsa_number: form.recall_number.trim(),
+      description: form.description.trim(),
+      severity: form.severity,
+      notes: [form.manufacturer && `Mfr: ${form.manufacturer}`, form.remedy && `Remedy: ${form.remedy}`].filter(Boolean).join(' — ') || null,
+    };
     try {
-      // Map UI fields to the handler's columns (nhtsa_number / issue_date / notes).
-      await apiFetch('/fleet/recalls', { method: 'POST', body: JSON.stringify({
-        vehicle_id: vid,
-        nhtsa_number: form.recall_number.trim(),
-        description: form.description.trim(),
-        severity: form.severity,
-        issue_date: localToday(),
-        notes: [form.manufacturer && `Mfr: ${form.manufacturer}`, form.remedy && `Remedy: ${form.remedy}`].filter(Boolean).join(' — ') || null,
-      }) });
-      addToast('Recall created', 'success'); setShowForm(false);
+      if (editingId != null) {
+        await apiFetch(`/fleet/recalls/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Recall updated', 'success');
+      } else {
+        await apiFetch('/fleet/recalls', { method: 'POST', body: JSON.stringify({ ...payload, vehicle_id: vid, issue_date: localToday() }) });
+        addToast('Recall created', 'success');
+      }
+      setShowForm(false); setEditingId(null);
       setForm({ vehicle_id: vehicleId || '', recall_number: '', manufacturer: '', description: '', severity: 'standard', remedy: '' });
       load();
-    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to create recall', 'error'); } finally { setSubmitting(false); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to save recall', 'error'); } finally { setSubmitting(false); }
+  };
+
+  const startEdit = (r: Recall) => {
+    setForm({
+      vehicle_id: r.vehicle_id || vehicleId || '',
+      recall_number: r.recall_number || (r as any).nhtsa_number || '',
+      manufacturer: r.manufacturer || '',
+      description: r.description || '',
+      severity: r.severity || 'standard',
+      remedy: r.remedy || '',
+    });
+    setEditingId(r.id);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (r: Recall) => {
+    if (!window.confirm(`Delete recall ${r.recall_number || (r as any).nhtsa_number || r.id}?`)) return;
+    try { await apiFetch(`/fleet/recalls/${r.id}`, { method: 'DELETE' }); addToast('Recall deleted', 'success'); load(); }
+    catch (e) { addToast(e instanceof Error ? e.message : 'Failed to delete recall', 'error'); }
   };
 
   const updateStatus = async (id: number, status: string) => {
@@ -90,7 +115,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold text-white flex items-center gap-1">
+        <h3 className="text-xs font-bold text-rmpg-100 flex items-center gap-1">
           <AlertOctagon className="w-3.5 h-3.5 text-red-400" /> Recall Alerts
           {openCount > 0 && <span className="ml-1 px-1.5 py-0.5 bg-red-900/50 text-red-400 text-[9px] font-bold">{openCount} OPEN</span>}
         </h3>
@@ -100,14 +125,14 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
       {showForm && (
         <div className="panel-inset p-3 space-y-2">
           <div className="grid grid-cols-3 gap-2">
-            <input value={form.recall_number} onChange={e => setForm(f => ({ ...f, recall_number: e.target.value }))} className="input-field text-xs" placeholder="Recall #" />
-            <input value={form.manufacturer} onChange={e => setForm(f => ({ ...f, manufacturer: e.target.value }))} className="input-field text-xs" placeholder="Manufacturer" />
-            <select value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className="input-field text-xs">
+            <input id="ff-fleetrecallstab-0" value={form.recall_number} onChange={e => setForm(f => ({ ...f, recall_number: e.target.value }))} className="input-field text-xs" placeholder="Recall #" />
+            <input id="ff-fleetrecallstab-1" value={form.manufacturer} onChange={e => setForm(f => ({ ...f, manufacturer: e.target.value }))} className="input-field text-xs" placeholder="Manufacturer" />
+            <select id="ff-fleetrecallstab-2" value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className="input-field text-xs">
               <option value="standard">Standard</option><option value="safety">Safety</option><option value="critical">Critical</option>
             </select>
           </div>
           <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
-          <input value={form.remedy} onChange={e => setForm(f => ({ ...f, remedy: e.target.value }))} className="input-field w-full text-xs" placeholder="Remedy..." />
+          <input id="ff-fleetrecallstab-3" value={form.remedy} onChange={e => setForm(f => ({ ...f, remedy: e.target.value }))} className="input-field w-full text-xs" placeholder="Remedy..." />
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.recall_number.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Saving...' : 'Save'}</button>
             <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-[9px]">Cancel</button>
@@ -127,19 +152,23 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[r.status] || ''}`}>{r.status.replace(/_/g, ' ')}</span>
-                    <span className="text-[10px] text-white font-bold font-mono">{r.recall_number || (r as any).nhtsa_number}</span>
+                    <span className="text-[10px] text-rmpg-100 font-bold font-mono">{r.recall_number || (r as any).nhtsa_number}</span>
                     {!vehicleId && <span className="text-[10px] text-rmpg-300">{r.vehicle_number} ({r.year} {r.make} {r.model})</span>}
                   </div>
                   <p className="text-[10px] text-rmpg-200">{r.description}</p>
                   {r.remedy && <p className="text-[10px] text-rmpg-400 mt-1">Remedy: {r.remedy}</p>}
                   {(r.completed_date || (r as any).remedy_date) && <p className="text-[10px] text-green-400">Completed: {parseTimestamp(r.completed_date || (r as any).remedy_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
                 </div>
-                {r.status !== 'completed' && r.status !== 'not_applicable' && (
-                  <div className="flex gap-1">
-                    {r.status === 'open' && <button type="button" onClick={() => updateStatus(r.id, 'scheduled')} className="toolbar-btn text-[9px]"><Calendar className="w-3 h-3" /> Schedule</button>}
-                    <button type="button" onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
-                  </div>
-                )}
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => startEdit(r)} className="toolbar-btn text-[9px]">Edit</button>
+                  <button type="button" onClick={() => handleDelete(r)} className="toolbar-btn text-[9px] text-red-400">Del</button>
+                  {r.status !== 'completed' && r.status !== 'not_applicable' && (
+                    <>
+                      {r.status === 'open' && <button type="button" onClick={() => updateStatus(r.id, 'scheduled')} className="toolbar-btn text-[9px]"><Calendar className="w-3 h-3" /> Schedule</button>}
+                      <button type="button" onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           ))}
