@@ -20,11 +20,141 @@ const lastGeofenceBreachAt = new Map<string, number>();
 const GPS_SOURCE_PRIORITY: Record<string, number> = {
   browser_desktop: 1,
   browser: 1,       // legacy fallback
+  offline_desktop: 1, // queued breadcrumbs replayed from Electron offline cache
   browser_mobile: 2,
   clearpathgps: 3,
   traccar: 5,       // PRIMARY — Traccar Client / Traccar Server / OsmAnd protocol devices
 };
-const GPS_STALE_MS = 30_000; // 30 seconds — stale source can be overridden by lower priority
+
+// Per-source dominance window. When the *currently stored* source is one
+// of these, a lower-priority source can only override after this much
+// silence. iOS routinely suspends OwnTracks for 1-5 minutes between
+// Significant Location updates while in a pocket, so a 30s threshold
+// would let the dispatch console's browser GPS hijack the unit's
+// position any time the officer's phone briefly slept. The 5-minute
+// floor outlasts ordinary suspension cycles while still allowing
+// graceful fallback if the phone genuinely dies.
+const GPS_DOMINANCE_WINDOW_SEC: Record<string, number> = {
+  owntracks: 300,    // 5 min — OwnTracks is dominant; nothing displaces it for 5 min
+  traccar: 300,      // 5 min — same treatment for the other background tracker
+  clearpathgps: 120, // 2 min — vehicle tracker is fairly reliable, slightly shorter window
+};
+// Default for sources not in the map above (browser, offline_desktop, etc).
+const GPS_STALE_MS = 30_000;
+const GPS_STALE_SEC = Math.floor(GPS_STALE_MS / 1000);
+
+/**
+ * Atomically update a unit's live GPS position if — and only if — the
+ * incoming source out-ranks (or ties) the stored source, OR the stored
+ * source has been silent longer than its dominance window. Runs as a
+ * single UPDATE statement so two concurrent writers cannot both pass a
+ * TOCTOU check and clobber each other: the gate runs under the same
+ * row lock as the write.
+ *
+ * Dominance windows protect high-priority sources (OwnTracks, Traccar)
+ * from being briefly displaced by lower-priority browser sources during
+ * normal iOS background-suspension cycles. See GPS_DOMINANCE_WINDOW_SEC.
+ *
+ * Returns true if the row was updated, false if suppressed by the gate.
+ */
+function updateUnitGpsIfHigherPriority(
+  unitId: number,
+  lat: number,
+  lng: number,
+  source: string,
+  nowLocal: string,
+): boolean {
+  const db = getDb();
+  const incomingPriority = GPS_SOURCE_PRIORITY[source] ?? 0;
+
+  // Sources we treat as "authoritative" — their writes also stamp the
+  // last_authoritative_gps_at column. Browser fallbacks deliberately
+  // do NOT stamp it, so the gap detector can tell when a high-priority
+  // source has actually died versus when a fallback is just filling in.
+  const isAuthoritative = source === 'owntracks' || source === 'traccar' || source === 'clearpathgps';
+
+  // The priority ladder + per-source dominance windows are encoded
+  // directly in SQL so the comparison happens atomically with the write.
+  // Same-or-higher priority always wins; lower priority only wins when
+  // the stored source has been silent past its window. We only update
+  // the authoritative-freshness columns when the incoming source is in
+  // the authoritative tier — those columns are the heartbeat the gap
+  // detector watches for OwnTracks/Traccar specifically.
+  const sql = isAuthoritative
+    ? `UPDATE units
+       SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?,
+           last_authoritative_gps_at = ?, last_authoritative_gps_source = ?
+       WHERE id = ?
+         AND (
+           gps_updated_at IS NULL
+           OR COALESCE(CASE gps_source
+                WHEN 'owntracks' THEN 5
+                WHEN 'traccar' THEN 4
+                WHEN 'clearpathgps' THEN 3
+                WHEN 'browser_mobile' THEN 2
+                WHEN 'browser_desktop' THEN 1
+                WHEN 'browser' THEN 1
+                WHEN 'offline_desktop' THEN 1
+                ELSE 0
+              END, 0) <= ?
+           OR (strftime('%s','now') - strftime('%s', datetime(gps_updated_at))) >
+              CASE gps_source
+                WHEN 'owntracks'    THEN 300
+                WHEN 'traccar'      THEN 300
+                WHEN 'clearpathgps' THEN 120
+                ELSE 30
+              END
+         )`
+    : `UPDATE units
+       SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?
+       WHERE id = ?
+         AND (
+           gps_updated_at IS NULL
+           OR COALESCE(CASE gps_source
+                WHEN 'owntracks' THEN 5
+                WHEN 'traccar' THEN 4
+                WHEN 'clearpathgps' THEN 3
+                WHEN 'browser_mobile' THEN 2
+                WHEN 'browser_desktop' THEN 1
+                WHEN 'browser' THEN 1
+                WHEN 'offline_desktop' THEN 1
+                ELSE 0
+              END, 0) <= ?
+           OR (strftime('%s','now') - strftime('%s', datetime(gps_updated_at))) >
+              CASE gps_source
+                WHEN 'owntracks'    THEN 300
+                WHEN 'traccar'      THEN 300
+                WHEN 'clearpathgps' THEN 120
+                ELSE 30
+              END
+         )`;
+
+  const args = isAuthoritative
+    ? [lat, lng, source, nowLocal, nowLocal, source, unitId, incomingPriority]
+    : [lat, lng, source, nowLocal, unitId, incomingPriority];
+
+  const info = db.prepare(sql).run(...args);
+  return Number(info?.changes ?? 0) > 0;
+}
+
+/**
+ * Stamp the authoritative freshness even when the priority gate
+ * suppressed the live-position update (rare: a higher-priority source
+ * already holds the slot, so we skip the position write but still want
+ * to record that THIS authoritative source is alive). Called from the
+ * OwnTracks handler in the suppression case.
+ */
+function stampAuthoritativeHeartbeat(unitId: number, source: string, nowLocal: string): void {
+  if (source !== 'owntracks' && source !== 'traccar' && source !== 'clearpathgps') return;
+  const db = getDb();
+  db.prepare(
+    'UPDATE units SET last_authoritative_gps_at = ?, last_authoritative_gps_source = ? WHERE id = ?'
+  ).run(nowLocal, source, unitId);
+}
+
+// Re-export so other modules can read the dominance windows / priority
+// for telemetry, dashboards, etc. without re-deriving them.
+export { GPS_SOURCE_PRIORITY, GPS_DOMINANCE_WINDOW_SEC, GPS_STALE_SEC };
 
 /** Ray-casting point-in-polygon test */
 function pointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
@@ -188,31 +318,18 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     // ── Use the LATEST point for live unit position and broadcast ──
     const latest = validPoints[validPoints.length - 1];
 
-    // ── GPS Source Priority Check ──
-    // Determine incoming source: phone GPS > desktop WiFi
+    // ── GPS Source Priority Check (atomic) ──
+    // Determine incoming source: phone GPS > desktop WiFi.
     const allowedDeviceTypes = ['mobile', 'desktop'];
     const rawDeviceType = typeof req.body.device_type === 'string' ? req.body.device_type : 'desktop';
     const deviceType = allowedDeviceTypes.includes(rawDeviceType) ? rawDeviceType : 'desktop';
     const gpsSource = deviceType === 'mobile' ? 'browser_mobile' : 'browser_desktop';
-    const incomingPriority = GPS_SOURCE_PRIORITY[gpsSource] ?? 1;
 
-    // Check current unit's GPS source and freshness
-    const currentGps = db.prepare('SELECT gps_source, gps_updated_at FROM units WHERE id = ?').get(unit.id) as any;
-    const currentPriority = GPS_SOURCE_PRIORITY[currentGps?.gps_source] ?? 0;
-    const updatedAtMs = currentGps?.gps_updated_at ? new Date(currentGps.gps_updated_at).getTime() : NaN;
-    const currentAge = !isNaN(updatedAtMs)
-      ? Date.now() - updatedAtMs
-      : Infinity; // no previous update or invalid date → always accept
-
-    // Update live position only if: incoming priority >= current, OR current source is stale
-    const shouldUpdateLive = incomingPriority >= currentPriority || currentAge > GPS_STALE_MS;
-
-    if (shouldUpdateLive) {
-      db.prepare(`
-        UPDATE units SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?
-        WHERE id = ?
-      `).run(latest.lat, latest.lng, gpsSource, localNow(), unit.id);
-    }
+    // Priority check happens inside the UPDATE's WHERE clause so two
+    // concurrent writers cannot both pass a read-then-write TOCTOU.
+    const shouldUpdateLive = updateUnitGpsIfHigherPriority(
+      unit.id, latest.lat, latest.lng, gpsSource, localNow()
+    );
 
     // Fetch full unit info for broadcast (always needed for breadcrumb metadata)
     const updated = db.prepare(`
@@ -226,13 +343,16 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
     // ── Bulk-insert all breadcrumb points in a single transaction ──
     // Breadcrumbs are ALWAYS recorded regardless of priority — both sessions contribute trail data
+    // Normalize `recorded_at` to localtime format at write time so downstream
+    // reads don't have to cope with the ISO-UTC/localtime mix. `datetime(?, 'localtime')`
+    // parses either input form and emits "YYYY-MM-DD HH:MM:SS" consistently.
     const insertStmt = db.prepare(`
       INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type,
         road_name, nearest_intersection, gps_source, recorded_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
         NULL, NULL, ?,
-        COALESCE(?, datetime('now','localtime')))
+        COALESCE(datetime(?, 'localtime'), datetime('now','localtime')))
     `);
 
     const insertMany = db.transaction((pts: GpsPoint[]) => {
@@ -518,9 +638,14 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
     const db = getDb();
     const unitId = parseInt(req.params.unitId as string, 10);
     if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' }); return; }
-    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+    // Cap at 8760h (1 year) to match client-side BREADCRUMB_HOUR_PRESETS.
+    // Previously 72h — truncated everything beyond 3 days even when client asked for 7d+.
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 8760);
 
     // Fix 15: LIMIT on trail queries to prevent huge responses
+    // Raised 10K→100K to allow dense OwnTracks trails (1 Hz = ~3600/hr/unit)
+    // to survive multi-day ranges. Server-side filters still collapse stationary
+    // points, so typical payload stays well under this cap.
     const rows = db.prepare(`
       SELECT latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number,
@@ -529,7 +654,7 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
       FROM gps_breadcrumbs
       WHERE unit_id = ? AND recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY recorded_at ASC
-      LIMIT 10000
+      LIMIT 100000
     `).all(unitId, hours) as any[];
 
     // ── Filter: accuracy gate + jump detection + stationary collapse ──
@@ -591,7 +716,9 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
 router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
+    // Cap at 8760h (1 year) to match client-side BREADCRUMB_HOUR_PRESETS.
+    // Previously 72h — silently truncated multi-day preset selections.
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 8760);
 
     // Haversine distance in meters between two lat/lng pairs
     const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -618,7 +745,7 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
       JOIN units u ON b.unit_id = u.id
       WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY b.unit_id, b.recorded_at ASC
-      LIMIT 50000
+      LIMIT 500000
     `).all(hours) as any[];
 
     // ── Group by unit, then filter each trail to remove starburst artifacts ──

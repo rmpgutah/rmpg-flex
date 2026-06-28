@@ -1,14 +1,3 @@
-// ============================================================
-// RMPG Flex — Event Planning Overlay Hook
-// ============================================================
-// Allows drawing operational planning overlays on the map:
-//   - Perimeters / cordons (polygons)
-//   - Routes / march paths (polylines)
-//   - Staging areas / command posts (markers)
-//   - Annotations (text labels)
-// Supports save/load of plans via API or localStorage.
-// ============================================================
-
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
@@ -25,9 +14,7 @@ export interface PlanItem {
   color: string;
   /** For polygons/routes: array of [lng, lat] coords */
   path?: Array<{ lat: number; lng: number }>;
-  /** For markers/annotations: single point */
   position?: { lat: number; lng: number };
-  /** For annotations: text content */
   text?: string;
   createdAt: string;
 }
@@ -40,8 +27,6 @@ export interface EventPlan {
   createdAt: string;
   updatedAt: string;
 }
-
-// ── Drawing Colors ───────────────────────────────────────────
 
 export const PLAN_COLORS: Record<PlanItemType, string> = {
   perimeter: '#ef4444',
@@ -59,7 +44,23 @@ export const PLAN_TYPE_LABELS: Record<PlanItemType, string> = {
 
 const LS_KEY = 'rmpg_event_plans';
 
-// ── Hook ─────────────────────────────────────────────────────
+function polygonCoordsToGeoJson(coords: Array<{ lat: number; lng: number }>) {
+  const ring = [...coords.map((p) => [p.lng, p.lat])];
+  ring.push(ring[0]);
+  return {
+    type: 'Feature' as const,
+    geometry: { type: 'Polygon' as const, coordinates: [ring] },
+    properties: {} as Record<string, any>,
+  };
+}
+
+function lineCoordsToGeoJson(coords: Array<{ lat: number; lng: number }>) {
+  return {
+    type: 'Feature' as const,
+    geometry: { type: 'LineString' as const, coordinates: coords.map((p) => [p.lng, p.lat]) },
+    properties: {} as Record<string, any>,
+  };
+}
 
 interface UseEventPlanningOptions {
   map: mapboxgl.Map | null;
@@ -448,8 +449,6 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
     renameItem,
   };
 }
-
-// ── Helpers ──────────────────────────────────────────────────
 
 function escapeForHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

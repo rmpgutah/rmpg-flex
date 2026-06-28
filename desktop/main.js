@@ -9,7 +9,30 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net, powerSaveBlocker } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
+
+// ─── Lazy-load native modules ─────────────────────────────────
+// better-sqlite3 is a native (C++) add-on that must be compiled for
+// the exact Electron ABI + architecture. If the rebuild failed or the
+// binary is missing (common on first macOS launch after a bad build),
+// eagerly requiring it crashes the entire app before the splash even
+// shows. Load lazily so the app can start with offline support
+// gracefully disabled.
+let initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta;
+try {
+  ({ initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
+} catch (err) {
+  console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
+  console.error('[APP] Offline support will be disabled this session.');
+  // Provide no-op stubs so the rest of main.js doesn't crash on calls
+  initLocalDb = () => { console.warn('[LOCAL-DB] Unavailable — native module failed to load'); };
+  getLocalDb = () => null;
+  closeLocalDb = () => {};
+  getConfig = () => null;
+  setConfig = () => {};
+  getQueueDepth = () => 0;
+  getSyncMeta = () => null;
+}
+
 const { ConnectivityMonitor } = require('./connectivityMonitor');
 const { InternalGps, findGpsPort } = require('./internalGps');
 
@@ -481,11 +504,35 @@ function createSplashWindow() {
   });
 }
 
+let splashTimeout = null;
+
 function closeSplash() {
+  if (splashTimeout) {
+    clearTimeout(splashTimeout);
+    splashTimeout = null;
+  }
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.close();
     splashWindow = null;
   }
+}
+
+/**
+ * Start a safety timer that closes the splash screen after maxMs even
+ * if ready-to-show never fires (server hangs, loadURL stalls, etc.).
+ * Without this, macOS users see the splash forever with no way to
+ * interact with the app.
+ */
+function startSplashTimeout(maxMs = 15000) {
+  splashTimeout = setTimeout(() => {
+    console.warn(`[SPLASH] Timed out after ${maxMs}ms — force-closing`);
+    closeSplash();
+    // If the main window exists but isn't visible yet, show it now
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  }, maxMs);
 }
 
 // ─── Server Connectivity Check ──────────────────────────────
@@ -496,31 +543,52 @@ function closeSplash() {
 function checkServerConnectivity() {
   return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 3; // 3 × 2s = 6s max; reduced from 5 (10s) to prevent long startup delays
     const delayMs = 2000;
+    let resolved = false;
 
     function tryConnect() {
+      if (resolved) return;
       attempts++;
       console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${REMOTE_SERVER_URL}/api/health`);
 
       const request = net.request(`${REMOTE_SERVER_URL}/api/health`);
 
+      // Per-request timeout — prevent hung TCP handshakes from stalling startup
+      const reqTimeout = setTimeout(() => {
+        try { request.abort(); } catch { /* ignore */ }
+        if (!resolved && attempts < maxAttempts) {
+          setTimeout(tryConnect, delayMs);
+        } else if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      }, 5000);
+
       request.on('response', (response) => {
-        if (response.statusCode === 200) {
+        clearTimeout(reqTimeout);
+        // Consume body to prevent memory leak
+        response.on('data', () => {});
+        response.on('end', () => {});
+        if (!resolved && response.statusCode === 200) {
+          resolved = true;
           console.log('[APP] Server is reachable');
           resolve(true);
-        } else if (attempts < maxAttempts) {
+        } else if (!resolved && attempts < maxAttempts) {
           setTimeout(tryConnect, delayMs);
-        } else {
+        } else if (!resolved) {
+          resolved = true;
           resolve(false);
         }
       });
 
       request.on('error', (err) => {
+        clearTimeout(reqTimeout);
         console.log(`[APP] Connection attempt ${attempts} failed:`, err.message);
-        if (attempts < maxAttempts) {
+        if (!resolved && attempts < maxAttempts) {
           setTimeout(tryConnect, delayMs);
-        } else {
+        } else if (!resolved) {
+          resolved = true;
           resolve(false);
         }
       });
@@ -662,12 +730,22 @@ async function createMainWindow() {
   // Clear Chromium HTTP cache before loading — ensures deploys propagate
   // immediately without requiring a manual hard-refresh in the desktop app.
   // (Service workers, localStorage, and IndexedDB are NOT cleared.)
-  await mainWindow.webContents.session.clearCache();
-  console.log('[APP] HTTP cache cleared');
-
-  // Unregister stale service workers so the latest version installs fresh
-  await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
-  console.log('[APP] Service workers cleared');
+  // Wrap in a race with a timeout so a macOS-specific hang in clearCache
+  // or clearStorageData doesn't block startup forever.
+  try {
+    await Promise.race([
+      (async () => {
+        await mainWindow.webContents.session.clearCache();
+        console.log('[APP] HTTP cache cleared');
+        // Unregister stale service workers so the latest version installs fresh
+        await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
+        console.log('[APP] Service workers cleared');
+      })(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Cache/ServiceWorker clear timed out after 5000ms')), 5000)),
+    ]);
+  } catch (err) {
+    console.warn('[APP] Cache/SW clear timed out or failed — continuing:', err && err.message);
+  }
 
   // Load the remote web application
   console.log('[APP] Loading:', REMOTE_SERVER_URL);
@@ -2691,21 +2769,34 @@ app.whenReady().then(async () => {
 
   // Show splash screen while connecting
   createSplashWindow();
+  // Safety timeout: close splash after 15s even if ready-to-show never fires
+  // (prevents macOS users from getting stuck on an unresponsive splash)
+  startSplashTimeout(15000);
 
   try {
-    // Initialize local database for offline support
-    initLocalDb();
-
-    // Check server connectivity before loading the app
-    const isReachable = await checkServerConnectivity();
-
-    if (!isReachable) {
-      console.warn('[APP] Server unreachable — will show offline page');
+    // Initialize local database for offline support (non-fatal if it fails)
+    try {
+      initLocalDb();
+    } catch (dbErr) {
+      console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);
     }
+
+    // Start connectivity check in parallel with window creation.
+    // Old behaviour blocked on 5 × 2s retries before createMainWindow(),
+    // leaving macOS users staring at the splash for up to 10s before
+    // the window even began loading. Now the window starts immediately
+    // and the connectivity result is used only to seed the monitor.
+    const connectivityPromise = checkServerConnectivity();
 
     createMenu();
     await createMainWindow();
     createTray();
+
+    // Await connectivity (usually already resolved by now)
+    const isReachable = await connectivityPromise;
+    if (!isReachable) {
+      console.warn('[APP] Server unreachable at startup');
+    }
 
     // Initialize auto-updater
     console.log('[APP] Initializing auto-updater with:', REMOTE_SERVER_URL);

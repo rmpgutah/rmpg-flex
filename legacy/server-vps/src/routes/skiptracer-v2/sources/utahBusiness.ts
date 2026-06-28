@@ -7,7 +7,7 @@
 // Free public search — no API key required.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, BusinessRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, BusinessRecord } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const BES_SEARCH_URL = 'https://secure.utah.gov/bes/action/search';
@@ -16,7 +16,7 @@ const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement Skip Trace)';
 export default class UtahBusinessSource extends BaseDataSource {
   readonly name = 'utah_business';
   readonly displayName = 'Utah Business Entities';
-  readonly category: SourceCategory = 'business';
+  readonly category: SkipTracerSourceCategory = 'business';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 5;

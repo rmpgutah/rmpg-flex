@@ -6,14 +6,14 @@
 // Always configured (local data), zero cost.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, WatchlistFlag } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, WatchlistFlag } from '../types';
 import { getDb } from '../../../models/database';
 import { localNow } from '../../../utils/timeUtils';
 
 export default class OfacSource extends BaseDataSource {
   readonly name = 'ofac';
   readonly displayName = 'OFAC Sanctions';
-  readonly category: SourceCategory = 'registry';
+  readonly category: SkipTracerSourceCategory = 'registry';
   readonly costPerLookup = 0;
 
   isConfigured(): boolean {

@@ -153,6 +153,7 @@ export function useMapSafetyZones(
       pulseIntervalsRef.current.forEach((id) => clearInterval(id));
       pulseIntervalsRef.current = [];
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, enabled, zones]);
 
   useEffect(() => {
@@ -162,6 +163,7 @@ export function useMapSafetyZones(
         popupRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { zones, loading, refresh, days, setDays };
