@@ -1,0 +1,40 @@
+[project]
+name = "flex-edge"
+version = "0.1.0"
+description = "Flex Dashcam AI edge runner — captures, infers, and posts events to RMPG Flex"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "RMPG Flex" }]
+dependencies = [
+    "requests>=2.31",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+# Inference-related deps are intentionally NOT in the base install —
+# they're heavy (CUDA, TensorRT, MediaPipe wheels) and only relevant
+# on a Jetson. See README for the on-device install procedure.
+jetson = [
+    "numpy>=1.26",
+    "opencv-python>=4.9",
+    "mediapipe>=0.10",
+]
+
+[project.scripts]
+flex-edge = "flex_edge.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["flex_edge*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

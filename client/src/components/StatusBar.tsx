@@ -6,8 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
-import StatusBarRadio from './StatusBarRadio';
-import { safeTimeStr } from '../utils/dateUtils';
+
+import { safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -24,7 +24,7 @@ interface StatusBarProps {
   gpsLastSent?: string | null;
 }
 
-export default function StatusBar({
+function StatusBar({
   isConnected,
   user,
   activeCallCount,
@@ -62,7 +62,7 @@ export default function StatusBar({
       <div className="status-bar-section">
         <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span>
         {callsByPriority && callsByPriority.length > 0 && activeCallCount > 0 && (
-          <span style={{ color: '#666666', marginLeft: 4 }}>
+          <span style={{ color: 'var(--rmpg-500)', marginLeft: 4 }}>
             ({callsByPriority.filter(p => p.count > 0).map(p => `${p.count} ${p.priority}`).join(', ')})
           </span>
         )}
@@ -82,7 +82,7 @@ export default function StatusBar({
       {/* 30: GPS Status with tabular-nums for accuracy/time */}
       <div className="status-bar-section">
         {gpsTracking ? (() => {
-          const ageSec = gpsLastSent ? (Date.now() - new Date(gpsLastSent).getTime()) / 1000 : Infinity;
+          const ageSec = gpsLastSent ? (Date.now() - parseTimestamp(gpsLastSent).getTime()) / 1000 : Infinity;
           const isLost = ageSec > 600;     // >10 min
           const isStale = ageSec > 120;    // >2 min
           const ledClass = isLost ? 'led-red' : isStale ? 'led-amber' : 'led-green';
@@ -94,30 +94,20 @@ export default function StatusBar({
                 GPS: {gpsUnitCallSign || 'ON'}
               </span>
               {gpsAccuracy != null && (
-                <span className="tabular-nums" style={{ color: '#666666', marginLeft: 4 }}>
+                <span className="tabular-nums" style={{ color: 'var(--rmpg-500)', marginLeft: 4 }}>
                   ±{Math.round(gpsAccuracy)}m
                 </span>
               )}
               {gpsLastSent && (
-                <span className="tabular-nums" style={{ color: isStale ? gpsColor : '#505050', marginLeft: 4 }}>
+                <span className="tabular-nums" style={{ color: isStale ? gpsColor : 'var(--rmpg-600)', marginLeft: 4 }}>
                   {safeTimeStr(gpsLastSent)}
                 </span>
               )}
             </>
           );
         })() : (
-          <span style={{ color: '#3a3a3a' }}>GPS: OFF</span>
+          <span style={{ color: 'var(--rmpg-500)' }}>GPS: OFF</span>
         )}
-      </div>
-
-      {/* Shift Timer */}
-      <div className="status-bar-section">
-        <span style={{ color: '#888' }}>SHIFT: <span className="tabular-nums" style={{ color: '#d4a017' }}>{(() => {
-          const h = now.getHours();
-          if (h >= 6 && h < 14) return 'DAY';
-          if (h >= 14 && h < 22) return 'SWING';
-          return 'GRAVE';
-        })()}</span></span>
       </div>
 
       {/* Operator */}
@@ -127,28 +117,17 @@ export default function StatusBar({
         </span>
       </div>
 
-      {/* Memory / Performance */}
-      <div className="status-bar-section">
-        <span style={{ color: '#3a3a3a' }}>FPS: <span className="tabular-nums" style={{ color: '#666' }}>60</span></span>
-      </div>
 
-      {/* Radio */}
-      <StatusBarRadio />
 
       {/* Battery */}
       <BatteryIndicator />
-
-      {/* Hotkey hints */}
-      <div className="status-bar-section" style={{ color: '#2a2a2a' }}>
-        <span>F2:DSP F3:MAP F5:NCIC F6:REC</span>
-      </div>
 
       {/* 31: Timestamp with tabular-nums for stable clock rendering */}
       <div className="status-bar-section">
         <span className="tabular-nums" style={{ color: '#22c55e', fontWeight: 700, letterSpacing: '0.02em' }}>
           {now.toLocaleTimeString('en-US', { hour12: false })}
         </span>
-        <span style={{ color: '#666666', marginLeft: 8 }}>
+        <span style={{ color: 'var(--rmpg-500)', marginLeft: 8 }}>
           {now.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',
@@ -159,3 +138,5 @@ export default function StatusBar({
     </div>
   );
 }
+
+export default React.memo(StatusBar);

@@ -2,7 +2,7 @@
 // RMPG Flex — Officer Detail: Deployment History Tab
 // ============================================================
 
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   MapPinned, Plus, Calendar, Clock, Briefcase, Building2,
   Loader2,
@@ -10,6 +10,7 @@ import {
 import type { Deployment } from '../../../types';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   deployments: Deployment[];
@@ -31,14 +32,14 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const pastBorderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-l-rmpg-500';
       case 'cancelled': return 'border-l-red-500';
-      case 'scheduled': return 'border-l-gray-500';
+      case 'scheduled': return 'border-l-rmpg-500';
       default: return 'border-l-rmpg-600';
     }
   };
@@ -73,7 +74,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
       {currentDeployment && (
         <div
           className="panel-beveled p-3 border-l-2 border-l-green-500 border-t-2 border-t-green-500"
-          style={{ background: '#0a1a0a' }}
+          style={{ background: 'color-mix(in srgb, var(--surface-sunken) 85%, transparent)' }}
         >
           <div className="flex items-center gap-2 mb-2">
             <span className="led-dot led-green" />

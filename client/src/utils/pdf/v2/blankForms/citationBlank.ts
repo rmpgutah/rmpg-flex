@@ -8,7 +8,7 @@ function blankLabeled(label: string): LabeledField<CitationBlankData> {
 
 export const citationBlankSchema: FormSchema<CitationBlankData> = {
   meta: {
-    formNumber: 'FORM PS-209-BLK',
+    formNumber: 'PS-209-BLK',
     title: 'CITATION',
     revision: '2026-04',
   },

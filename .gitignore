@@ -1,79 +1,85 @@
-# ─── Dependencies ──────────────────────────────────
+# ─── Dependencies ───────────────────────────────────────────
 node_modules/
+**/node_modules/
 
-# ─── Environment Variables (contain secrets) ───────
-.env
-client/.env
-server/.env
-
-# ─── Build Output ──────────────────────────────────
+# ─── Build outputs ──────────────────────────────────────────
+dist/
+**/dist/
+build/
+**/build/
+*.tsbuildinfo
 client/dist/
-server/dist/
-
-# ─── Database & Uploads (local data) ──────────────
-server/data/
-server/uploads/
-
-# ─── Binary Installers (too large for git) ────────
-server/downloads/*.exe
-server/downloads/*.exe.blockmap
-server/downloads/*.dmg
-server/downloads/*.dmg.blockmap
-server/downloads/*.apk
-server/downloads/*.zip
-
-# ─── Certificates ────────────────────────────────
-server/certs/
-
-# ─── Environment Production ──────────────────────
-server/.env.production
-
-# ─── Android Build Artifacts ─────────────────────
-client/android/.gradle/
-client/android/app/build/
-client/android/build/
-client/android/.idea/
-client/android/local.properties
-
-# ─── Desktop/Electron Build Artifacts ────────────
 desktop/dist/
-desktop/out/
 
-# ─── OS Generated Files ───────────────────────────
+# ─── Environment / secrets ──────────────────────────────────
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+*.pem
+.dev.vars
+
+# ─── OS files ───────────────────────────────────────────────
 .DS_Store
+**/.DS_Store
 Thumbs.db
 
-# ─── IDE / Editor ─────────────────────────────────
+# ─── Editors / IDEs ─────────────────────────────────────────
 .vscode/
 .idea/
+**/.idea/
+.vs/
+**/.vs/
 *.swp
 *.swo
-*~
 
-# ─── Logs ─────────────────────────────────────────
-*.log
-npm-debug.log*
-firebase-debug.log
-
-# ─── TypeScript Cache ─────────────────────────────
-*.tsbuildinfo
-.claude/
-.github/*
-!.github/dependabot.yml
-!.github/labeler.yml
-!.github/SECURITY.md
-!.github/CODEOWNERS
-!.github/PULL_REQUEST_TEMPLATE.md
-!.github/ISSUE_TEMPLATE/
-!.github/workflows/
-.firecrawl/
-
-# ─── Visual Studio IDE state (should never be committed) ─────
-.vs/
+# ─── Visual Studio project (stray C++ project artifacts) ────
+# These were never meant to be in the repo — a desktop-build side
+# project leaked them in. Ignore the solution, project files, and
+# the generated "RMPG Flare/" tree (incl. its bundled image cache).
 *.sln
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
-RMPG Flare/
+/RMPG Flare/
 
+# ─── Cloudflare / Wrangler ──────────────────────────────────
+.wrangler/
+
+# ─── Logs ───────────────────────────────────────────────────
+logs/
+*.log
+
+# ─── Test / coverage output ─────────────────────────────────
+coverage/
+.cache/
+test-results/
+playwright-report/
+
+# ─── Local uploads / databases (dev only) ───────────────────
+uploads/
+server/uploads/
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ─── Local notes (never publish) ────────────────────────────
+*.notes.md
+CLAUDE-private.md
+
+# Generated Dispatch Guide PDF (jsPDF doc.save under vitest/jsdom dirties the tree)
 client/RMPG-Dispatch-Guide-*.pdf
+# Dispatch-guide screenshot working dirs (sources for dispatchGuideShots.ts)
+client/.guide-shots/
+.shots/
+
+# Audit workflow tracker artifacts (local only)
+.audit-*.json
+.audit-*.md
+.live_schema.json
+
+# Superpowers brainstorm visual-companion scaffolding (local only)
+.superpowers/

@@ -12,7 +12,7 @@ function blankLabeled(label: string): LabeledField<VehicleBlankData> {
 
 export const vehicleBlankSchema: FormSchema<VehicleBlankData> = {
   meta: {
-    formNumber: 'FORM PS-207-BLK',
+    formNumber: 'PS-207-BLK',
     title: 'VEHICLE RECORD',
     revision: '2026-04',
   },

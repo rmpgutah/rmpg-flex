@@ -1,16 +1,33 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { useToast } from '../../components/ToastProvider';
 
+import RichTextArea from '../../components/RichTextArea';
+import OfficerPicker, { type OfficerSummary } from '../../components/OfficerPicker';
 type Call = {
   id: number;
   call_number: string;
   incident_type: string;
   location: string;
-  pso_service_type: string | null;
-  contract_id: string | null;
   status: string;
   priority: string;
   created_at: string;
+  // PSO Client Request fields
+  pso_service_type: string | null;
+  pso_requestor_name: string | null;
+  pso_requestor_phone: string | null;
+  pso_requestor_email: string | null;
+  pso_billing_code: string | null;
+  pso_authorization: string | null;
+  pso_attempt_number: number | null;
+  contract_id: string | null;
+  // Process Service fields
+  process_service_type: string | null;
+  process_served_to: string | null;
+  process_served_address: string | null;
+  process_attempts: number | null;
+  process_served_at: string | null;
+  process_service_result: string | null;
 };
 
 type MobileAuthState = {
@@ -41,6 +58,7 @@ function clearAuth(callId: number): void {
 }
 
 export default function MobilePsoCfsPage() {
+  const { addToast } = useToast();
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const callId = useMemo(() => parseInt(String(id || '0'), 10), [id]);
@@ -51,6 +69,10 @@ export default function MobilePsoCfsPage() {
   const [call, setCall] = useState<Call | null>(null);
   const [scansRemaining, setScansRemaining] = useState<number | null>(null);
   const [userIdInput, setUserIdInput] = useState<string>('');
+  // Selected-officer object so we can render the chosen name back to the
+  // operator BEFORE they tap "Open Dispatch" — defends against typo-style
+  // wrong-officer auth that the old free-form number input made trivial.
+  const [selectedOfficer, setSelectedOfficer] = useState<OfficerSummary | null>(null);
   const [auth, setAuth] = useState<MobileAuthState | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
@@ -134,7 +156,7 @@ export default function MobilePsoCfsPage() {
       const data = await r.json();
       setCall(data.call);
     } catch (err: any) {
-      alert(`Status update failed: ${err.message || err}`);
+      addToast(`Status update failed: ${err.message || err}`, 'error');
     } finally {
       setStatusBusy(false);
     }
@@ -154,7 +176,7 @@ export default function MobilePsoCfsPage() {
       setNarrativeSaved(true);
       setTimeout(() => setNarrativeSaved(false), 2500);
     } catch (err: any) {
-      alert(`Narrative save failed: ${err.message || err}`);
+      addToast(`Narrative save failed: ${err.message || err}`, 'error');
     } finally {
       setBusy(false);
     }
@@ -191,7 +213,7 @@ export default function MobilePsoCfsPage() {
       setPsoSaved(true);
       setTimeout(() => setPsoSaved(false), 2500);
     } catch (err: any) {
-      alert(`PSO save failed: ${err.message || err}`);
+      addToast(`PSO save failed: ${err.message || err}`, 'error');
     } finally {
       setBusy(false);
     }
@@ -205,7 +227,7 @@ export default function MobilePsoCfsPage() {
   }
 
   if (stage === 'loading') {
-    return <Wrapper><div className="text-sm text-gray-400 p-4">Loading dispatch…</div></Wrapper>;
+    return <Wrapper><div className="text-sm text-rmpg-400 p-4">Loading dispatch…</div></Wrapper>;
   }
 
   if (stage === 'error') {
@@ -213,8 +235,8 @@ export default function MobilePsoCfsPage() {
       <Wrapper>
         <div className="p-4 space-y-2">
           <div className="text-red-400 font-bold">Unable to open this QR link</div>
-          <div className="text-sm text-gray-300">{errorMsg}</div>
-          <div className="text-xs text-gray-500 mt-3">Call your dispatch supervisor; they can reset the scan count or reissue the QR.</div>
+          <div className="text-sm text-rmpg-300">{errorMsg}</div>
+          <div className="text-xs text-rmpg-500 mt-3">Call your dispatch supervisor; they can reset the scan count or reissue the QR.</div>
         </div>
       </Wrapper>
     );
@@ -226,24 +248,36 @@ export default function MobilePsoCfsPage() {
         <div className="p-4 space-y-4">
           <div>
             <div className="text-[#d4a017] text-xs font-bold tracking-[0.12em] uppercase mb-1">PSO Dispatch</div>
-            <div className="text-white text-lg font-mono">{call?.call_number}</div>
-            <div className="text-sm text-gray-300 mt-1">{call?.location}</div>
+            <div className="text-rmpg-100 text-lg font-mono">{call?.call_number}</div>
+            <div className="text-sm text-rmpg-300 mt-1">{call?.location}</div>
             {call?.pso_service_type && (
-              <div className="text-xs text-gray-400 mt-1 uppercase">{call.pso_service_type.replace(/_/g, ' ')}</div>
+              <div className="text-xs text-rmpg-400 mt-1 uppercase">{call.pso_service_type.replace(/_/g, ' ')}</div>
             )}
           </div>
-          <div className="bg-[#141414] border border-[#222] p-3 space-y-3">
-            <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Enter Your User ID</label>
-            <input
-              type="number"
-              inputMode="numeric"
-              autoFocus
-              value={userIdInput}
-              onChange={(e) => setUserIdInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') submitAuth(); }}
-              className="w-full bg-[#050505] border border-[#333] text-white font-mono text-lg px-3 py-2 focus:border-[#d4a017] outline-none"
-              placeholder="e.g. 1572"
+          <div className="bg-surface-base border border-border-default p-3 space-y-3">
+            <label className="block text-[11px] font-bold text-rmpg-400 uppercase tracking-wider">Who Are You?</label>
+            <OfficerPicker
+              id="ff-mobilepsocfspage-0"
+              value={userIdInput ? Number(userIdInput) : null}
+              onChange={(id, officer) => {
+                setUserIdInput(id ? String(id) : '');
+                setSelectedOfficer(officer ?? null);
+                if (id && errorMsg) setErrorMsg('');
+              }}
+              placeholder="Search by your name, badge, unit…"
             />
+            {/* Confirmation strip — surfaces the picked officer's name + badge
+                so the guard can verify identity BEFORE the auth round-trip.
+                Without this, a wrong pick would silently authenticate them
+                as the wrong officer (the old typed-id failure mode).*/}
+            {selectedOfficer && (
+              <div className="bg-surface-overlay border border-[#d4a017]/40 px-3 py-2 text-xs">
+                <span className="text-rmpg-400">Sign in as </span>
+                <span className="text-[#d4a017] font-bold">{selectedOfficer.full_name}</span>
+                {selectedOfficer.badge_number && <span className="text-rmpg-500 ml-1.5">#{selectedOfficer.badge_number}</span>}
+                {selectedOfficer.unit_call_sign && <span className="text-rmpg-500 ml-1.5">· {selectedOfficer.unit_call_sign}</span>}
+              </div>
+            )}
             {errorMsg && <div className="text-red-400 text-xs">{errorMsg}</div>}
             <button
               disabled={busy || !userIdInput.trim()}
@@ -251,7 +285,7 @@ export default function MobilePsoCfsPage() {
               className="w-full bg-[#d4a017] text-black font-bold py-3 uppercase tracking-wider disabled:opacity-50"
             >{busy ? 'Verifying…' : 'Open Dispatch'}</button>
             {scansRemaining != null && (
-              <div className="text-[10px] text-gray-500 text-center">{scansRemaining} scan{scansRemaining !== 1 ? 's' : ''} remaining on this QR</div>
+              <div className="text-[10px] text-rmpg-500 text-center">{scansRemaining} scan{scansRemaining !== 1 ? 's' : ''} remaining on this QR</div>
             )}
           </div>
         </div>
@@ -266,41 +300,41 @@ export default function MobilePsoCfsPage() {
         <div className="flex items-start justify-between">
           <div>
             <div className="text-[#d4a017] text-xs font-bold tracking-[0.12em] uppercase">PSO Dispatch</div>
-            <div className="text-white text-lg font-mono">{call?.call_number}</div>
-            <div className="text-xs text-gray-400 mt-0.5">Signed in as <span className="text-gray-200">{auth?.user.full_name} ({auth?.user.id})</span></div>
+            <div className="text-rmpg-100 text-lg font-mono">{call?.call_number}</div>
+            <div className="text-xs text-rmpg-400 mt-0.5">Signed in as <span className="text-rmpg-200">{auth?.user.full_name} ({auth?.user.id})</span></div>
           </div>
-          <button onClick={signOut} className="text-[10px] text-gray-500 hover:text-red-400 uppercase">Sign Out</button>
+          <button onClick={signOut} className="text-[10px] text-rmpg-500 hover:text-red-400 uppercase">Sign Out</button>
         </div>
 
-        <div className="bg-[#141414] border border-[#222] p-3">
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Location</div>
-          <div className="text-sm text-white">{call?.location}</div>
-          {call?.pso_service_type && <div className="text-xs text-gray-400 mt-1 uppercase">{call.pso_service_type.replace(/_/g, ' ')}</div>}
-          {call?.contract_id && <div className="text-[10px] text-gray-500 mt-0.5">Contract {call.contract_id}</div>}
-          <div className="text-[10px] text-gray-500 mt-1 uppercase">Current status: <span className="text-[#d4a017]">{call?.status}</span></div>
+        <div className="bg-surface-base border border-border-default p-3">
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Location</div>
+          <div className="text-sm text-rmpg-100">{call?.location}</div>
+          {call?.pso_service_type && <div className="text-xs text-rmpg-400 mt-1 uppercase">{call.pso_service_type.replace(/_/g, ' ')}</div>}
+          {call?.contract_id && <div className="text-[10px] text-rmpg-500 mt-0.5">Contract {call.contract_id}</div>}
+          <div className="text-[10px] text-rmpg-500 mt-1 uppercase">Current status: <span className="text-[#d4a017]">{call?.status}</span></div>
         </div>
 
-        <div className="bg-[#141414] border border-[#222] p-3">
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Status</div>
+        <div className="bg-surface-base border border-border-default p-3">
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">Status</div>
           <div className="grid grid-cols-2 gap-2">
             {(['enroute', 'onscene', 'cleared', 'closed'] as const).map((s) => (
               <button
                 key={s}
                 disabled={statusBusy}
                 onClick={() => updateStatus(s)}
-                className="py-3 border border-[#333] text-white text-[11px] font-bold uppercase tracking-wider hover:border-[#d4a017] disabled:opacity-50"
+                className="py-3 border border-border-subtle text-rmpg-100 text-[11px] font-bold uppercase tracking-wider hover:border-[#d4a017] disabled:opacity-50"
               >{statusLabel(s)}</button>
             ))}
           </div>
         </div>
 
-        <div className="bg-[#141414] border border-[#222] p-3">
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Add Narrative</div>
-          <textarea
+        <div className="bg-surface-base border border-border-default p-3">
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">Add Narrative</div>
+          <RichTextArea
             value={narrative}
             onChange={(e) => setNarrative(e.target.value)}
             rows={4}
-            className="w-full bg-[#050505] border border-[#333] text-white text-sm px-3 py-2 focus:border-[#d4a017] outline-none"
+            className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-3 py-2 focus:border-[#d4a017] outline-none"
             placeholder="Record an observation, attempt outcome, or note…"
           />
           <button
@@ -310,8 +344,8 @@ export default function MobilePsoCfsPage() {
           >{busy ? 'Saving…' : narrativeSaved ? 'Saved ✓' : 'Append Narrative'}</button>
         </div>
 
-        <div className="bg-[#141414] border border-[#222] p-3">
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">PSO Service</div>
+        <div className="bg-surface-base border border-border-default p-3">
+          <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">PSO Service</div>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <LabeledInput label="Attempt #" type="number" value={psoAttempt} onChange={setPsoAttempt} />
             <LabeledSelect label="Result" value={psoResult} onChange={setPsoResult} options={[
@@ -325,12 +359,12 @@ export default function MobilePsoCfsPage() {
           </div>
           <LabeledInput label="Served To" value={psoServedTo} onChange={setPsoServedTo} />
           <div className="mt-2">
-            <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">Service Notes</label>
-            <textarea
+            <label className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">Service Notes</label>
+            <RichTextArea
               value={psoNotes}
               onChange={(e) => setPsoNotes(e.target.value)}
               rows={3}
-              className="w-full bg-[#050505] border border-[#333] text-white text-sm px-3 py-2 focus:border-[#d4a017] outline-none mt-1"
+              className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-3 py-2 focus:border-[#d4a017] outline-none mt-1"
             />
           </div>
           <button
@@ -340,7 +374,7 @@ export default function MobilePsoCfsPage() {
           >{busy ? 'Saving…' : psoSaved ? 'Saved ✓' : 'Update PSO Fields'}</button>
         </div>
 
-        <div className="text-[10px] text-gray-600 text-center pt-2 pb-6">RMPG Flex · PSO Mobile · QR session valid 30 days</div>
+        <div className="text-[10px] text-rmpg-500 text-center pt-2 pb-6">RMPG Flex · PSO Mobile · QR session valid 30 days</div>
       </div>
     </Wrapper>
   );
@@ -359,16 +393,16 @@ function statusLabel(s: string): string {
 function LabeledInput({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
   return (
     <div>
-      <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">{label}</label>
-      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
+      <label htmlFor="ff-mobilepsocfspage-1" className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
+      <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
     </div>
   );
 }
 function LabeledSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
     <div>
-      <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
+      <label htmlFor="ff-mobilepsocfspage-2" className="block text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">{label}</label>
+      <select id="ff-mobilepsocfspage-2" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-surface-overlay border border-border-subtle text-rmpg-100 text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
@@ -377,13 +411,13 @@ function LabeledSelect({ label, value, onChange, options }: { label: string; val
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    <div className="min-h-screen bg-surface-sunken text-rmpg-100">
       <div className="max-w-md mx-auto">
-        <div className="bg-[#050505] border-b border-[#222] px-4 py-3 flex items-center gap-3">
+        <div className="bg-surface-overlay border-b border-border-default px-4 py-3 flex items-center gap-3">
           <img src="/rmpg-logo.png" alt="RMPG" className="w-8 h-8" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           <div>
             <div className="text-[#d4a017] text-xs font-bold tracking-[0.12em] uppercase">RMPG Flex</div>
-            <div className="text-[9px] text-gray-500 uppercase tracking-wider">Mobile · PSO</div>
+            <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Mobile · PSO</div>
           </div>
         </div>
         {children}

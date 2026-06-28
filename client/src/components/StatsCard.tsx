@@ -44,7 +44,7 @@ const TREND_COLOR_MAP: Record<string, string> = {
   gray: 'text-rmpg-300',
 };
 
-export default function StatsCard({
+function StatsCard({
   icon: Icon,
   label,
   value,
@@ -57,8 +57,18 @@ export default function StatsCard({
 }: StatsCardProps) {
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
 
-  const accentHex: Record<string, string> = { blue: '#9a9a9a', red: '#dc2626', green: '#22c55e', amber: '#f59e0b', purple: '#a855f7' };
-  const glowHex = accentHex[accent] || accentHex.blue;
+  const accentVar: Record<string, string> = {
+    blue: 'var(--stat-accent-default)',
+    red: 'var(--stat-accent-red)',
+    green: 'var(--stat-accent-green)',
+    amber: 'var(--stat-accent-amber)',
+    purple: 'var(--stat-accent-purple)',
+  };
+  const glowColor = accentVar[accent] || accentVar.blue;
+  // 25% / 13% alpha tints of the accent for glow/border washes (replaces the
+  // old hex+alpha-suffix concat, which required a literal hex string).
+  const glow25 = `color-mix(in srgb, ${glowColor} 25%, transparent)`;
+  const glow13 = `color-mix(in srgb, ${glowColor} 13%, transparent)`;
 
   return (
     <div
@@ -73,24 +83,24 @@ export default function StatsCard({
         ${onClick ? 'cursor-pointer hover:brightness-110 transition-all duration-150 focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:outline-none active:scale-[0.99]' : ''}
         ${className}
       `}
-      style={{ background: 'linear-gradient(180deg, #090909 0%, #050505 100%)' }}
+      style={{ background: 'var(--surface-sunken)' }}
     >
       {/* Top accent glow line */}
-      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${glowHex}40, transparent)` }} />
+      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${glow25}, transparent)` }} />
 
       <div className="p-3">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-[9px] font-bold uppercase mb-1.5 tracking-widest" style={{ color: glowHex, letterSpacing: '0.12em' }}>
+            <p className="text-[9px] font-bold uppercase mb-1.5 tracking-widest" style={{ color: glowColor, letterSpacing: '0.12em' }}>
               {label}
             </p>
             <p className={`text-2xl font-black font-mono tabular-nums ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`}
-              style={{ textShadow: `0 0 12px ${glowHex}40, 0 1px 2px rgba(0,0,0,0.5)`, lineHeight: 1 }}>
+              style={{ textShadow: `0 0 12px ${glow25}, 0 1px 2px rgba(0,0,0,0.5)`, lineHeight: 1 }}>
               {value}
             </p>
           </div>
-          <div className="p-1.5 panel-inset" style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${glowHex}22` }}>
-            <Icon className="w-5 h-5" style={{ color: glowHex }} aria-hidden="true" />
+          <div className="p-1.5 panel-inset" style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${glow13}` }}>
+            <Icon className="w-5 h-5" style={{ color: glowColor }} aria-hidden="true" />
           </div>
         </div>
 
@@ -105,3 +115,5 @@ export default function StatsCard({
     </div>
   );
 }
+
+export default React.memo(StatsCard);

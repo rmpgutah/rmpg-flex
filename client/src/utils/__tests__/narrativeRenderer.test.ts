@@ -65,4 +65,28 @@ describe('renderCallNarrative', () => {
     expect(t).toContain('Alpha-1');
     expect(t).not.toContain('Alpha-1-');
   });
+
+  it('uses dispatch_code directly when present (standard)', () => {
+    const t = renderCallNarrative(
+      { priority: 1, incident_type: 'theft', dispatch_code: 'SL1-SLC/A' },
+      'standard',
+    );
+    expect(t).toContain('SL1-SLC/A');
+  });
+
+  it('uses dispatch_code directly when present (narrative)', () => {
+    const t = renderCallNarrative(
+      { priority: 2, incident_type: 'assault', dispatch_code: 'UT1-PRO/C' },
+      'narrative',
+    );
+    expect(t).toContain('dispatch code UT1-PRO/C');
+  });
+
+  it('falls back to zone-beat format when dispatch_code missing', () => {
+    const t = renderCallNarrative(
+      { priority: 1, incident_type: 'fire', zone_code: 'Delta-2', beat_code: '14' },
+      'standard',
+    );
+    expect(t).toContain('Delta-2-14');
+  });
 });
