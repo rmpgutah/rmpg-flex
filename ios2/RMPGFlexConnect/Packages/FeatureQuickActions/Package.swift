@@ -9,6 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../CoreAPI"),
+        .package(path: "../CoreAuth"),
         .package(path: "../DesignSystem"),
         .package(path: "../FeatureDuty"),
         .package(path: "../FeatureCFS"),

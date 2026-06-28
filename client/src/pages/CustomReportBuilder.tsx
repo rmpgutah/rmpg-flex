@@ -4,7 +4,7 @@
 // select columns, set filters, preview results, and export CSV.
 // ============================================================
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, {useState, useCallback, useEffect} from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Database, Columns, Filter, Play, Download, ArrowUpDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
@@ -70,12 +70,8 @@ type Step = 'source' | 'columns' | 'filters' | 'preview';
 export default function CustomReportBuilder() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const { addToast } = useToast();
-  const { user } = useAuth();
-
-  // Role gates: create/run reports gated to admin/manager; others read-only.
-  const canCreate = user?.role === 'admin' || user?.role === 'manager';
 
   // ?type=<source_key> deep-link: pre-select the data source and advance to
   // the columns step so a cross-page link (e.g. from the Reports dashboard)
@@ -265,6 +261,27 @@ export default function CustomReportBuilder() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [step, navigate, resetConfirmOpen]);
+
+  // Esc cascade: results \u2192 filters \u2192 columns \u2192 source \u2192 back to /reports.
+  // Mirrors the pattern used on Dispatch/Patrol/Evidence/Court Tracker pages.
+  useEffect(() => {
+    const isTyping = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (isTyping(e.target)) return;
+      if (step === 'preview') { setStep('filters'); return; }
+      if (step === 'filters') { setStep('columns'); return; }
+      if (step === 'columns') { setStep('source'); return; }
+      // At source step or no source selected \u2014 go back to Reports dashboard.
+      navigate('/reports');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [step, navigate]);
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden">

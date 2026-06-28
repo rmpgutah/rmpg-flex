@@ -6932,7 +6932,7 @@ function SlackPanel() {
                   onChange={e => setConfig(prev => ({ ...prev, notify_on: { ...prev.notify_on, [key]: e.target.checked } }))}
                   className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
                 />
-                {key.replace(/_/g, ' ')}
+                {key.replace(/_/g, ' ').toUpperCase()}
               </label>
             ))}
           </div>
@@ -7075,7 +7075,7 @@ function DiscordPanel() {
                   onChange={e => setConfig(prev => ({ ...prev, notify_on: { ...prev.notify_on, [key]: e.target.checked } }))}
                   className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
                 />
-                {key.replace(/_/g, ' ')}
+                {key.replace(/_/g, ' ').toUpperCase()}
               </label>
             ))}
           </div>
