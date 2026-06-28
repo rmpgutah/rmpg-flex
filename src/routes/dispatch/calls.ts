@@ -431,6 +431,21 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
       // without a manual refresh. Matches the legacy POST behavior.
       await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call });
 
+      // Alert Rules engine — fire P1/P2 call-created triggers so admin-
+      // configured notification rules fan out to their target roles/users.
+      // Best-effort; evaluateNotificationRules never throws into this path.
+      const prio = String(priority).toUpperCase();
+      if (prio === 'P1' || prio === 'P2') {
+        await evaluateNotificationRules(db, prio === 'P1' ? 'call_created_p1' : 'call_created_p2', {
+          title: `${prio} Call: ${normalizedIncidentType}`,
+          message: `${callNumber} — ${String(location_address)}`,
+          priority: prio === 'P1' ? 'critical' : 'high',
+          entity_type: 'call',
+          entity_id: callId as number,
+          incident_type: normalizedIncidentType,
+        });
+      }
+
       return c.json({ ...call, runCard: rcResult.card }, 201);
     } catch (sqlErr: unknown) {
       // Surface the real SQL error so the dispatcher (and we) can see

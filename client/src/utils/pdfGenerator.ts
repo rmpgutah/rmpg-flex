@@ -156,18 +156,22 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
  * Falls back to defaults if the API is unreachable or has no branding saved.
  */
 export async function fetchPdfBranding(): Promise<PdfBranding> {
+  // Base: hardcoded defaults < Console Settings → Branding (system_settings,
+  // individual keys via the systemSettings cache) < any legacy
+  // branding_settings JSON blob (older Admin → Branding tab).
+  const fromSystem = brandingFromSystemSettings();
   try {
     const token = localStorage.getItem('rmpg_token');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch('/api/admin/system-settings', { headers });
-    if (!res.ok) return { ...DEFAULT_PDF_BRANDING };
+    if (!res.ok) return { ...DEFAULT_PDF_BRANDING, ...fromSystem };
     const settings = await res.json() as Record<string, string>;
-    if (!settings.branding_settings) return { ...DEFAULT_PDF_BRANDING };
+    if (!settings.branding_settings) return { ...DEFAULT_PDF_BRANDING, ...fromSystem };
     const parsed = JSON.parse(settings.branding_settings);
-    return { ...DEFAULT_PDF_BRANDING, ...parsed };
+    return { ...DEFAULT_PDF_BRANDING, ...fromSystem, ...parsed };
   } catch {
-    return { ...DEFAULT_PDF_BRANDING };
+    return { ...DEFAULT_PDF_BRANDING, ...fromSystem };
   }
 }
 

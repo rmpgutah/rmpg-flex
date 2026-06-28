@@ -93,6 +93,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import PttController from './PttController';
 import { initSettingsSync } from '../utils/settingsSync';
+import { loadSystemSettings } from '../utils/systemSettings';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
@@ -715,6 +716,10 @@ export default function Layout() {
   // devices. Lives here so it runs for the whole authenticated session.
   useEffect(() => {
     if (!user) return;
+    // Pull org-wide system settings (Console Settings) and apply Display
+    // settings to the document root. Branding/localization/report values
+    // are read at their own call sites via getSystemSetting.
+    loadSystemSettings();
     return initSettingsSync();
   }, [user]);
 
