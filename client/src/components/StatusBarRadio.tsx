@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React from "react";
+import { useState, useEffect } from 'react';
 import { Mic } from 'lucide-react';
 
 type RadioState = 'idle' | 'tx' | 'rx';
 
 const LS_PANEL_KEY = 'rmpg-radio-panel-open';
 
-export default function StatusBarRadio() {
+function StatusBarRadio() {
   const [radioState, setRadioState] = useState<RadioState>('idle');
   const [channelName] = useState('Dispatch Main');
 
@@ -47,3 +48,5 @@ export default function StatusBarRadio() {
     </div>
   );
 }
+
+export default React.memo(StatusBarRadio);

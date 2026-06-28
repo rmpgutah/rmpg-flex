@@ -23,7 +23,7 @@ const OPERATIONAL_FLAGS = [
 
 export const incidentBlankSchema: FormSchema<IncidentBlankData> = {
   meta: {
-    formNumber: 'FORM PS-205-BLK',
+    formNumber: 'PS-205-BLK',
     title: 'INCIDENT REPORT',
     revision: '2026-04',
   },

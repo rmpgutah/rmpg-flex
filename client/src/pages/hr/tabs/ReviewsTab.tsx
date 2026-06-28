@@ -5,18 +5,24 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../../components/RichTextArea';
 import {
   Star, Plus, Pencil, Trash2, Loader2, Search, TrendingUp, TrendingDown,
   Minus, Clock, AlertTriangle, BarChart3, MessageSquare, Check,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import { REVIEW_CATEGORIES, RATING_LABELS } from '../utils/hrConstants';
 import ReviewFormModal from '../modals/ReviewFormModal';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import ExportButton from '../../../components/ExportButton';
 import type { PerformanceReview, ReviewType, ReviewStatus } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
-const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+// Must match server tier (hr.ts MANAGER_ROLES includes human_resources).
+const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 
 // ── Star rating display ────────────────────────────────────
 function StarRating({ rating, max = 5, size = 14 }: { rating: number; max?: number; size?: number }) {
@@ -31,9 +37,9 @@ function StarRating({ rating, max = 5, size = 14 }: { rating: number; max?: numb
 
 // ── Badge helpers ──────────────────────────────────────────
 const TYPE_COLORS: Record<ReviewType, string> = {
-  annual: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  annual: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   probationary: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  quarterly: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  quarterly: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   improvement_plan: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
@@ -46,7 +52,7 @@ const TYPE_LABELS: Record<ReviewType, string> = {
 
 const STATUS_COLORS: Record<ReviewStatus, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-700/30',
-  submitted: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  submitted: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   acknowledged: 'bg-green-500/20 text-green-400 border-green-500/30',
   completed: 'bg-green-500/20 text-green-400 border-green-500/30',
 };
@@ -60,7 +66,7 @@ const STATUS_LABELS: Record<ReviewStatus, string> = {
 
 function formatDate(d: string | null): string {
   if (!d) return '--';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
+  return parseTimestamp(d).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -79,11 +85,17 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   const isGodMode = userRole === 'admin'; // Admin God Mode — unrestricted access
   const { addToast } = useToast();
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
   const [reviews, setReviews] = useState<PerformanceReview[]>([]);
   const [officers, setOfficers] = useState<Array<{ id: number; full_name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editReview, setEditReview] = useState<PerformanceReview | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
 
   // Filters (manager only)
   const [filterOfficer, setFilterOfficer] = useState('');
@@ -148,9 +160,9 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       const ninetyDays = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
       const expiring = (data || []).filter((c: any) => {
         if (!c.expiry_date) return false;
-        const exp = new Date(c.expiry_date);
+        const exp = parseTimestamp(c.expiry_date);
         return exp <= ninetyDays;
-      }).sort((a: any, b: any) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
+      }).sort((a: any, b: any) => parseTimestamp(a.expiry_date).getTime() - parseTimestamp(b.expiry_date).getTime());
       setExpiringCerts(expiring);
     } catch { setExpiringCerts([]); }
     finally { setCertsLoading(false); }
@@ -162,36 +174,79 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
   // ── Handlers ──────────────────────────────────────────
   const handleCreate = async (data: any) => {
-    await apiFetch('/hr/reviews', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    addToast('Review created', 'success');
-    fetchReviews();
+    try {
+      await apiFetch('/hr/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      addToast('Review created', 'success');
+      fetchReviews();
+    } catch (err) {
+      // Surface the failure so the Save button doesn't look dead. Rethrow keeps
+      // the modal open (ReviewFormModal's `await onSubmit` rejects, skipping onClose).
+      addToast('Failed to create review', 'error');
+      throw err;
+    }
   };
 
   const handleUpdate = async (data: any) => {
     if (!editReview) return;
-    await apiFetch(`/hr/reviews/${editReview.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    addToast('Review updated', 'success');
-    setEditReview(null);
-    fetchReviews();
+    try {
+      await apiFetch(`/hr/reviews/${editReview.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      addToast('Review updated', 'success');
+      setEditReview(null);
+      fetchReviews();
+    } catch (err) {
+      addToast('Failed to update review', 'error');
+      throw err;
+    }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this draft review?')) return;
+  const handleDelete = (id: number) => {
+    setConfirmDeleteId(id);
+  };
+
+  const doDelete = async () => {
+    if (confirmDeleteId === null) return;
+    setConfirmDeleteLoading(true);
     try {
-      await apiFetch(`/hr/reviews/${id}`, { method: 'DELETE' });
+      await apiFetch(`/hr/reviews/${confirmDeleteId}`, { method: 'DELETE' });
       addToast('Review deleted', 'success');
+      setConfirmDeleteId(null);
       fetchReviews();
     } catch {
       addToast('Failed to delete review', 'error');
+    } finally {
+      setConfirmDeleteLoading(false);
     }
+  };
+
+  // Shared open-for-edit so the row button and right-click menu target the same review.
+  const openEditReview = (review: PerformanceReview) => {
+    setEditReview(review);
+    setModalOpen(true);
+  };
+
+  const buildReviewMenu = (review: PerformanceReview): ContextMenuItem[] => {
+    const canEdit = review.status === 'draft' || review.status === 'submitted' || isGodMode;
+    const canDelete = userRole === 'admin' && (review.status === 'draft' || isGodMode);
+    const officerName = review.officer_name ?? `Officer #${review.officer_id}`;
+    return [
+      ...(canEdit ? [m.action('Edit review', () => openEditReview(review), { icon: <Pencil size={12} /> })] : []),
+      m.copy('Copy officer name', officerName),
+      m.copyId(review.id),
+      ...(canDelete
+        ? [
+            m.separator(),
+            m.action('Delete review', () => handleDelete(review.id), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
   };
 
   const handleAcknowledge = async (reviewId: number) => {
@@ -215,12 +270,12 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   const stats = isManager
     ? {
         upcoming: reviews.filter(
-          (r) => r.status === 'draft' && new Date(r.review_period_end) > new Date(),
+          (r) => r.status === 'draft' && parseTimestamp(r.review_period_end) > new Date(),
         ).length,
         overdue: reviews.filter(
           (r) =>
             (r.status === 'draft' || r.status === 'submitted') &&
-            new Date(r.review_period_end) < new Date(),
+            parseTimestamp(r.review_period_end) < new Date(),
         ).length,
         avgRating: (() => {
           const rated = reviews.filter((r) => r.overall_rating && r.overall_rating > 0);
@@ -286,7 +341,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-white font-medium">
+                    <span className="text-sm text-rmpg-100 font-medium">
                       {formatDate(review.review_period_start)} &ndash;{' '}
                       {formatDate(review.review_period_end)}
                     </span>
@@ -341,19 +396,19 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                 {/* Acknowledge section */}
                 {review.status === 'submitted' && (
                   <div className="border-t border-rmpg-700 pt-3 mt-3 space-y-2">
-                    <textarea
+                    <RichTextArea
                       value={ackComment[review.id] ?? ''}
                       onChange={(e) =>
                         setAckComment((prev) => ({ ...prev, [review.id]: e.target.value }))
                       }
                       rows={2}
                       placeholder="Optional comments before acknowledging..."
-                      className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none resize-y"
+                      className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none resize-y"
                     />
                     <button type="button"
                       onClick={() => handleAcknowledge(review.id)}
                       disabled={ackLoading === review.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600/80 hover:bg-green-600 text-white rounded-sm transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600/80 hover:bg-green-600 text-rmpg-100 rounded-sm transition-colors disabled:opacity-50"
                     >
                       {ackLoading === review.id ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -385,38 +440,29 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   // ════════════════════════════════════════════════════════
   // MANAGER / ADMIN VIEW
   // ════════════════════════════════════════════════════════
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-brand-500" />
-      </div>
-    );
-  }
-
-
   return (
     <div className="p-4 space-y-4">
       {/* Stats bar */}
       {stats && (
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
-            <Clock size={18} className="text-gray-400 shrink-0" />
+            <Clock size={18} className="text-rmpg-400 shrink-0" />
             <div>
-              <div className="text-lg font-bold text-white">{stats.upcoming}</div>
+              <div className="text-lg font-bold text-rmpg-100">{stats.upcoming}</div>
               <div className="text-[10px] text-rmpg-400">Upcoming Reviews</div>
             </div>
           </div>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
             <AlertTriangle size={18} className="text-amber-400 shrink-0" />
             <div>
-              <div className="text-lg font-bold text-white">{stats.overdue}</div>
+              <div className="text-lg font-bold text-rmpg-100">{stats.overdue}</div>
               <div className="text-[10px] text-rmpg-400">Overdue</div>
             </div>
           </div>
           <div className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-center gap-3">
             <BarChart3 size={18} className="text-yellow-400 shrink-0" />
             <div>
-              <div className="text-lg font-bold text-white">{stats.avgRating || '--'}</div>
+              <div className="text-lg font-bold text-rmpg-100">{stats.avgRating || '--'}</div>
               <div className="text-[10px] text-rmpg-400">Avg Rating</div>
             </div>
           </div>
@@ -434,15 +480,15 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
           <div className="max-h-48 overflow-y-auto">
             {expiringCerts.map((cert: any) => {
               const now = new Date();
-              const exp = new Date(cert.expiry_date);
+              const exp = parseTimestamp(cert.expiry_date);
               const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
               const isExpired = daysLeft < 0;
               const urgencyColor = isExpired ? 'text-red-400 bg-red-900/30' : daysLeft <= 30 ? 'text-red-400 bg-red-900/20' : daysLeft <= 60 ? 'text-amber-400 bg-amber-900/20' : 'text-yellow-400 bg-yellow-900/20';
               return (
                 <div key={cert.id} className={`flex items-center gap-3 px-3 py-1.5 border-b border-rmpg-700/50 ${urgencyColor}`}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isExpired ? 'bg-red-500' : daysLeft <= 30 ? 'bg-red-500 animate-pulse' : daysLeft <= 60 ? 'bg-amber-500' : 'bg-yellow-500'}`} />
-                  <span className="text-[11px] text-white font-medium flex-shrink-0 w-36 truncate">{cert.officer_name || cert.full_name || '—'}</span>
-                  <span className="text-[10px] text-rmpg-300 flex-1 truncate">{cert.type} — {cert.credential_number || ''}</span>
+                  <span className="text-[11px] text-rmpg-100 font-medium flex-shrink-0 w-36 truncate">{cert.officer_name || cert.full_name || '—'}</span>
+                  <span className="text-[10px] text-rmpg-300 min-w-0 flex-1 truncate">{cert.type} — {cert.credential_number || ''}</span>
                   <span className="text-[10px] font-bold flex-shrink-0">
                     {isExpired ? `EXPIRED ${Math.abs(daysLeft)}d ago` : `${daysLeft}d remaining`}
                   </span>
@@ -458,10 +504,10 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <div className="flex items-center gap-1 text-rmpg-400">
           <Search size={14} />
         </div>
-        <select
+        <select id="ff-reviewstab-0"
           value={filterOfficer}
           onChange={(e) => setFilterOfficer(e.target.value)}
-          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Officers</option>
           {officers.map((o) => (
@@ -470,10 +516,10 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             </option>
           ))}
         </select>
-        <select
+        <select id="ff-reviewstab-1"
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Types</option>
           {Object.entries(TYPE_LABELS).map(([v, l]) => (
@@ -482,10 +528,10 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             </option>
           ))}
         </select>
-        <select
+        <select id="ff-reviewstab-2"
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none"
         >
           <option value="">All Statuses</option>
           {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -499,11 +545,12 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
         <ExportButton exportUrl="/api/hr/reviews/export/csv" exportFilename="reviews.csv" />
         <button type="button"
+          data-hr-new-btn
           onClick={() => {
             setEditReview(null);
             setModalOpen(true);
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
         >
           <Plus size={14} />
           Create Review
@@ -520,6 +567,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
           {reviews.map((review) => (
             <div
               key={review.id}
+              onContextMenu={(e) => openMenu(e, buildReviewMenu(review))}
               className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-start gap-3"
             >
               {/* Avatar initial */}
@@ -530,7 +578,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
               {/* Content */}
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-white font-medium">
+                  <span className="text-sm text-rmpg-100 font-medium">
                     {review.officer_name ?? `Officer #${review.officer_id}`}
                   </span>
                   <span
@@ -564,11 +612,8 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
               <div className="flex items-center gap-1 shrink-0">
                 {(review.status === 'draft' || review.status === 'submitted' || isGodMode) && (
                   <button type="button"
-                    onClick={() => {
-                      setEditReview(review);
-                      setModalOpen(true);
-                    }}
-                    className="p-1.5 text-rmpg-400 hover:text-white transition-colors"
+                    onClick={() => openEditReview(review)}
+                    className="p-1.5 text-rmpg-400 hover:text-rmpg-100 transition-colors"
                     title={isGodMode ? 'Admin: Edit review (any status)' : 'Edit'}
                   >
                     <Pencil size={14} />
@@ -599,6 +644,18 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         onSubmit={editReview ? handleUpdate : handleCreate}
         editReview={editReview}
         officers={officers}
+      />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={doDelete}
+        title="Delete Review"
+        message="Delete this draft review? This cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={confirmDeleteLoading}
       />
     </div>
   );

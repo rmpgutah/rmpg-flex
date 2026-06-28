@@ -4,18 +4,14 @@
 //   Left column: Photo + Identity | Center: Employment | Right: Contact
 // ============================================================
 
-import React from 'react';
-import {
-  User, Phone, Mail, MapPin, Briefcase, Hash, AlertTriangle,
-  Heart, Droplet, FileText, Award, Calendar, Paperclip, Radio, Shield,
-  Car,
-} from 'lucide-react';
+import { User, Phone, Briefcase, AlertTriangle, Heart, Award, Paperclip, Car } from 'lucide-react';
 import type { Credential } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { calcDaysUntilExpiry } from '../utils/personnelFormatters';
 import { toDisplayLabel } from '../../../utils/formatters';
 import FileAttachments from '../../../components/FileAttachments';
 import OfficerAvatar from '../components/OfficerAvatar';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   officer: OfficerWithStatus;
@@ -41,7 +37,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
 
   const formatDate = (d?: string) => {
     if (!d) return undefined;
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const credDotColor = (status: string) => {
@@ -137,10 +133,10 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
                 return (
                   <div key={cred.id} className="flex items-center gap-1.5 text-[10px]">
                     <span className={credDotColor(cred.status)} />
-                    <span className="text-rmpg-100 flex-1 truncate">{toDisplayLabel(cred.type)}</span>
+                    <span className="text-rmpg-100 min-w-0 flex-1 truncate">{toDisplayLabel(cred.type)}</span>
                     <span className="text-rmpg-400 font-mono">
                       {days > 0
-                        ? new Date(cred.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+                        ? parseTimestamp(cred.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
                         : 'EXP'}
                     </span>
                   </div>

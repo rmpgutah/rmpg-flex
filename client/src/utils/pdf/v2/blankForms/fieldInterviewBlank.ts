@@ -8,7 +8,7 @@ function blankLabeled(label: string): LabeledField<FieldInterviewBlankData> {
 
 export const fieldInterviewBlankSchema: FormSchema<FieldInterviewBlankData> = {
   meta: {
-    formNumber: 'FORM PS-211-BLK',
+    formNumber: 'PS-211-BLK',
     title: 'FIELD INTERVIEW CARD',
     revision: '2026-04',
   },

@@ -96,13 +96,16 @@ export default function ForcePasswordChangeModal() {
   return (
     <div
       className="fixed inset-0 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Password change required"
       style={{ background: 'rgba(0,0,0,0.90)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#0a0a0a',
-          border: '1px solid #2b2b2b',
+          background: 'var(--surface-overlay)',
+          border: '1px solid var(--border-default)',
           borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
@@ -111,7 +114,7 @@ export default function ForcePasswordChangeModal() {
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
             <Shield style={{ width: 20, height: 20, color: '#888888' }} />
-            <div className="text-lg font-bold text-white">Password Change Required</div>
+            <div className="text-lg font-bold text-rmpg-100">Password Change Required</div>
           </div>
           <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
             Your administrator has required you to change your password before continuing.
@@ -129,9 +132,9 @@ export default function ForcePasswordChangeModal() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Current Password */}
             <div>
-              <label className="field-label">Current Password <span className="text-red-500">*</span></label>
+              <label htmlFor="ff-forcepasswordchangemodal-0" className="field-label">Current Password <span className="text-red-500">*</span></label>
               <div className="relative">
-                <input
+                <input id="ff-forcepasswordchangemodal-0"
                   type={showCurrentPw ? 'text' : 'password'}
                   value={currentPassword}
                   onChange={e => setCurrentPassword(e.target.value)}
@@ -143,7 +146,7 @@ export default function ForcePasswordChangeModal() {
                 <button
                   type="button"
                   onClick={() => setShowCurrentPw(!showCurrentPw)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
                 >
                   {showCurrentPw
                     ? <EyeOff style={{ width: 14, height: 14 }} />
@@ -155,9 +158,9 @@ export default function ForcePasswordChangeModal() {
 
             {/* New Password */}
             <div>
-              <label className="field-label">New Password <span className="text-red-500">*</span></label>
+              <label htmlFor="ff-forcepasswordchangemodal-1" className="field-label">New Password <span className="text-red-500">*</span></label>
               <div className="relative">
-                <input
+                <input id="ff-forcepasswordchangemodal-1"
                   type={showNewPw ? 'text' : 'password'}
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
@@ -168,7 +171,7 @@ export default function ForcePasswordChangeModal() {
                 <button
                   type="button"
                   onClick={() => setShowNewPw(!showNewPw)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
                 >
                   {showNewPw
                     ? <EyeOff style={{ width: 14, height: 14 }} />
@@ -180,8 +183,8 @@ export default function ForcePasswordChangeModal() {
 
             {/* Confirm Password */}
             <div>
-              <label className="field-label">Confirm New Password <span className="text-red-500">*</span></label>
-              <input
+              <label htmlFor="ff-forcepasswordchangemodal-2" className="field-label">Confirm New Password <span className="text-red-500">*</span></label>
+              <input id="ff-forcepasswordchangemodal-2"
                 type="password"
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
@@ -198,7 +201,7 @@ export default function ForcePasswordChangeModal() {
                   {rule.met ? (
                     <Check style={{ width: 10, height: 10, color: '#22c55e', flexShrink: 0 }} />
                   ) : (
-                    <AlertCircle style={{ width: 10, height: 10, color: '#666666', flexShrink: 0 }} />
+                    <AlertCircle style={{ width: 10, height: 10, color: 'var(--rmpg-500)', flexShrink: 0 }} />
                   )}
                   <span className={rule.met ? 'text-green-400' : 'text-rmpg-500'}>
                     {rule.label}

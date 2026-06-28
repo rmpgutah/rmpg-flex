@@ -1,34 +1,52 @@
 // ============================================================
 // RMPG Flex — Skip Tracker Page
-// Standalone skip-tracing search against the RapidAPI Skip
-// Tracing Working API. Supports search by name, address,
-// phone, email, and combined name+address queries.
-// All searches are logged server-side for audit trail.
+// Standalone skip-tracing search against the local D1 person corpus
+// (the legacy Microbilt RapidAPI round-trip is no longer wired — the
+// VPS the upstream proxy lived on was decommissioned 2026-06-15).
+// Supports search by name, address, phone, email, and combined
+// name+address. Every search is audit-logged server-side.
+//
+// Page 48 of the full-app frontend pass — brings the page up to the
+// audit-series contract: URL deep-link, ConfirmDialog (no native
+// confirm()), Esc smart-cascade, `N` shortcut for new search,
+// per-user search-history scoping (DlSearch #1601 pattern), court-
+// ready investigator-handoff PDF, and a hardened empty-state.
 // ============================================================
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search, User, MapPin, Phone, Mail, Loader2, ChevronRight,
   AlertCircle, ExternalLink, Copy, CheckCircle2, Hash,
-  ChevronLeft, ChevronDown,
+  ChevronLeft, ChevronDown, Eye, Plus, FileText,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import { safeDateStr } from '../utils/dateUtils';
+import { openSkipTracerReportPdf } from '../utils/skipTracerReportPdf';
 
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
 
+// Per-mode accent chips use CSS variable tokens so they re-theme with
+// day/night automatically. Mappings: address → sev-ok (green),
+// nameaddress → sev-special (purple), phone → sev-warn (amber),
+// email → sev-info (blue). The icon background derives from the theme
+// so the chip stays legible in both skins.
 const SEARCH_MODES: { id: SearchMode; label: string; icon: React.ElementType; color: string; description: string }[] = [
-  { id: 'name', label: 'By Name', icon: User, color: '#aaaaaa', description: 'Search by full name (first and last)' },
-  { id: 'address', label: 'By Address', icon: MapPin, color: '#34d399', description: 'Search by street address' },
-  { id: 'nameaddress', label: 'Name + Address', icon: Search, color: '#a78bfa', description: 'Search by name and address combined' },
-  { id: 'phone', label: 'By Phone', icon: Phone, color: '#f59e0b', description: 'Reverse phone lookup' },
-  { id: 'email', label: 'By Email', icon: Mail, color: '#f472b6', description: 'Search by email address' },
+  { id: 'name', label: 'By Name', icon: User, color: 'var(--rmpg-400)', description: 'Search by full name (first and last)' },
+  { id: 'address', label: 'By Address', icon: MapPin, color: 'var(--sev-ok)', description: 'Search by street address' },
+  { id: 'nameaddress', label: 'Name + Address', icon: Search, color: 'var(--sev-special)', description: 'Search by name and address combined' },
+  { id: 'phone', label: 'By Phone', icon: Phone, color: 'var(--sev-warn)', description: 'Reverse phone lookup' },
+  { id: 'email', label: 'By Email', icon: Mail, color: 'var(--sev-info)', description: 'Search by email address' },
 ];
 
 // Clipboard copy helper
@@ -45,26 +63,25 @@ function useCopyToClipboard() {
   return { copied, copy };
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
+interface SearchHistoryEntry {
+  query: string;
+  mode: SearchMode;
+  date: string;
+  count: number;
+}
 
 export default function SkipTracerPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { copied, copy } = useCopyToClipboard();
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
+  const { user } = useAuth();
 
-  // Search state
+  // Role gates — CSV audit-export limited to admin/manager.
+  const canExport = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
+
+  // ── Search state ──
   const [mode, setMode] = useState<SearchMode>('name');
   const [nameQuery, setNameQuery] = useState('');
   const [addressQuery, setAddressQuery] = useState('');
@@ -77,11 +94,13 @@ export default function SkipTracerPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<any>(null);
-  const [expandedPerson, setExpandedPerson] = useState<number | null>(null);
-
   // Person details via ID
   const [personDetail, setPersonDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // Confirm dialog — replaces the silent localStorage destroy that
+  // previously fired off the "Clear" link with zero confirmation.
+  const [showClearHistoryConfirm, setShowClearHistoryConfirm] = useState(false);
 
   const handleSearch = useCallback(async (overridePage?: number) => {
     setLoading(true);
@@ -123,29 +142,61 @@ export default function SkipTracerPage() {
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, nameQuery, addressQuery, phoneQuery, emailQuery, page]);
 
-  // ── Search History (localStorage) ──
-  const HISTORY_KEY = 'rmpg_skiptracer_history';
-  const [searchHistory, setSearchHistory] = useState<{ query: string; mode: SearchMode; date: string; count: number }[]>(() => {
-    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+  // ── Per-user search history (DlSearch #1601 pattern) ───────────
+  // Storage key is scoped per user.id so a shared MDT doesn't leak
+  // one operator's name/phone queries to the next. Falls back to an
+  // unscoped key when no user is known (e.g. mid-login first render);
+  // in that case writes are skipped entirely so we don't pollute
+  // someone else's profile-scoped history later.
+  const HISTORY_KEY = user?.id ? `rmpg_skiptracer_history_${user.id}` : null;
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>(() => {
+    try {
+      if (HISTORY_KEY) {
+        const scoped = localStorage.getItem(HISTORY_KEY);
+        if (scoped) return JSON.parse(scoped);
+        // One-time migration from the v1.0 unscoped key — read once,
+        // then nuke the bare key so the next user doesn't see it.
+        const legacy = localStorage.getItem('rmpg_skiptracer_history');
+        if (legacy) {
+          localStorage.setItem(HISTORY_KEY, legacy);
+          localStorage.removeItem('rmpg_skiptracer_history');
+          return JSON.parse(legacy);
+        }
+      }
+      return [];
+    } catch {
+      return [];
+    }
   });
 
   const saveSearchToHistory = useCallback((query: string, searchMode: SearchMode, resultCount: number) => {
+    if (!HISTORY_KEY) return;
     setSearchHistory(prev => {
-      const entry = { query, mode: searchMode, date: new Date().toISOString(), count: resultCount };
+      const entry: SearchHistoryEntry = { query, mode: searchMode, date: new Date().toISOString(), count: resultCount };
       const updated = [entry, ...prev.filter(h => !(h.query === query && h.mode === searchMode))].slice(0, 20);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)); } catch { /* quota — ignore */ }
       return updated;
     });
-  }, []);
+  }, [HISTORY_KEY]);
 
   const clearSearchHistory = useCallback(() => {
-    localStorage.removeItem(HISTORY_KEY);
+    if (HISTORY_KEY) {
+      try { localStorage.removeItem(HISTORY_KEY); } catch { /* ignore */ }
+    }
     setSearchHistory([]);
-  }, []);
+    setShowClearHistoryConfirm(false);
+    addToast('Search history cleared', 'success');
+  }, [HISTORY_KEY, addToast]);
 
+  // Re-run a past search from the recent list. Uses a flushSync-style
+  // ref to bypass the previous setTimeout(0) race (where setState
+  // hadn't flushed yet so handleSearch read stale query strings).
+  const pendingRerunRef = useRef<{ mode: SearchMode; query: string } | null>(null);
   const rerunSearch = useCallback((entry: { query: string; mode: SearchMode }) => {
+    pendingRerunRef.current = { mode: entry.mode, query: entry.query };
     setMode(entry.mode);
     switch (entry.mode) {
       case 'name': setNameQuery(entry.query); break;
@@ -155,9 +206,25 @@ export default function SkipTracerPage() {
       case 'nameaddress': setNameQuery(entry.query); break;
     }
     setPage(1);
-    // Trigger search after state updates
-    setTimeout(() => handleSearch(), 100);
-  }, [handleSearch]);
+  }, []);
+
+  // After mode + query inputs flush, fire the deferred search exactly
+  // once. The previous setTimeout(handleSearch, 100) raced state flush;
+  // this effect waits on the updated handleSearch closure (which depends
+  // on the freshly-set query state), then clears the ref.
+  useEffect(() => {
+    if (!pendingRerunRef.current) return;
+    const want = pendingRerunRef.current;
+    const queryNow =
+      want.mode === 'name' || want.mode === 'nameaddress' ? nameQuery :
+      want.mode === 'address' ? addressQuery :
+      want.mode === 'phone' ? phoneQuery :
+      want.mode === 'email' ? emailQuery : '';
+    if (queryNow === want.query && mode === want.mode) {
+      pendingRerunRef.current = null;
+      handleSearch();
+    }
+  }, [mode, nameQuery, addressQuery, phoneQuery, emailQuery, handleSearch]);
 
   // Save to history after successful search
   useEffect(() => {
@@ -190,15 +257,176 @@ export default function SkipTracerPage() {
     }
   };
 
+  // ── New Search reset ──
+  // Single source of truth for "start over" — used by the keyboard
+  // shortcut, the empty-state CTA, and the no-results CTA. Clears
+  // inputs + results + selection but keeps the active mode (operators
+  // typically search the same mode several times in a row).
+  const newSearch = useCallback(() => {
+    setNameQuery('');
+    setAddressQuery('');
+    setPhoneQuery('');
+    setEmailQuery('');
+    setResults(null);
+    setSelected(null);
+    setPersonDetail(null);
+    setError(null);
+    setPage(1);
+    // Move focus to the first relevant input on next paint.
+    setTimeout(() => {
+      const id = mode === 'address' ? 'ff-skiptracerpage-1'
+        : mode === 'phone' ? 'ff-skiptracerpage-2'
+        : mode === 'email' ? 'ff-skiptracerpage-3'
+        : 'ff-skiptracerpage-0';
+      document.getElementById(id)?.focus();
+    }, 0);
+  }, [mode]);
+
+  // ── URL deep-link ──
+  // Honors the audit-series cross-page contract:
+  //   ?subject_id=<n>      — open the person's full-detail pane (calls /person/:id)
+  //   ?mode=<name|addr…>   — pre-select a search mode
+  //   ?search=<text>       — pre-fill the active mode's input + auto-run
+  // Consumed once; the query string is stripped (replace:true) so a
+  // hard refresh doesn't re-pin to a stale subject.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const consumedDeepLinkRef = useRef(false);
+  useEffect(() => {
+    if (consumedDeepLinkRef.current) return;
+    const subjectId = searchParams.get('subject_id');
+    const linkMode = searchParams.get('mode') as SearchMode | null;
+    const linkSearch = searchParams.get('search');
+    if (!subjectId && !linkMode && !linkSearch) return;
+    consumedDeepLinkRef.current = true;
+
+    const validMode: SearchMode | null =
+      linkMode && ['name', 'address', 'nameaddress', 'phone', 'email'].includes(linkMode)
+        ? linkMode : null;
+    if (validMode) setMode(validMode);
+    if (linkSearch) {
+      const effectiveMode = validMode ?? mode;
+      switch (effectiveMode) {
+        case 'name': case 'nameaddress': setNameQuery(linkSearch); break;
+        case 'address': setAddressQuery(linkSearch); break;
+        case 'phone': setPhoneQuery(linkSearch); break;
+        case 'email': setEmailQuery(linkSearch); break;
+      }
+      pendingRerunRef.current = { mode: validMode ?? mode, query: linkSearch };
+    }
+
+    if (subjectId) {
+      handleGetPersonDetails(subjectId).catch(() => { /* toast already fired */ });
+    }
+
+    // Strip the params so a refresh doesn't loop.
+    const next = new URLSearchParams(searchParams);
+    ['subject_id', 'mode', 'search'].forEach(k => next.delete(k));
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Build a skip-trace result row context menu ──
+  const buildResultMenu = (person: any): ContextMenuItem[] => {
+    const name = person.Name || person.name || person.fullName || '';
+    const personId = person['Person ID'] || person.personId || '';
+    const livesIn = person['Lives in'] || person.livesIn || '';
+    return [
+      menu.action('Open result', () => setSelected(person), { icon: <Eye size={12} /> }),
+      ...(personId ? [menu.action('Full details', () => handleGetPersonDetails(personId), { icon: <ExternalLink size={12} /> })] : []),
+      menu.action('Generate PDF report', () => exportSelectedPdf(person), { icon: <FileText size={12} /> }),
+      menu.separator(),
+      menu.copy('Copy name', name),
+      ...(personId ? [menu.copyId(personId)] : []),
+      ...(livesIn ? [menu.copy('Copy location', livesIn, <MapPin size={12} />)] : []),
+    ];
+  };
+
+  // ── PDF: investigator hand-off / court-prep report ──
+  // Operators previously had to screenshot the detail pane to file
+  // a skip-trace lead in a case folder; this matches the canonical
+  // PDF artifact the rest of the audit series ships (DAR, Training,
+  // Equipment, Audit Log, Field Interviews, etc.).
+  const exportSelectedPdf = useCallback((subject: any) => {
+    if (!subject) {
+      addToast('No subject selected for export', 'warning');
+      return;
+    }
+    try {
+      const officerName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.full_name || user?.username || '';
+      const query =
+        mode === 'name' || mode === 'nameaddress' ? nameQuery :
+        mode === 'address' ? addressQuery :
+        mode === 'phone' ? phoneQuery :
+        mode === 'email' ? emailQuery : '';
+      openSkipTracerReportPdf(subject, {
+        query,
+        mode,
+        officerName: officerName || undefined,
+        badgeNumber: user?.badge_number || undefined,
+      });
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to generate PDF', 'error');
+    }
+  }, [mode, nameQuery, addressQuery, phoneQuery, emailQuery, user, addToast]);
+
   // Extract result items — API returns { PeopleDetails: [...] }
   const resultItems: any[] = results?.PeopleDetails || results?.data || results?.result || (Array.isArray(results) ? results : []);
   const totalRecords: number = results?.Records || resultItems.length;
+
+  // ── Esc smart-cascade ──
+  // Single press unwinds exactly ONE operator layer (newest-open-first):
+  //   1) Clear-history confirm dialog
+  //   2) The extended person detail (from "Full details")
+  //   3) The selected result row
+  //   4) The error banner
+  //   5) The whole result set (returns to empty state)
+  // Skipped while typing in any input — operators expect Esc to clear the
+  // input/blur, not the page state. Matches FlexCam / Geography / DAR.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // ConfirmDialog owns its own Esc handler — only react when it isn't open.
+      if (showClearHistoryConfirm) return;
+      if (isTypingInField(e.target)) return;
+      if (personDetail) { e.stopPropagation(); setPersonDetail(null); return; }
+      if (selected) { e.stopPropagation(); setSelected(null); return; }
+      if (error) { e.stopPropagation(); setError(null); return; }
+      if (results) { e.stopPropagation(); setResults(null); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [personDetail, selected, error, results, showClearHistoryConfirm]);
+
+  // ── `N` shortcut — start a new search ──
+  // Suppressed inside any input/textarea/modifier chord/dialog so an
+  // operator typing a name containing the letter N doesn't reset the form.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (showClearHistoryConfirm) return;
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return;
+      }
+      e.preventDefault();
+      newSearch();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [newSearch, showClearHistoryConfirm]);
 
   // ─── Render helpers ─────────────────────────────────────
   const renderCopyButton = (text: string, label: string) => (
     <button type="button"
       onClick={(e) => { e.stopPropagation(); copy(text, label); }}
-      className="ml-1 text-rmpg-600 hover:text-gray-400 transition-colors"
+      className="ml-1 text-rmpg-600 hover:text-rmpg-400 transition-colors"
       title={`Copy ${label}`}
     >
       {copied === label ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
@@ -218,19 +446,50 @@ export default function SkipTracerPage() {
   };
 
   // Set document title
-  useEffect(() => { document.title = 'Skip Tracker \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Skip Tracker — RMPG Flex'; }, []);
+
+  // ── Empty-state distinction ──
+  // Separate "no search yet" from "search ran, 0 hits": the operator
+  // needs a clear cue whether to refine the query or whether the
+  // record genuinely isn't on file. Before this, "no results found"
+  // showed in the same micro-typography as the result counter and was
+  // easy to miss.
+  const hasSearchRun = results !== null;
+  const hasZeroResults = hasSearchRun && resultItems.length === 0;
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
       <PanelTitleBar title="SKIP TRACKER" icon={Search}>
-        <ExportButton exportUrl="/api/skiptracer/export/csv" exportFilename="skip-traces.csv" />
+        <button
+          type="button"
+          onClick={newSearch}
+          className="toolbar-btn"
+          title="Start a new search (N)"
+          aria-label="Start a new search"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>New</span>
+        </button>
+        {selected && (
+          <button
+            type="button"
+            onClick={() => exportSelectedPdf(selected)}
+            className="toolbar-btn"
+            title="Generate investigator hand-off PDF for the selected subject"
+            aria-label="Generate PDF report"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>PDF</span>
+          </button>
+        )}
+        {canExport && <ExportButton exportUrl="/api/skiptracer/export/csv" exportFilename="skip-traces.csv" />}
       </PanelTitleBar>
 
       <div className={`flex-1 overflow-hidden ${isMobile ? 'flex flex-col' : 'flex'}`}>
         {/* ─── Left Panel: Search Form ──────────────────────── */}
         <div
           className={`${isMobile ? 'flex-shrink-0' : 'w-80'} overflow-y-auto border-r border-rmpg-700`}
-          style={{ background: '#050505' }}
+          style={{ background: 'var(--surface-overlay)' }}
         >
           {/* Search Mode Selector */}
           <div className="p-3 space-y-3">
@@ -242,7 +501,7 @@ export default function SkipTracerPage() {
                   onClick={() => { setMode(id); setResults(null); setSelected(null); setPage(1); }}
                   className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border transition-all ${
                     mode === id
-                      ? 'bg-surface-base border-rmpg-500 text-white'
+                      ? 'bg-surface-base border-rmpg-500 text-rmpg-100'
                       : 'bg-transparent border-rmpg-700 text-rmpg-500 hover:border-rmpg-500 hover:text-rmpg-300'
                   }`}
                 >
@@ -256,15 +515,15 @@ export default function SkipTracerPage() {
             <div className="space-y-2 pt-2">
               {(mode === 'name' || mode === 'nameaddress') && (
                 <div>
-                  <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  <label htmlFor="ff-skiptracerpage-0" className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Full Name
                   </label>
-                  <input
+                  <input id="ff-skiptracerpage-0"
                     type="text"
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
                     placeholder="e.g. John Smith"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-rmpg-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -273,15 +532,15 @@ export default function SkipTracerPage() {
 
               {(mode === 'address' || mode === 'nameaddress') && (
                 <div>
-                  <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  <label htmlFor="ff-skiptracerpage-1" className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Address
                   </label>
-                  <input
+                  <input id="ff-skiptracerpage-1"
                     type="text"
                     value={addressQuery}
                     onChange={(e) => setAddressQuery(e.target.value)}
                     placeholder="e.g. 123 Main St, Anytown, UT"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-rmpg-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus={mode === 'address'}
                   />
@@ -290,15 +549,15 @@ export default function SkipTracerPage() {
 
               {mode === 'phone' && (
                 <div>
-                  <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  <label htmlFor="ff-skiptracerpage-2" className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Phone Number
                   </label>
-                  <input
+                  <input id="ff-skiptracerpage-2"
                     type="text"
                     value={phoneQuery}
                     onChange={(e) => setPhoneQuery(e.target.value)}
                     placeholder="e.g. 801-555-1234"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-rmpg-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -307,15 +566,15 @@ export default function SkipTracerPage() {
 
               {mode === 'email' && (
                 <div>
-                  <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  <label htmlFor="ff-skiptracerpage-3" className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Email Address
                   </label>
-                  <input
+                  <input id="ff-skiptracerpage-3"
                     type="text"
                     value={emailQuery}
                     onChange={(e) => setEmailQuery(e.target.value)}
                     placeholder="e.g. john@example.com"
-                    className="w-full bg-surface-base border border-rmpg-600 text-white text-xs px-3 py-1.5 font-mono focus:border-gray-500 focus:outline-none"
+                    className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-xs px-3 py-1.5 font-mono focus:border-rmpg-500 focus:outline-none"
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     autoFocus
                   />
@@ -325,7 +584,7 @@ export default function SkipTracerPage() {
               <button type="button"
                 onClick={() => handleSearch()}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 border border-brand-700 transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider bg-brand-600 text-rmpg-100 hover:bg-brand-700 disabled:opacity-50 border border-brand-700 transition-colors"
               >
                 {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Search className="w-3.5 h-3.5" />}
                 Search
@@ -355,7 +614,7 @@ export default function SkipTracerPage() {
                 <button type="button"
                   onClick={() => page > 1 && handlePageChange(page - 1)}
                   disabled={page <= 1 || loading}
-                  className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-base border border-rmpg-600 text-rmpg-400 hover:text-white disabled:opacity-30"
+                  className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-base border border-rmpg-600 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30"
                 >
                   <ChevronLeft className="w-3 h-3" /> Prev
                 </button>
@@ -363,12 +622,17 @@ export default function SkipTracerPage() {
                 <button type="button"
                   onClick={() => handlePageChange(page + 1)}
                   disabled={loading}
-                  className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-base border border-rmpg-600 text-rmpg-400 hover:text-white disabled:opacity-30"
+                  className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase bg-surface-base border border-rmpg-600 text-rmpg-400 hover:text-rmpg-100 disabled:opacity-30"
                 >
                   Next <ChevronRight className="w-3 h-3" />
                 </button>
               </div>
             )}
+
+            {/* Keyboard cheat-strip — same place every audited page puts it. */}
+            <div className="text-[8px] text-rmpg-600 pt-2 uppercase tracking-wider font-bold">
+              N new search · Esc cascade
+            </div>
           </div>
 
           {/* ─── Recent Searches ────────────────────────────── */}
@@ -376,7 +640,13 @@ export default function SkipTracerPage() {
             <div className="border-t border-rmpg-700 p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider">Recent Searches</span>
-                <button type="button" onClick={clearSearchHistory} className="text-[8px] text-rmpg-600 hover:text-red-400 transition-colors">Clear</button>
+                <button
+                  type="button"
+                  onClick={() => setShowClearHistoryConfirm(true)}
+                  className="text-[8px] text-rmpg-600 hover:text-red-400 transition-colors"
+                >
+                  Clear
+                </button>
               </div>
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {searchHistory.slice(0, 10).map((entry, i) => (
@@ -411,15 +681,16 @@ export default function SkipTracerPage() {
                   <button type="button"
                     key={idx}
                     onClick={() => setSelected(person)}
+                    onContextMenu={(e) => openMenu(e, buildResultMenu(person))}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
                       isActive
-                        ? 'bg-gray-900/20 border-l-2 border-l-gray-500'
+                        ? 'bg-surface-sunken/20 border-l-2 border-l-rmpg-500'
                         : 'hover:bg-surface-base border-l-2 border-l-transparent'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
-                        <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <User className="w-3.5 h-3.5 text-rmpg-400 shrink-0" />
                         <div className="min-w-0">
                           <div className="text-xs font-bold text-rmpg-100 truncate">{name}</div>
                           <div className="text-[9px] text-rmpg-500">
@@ -440,8 +711,16 @@ export default function SkipTracerPage() {
         </div>
 
         {/* ─── Right Panel: Detail View ─────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--surface-deep)' }}>
-          {!selected && !personDetail && (
+        <div className="flex-1 min-h-0 overflow-y-auto p-4" style={{ background: 'var(--surface-deep)' }}>
+          {loading && !selected && !personDetail && (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <Loader2 className="w-10 h-10 text-rmpg-600 mb-3 animate-spin" role="status" aria-label="Searching" />
+              <p className="text-sm text-rmpg-500 font-bold uppercase tracking-wider">Searching…</p>
+              <p className="text-[10px] text-rmpg-600 mt-1">Querying the local person corpus</p>
+            </div>
+          )}
+
+          {!loading && !selected && !personDetail && !hasZeroResults && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Search className="w-12 h-12 text-rmpg-700 mb-3" />
               <p className="text-sm text-rmpg-500 font-bold uppercase tracking-wider">Skip Tracker</p>
@@ -449,6 +728,28 @@ export default function SkipTracerPage() {
                 Search for individuals by name, address, phone, or email.
                 Select a result to view detailed information.
               </p>
+              <p className="text-[9px] text-rmpg-700 mt-3 max-w-xs">
+                Press <kbd className="px-1 py-0.5 bg-surface-base border border-rmpg-700 text-[8px] uppercase font-bold">N</kbd> to start a new search.
+              </p>
+            </div>
+          )}
+
+          {!loading && !selected && !personDetail && hasZeroResults && (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <AlertCircle className="w-12 h-12 text-rmpg-700 mb-3" />
+              <p className="text-sm text-rmpg-400 font-bold uppercase tracking-wider">No results found</p>
+              <p className="text-[10px] text-rmpg-600 mt-1 max-w-xs">
+                No person on file matches the query you ran. Try a wider
+                search (e.g. last name only, or area code only) or switch
+                search modes from the panel on the left.
+              </p>
+              <button
+                type="button"
+                onClick={newSearch}
+                className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-brand-700/20 text-brand-400 border border-brand-700/50 hover:bg-brand-700/40 transition-colors"
+              >
+                <Plus className="w-3 h-3" /> Start over
+              </button>
             </div>
           )}
 
@@ -457,11 +758,11 @@ export default function SkipTracerPage() {
               {/* Person Header */}
               <div className="panel-beveled bg-surface-base p-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-sm" style={{ background: 'rgba(136, 136, 136, 0.15)' }}>
-                    <User className="w-5 h-5 text-gray-400" />
+                  <div className="p-2.5 rounded-sm" style={{ background: 'var(--surface-raised)' }}>
+                    <User className="w-5 h-5 text-rmpg-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h2 className="text-sm font-bold text-white tracking-wider uppercase truncate">
+                    <h2 className="text-sm font-bold text-rmpg-100 tracking-wider uppercase truncate">
                       {selected.Name || selected.name || selected.fullName || 'Unknown'}
                     </h2>
                     <div className="flex items-center gap-2 text-[10px] text-rmpg-400 mt-0.5">
@@ -472,16 +773,26 @@ export default function SkipTracerPage() {
                       <div className="text-[9px] text-rmpg-500 font-mono mt-0.5">ID: {selected['Person ID']}</div>
                     )}
                   </div>
-                  {selected['Person ID'] && (
-                    <button type="button"
-                      onClick={() => handleGetPersonDetails(selected['Person ID'])}
-                      disabled={loadingDetail}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-brand-700/20 text-brand-400 border border-brand-700/50 hover:bg-brand-700/40 disabled:opacity-50 transition-colors"
+                  <div className="flex flex-col gap-1.5">
+                    {selected['Person ID'] && (
+                      <button type="button"
+                        onClick={() => handleGetPersonDetails(selected['Person ID'])}
+                        disabled={loadingDetail}
+                        className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-brand-700/20 text-brand-400 border border-brand-700/50 hover:bg-brand-700/40 disabled:opacity-50 transition-colors"
+                      >
+                        {loadingDetail ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <ExternalLink className="w-3 h-3" />}
+                        Full Details
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => exportSelectedPdf(selected)}
+                      className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-surface-base text-rmpg-300 border border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-100 transition-colors"
+                      title="Generate investigator hand-off PDF"
                     >
-                      {loadingDetail ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <ExternalLink className="w-3 h-3" />}
-                      Full Details
+                      <FileText className="w-3 h-3" /> PDF
                     </button>
-                  )}
+                  </div>
                 </div>
               </div>
 
@@ -492,16 +803,16 @@ export default function SkipTracerPage() {
               </div>
 
               {/* Phones */}
-              {renderArraySection(selected, ['phones', 'phoneNumbers', 'phone_numbers', 'Phones'], 'Phone Numbers', Phone, '#f59e0b', renderFieldRow, copy, copied)}
+              {renderArraySection(selected, ['phones', 'phoneNumbers', 'phone_numbers', 'Phones'], 'Phone Numbers', Phone, 'var(--sev-warn)', renderFieldRow, copy, copied)}
 
               {/* Emails */}
-              {renderArraySection(selected, ['emails', 'emailAddresses', 'email_addresses', 'Emails'], 'Email Addresses', Mail, '#f472b6', renderFieldRow, copy, copied)}
+              {renderArraySection(selected, ['emails', 'emailAddresses', 'email_addresses', 'Emails'], 'Email Addresses', Mail, 'var(--sev-info)', renderFieldRow, copy, copied)}
 
               {/* Addresses */}
-              {renderArraySection(selected, ['addresses', 'Addresses', 'address_history'], 'Addresses', MapPin, '#34d399', renderFieldRow, copy, copied)}
+              {renderArraySection(selected, ['addresses', 'Addresses', 'address_history'], 'Addresses', MapPin, 'var(--sev-ok)', renderFieldRow, copy, copied)}
 
               {/* Relatives / Associates */}
-              {renderArraySection(selected, ['relatives', 'Relatives', 'associates', 'Associates'], 'Relatives / Associates', User, '#a78bfa', renderFieldRow, copy, copied)}
+              {renderArraySection(selected, ['relatives', 'Relatives', 'associates', 'Associates'], 'Relatives / Associates', User, 'var(--sev-special)', renderFieldRow, copy, copied)}
 
               {/* Raw JSON (collapsible) */}
               <details className="panel-beveled bg-surface-base">
@@ -520,7 +831,7 @@ export default function SkipTracerPage() {
           {/* Person Detail (from ID lookup) */}
           {personDetail && (
             <div className="mt-4 panel-beveled bg-surface-base p-4 space-y-1 animate-fade-in">
-              <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Extended Person Details</div>
+              <div className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">Extended Person Details</div>
               {renderAllFields(personDetail, renderFieldRow)}
               <details className="mt-3">
                 <summary className="text-[9px] text-rmpg-500 cursor-pointer hover:text-rmpg-300">Raw Response</summary>
@@ -532,6 +843,25 @@ export default function SkipTracerPage() {
           )}
         </div>
       </div>
+
+      {/* ── Confirm: clear search history ─────────────────── */}
+      <ConfirmDialog
+        isOpen={showClearHistoryConfirm}
+        onClose={() => setShowClearHistoryConfirm(false)}
+        onConfirm={clearSearchHistory}
+        title="Clear search history?"
+        message="This removes every entry from your local recent-search list on this device. Past searches stay in the server audit log."
+        details={
+          searchHistory.length > 0 ? (
+            <>
+              <div>{searchHistory.length} entr{searchHistory.length === 1 ? 'y' : 'ies'} on this device</div>
+              <div>Most recent: <span className="font-mono">{searchHistory[0]?.query}</span></div>
+            </>
+          ) : undefined
+        }
+        confirmLabel="Clear"
+        confirmVariant="danger"
+      />
     </div>
   );
 }
@@ -586,7 +916,7 @@ function renderArraySection(
               <span className="text-[11px] text-rmpg-200 font-mono">{item}</span>
               <button type="button"
                 onClick={() => copy(item, `${title}-${idx}`)}
-                className="text-rmpg-600 hover:text-gray-400"
+                className="text-rmpg-600 hover:text-rmpg-400"
               >
                 {copied === `${title}-${idx}` ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
               </button>

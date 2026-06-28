@@ -1,329 +1,396 @@
 # RMPG Flex — Claude Code Project Memory
 
+> **This file describes the Cloudflare Workers stack only** (live as of 2026-05-24).
+> The Hostinger VPS architecture (`/opt/rmpg-flex`, rsync deploys, systemd,
+> Express, better-sqlite3) is **dead and the host is decommissioned** (shut down
+> 2026-06-15 — there is no longer a server at `194.113.64.90` to ssh/rsync/systemctl
+> against). Its source has been moved to
+> [`legacy/server-vps/`](legacy/README.md) and is not built, tested, or deployed.
+> See [`LEGACY.md`](LEGACY.md) for a quick live-vs-dead map of every top-level
+> directory before assuming anything about the codebase.
+
 ## Project Overview
 
-RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management System)** for Rocky Mountain Protective Group, a private security / law enforcement company operating in Salt Lake City, Utah.
+RMPG Flex is a **police CAD/RMS** (Computer-Aided Dispatch / Records Management System) for Rocky Mountain Protective Group, a private security / law enforcement company in Salt Lake City, Utah.
 
-- **Domain**: https://rmpgutah.us
-- **Production VPS**: root@194.113.64.90 (`/opt/rmpg-flex`)
-- **Service**: `systemd` unit `rmpg-flex` (HTTPS on 443, HTTP redirect on 80)
-- **Database**: SQLite via `better-sqlite3` at `server/data/rmpg-flex.db`
-- **Timezone**: America/Denver (Mountain Time)
-- **Version**: 5.8.0 (server, client, desktop, root)
+- **App domain**: https://rmpgutah.us (React SPA on Cloudflare Pages)
+- **API domain**: https://api.rmpgutah.us (Worker `rmpg-flex-api`, entry [`src/index.ts`](src/index.ts))
+- **Database**: Cloudflare D1 `rmpg-flex` (`785de7ae-3e7a-4e01-93bb-d24ddd813f6b`), bound as `DB` — the live 6 MB dataset both Workers share (verified 2026-05-29 via `wrangler.toml` + row counts). The old `rmpg-flex-db` (`8893480a-…`) is **abandoned** (0 calls/persons, missing tables); do not target it.
+- **Storage**: R2 — `system-essentials` bound as `MAP_DATA`
+- **Cache/state**: KV namespace `8e01c392038e4f76838ca9a1130c908e` bound as `KV`
+- **Durable Objects**: `WelfareWatchDO` (one instance per officer for welfare-check timers)
+- **Timezone**: America/Denver
+- **Versions**: Worker `1.0.0` (root `package.json`), client `5.8.4` (`client/package.json`)
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | React 18 + TypeScript + Vite 6 + Tailwind CSS |
-| **Backend** | Express 5 + TypeScript (tsx runtime) + better-sqlite3 |
-| **Auth** | JWT (access + refresh) + WebAuthn (FIDO2/YubiKey) + TOTP 2FA |
-| **Real-time** | WebSocket (ws) for live dispatch, GPS, presence |
-| **Maps** | Google Maps JS API + offline CartoDB dark_matter tiles + GeoJSON overlays |
-| **Desktop** | Electron (macOS DMG + Windows EXE) with offline sync |
-| **Mobile** | Capacitor (Android APK) |
-| **PDF** | jsPDF for reports, citations, patrol logs |
-| **Voice** | Edge TTS neural voice with radio audio processing |
-| **Styling** | Spillman Flex / Motorola Solutions pure black theme — `#0a0a0a` base, `#d4a017` gold accent, zero blue |
+| API | **Hono** on Cloudflare Workers (`src/index.ts`) |
+| Database | **Cloudflare D1** accessed via `src/utils/db.ts` (native `D1Database.prepare(...).bind(...).all()` / `.first()` / `.run()`) |
+| Auth | JWT via `jose` (`src/middleware/auth.ts`) + bcryptjs for password hashes |
+| Real-time | WebSocket via Workers `webSocketPair()` (`src/routes/ws.ts`) |
+| Frontend | React 18 + TypeScript + Vite 6 + Tailwind (built to `client/dist/`, deployed to Cloudflare Pages project `rmpg-flex`) |
+| Maps | **Mapbox GL JS** (overrides the legacy "Google Maps only" rule, which was anti-fragmentation for the VPS — see `[[project-mapbox-decision]]` memory) |
+| Edge | Python edge runner for Flex Dashcam AI (`edge/`, Jetson target) — independent of the Worker |
+| Styling | Spillman Flex day/night theme — **night (default)** = dark steel-blue Spillman (`surface-base #0d1722`), **day** = light-grey Spillman, auto-switching on a shift schedule (06:00–18:00 local). Colors come from CSS-variable-backed Tailwind tokens in [`client/src/styles/theme-palettes.css`](client/src/styles/theme-palettes.css) (the single source of palette truth) — **never hardcode hex**. Brand gold stays `#d4a017`. "Zero blue" is no longer a rule — steel-blue is the new identity. (The old pure-black `#000000` default is now a legacy kill-switch only — see Design tokens below.) |
 
-## Architecture
+## Repository Layout
 
 ```
-client/           React SPA (Vite build → client/dist/)
-  src/pages/      Page components (one per route)
-  src/components/ Shared components (StatsCard, PanelTitleBar, CollapsibleSection, etc.)
-  src/hooks/      Custom React hooks (useApi, useLiveSync, useDistrictLookup, etc.)
-  src/utils/      Utility modules (PDF gen, maps, CAD parser, voice alerts, call protocols)
-  public/         Static assets, service worker (sw.js), offline tiles, GeoJSON layers
-server/           Express API server
-  src/routes/     API route handlers (one file per domain)
-  src/routes/dispatch/  Dispatch subsystem (calls, units, GPS, aggregates, districts)
-  src/middleware/  Auth, rate-limiting, audit, security headers
-  src/utils/      Server utilities (geocode, audit, TOTP, geofence, websocket)
-  src/models/     Database setup + migrations (database.ts — all tables + addCol migrations)
-  data/           SQLite database (PRODUCTION ONLY on VPS)
-  certs/          SSL cert symlinks (PRODUCTION ONLY on VPS)
-desktop/          Electron wrapper with offline sync, auto-update, IPC bridge
-deploy/           Deployment scripts (deploy.sh, deploy-all.sh)
+src/                Cloudflare Worker (live API)
+  index.ts          Hono app entry; route mounting; CORS/secure-headers/logger middleware
+  middleware/auth.ts  JWT verification
+  routes/           One file per domain — auth, health, dispatch/, records, warrants, ...
+  routes/dispatch/  Dispatch subsystem (calls, units, gps, geography, aggregates, ...)
+  durable-objects/  WelfareWatchDO
+  utils/            db.ts, utahWarrantPoller.ts
+  types.ts          Shared TS types
+
+client/             React SPA (Vite → client/dist/, deployed to CF Pages)
+  src/pages/        Page components (one per route)
+  src/components/   Shared components (StatsCard, PanelTitleBar, IconButton, …)
+  src/hooks/        useApi (apiFetch), useLiveSync, useDistrictLookup, …
+  src/utils/        PDF gen, Mapbox helpers, CAD parser, voice alerts, call protocols
+  public/           Static assets, service worker (sw.js), GeoJSON layers
+
+migrations/         D1 SQL migrations — see migrations/README.md for numbering quirks
+wrangler.toml       Worker bindings (DB, KV, MAP_DATA, WELFARE_WATCH), cron, vars
+scripts/            Codegen + one-off ops scripts (D1 schema sync, geography seed)
+edge/               Python edge runner for Flex Dashcam AI (independent of Worker)
+
+legacy/             ⚠️  RETIRED VPS-era code (read-only, do not import) — see LEGACY.md
+desktop/            Electron wrapper — kept (in active use)
+                    NOTE: deploy/ (VPS-era deploy scripts) was DELETED in cleanup PR 2.
+                    If a comment or doc still references bash deploy/deploy.sh —
+                    that's the canonical "do not use" recipe; it never lived in CF era.
 ```
 
-## Critical Rules
+## Deploy
 
-### NEVER modify or delete these production-only paths:
-- `server/data/` — SQLite database (lives only on VPS)
-- `server/certs/` — SSL certificate symlinks (lives only on VPS)
-- `server/.env` — Production secrets (JWT_SECRET, etc.)
-- `server/uploads/` — User-uploaded attachments
+**Canonical trigger**: `git push origin main` → `.github/workflows/deploy.yml`:
 
-### Deploy Safety
-- **Deploy command**: `bash deploy/deploy.sh` (code only) or `bash deploy/deploy.sh --all` (code + installers)
-- Deploy script auto-detects project root via `$(dirname "$0")/..` — works from worktrees
-- Both scripts exclude `server/data`, `server/certs`, `server/.env`, `server/uploads`
-- After deploy, always verify: `curl -sf https://rmpgutah.us/api/health`
-- **Always bump `CACHE_NAME` in `client/public/sw.js`** when deploying client changes
-- SSL certs: Let's Encrypt symlinks `/etc/letsencrypt/live/rmpgutah.us/` → `server/certs/`
+1. `npm run typecheck` (Worker)
+2. `wrangler d1 migrations apply rmpg-flex --remote` (`continue-on-error: true`; the Worker reconciles missing columns at boot)
+3. `wrangler deploy` (Worker)
+4. `cd client && npm ci && npm run build`
+5. `wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main`
 
-### Security
-- TOTP secrets are AES-256-GCM encrypted using a key derived from `JWT_SECRET`
-- If `JWT_SECRET` changes, all TOTP secrets become unrecoverable — users must re-enroll
-- WebAuthn RP ID is `rmpgutah.us` — credentials are domain-bound
-- All routes require JWT auth via `authenticateToken` middleware
-- Role-based access: admin, manager, supervisor, officer, dispatcher, contract_manager, client_viewer, human_resources
+**Required GitHub secrets**: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+
+**Verify after every deploy**:
+```bash
+# ✅ As of 2026-06-12, `curl -sf https://api.rmpgutah.us/api/health` WORKS again
+# (returns HTTP 200 + JSON). A WAF custom rule in the http_request_firewall_custom
+# phase (zone rmpgutah.us = addedd9f3c798f85de2d3eea18ccef9a; ruleset
+# fb286265c2ad4f009c3fbcb7aac35e6c, rule 472b15f78f50420f871dd6c71e990ac7)
+# SKIPs the managed challenge for `http.request.uri.path eq "/api/health"`:
+curl -sf https://api.rmpgutah.us/api/health   # expect {"status":"ok",...}
+
+# ⚠️ The skip rule is scoped to /api/health ONLY. Every OTHER path on both zones
+# is still behind a Cloudflare **managed challenge**, so a plain curl to any other
+# endpoint (or the SPA) returns HTTP 403 ("Just a moment…") even when healthy —
+# the bot check needs JS + cookies curl can't solve (confirmed 2026-05-29). For
+# anything besides /api/health, use one of:
+# 1. Browser: open https://rmpgutah.us/ and https://api.rmpgutah.us/api/health
+#    in a real browser (solves the challenge) and eyeball the JSON / SPA shell.
+# 2. DB-level health (bypasses the WAF entirely) via the Cloudflare API/D1:
+#    query the LIVE DB `rmpg-flex` (785de7ae-3e7a-4e01-93bb-d24ddd813f6b),
+#    e.g. `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` (expect ~180).
+```
+
+**Service worker cache**: `CACHE_NAME` in `client/public/sw.js` is the literal placeholder `'rmpg-flex-BUILD'`. The `stamp-sw-version` Vite plugin in [`client/vite.config.ts`](client/vite.config.ts) replaces it with `'rmpg-flex-<git-short-sha>'` in `dist/sw.js` during `closeBundle()` on every production build, so every commit gets a unique cache name automatically. **Do not edit `CACHE_NAME` by hand** — manual bumps are no-ops and were a chronic merge-conflict source (the whole reason this auto-stamp exists). If you want to document what shipped, add a one-line `// vNNN:` changelog comment under the most recent one in `sw.js`; those are pure documentation and don't influence cache invalidation. Historical: incident 2026-05-24 (SW v321 lived in prod for weeks while source moved to v563) was the original reason for manual bumps before the auto-stamp refactor.
+
+**Manual / local invocations**:
+```bash
+npm run dev               # wrangler dev (local Worker on 8787)
+npm run typecheck         # tsc --noEmit on /src/
+cd client && npm run dev  # Vite dev server on 5173
+npm run migrate:local     # apply migrations to local D1
+npm run migrate:prod      # apply migrations to remote D1
+```
+
+## Schema changes (D1)
+
+1. Add a new file under `migrations/` using the next free integer prefix (see [`migrations/README.md`](migrations/README.md)). Current high-water is `0093` (check `ls migrations/ | tail` — duplicate prefixes exist, e.g. two `0075`/`0084`/`0085` files).
+2. Write idempotent DDL — `CREATE TABLE IF NOT EXISTS`. D1 does **not** support `IF NOT EXISTS` on `ADD COLUMN`, so either accept the failure on re-apply or wrap the `ALTER` in a check via the Worker boot reconciler.
+3. Test locally: `npm run migrate:local`.
+4. Merge to main — `deploy.yml` applies it to remote D1 (and continues on error, as documented above).
+5. **⚠️ Migrations routinely fail to reach live D1 silently** (deploy step is `continue-on-error`; migration tracking historically targeted the abandoned DB). After merging, apply the DDL **AND** mark it tracked in one shot via [`scripts/apply-migration.sh`](scripts/apply-migration.sh):
+
+   ```bash
+   scripts/apply-migration.sh 0147_my_new_migration.sql
+   ```
+
+   The helper runs `wrangler d1 execute --remote --file` then `INSERT OR IGNORE INTO d1_migrations`. Skipping the tracker insert is what caused the 19-row drift sweep on 2026-06-22 — wrangler then retries those files forever, hiding any real failure under swallowed "duplicate column name" noise. Verify the change landed with `pragma_table_info('<table>')`. A runtime "no such column/table" error is almost always a migration that never landed.
+6. **All `db.prepare(...).first() / .all() / .run()` are async** on D1 — always `await`.
+
+## Security
+
+- **`JWT_SECRET`** is the only auth secret in the Worker today (set via `wrangler secret put JWT_SECRET`). The old VPS-era TOTP encryption tying secrets together is not yet ported.
+- **Integration secrets** (optional bindings, read only from `c.env`, never hard-coded): `IPED_API_KEY`, `ROBOFLOW_API_KEY` (ALPR — see below). Set with `wrangler secret put <NAME>`; for local dev put them in `.dev.vars` (gitignored). A route returns 503 when its key is unset rather than crashing.
+- **CORS** is enforced by the Hono `cors()` middleware in `src/index.ts`, reading the allow-list from `CORS_ORIGINS` (`https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173`).
+- **Auth middleware** is mounted per-path-prefix in `src/index.ts` (e.g. `app.use('/api/dispatch', authMiddleware)`). Public routes: `/api/health`, `/api/auth`, `/api/map-data`. Everything else requires a valid JWT.
+- **Roles** (from the VPS era, still in the DB): `admin`, `manager`, `supervisor`, `officer`, `dispatcher`, `contract_manager`, `client_viewer`, `human_resources`.
+
+## External integrations
+
+### ALPR Vehicle Details Capture (Roboflow)
+
+Sends a captured image to the Roboflow **serverless workflow** "ALPR Vehicle
+Details Capture" (`workspace=rmpg-utah`, `workflow=alpr-vehicle-details-capture-1781360579827`)
+and wires the result into the intel plate log.
+
+- **Client**: [`src/utils/roboflowAlpr.ts`](src/utils/roboflowAlpr.ts) — Worker-safe (no `node:*`).
+  `runAlprVehicleCapture()` = `fetch` + `AbortController` timeout + bounded retries/backoff + typed
+  errors (`RoboflowConfigError|TimeoutError|HttpError`). Parsing is **schema-agnostic**: the Roboflow
+  HTTP envelope (`{ outputs: [ {<name>:value} ] }`, 1 entry/image; images → base64) is stable, so
+  `parseAlprResponse()` classifies each output **by shape** (base64 image / detection set / scalar)
+  and maps scalars to a normalized `AlprCapture` via key heuristics. Pure helpers are unit-tested in
+  [`tests/roboflowAlpr.test.ts`](tests/roboflowAlpr.test.ts) (`npx vitest run tests/roboflowAlpr.test.ts`).
+- **Route**: [`src/routes/alpr.ts`](src/routes/alpr.ts) mounted at `/api/alpr` (`auth: 'required'`).
+  `POST /capture` (multipart `image`/`photo` + optional `call_id`/`incident_id` + declared params).
+  **On-scene flow**: with a `call_id`/`incident_id` the original lands under R2 `field-photos/` + a
+  `field_photos` row, so it **auto-attaches to that call's photo gallery**. Then for **every** vehicle
+  in the frame (`parseVehicles` → `enhanced_alpr_record.vehicles[]`) it **upserts a `vehicles_records`
+  row by plate (creates if new), links it to the call via `call_vehicles`** (`role='observed'`), logs a
+  `vehicle_sightings` row, and runs `screenVehicle()` (stolen/watchlist → critical-hit notification).
+  Capture-level row in `alpr_captures` carries `call_id`/`field_photo_id`/`vehicle_count`/
+  `vehicle_record_ids`. Also `GET /captures` (filter `?call_id=`), `/capture/:id`, `/image/*`, `/health`.
+  Defaults `disable_rmpgutah_api: true`; repeated `capture_id` is idempotent (offline-replay safe).
+- **Mobile UI**: [`FieldCameraPage`](client/src/pages/mobile/FieldCameraPage.tsx) (`/field-camera?call_id=…&alpr=1`)
+  has a "Scan vehicles" mode that posts the stamped photo to `/alpr/capture` with the call context and
+  shows the per-vehicle results + hits; [`ActiveCallsCard`](client/src/pages/mobile/cards/ActiveCallsCard.tsx)
+  has a per-call scan launch. Multipart uploads use the new `apiPostForm` helper in
+  [`useApi.ts`](client/src/hooks/useApi.ts) (NOT `apiFetch`, which forces `application/json` and breaks
+  multipart). [`PlateLogPage`](client/src/pages/PlateLogPage.tsx) keeps a standalone plate scanner.
+- **Config**: needs `ROBOFLOW_API_KEY` secret (from app.roboflow.com/settings/api). Unset → `/api/alpr`
+  returns 503. Optional `ROBOFLOW_API_URL` overrides the serverless base.
+- **Schema**: migrations `0108_alpr_captures.sql` (`alpr_captures`) + `0109_alpr_call_link.sql` (call/
+  multi-vehicle columns). The route reconciles the table + columns at runtime via `columnExists()` — but
+  still **apply 0108 + 0109 directly to live D1 `785de7ae`** after merge (deploy apply is
+  `continue-on-error`). Reuses existing `vehicles_records`, `call_vehicles`, `field_photos`, `vehicle_sightings`.
+- **Grounded 2026-06-13** via `workflows_get`: the workflow has **50 inputs + 73 outputs**. The parser
+  reads the real shapes — `license_plate_text` (GLM-OCR), the structured `vehicle_details` dict
+  (`make`/`model`/`color_primary`/`year_range`/`license_plate_state_or_region`/`vehicle_type`), plate
+  confidence from `enhanced_alpr_record.vehicles[].field_confidence.plate`, and top-level `risk_score`/
+  `review_*`/`watchlist_hit` scalars — with key-heuristic fallbacks. **Every workflow parameter is a
+  string-typed `WorkflowParameter`** (defaults `'true'`/`'0.75'`), so the route passes all params as
+  STRINGS (not JS booleans/numbers) — downstream blocks compare against the strings. `disable_rmpgutah_api`
+  defaults to `'true'` so the workflow doesn't POST back to us. (Note: a live `workflows_run` to capture
+  a real response overflows the MCP serializer — 73 outputs incl. base64 images — so the declared
+  `output_structure` is the authoritative shape; run it via the serverless REST endpoint with a key if a
+  literal sample is needed.)
+
+### Fleet.io (commercial fleet management SaaS)
+
+Bidirectional sync between RMPG's in-house fleet system and Fleet.io. RMPG remains
+the operational entry surface (dispatch/MDT/patrol); Fleet.io is the downstream
+discipline layer for PM reminders, parts, vendor invoicing, and reports. Outbound
+goes live in PR 1 (this PR — seed only); bidirectional real-time + webhooks land in
+PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.md`](docs/superpowers/specs/2026-06-21-fleetio-integration-design.md).
+
+- **Adapter**: [`src/utils/fleetio/client.ts`](src/utils/fleetio/client.ts) — Worker-safe REST client
+  for Fleet.io API v1 (`https://secure.fleetio.com/api/v1`). Dual-header auth
+  (`Authorization: Token <key>` + `Account-Token: <token>`). Typed errors
+  (`FleetioConfigError | FleetioTimeoutError | FleetioHttpError | FleetioRateLimitError`).
+  Retry/backoff/timeout. Unit-tested in [`tests/fleetioClient.test.ts`](tests/fleetioClient.test.ts).
+- **Route**: [`src/routes/fleetio.ts`](src/routes/fleetio.ts) at `/api/fleetio` (auth: required).
+  `GET /test-connection` (any user), `GET /sync-status` (admin), `POST /seed` (admin —
+  pushes every `fleet_vehicles` row that lacks a `fleetio_links` entry).
+- **Bookkeeping schema**: migration `0133_fleetio_sync_tables.sql` — `fleetio_links`
+  (RMPG↔Fleet.io id mapping), `fleetio_events` (in/outbound event queue with
+  idempotency key), `fleetio_conflicts` (field-level disagreements; PR 4),
+  `fleetio_sync_state` (cursor positions per resource).
+- **Config**: secrets `FLEETIO_API_KEY` + `FLEETIO_ACCOUNT_TOKEN` (+ `FLEETIO_WEBHOOK_SECRET`
+  in PR 4) via `npx wrangler secret put`. Var `FLEETIO_API_BASE` in `wrangler.toml`
+  `[vars]`. Unset → `/api/fleetio/*` returns 503 `{ code: 'not_configured' }`.
+- **Cron**: `*/30 * * * *` reconciliation (stub in PR 1; real handler in PR 4).
+- **🔴 After merge**: apply `0133_fleetio_sync_tables.sql` DIRECTLY to live D1
+  `785de7ae` and verify via `pragma_table_info` (deploy is `continue-on-error`).
+  Set the two secrets, then hit `POST /api/fleetio/seed` once.
 
 ## Code Patterns
 
-### Express Route Pattern
-```typescript
-import { Router, Request, Response } from 'express';
-import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
-import { auditLog } from '../utils/auditLogger';
-import { broadcastDispatchUpdate } from '../utils/websocket';
+### Logging & observability (2026-06-24: structured JSON logger)
 
-const router = Router();
-router.use(authenticateToken);
+**Use `src/utils/logger.ts` instead of raw `console.log/error`** for all new code. The structured logger (`log.info / log.warn / log.error`) writes JSON lines with service name, log level, trace ID, and machine-parseable context. Each line is a single `JSON.stringify` call — compatible with Workers Logs, `wrangler tail --format json`, and external log sinks.
 
-router.get('/', requireRole('admin', 'officer'), (req: Request, res: Response) => {
-  const db = getDb();
-  const rows = db.prepare('SELECT * FROM table WHERE ...').all();
-  res.json(rows);
-});
-
-router.post('/', requireRole('admin'), (req: Request, res: Response) => {
-  const db = getDb();
-  // ... insert logic
-  auditLog(req, 'CREATE', 'table_name', id, null, newData);
-  broadcastDispatchUpdate({ action: 'entity_created', data: { ... } });
-  res.json({ success: true, id });
-});
-
-export default router;
+```ts
+import { log } from '../utils/logger';
+log.info('User logged in', { userId: 123 });
+log.error('DB query failed', { sql }, err);  // err is formatted as {name, message, stack}
 ```
 
-### React Page Pattern
-Pages use Tailwind dark theme, `apiFetch` for API calls, WebSocket for live updates:
+**Trace IDs** are auto-generated per-request via `traceMiddleware()` (replaces `logger()` from `hono/logger`). Every response gets `X-Trace-Id` header. Access from any middleware/handler via `c.get('traceId')`.
+
+```ts
+app.use('*', traceMiddleware());      // sets traceId on c.var + X-Trace-Id header
+app.use('*', requestLogMiddleware()); // logs every request as JSON
+```
+
+**Error persistence** (`error_log` table, migration 0156): unhandled route errors are automatically persisted via `logErrorToDb()` in the global `onError` handler. The table stores severity, category, message, JSON details, trace ID, user ID, source route, and status code. Fire-and-forget via `waitUntil` — never blocks the response.
+
+```ts
+logErrorToDb(c.env.DB, {
+  severity: 'error',
+  category: 'route',
+  message: err.message,
+  details: { route, userId },
+  traceId,
+  source: route,
+  statusCode: 500,
+}, c.executionCtx);
+```
+
+**Health check** (`GET /api/health`) probes D1, KV, R2 (`MAP_DATA`, `UPLOADS`, `DOWNLOADS`), and all 6 Durable Object namespaces. Returns latency per service. Status is `'ok'` when all connected; `'degraded'` when any service is unreachable (still HTTP 200 — health probes don't fail the site).
+
+**Log migration plan**: Convert existing `console.log/error` calls incrementally. High-priority targets: route handlers, cron sweepers, and integration clients (Fleet.io, Roboflow, ClearPath). Legacy `console.*` calls co-exist — the structured logger is additive, not a removal gate.
+
+### Worker route (Hono)
+```ts
+import { Hono } from 'hono';
+
+const app = new Hono<{ Bindings: { DB: D1Database } }>();
+
+app.get('/', async (c) => {
+  const rows = await c.env.DB.prepare('SELECT * FROM table WHERE org = ?')
+    .bind(c.var.user.org_id)
+    .all();
+  return c.json(rows.results);
+});
+
+app.post('/', async (c) => {
+  const body = await c.req.json();
+  const result = await c.env.DB.prepare('INSERT INTO ... VALUES (?, ?)')
+    .bind(body.foo, body.bar)
+    .run();
+  return c.json({ success: true, id: result.meta.last_row_id });
+});
+
+export default app;
+```
+
+Routes are mounted from `src/index.ts`. Per-prefix `app.use('/api/<prefix>', authMiddleware)` calls gate access.
+
+### React page
 ```tsx
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 
 export default function SomePage() {
-  const [data, setData] = useState([]);
-
-  useEffect(() => {
-    apiFetch<any[]>('/some-endpoint').then(setData).catch(console.error);
-  }, []);
-
+  const [data, setData] = useState<Foo[]>([]);
+  useEffect(() => { apiFetch<Foo[]>('/some-endpoint').then(setData).catch(console.error); }, []);
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="SECTION TITLE" icon={SomeIcon} />
-      {/* Surface colors: bg-surface-base (#0a0a0a), bg-surface-raised (#141414), bg-surface-sunken (#050505) */}
-      {/* Borders: border-[#222222], Gold accent: text-[#d4a017] */}
+      {/* Surfaces are theme-variable-backed — use the rmpg/brand/surface Tailwind tokens
+          (e.g. bg-surface-base, bg-surface-raised, text-brand-400). They re-theme automatically
+          between night and day; never hardcode hex. Night vs day values live in
+          client/src/styles/theme-palettes.css. */}
     </div>
   );
 }
 ```
 
-### Design System (Spillman Flex / Motorola Solutions — Pure Black Theme)
-```
-Surface colors: #0a0a0a (base), #141414 (raised), #050505 (sunken), #000000 (deep)
-Brand gold:    #d4a017    Neutral gray: #888888 (replaced all blue)
-Border:        #222222 (default), #1a1a1a (subtle), #2e2e2e (strong)
-All radius:    2px (sharp CAD console corners — never rounded-lg)
-Shadows:       Subtle only — depth via 3D beveled borders, not drop shadows
-Panel headers: Gold text + dark chrome gradient (#1a1a1a → #242424)
-LED indicators: Green/red/amber dots with box-shadow glow
-Fonts:         System sans-serif for UI, monospace for data/readouts
-Table headers: font-semibold 9px, py-[3px] — thin spreadsheet style
-Table rows:    py-[2px], 11px — compact, no pill badges (plain colored text)
-```
+`apiFetch` (in `client/src/hooks/useApi.ts`) targets the API base URL (`https://api.rmpgutah.us` in prod, `http://localhost:8787` in dev). Pass a path with or without `/api` — it normalises.
 
-### WebSocket Broadcasts
-```typescript
-broadcastDispatchUpdate({ action: 'call_updated', call: updatedCall });
-broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
-```
+### Icon-only buttons
+Use `<IconButton aria-label="...">` from `client/src/components/IconButton.tsx`. The `aria-label` is a required TS prop — that's the only enforcement; no ESLint a11y plugin runs in `client/`.
 
-### Offline-First Maps
-- Google Maps JS API (dark styled via `DARK_MAP_STYLE`)
-- CartoDB dark_matter tiles as offline fallback (`/tiles/{z}/{x}/{y}.png`)
-- GeoJSON layers: beat.geojson (719 features), county.geojson, municipality.geojson, highway.geojson
-- Service Worker (sw.js — bump `CACHE_NAME` version on every deploy) pre-caches tiles for Utah operational area
-- Tile coverage: Utah state Z7-8, Wasatch Front Z9-11, SLC Metro Z12-14, SLC Core Z15
+### Design tokens (Spillman day/night theme)
+The app has a **system-wide day/night theme** (PR #1277 + #1279). **Night is the default** (dark steel-blue Spillman); **day** is a light-grey Spillman skin. The two auto-switch on a shift schedule (06:00–18:00 local = day). **Do not hardcode hex** — every surface/brand/border color is a CSS variable, and the same Tailwind token re-themes between night and day by swapping the variable.
 
-## Development
+- **Palette source of truth:** [`client/src/styles/theme-palettes.css`](client/src/styles/theme-palettes.css). Three blocks — night (`:root, html.theme-dark, .tactical-dark`, steel-blue), day (`html.theme-light`, light grey, scale inverted), and the legacy kill-switch (`html.theme-legacy-black`, pure-black restore). The `rmpg-*`/`brand-*`/`surface-*`/`blue-*` Tailwind tokens in `client/tailwind.config.js` are `rgb(var(--x-rgb)/<alpha-value>)`, so a component using `bg-rmpg-700`/`text-brand-400` re-themes with zero code changes.
+- **Brand gold stays `#d4a017`.** Neutral gray `#888888`. **"Zero blue" is no longer a rule** — steel-blue is the new identity.
+- **Theme engine** — all resolve identically as `legacy → active override → schedule`:
+  - [`client/src/utils/themeSchedule.ts`](client/src/utils/themeSchedule.ts) (pure `resolveScheduledTheme`/`resolveEffectiveTheme`, unit-tested) + [`theme.ts`](client/src/utils/theme.ts) (`resolveCurrentTheme`, `readThemeOverride`/`writeThemeOverride`, `isLegacyBlackForced`).
+  - `UserPreferencesContext` controller re-applies every 60s + on focus/visibility.
+  - The inline pre-paint boot script in `client/index.html` (resolves the same way to avoid FOUC).
+  - **Keys:** localStorage `rmpg_theme_override` = `{theme:'dark'|'light', active:boolean}` is the source of truth (manual pick = `active:true`, Auto = `active:false`). **`rmpg_theme_legacy='1'` is a kill-switch** that restores the old pure-black theme instantly, no deploy.
+- **Tactical surfaces stay dark always** via the `.tactical-dark` class — live **Map / dashcam & body-cam HUDs / MDT / turn-by-turn Nav** (a bright map at night blinds a driver), regardless of day/night.
+- Radius: **2 px everywhere** — never `rounded-lg`. Global Tailwind override at the end of `client/src/index.css` enforces this with `!important`.
+- ⚠️ Phase 2/3 tail: ~12k raw-hex values still live in individual components (`docs/theme-hex-audit-baseline.txt` sizes it). Shared surfaces re-theme; per-page hardcoded hex does not. When you touch a page, prefer migrating its hex to tokens.
+- Tables: header `font-semibold` 9 px, `py-[3px]`; rows 11 px, `py-[2px]`. No pill badges.
 
-```bash
-npm run dev              # Start both client (Vite :5173) and server (tsx :3001)
-npm run build            # Build client only (Vite → client/dist/)
-cd client && npx tsc --noEmit  # TypeScript typecheck (deploy script runs this)
+## Testing & CI
 
-# Server regression gates (not wired into deploy — run manually before pushing to main)
-cd server && npx vitest run         # Full server suite — 356 tests, ~3s
-cd server && npm run check:routes   # Route-collision guard — 107 files, 0 duplicate METHOD+path handlers expected
-cd server && npx tsc --noEmit       # 28 pre-existing @types/express 5.x errors are OK (string|string[] params)
+`.github/workflows/pr-tests.yml` runs on every PR + push to main:
 
-# Desktop builds
-cd desktop && npm run build:all   # Build macOS DMG + Windows EXE
-node desktop/scripts/copyToDownloads.cjs  # Copy to server/downloads/
+1. **`worker-typecheck`** — `npm run typecheck` (tsc on `/src/`)
+2. **`client-typecheck`** — `cd client && npx tsc --noEmit`
+3. **`client-tests`** — `cd client && npx vitest run`
+4. **`client-build`** — `cd client && npx vite build` (depends on client-typecheck)
 
-# Deploy
-bash deploy/deploy.sh             # Code only to VPS
-bash deploy/deploy.sh --all       # Code + desktop installers to VPS
+There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/` with Miniflare is tracked as Phase 2 tech debt.** When you add a new route, prefer adding a smoke test in the same PR.
 
-# Direct deploy (bypasses typecheck gate — used when deploy.sh fails):
-cd client && npx vite build
-rsync -az --delete client/dist/ root@194.113.64.90:/opt/rmpg-flex/client/dist/
-rsync -az client/public/sw.js root@194.113.64.90:/opt/rmpg-flex/client/dist/sw.js
-rsync -az --delete --exclude='node_modules' --exclude='data' --exclude='certs' --exclude='.env' --exclude='uploads' server/ root@194.113.64.90:/opt/rmpg-flex/server/
-ssh root@194.113.64.90 "systemctl restart rmpg-flex"  # Only needed for server changes
-curl -sf https://rmpgutah.us/api/health               # Verify
-```
+`.husky/pre-push` mirrors CI locally (worker types + client types + client vitest). Bypass with `git push --no-verify` only for genuine hotfixes — CI is the next gate.
 
-### Quick Status Check
-```bash
-curl -sf https://rmpgutah.us/api/health | python3 -m json.tool  # Server version + features
-ssh root@194.113.64.90 "grep CACHE_NAME /opt/rmpg-flex/client/dist/sw.js"  # Deployed SW version
-grep CACHE_NAME client/public/sw.js  # Local SW version
-```
+## Common Gotchas (CF era)
 
-### Google Maps API Key
-Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
+1. **`/server/` is dead** — it's been moved to `legacy/server-vps/`. If you see `import ... from 'server/...'` anywhere outside `legacy/`, that's a bug from before the rehoming and should be ported to `/src/`.
+2. **`/src/` and `/client/src/` both contain TypeScript** — `/src/` is the Worker, `/client/src/` is React. They share no build, no `tsconfig`, no `package.json`. Edits to one do not affect the other.
+3. **D1 queries are async** — `await db.prepare(...).first()`. Forgetting `await` returns a Promise that JSON-serialises to `{}`, which the client then logs as "empty response."
+4. **`deploy.yml` step `Apply D1 migrations` has `continue-on-error: true`** — the Worker reconciles missing columns at boot, but you cannot rely on the deploy log alone to tell you a migration succeeded. After deploying, query the table directly via `wrangler d1 execute rmpg-flex --remote --command 'SELECT name FROM sqlite_master ...'` to confirm.
+5. **D1 has dirty schema in prod** — earlier migrations partially applied during the rehoming. New migrations must be idempotent. See [`migrations/README.md`](migrations/README.md).
+6. **Service worker cache** — `CACHE_NAME` in `client/public/sw.js` auto-stamps from the git short SHA via the `stamp-sw-version` plugin in [`client/vite.config.ts`](client/vite.config.ts) on every production build. Do NOT edit `CACHE_NAME` manually — it's a literal placeholder `'rmpg-flex-BUILD'` in source and a hand bump is a merge-conflict magnet (this auto-stamp refactor exists for that reason). Add a one-line changelog comment under the most recent `// vNNN:` entry if you want to document what shipped, but the cache name itself is handled for you.
+7. **Mapbox token** — `client/src/utils/mapboxApiKey.ts` reads `VITE_MAPBOX_ACCESS_TOKEN` at build time. The error string in that file still says "Add MAPBOX_ACCESS_TOKEN to server/.env" — that's stale (no `.env` on Workers); the token must be embedded into the Vite build via `client/.env` or Cloudflare Pages env vars.
+8. **Cloudflare Pages != Worker** — the React app on Pages (`rmpgutah.us`) is a separate deployment from the Worker on `api.rmpgutah.us`. Both deploy together via `deploy.yml`, but each can fail independently. Check Pages logs in the Cloudflare dashboard if the SPA shell breaks while the API is healthy (or vice versa).
+9. **WebSocket route** (`src/routes/ws.ts`) uses Workers' `webSocketPair()` — the auth/upgrade dance differs subtly from Node `ws`. JWT is verified once at upgrade time; subsequent messages on that socket are trusted.
+10. **`WelfareWatchDO` is SQLite-backed (`new_sqlite_classes`)** — free-plan compatible. Same API surface for our use case but storage is per-DO, isolated from D1.
+11. **Megafiles still exist on the client** — `FirecrawlTab.tsx` (11k lines), `MapPage.tsx` / `DispatchPage.tsx` (~6k each), `WarrantsPage.tsx` (4k). Split opportunistically when you're already in them; don't schedule a "refactoring sprint."
+12. **Comments in `/src/` and `/client/src/` that say "mirrors server/..."** — those references now point at `legacy/server-vps/...`. Read them as historical reference only; the canonical implementation is whatever's in `/src/`.
+13. **D1 100-column SELECT cap** — Cloudflare D1 caps SELECT result sets at ~100 columns. `calls_for_service` (100 cols) and `persons` (94 cols) are at or near the cap on live. **Never `ALTER TABLE … ADD COLUMN` against either of those** — new columns go to the `_ext` overflow table (1:1 pattern, see `calls_for_service_ext`). `scripts/check-column-cap.js` (run by `.github/workflows/column-cap-check.yml` on every PR touching `migrations/`) fails CI if a PR adds an ALTER against a watched table. Override with `ALLOW_ALTER_<TABLE>=1` env var on the workflow run if you genuinely have no other option, and document the reason in the PR body.
 
-## Key Systems
+## Cross-reference: dead instructions to ignore
 
-### Dispatch Geography (4-tier Miller drilldown)
-- `dispatch_areas` → `dispatch_sectors` → `dispatch_zones` → `dispatch_beats` (renamed from `dispatch_sections` in 2026-04-11 rebuild)
-- `dispatch_codes` — 68 pre-seeded 10-codes + signal codes
-- `premise_alerts` — persistent location-based warnings
-- GeoJSON beat polygons with sector-colored labels on map
-- API: `server/src/routes/dispatch/geography.ts` — CRUD for all 4 tiers + `/tree` (nested) + `/identify?lat&lng` (point lookup)
-- UI: `client/src/pages/GeographyPage.tsx` — 4-column Miller drilldown (Areas 180px → Sectors 200px → Zones 240px → Beats 240px → Detail pane)
-- Production runs legacy 5/46/166/427 classification; fresh DBs get the full 6/29/288/719 Utah GeoJSON seed (see Gotcha #41)
+If you encounter any of these in code comments, docs, or older messages, **do not follow them** — they describe the retired VPS:
 
-### Incident RMS (Spillman Flex)
-- `incident_offenses` — UCR/NIBRS codes, statute linkage, suspect/victim mapping
-- `incident_officers` — multi-officer tracking with roles and timestamps
-- `incident_links` — cross-reference to calls, cases, warrants, citations, arrests
-- Master Name Index: `/api/incidents/mni/search`, `/api/incidents/mni/person/:id`
-- Full incident view: `/api/incidents/:id/full` (aggregated)
+- `bash deploy/deploy.sh` (any form, with or without flags)
+- `ssh root@194.113.64.90` / `/opt/rmpg-flex/` / `systemctl restart rmpg-flex`
+- `rsync -az ... root@194.113.64.90:...`
+- `better-sqlite3`, `initDatabase()` from `server/src/models/database.ts`
+- `addCol(...)` migrations in `database.ts` — D1 uses files in `migrations/` instead
+- nginx config tweaks (`/etc/nginx/sites-enabled/rmpgutah.us`, `mime.types`, `brotli.conf`) — Cloudflare handles all edge TLS / compression / caching
+- Manual `CACHE_NAME` bump in `client/public/sw.js` (VPS-era or otherwise) — the value is now auto-stamped from the git short SHA by the `stamp-sw-version` Vite plugin; source stays as the literal placeholder `'rmpg-flex-BUILD'`
+- TOTP / WebAuthn / Evidence-chain Ed25519 setup — those features were VPS-only and have not been ported to the Worker yet
+- Husky `pre-push` instructions about running 461 server tests — that gate was removed when `/server/` was quarantined
 
-### Citations (Spillman Flex)
-- `citation_violations` — multiple violations per citation, auto-summing fines
-- 39 extended fields: traffic data, vehicle details, bond, court, disposition
-- Batch operations: `/api/citations/batch/void`, `/api/citations/batch/status`
+When in doubt: `grep` for the actual file under `/src/` or `/client/src/`. The deployed code is always the source of truth, never a comment.
 
-### Dispatch Console
-- F-key hotkeys: F2=New, F3=Dispatch, F5=Enroute, F6=OnScene, F7=Clear, F8=CMD, F12=NCIC
-- Status bar (fixed bottom): P1/P2 counts, unit metrics, F-key hints, clock
-- CAD command line: 20+ commands including 10-code lookup, premise alerts
-- Call type protocols: 70+ incident types with auto-priority/flags/backup rules
-- Edge TTS voice (`en-US-JennyNeural`) with radio squelch beeps, bandpass EQ, pink noise static
-- Call → Incident auto-links persons/vehicles from `call_persons`/`call_vehicles`
+## Session Log
 
-### Serve / Process Service
-- `serve_queue` — 30+ columns: recipient info, document type, deadline, GPS, officer assignment
-- `serve_attempts` — GPS-tracked service attempts with photo/signature capture
-- `serve_routes` — optimized route planning with waypoints
-- `serve_skip_traces` — skip trace results per serve job
-- `serveQueueLinker.ts` — auto-creates serve jobs from PSO/process service dispatch calls
-- API: `/api/process-server/*` (mounted via `serve.ts`)
+### 2026-06-24 — Phases 1–5: migration overhaul, observability, tests, analytics pipeline, display label standardization
 
-### Skip Tracer V2
-- `server/src/routes/skiptracer-v2/` — modular source adapter system
-- 22 data sources: FBI Wanted, OFAC, NSOPW, Utah Courts, SLC Assessor, Arrests, etc.
-- `BaseDataSource` — rate limiting, caching, retry, encrypted config
-- API: `/api/skiptracer-v2/search`, `/api/skiptracer-v2/sources`
+**Phase 1: Migration System Overhaul**
+- Drift detection script (`scripts/check-migration-drift.sh`) — portable (no `grep -P`)
+- `migrations/README.md` updated with high-water 0155, next-free 0156, 20 duplicate-prefix entries
+- `.github/workflows/deploy.yml`: schema drift check + post-deploy health verify
 
-### HR Module
-- `leave_requests` + `leave_balances` — leave management with approval workflow
-- `disciplinary_records` — officer disciplinary tracking
-- `performance_reviews` + `review_cycles` — review management
-- `overtime_requests` — OT tracking
-- `hr_pay_periods` + `hr_pay_rates` + `hr_payroll_entries` — full payroll pipeline
-- API: `/api/hr/*`
+**Phase 2: Structured Observability**
+- `src/utils/logger.ts`: JSON structured logger (`log.info/warn/error`), `generateTraceId`, `traceMiddleware`/`requestLogMiddleware`, `logErrorToDb`
+- `src/routes/health.ts`: multi-service health probe (D1, KV, R2, 6 DO namespaces) — returns HTTP 200 even in degraded state
+- `migrations/0156_error_log.sql`: `error_log` table + 3 indexes
+- `src/index.ts`: traceMiddleware → requestLogMiddleware → secureHeaders → cors → onError wiring
+- `src/types.ts`: `traceId?: string` in `Variables`
+- CLAUDE.md: Observability section added under Code Patterns
 
-### Fleet Management
-- `fleet_vehicles` — vehicle tracking with `next_service_mileage`
-- `fleet_maintenance`, `fleet_fuel_log`, `fleet_inspections`, `fleet_damage_reports`
-- API: `/api/fleet/*`
+**Phase 3: Worker Integration Tests (14 passing)**
+- `test-workers/health.test.ts`: 6 Miniflare tests for multi-service health probe (`npx vitest run --config vitest.workers.config.mts`)
+- `test-workers/auth.test.ts`: 6 Miniflare tests for auth middleware + RBAC
+- `tests/logger.test.ts`: 12 Node tests for structured JSON logger
+- `tests/errorLog.test.ts`: 6 Node tests for D1 error persistence
+- Bug fixes discovered during testing: `src/index.ts` ExecutionContext type mismatch, `src/routes/serve.ts:580` param fallback, `test-workers/auth.test.ts` import/assertion fixes
 
-### Arrests & Jail Roster
-- `arrest_records` — manual entry, CSV import, JailBase scraper sync
-- `arrest_cross_links` — link arrests to persons
-- `jailRosterScraper.ts` — automated jail roster sync
-- API: `/api/arrests/*`
+**Phase 4: Analytics Pipeline Activation Path**
+- `scripts/setup-analytics-pipeline.sh`: one-click Pipelines + R2 catalog setup
 
-### Case Management
-- 8 junction tables: `case_persons`, `case_vehicles`, `case_incidents`, `case_calls`, `case_evidence`, `case_citations`, `case_warrants`, `case_properties`
-- API: `/api/cases/*`
+**Phase 5: Display Label Standardization**
+- Removed 5 local duplicate `toDisplayLabel` functions (CrmPage, ReportsTab, ProposalsTab, LeadsTab, InvoicesPage)
+- Replaced 77 inline `.replace(/_/g, ' ').replace(/\b\w/g, ...)` patterns across ~45 files with `toDisplayLabel()` from `client/src/utils/formatters.ts`
+- Expanded `ACRONYMS` set from ~25 to ~80 entries
+- Fixed imports in StatusBadge, EvidenceTab, BusinessTab, DocumentsTab, BenefitsTab, DashCameraTab, ServeJobCard, IpedPage, DispatchPage, FleetAnalyticsTab, and others
 
-### Field Interviews
-- `field_interviews` — FI contact cards with GPS, photos, person/vehicle links
-- Auto-generates FI-YY-NNNNN numbers
-- API: `/api/field-interviews` (CRUD, by-person, by-location radius, stats)
+**Verification**: Worker typecheck (`tsc --noEmit` + `tsc -p tsconfig.test.json`) ✅; Node tests (18) ✅; Miniflare worker tests (14) ✅; client build (`vite build`) ✅ 21.34s; client typecheck (12 pre-existing errors, 0 from changes); client tests (9 pre-existing failures in 4 files: equipmentCustodyPdf/prettyAction, MdtPage/button label, PlateLogPage/missing ToastProvider)
 
-### Dispatch Messaging
-- `dispatch_messages` — secure dispatcher-to-unit messaging
-- Channels: dispatch, unit-to-unit, broadcast, BOLO
-- WebSocket delivery for real-time
-- API: `/api/dispatch-messages`
-
-### Advanced Search
-- **Compound Search**: `/api/records/compound-search` — NCIC-style multi-field (name wildcard, DOB range, physical description, address radius, plate, flags)
-- **Universal Search**: `/api/records/universal-search` — one query across 9 record types
-- **MNI Dossier**: `/api/records/persons/:id/dossier` — complete person intelligence package
-- **Saved Searches**: `/api/records/saved-searches` — user preset CRUD
-
-### Other Systems
-- **Court Tracker**: `court_events` table, API `/api/court/*`
-- **Forensic Lab**: `forensic_cases`, `forensic_exhibits`, `forensic_analyses`, API `/api/forensic-lab/*`
-- **Trespass Orders**: `trespass_orders`, `trespass_violations`, API `/api/trespass-orders/*`
-- **Use of Force**: `use_of_force` table for incident-linked UoF reports
-- **Shift Plans**: `shift_plans`, `shift_swap_requests`
-- **Notification Rules**: `notification_rules` for custom alert automation
-
-## Common Gotchas
-
-1. **JWT_SECRET must be permanent** — random-on-restart breaks TOTP decryption
-2. **rsync --delete** in deploy — production-only dirs are excluded, don't remove those excludes
-3. **Electron desktop app** is in `desktop/` with its own `package.json` and `node_modules`
-4. **Large files** — DispatchPage.tsx (6,386 lines), MapPage.tsx (5,488 lines), dispatch calls.ts (2,185 lines)
-5. **Service Worker versioning** — bump `CACHE_NAME` in `sw.js` when changing client assets
-6. **Electron cache** — users must quit + clear `~/Library/Application Support/rmpg-flex-desktop/Cache` or press Cmd+Shift+R
-7. **Auth middleware name** — it's `authenticateToken` not `authenticate`
-8. **API fetch** — use `apiFetch()` from `hooks/useApi.ts`, not `useApi()` hook
-9. **Database migrations** — all in `database.ts` using `addCol()` helper, lazy CREATE TABLE patterns
-10. **Deploy from worktree** — `deploy.sh` auto-detects project root, works from any worktree
-11. **CSS overrides** — global Spillman enforcement rules at end of `index.css` force 2px radius, navy backgrounds, subtle shadows
-12. **nginx /downloads/** — proxied to Node.js (port 3001), not served as static files
-13. **Dispatch layout** — DispatchPage uses `flex h-full` row layout. Never wrap in flex-col or add block children — use `position: fixed` for overlays
-14. **Electron full cache clear** — `pkill -f "RMPG Flex"; sleep 1; rm -rf ~/Library/Application\ Support/rmpg-flex-desktop/{Cache,Service\ Worker,GPUCache,Code\ Cache}`
-15. **Worktree deploys** — `deploy.sh` deploys whatever branch the worktree is on. Main branch is NOT updated. Merge worktree branch to main separately
-16. **nginx on VPS** — config at `/etc/nginx/sites-enabled/rmpg-flex`. New top-level URL paths must proxy to Node (port 3001), not serve static
-17. **Tailwind override pattern** — global Spillman enforcement at end of `index.css` uses `!important` to override utility classes (e.g., `.rounded-lg { border-radius: 2px !important; }`)
-18. **PATH in Claude Code sessions** — `npx`/`node` may not be found. Prefix with `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`
-19. **edge-tts-universal** — must use `Function('return import("edge-tts-universal")')()` to avoid tsx ESM resolver crash at startup. Lazy-loads on first TTS request.
-20. **VPS npm install** — requires `--legacy-peer-deps` flag due to peer dependency conflicts
-21. **Deploy typecheck gate** — `deploy.sh:80-81` runs `cd client && npx tsc --noEmit` as a hard gate. The project ships with 0 client TS errors as of 2026-04-11; if the gate starts failing, fix the TS errors rather than reaching for the "Direct deploy" bypass above — bypassing hides real regressions. Server TS is NOT gated in deploy (by design — 28 pre-existing `@types/express` 5.x errors where `req.params.X` is `string | string[]` are orthogonal to runtime behavior).
-22. **Vite bundle splitting** — `vite.config.ts` has `manualChunks` for vendor-react, vendor-pdf, vendor-icons. Each gets 1-year immutable cache via nginx `/assets/` location block.
-23. **nginx gzip** — configured in `/etc/nginx/conf.d/performance.conf` (level 6), NOT in nginx.conf (those lines are commented out). Don't uncomment nginx.conf gzip — it creates duplicates.
-24. **calls_for_service columns** — 22+ columns added via addCol for PSO, tactical flags, timestamps. The redispatch INSERT has 74 columns — verify column count matches if modifying.
-25. **incidents columns** — 17 boolean flags (mental_health_crisis, juvenile_involved, etc.) added via addCol. POST INSERT has 86 columns.
-26. **serve_queue columns** — 20+ columns added via addCol beyond the 13 in CREATE TABLE. Code expects sm_job_id, recipient_*, document_type, etc.
-27. **2FA login flow** — Server returns `step: 'setup_2fa'` for users without TOTP. Set `totp_exempt = 1` in users table to bypass. Rate limiter is in-memory — restart server to clear.
-28. **Agent scan accuracy** — subagent INSERT column count reports are often wrong (miss NULL, literals, ternary expressions). Always verify with python3 counter script before acting on mismatch reports.
-29. **persons table** — CREATE TABLE has 17 columns + 70 addCol migrations = 87 total. INSERT uses 81. This is correct — don't report as mismatch.
-30. **callActions.ts route prefixes** — routes use `/calls/:id/...` prefix (NOT `/:id/...`). All dispatch sub-routers mount at `/` under `/api/dispatch`. Client calls `/dispatch/calls/:id/...`.
-31. **Email iframe images** — use `srcdoc` + `sandbox="allow-same-origin allow-popups"` (NOT blob: URL). Blob origin blocks external image loading.
-32. **PDF process_service crash** — all field values must be strings. Use `safeStr()` wrapper: `const safeStr = (v: any): string => (v == null) ? '' : String(v);`
-33. **apiFetch prefix** — `apiFetch('/api/...')` works fine (doesn't double-prefix) because line 287 of useApi.ts checks `startsWith('/api')`. Both `/api/x` and `/x` are valid.
-34. **Password reset** — `cd /opt/rmpg-flex/server && node -e "const bcrypt=require('bcryptjs'); const db=require('better-sqlite3')('data/rmpg-flex.db'); db.prepare('UPDATE users SET password_hash=? WHERE username=?').run(bcrypt.hashSync('NewPass!',12),'username'); db.close()"`
-35. **VPS reboot recovery** — after VPS reboot, check `grep CACHE_NAME /opt/rmpg-flex/client/dist/sw.js` to verify deployed version. If stale, redeploy from worktree. Data in `server/data/` survives reboots.
-36. **Dual CREATE TABLE in database.ts** — Some tables (e.g. `field_interviews`) have two `CREATE TABLE IF NOT EXISTS` blocks with different column names. The FIRST one wins on production. Phase 1 definitions (later in the file) are skipped. Always check which definition is actually active.
-37. **Server rsync drops** — `rsync --delete server/` to VPS frequently drops SSH mid-transfer. Use `rsync -az server/src/ root@194.113.64.90:/opt/rmpg-flex/server/src/` (src only, no --delete) as the reliable fallback.
-38. **Client-server field name audit** — When form saves fail silently (data missing after save), check that client form field names exactly match server INSERT column names. Known past mismatches: ForensicLab (`synopsis`→`description`, `incident_id`→`linked_incident_id`), FieldInterviews (`location`/`contact_reason`/`action_taken` vs Phase 1 aliases).
-39. **npm `overrides` with `>=` is a footgun** — `"path-to-regexp": ">=0.1.13"` tells npm "any version ≥ 0.1.13", which resolves to the *highest* matching version (e.g. 8.x). Under Express 4 that broke boot with `TypeError: pathRegexp is not a function` in `express/lib/router/layer.js` because Express 4 required the 0.1.x function-default export. **Always use EXACT pins in `overrides`** (e.g. `"lodash": "4.17.21"`) unless you explicitly want a range. `server/package.json` currently pins only `dompurify` defensively — the `path-to-regexp: "0.1.13"` override was **removed in the Express 5 migration** (2026-04-10, commit 1c65343d) because Express 5's bundled router 2.x ships path-to-regexp 8.x with the DoS already patched upstream. **Do NOT re-add the path-to-regexp override** under Express 5; it will break the router at boot.
-40. **`deploy.sh` uses `rsync -avz` WITHOUT `--delete`** (deliberate safety against wiping `server/data/` if an exclusion rule is wrong). Consequence: files you rename or delete locally stay on the VPS as zombies after a normal `bash deploy/deploy.sh`. After any file rename/deletion refactor, manually clean up on the VPS: `ssh root@194.113.64.90 'rm /opt/rmpg-flex/path/to/old-file'`. Verify the active router imports the new file first to confirm the zombie is truly dead. The "Direct deploy" block in the Development section DOES use `--delete` — use that only for `dist` and only when you've verified the file list.
-41. **Geography seed is idempotent and only runs on empty tables** — `database.ts:~2956` calls `seedGeographyFromGeoJSON()` which bails if any of `dispatch_areas`/`dispatch_sectors`/`dispatch_zones`/`dispatch_beats` have rows. Fresh DBs get the full 6-area / 29-sector / 288-zone / 719-beat Utah GeoJSON seed. Production preserves its legacy 5/46/166/427 classification and 144 live FK references from `calls_for_service`/`incidents`/`citations`. A true production reseed needs a deliberate data migration with FK remap by `sector_code`/`zone_code`/`beat_code` strings, not a `DELETE FROM` + server restart.
-42. **Security hook blocks the literal string `e``x``e``c(` in the Edit tool** — the tool-call hook treats any occurrence of that substring (without the backticks) as a potential `child_process` shell-execution call and rejects the edit, even inside better-sqlite3 code. For single-statement DDL in `server/src/models/database.ts`, use `db.prepare('CREATE TABLE IF NOT EXISTS ...').run()` instead of the better-sqlite3 bulk-execute shortcut method. Multi-statement DDL can be split into multiple `db.prepare().run()` calls or wrapped in `db.transaction(() => { ... })()`. The hook is defensive and works even when the substring appears inside documentation or comments, so you may need to split the word across backticks when writing about it.
-43. **Parallel worktree deploys silently clobber each other** — `deploy.sh` deploys **whatever branch the caller's worktree is on**, not `main`, and uses `rsync` to push source files to `/opt/rmpg-flex/`. If two Claude sessions are running in different worktrees, the last one to run `deploy.sh` wins, regardless of which branch has the newer work. This happened 2026-04-17: session A deployed PR #198 (SW v229) at 10:58 UTC, session B from a different worktree on the old `d1e88c90` hotfix branch ran `deploy.sh` at 11:10 UTC and clobbered prod back to pre-fix Layout.tsx + CSS bundle (SW v244 — higher *number* but stale *source*). **A higher CACHE_NAME version on prod does not prove your code is live.** Always verify the specific fix reached the VPS by greping source files directly: `ssh root@194.113.64.90 "grep -c '<distinctive-string-from-your-fix>' /opt/rmpg-flex/<path>"`. If that returns the wrong count, pull main locally, bump CACHE_NAME above prod's current value, and redeploy from the main workspace (not any sub-worktree). A deploy-lock (e.g. touch `/tmp/rmpg-deploy.lock` at start of `deploy.sh` with a 10-min expiry) would prevent this, but is not currently implemented.
+**Infrastructure**: Node.js v24.18.0 installed; `npx` via full path due to PowerShell execution policy blocking `.ps1` scripts; `workerd`/`esbuild`/`sharp` postinstall scripts skipped (allowScripts policy)

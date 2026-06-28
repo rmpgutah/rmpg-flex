@@ -17,7 +17,7 @@ const FLAG_LABELS = [
 
 export const personBlankSchema: FormSchema<PersonBlankData> = {
   meta: {
-    formNumber: 'FORM PS-206-BLK',
+    formNumber: 'PS-206-BLK',
     title: 'PERSON RECORD',
     revision: '2026-04',
   },

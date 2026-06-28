@@ -6,35 +6,26 @@
 
 import jsPDF from 'jspdf';
 import {
-  hexToRgb,
-  addReportHeader,
-  openAutoSection,
-  closeAutoSection,
-  addFieldPair,
-  addPageFooter,
-  addConfidentialWatermark,
-  addWrappedText,
-  addTableWithShading,
-  checkPageBreak,
-  setGenerationTimestamp,
-  fetchPdfBranding,
-  setActiveBranding,
-  setActiveFormKey,
-  setActiveCaseNumber,
-  getActiveBranding,
-  loadPdfAssets,
-  formSectionPageBreak,
-  sanitizePdfText,
-  addSignatureBlock,
-  wordWrapText,
+  hexToRgb, openAutoSection, closeAutoSection, addFieldPair, addPageFooter,
+  addConfidentialWatermark, addWrappedText, addTableWithShading, checkPageBreak,
+  setGenerationTimestamp, fetchPdfBranding, setActiveBranding, setActiveFormKey,
+  setActiveCaseNumber, getActiveBranding, loadPdfAssets, sanitizePdfText,
+  addSignatureBlock, wordWrapText,
 } from './pdfGenerator';
 import {
-  LAYOUT, SPACING, FONT, COLOR, BORDER,
-  getContentWidth, getHalfWidth, getFullFieldWidth,
-  getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
+  LAYOUT, SPACING, FONT, COLOR, BORDER, getContentWidth, getFullFieldWidth,
+  getLeftX, getRightColumnX, getHalfFieldWidth,
+  applyPrintTarget, type PrintTarget,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
+
+export interface InvoicePdfOptions {
+  printTarget?: PrintTarget;
+}
 import { FORM_NUMBERS } from './pdfAssets';
+// Vite-bundled URL — see pdfAssets.ts for why we don't use `/rmpg-seal.png`.
+import sealUrl from '../assets/rmpg-seal.png?url';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 // ── Data interface ────────────────────────────────────────
 
@@ -87,7 +78,7 @@ function fmt(n: number | null | undefined): string {
 
 // ── PDF Generation ────────────────────────────────────────
 
-export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
+export async function generateInvoicePdf(data: InvoicePdfData, options: InvoicePdfOptions = {}): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
   await loadPdfAssets();
@@ -99,6 +90,8 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   }));
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+  applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageWidth = doc.internal.pageSize.getWidth();
   const cw = getContentWidth(doc);
   const lx = getLeftX();
@@ -152,7 +145,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     const sec = openAutoSection(doc, 'Line Items', y);
     y = sec.contentY;
 
-    const items = data.line_items || [];
+    const items = Array.isArray(data.line_items) ? data.line_items : [];
     if (items.length > 0) {
       // Custom table for line items (needs right-aligned columns)
       const headerBg = hexToRgb(brand.header_bg_color);
@@ -305,7 +298,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
   // ── Payments Section ─────────────────────────────────
-  const payments = data.payments || [];
+  const payments = Array.isArray(data.payments) ? data.payments : [];
   if (payments.length > 0) {
     y = checkPageBreak(doc, y, 25);
 
@@ -367,8 +360,8 @@ function escHtml(s: string | null | undefined): string {
 }
 
 export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
-  const items = data.line_items || [];
-  const payments = data.payments || [];
+  const items = Array.isArray(data.line_items) ? data.line_items : [];
+  const payments = Array.isArray(data.payments) ? data.payments : [];
 
   const lineItemRows = items.map(item => `
     <tr>
@@ -426,7 +419,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 </head>
 <body>
   <div class="header">
-    <img src="/rmpg-seal.png" alt="RMPG Seal" onerror="this.style.display='none'" />
+    <img src="${sealUrl}" alt="RMPG Seal" onerror="this.style.display='none'" />
     <div class="header-text">
       <h1>RMPG SECURITY SERVICES</h1>
       <p>Private Security</p>
@@ -512,9 +505,9 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 }
 
 /** Generate invoice PDF and return a blob URL for in-app preview */
-export async function generateInvoicePdfBlobUrl(data: InvoicePdfData): Promise<string> {
+export async function generateInvoicePdfBlobUrl(data: InvoicePdfData, options: InvoicePdfOptions = {}): Promise<string> {
   try {
-    const doc = await generateInvoicePdf(data);
+    const doc = await generateInvoicePdf(data, options);
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
   } catch (err) {

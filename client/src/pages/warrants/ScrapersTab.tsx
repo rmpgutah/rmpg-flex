@@ -12,7 +12,7 @@
 // for live run lifecycle updates.
 // ============================================================
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   RefreshCw,
   Search,
@@ -23,8 +23,11 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp, safeDateTimeStr } from '../../utils/dateUtils';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useToast } from '../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   ScraperSource,
   ScraperHealthSummary,
@@ -160,15 +163,15 @@ function StatusLed({
   count: number;
 }) {
   const colorMap = {
-    green: 'bg-green-500 shadow-[0_0_6px_#22c55e]',
-    amber: 'bg-amber-500 shadow-[0_0_6px_#f59e0b]',
-    red: 'bg-red-500 shadow-[0_0_6px_#ef4444]',
+    green: 'bg-green-500 shadow-[0_0_6px_var(--sev-ok)]',
+    amber: 'bg-amber-500 shadow-[0_0_6px_var(--sev-warn)]',
+    red: 'bg-red-500 shadow-[0_0_6px_var(--sev-critical)]',
     dark: 'bg-rmpg-700',
   };
   return (
     <div className="flex items-center gap-2">
       <span className={`w-2 h-2 rounded-full ${colorMap[color]}`} />
-      <span className="text-lg font-mono font-bold text-white">{count}</span>
+      <span className="text-lg font-mono font-bold text-rmpg-100">{count}</span>
       <span className="text-[10px] uppercase tracking-widest text-rmpg-500">
         {label}
       </span>
@@ -192,8 +195,8 @@ function ScraperHealthHeader({
       <div className="flex-1" />
       <div className="text-[10px] uppercase tracking-widest text-rmpg-500">
         Last hour:{' '}
-        <span className="text-[#d4a017] font-bold">{summary.last_hour_runs}</span> runs,{' '}
-        <span className="text-[#d4a017] font-bold">{summary.last_hour_inserted}</span>{' '}
+        <span className="text-[var(--brand-gold)] font-bold">{summary.last_hour_runs}</span> runs,{' '}
+        <span className="text-[var(--brand-gold)] font-bold">{summary.last_hour_inserted}</span>{' '}
         new
       </div>
       <button
@@ -221,7 +224,7 @@ function ScraperHealthDistribution({
 
   return (
     <div className="panel-raised p-3">
-      <div className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">
+      <div className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">
         Health Distribution (24h)
       </div>
       <div className="space-y-1.5">
@@ -229,7 +232,7 @@ function ScraperHealthDistribution({
           const pct = (counts[g] / total) * 100;
           return (
             <div key={g} className="flex items-center gap-2">
-              <span className="w-4 text-xs font-mono font-bold text-white">{g}</span>
+              <span className="w-4 text-xs font-mono font-bold text-rmpg-100">{g}</span>
               <div className="flex-1 h-4 bg-rmpg-900 border border-rmpg-700 relative">
                 <div
                   className={`h-full ${GRADE_BAR_COLORS[g]}`}
@@ -250,16 +253,16 @@ function ScraperHealthDistribution({
 function ScraperLiveFeed({ entries }: { entries: LiveFeedEntry[] }) {
   return (
     <div className="panel-raised p-3 h-full max-h-[240px] flex flex-col">
-      <div className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">
+      <div className="text-[10px] uppercase tracking-widest text-[var(--brand-gold)] font-bold mb-2">
         Live Feed
       </div>
-      <div className="flex-1 overflow-y-auto scrollbar-dark space-y-0.5 font-mono text-[10px]">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark space-y-0.5 font-mono text-[10px]">
         {entries.length === 0 ? (
           <div className="text-rmpg-600">Waiting for events...</div>
         ) : (
           entries.map((entry) => {
             const display = formatLiveFeedEvent(entry.event);
-            const time = new Date(entry.timestamp).toLocaleTimeString().slice(0, 8);
+            const time = parseTimestamp(entry.timestamp).toLocaleTimeString().slice(0, 8);
             return (
               <div key={entry.id} className="flex items-start gap-2">
                 <span className="text-rmpg-600 w-14 flex-shrink-0">{time}</span>
@@ -267,7 +270,7 @@ function ScraperLiveFeed({ entries }: { entries: LiveFeedEntry[] }) {
                 <span className="text-rmpg-400 w-14 flex-shrink-0">
                   {display.label}
                 </span>
-                <span className="text-white truncate flex-1">{display.detail}</span>
+                <span className="text-rmpg-100 min-w-0 truncate flex-1">{display.detail}</span>
               </div>
             );
           })
@@ -286,6 +289,8 @@ function ScraperSourceCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
   const grade = source.metrics_24h?.health_grade || 'F';
   const m = source.metrics_24h;
 
@@ -313,16 +318,26 @@ function ScraperSourceCard({
     }
   };
 
+  const buildMenu = (): ContextMenuItem[] => [
+    menu.action(expanded ? 'Collapse' : 'Expand details', () => setExpanded((v) => !v), { icon: <Eye size={12} /> }),
+    menu.action('Trigger scrape', () => { void trigger(); }, { icon: <Zap size={12} /> }),
+    menu.action('Reset circuit', () => { void reset(); }, { icon: <RotateCw size={12} /> }),
+    ...(source.source_url ? [menu.openExternal('View source', source.source_url)] : []),
+    menu.separator(),
+    menu.copyId(source.source_key, 'Copy source key'),
+  ];
+
   return (
     <div className="panel-raised">
       <button
         onClick={() => setExpanded(!expanded)}
+        onContextMenu={(e) => openMenu(e, buildMenu())}
         className="w-full p-2 flex items-center gap-2 hover:bg-rmpg-800/50 text-left"
       >
         <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-rmpg-900 text-rmpg-400 border border-rmpg-700 w-12 text-center">
           {TIER_LABELS[source.priority] || 'NORM'}
         </span>
-        <span className="text-xs text-white flex-1 truncate">{source.display_name}</span>
+        <span className="text-xs text-rmpg-100 min-w-0 flex-1 truncate">{source.display_name}</span>
         <span className="text-[10px] text-rmpg-500 w-10 text-right">{source.state}</span>
         <span
           className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border w-6 text-center ${GRADE_BADGE_CLASSES[grade]}`}
@@ -346,31 +361,29 @@ function ScraperSourceCard({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <span className="text-rmpg-500">URL: </span>
-              <span className="text-white break-all">{source.source_url}</span>
+              <span className="text-rmpg-100 break-all">{source.source_url}</span>
             </div>
             <div>
               <span className="text-rmpg-500">Last success: </span>
-              <span className="text-white">
-                {source.last_success_at
-                  ? new Date(source.last_success_at).toLocaleString()
-                  : 'never'}
+              <span className="text-rmpg-100">
+                {safeDateTimeStr(source.last_success_at, 'never')}
               </span>
             </div>
             <div>
               <span className="text-rmpg-500">Runs 24h: </span>
-              <span className="text-white">{m?.total_runs ?? 0}</span>
+              <span className="text-rmpg-100">{m?.total_runs ?? 0}</span>
             </div>
             <div>
               <span className="text-rmpg-500">Avg parsed: </span>
-              <span className="text-white">{m?.avg_parsed?.toFixed(1) ?? 0}</span>
+              <span className="text-rmpg-100">{m?.avg_parsed?.toFixed(1) ?? 0}</span>
             </div>
             <div>
               <span className="text-rmpg-500">p95 latency: </span>
-              <span className="text-white">{m?.p95_duration_ms ?? 0}ms</span>
+              <span className="text-rmpg-100">{m?.p95_duration_ms ?? 0}ms</span>
             </div>
             <div>
               <span className="text-rmpg-500">Consecutive errors: </span>
-              <span className="text-white">{source.consecutive_errors}</span>
+              <span className="text-rmpg-100">{source.consecutive_errors}</span>
             </div>
           </div>
 
@@ -471,7 +484,7 @@ export default function ScrapersTab() {
       }
     };
 
-    const unsubscribe = subscribe('scraper_event', handler);
+    const unsubscribe = subscribe('scraper_events', handler); // Worker broadcasts the PLURAL type
     return () => unsubscribe();
   }, [subscribe, fetchAll]);
 
@@ -517,7 +530,7 @@ export default function ScrapersTab() {
       <div className="flex flex-wrap items-center gap-2 panel-raised p-2">
         <div className="flex items-center gap-1 flex-1 min-w-[200px]">
           <Search size={14} className="text-rmpg-500" />
-          <input
+          <input id="ff-scraperstab-0"
             type="text"
             placeholder="Search sources..."
             value={search}
@@ -525,7 +538,7 @@ export default function ScrapersTab() {
             className="input-dark flex-1 text-xs"
           />
         </div>
-        <select
+        <select id="ff-scraperstab-1"
           value={stateFilter}
           onChange={(e) => setStateFilter(e.target.value)}
           className="select-dark text-xs"
@@ -537,7 +550,7 @@ export default function ScrapersTab() {
             </option>
           ))}
         </select>
-        <select
+        <select id="ff-scraperstab-2"
           value={gradeFilter}
           onChange={(e) => setGradeFilter(e.target.value as GradeFilter)}
           className="select-dark text-xs"

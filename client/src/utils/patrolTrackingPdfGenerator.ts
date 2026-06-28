@@ -9,8 +9,13 @@
 import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark, finalizePoliceReport } from './pdfGenerator';
-import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT } from './pdfTokens';
-import { localToday } from './dateUtils';
+import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, applyPrintTarget, topMarginY, type PrintTarget } from './pdfTokens';
+import { localToday, parseTimestamp } from './dateUtils';
+import { registerArialFont } from './pdf/fonts/registerArial';
+
+export interface PatrolTrackingPdfOptions {
+  printTarget?: PrintTarget;
+}
 
 // ── Types matching the server patrol-tracking response ──────
 
@@ -87,7 +92,7 @@ export interface PatrolTrackingReportData {
 
 function formatDateTime(isoStr: string): string {
   try {
-    const d = new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00');
+    const d = parseTimestamp(isoStr);
     return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' '
       + d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch { return isoStr; }
@@ -95,14 +100,14 @@ function formatDateTime(isoStr: string): string {
 
 function formatTime(isoStr: string): string {
   try {
-    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return parseTimestamp(isoStr).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch { return isoStr; }
 }
 
 function formatDate(isoStr: string | null): string {
   if (!isoStr) return 'N/A';
   try {
-    return new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(isoStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return isoStr; }
 }
 
@@ -126,7 +131,7 @@ function hexToRgb(hex: string): [number, number, number] {
 
 // ── PDF Generator ───────────────────────────────────────────
 
-export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData): Promise<void> {
+export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, options: PatrolTrackingPdfOptions = {}): Promise<void> {
   try {
   const branding = await fetchPdfBranding();
   const primaryRgb = hexToRgb(branding.primary_color || DEFAULT_PDF_BRANDING.primary_color);
@@ -135,6 +140,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   const logoB64 = await loadLogoDarkBase64();
 
   const doc = new jsPDF('landscape', 'mm', 'letter');
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
+  applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = LAYOUT.PAGE_MARGIN;
@@ -145,7 +152,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   });
   const formNum = FORM_NUMBERS['patrol_tracking'] || 'FORM PS-210';
 
-  let yPos: number = margin;
+  let yPos: number = topMarginY(doc);
 
   // Add watermark to the first page (newPage() handles subsequent pages)
   addConfidentialWatermark(doc);
@@ -262,7 +269,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     addConfidentialWatermark(doc);
     // @ts-expect-error jsPDF GState — safety reset after watermark
     doc.setGState(new doc.GState({ opacity: 1.0 }));
-    yPos = margin + 18; // after header + accent strip
+    yPos = topMarginY(doc) + 18; // after header + accent strip
   }
 
   // ── Utility: check space and maybe new page ────────
@@ -555,7 +562,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         const rRowData = [
           (seg.call_number || 'N/A').toUpperCase(),
           (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
-          `P${seg.priority}`.toUpperCase(),
+          (seg.priority ? (String(seg.priority).toUpperCase().startsWith('P') ? String(seg.priority).toUpperCase() : `P${seg.priority}`.toUpperCase()) : 'N/A'),
           seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : 'N/A',
           seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
           seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : 'N/A',
@@ -656,7 +663,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   const dateStr = localToday().replace(/-/g, '');
   const firstCallSign = data.trails[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
-  doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);
+  const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
+  doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}${targetSuffix}.pdf`);
   } catch (err) {
     console.error('Patrol tracking PDF generation failed:', err);
     throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);

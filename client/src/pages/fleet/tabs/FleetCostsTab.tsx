@@ -1,55 +1,74 @@
 // ═══════════════════════════════════════════════════════════════
 // RMPG Flex — Fleet Costs Tab
 //
-// Single tab that consolidates the four operating-cost categories
-// (Loan / Insurance / Accessories / Utilities) under a sub-navigation
-// strip. The cost-of-ownership summary at the top stays visible
-// regardless of which sub-tab is active so the operator always sees
-// the full TCO context.
-//
-// Each sub-list renders a compact row per record with category-specific
-// fields, an Edit button (when handler wired), and a Delete (archive)
-// button (admin/manager only — the parent decides whether to wire the
-// callback). Empty states call out the action you can take.
+// Consolidated cost-of-ownership dashboard. Shows lifetime TCO at a
+// glance, plus per-category detailed lists (sub-tabs). Fuel and
+// maintenance are integrated into both the summary stats and the
+// monthly budget-vs-actual tracker. Budgets are edited inline — no
+// modal — so the operator can adjust targets on the fly and
+// immediately see the impact.
 // ═══════════════════════════════════════════════════════════════
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  CreditCard, Shield, Wrench, Zap, DollarSign, Calendar,
-  Plus, Pencil, Trash2, AlertTriangle, TrendingUp, Gauge,
+  CreditCard, Shield, Wrench, Zap, DollarSign, Calendar, Plus, Pencil, Trash2,
+  AlertTriangle, Gauge, Receipt, TrendingUp, Target, Fuel, Check, X as XIcon, Save,
 } from 'lucide-react';
 import type {
-  FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetCostSummary,
+  FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost,
+  FleetOtherCost, FleetCostSummary,
 } from '../../../types';
 import type { CostCategory } from '../modals/FleetCostFormModal';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
+import { toNum, fmtFixed } from '../utils/fleetFormatters';
 
-type SubTab = 'loan' | 'insurance' | 'accessory' | 'utility';
+function isRealDate(d: unknown): d is string {
+  if (typeof d !== 'string') return false;
+  const t = d.trim();
+  if (!t || t === 'None' || t === 'N/A' || t === '0') return false;
+  return !isNaN(parseTimestamp(t).getTime());
+}
+
+type SubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 interface Props {
   loans: FleetLoan[];
   insurance: FleetInsurancePolicy[];
   accessories: FleetAccessory[];
   utilities: FleetUtilityCost[];
+  other: FleetOtherCost[];
   summary: FleetCostSummary | null;
-  /** Active sub-tab. Lifted to the parent so it survives re-mounts when
-   *  the user switches outer tabs and back. */
   subTab: SubTab;
   onSubTabChange: (t: SubTab) => void;
   onAdd: (category: CostCategory) => void;
   onEdit: (category: CostCategory, record: any) => void;
   onDelete: (category: CostCategory, record: any) => void;
+  onSaveBudgets?: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
 }
 
 const SUB_TABS: { value: SubTab; label: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
-  { value: 'loan',      label: 'Loan',        icon: CreditCard, color: 'text-gray-400' },
+  { value: 'loan',      label: 'Loan',        icon: CreditCard, color: 'text-rmpg-400' },
   { value: 'insurance', label: 'Insurance',   icon: Shield,     color: 'text-green-400' },
   { value: 'accessory', label: 'Accessories', icon: Wrench,     color: 'text-amber-400' },
   { value: 'utility',   label: 'Utilities',   icon: Zap,        color: 'text-purple-400' },
+  { value: 'other',     label: 'Other',       icon: Receipt,    color: 'text-brand-400' },
 ];
 
-function fmtCurrency(n: number | null | undefined, digits = 2): string {
-  if (n == null) return '-';
-  return `$${n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+const BUDGET_CATEGORIES: { key: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: 'fuel',        label: 'Fuel',        icon: Fuel },
+  { key: 'maintenance', label: 'Maintenance', icon: Wrench },
+  { key: 'loan',        label: 'Loan',        icon: CreditCard },
+  { key: 'insurance',   label: 'Insurance',   icon: Shield },
+  { key: 'accessory',   label: 'Accessories', icon: Wrench },
+  { key: 'utility',     label: 'Utilities',   icon: Zap },
+  { key: 'other',       label: 'Other',       icon: Receipt },
+];
+
+function fmtCurrency(n: number | string | null | undefined, digits = 2): string {
+  if (n == null || n === '') return '-';
+  const v = toNum(n);
+  return `$${v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
@@ -57,42 +76,77 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
   const colors: Record<string, string> = {
     active:     'bg-green-900/30 text-green-400 border-green-700/40',
     paid_off:   'bg-rmpg-800 text-rmpg-300 border-rmpg-700',
-    refinanced: 'bg-gray-900/30 text-gray-400 border-gray-700/40',
+    refinanced: 'bg-surface-sunken/30 text-rmpg-400 border-border-default/40',
     defaulted:  'bg-red-900/30 text-red-400 border-red-700/40',
     expired:    'bg-amber-900/30 text-amber-400 border-amber-700/40',
     cancelled:  'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
     installed:  'bg-green-900/30 text-green-400 border-green-700/40',
     removed:    'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
-    replaced:   'bg-gray-900/30 text-gray-400 border-gray-700/40',
+    replaced:   'bg-surface-sunken/30 text-rmpg-400 border-border-default/40',
     damaged:    'bg-red-900/30 text-red-400 border-red-700/40',
+    inactive:   'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
   };
   return (
     <span className={`px-1 py-0.5 text-[8px] font-bold uppercase border ${colors[status] || 'bg-rmpg-800 text-rmpg-400 border-rmpg-700'}`}>
-      {status.replace('_', ' ')}
+      {toDisplayLabel(status)}
     </span>
   );
 }
 
 export default function FleetCostsTab({
-  loans, insurance, accessories, utilities, summary,
-  subTab, onSubTabChange, onAdd, onEdit, onDelete,
+  loans, insurance, accessories, utilities, other, summary,
+  subTab, onSubTabChange, onAdd, onEdit, onDelete, onSaveBudgets,
 }: Props) {
+  const monthly = summary?.monthly_commitment || {};
+  const alerts = computeAlerts(insurance, loans, accessories, other);
+  const [alertsOpen, setAlertsOpen] = useState(true);
+
+  // Compute total monthly including fuel + maintenance from budget actuals.
+  const budgets = summary?.budgets || {};
+  const fuelMonthly = toNum(budgets.fuel?.actual);
+  const maintMonthly = toNum(budgets.maintenance?.actual);
+  const totalMonthly = toNum(monthly.total) + fuelMonthly + maintMonthly;
+
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* ── Cost-of-ownership summary ─────────────────────────── */}
+    <div className="p-4 space-y-3">
+      {/* ── Upcoming-renewals alerts strip (next 60 days) ──────── */}
+      {alerts.length > 0 && (
+        <div className="panel-beveled bg-surface-sunken overflow-hidden">
+          <button type="button"
+            onClick={() => setAlertsOpen(!alertsOpen)}
+            className="w-full flex items-center justify-between p-2 text-[9px] text-amber-400 uppercase font-bold tracking-wider hover:bg-rmpg-800/30 transition-colors">
+            <span className="flex items-center gap-1.5">
+              <AlertTriangle className="w-3 h-3" />
+              Upcoming (next 60 days) — {alerts.length} item{alerts.length !== 1 ? 's' : ''}
+            </span>
+            <span className="text-rmpg-500">{alertsOpen ? '▲' : '▼'}</span>
+          </button>
+          {alertsOpen && (
+            <div className="px-2 pb-2 space-y-1">
+              {alerts.map((a, i) => (
+                <div key={i} className="flex items-center gap-2 text-[10px] text-amber-300 font-mono">
+                  <span className="w-32 text-amber-400">{a.kind}</span>
+                  <span className="min-w-0 flex-1 truncate">{a.label}</span>
+                  <span className="text-rmpg-400">{a.date}</span>
+                  <span className="text-amber-500 w-16 text-right">{a.days}d</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Budget vs. Actual — inline-editable rows ────────── */}
+      {onSaveBudgets && summary && (
+        <InlineBudgetEditor summary={summary} onSaveBudgets={onSaveBudgets} />
+      )}
+
+      {/* ── Cost Breakdown by Category ─────────────────────────── */}
       {summary && (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Stat icon={DollarSign} color="text-gray-400" label="Lifetime Cost" value={fmtCurrency(summary.total_lifetime)} />
-            <Stat icon={Gauge}      color="text-brand-400" label="Cost / Mile"  value={summary.cost_per_mile != null ? fmtCurrency(summary.cost_per_mile, 3) : '-'} />
-            <Stat icon={Calendar}   color="text-amber-400" label="Monthly Loan" value={fmtCurrency(summary.monthly_commitment.loan)} />
-            <Stat icon={Shield}     color="text-green-400" label="Monthly Ins." value={fmtCurrency(summary.monthly_commitment.insurance)} />
-          </div>
-          <div className="panel-beveled bg-surface-sunken p-2">
-            <div className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Cost Breakdown by Category</div>
-            <CostBreakdown summary={summary} />
-          </div>
-        </>
+        <div className="panel-beveled bg-surface-sunken p-2">
+          <div className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Lifetime Cost Breakdown</div>
+          <CostBreakdown summary={summary} />
+        </div>
       )}
 
       {/* ── Sub-tabs ──────────────────────────────────────────── */}
@@ -102,6 +156,7 @@ export default function FleetCostsTab({
           const counts: Record<SubTab, number> = {
             loan: loans.length, insurance: insurance.length,
             accessory: accessories.length, utility: utilities.length,
+            other: other.length,
           };
           const isActive = subTab === t.value;
           return (
@@ -123,11 +178,48 @@ export default function FleetCostsTab({
       {subTab === 'insurance' && <InsuranceList records={insurance}    onAdd={() => onAdd('insurance')} onEdit={(r) => onEdit('insurance', r)} onDelete={(r) => onDelete('insurance', r)} />}
       {subTab === 'accessory' && <AccessoryList records={accessories}  onAdd={() => onAdd('accessory')} onEdit={(r) => onEdit('accessory', r)} onDelete={(r) => onDelete('accessory', r)} />}
       {subTab === 'utility'   && <UtilityList   records={utilities}    onAdd={() => onAdd('utility')}   onEdit={(r) => onEdit('utility', r)}   onDelete={(r) => onDelete('utility', r)} />}
+      {subTab === 'other'     && <OtherList     records={other}        onAdd={() => onAdd('other')}     onEdit={(r) => onEdit('other', r)}     onDelete={(r) => onDelete('other', r)} />}
     </div>
   );
 }
 
-// ── Stat & breakdown helpers ─────────────────────────────────────
+// ── Alerts ───────────────────────────────────────────────────────
+
+interface AlertItem { kind: string; label: string; date: string; days: number; }
+
+function computeAlerts(
+  insurance: FleetInsurancePolicy[],
+  loans: FleetLoan[],
+  accessories: FleetAccessory[],
+  other: FleetOtherCost[],
+): AlertItem[] {
+  const out: AlertItem[] = [];
+  const within = (d: unknown): number | null => {
+    if (!isRealDate(d)) return null;
+    const days = Math.round((parseTimestamp(d).getTime() - Date.now()) / 86400_000);
+    return Number.isFinite(days) && days >= 0 && days <= 60 ? days : null;
+  };
+  for (const p of insurance) {
+    const days = within(p.expires_at);
+    if (days != null) out.push({ kind: 'Insurance renews', label: p.carrier || '(policy)', date: p.expires_at || '', days });
+  }
+  for (const l of loans) {
+    const days = within(l.payoff_date);
+    if (days != null) out.push({ kind: 'Loan payoff', label: l.lender || '(loan)', date: l.payoff_date || '', days });
+  }
+  for (const a of accessories) {
+    const w = a.warranty_until ?? a.warranty_expiry;
+    const days = within(w);
+    if (days != null) out.push({ kind: 'Warranty expires', label: a.name || '(accessory)', date: w || '', days });
+  }
+  for (const o of other) {
+    const days = within(o.period_end);
+    if (days != null) out.push({ kind: toDisplayLabel(o.cost_type || 'Other'), label: o.provider || o.cost_type || '(cost)', date: o.period_end || '', days });
+  }
+  return out.sort((a, b) => a.days - b.days);
+}
+
+// ── Stat ─────────────────────────────────────────────────────────
 
 function Stat({ icon: Icon, label, value, color }: {
   icon: React.ComponentType<{ className?: string }>;
@@ -144,15 +236,19 @@ function Stat({ icon: Icon, label, value, color }: {
   );
 }
 
+// ── Cost Breakdown ───────────────────────────────────────────────
+
 function CostBreakdown({ summary }: { summary: FleetCostSummary }) {
-  const total = summary.total_lifetime || 1;
+  const total = toNum(summary.total_lifetime) || 1;
+  const cat = summary.categories || {};
   const rows: { label: string; value: number; color: string }[] = [
-    { label: 'Fuel',        value: summary.categories.fuel,        color: 'bg-gray-600' },
-    { label: 'Maintenance', value: summary.categories.maintenance, color: 'bg-amber-600' },
-    { label: 'Loan',        value: summary.categories.loans,       color: 'bg-gray-600' },
-    { label: 'Insurance',   value: summary.categories.insurance,   color: 'bg-green-600' },
-    { label: 'Accessories', value: summary.categories.accessories, color: 'bg-purple-600' },
-    { label: 'Utilities',   value: summary.categories.utilities,   color: 'bg-pink-600' },
+    { label: 'Fuel',        value: toNum(cat.fuel),        color: 'bg-rmpg-600' },
+    { label: 'Maintenance', value: toNum(cat.maintenance), color: 'bg-amber-600' },
+    { label: 'Loan',        value: toNum(cat.loans),       color: 'bg-rmpg-600' },
+    { label: 'Insurance',   value: toNum(cat.insurance),   color: 'bg-green-600' },
+    { label: 'Accessories', value: toNum(cat.accessories), color: 'bg-purple-600' },
+    { label: 'Utilities',   value: toNum(cat.utilities),   color: 'bg-pink-600' },
+    { label: 'Other',       value: toNum(cat.other),       color: 'bg-yellow-600' },
   ];
   return (
     <div className="space-y-1">
@@ -173,6 +269,130 @@ function CostBreakdown({ summary }: { summary: FleetCostSummary }) {
   );
 }
 
+// ── Inline Budget Editor ─────────────────────────────────────────
+// Replaces the modal-based editor with inline rows. Each category
+// shows budget, actual, a bar, and an edit field. Saving is debounced
+// per-row or bulk-saved from the top "Save All" button.
+
+function InlineBudgetEditor({ summary, onSaveBudgets }: {
+  summary: FleetCostSummary;
+  onSaveBudgets: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
+}) {
+  const budgets = summary.budgets || {};
+  const [editing, setEditing] = useState(false);
+  const [vals, setVals] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const c of BUDGET_CATEGORIES) {
+      const b = budgets[c.key];
+      init[c.key] = b && b.budget ? String(b.budget) : '';
+    }
+    return init;
+  });
+  const [saving, setSaving] = useState(false);
+
+  const saveAll = async () => {
+    setSaving(true);
+    try {
+      const rows = BUDGET_CATEGORIES.map((c) => ({ category: c.key, monthly_budget: parseFloat(vals[c.key]) || 0 }));
+      await onSaveBudgets(rows);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    const init: Record<string, string> = {};
+    for (const c of BUDGET_CATEGORIES) {
+      const b = budgets[c.key];
+      init[c.key] = b && b.budget ? String(b.budget) : '';
+    }
+    setVals(init);
+    setEditing(false);
+  };
+
+  const hasAnySet = BUDGET_CATEGORIES.some((c) => {
+    const b = budgets[c.key];
+    return b && toNum(b.budget) > 0;
+  });
+
+  if (!editing && !hasAnySet) {
+    return (
+      <div className="panel-beveled bg-surface-sunken p-3 text-center">
+        <p className="text-[9px] text-rmpg-500 mb-2">No monthly budgets set. Set targets to track spending per category.</p>
+        <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px]" onClick={() => setEditing(true)}>
+          <Target className="w-3 h-3" /> Set Monthly Budgets
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel-beveled bg-surface-sunken p-2">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1 text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">
+          <Target className="w-3 h-3 text-brand-400" /> Monthly Budget vs. Actual
+        </div>
+        <div className="p-4 space-y-2">
+          {BUDGET_CATEGORIES.map((c) => (
+            <div key={c.key} className="flex items-center gap-2">
+              <label htmlFor="ff-fleetcoststab-0" className="text-[10px] text-rmpg-400 w-28 uppercase">{c.label}</label>
+              <input id="ff-fleetcoststab-0" type="number" step="0.01" min="0" className="input-dark flex-1 text-[11px] font-mono min-h-[32px]"
+                value={vals[c.key]} onChange={(e) => setVals({ ...vals, [c.key]: e.target.value })} placeholder="0.00" />
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
+          <button type="button" className="toolbar-btn" onClick={cancel} disabled={saving}>
+            <XIcon className="w-3 h-3" /> Cancel
+          </button>
+          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={saveAll} disabled={saving}>
+            <Save className="w-3 h-3" /> {saving ? 'Saving...' : 'Save Budgets'}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        {BUDGET_CATEGORIES.map((c) => {
+          const raw = budgets[c.key];
+          const budget = raw ? toNum(raw.budget) : 0;
+          const actual = raw ? toNum(raw.actual) : 0;
+          const over = raw?.over;
+          const pct = budget > 0 ? (actual / budget) * 100 : 0;
+          const barColor = over ? 'bg-red-600' : budget > 0 ? 'bg-green-600' : 'bg-rmpg-700';
+          const Icon = c.icon;
+          return (
+            <div key={c.key} className="flex items-center gap-2 text-[9px] font-mono">
+              <span className="text-rmpg-400 w-24 flex items-center gap-1">
+                <Icon className="w-2.5 h-2.5" />{c.label}
+              </span>
+              {editing ? (
+                <input type="number" step="0.01" min="0"
+                  className="input-dark w-20 text-[10px] font-mono py-0.5 px-1 min-h-[24px]"
+                  value={vals[c.key]}
+                  onChange={(e) => setVals({ ...vals, [c.key]: e.target.value })}
+                  placeholder="0.00" />
+              ) : (
+                <span className="text-rmpg-300 w-20 text-right">{fmtCurrency(budget)}</span>
+              )}
+              <div className="flex-1 h-2 bg-surface-base border border-rmpg-800 overflow-hidden">
+                {budget > 0 && <div className={`h-full ${barColor}`} style={{ width: `${Math.min(100, pct)}%` }} />}
+              </div>
+              <span className={`w-20 text-right ${over ? 'text-red-400' : 'text-rmpg-300'}`}>{fmtCurrency(actual)}</span>
+              {budget > 0 && (
+                <span className={`w-10 text-right text-[8px] uppercase font-bold ${over ? 'text-red-400' : 'text-green-400'}`}>
+                  {over ? 'OVER' : pct < 50 ? 'Low' : 'OK'}
+                </span>
+              )}
+              {!budget && <span className="w-10" />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Per-category list components ─────────────────────────────────
 
 function EmptyState({ icon: Icon, label, action, onAdd }: {
@@ -183,7 +403,7 @@ function EmptyState({ icon: Icon, label, action, onAdd }: {
 }) {
   return (
     <div className="text-center py-10 panel-beveled bg-surface-base">
-      <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#050505' }}>
+      <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: 'var(--surface-deep)' }}>
         <Icon className="w-7 h-7 text-rmpg-600" />
       </div>
       <p className="text-xs text-rmpg-400 font-semibold">{label}</p>
@@ -194,10 +414,13 @@ function EmptyState({ icon: Icon, label, action, onAdd }: {
   );
 }
 
-function ActionBar({ count, label, onAdd, addLabel }: { count: number; label: string; onAdd: () => void; addLabel: string }) {
+function ActionBar({ count, label, onAdd, addLabel, total }: { count: number; label: string; onAdd: () => void; addLabel: string; total?: string }) {
   return (
     <div className="flex items-center justify-between">
-      <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">{label} ({count})</h3>
+      <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-2">
+        <span>{label} ({count})</span>
+        {total && <span className="text-green-400 font-mono normal-case">{total}</span>}
+      </h3>
       <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onAdd}>
         <Plus className="w-3 h-3" /> {addLabel}
       </button>
@@ -227,20 +450,21 @@ function LoanList({ records, onAdd, onEdit, onDelete }: {
   if (records.length === 0) return <EmptyState icon={CreditCard} label="No Loans Recorded" action="Add Loan" onAdd={onAdd} />;
   return (
     <div className="space-y-2">
-      <ActionBar count={records.length} label="Loans" onAdd={onAdd} addLabel="Add Loan" />
+      <ActionBar count={records.length} label="Loans" onAdd={onAdd} addLabel="Add Loan"
+        total={`Σ ${fmtCurrency(records.reduce((s, l) => s + toNum((l as any).monthly_payment), 0))}/mo`} />
       <div className="space-y-1.5">
         {records.map((l) => (
           <div key={l.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
-            <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-gray-900/20 border border-gray-700/40">
-              <CreditCard className="w-4 h-4 text-gray-400" />
+            <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-surface-sunken/20 border border-border-default/40">
+              <CreditCard className="w-4 h-4 text-rmpg-400" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] text-rmpg-200 font-bold">{l.lender || '(no lender)'}</span>
                 <StatusBadge status={l.status} />
-                <span className="text-[10px] text-gray-400 font-mono">{fmtCurrency(l.monthly_payment)}/mo</span>
-                {l.interest_rate != null && (
-                  <span className="text-[9px] font-mono text-rmpg-500">{l.interest_rate.toFixed(2)}% APR</span>
+                <span className="text-[10px] text-rmpg-400 font-mono">{fmtCurrency(l.monthly_payment)}/mo</span>
+                {fmtFixed(l.interest_rate, 2, '') !== '' && (
+                  <span className="text-[9px] font-mono text-rmpg-500">{fmtFixed(l.interest_rate, 2)}% APR</span>
                 )}
                 {l.term_months != null && (
                   <span className="text-[9px] font-mono text-rmpg-500">{l.term_months} mo</span>
@@ -267,15 +491,15 @@ function InsuranceList({ records, onAdd, onEdit, onDelete }: {
   records: FleetInsurancePolicy[]; onAdd: () => void; onEdit: (r: FleetInsurancePolicy) => void; onDelete: (r: FleetInsurancePolicy) => void;
 }) {
   if (records.length === 0) return <EmptyState icon={Shield} label="No Insurance Policies" action="Add Policy" onAdd={onAdd} />;
-  // Highlight policies expiring in the next 30 days.
   const soon = (d: string | null) => {
     if (!d) return false;
-    const diff = (new Date(d).getTime() - Date.now()) / 86400_000;
+    const diff = (parseTimestamp(d).getTime() - Date.now()) / 86400_000;
     return diff > 0 && diff < 30;
   };
   return (
     <div className="space-y-2">
-      <ActionBar count={records.length} label="Insurance Policies" onAdd={onAdd} addLabel="Add Policy" />
+      <ActionBar count={records.length} label="Insurance Policies" onAdd={onAdd} addLabel="Add Policy"
+        total={`Σ ${fmtCurrency(records.reduce((s, p) => s + toNum((p as any).premium_amount ?? (p as any).premium), 0))} prem.`} />
       <div className="space-y-1.5">
         {records.map((p) => {
           const expSoon = soon(p.expires_at);
@@ -289,7 +513,7 @@ function InsuranceList({ records, onAdd, onEdit, onDelete }: {
                   <span className="text-[10px] text-rmpg-200 font-bold">{p.carrier || '(no carrier)'}</span>
                   <StatusBadge status={p.status} />
                   {p.policy_number && <span className="text-[9px] text-rmpg-500 font-mono">#{p.policy_number}</span>}
-                  <span className="text-[10px] text-green-400 font-mono">{fmtCurrency(p.premium_amount)} {p.premium_frequency.replace('_', '-')}</span>
+                  <span className="text-[10px] text-green-400 font-mono">{fmtCurrency(p.premium_amount)} {toDisplayLabel(p.premium_frequency)}</span>
                   {expSoon && (
                     <span className="text-[8px] font-bold uppercase text-amber-400 flex items-center gap-0.5">
                       <AlertTriangle className="w-2.5 h-2.5" /> Renews soon
@@ -297,7 +521,7 @@ function InsuranceList({ records, onAdd, onEdit, onDelete }: {
                   )}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500 font-mono">
-                  {p.coverage_type && <span>{p.coverage_type}</span>}
+                  {p.coverage_type && <span>{toDisplayLabel(p.coverage_type)}</span>}
                   <span>From: {p.effective_from}</span>
                   {p.expires_at && <span>Expires: {p.expires_at}</span>}
                   {p.deductible != null && <span>Deductible: {fmtCurrency(p.deductible)}</span>}
@@ -320,7 +544,8 @@ function AccessoryList({ records, onAdd, onEdit, onDelete }: {
   if (records.length === 0) return <EmptyState icon={Wrench} label="No Accessories Tracked" action="Add Accessory" onAdd={onAdd} />;
   return (
     <div className="space-y-2">
-      <ActionBar count={records.length} label="Accessories" onAdd={onAdd} addLabel="Add Accessory" />
+      <ActionBar count={records.length} label="Accessories" onAdd={onAdd} addLabel="Add Accessory"
+        total={`Σ ${fmtCurrency(records.reduce((s, a) => s + toNum((a as any).cost), 0))}`} />
       <div className="space-y-1.5">
         {records.map((a) => (
           <div key={a.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
@@ -330,7 +555,7 @@ function AccessoryList({ records, onAdd, onEdit, onDelete }: {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] text-rmpg-200 font-bold">{a.name}</span>
-                {a.category && <span className="text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30 px-1 py-0.5">{a.category}</span>}
+                {a.category && <span className="text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30 px-1 py-0.5">{toDisplayLabel(a.category)}</span>}
                 <StatusBadge status={a.status} />
                 <span className="text-[10px] text-amber-400 font-mono">{fmtCurrency(a.cost)}</span>
               </div>
@@ -358,7 +583,8 @@ function UtilityList({ records, onAdd, onEdit, onDelete }: {
   if (records.length === 0) return <EmptyState icon={Zap} label="No Utility Costs Recorded" action="Add Utility" onAdd={onAdd} />;
   return (
     <div className="space-y-2">
-      <ActionBar count={records.length} label="Utility Costs" onAdd={onAdd} addLabel="Add Utility" />
+      <ActionBar count={records.length} label="Utility Costs" onAdd={onAdd} addLabel="Add Utility"
+        total={`Σ ${fmtCurrency(records.reduce((s, u) => s + toNum((u as any).cost_amount), 0))}`} />
       <div className="space-y-1.5">
         {records.map((u) => (
           <div key={u.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
@@ -367,8 +593,8 @@ function UtilityList({ records, onAdd, onEdit, onDelete }: {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] text-rmpg-200 font-bold">{u.category}</span>
-                <span className="text-[10px] text-purple-400 font-mono">{fmtCurrency(u.cost_amount)} {u.cost_frequency.replace('_', '-')}</span>
+                <span className="text-[10px] text-rmpg-200 font-bold">{toDisplayLabel(u.category)}</span>
+                <span className="text-[10px] text-purple-400 font-mono">{fmtCurrency(u.cost_amount)} {toDisplayLabel(u.cost_frequency)}</span>
                 {u.vehicle_id == null && (
                   <span className="text-[8px] font-bold uppercase text-rmpg-400 bg-rmpg-800 border border-rmpg-700 px-1 py-0.5">fleet-wide</span>
                 )}
@@ -380,6 +606,42 @@ function UtilityList({ records, onAdd, onEdit, onDelete }: {
               {u.notes && <p className="text-[9px] text-rmpg-400 mt-0.5">{u.notes}</p>}
             </div>
             <RowActions onEdit={() => onEdit(u)} onDelete={() => onDelete(u)} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// — Other (user-defined) list —
+function OtherList({ records, onAdd, onEdit, onDelete }: {
+  records: FleetOtherCost[]; onAdd: () => void; onEdit: (r: FleetOtherCost) => void; onDelete: (r: FleetOtherCost) => void;
+}) {
+  if (records.length === 0) return <EmptyState icon={Receipt} label="No Other Costs Recorded" action="Add Cost" onAdd={onAdd} />;
+  return (
+    <div className="space-y-2">
+      <ActionBar count={records.length} label="Other Costs" onAdd={onAdd} addLabel="Add Cost"
+        total={`Σ ${fmtCurrency(records.reduce((s, o) => s + toNum((o as any).amount), 0))}`} />
+      <div className="space-y-1.5">
+        {records.map((o) => (
+          <div key={o.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
+            <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-brand-900/20 border border-brand-700/40">
+              <Receipt className="w-4 h-4 text-brand-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] text-rmpg-200 font-bold">{toDisplayLabel(o.cost_type || '')}</span>
+                <StatusBadge status={o.status} />
+                <span className="text-[10px] text-brand-400 font-mono">{fmtCurrency(o.amount)} {toDisplayLabel(o.frequency || '')}</span>
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500 font-mono">
+                {o.provider && <span>{o.provider}</span>}
+                {o.incurred_date && <span>Incurred: {o.incurred_date}</span>}
+                {o.period_end && <span>Until: {o.period_end}</span>}
+              </div>
+              {o.notes && <p className="text-[9px] text-rmpg-400 mt-0.5">{o.notes}</p>}
+            </div>
+            <RowActions onEdit={() => onEdit(o)} onDelete={() => onDelete(o)} />
           </div>
         ))}
       </div>

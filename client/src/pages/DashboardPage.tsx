@@ -1,44 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Phone,
-  Users,
-  FileText,
-  Clock,
-  AlertTriangle,
-  Plus,
-  LogIn,
-  Activity,
-  Shield,
-  Loader2,
-  Radio,
-  MapPin,
-  Eye,
-  ArrowRight,
-  TrendingUp,
-  Gavel,
-  Briefcase,
-  Target,
-  CheckCircle,
-  XCircle,
-  Sun,
-  Cloud,
-  CloudRain,
-  CloudSnow,
-  CloudLightning,
-  CloudDrizzle,
-  CloudFog,
-  Snowflake,
-  Timer,
-  Navigation,
-  Mail,
-  Zap,
+  Phone, Users, FileText, Clock, AlertTriangle, Plus, Activity, Shield, Loader2,
+  Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
+  CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
+  CloudDrizzle, CloudFog, Snowflake, Navigation, RefreshCw, Droplets, Wind,
 } from 'lucide-react';
+import { useGeolocation } from './mobile/hooks/useGeolocation';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   AreaChart, Area, PieChart, Pie,
 } from 'recharts';
 import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
+import { humanizePriority } from '../utils/statusLabels';
 import StatsCard from '../components/StatsCard';
 import ActivityFeed from '../components/ActivityFeed';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -51,6 +25,19 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
+import SpmGroup from './dashboard/SpmGroup';
+import DashboardViewSelector from './dashboard/DashboardViewSelector';
+import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
+import ServeDashboardPerformance from '../components/serve/ServeDashboardPerformance';
+import {
+  resolveDashboardView, canSwitchView, writeSavedView,
+  VIEW_PANELS, toolbarActionsForView,
+  type DashboardView, type PanelId, type ToolbarActionId,
+} from './dashboard/dashboardViews';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -87,6 +74,27 @@ interface DashboardApiResponse {
   officersOnDuty: unknown[];
   callsByHour: { hour: string; count: number }[];
   pso?: PsoStats;
+  // Secondary stat-card metrics. Added 2026-06-21 — previously the
+  // Status Summary row read these but they were never returned, so 3 of 4
+  // tiles permanently showed 0. Optional on the wire so an older Worker
+  // still hydrates the primary tiles without a typecheck error.
+  activeWarrants?: number;
+  pendingServe?: number;
+  openCases?: number;
+  totalPersons?: number;
+}
+
+interface NearbyCall {
+  id: number;
+  call_number: string;
+  priority: string;
+  status: string;
+  location_address: string | null;
+  description: string | null;
+  latitude: number;
+  longitude: number;
+  distance_mi: number;
+  created_at: string;
 }
 
 interface ActivityApiEntry {
@@ -166,6 +174,10 @@ function mapDashboardStats(raw: DashboardApiResponse): DashboardStats {
       ? raw.officersOnDuty.length
       : 0,
     calls_by_hour: fullCallsByHour,
+    active_warrants: raw.activeWarrants ?? 0,
+    pending_serve: raw.pendingServe ?? 0,
+    open_cases: raw.openCases ?? 0,
+    total_persons: raw.totalPersons ?? 0,
   };
 }
 
@@ -323,21 +335,45 @@ function formatCountdown(totalSeconds: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// ─── Component ───────────────────────────────────────────
+// ─── Warrant-polling freshness helpers ───────────────────
+// The Utah Warrant Watch scheduler runs every 4h. A poll that's <90min old
+// is unambiguously fresh (green); 90min-5h is "expected staleness" (gray);
+// 5h+ means the scheduler missed at least one cycle (amber warning); the
+// run failed = red. These thresholds intentionally bracket the 4h interval
+// so a healthy system displays gray, NOT a constant misleading "stale" amber.
+function pollFreshnessText(p: {
+  completed_at: string | null;
+  status: 'running' | 'completed' | 'failed';
+} | null): string {
+  if (!p) return '—';
+  if (p.status === 'running') return 'NOW';
+  if (p.status === 'failed') return 'FAIL';
+  const completed = p.completed_at ? parseTimestamp(p.completed_at).getTime() : NaN;
+  if (Number.isNaN(completed)) return '—';
+  const minutesAgo = Math.floor((Date.now() - completed) / 60_000);
+  if (minutesAgo < 1) return '<1m';
+  if (minutesAgo < 60) return `${minutesAgo}m`;
+  const hoursAgo = Math.floor(minutesAgo / 60);
+  if (hoursAgo < 24) return `${hoursAgo}h`;
+  return `${Math.floor(hoursAgo / 24)}d`;
+}
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
+function pollFreshnessColor(p: {
+  completed_at: string | null;
+  status: 'running' | 'completed' | 'failed';
+} | null): string {
+  if (!p) return 'text-rmpg-400';
+  if (p.status === 'failed') return 'text-red-400';
+  if (p.status === 'running') return 'text-brand-400';
+  const completed = p.completed_at ? parseTimestamp(p.completed_at).getTime() : NaN;
+  if (Number.isNaN(completed)) return 'text-rmpg-400';
+  const hoursAgo = (Date.now() - completed) / 3_600_000;
+  if (hoursAgo < 1.5) return 'text-green-400';   // within freshness window
+  if (hoursAgo < 5)   return 'text-rmpg-300';    // expected staleness mid-cycle
+  return 'text-amber-400';                       // overdue — at least one cycle missed
+}
+
+// ─── Component ───────────────────────────────────────────
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
@@ -355,8 +391,41 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const role = user?.role ?? '';
+  const [view, setView] = useState<DashboardView>(() => resolveDashboardView(role));
+  // Re-resolve when the role becomes available after async auth load.
+  useEffect(() => { setView(resolveDashboardView(role)); }, [role]);
+  const maySwitch = canSwitchView(role);
+  const panels = VIEW_PANELS[view];
+  const hasPanel = useCallback((id: PanelId) => panels.includes(id), [panels]);
+  const handleViewChange = useCallback((v: DashboardView) => {
+    writeSavedView(v);
+    setView(v);
+  }, []);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
+
+  // Role gates
+  // canCreate: any operational role may create records (calls, incidents, citations)
+  const canCreate = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'].includes(role);
+
+  // Deep-link: ?panel=<id> or ?widget=<id> scrolls to the named panel section on mount
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkRef = useRef(false);
+
+  // Warrant polling status (added 2026-05-24 — operator complaint that the
+  // 4h Utah warrant watch was invisible). Sourced from /api/warrants/watch/runs
+  // which is also what /warrants → Sources tab uses, so the dashboard widget
+  // and the deeper view agree on the same data.
+  const [latestWarrantPoll, setLatestWarrantPoll] = useState<{
+    started_at: string;
+    completed_at: string | null;
+    status: 'running' | 'completed' | 'failed';
+    persons_checked: number;
+    new_warrants_found: number;
+    warrants_cleared: number;
+  } | null>(null);
 
   // ═══ Dashboard widget states (Features 31-43) ═══
   const [shiftComparison, setShiftComparison] = useState<any>(null);
@@ -372,6 +441,18 @@ export default function DashboardPage() {
   } | null>(null);
   const [courtDatesCount, setCourtDatesCount] = useState(0);
   const [expiringCertsCount, setExpiringCertsCount] = useState(0);
+
+  // Last-successful-sync timestamp drives the title-bar freshness chip.
+  // Updated by every silent and non-silent dashboard fetch. Null until first
+  // success — used by the title LED to flip red if the very first load errored.
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+
+  // Patrol-view geolocation (only requested when the patrol panels are mounted
+  // — saves the permission prompt for dispatch/admin who never see the panel).
+  const enableGeo = view === 'patrol';
+  const { status: geoStatus, position: geoPosition } = useGeolocation({ enabled: enableGeo });
+  const [nearbyCalls, setNearbyCalls] = useState<NearbyCall[]>([]);
+  const [nearbyRadius, setNearbyRadius] = useState<number>(5);
 
   // Shift countdown timer — update every second
   useEffect(() => {
@@ -430,15 +511,42 @@ export default function DashboardPage() {
           .map(mapBoloEntry)
       );
       setActiveWarrants(warrantsRaw?.pagination?.total ?? warrantsRaw?.total ?? 0);
+      setError(null);
+      setLastSyncedAt(new Date());
     } catch (err) {
       if (!options?.silent) {
         console.error('Dashboard fetch error:', err);
         setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+      } else {
+        // Silent refresh failed — surface as a quiet inline error so the
+        // operator knows data went stale instead of silently rotting.
+        setError((prev) => prev ?? 'Dashboard sync failed (auto-retry in 60s)');
       }
     } finally {
       if (!options?.silent) setLoading(false);
     }
   }, []);
+
+  // Calls-near-me fetcher (patrol view only). Re-runs when the operator's
+  // GPS moves, or on a manual radius change. Errors silently — the panel
+  // already has a 'no data' branch that renders correctly when empty.
+  const fetchNearbyCalls = useCallback(async (lat: number, lng: number, radius_mi: number) => {
+    try {
+      const res = await apiFetch<{ calls: NearbyCall[] }>(`/reports/calls-near?lat=${lat}&lng=${lng}&radius_mi=${radius_mi}`);
+      setNearbyCalls(Array.isArray(res?.calls) ? res.calls : []);
+    } catch (err) {
+      console.warn('[Dashboard] calls-near fetch failed:', err);
+      setNearbyCalls([]);
+    }
+  }, []);
+
+  // Pull nearby calls whenever the GPS fix or radius changes (patrol view only).
+  useEffect(() => {
+    if (!enableGeo || !geoPosition) { setNearbyCalls([]); return; }
+    fetchNearbyCalls(geoPosition.lat, geoPosition.lng, nearbyRadius);
+    const id = setInterval(() => fetchNearbyCalls(geoPosition.lat, geoPosition.lng, nearbyRadius), 45_000);
+    return () => clearInterval(id);
+  }, [enableGeo, geoPosition, nearbyRadius, fetchNearbyCalls]);
 
   // Fetch expiring credentials
   const fetchCredentials = useCallback(async () => {
@@ -448,7 +556,7 @@ export default function DashboardPage() {
       const sixtyDaysOut = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
       const expiring = (Array.isArray(data) ? data : []).filter((c: any) => {
         if (!c.expiry_date) return false;
-        const exp = new Date(c.expiry_date);
+        const exp = parseTimestamp(c.expiry_date);
         return exp <= sixtyDaysOut;
       });
       setExpiringCredentials(expiring);
@@ -511,6 +619,22 @@ export default function DashboardPage() {
   const silentRefreshDashboard = useCallback(() => fetchDashboardData({ silent: true }), [fetchDashboardData]);
   useLiveSync(['dispatch', 'incidents', 'records', 'personnel', 'fleet'], silentRefreshDashboard);
 
+  const runToolbarAction = useCallback((id: ToolbarActionId) => {
+    switch (id) {
+      case 'newCall': setShowNewCallModal(true); break;
+      case 'newIncident': setShowIncidentModal(true); break;
+      case 'newCitation': navigate('/citations'); break;
+      case 'startPatrol': navigate('/patrol'); break;
+      case 'processServer': navigate('/serve'); break;
+      case 'quickCapture': navigate('/intel/quick-capture'); break;
+      case 'fieldCamera': navigate('/field-camera'); break;
+      case 'patrolScan': navigate('/field-camera?alpr=1'); break;
+      case 'tasks': navigate('/tasks'); break;
+      case 'print': window.print(); break;
+      case 'refresh': fetchDashboardData(); break;
+    }
+  }, [navigate, fetchDashboardData]);
+
   // Activity feed 30-second auto-refresh
   useEffect(() => {
     let cancelled = false;
@@ -532,14 +656,64 @@ export default function DashboardPage() {
   // Set document title
   useEffect(() => { document.title = 'Dashboard \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals (must be before early return to preserve hook order)
+  // Deep-link: ?panel=<id> or ?widget=<id> \u2014 scroll to the named panel on first render,
+  // then strip the param so the back-button works correctly. useRef guard prevents
+  // double-firing if searchParams identity changes after setSearchParams.
+  useEffect(() => {
+    if (deepLinkRef.current) return;
+    const target = searchParams.get('panel') ?? searchParams.get('widget');
+    if (!target) return;
+    deepLinkRef.current = true;
+    // Defer until the DOM has rendered the panels
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`dashboard-panel-${target}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    const next = new URLSearchParams(searchParams);
+    next.delete('panel');
+    next.delete('widget');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // Poll latest warrant-watch run. 60s interval is fine \u2014 the scheduled
+  // upstream scan only fires every 4h, so 60s is responsive enough for
+  // operators to see freshness without hammering the API.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchLatestPoll = async () => {
+      try {
+        const res = await apiFetch<{ data: any[] }>('/warrants/watch/runs?limit=1');
+        if (cancelled) return;
+        setLatestWarrantPoll(res?.data?.[0] ?? null);
+      } catch { /* silent \u2014 widget shows 'no data' on failure */ }
+    };
+    fetchLatestPoll();
+    const id = setInterval(fetchLatestPoll, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // Keyboard shortcuts — must be before early return to preserve hook order.
+  // Esc cascade: NewCallModal → IncidentModal (each branch stopPropagation so only one closes per press).
+  // N: open New Call modal (primary action), gated to canCreate.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowNewCallModal(false); }
+      const tag = (e.target as HTMLElement)?.tagName ?? '';
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable;
+
+      if (e.key === 'Escape') {
+        if (showNewCallModal) { e.stopPropagation(); setShowNewCallModal(false); return; }
+        if (showIncidentModal) { e.stopPropagation(); setShowIncidentModal(false); return; }
+        return;
+      }
+
+      if (e.key === 'n' || e.key === 'N') {
+        if (inInput || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (canCreate) { e.preventDefault(); setShowNewCallModal(true); }
+      }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showNewCallModal, showIncidentModal, canCreate]);
 
   const isInitialLoading = loading && stats === DEFAULT_STATS;
 
@@ -564,12 +738,69 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+    <div className="dashboard-page p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+      {/* Spillman screen title bar — LED tracks REAL data-sync health.
+          Red = current error, amber = stale (>5min since last good fetch),
+          green = healthy. Pulse while a fetch is in flight (loading=true). */}
+      {(() => {
+        const minsSinceSync = lastSyncedAt
+          ? (Date.now() - lastSyncedAt.getTime()) / 60_000
+          : null;
+        const isStale = minsSinceSync != null && minsSinceSync > 5;
+        const ledClass = error
+          ? 'led-red animate-led-blink'
+          : isStale
+            ? 'led-amber animate-led-pulse'
+            : loading
+              ? 'led-green animate-led-pulse'
+              : 'led-green';
+        const statusWord = error ? 'Sync Error' : isStale ? 'Stale' : 'Operational';
+        const syncLabel = lastSyncedAt
+          ? `Synced ${lastSyncedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+          : 'Awaiting first sync';
+        return (
+          <div className="spm-screen-title" onContextMenu={(e) => openMenu(e, [
+            m.action('Refresh dashboard', refreshAll, { icon: <RefreshCw size={12} /> }),
+            m.separator(),
+            m.action('New call', () => setShowNewCallModal(true), { icon: <Plus size={12} />, disabled: !canCreate }),
+            m.action('New incident', () => setShowIncidentModal(true), { icon: <FileText size={12} />, disabled: !canCreate }),
+          ])}>
+            <span className={`led-dot ${ledClass}`} aria-hidden="true" />
+            Command &amp; Control — {statusWord}
+            <span className="ml-auto text-[10px] font-mono text-rmpg-500 tabular-nums" title={lastSyncedAt?.toLocaleString() ?? 'Never'}>
+              {syncLabel}
+            </span>
+          </div>
+        );
+      })()}
+
+      {/* Spillman screen toolbar: View selector + raised action buttons */}
+      <div className="spm-screen-toolbar" role="toolbar" aria-label="Dashboard actions">
+        <DashboardViewSelector view={view} canSwitch={maySwitch} onChange={handleViewChange} />
+        {toolbarActionsForView(view)
+          // Gate record-create actions to roles that may create records
+          .filter((a) => {
+            if ((a.id === 'newCall' || a.id === 'newIncident' || a.id === 'newCitation') && !canCreate) return false;
+            if (a.id === 'quickCapture' && !canCreate) return false;
+            return true;
+          })
+          .map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`spm-toolbtn ${a.id === 'print' ? 'spacer' : ''}`.trim()}
+              onClick={() => runToolbarAction(a.id)}
+            >
+              {a.label}
+            </button>
+          ))}
+      </div>
+
       {/* Portal Header — RMPG Logo + System Title */}
       <div className="panel-beveled bg-surface-base overflow-hidden shadow-lg shadow-black/20">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Blue accent line */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) 30%, var(--spm-text-muted) 70%, var(--spm-border))' }} />
           {!isMobile && <RmpgLogo height={68} />}
           {isMobile && <RmpgLogo height={36} iconOnly />}
           <div className="flex-1 min-w-0">
@@ -590,7 +821,7 @@ export default function DashboardPage() {
           </div>
           <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600 flex-shrink-0">
             <PrintButton />
-            <span className="border-l border-[#2b2b2b] pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="border-l border-rmpg-800 pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
         </div>
       </div>
@@ -612,6 +843,10 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Cards Row */}
+      {hasPanel('activeCalls') && (
+      <div id="dashboard-panel-activeCalls">
+      <SpmGroup title="Active Calls — Priority & Volume">
+      <div className="space-y-4">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`} role="region" aria-label="Key statistics">
         <StatsCard
           icon={Phone}
@@ -647,7 +882,7 @@ export default function DashboardPage() {
           icon={Clock}
           label="Avg Response"
           value={stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A'}
-          accent="blue"
+          accent="gold"
           trendValue={stats.avg_response_time_minutes ? 'within target' : 'no data'}
           trendColor={stats.avg_response_time_minutes ? 'green' : 'gray'}
           trend={stats.avg_response_time_minutes ? 'down' : 'flat'}
@@ -656,12 +891,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls by priority">
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2`}" role="region" aria-label="Calls by priority" onContextMenu={(e) => { e.stopPropagation(); openMenu(e, [m.go('View all in Dispatch', '/dispatch', <ArrowRight size={12} />)]); }}>
         {[
-          { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: '#dc2626' },
-          { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: '#f59e0b' },
-          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: '#888888' },
-          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4, valueColor: '#555555' },
+          { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: 'var(--stat-accent-red)' },
+          { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: 'var(--stat-accent-amber)' },
+          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: 'var(--spm-text-muted)' },
+          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-rmpg-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
         ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
             key={key}
@@ -678,16 +913,90 @@ export default function DashboardPage() {
               <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color: valueColor }}>{count}</div>
               <div className={`${isMobile ? 'text-[11px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{isMobile ? label : labelFull}</div>
             </div>
-            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" aria-hidden="true" />
+            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity duration-200" aria-hidden="true" />
           </div>
         ))}
       </div>
+      </div>
+      </SpmGroup>
+      </div>
+      )}
+
+      {/* Secondary Stats Row — expanded to 5 cols 2026-05-24 to add Warrant Poll card */}
+      {hasPanel('statusSummary') && (
+      <div id="dashboard-panel-statusSummary">
+      <SpmGroup title="Status Summary">
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2'}`} role="region" aria-label="Record statistics">
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants?status=active')}>
+          <div className="flex items-center gap-2">
+            <Gavel className="w-4 h-4 text-red-400" />
+            <div>
+              {/* Both /warrants (paginated, ?status=active) and /reports/dashboard
+                  (.activeWarrants) now return this count, so they agree. The
+                  || fallback is kept so older Worker deploys still hydrate. */}
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.active_warrants || activeWarrants || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Active Warrants</div>
+            </div>
+          </div>
+        </div>
+        {/* Warrant Polling status card — surfaces the 4h Utah Warrant Watch
+            scan freshness + last-run counts. Green/amber/red coloring based on
+            staleness so an operator can tell at a glance whether polling is
+            healthy without navigating to /warrants → Sources. */}
+        <div
+          className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors"
+          onClick={() => navigate('/warrants')}
+          title={latestWarrantPoll
+            ? `Last poll: ${latestWarrantPoll.status} — ${latestWarrantPoll.persons_checked} checked, ${latestWarrantPoll.new_warrants_found} new, ${latestWarrantPoll.warrants_cleared} cleared`
+            : 'No warrant-watch run recorded yet'}
+        >
+          <div className="flex items-center gap-2">
+            <RefreshCw className={`w-4 h-4 ${pollFreshnessColor(latestWarrantPoll)}`} />
+            <div>
+              <div className={`text-lg font-bold font-mono tabular-nums ${pollFreshnessColor(latestWarrantPoll)}`}>
+                {pollFreshnessText(latestWarrantPoll)}
+              </div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Warrant Poll</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/serve?status=pending')}>
+          <div className="flex items-center gap-2">
+            <Briefcase className="w-4 h-4 text-amber-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.pending_serve || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Pending Serve</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/cases?status=open')}>
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-purple-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.open_cases || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Open Cases</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/records?tab=persons')}>
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-rmpg-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.total_persons || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Total Persons</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </SpmGroup>
+      </div>
+      )}
 
       {/* Shift Countdown + Weather + Quick Actions Row */}
       <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'}`}>
         {/* Shift Countdown Timer */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current shift status">
-          <PanelTitleBar title="SHIFT STATUS" icon={Timer} />
+        {hasPanel('shiftStatus') && (
+        <SpmGroup title="Shift Status" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
           <div className="p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -703,13 +1012,13 @@ export default function DashboardPage() {
             </div>
             {/* Progress Bar */}
             <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
-              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner">
+              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-rmpg-800 shadow-inner">
                 <div
                   className="h-full transition-all duration-1000 ease-linear rounded-sm"
                   style={{
                     width: `${Math.round(shiftInfo.progress * 100)}%`,
-                    background: `linear-gradient(90deg, #1a1a1a, #888888 ${Math.round(shiftInfo.progress * 100)}%)`,
-                    boxShadow: '0 0 6px rgba(136, 136, 136, 0.4)',
+                    background: `linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) ${Math.round(shiftInfo.progress * 100)}%)`,
+                    boxShadow: '0 0 6px rgb(var(--spm-text-muted-rgb) / 0.4)',
                   }}
                 />
               </div>
@@ -720,7 +1029,7 @@ export default function DashboardPage() {
               </div>
             </div>
             {/* Shift Indicator Dots */}
-            <div className="flex items-center gap-2 pt-2 border-t border-[#2b2b2b]">
+            <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
               {[
                 { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
                 { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
@@ -736,11 +1045,12 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-        </div>
+        </SpmGroup>
+        )}
 
         {/* Weather Widget */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current weather conditions" style={{ minWidth: 260 }}>
-          <PanelTitleBar title="WEATHER — SALT LAKE CITY" icon={Cloud} />
+        {hasPanel('weather') && (
+        <SpmGroup title="Weather — Salt Lake City" onContextMenu={(e) => openMenu(e, [m.action('Refresh weather', fetchWeather, { icon: <RefreshCw size={12} /> })])}>
           <div className="p-3">
             {weather ? (() => {
               const WeatherIcon = weather.icon;
@@ -748,37 +1058,41 @@ export default function DashboardPage() {
               return (
                 <div className="space-y-3">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#2b2b2b] shadow-inner">
-                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#aaaaaa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#888888' }} />
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-rmpg-800 shadow-inner">
+                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? 'var(--spm-text)' : weather.weatherCode === 0 || weather.weatherCode === 1 ? 'var(--stat-accent-amber-bright)' : 'var(--spm-text-muted)' }} />
                     </div>
                     <div>
                       <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums" aria-label={`${weather.temperature} degrees Fahrenheit`}>{weather.temperature}<span className="text-lg text-rmpg-400 ml-0.5">&deg;F</span></div>
                       <div className="text-xs text-rmpg-400 mt-0.5 font-medium">{weather.description}</div>
                     </div>
                   </div>
-                  {/* Humidity & Wind */}
+                  {/* Humidity & Wind — Lucide icons (no emoji in operator chrome). */}
                   {(weather.humidity != null || weather.windSpeed != null) && (
                     <div className="flex items-center gap-4 text-[10px] text-rmpg-400 font-mono tabular-nums">
                       {weather.humidity != null && (
-                        <span title="Relative humidity">💧 {weather.humidity}%</span>
+                        <span className="inline-flex items-center gap-1" title="Relative humidity">
+                          <Droplets className="w-3 h-3" aria-hidden="true" /> {weather.humidity}%
+                        </span>
                       )}
                       {weather.windSpeed != null && (
-                        <span title={`Wind direction: ${weather.windDirection ?? '—'}°`}>💨 {Math.round(weather.windSpeed)} mph</span>
+                        <span className="inline-flex items-center gap-1" title={`Wind direction: ${weather.windDirection ?? '—'}°`}>
+                          <Wind className="w-3 h-3" aria-hidden="true" /> {Math.round(weather.windSpeed)} mph
+                        </span>
                       )}
                     </div>
                   )}
                   {/* Road Conditions Warning */}
                   {isFreezing && (
-                    <div className="flex items-center gap-2 p-2.5 bg-gray-900/20 border border-gray-700/30 rounded-sm animate-fade-in" role="alert">
-                      <Snowflake className="w-4 h-4 text-gray-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+                    <div className="flex items-center gap-2 p-2.5 bg-surface-sunken border border-border-subtle rounded-sm animate-fade-in" role="alert">
+                      <Snowflake className="w-4 h-4 text-rmpg-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
                       <div>
-                        <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Road Conditions Warning</div>
-                        <div className="text-[10px] text-gray-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
+                        <div className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-rmpg-400 mt-0.5">Temperature below freezing — watch for ice</div>
                       </div>
                     </div>
                   )}
                   {/* Weather Details */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-[#2b2b2b]">
+                  <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
                     <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
                       Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -803,45 +1117,27 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-        </div>
+        </SpmGroup>
+        )}
 
-        {/* Quick Action Buttons */}
-        <div className="panel-beveled bg-surface-base" role="region" aria-label="Quick actions">
-          <PanelTitleBar title="QUICK ACTIONS" icon={Zap} />
-          <div className="p-3">
-            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'} gap-2`}>
-              {[
-                { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
-                { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
-                { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: '#22c55e' },
-                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#888888' },
-                { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
-                { icon: Mail, label: 'Email', path: '/email', color: '#22c55e' },
-              ].map(({ icon: ActionIcon, label, path, color, action }) => (
-                <button type="button"
-                  key={label}
-                  onClick={() => action ? action() : navigate(path)}
-                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#3a3a3a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
-                  aria-label={label}
-                >
-                  <ActionIcon
-                    className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} transition-transform duration-200 group-hover:scale-110 drop-shadow-sm`}
-                    style={{ color }}
-                    aria-hidden="true"
-                  />
-                  <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} font-bold text-rmpg-300 uppercase tracking-wider group-hover:text-rmpg-100 transition-colors duration-200 text-center leading-tight select-none`}>
-                    {label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* BOLO Ticker */}
-      {bolos.length > 0 && (
-        <div className="bg-red-900/20 panel-beveled p-3 cursor-pointer hover:bg-red-900/30 transition-colors duration-200 border-l-4 border-l-red-500 shadow-md shadow-red-900/15 animate-fade-in" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/communications'); }} onClick={() => navigate('/communications')} aria-label={`View ${bolos.length} active BOLO${bolos.length !== 1 ? 's' : ''}`}>
+      {hasPanel('activeBolos') && (
+      <div id="dashboard-panel-activeBolos">
+        <SpmGroup title="Active BOLOs" tone="red">
+        {loading && bolos.length === 0 ? (
+          <div className="flex items-center justify-center py-4 gap-2" role="status">
+            <Loader2 className="w-4 h-4 text-rmpg-500 animate-spin" aria-hidden="true" />
+            <span className="text-[10px] text-rmpg-500 select-none">Loading BOLOs…</span>
+          </div>
+        ) : bolos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-4 gap-2" role="status">
+            <span className="led-dot led-green" aria-hidden="true" />
+            <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No active BOLOs</span>
+          </div>
+        ) : (
+        <div className="bg-red-900/20 panel-beveled p-3 cursor-pointer hover:bg-red-900/30 transition-colors duration-200 border-l-4 border-l-red-500 shadow-md shadow-red-900/15 animate-fade-in" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/intel/bolos'); }} onClick={() => navigate('/intel/bolos')} aria-label={`View ${bolos.length} active BOLO${bolos.length !== 1 ? 's' : ''}`}>
           <div className="flex items-center gap-2 mb-2">
             <span className="led-dot led-red animate-led-pulse" />
             <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-emergency-blink" />
@@ -851,7 +1147,7 @@ export default function DashboardPage() {
           <div className="space-y-2" role="list" aria-label="Active BOLO entries">
           {bolos.map((bolo) => (
             <div key={bolo.id} className="flex items-start gap-3 p-2 rounded-sm hover:bg-red-900/20 transition-colors duration-150" role="listitem">
-              <span className="badge badge-p2 flex-shrink-0 mt-0.5">{bolo.priority}</span>
+              <span className="badge badge-p2 flex-shrink-0 mt-0.5">{humanizePriority(bolo.priority)}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-red-300 truncate">{bolo.title}</p>
                 <p className="text-xs text-rmpg-300 mt-0.5 truncate">{bolo.vehicle_description || bolo.subject_description}</p>
@@ -864,10 +1160,122 @@ export default function DashboardPage() {
           ))}
           </div>
         </div>
+        )}
+        </SpmGroup>
+      </div>
+      )}
+
+      {/* Calls Near Me (patrol view) — REAL geo-filtered list of currently-
+          active calls within `nearbyRadius` miles of the officer's GPS fix.
+          Previously this panel rendered the same 4 global priority counts as
+          the dispatch view, despite being titled "Near Me". Now it actually
+          filters by distance via /reports/calls-near. Falls back to a clear
+          "GPS required" / "no calls in radius" empty state. */}
+      {hasPanel('callsNearMe') && (
+        <SpmGroup title="Calls Near Me" onContextMenu={(e) => openMenu(e, [
+          m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+          m.go('Open Dispatch', '/dispatch', <ArrowRight size={12} />),
+        ])}>
+          <div className="p-3 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap text-[10px] text-rmpg-400">
+              {geoStatus === 'granted' && geoPosition ? (
+                <>
+                  <span className="led-dot led-green" aria-hidden="true" />
+                  <span className="font-mono tabular-nums">
+                    ±{Math.round(geoPosition.accuracy)}m fix
+                  </span>
+                </>
+              ) : geoStatus === 'requesting' ? (
+                <>
+                  <span className="led-dot led-amber animate-led-pulse" aria-hidden="true" />
+                  <span>Acquiring GPS…</span>
+                </>
+              ) : geoStatus === 'denied' ? (
+                <>
+                  <span className="led-dot led-red" aria-hidden="true" />
+                  <span>Location permission denied — enable it in browser settings.</span>
+                </>
+              ) : (
+                <>
+                  <span className="led-dot led-off" aria-hidden="true" />
+                  <span>Location unavailable</span>
+                </>
+              )}
+              <span className="ml-auto inline-flex items-center gap-1">
+                <span className="text-[9px] uppercase tracking-wider">Radius</span>
+                <select
+                  value={nearbyRadius}
+                  onChange={(e) => setNearbyRadius(Number(e.target.value))}
+                  className="bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] px-1 py-0.5 font-mono tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                  aria-label="Search radius in miles"
+                >
+                  {[1, 2, 5, 10, 25].map((r) => <option key={r} value={r}>{r} mi</option>)}
+                </select>
+              </span>
+            </div>
+            {nearbyCalls.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-6 gap-2" role="status">
+                <MapPin className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">
+                  {geoPosition ? `No active calls within ${nearbyRadius} mi` : 'Waiting for GPS fix'}
+                </span>
+              </div>
+            ) : (
+              <ul className="space-y-1.5" role="list" aria-label="Nearby active calls">
+                {nearbyCalls.map((call) => {
+                  const priorityClass: Record<string, { led: string; border: string; color: string }> = {
+                    P1: { led: 'led-red animate-led-pulse', border: 'border-l-red-500', color: 'var(--stat-accent-red-bright)' },
+                    P2: { led: 'led-amber', border: 'border-l-amber-500', color: 'var(--stat-accent-amber)' },
+                    P3: { led: 'led-blue', border: 'border-l-brand-500', color: 'var(--spm-text-muted)' },
+                    P4: { led: 'led-off', border: 'border-l-rmpg-500', color: 'var(--pri-scheduled)' },
+                  };
+                  const p = priorityClass[call.priority] ?? priorityClass.P3;
+                  return (
+                    <li key={call.id}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/dispatch?call_id=${call.id}`)}
+                        className={`w-full flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${p.border} cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 transition-all duration-150 bg-surface-base text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                        aria-label={`Call ${call.call_number}, priority ${call.priority}, ${call.distance_mi.toFixed(1)} miles away`}
+                      >
+                        <span className={`led-dot ${p.led}`} aria-hidden="true" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-[11px] font-bold font-mono tabular-nums" style={{ color: p.color }}>
+                              {call.priority}
+                            </span>
+                            <span className="text-[11px] font-mono text-rmpg-200 tabular-nums">{call.call_number}</span>
+                            <span className="ml-auto text-[10px] font-mono text-brand-400 tabular-nums">
+                              {call.distance_mi < 0.1 ? '<0.1' : call.distance_mi.toFixed(1)} mi
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-rmpg-400 truncate mt-0.5">
+                            {call.location_address || call.description || 'No location given'}
+                          </div>
+                        </div>
+                        <ArrowRight className="w-3 h-3 text-rmpg-500 flex-shrink-0" aria-hidden="true" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </SpmGroup>
+      )}
+
+      {/* My Activity (patrol view) — same data as Recent Activity */}
+      {hasPanel('myActivity') && (
+        <SpmGroup title="My Activity">
+          <div className="p-3">
+            <ActivityFeed entries={activities} maxHeight="320px" />
+          </div>
+        </SpmGroup>
       )}
 
       {/* ═══ NEW: Shift-Aware Stats + Court Dates + Expiring Certs Row ═══ */}
-      {(shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
+      {hasPanel('alertsReminders') && (shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
+        <SpmGroup title="Alerts & Reminders" tone="gold" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
         <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 sm:grid-cols-3 gap-3'}`}>
           {shiftStats && (
             <div className="panel-beveled bg-surface-base p-3">
@@ -876,19 +1284,19 @@ export default function DashboardPage() {
                 <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{shiftStats.shift_name} Stats</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b2b2b]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
                   <div className="text-lg font-bold font-mono text-brand-400">{shiftStats.calls}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Calls</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b2b2b]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
                   <div className="text-lg font-bold font-mono text-amber-400">{shiftStats.incidents}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Incidents</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b2b2b]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
                   <div className="text-lg font-bold font-mono text-purple-400">{shiftStats.citations}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Citations</div>
                 </div>
-                <div className="bg-surface-sunken p-2 rounded-sm border border-[#2b2b2b]">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
                   <div className="text-lg font-bold font-mono text-green-400">{shiftStats.patrol_scans}</div>
                   <div className="text-[9px] text-rmpg-500 uppercase">Patrols</div>
                 </div>
@@ -922,10 +1330,22 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+        </SpmGroup>
+      )}
+
+      {/* Serve Scheduler Panel — dispatch + admin only */}
+      {hasPanel('serveSchedule') && (
+        <ServeSchedulerPanel />
+      )}
+
+      {/* Serve Performance Panel — dispatch + admin only */}
+      {hasPanel('servePerformance') && (
+        <ServeDashboardPerformance />
       )}
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
+      {hasPanel('callAnalytics') && (
+      <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
           <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
@@ -934,45 +1354,45 @@ export default function DashboardPage() {
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="callsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#888888" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
+                  <stop offset="5%" stopColor="var(--spm-text-muted)" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="var(--spm-text-muted)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#666666', fontSize: 9 }}
-                tickLine={{ stroke: '#222222' }}
-                axisLine={{ stroke: '#222222' }}
+                tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }}
+                tickLine={{ stroke: 'var(--spm-border)' }}
+                axisLine={{ stroke: 'var(--spm-border)' }}
                 interval={2}
               />
               <YAxis
-                tick={{ fill: '#666666', fontSize: 9 }}
-                tickLine={{ stroke: '#222222' }}
-                axisLine={{ stroke: '#222222' }}
+                tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }}
+                tickLine={{ stroke: 'var(--spm-border)' }}
+                axisLine={{ stroke: 'var(--spm-border)' }}
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#0a0a0a',
-                  border: '1px solid #3a3a3a',
+                  backgroundColor: 'var(--surface-raised)',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: '2px',
-                  color: '#cccccc',
+                  color: 'var(--text-primary)',
                   fontSize: '11px',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                   padding: '8px 12px',
                 }}
-                labelStyle={{ color: '#888888', fontSize: '10px', marginBottom: '4px' }}
-                cursor={{ stroke: '#888888', strokeWidth: 1, strokeDasharray: '4 4' }}
+                labelStyle={{ color: 'var(--spm-text-muted)', fontSize: '10px', marginBottom: '4px' }}
+                cursor={{ stroke: 'var(--spm-text-muted)', strokeWidth: 1, strokeDasharray: '4 4' }}
               />
               <Area
                 type="monotone"
                 dataKey="count"
-                stroke="#888888"
+                stroke="var(--spm-text-muted)"
                 strokeWidth={2}
                 fill="url(#callsGradient)"
-                dot={{ fill: '#888888', r: 2, strokeWidth: 0 }}
-                activeDot={{ fill: '#aaaaaa', r: 5, strokeWidth: 2, stroke: '#ffffff' }}
+                dot={{ fill: 'var(--spm-text-muted)', r: 2, strokeWidth: 0 }}
+                activeDot={{ fill: 'var(--spm-text)', r: 5, strokeWidth: 2, stroke: 'var(--spm-text)' }}
                 animationDuration={800}
                 animationEasing="ease-out"
               />
@@ -989,10 +1409,10 @@ export default function DashboardPage() {
             {(() => {
               const totalCalls = stats.calls_by_priority.P1 + stats.calls_by_priority.P2 + stats.calls_by_priority.P3 + stats.calls_by_priority.P4;
               const pieData = [
-                { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: '#dc2626' },
-                { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: '#888888' },
-                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: '#555555' },
+                { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: 'var(--stat-accent-red)' },
+                { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: 'var(--stat-accent-amber)' },
+                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: 'var(--spm-text-muted)' },
+                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: 'var(--pri-scheduled)' },
               ].filter(d => d.value > 0);
 
               return totalCalls > 0 ? (
@@ -1014,10 +1434,10 @@ export default function DashboardPage() {
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#0a0a0a',
-                        border: '1px solid #3a3a3a',
+                        backgroundColor: 'var(--surface-raised)',
+                        border: '1px solid var(--border-strong)',
                         borderRadius: '2px',
-                        color: '#cccccc',
+                        color: 'var(--text-primary)',
                         fontSize: '11px',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                         padding: '8px 12px',
@@ -1035,12 +1455,12 @@ export default function DashboardPage() {
             })()}
 
             {/* Pie Legend */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-[#2b2b2b]">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-rmpg-800">
               {[
-                { key: 'P1', label: 'Emergency', color: '#dc2626', count: stats.calls_by_priority.P1 },
-                { key: 'P2', label: 'Urgent', color: '#f59e0b', count: stats.calls_by_priority.P2 },
-                { key: 'P3', label: 'Routine', color: '#888888', count: stats.calls_by_priority.P3 },
-                { key: 'P4', label: 'Scheduled', color: '#555555', count: stats.calls_by_priority.P4 },
+                { key: 'P1', label: 'Emergency', color: 'var(--stat-accent-red)', count: stats.calls_by_priority.P1 },
+                { key: 'P2', label: 'Urgent', color: 'var(--stat-accent-amber)', count: stats.calls_by_priority.P2 },
+                { key: 'P3', label: 'Routine', color: 'var(--spm-text-muted)', count: stats.calls_by_priority.P3 },
+                { key: 'P4', label: 'Scheduled', color: 'var(--pri-scheduled)', count: stats.calls_by_priority.P4 },
               ].map(({ key, label, color, count }) => (
                 <div key={key} className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors">
                   <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-sm" style={{ backgroundColor: color }} />
@@ -1052,7 +1472,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions — compact */}
-          <div className="border-t border-[#2b2b2b] px-3 py-2.5 space-y-1.5">
+          <div className="border-t border-rmpg-800 px-3 py-2.5 space-y-1.5">
             <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-widest select-none">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
               <button type="button" className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
@@ -1071,16 +1491,18 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Shift Summary Row */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics">
+      {hasPanel('adminExtras') && (
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
         {[
-          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#888888', path: '/dispatch' },
-          { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: '#22c55e', path: '/incidents' },
-          { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: '#22c55e', path: '/personnel' },
-          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: '#888888', path: '/reports' },
-          { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: '#f59e0b', path: '/warrants' },
-          { icon: AlertTriangle, label: 'Active BOLOs', value: stats.active_bolos, color: stats.active_bolos > 0 ? '#ef4444' : '#22c55e', path: '/communications' },
+          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: 'var(--spm-text-muted)', path: '/dispatch' },
+          { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: 'var(--stat-accent-green)', path: '/incidents' },
+          { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: 'var(--stat-accent-green)', path: '/personnel' },
+          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: 'var(--spm-text-muted)', path: '/reports' },
+          { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: 'var(--stat-accent-amber)', path: '/warrants' },
+          { icon: AlertTriangle, label: 'Active BOLOs', value: stats.active_bolos, color: stats.active_bolos > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)', path: '/communications' },
         ].map(({ icon: Icon, label, value, color, path }) => (
           <div
             key={label}
@@ -1099,10 +1521,12 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════
           Features 31-43: Analytics Dashboard Widgets
           ═══════════════════════════════════════════════════════ */}
+      {hasPanel('adminExtras') && (
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Analytics widgets">
         {/* Feature 31: Response Time Gauge */}
         <div
@@ -1120,10 +1544,10 @@ export default function DashboardPage() {
           </div>
           <div className="relative w-16 h-16 mx-auto my-1">
             <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-              <circle cx="18" cy="18" r="14" fill="none" stroke="#222222" strokeWidth="3" />
+              <circle cx="18" cy="18" r="14" fill="none" stroke="var(--spm-border)" strokeWidth="3" />
               <circle
                 cx="18" cy="18" r="14" fill="none"
-                stroke={stats.avg_response_time_minutes <= 5 ? '#22c55e' : stats.avg_response_time_minutes <= 10 ? '#f59e0b' : '#ef4444'}
+                stroke={stats.avg_response_time_minutes <= 5 ? 'var(--stat-accent-green)' : stats.avg_response_time_minutes <= 10 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-red-bright)'}
                 strokeWidth="3"
                 strokeDasharray={`${Math.min(100, (stats.avg_response_time_minutes / 15) * 100) * 0.88} 88`}
                 strokeLinecap="round"
@@ -1148,16 +1572,16 @@ export default function DashboardPage() {
             <PieChart>
               <Pie
                 data={[
-                  { name: 'P1', value: stats.calls_by_priority.P1, fill: '#dc2626' },
-                  { name: 'P2', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#888888' },
-                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#555555' },
+                  { name: 'P1', value: stats.calls_by_priority.P1, fill: 'var(--stat-accent-red)' },
+                  { name: 'P2', value: stats.calls_by_priority.P2, fill: 'var(--stat-accent-amber)' },
+                  { name: 'P3', value: stats.calls_by_priority.P3, fill: 'var(--spm-text-muted)' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: 'var(--pri-scheduled)' },
                 ].filter(d => d.value > 0)}
                 cx="50%" cy="50%" innerRadius={20} outerRadius={32}
                 paddingAngle={2} dataKey="value" stroke="none"
               >
                 {[
-                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#888888' }, { fill: '#555555' },
+                  { fill: 'var(--stat-accent-red)' }, { fill: 'var(--stat-accent-amber)' }, { fill: 'var(--spm-text-muted)' }, { fill: 'var(--pri-scheduled)' },
                 ].map((e, i) => <Cell key={i} fill={e.fill} />)}
               </Pie>
             </PieChart>
@@ -1177,7 +1601,7 @@ export default function DashboardPage() {
             <CheckCircle className="w-3 h-3 text-green-400" />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Clearance</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (clearanceRate?.rate || 0) >= 50 ? '#22c55e' : '#f59e0b' }}>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (clearanceRate?.rate || 0) >= 50 ? 'var(--stat-accent-green)' : 'var(--stat-accent-amber)' }}>
             {clearanceRate?.rate ?? 0}%
           </div>
           <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{clearanceRate?.cleared || 0}/{clearanceRate?.total || 0} cleared</div>
@@ -1193,10 +1617,10 @@ export default function DashboardPage() {
           aria-label={`Patrol coverage: ${patrolCoverage?.coverage ?? 0}%`}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <Navigation className="w-3 h-3 text-gray-400" />
+            <Navigation className="w-3 h-3 text-rmpg-400" />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Coverage</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center text-gray-400 tabular-nums">
+          <div className="text-xl font-bold font-mono text-center text-rmpg-300 tabular-nums">
             {patrolCoverage?.coverage ?? 0}%
           </div>
           <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{patrolCoverage?.coveredBeats || 0}/{patrolCoverage?.totalBeats || 0} beats</div>
@@ -1212,10 +1636,10 @@ export default function DashboardPage() {
           aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }} />
+            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Evidence</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }}>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }}>
             {evidencePending?.pending ?? 0}
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Pending</div>
@@ -1231,17 +1655,19 @@ export default function DashboardPage() {
           aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}
         >
           <div className="flex items-center gap-1.5 mb-1">
-            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }} />
+            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Overdue</span>
           </div>
-          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }}>
             {overdueReports?.count ?? 0}
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>
         </div>
       </div>
+      )}
 
       {/* Feature 33: Shift Performance Comparison + Feature 42: Upcoming Court */}
+      {hasPanel('adminExtras') && (
       <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-3'}`}>
         {/* Feature 33: Shift Performance Comparison */}
         {shiftComparison?.shifts && (
@@ -1261,7 +1687,7 @@ export default function DashboardPage() {
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Calls</span>
-                          <span className="text-xs font-bold font-mono text-gray-400 tabular-nums">{s.calls}</span>
+                          <span className="text-xs font-bold font-mono text-rmpg-300 tabular-nums">{s.calls}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] text-rmpg-400">Incidents</span>
@@ -1299,7 +1725,7 @@ export default function DashboardPage() {
                 {upcomingCourt.upcoming.map((c: any, i: number) => (
                   <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
                     <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
-                      {c.date ? new Date(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
@@ -1313,6 +1739,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Feature 35: Trending Incidents + Feature 36: Officer Status Board + Feature 37: Call Volume Sparkline */}
       {/* (Feature 36 is already represented by the Officers on Duty in Operational Status) */}
@@ -1321,7 +1748,7 @@ export default function DashboardPage() {
       {/* Feature 35: Trending Incidents Indicator — shown inline with shift summary above */}
 
       {/* PSO Operations Panel */}
-      {psoStats && (psoStats.activeCalls > 0 || psoStats.monthCalls > 0) && (() => {
+      {hasPanel('adminExtras') && psoStats && (psoStats.activeCalls > 0 || psoStats.monthCalls > 0) && (() => {
         const serveRate = psoStats.serveResults.total > 0
           ? Math.round((psoStats.serveResults.served / psoStats.serveResults.total) * 100)
           : null;
@@ -1349,12 +1776,12 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-lg font-bold font-mono text-brand-400 tabular-nums">{psoStats.activeCalls}</div>
                 </div>
-                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-gray-500">
+                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-rmpg-500">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Phone className="w-3 h-3 text-gray-400" />
+                    <Phone className="w-3 h-3 text-rmpg-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-gray-400 tabular-nums">{psoStats.todayCalls}</div>
+                  <div className="text-lg font-bold font-mono text-rmpg-300 tabular-nums">{psoStats.todayCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-green-500">
                   <div className="flex items-center gap-1.5 mb-1">
@@ -1363,12 +1790,12 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-lg font-bold font-mono text-green-400 tabular-nums">{psoStats.monthCompleted}<span className="text-[10px] text-rmpg-500 ml-1">/ {psoStats.monthCalls}</span></div>
                 </div>
-                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#666666' }}>
+                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? 'var(--stat-accent-green)' : serveRate !== null ? 'var(--stat-accent-amber)' : 'var(--spm-text-muted)' }}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : '#f59e0b' }} />
+                    <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? 'var(--stat-accent-green)' : 'var(--stat-accent-amber)' }} />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Serve Rate</span>
                   </div>
-                  <div className="text-lg font-bold font-mono tabular-nums" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#666666' }}>
+                  <div className="text-lg font-bold font-mono tabular-nums" style={{ color: serveRate !== null && serveRate >= 70 ? 'var(--stat-accent-green)' : serveRate !== null ? 'var(--stat-accent-amber)' : 'var(--spm-text-muted)' }}>
                     {serveRate !== null ? `${serveRate}%` : 'N/A'}
                   </div>
                 </div>
@@ -1457,20 +1884,26 @@ export default function DashboardPage() {
       })()}
 
       {/* Activity Feed + Operational Alerts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {(hasPanel('recentActivity') || hasPanel('activeUnits')) && (
+      <div id="dashboard-panel-recentActivity" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Activity Feed */}
-        <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Recent activity feed" aria-live="polite">
-          <PanelTitleBar title="RECENT ACTIVITY" icon={Activity}>
-            <button type="button"
-              className="toolbar-btn flex items-center gap-1 hover:bg-surface-raised transition-colors"
-              onClick={() => navigate('/audit')}
-              title="View full audit log"
-            >
-              <Eye style={{ width: 10, height: 10 }} />
-              <span className="text-[9px] font-bold">View All</span>
-            </button>
-          </PanelTitleBar>
+        {hasPanel('recentActivity') && (
+        <div className="lg:col-span-2" onContextMenu={(e) => openMenu(e, [
+          m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+          m.go('View full audit log', '/audit', <Eye size={12} />),
+        ])}>
+        <SpmGroup title="Recent Activity">
           <div className="p-3">
+            <div className="flex justify-end mb-2">
+              <button type="button"
+                className="toolbar-btn flex items-center gap-1 hover:bg-surface-raised transition-colors"
+                onClick={() => navigate('/audit')}
+                title="View full audit log"
+              >
+                <Eye style={{ width: 10, height: 10 }} />
+                <span className="text-[9px] font-bold">View All</span>
+              </button>
+            </div>
             {activities.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 gap-2" role="status">
                 <Activity className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
@@ -1480,11 +1913,16 @@ export default function DashboardPage() {
               <ActivityFeed entries={activities} maxHeight="320px" />
             )}
           </div>
+        </SpmGroup>
         </div>
+        )}
 
         {/* Operational Summary */}
-        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Operational status">
-          <PanelTitleBar title="OPERATIONAL STATUS" icon={Radio} />
+        {hasPanel('activeUnits') && (
+        <SpmGroup title="Active Units" onContextMenu={(e) => openMenu(e, [
+          m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+          m.go('View personnel', '/personnel', <Users size={12} />),
+        ])}>
           <div className="p-3 space-y-2.5">
             {/* Active Warrant Alerts */}
             <div
@@ -1506,8 +1944,8 @@ export default function DashboardPage() {
             {/* Active BOLOs */}
             <div
               className={`flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-red-900/10 hover:shadow-sm transition-all duration-150 bg-surface-sunken border-l-[3px] ${stats.active_bolos > 0 ? 'border-l-red-500' : 'border-l-rmpg-600'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
-              onClick={() => navigate('/communications')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/communications'); }}
+              onClick={() => navigate('/intel/bolos')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/intel/bolos'); }}
               tabIndex={0}
               role="button"
               aria-label={`Active BOLOs: ${stats.active_bolos}`}
@@ -1553,10 +1991,13 @@ export default function DashboardPage() {
               {expiringCredentials.length > 0 && <span className="led-dot led-amber animate-led-pulse" />}
             </div>
           </div>
-        </div>
+        </SpmGroup>
+        )}
       </div>
+      )}
 
       {/* Credential Alerts */}
+      {hasPanel('alertsReminders') && (
       <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Credential alerts">
         <PanelTitleBar title="CREDENTIAL ALERTS" icon={Shield} />
         <div className="p-3">
@@ -1572,7 +2013,7 @@ export default function DashboardPage() {
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
               <table className="w-full text-xs" role="table" aria-label="Expiring credentials list">
                 <thead>
-                  <tr className="border-b border-[#2b2b2b]">
+                  <tr className="border-b border-rmpg-800">
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Officer</th>
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Credential</th>
                     {!isMobile && <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Expiry Date</th>}
@@ -1583,7 +2024,7 @@ export default function DashboardPage() {
                 <tbody>
                   {expiringCredentials.map((cred: any, idx: number) => {
                     const now = new Date();
-                    const exp = new Date(cred.expiry_date);
+                    const exp = parseTimestamp(cred.expiry_date);
                     const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
                     const isExpired = daysLeft < 0;
                     const isUrgent = daysLeft <= 30;
@@ -1593,7 +2034,7 @@ export default function DashboardPage() {
                         <td className="px-3 py-2.5 text-rmpg-200 font-medium">{cred.officer_name || cred.user_name || '-'}</td>
                         <td className="px-3 py-2.5 text-rmpg-200">{cred.credential_type || cred.type || '-'}</td>
                         {!isMobile && <td className="px-3 py-2.5 text-rmpg-200 font-mono tabular-nums">{exp.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>}
-                        <td className="px-3 py-2.5 font-mono font-bold tabular-nums" style={{ color: isExpired ? '#ef4444' : isUrgent ? '#f59e0b' : '#22c55e' }}>
+                        <td className="px-3 py-2.5 font-mono font-bold tabular-nums" style={{ color: isExpired ? 'var(--stat-accent-red-bright)' : isUrgent ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }}>
                           {isExpired ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d`}
                         </td>
                         <td className="px-3 py-2.5">
@@ -1608,14 +2049,15 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Officer Activity Comparison */}
-      {officerActivity.length > 0 && (() => {
+      {hasPanel('officerActivity') && officerActivity.length > 0 && (() => {
         const ROLE_COLORS: Record<string, string> = {
-          admin: '#ef4444',
-          supervisor: '#f59e0b',
-          manager: '#888888',
-          officer: '#22c55e',
+          admin: 'var(--stat-accent-red-bright)',
+          supervisor: 'var(--stat-accent-amber)',
+          manager: 'var(--spm-text-muted)',
+          officer: 'var(--stat-accent-green)',
         };
         const ROLE_ORDER = ['admin', 'supervisor', 'manager', 'officer'];
         const ROLE_LABELS: Record<string, string> = {
@@ -1636,12 +2078,11 @@ export default function DashboardPage() {
           badge: o.badge_number || '',
           actions: o.action_count,
           role: o.role,
-          fill: ROLE_COLORS[o.role] || '#666666',
+          fill: ROLE_COLORS[o.role] || 'var(--spm-text-muted)',
         }));
 
         return (
-          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Officer activity comparison">
-            <PanelTitleBar title="OFFICER ACTIVITY COMPARISON — LAST 30 DAYS" icon={Users} />
+          <SpmGroup title="Officer Activity">
             <div className="p-3">
               {/* Role Legend */}
               <div className="flex items-center gap-4 mb-3 flex-wrap">
@@ -1654,20 +2095,20 @@ export default function DashboardPage() {
               </div>
               <ResponsiveContainer width="100%" height={Math.max(180, chartRows.length * 32)}>
                 <BarChart data={chartRows} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#222222" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#888888', fontSize: 10 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: 'var(--spm-text-muted)', fontSize: 10 }} allowDecimals={false} />
                   <YAxis
                     type="category"
                     dataKey="name"
                     width={140}
-                    tick={{ fill: '#aaaaaa', fontSize: 10 }}
+                    tick={{ fill: 'var(--spm-text)', fontSize: 10 }}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: '#0a0a0a',
-                      border: '1px solid #3a3a3a',
+                      backgroundColor: 'var(--surface-raised)',
+                      border: '1px solid var(--border-strong)',
                       borderRadius: '2px',
-                      color: '#e0e0e0',
+                      color: 'var(--text-primary)',
                       fontSize: '11px',
                       boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                       padding: '8px 12px',
@@ -1676,7 +2117,7 @@ export default function DashboardPage() {
                       `${value} actions`,
                       `${ROLE_LABELS[props.payload.role] || props.payload.role} — Badge #${props.payload.badge || '—'}`,
                     ]}
-                    cursor={{ fill: 'rgba(136, 136, 136, 0.08)' }}
+                    cursor={{ fill: 'rgb(var(--spm-text-muted-rgb) / 0.08)' }}
                   />
                   <Bar dataKey="actions" radius={[0, 3, 3, 0]}>
                     {chartRows.map((entry) => (
@@ -1686,7 +2127,7 @@ export default function DashboardPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </SpmGroup>
         );
       })()}
 
