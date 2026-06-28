@@ -8,14 +8,19 @@
 // ============================================================
 
 import { useCallback, useState, useEffect } from 'react';
-import { Printer, Eye, PenLine, Smartphone } from 'lucide-react';
+import { Printer, Eye, PenLine, Smartphone, Mail } from 'lucide-react';
 import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from '../utils/recordPdfGenerator';
 import { tryV2Dispatch, tryV2DispatchBlobUrl } from '../utils/pdf/v2DispatchAdapter';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
 import { apiFetch } from '../hooks/useApi';
+import { type Trip } from '../hooks/useTrips';
 import { useAuth } from '../context/AuthContext';
+import { mapDbCall } from '../pages/dispatch/utils/dispatchMappers';
 import DocumentViewer from './DocumentViewer';
 import SignaturePad from './SignaturePad';
+import { PdfEmailDialog } from './PdfEmailDialog';
+import { emailBlob } from '../utils/emailPdf';
+import { useToast } from './ToastProvider';
 
 interface PrintRecordButtonProps {
   /** Record type to generate PDF for */
@@ -38,6 +43,32 @@ interface PrintRecordButtonProps {
   entityId?: string | number;
 }
 
+/** Record-links vehicle labels read "Make Model (PLATE)". Split into the
+ *  separate fields the PDF table expects — otherwise the whole label lands
+ *  in the PLATE column and VEHICLE prints "N/A". */
+function splitVehicleLabel(l: any): { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship: string } {
+  // Prefer structured metadata returned by the API (year, color, make, model, plate)
+  const meta = l.linked_meta as { year?: number; color?: string; make?: string; model?: string; plate_number?: string } | undefined;
+  if (meta) {
+    return {
+      license_plate: meta.plate_number || '',
+      year: meta.year != null ? String(meta.year) : undefined,
+      make: meta.make || undefined,
+      model: meta.model || undefined,
+      color: meta.color || undefined,
+      relationship: l.relationship,
+    };
+  }
+  // Fallback: parse "Make Model (PLATE)" label format
+  const raw = String(l.linked_label || '').trim();
+  const m = raw.match(/^(.*?)\s*\(([^()]+)\)$/);
+  return {
+    license_plate: m ? m[2].trim() : raw,
+    model: m ? m[1].trim() : '',
+    relationship: l.relationship,
+  };
+}
+
 export default function PrintRecordButton({
   recordType,
   recordData,
@@ -50,10 +81,12 @@ export default function PrintRecordButton({
   entityId,
 }: PrintRecordButtonProps) {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [viewerOpen, setViewerOpen] = useState(false);
   const [pdfBlobUrl, setPdfBlobUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [signModalOpen, setSignModalOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
   const [signatureChecked, setSignatureChecked] = useState(false);
 
@@ -82,6 +115,47 @@ export default function PrintRecordButton({
         .catch(() => setSignatureChecked(true));
     }
   }, [signatureChecked]);
+
+  /** Fetch fresh record data from the API before generating the PDF, preventing
+   *  stale/truncated data (e.g. from list-view refresh) from reaching the PDF.
+   *  Falls back to the passed-in recordData if the fetch fails. */
+  const fetchFreshRecordData = useCallback(async (data: any): Promise<any> => {
+    if (!entityType || !entityId) return data;
+    try {
+      let endpoint = '';
+      switch (entityType) {
+        case 'call': endpoint = `/dispatch/calls/${entityId}`; break;
+        case 'person': endpoint = `/records/persons/${entityId}`; break;
+        case 'vehicle': endpoint = `/records/vehicles/${entityId}`; break;
+        case 'property': endpoint = `/records/properties/${entityId}`; break;
+        case 'evidence': endpoint = `/records/evidence/${entityId}`; break;
+        default: return data;
+      }
+      const fresh = await apiFetch<any>(endpoint);
+      if (fresh && (fresh.id || fresh.call_number || fresh.first_name)) {
+        const mapped = entityType === 'call' ? mapDbCall(fresh) : fresh;
+        const enrichmentKeys = ['assigned_units_detail', 'linked_persons', 'linked_vehicles',
+          'attachment_images', 'breadcrumb_trail', 'response_trip'];
+        const enrichments: Record<string, any> = {};
+        for (const k of enrichmentKeys) {
+          if (data[k] !== undefined) enrichments[k] = data[k];
+        }
+        if (!enrichments.assigned_units_detail && Array.isArray(fresh.assigned_units)
+            && fresh.assigned_units.length > 0 && typeof fresh.assigned_units[0] === 'object') {
+          enrichments.assigned_units_detail = fresh.assigned_units.map((u: any) => ({
+            call_sign: u.call_sign || String(u.id || ''),
+            officer_name: u.officer_name || '',
+            badge_number: u.badge_number || '',
+            status: u.status || '',
+          }));
+        }
+        return { ...mapped, ...enrichments };
+      }
+    } catch (err) {
+      console.warn('[PrintRecordButton] Fresh data fetch failed, using passed-in data:', err);
+    }
+    return data;
+  }, [entityType, entityId]);
 
   /** Merge attachment images and system history into recordData before PDF generation */
   const enrichWithImages = useCallback(async (data: any, signatureOverride?: string | null): Promise<any> => {
@@ -137,24 +211,46 @@ export default function PrintRecordButton({
       }
     }
 
-    // For person records, fetch linked vehicles and properties
+    // For person records, fetch all linked records (all entity types)
     if (recordType === 'person' && data.id) {
       try {
         const links = await apiFetch<any[]>(`/records/links?source_type=person&source_id=${data.id}`);
         if (links && links.length > 0) {
-          // The API enriches each row with the OTHER side as linked_type /
-          // linked_label (covering links where this record is source OR
-          // target). The vehicle label already reads "Make Model (PLATE)".
-          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => ({
-            license_plate: l.linked_label || '',
-            relationship: l.relationship,
-          }));
+          // Vehicles: split "Make Model (PLATE)" label so PDF columns populate correctly
+          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
+          // Properties (real-estate only, not businesses)
           enriched.linked_properties = links
-            .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
+            .filter((l: any) => l.linked_type === 'property')
+            .map((l: any) => ({ name: l.linked_label || '', relationship: l.relationship }));
+          // Businesses (separate table since migration 0125)
+          enriched.linked_businesses = links
+            .filter((l: any) => l.linked_type === 'business')
+            .map((l: any) => ({ name: l.linked_label || '', relationship: l.relationship }));
+          // Other persons linked to this person
+          enriched.linked_persons = links
+            .filter((l: any) => l.linked_type === 'person')
             .map((l: any) => ({
               name: l.linked_label || '',
               relationship: l.relationship,
+              dob: l.linked_meta?.dob || '',
+              flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
             }));
+          // Evidence items cross-referenced to this person
+          enriched.linked_evidence = links
+            .filter((l: any) => l.linked_type === 'evidence')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
+          // Incidents cross-referenced to this person (manual links, separate from incident history)
+          enriched.linked_incidents_xref = links
+            .filter((l: any) => l.linked_type === 'incident')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
+          // Cases cross-referenced to this person
+          enriched.linked_cases = links
+            .filter((l: any) => l.linked_type === 'case')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
+          // Warrants cross-referenced to this person (manual links, separate from active-warrants history)
+          enriched.linked_warrants_xref = links
+            .filter((l: any) => l.linked_type === 'warrant')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
         }
       } catch { /* non-fatal */ }
     }
@@ -181,6 +277,8 @@ export default function PrintRecordButton({
           enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
             name: l.linked_label || '',
             relationship: l.relationship,
+            dob: l.linked_meta?.dob || '',
+            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
           }));
           enriched.linked_properties = links
             .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
@@ -221,11 +319,10 @@ export default function PrintRecordButton({
           enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
             name: l.linked_label || '',
             relationship: l.relationship,
+            dob: l.linked_meta?.dob || '',
+            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
           }));
-          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => ({
-            license_plate: l.linked_label || '',
-            relationship: l.relationship,
-          }));
+          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
         }
       } catch { /* non-fatal — endpoint may be stubbed */ }
     }
@@ -244,6 +341,17 @@ export default function PrintRecordButton({
         }
       } catch (err) {
         console.warn('[PrintRecordButton] Breadcrumb trail fetch failed, proceeding without GPS data:', err);
+      }
+      // Response trip — the logged call_response drive-to-scene leg, rendered
+      // as a one-line audit summary under Mileage in the call PDF.
+      try {
+        const callTrips = await apiFetch<Trip[]>(`/dispatch/trips?call_id=${callId}`);
+        const responseTrip = Array.isArray(callTrips)
+          ? callTrips.find((t) => t.trip_type === 'call_response')
+          : undefined;
+        if (responseTrip) enriched.response_trip = responseTrip;
+      } catch (err) {
+        console.warn('[PrintRecordButton] Response trip fetch failed, proceeding without it:', err);
       }
     }
 
@@ -282,7 +390,8 @@ export default function PrintRecordButton({
     try {
       setLoading(true);
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const enrichedData = await enrichWithImages(recordData);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
       const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
       const blobUrl = v2BlobUrl ?? await generateRecordPdfBlobUrl(recordType, enrichedData);
       setPdfBlobUrl(blobUrl);
@@ -292,7 +401,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl]);
+  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl, fetchFreshRecordData]);
 
   /** Mobile Print: Brother PJ-700/800 in-vehicle thermal printer.
    *  Adds +6mm top offset so leading-edge content doesn't get clipped
@@ -313,7 +422,8 @@ export default function PrintRecordButton({
     try {
       setLoading(true);
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const enrichedData = await enrichWithImages(recordData);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
       // v2 dispatch path doesn't yet honor printTarget — fall through
       // directly to the legacy generator (which IS mobile-aware) for
       // the blob URL. Citations lose v2 sidecar attestation under
@@ -326,7 +436,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl]);
+  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl, fetchFreshRecordData]);
 
   const handlePreview = useCallback(async () => {
     if (!recordData) return;
@@ -334,7 +444,8 @@ export default function PrintRecordButton({
       setLoading(true);
       // Revoke previous blob URL if one exists
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const enrichedData = await enrichWithImages(recordData);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
       // v2 sidecar engine handles migrated types (citation today); falls
       // back to the legacy generator for everything else.
       const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
@@ -346,7 +457,39 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, pdfBlobUrl, enrichWithImages]);
+  }, [recordType, recordData, identifier, pdfBlobUrl, enrichWithImages, fetchFreshRecordData]);
+
+  const handleEmailSend = useCallback(async (to: string[], cc: string[], subject: string, body: string) => {
+    setEmailDialogOpen(false);
+    if (!recordData) return;
+    setLoading(true);
+    try {
+      // Mirror handlePreview's blob generation:
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
+      const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
+      const blobUrl = v2BlobUrl ?? await generateRecordPdfBlobUrl(recordType, enrichedData);
+      let blob: Blob;
+      try {
+        blob = await fetch(blobUrl).then((r) => r.blob());
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
+      const linkId = entityId != null && entityId !== '' && Number.isFinite(Number(entityId)) ? Number(entityId) : undefined;
+      const res = await emailBlob(blob!, recordType, to, cc, subject, body, entityType, linkId);
+      addToast(
+        res?.queued
+          ? 'Email queued — it will send when the mail service is reachable.'
+          : `Email sent to ${to.join(', ')}`,
+        'success',
+      );
+    } catch (err) {
+      console.error('[PrintRecordButton] Email failed:', err);
+      addToast(err instanceof Error ? `Email failed: ${err.message}` : 'Email failed', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [recordType, recordData, identifier, entityType, entityId, enrichWithImages, fetchFreshRecordData, addToast]);
 
   /** Sign & Export: if user has no saved signature, show the sign pad; otherwise generate with saved sig */
   const handleSignAndExport = useCallback(async () => {
@@ -355,7 +498,8 @@ export default function PrintRecordButton({
       // Already have a signature — generate immediately
       try {
         setLoading(true);
-        const enrichedData = await enrichWithImages(recordData, savedSignature);
+        const freshData = await fetchFreshRecordData(recordData);
+        const enrichedData = await enrichWithImages(freshData, savedSignature);
         const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
         if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
       } catch (err) {
@@ -367,7 +511,7 @@ export default function PrintRecordButton({
       // No saved signature — open the sign pad modal
       setSignModalOpen(true);
     }
-  }, [recordData, savedSignature, enrichWithImages, recordType, identifier]);
+  }, [recordData, savedSignature, enrichWithImages, recordType, identifier, fetchFreshRecordData]);
 
   /** Called when user signs in the quick-sign modal */
   const handleQuickSign = useCallback(async (dataUrl: string | null) => {
@@ -386,7 +530,8 @@ export default function PrintRecordButton({
     // Generate the PDF with the fresh signature
     try {
       setLoading(true);
-      const enrichedData = await enrichWithImages(recordData, dataUrl);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData, dataUrl);
       const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
       if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
     } catch (err) {
@@ -394,7 +539,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordData, enrichWithImages, recordType, identifier]);
+  }, [recordData, enrichWithImages, recordType, identifier, fetchFreshRecordData]);
 
   const handleCloseViewer = useCallback(() => {
     setViewerOpen(false);
@@ -449,6 +594,16 @@ export default function PrintRecordButton({
         <PenLine style={{ width: 12, height: 12 }} />
         {!iconOnly && <span>{loading ? 'Signing…' : 'Sign & Export'}</span>}
       </button>
+      <button
+        type="button"
+        className={`toolbar-btn ${className}`}
+        onClick={() => setEmailDialogOpen(true)}
+        title="Email this PDF report"
+        disabled={loading}
+      >
+        <Mail style={{ width: 12, height: 12 }} />
+        {!iconOnly && <span>{loading ? 'Loading…' : 'Email'}</span>}
+      </button>
       <DocumentViewer
         isOpen={viewerOpen}
         onClose={handleCloseViewer}
@@ -456,6 +611,13 @@ export default function PrintRecordButton({
         title={`${recordTypeLabel} Record`}
         type="pdf"
       />
+      {emailDialogOpen && (
+        <PdfEmailDialog
+          defaultSubject={`${recordTypeLabel} Record${identifier ? ` — ${identifier}` : ''}`}
+          onCancel={() => setEmailDialogOpen(false)}
+          onSend={handleEmailSend}
+        />
+      )}
 
       {/* Quick-sign modal */}
       {signModalOpen && (

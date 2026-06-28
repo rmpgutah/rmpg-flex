@@ -14,6 +14,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 import type {
   FuelAnalyticsOverview, FuelAnalyticsByOfficer, FuelAnalyticsByCard,
 } from '../../../types';
@@ -26,6 +27,7 @@ interface Args {
 
 export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: Args): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 36;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -184,10 +186,10 @@ export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: A
   ], byOfficer.map(o => [
     o.display_name,
     o.fill_count,
-    o.total_gallons.toFixed(1),
+    o.total_gallons != null ? o.total_gallons.toFixed(1) : '—',
     fmtCurrency(o.total_cost),
     o.avg_mpg != null ? o.avg_mpg.toFixed(1) : '—',
-    `${o.flag_rate.toFixed(1)}%`,
+    o.flag_rate != null ? `${o.flag_rate.toFixed(1)}%` : '—',
     o.avg_cpg != null ? `$${o.avg_cpg.toFixed(3)}` : '—',
   ]));
 

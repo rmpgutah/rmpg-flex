@@ -36,11 +36,11 @@ function WeatherWidget() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refresh().catch(() => {}); }, [refresh]);
 
   // Auto-refresh every 10 minutes
   useEffect(() => {
-    const interval = setInterval(refresh, 10 * 60 * 1000);
+    const interval = setInterval(() => { refresh().catch(() => {}); }, 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, [refresh]);
 
@@ -58,7 +58,7 @@ function WeatherWidget() {
       <div className="panel-beveled bg-surface-base p-3 text-center">
         <Cloud className="w-5 h-5 text-rmpg-600 mx-auto mb-1" />
         <p className="text-[9px] text-rmpg-500">Weather unavailable</p>
-        <button onClick={refresh} className="toolbar-btn text-[8px] mt-1" style={{ padding: '1px 6px' }}>
+        <button type="button" onClick={refresh} className="toolbar-btn text-[8px] mt-1" style={{ padding: '1px 6px' }}>
           <RefreshCw className="w-2.5 h-2.5" /> Retry
         </button>
       </div>
@@ -75,7 +75,7 @@ function WeatherWidget() {
         <span className="text-[9px] text-rmpg-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
           <Cloud className="w-3 h-3" /> Current Weather
         </span>
-        <button onClick={refresh} className="text-rmpg-600 hover:text-rmpg-400" title="Refresh weather">
+        <button type="button" onClick={refresh} className="text-rmpg-600 hover:text-rmpg-400" title="Refresh weather">
           <RefreshCw className={`w-2.5 h-2.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
@@ -85,7 +85,7 @@ function WeatherWidget() {
           <div className="flex items-center gap-2">
             <WeatherIcon className="w-7 h-7 text-brand-400" />
             <div>
-              <div className="text-xl font-bold font-mono text-white">{weather.temperature}°<span className="text-xs text-rmpg-400">F</span></div>
+              <div className="text-xl font-bold font-mono text-rmpg-100">{weather.temperature}°<span className="text-xs text-rmpg-400">F</span></div>
               <div className="text-[10px] text-rmpg-300">{weather.condition}</div>
             </div>
           </div>

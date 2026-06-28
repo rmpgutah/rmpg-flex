@@ -62,7 +62,7 @@ function StatusBar({
       <div className="status-bar-section">
         <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span>
         {callsByPriority && callsByPriority.length > 0 && activeCallCount > 0 && (
-          <span style={{ color: '#666666', marginLeft: 4 }}>
+          <span style={{ color: 'var(--rmpg-500)', marginLeft: 4 }}>
             ({callsByPriority.filter(p => p.count > 0).map(p => `${p.count} ${p.priority}`).join(', ')})
           </span>
         )}
@@ -94,19 +94,19 @@ function StatusBar({
                 GPS: {gpsUnitCallSign || 'ON'}
               </span>
               {gpsAccuracy != null && (
-                <span className="tabular-nums" style={{ color: '#666666', marginLeft: 4 }}>
+                <span className="tabular-nums" style={{ color: 'var(--rmpg-500)', marginLeft: 4 }}>
                   ±{Math.round(gpsAccuracy)}m
                 </span>
               )}
               {gpsLastSent && (
-                <span className="tabular-nums" style={{ color: isStale ? gpsColor : '#505050', marginLeft: 4 }}>
+                <span className="tabular-nums" style={{ color: isStale ? gpsColor : 'var(--rmpg-600)', marginLeft: 4 }}>
                   {safeTimeStr(gpsLastSent)}
                 </span>
               )}
             </>
           );
         })() : (
-          <span style={{ color: '#3a3a3a' }}>GPS: OFF</span>
+          <span style={{ color: 'var(--rmpg-500)' }}>GPS: OFF</span>
         )}
       </div>
 
@@ -127,7 +127,7 @@ function StatusBar({
         <span className="tabular-nums" style={{ color: '#22c55e', fontWeight: 700, letterSpacing: '0.02em' }}>
           {now.toLocaleTimeString('en-US', { hour12: false })}
         </span>
-        <span style={{ color: '#666666', marginLeft: 8 }}>
+        <span style={{ color: 'var(--rmpg-500)', marginLeft: 8 }}>
           {now.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',
