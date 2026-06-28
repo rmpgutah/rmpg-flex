@@ -62,6 +62,30 @@ function PhoneScanQr() {
   return <canvas ref={canvasRef} className="w-20 h-20" aria-label="QR code to open the DL scanner on your phone" />;
 }
 
+// QR code that opens this scanner page on the officer's phone —
+// scans made there relay to this desktop session automatically.
+function PhoneScanQr() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import('bwip-js/browser').then(({ default: bwipjs }) => {
+      if (cancelled || !canvasRef.current) return;
+      try {
+        bwipjs.toCanvas(canvasRef.current, {
+          bcid: 'qrcode',
+          text: `${window.location.origin}/dl-search`,
+          scale: 2,
+          backgroundcolor: 'FFFFFF',
+          paddingwidth: 4,
+          paddingheight: 4,
+        });
+      } catch { /* QR render is decorative — page works without it */ }
+    }).catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, []);
+  return <canvas ref={canvasRef} className="w-20 h-20" aria-label="QR code to open the DL scanner on your phone" />;
+}
+
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
   'LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND',
@@ -105,6 +129,20 @@ interface DlSearchResponse {
   resultCount: number;
 }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function DlSearchPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -127,9 +165,6 @@ export default function DlSearchPage() {
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
   // Ref for the first search field — used by the N shortcut to focus it
   const firstFieldRef = useRef<HTMLInputElement>(null);
-  // Set to true when an auto-search is triggered by a deep-link so that
-  // handleSearch can fire a toast when the query returns no results.
-  const fromDeepLinkRef = useRef(false);
 
   // ── DL Scanner (PDF417 barcode-first, OCR fallback) ──
   const navigate = useNavigate();
@@ -536,6 +571,87 @@ export default function DlSearchPage() {
     if (!dl && !last && !first && !dob && !person_id) return null;
     return { dl, state, last, first, dob, person_id };
   })());
+
+  // ── DL OCR Scanner ──
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrResult, setOcrResult] = useState<any>(null);
+  const [showOcrPreview, setShowOcrPreview] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── DL Verification via RapidAPI ──
+  const [verifying, setVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<any>(null);
+
+  const handleVerifyDl = useCallback(async () => {
+    if (!dlNumber.trim()) { addToast('Enter a DL number to verify', 'warning'); return; }
+    setVerifying(true);
+    setVerifyResult(null);
+    try {
+      const data = await apiFetch<any>('/dl-records/verify', {
+        method: 'POST',
+        body: JSON.stringify({ dl_number: dlNumber.trim(), date_of_birth: dob || undefined, dl_state: state || undefined }),
+      });
+      setVerifyResult(data.parsed);
+      if (data.parsed?.verified) {
+        addToast('DL Verified', 'success');
+      } else {
+        addToast('DL could not be verified', 'warning');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Verification failed', 'error');
+    } finally {
+      setVerifying(false);
+    }
+  }, [dlNumber, dob, state, addToast]);
+
+  const handleCreatePersonFromVerify = useCallback(async () => {
+    if (!verifyResult) return;
+    try {
+      const nameParts = (verifyResult.name || '').split(' ');
+      const resp = await apiFetch<any>('/records/persons', {
+        method: 'POST',
+        body: JSON.stringify({
+          first_name: verifyResult.first_name || nameParts[0] || '',
+          last_name: verifyResult.last_name || nameParts.slice(-1)[0] || '',
+          dob: verifyResult.date_of_birth || '',
+          address: verifyResult.address || '',
+          dl_number: verifyResult.dl_number || '',
+          dl_state: verifyResult.dl_state || '',
+          dl_class: verifyResult.dl_class || '',
+          dl_expiry: verifyResult.dl_expiry || '',
+          notes: `Created from DL verification on ${new Date().toLocaleDateString()}`,
+          flags: ['dl_verify_imported'],
+        }),
+      });
+      if (resp?.id) {
+        addToast(`Person record #${resp.id} created from verification`, 'success');
+      }
+    } catch (err: any) {
+      addToast(err.message || 'Failed to create person record', 'error');
+    }
+  }, [verifyResult, addToast]);
+
+  // ── Feature 42: Registration Alerts ──
+  const [regAlerts, setRegAlerts] = useState<any>(null);
+  const handleCheckRegistration = async () => {
+    try {
+      const data = await apiFetch<any>('/records/vehicles/alerts/expired-registration');
+      setRegAlerts(data?.data || data);
+    } catch { addToast('Failed to check registration alerts', 'error'); }
+  };
+
+  // ── Feature 44: Stolen Vehicle Check ──
+  const [stolenResult, setStolenResult] = useState<any>(null);
+  const [stolenPlate, setStolenPlate] = useState('');
+  const handleStolenCheck = async () => {
+    if (!stolenPlate.trim()) return;
+    try {
+      const data = await apiFetch<any>('/records/vehicles/stolen-check', {
+        method: 'POST', body: JSON.stringify({ plate_number: stolenPlate.trim() }),
+      });
+      setStolenResult(data?.data || data);
+    } catch (err: any) { addToast(err?.message || 'Stolen check failed', 'error'); }
+  };
 
   const handleSearch = useCallback(async () => {
     if (!lastName.trim() && !dlNumber.trim()) return;
@@ -1069,6 +1185,26 @@ export default function DlSearchPage() {
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+              {/* DL OCR Scanner */}
+              <div className="border border-[#222222] rounded-sm p-3 bg-[#050505] space-y-2 w-full max-w-xs">
+                <div className="flex items-center gap-2">
+                  <CreditCard size={14} className="text-[#d4a017]" />
+                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
+                </div>
+                <p className="text-[10px] text-[#666666]">Upload a photo of a driver's license to auto-extract all fields and create a person record.</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={ocrLoading}
+                    className="flex items-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
+                  >
+                    {ocrLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+                    {ocrLoading ? 'Scanning...' : 'Upload DL Photo'}
+                  </button>
+                  <span className="text-[9px] text-[#666666]">JPG, PNG, or camera capture</span>
                 </div>
               </div>
             </div>
