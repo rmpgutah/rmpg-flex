@@ -43,10 +43,38 @@ interface DispatchMiniMapProps {
   fullHeight?: boolean;
   /** Called when route ETA changes (for parent to display inline) */
   onRouteUpdate?: (info: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null) => void;
+  /** Serve route jobs to overlay on the mini map (for PSO calls) */
+  serveRouteJobs?: any[];
+  /** Serve route polyline data (optimized_order_json from serve_routes) */
+  serveRouteOrder?: number[] | null;
 }
 
 const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608]; // Salt Lake City fallback [lng, lat]
 const MINI_ZOOM = 15;
+const ROUTE_TRAIL_ID = 'dispatch-minimap-route';
+const SERVE_TRAIL_ID = 'dispatch-minimap-serve-route';
+
+/** Format seconds into a human-readable ETA */
+function formatEta(seconds: number): string {
+  if (seconds < 60) return '<1 min';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+}
+
+/** Format meters into a human-readable distance */
+function formatDistance(meters: number): string {
+  const miles = meters / 1609.344;
+  return miles < 0.1 ? `${Math.round(meters)} ft` : `${miles.toFixed(1)} mi`;
+}
+
+/** Build a call marker DOM element with priority-colored badge */
+function buildCallMarker(label: string, priority?: string): HTMLElement {
+  const color = MINI_PRIORITY_COLORS[priority || ''] || '#ef4444';
+  const isP1 = priority === 'P1';
+  const isP2 = priority === 'P2';
 
 export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
   const navigate = useNavigate();
@@ -334,7 +362,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     } else {
       if (hasActiveRouteRef.current) {
         clearRoute();
-        lastAutoRouteRef.current = '';
       }
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, call?.assigned_units, units, showRoute, clearRoute, updateOrigin]);

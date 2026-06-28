@@ -116,6 +116,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     if (!mapContainerRef.current) return;
 
     let cancelled = false;
+    injectMapboxStyles();
 
     function initPatrolMap() {
       if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;

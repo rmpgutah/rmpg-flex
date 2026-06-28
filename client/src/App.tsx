@@ -486,6 +486,7 @@ function AppRoutes() {
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
             <Route path="/dispatch" element={<RouteErrorBoundary><DispatchPage /></RouteErrorBoundary>} />
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
+            <Route path="/route-builder" element={<RouteErrorBoundary><RouteBuilderPage /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />

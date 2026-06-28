@@ -6,6 +6,7 @@ import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { encryptApiKey, decryptApiKey } from '../utils/serveManagerClient';
 import { hashApiKey } from '../utils/apiKeyHash';
+import { logger } from '../utils/logger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -93,14 +94,37 @@ function getStats(db: any, queries: { [key: string]: string }): Record<string, n
 }
 
 function getIntegrationConfigValue(db: any, key: string): string | null {
+  // Keys stored plain-text (not encrypted) by the admin PUT handler
+  const PLAIN_TEXT_KEYS = new Set([
+    'traccar_url', 'traccar_enabled', 'traccar_poll_interval',
+    'mapbox_style_url', 'mapbox_username',
+  ]);
+
   const row = db.prepare(
     "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
   ).get(key) as { config_value?: string } | undefined;
   if (!row?.config_value) return null;
-  try {
-    return decryptApiKey(row.config_value);
-  } catch {
+
+  // Plain-text keys bypass decryption entirely
+  if (PLAIN_TEXT_KEYS.has(key)) {
     return row.config_value;
+  }
+
+  try {
+    const decrypted = decryptApiKey(row.config_value);
+    return decrypted;
+  } catch (err) {
+    // Decryption failed — the stored value is either plain-text or
+    // was encrypted with a different method/key.  Log and return null
+    // instead of returning raw ciphertext (which would be sent to
+    // third-party APIs as an invalid credential).
+    logger.warn({ key, err }, 'Failed to decrypt integration config value — stored value may be corrupted or plain-text');
+    // If the raw value looks like a valid Mapbox public token (pk.*)
+    // it was likely stored unencrypted — return it directly.
+    if (row.config_value.startsWith('pk.') || row.config_value.startsWith('sk.')) {
+      return row.config_value;
+    }
+    return null;
   }
 }
 

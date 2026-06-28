@@ -33,6 +33,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Tactical Map' },
+      { path: '/route-builder', icon: Route, label: 'Route Builder' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },

@@ -1,265 +1,57 @@
 import React, { useState } from 'react';
 import {
-  Layers, Eye, EyeOff, Shield, AlertTriangle, Building2, Thermometer,
-  Navigation2, Route, MapPin, Pencil, Square, Type, Trash2, Plus, X, Check,
-  FileText, MousePointer2, CalendarDays, UserCheck, Copy, Save, Play, Pause,
-  SkipForward, Gauge, Palette, PanelLeftClose, PanelLeftOpen, ChevronDown,
-  ChevronUp, Globe2, Loader2, Map as MapIcon, Car, Ruler, Maximize2,
-  Brain, ShieldAlert, Grab, Radar,
-  Crosshair, FileSearch, Timer, Target, Scale, AlertOctagon, Sun,
+  Layers, Eye, EyeOff, ChevronDown, ChevronRight,
+  Map as MapIcon, Shield, Flame, Car, Navigation2,
+  Sun, AlertTriangle, PenTool, Hexagon, Ruler, Satellite,
 } from 'lucide-react';
-import { apiFetch } from '../../../hooks/useApi';
-import { formatIncidentType } from '../../../utils/caseNumbers';
-import { generatePatrolTrackingPdf } from '../../../utils/patrolTrackingPdfGenerator';
-import { localToday, dateToLocalYMD } from '../../../utils/dateUtils';
-import { useToast } from '../../../components/ToastProvider';
-import { SHIFT_TYPES, type ShiftType } from '../../../hooks/useShiftPlanning';
-import { PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../../hooks/useEventPlanning';
-import { getSectionColor, type BeatDistrictEntry } from '../../../hooks/useGeoJsonLayers';
-import type { MapStyleId } from '../utils/mapConstants';
-import { MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS } from '../utils/mapConstants';
-import type { MeasureMode } from '../hooks/useMapMeasurement';
+import IconButton from '../../../components/IconButton';
 
-interface MapLayersPanelProps {
-  isConnected: boolean;
-  layersPanelOpen: boolean;
-  setLayersPanelOpen: (v: boolean) => void;
-  layers: { units: boolean; incidents: boolean; properties: boolean };
-  toggleLayer: (key: 'units' | 'incidents' | 'properties') => void;
-  unitsWithCoords: any[];
-  callsWithCoords: any[];
-  propertiesWithCoords: any[];
+// ── Types ─────────────────────────────────────────────────
 
-  // Heatmap
-  showHeatmap: boolean;
-  setShowHeatmap: (v: boolean) => void;
-  heatmapData: any[];
-  heatmapDays: number;
-  setHeatmapDays: (v: number) => void;
-  heatmapMode: 'all' | 'risk' | 'type';
-  setHeatmapMode: (v: 'all' | 'risk' | 'type') => void;
-  heatmapTypeFilter: string;
-  setHeatmapTypeFilter: (v: string) => void;
-  heatmapTypes: { incident_type: string; count: number }[];
-
-  // Tracking lines
-  showTrackingLines: boolean;
-  setShowTrackingLines: (v: boolean) => void;
-
-  // Breadcrumbs
-  showBreadcrumbs: boolean;
-  setShowBreadcrumbs: (v: boolean) => void;
-  breadcrumbHours: number;
-  setBreadcrumbHours: (v: number) => void;
-  exportingPdf: boolean;
-  setExportingPdf: (v: boolean) => void;
-  breadcrumbColorMode: 'unit' | 'speed' | 'status';
-  setBreadcrumbColorMode: (v: 'unit' | 'speed' | 'status') => void;
-  playbackTrails: any[];
-  playbackUnit: number | null;
-  setPlaybackUnit: (v: number | null) => void;
-  playbackIdx: number;
-  setPlaybackIdx: (v: number) => void;
-  isPlaying: boolean;
-  setIsPlaying: (v: boolean) => void;
-  playbackSpeed: number;
-  setPlaybackSpeed: (v: number) => void;
-  playbackAnimRef: React.MutableRefObject<number | null>;
-  playbackMarkerRef: React.MutableRefObject<any>;
-
-  // Map style
-  mapStyle: MapStyleId;
-  setMapStyle: (v: MapStyleId) => void;
-
-  // GeoJSON layers
-  geoLayerStates: Record<string, any>;
-  geoConfigs: any[];
-  toggleGeoLayer: (id: string) => void;
-  ensureLayerLoaded: (id: string) => void;
-
-  // District legend
-  districtSections: { id: string; name: string }[];
-  beatDistrictMap: Map<string, Map<string, BeatDistrictEntry>> | undefined;
-
-  // Shift planning (complex nested state from useShiftPlanning hook)
-  shiftPlanning: any; // eslint-disable-line @typescript-eslint/no-explicit-any
-
-  // Event planning (complex nested state from useEventPlanning hook)
-  eventPlanning: any; // eslint-disable-line @typescript-eslint/no-explicit-any
-
-  // Traffic layer (optional — wired up when traffic layer feature is enabled)
-  showTraffic?: boolean;
-  onToggleTraffic?: () => void;
-
-  // Measurement tool (optional — wired up when measurement feature is enabled)
-  measuring?: boolean;
-  measureMode?: MeasureMode | null;
-  onStartMeasure?: (mode: MeasureMode) => void;
-  onClearMeasurement?: () => void;
-
-  // Tactical map features (optional — wired when tactical upgrade is enabled)
-  showTimelapse?: boolean;
-  setShowTimelapse?: (v: boolean) => void;
-  timelapse?: { isPlaying: boolean; setIsPlaying: (v: boolean) => void; speed: 1 | 2 | 4; setSpeed: (v: 1 | 2 | 4) => void; currentIndex: number; setCurrentIndex: (v: number) => void; totalSlices: number; currentLabel: string; loading: boolean };
-  showPredictions?: boolean;
-  setShowPredictions?: (v: boolean) => void;
-  predictionsCount?: number;
-  showSafetyZones?: boolean;
-  setShowSafetyZones?: (v: boolean) => void;
-  safetyZonesCount?: number;
-  showGeofences?: boolean;
-  setShowGeofences?: (v: boolean) => void;
-  geofencesCount?: number;
-  geofenceDrawingMode?: boolean;
-  onToggleGeofenceDraw?: () => void;
-  dragDispatchMode?: boolean;
-  setDragDispatchMode?: (v: boolean) => void;
-  intelLayers?: { warrants: boolean; trespass: boolean; offenders: boolean; bolos: boolean };
-  toggleIntelLayer?: (layer: 'warrants' | 'trespass' | 'offenders' | 'bolos') => void;
-  intelCounts?: { warrants: number; trespass: number; offenders: number; bolos: number };
-
-  // Patrol Checkpoints
-  showPatrolCheckpoints?: boolean;
-  setShowPatrolCheckpoints?: (v: boolean) => void;
-  patrolCheckpointsOverdue?: number;
-  patrolCheckpointsCount?: number;
-
-  // Field Interviews
-  showFieldInterviews?: boolean;
-  setShowFieldInterviews?: (v: boolean) => void;
-  fiDays?: number;
-  setFiDays?: (v: number) => void;
-  fieldInterviewCount?: number;
-
-  // Dwell Time
-  showDwellTime?: boolean;
-  setShowDwellTime?: (v: boolean) => void;
-  dwellAlertCount?: number;
-
-  // Response Radius
-  showResponseRadius?: boolean;
-  setShowResponseRadius?: (v: boolean) => void;
-  responseRadiusActive?: boolean;
-
-  // Enforcement Clusters
-  showEnforcementClusters?: boolean;
-  setShowEnforcementClusters?: (v: boolean) => void;
-  enforcementType?: 'citations' | 'arrests';
-  setEnforcementType?: (v: 'citations' | 'arrests') => void;
-  enforcementDays?: number;
-  setEnforcementDays?: (v: number) => void;
-  enforcementTotalRecords?: number;
-
-  // Coverage Map
-  showCoverage?: boolean;
-  setShowCoverage?: (v: boolean) => void;
-  coverageRadius?: number;
-  setCoverageRadius?: (v: number) => void;
-  coverageCount?: number;
-
-  // Fleet Vehicles
-  showFleetVehicles?: boolean;
-  setShowFleetVehicles?: (v: boolean) => void;
-  fleetVehicleCount?: number;
-
-  // Repeat Addresses
-  showRepeatAddresses?: boolean;
-  setShowRepeatAddresses?: (v: boolean) => void;
-  repeatDays?: number;
-  setRepeatDays?: (v: number) => void;
-  repeatMinCount?: number;
-  setRepeatMinCount?: (v: number) => void;
-  repeatAddressCount?: number;
-
-  // Panic Zone
-  showPanicZone?: boolean;
-  setShowPanicZone?: (v: boolean) => void;
-  panicActive?: boolean;
-
-  // Daylight Overlay
-  showDaylight?: boolean;
-  setShowDaylight?: (v: boolean) => void;
-  daylightPhase?: string;
+export interface LayerToggle {
+  id: string;
+  label: string;
+  enabled: boolean;
+  onToggle: () => void;
+  icon?: React.ReactNode;
+  color?: string;
+  description?: string;
 }
 
-export default function MapLayersPanel(props: MapLayersPanelProps) {
-  const { addToast } = useToast();
+export interface LayerGroup {
+  id: string;
+  label: string;
+  layers: LayerToggle[];
+}
 
-  const [showMapStyles, setShowMapStyles] = useState(false);
-  const [showGeoPanel, setShowGeoPanel] = useState(false);
-  const [showDistrictLegend, setShowDistrictLegend] = useState(false);
-  const [showShiftPanel, setShowShiftPanel] = useState(false);
-  const [showEventPanel, setShowEventPanel] = useState(false);
+interface MapLayersPanelProps {
+  open: boolean;
+  onClose: () => void;
+  groups: LayerGroup[];
+}
 
-  // Collapsible category group states
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem('rmpg_map_layer_groups');
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  });
-  const toggleGroup = (group: string) => {
-    setCollapsedGroups(prev => {
-      const next = { ...prev, [group]: !prev[group] };
-      try { localStorage.setItem('rmpg_map_layer_groups', JSON.stringify(next)); } catch { /* noop */ }
+// ── Component ─────────────────────────────────────────────
+
+export default function MapLayersPanel({ open, onClose, groups }: MapLayersPanelProps) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    new Set(groups.map(g => g.id))
+  );
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
       return next;
     });
   };
-  const [newPlanName, setNewPlanName] = useState('');
-  const [newShiftPlanName, setNewShiftPlanName] = useState('');
-  const [newShiftPlanDate, setNewShiftPlanDate] = useState(() => localToday());
-  const [newShiftPlanType, setNewShiftPlanType] = useState<ShiftType>('day');
-  const [assignOfficerIds, setAssignOfficerIds] = useState<string[]>([]);
-  const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
-  const [assignNotes, setAssignNotes] = useState('');
 
-  const {
-    layersPanelOpen, setLayersPanelOpen, isConnected, layers, toggleLayer,
-    unitsWithCoords, callsWithCoords, propertiesWithCoords,
-    showHeatmap, setShowHeatmap, heatmapData, heatmapDays, setHeatmapDays,
-    heatmapMode, setHeatmapMode, heatmapTypeFilter, setHeatmapTypeFilter, heatmapTypes,
-    showTrackingLines, setShowTrackingLines,
-    showBreadcrumbs, setShowBreadcrumbs, breadcrumbHours, setBreadcrumbHours,
-    exportingPdf, setExportingPdf, breadcrumbColorMode, setBreadcrumbColorMode,
-    playbackTrails, playbackUnit, setPlaybackUnit, playbackIdx, setPlaybackIdx,
-    isPlaying, setIsPlaying, playbackSpeed, setPlaybackSpeed,
-    playbackAnimRef, playbackMarkerRef,
-    mapStyle, setMapStyle,
-    geoLayerStates, geoConfigs, toggleGeoLayer, ensureLayerLoaded,
-    districtSections,
-    shiftPlanning, eventPlanning,
-    showTraffic, onToggleTraffic,
-    measuring, measureMode, onStartMeasure, onClearMeasurement,
-    showTimelapse, setShowTimelapse, timelapse,
-    showPredictions, setShowPredictions, predictionsCount,
-    showSafetyZones, setShowSafetyZones, safetyZonesCount,
-    showGeofences, setShowGeofences, geofencesCount, geofenceDrawingMode, onToggleGeofenceDraw,
-    dragDispatchMode, setDragDispatchMode,
-    intelLayers, toggleIntelLayer, intelCounts,
-    showPatrolCheckpoints, setShowPatrolCheckpoints, patrolCheckpointsOverdue, patrolCheckpointsCount,
-    showFieldInterviews, setShowFieldInterviews, fiDays, setFiDays, fieldInterviewCount,
-    showDwellTime, setShowDwellTime, dwellAlertCount,
-    showResponseRadius, setShowResponseRadius, responseRadiusActive,
-    showEnforcementClusters, setShowEnforcementClusters, enforcementType, setEnforcementType, enforcementDays, setEnforcementDays, enforcementTotalRecords,
-    showCoverage, setShowCoverage, coverageRadius, setCoverageRadius, coverageCount,
-    showFleetVehicles, setShowFleetVehicles, fleetVehicleCount,
-    showRepeatAddresses, setShowRepeatAddresses, repeatDays, setRepeatDays, repeatMinCount, setRepeatMinCount, repeatAddressCount,
-    showPanicZone, setShowPanicZone, panicActive,
-    showDaylight, setShowDaylight, daylightPhase,
-  } = props;
+  if (!open) return null;
 
-  if (!layersPanelOpen) {
-    return (
-      <button type="button"
-        onClick={() => setLayersPanelOpen(true)}
-        className="bg-black/30 border border-white/15 backdrop-blur-md p-2 hover:bg-black/50 transition-colors shadow-lg"
-        style={{ borderRadius: 2 }}
-        title="Show layers"
-      >
-        <PanelLeftOpen className="w-4 h-4" />
-      </button>
-    );
-  }
+  const enabledCount = groups.reduce(
+    (sum, g) => sum + g.layers.filter(l => l.enabled).length,
+    0
+  );
 
   return (
     <div className="bg-surface-deep/95 border border-rmpg-600 backdrop-blur-sm shadow-lg transition-all duration-200" style={{ width: 'clamp(160px, 14vw, 200px)', borderRadius: 2 }}>
@@ -273,8 +65,8 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           style={{ padding: '0 2px' }}
           title="Hide layers"
         >
-          <PanelLeftClose style={{ width: 10, height: 10 }} />
-        </button>
+          <span className="text-sm">✕</span>
+        </IconButton>
       </div>
 
       <div className="p-1.5 space-y-0.5">
@@ -641,15 +433,6 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                           </span>
                         )}
                       </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-        )}
-      </>}
-      </div>
 
       {/* Measurement Tools */}
       <div className="border-t border-rmpg-700 p-1.5">
@@ -1174,12 +957,12 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                     >
                       <Trash2 className="w-2 h-2" /> Clear All
                     </button>
-                  )}
+                  ))}
                 </div>
-              </>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Event Planning Section */}

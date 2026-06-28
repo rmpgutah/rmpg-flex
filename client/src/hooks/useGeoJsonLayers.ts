@@ -390,7 +390,7 @@ export function useGeoJsonLayers({
       try {
         const resp = await fetch(`/geojson/${cfg.file}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        geojson = await resp.json();
+        geojson = (await resp.json()) as FeatureCollection;
         geojsonCacheRef.current[cfg.id] = geojson;
       } catch (err) {
         console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
