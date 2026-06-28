@@ -190,7 +190,9 @@ public struct RecordsTabView: View {
                 .foregroundStyle(theme.colors.textPrimary)
                 .tint(theme.colors.brandGold)
                 .autocorrectionDisabled()
+                #if canImport(UIKit)
                 .textInputAutocapitalization(.never)
+                #endif
                 .onChange(of: vm.query) { _, _ in vm.queryChanged() }
             if !vm.query.isEmpty {
                 Button { vm.query = "" } label: {
