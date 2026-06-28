@@ -1115,6 +1115,12 @@ const API_ROUTES: RouteRule[] = [
   // was removed once the real handler landed.
   { kind: 'prefix', value: '/api/dispatch/stats', methods: ['GET'] },
 
+  // ── Radio subsystem (PR #661) ──
+  // The new worker is the only handler — legacy has no /api/radio/*
+  // routes at all. Schema lives on the new-Worker DB (8893480a-…),
+  // not live (785de7ae-…).
+  { kind: 'prefix', value: '/api/radio' },
+
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
