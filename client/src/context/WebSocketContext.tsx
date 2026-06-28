@@ -3,6 +3,15 @@ import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
 import { handleDispatchEvent, startBrainTimer } from '../utils/dispatcherBrain';
+import {
+  announceGpsGap,
+  announceGpsRecovered,
+  announcePursuitSpeed,
+  announceBeatBreach,
+} from '../utils/voiceAlerts';
+import { flashAlert, flashSeverityFor } from '../utils/alertFlash';
+import { isAlertSoundEnabled } from '../utils/alertSoundPrefs';
+import { trackCriticalAlert, alertKey } from '../utils/alertEscalation';
 import { registerRules } from '../utils/dispatcherRules/registry';
 import { EVENT_RULES } from '../utils/dispatcherRules/events';
 import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
@@ -427,6 +436,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated) return;
     connect();
     connectAlerts();
+
+    // Also probe on window focus — covers the case of multi-monitor
+    // setups where the tab was technically visible but the dispatcher
+    // had focus on another window for hours. Cheap and idempotent.
+    window.addEventListener('focus', handleVisibility);
 
     return () => {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);

@@ -3841,4 +3841,132 @@ router.post('/records/raw-insert', requireRole('admin'), (req: Request, res: Res
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// GPS Health — per-unit authoritative-source freshness snapshot
+// ═══════════════════════════════════════════════════════════════════════
+// Powers the Admin → GPS Health dashboard. One row per unit with the
+// data dispatchers need to triage: current source, authoritative
+// source heartbeat, age, classification (healthy / warn / critical /
+// silent / browser-fallback). Requires admin or supervisor.
+
+router.get('/gps-health', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT
+        u.id, u.call_sign, u.status, u.gps_source, u.gps_updated_at,
+        u.last_authoritative_gps_at, u.last_authoritative_gps_source,
+        u.latitude, u.longitude,
+        usr.full_name AS officer_name,
+        usr.badge_number,
+        (SELECT COUNT(*) FROM gps_breadcrumbs b
+           WHERE b.unit_id = u.id
+             AND datetime(b.recorded_at) >= datetime('now','localtime','-24 hours')
+             AND b.gps_source IN ('owntracks','traccar','clearpathgps')) AS authoritative_points_24h,
+        (SELECT COUNT(*) FROM gps_breadcrumbs b
+           WHERE b.unit_id = u.id
+             AND datetime(b.recorded_at) >= datetime('now','localtime','-24 hours')) AS total_points_24h
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      ORDER BY u.call_sign
+    `).all() as any[];
+
+    const now = Date.now();
+    const enriched = rows.map(r => {
+      const authMs = r.last_authoritative_gps_at ? new Date(r.last_authoritative_gps_at).getTime() : NaN;
+      const liveMs = r.gps_updated_at ? new Date(r.gps_updated_at).getTime() : NaN;
+      const authAgeSec = !isNaN(authMs) ? Math.floor((now - authMs) / 1000) : null;
+      const liveAgeSec = !isNaN(liveMs) ? Math.floor((now - liveMs) / 1000) : null;
+
+      // Classification — feeds the row's color/badge in the UI:
+      //   silent       : never reported authoritative (or > 24h)
+      //   critical     : authoritative gap >= 15 min
+      //   warning      : authoritative gap 5-15 min
+      //   fallback     : authoritative healthy but live source is browser
+      //   healthy      : authoritative <5 min and matches live source
+      //   off_duty     : status is OFD/off_duty/out_of_service
+      let classification: 'healthy' | 'warning' | 'critical' | 'silent' | 'fallback' | 'off_duty' = 'silent';
+      const offDutyStatuses = new Set(['off_duty', 'OFD', 'out_of_service', 'retired']);
+      if (offDutyStatuses.has(r.status)) classification = 'off_duty';
+      else if (authAgeSec === null || authAgeSec > 86400) classification = 'silent';
+      else if (authAgeSec >= 900) classification = 'critical';
+      else if (authAgeSec >= 300) classification = 'warning';
+      else if (r.gps_source && r.gps_source !== r.last_authoritative_gps_source) classification = 'fallback';
+      else classification = 'healthy';
+
+      return { ...r, auth_age_seconds: authAgeSec, live_age_seconds: liveAgeSec, classification };
+    });
+
+    res.json({ units: enriched, generated_at: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to query GPS health' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// OwnTracks pending-device management
+// ═══════════════════════════════════════════════════════════════════════
+// When an OwnTracks client authenticates with a valid webhook token but
+// its tracker_id has no mapping, the webhook handler upserts a row into
+// owntracks_pending_devices and returns 202. These endpoints let admins
+// see the queue and claim in one click, no SQL required.
+
+router.get('/owntracks-pending', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, tracker_id, last_lat, last_lng, first_seen_at, last_seen_at, seen_count
+      FROM owntracks_pending_devices
+      ORDER BY last_seen_at DESC
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to list pending devices' });
+  }
+});
+
+router.post('/owntracks-pending/:id/claim', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'invalid id' }); return; }
+    const unitId = parseInt(String(req.body?.unit_id ?? ''), 10);
+    const deviceName = typeof req.body?.device_name === 'string' ? req.body.device_name.slice(0, 200) : null;
+    if (isNaN(unitId)) { res.status(400).json({ error: 'unit_id required' }); return; }
+
+    const pending = db.prepare('SELECT tracker_id FROM owntracks_pending_devices WHERE id = ?').get(id) as any;
+    if (!pending) { res.status(404).json({ error: 'pending device not found' }); return; }
+    const unit = db.prepare('SELECT id, call_sign FROM units WHERE id = ?').get(unitId) as any;
+    if (!unit) { res.status(404).json({ error: 'unit not found' }); return; }
+
+    // Transaction keeps the queue consistent if either write fails.
+    db.transaction(() => {
+      db.prepare(`
+        INSERT INTO owntracks_device_map (tracker_id, unit_id, device_name)
+        VALUES (?, ?, ?)
+        ON CONFLICT(tracker_id) DO UPDATE SET unit_id=excluded.unit_id, device_name=excluded.device_name
+      `).run(pending.tracker_id, unitId, deviceName);
+      db.prepare('DELETE FROM owntracks_pending_devices WHERE id = ?').run(id);
+    })();
+
+    // 'unit_assigned' is the closest existing audit action — a tracker becoming bound to a unit.
+    auditLog(req, 'unit_assigned', 'owntracks_device_map', unitId, `claim tracker=${pending.tracker_id} → ${unit.call_sign}`);
+    res.json({ ok: true, tracker_id: pending.tracker_id, unit_id: unitId, call_sign: unit.call_sign });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to claim device' });
+  }
+});
+
+router.delete('/owntracks-pending/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'invalid id' }); return; }
+    const info = db.prepare('DELETE FROM owntracks_pending_devices WHERE id = ?').run(id);
+    res.json({ ok: true, deleted: Number(info?.changes ?? 0) });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to delete' });
+  }
+});
+
 export default router;
