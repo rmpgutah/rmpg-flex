@@ -120,7 +120,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-green-500" style={{ background: '#0a1a0a' }}>
+        <div className="panel-beveled p-2.5 text-center border-t-2 border-t-green-500 bg-green-950/30">
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="field-label text-green-400/70">Completed</p>
         </div>

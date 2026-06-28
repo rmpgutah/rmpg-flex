@@ -8,6 +8,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query } from '../../utils/db';
+import { log } from '../../utils/logger';
 
 const premise = new Hono<Env>();
 
@@ -102,7 +103,7 @@ premise.get('/address-occupants', async (c) => {
 
   const SENTINEL = new Set(['', 'none', 'n/a', 'na', '0', 'null', 'unknown']);
   try {
-    const people = await query<any>(
+    const people = await query<Record<string, unknown>>(
       db,
       `SELECT p.id, p.first_name, p.last_name, p.dob, p.address, p.flags, p.gang_affiliation,
               (SELECT COUNT(*) FROM warrants w
@@ -114,20 +115,20 @@ premise.get('/address-occupants', async (c) => {
        LIMIT 25`,
       `%${address.toUpperCase()}%`,
     );
-    const occupants = people.map((p: any) => {
+    const occupants = people.map((p) => {
       let flags: string[] = [];
       try {
-        const parsed = JSON.parse(p.flags || '[]');
-        if (Array.isArray(parsed)) flags = parsed.map((x: any) => (typeof x === 'string' ? x : x?.type)).filter(Boolean);
+        const parsed = JSON.parse((p.flags as string) || '[]');
+        if (Array.isArray(parsed)) flags = parsed.map((x) => (typeof x === 'string' ? x : (x as { type?: string })?.type)).filter((x): x is string => !!x);
       } catch { /* flags free-form/absent */ }
-      const gangRaw = (p.gang_affiliation ?? '').toString().trim();
+      const gangRaw = ((p.gang_affiliation as string) ?? '').toString().trim();
       const gang = SENTINEL.has(gangRaw.toLowerCase()) ? null : gangRaw;
       const warrants = Number(p.active_warrants) || 0;
       const flaggedCaution = flags.some((t) => /caution|armed|violent|danger|weapon|gang/i.test(t));
       return {
         id: p.id,
-        name: `${p.first_name || ''} ${p.last_name || ''}`.trim() || `Person #${p.id}`,
-        dob: p.dob || null,
+        name: `${(p.first_name as string) || ''} ${(p.last_name as string) || ''}`.trim() || `Person #${p.id}`,
+        dob: (p.dob as string) || null,
         flags,
         gang,
         active_warrants: warrants,
@@ -140,7 +141,7 @@ premise.get('/address-occupants', async (c) => {
       has_flagged: occupants.some((o) => o.caution),
     });
   } catch (err) {
-    console.error('[dispatch] address-occupants lookup failed:', err);
+    log.error('[dispatch] address-occupants lookup failed', {}, err);
     return c.json({ occupants: [], occupant_count: 0, has_flagged: false });
   }
 });

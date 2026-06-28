@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
-import { localToday } from '../utils/dateUtils';
 import OfficerPicker from '../components/OfficerPicker';
 import IncidentPickerInline from '../components/IncidentPickerInline';
+import { useAuth } from '../context/AuthContext';
 
 export interface JailFormData {
   last_name: string; first_name: string; middle_name: string;
@@ -40,8 +40,14 @@ const EMPTY_FORM: JailFormData = {
 type SectionId = 'identity' | 'physical' | 'housing' | 'notes';
 
 export default function JailFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: JailFormModalProps) {
+  // Per-user draft scope: a half-typed booking from operator A on
+  // a shared MDT shouldn't auto-restore for operator B. Falls back
+  // to the legacy global key when there's no user (login screen,
+  // etc.) so we never lose existing drafts during the rollout.
+  const { user } = useAuth();
+  const draftKey = user?.id ? `rmpg_jail_form_${user.id}` : 'rmpg_jail_form';
   const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<JailFormData>({
-    storageKey: 'rmpg_jail_form', defaultValue: EMPTY_FORM, isActive: isOpen,
+    storageKey: draftKey, defaultValue: EMPTY_FORM, isActive: isOpen,
   });
   const [activeSection, setActiveSection] = useState<SectionId>('identity');
 

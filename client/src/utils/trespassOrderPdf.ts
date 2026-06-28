@@ -43,6 +43,16 @@ const STATUS_LABELS: Record<TrespassOrderStatus, string> = {
 
 function fmtDate(input: string | undefined | null): string {
   if (!input) return '—';
+  // Bare YYYY-MM-DD calendar dates (DOB, expiration_date, effective_date) have
+  // no time component — render them from the string parts in UTC so they don't
+  // drift one day back when the runtime zone is UTC (CI) vs Mountain (dev).
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input);
+  if (dateOnly) {
+    const [, y, m, d] = dateOnly;
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric',
+    }).format(Date.UTC(+y, +m - 1, +d));
+  }
   try {
     const d = parseTimestamp(input);
     return new Intl.DateTimeFormat('en-US', {

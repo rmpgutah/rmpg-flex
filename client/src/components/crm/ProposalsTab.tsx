@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../RichTextArea';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { toDisplayLabel } from '../../utils/formatters';
 import {
   Plus, X, Loader2, FileText, Send, Eye, CheckCircle, XCircle, DollarSign,
   Calendar, Save, Edit3,
@@ -35,10 +36,6 @@ function formatCurrency(val: number | null | undefined): string {
 function formatDate(d?: string | null): string {
   if (!d) return '\u2014';
   return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ════════════════════════════════════════════════════════

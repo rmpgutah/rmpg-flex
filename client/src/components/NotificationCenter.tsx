@@ -13,6 +13,7 @@ import { apiFetch } from '../hooks/useApi';
 import type { Notification, NotificationType } from '../types';
 import { toDisplayLabel } from '../utils/formatters';
 import { isNotificationSoundEnabled, playNotificationTone } from '../utils/notificationTones';
+import { routeForEntity } from '../utils/notificationRouting';
 
 // ============================================================
 // Types
@@ -71,16 +72,10 @@ function formatTimestamp(dateStr: string): string {
 // Component
 // ============================================================
 
-// Notification type → route mapping for click-to-navigate
-const NOTIFICATION_ROUTES: Record<string, string> = {
-  dispatch: '/dispatch',
-  warrant: '/warrants',
-  bolo: '/communications',
-  message: '/communications',
-  system: '/',
-  credential_expiry: '/personnel',
-  patrol_missed: '/patrol',
-};
+// Notification type → route is now resolved via routeForEntity (which
+// also honors entity_type/entity_id when present so a "Warrant hit on
+// John Doe" link lands on /records?tab=persons&person_id=… instead of
+// /warrants). The bare type-to-default map stays in notificationRouting.ts.
 
 export default function NotificationCenter({ className = '' }: NotificationCenterProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -264,8 +259,12 @@ export default function NotificationCenter({ className = '' }: NotificationCente
       if (!notification.is_read) {
         handleMarkRead(notification.id);
       }
-      // Navigate to the relevant page based on notification type
-      const route = NOTIFICATION_ROUTES[notification.type];
+      // Resolve deep-link via the shared routeForEntity helper, which
+      // honors entity_type + entity_id when set. e.g. a warrant-hit
+      // notification with entity_type='person' + entity_id=42 now
+      // navigates to /records?tab=persons&person_id=42 instead of the
+      // generic /warrants page the legacy type-default map produced.
+      const route = routeForEntity(notification);
       if (route) {
         setIsOpen(false);
         navigate(route);
@@ -324,10 +323,13 @@ export default function NotificationCenter({ className = '' }: NotificationCente
         aria-haspopup="true"
       >
         <Bell className="w-4 h-4" aria-hidden="true" />
-        {/* 44: Notification badge with subtle glow and tabular-nums */}
+        {/* 44: Notification badge with subtle glow and tabular-nums.
+            v1056: hex/grays lifted to theme tokens — red-600 background so
+            an unread count is visible at a glance in both day and night,
+            and the box-shadow keys off the same token via currentColor. */}
         {unreadCount > 0 && (
           <span
-            className="absolute flex items-center justify-center tabular-nums"
+            className="absolute flex items-center justify-center tabular-nums bg-red-600 text-white"
             style={{
               top: 0,
               right: 0,
@@ -335,13 +337,11 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               minWidth: '16px',
               height: '16px',
               padding: '0 4px',
-              background: '#888888',
-              color: '#ffffff',
               fontSize: '9px',
               fontWeight: 700,
               lineHeight: 1,
               fontFamily: 'monospace',
-              boxShadow: '0 0 6px rgba(136,136,136,0.5)',
+              boxShadow: '0 0 6px currentColor',
             }}
           >
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -363,7 +363,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             display: 'flex',
             flexDirection: 'column',
             boxShadow: '0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.3)',
-            borderTop: '2px solid #888888',
+            borderTop: '2px solid var(--border-strong)',
           }}
         >
           {/* Title Bar */}
@@ -454,7 +454,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               const config =
                 NOTIFICATION_TYPE_CONFIG[notification.type] || NOTIFICATION_TYPE_CONFIG.system;
               const Icon = config.icon;
-              const route = NOTIFICATION_ROUTES[notification.type];
+              const route = routeForEntity(notification);
 
               return (
                 <div
@@ -467,7 +467,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                   style={{
                     padding: '6px 8px',
                     background: notification.is_read ? 'var(--surface-sunken)' : 'var(--surface-base)',
-                    borderLeft: notification.is_read ? '2px solid transparent' : '2px solid #888888',
+                    borderLeft: notification.is_read ? '2px solid transparent' : '2px solid var(--border-strong)',
                   }}
                   title={route ? `Click to go to ${toDisplayLabel(notification.type)}` : undefined}
                 >

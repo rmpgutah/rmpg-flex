@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Save, Loader2, Download, FileText, RotateCcw, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Download, FileText, RotateCcw, Copy, Check, Trash2 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 import { authedImageUrl } from '../hooks/useApi';
 
 function langLabel(mime: string, name: string): string {
@@ -29,23 +31,56 @@ function langLabel(mime: string, name: string): string {
 }
 
 export default function TextEditorPage() {
-  const [params] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const { user } = useAuth();
 
-  const fileId = params.get('fileId') ?? '';
-  const fileName = params.get('name') ?? 'untitled.txt';
-  const folderId = params.get('folderId') ?? null;
-  const mimeType = params.get('mime') ?? 'text/plain';
+  // Support ?fileId= (Documents page navigation), ?doc_id= and ?document_id= (deep-link aliases)
+  const fileId = searchParams.get('fileId') ?? searchParams.get('doc_id') ?? searchParams.get('document_id') ?? '';
+  const fileName = searchParams.get('name') ?? 'untitled.txt';
+  const folderId = searchParams.get('folderId') ?? null;
+  const mimeType = searchParams.get('mime') ?? 'text/plain';
+
+  // Role gates: supervisor+ can save/edit; admin|manager can create new docs or delete
+  const canEdit = useMemo(() => ['admin', 'manager', 'supervisor'].includes(user?.role ?? ''), [user?.role]);
+  const canCreate = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
+  const canDelete = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
 
   const [content, setContent] = useState('');
   const [originalContent, setOriginalContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
+  // ConfirmDialog state
+  const [revertOpen, setRevertOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  // Gate for N shortcut when there are unsaved changes — prompts before navigating
+  const [newDocPendingOpen, setNewDocPendingOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // useRef guard: prevent re-firing deep-link toast on re-render
+  const deepLinkApplied = useRef(false);
 
   const isDirty = content !== originalContent;
+
+  // Strip deep-link ?doc_id= / ?document_id= params after mount so Back navigation
+  // doesn't re-apply them; toast on successful file identification.
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    deepLinkApplied.current = true;
+    const docId = searchParams.get('doc_id') ?? searchParams.get('document_id');
+    if (docId) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('doc_id');
+      next.delete('document_id');
+      if (!next.has('fileId')) next.set('fileId', docId);
+      setSearchParams(next, { replace: true });
+      addToast(`Loading document ${docId}`, 'info');
+    }
+  // Run once on mount only
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchContent = useCallback(async () => {
     if (!fileId) { setLoading(false); return; }
@@ -68,7 +103,7 @@ export default function TextEditorPage() {
   useEffect(() => { fetchContent(); }, [fetchContent]);
 
   const save = async () => {
-    if (!fileId || saving) return;
+    if (!fileId || saving || !canEdit) return;
     setSaving(true);
     try {
       const token = localStorage.getItem('rmpg_token');
@@ -88,7 +123,42 @@ export default function TextEditorPage() {
     setSaving(false);
   };
 
-  const revert = () => { if (!isDirty) return; if (confirm('Discard unsaved changes?')) setContent(originalContent); };
+  const handleRevertConfirm = () => {
+    setContent(originalContent);
+    setRevertOpen(false);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!fileId || !canDelete) return;
+    setDeleting(true);
+    setDeleteOpen(false);
+    try {
+      const token = localStorage.getItem('rmpg_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`/api/uploads/${fileId}`, { method: 'DELETE', headers });
+      if (!res.ok) { const j = await res.json() as { error?: string }; throw new Error(j.error || `HTTP ${res.status}`); }
+      addToast('Document deleted', 'success');
+      navigate('/documents');
+    } catch (err: any) {
+      addToast(err.message || 'Delete failed', 'error');
+    }
+    setDeleting(false);
+  };
+
+  // N shortcut: navigate to Documents — prompt first if there are unsaved changes
+  const handleNewDoc = useCallback(() => {
+    if (isDirty) {
+      setNewDocPendingOpen(true);
+    } else {
+      navigate('/documents');
+    }
+  }, [isDirty, navigate]);
+
+  const handleNewDocConfirm = () => {
+    setNewDocPendingOpen(false);
+    navigate('/documents');
+  };
 
   const copyAll = async () => {
     await navigator.clipboard.writeText(content);
@@ -96,14 +166,38 @@ export default function TextEditorPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  // Ctrl+S / Cmd+S save
+  // Ctrl+S / Cmd+S save (editor-level shortcut — not suppressed inside textarea)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (isDirty) save(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (isDirty && canEdit) save(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isDirty, content]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty, canEdit, content]);
+
+  // N shortcut + Esc cascade (capture phase so Esc reaches dialog before textarea)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const inEditor = document.activeElement === textareaRef.current;
+
+      // Esc cascade: close dialogs in priority order, stop propagation each time
+      if (e.key === 'Escape') {
+        if (newDocPendingOpen) { e.stopPropagation(); setNewDocPendingOpen(false); return; }
+        if (deleteOpen) { e.stopPropagation(); setDeleteOpen(false); return; }
+        if (revertOpen) { e.stopPropagation(); setRevertOpen(false); return; }
+        return;
+      }
+
+      // N shortcut: navigate to Documents to create a new doc — gated to canCreate (admin|manager)
+      if ((e.key === 'n' || e.key === 'N') && canCreate && !inEditor && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        handleNewDoc();
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [revertOpen, deleteOpen, newDocPendingOpen, canCreate, handleNewDoc]);
 
   // Tab key inserts \t instead of focusing the next element
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -118,35 +212,82 @@ export default function TextEditorPage() {
     }
   };
 
-  const backTarget = folderId ? `/documents` : `/documents`;
   const label = langLabel(mimeType, fileName);
   const lineCount = content.split('\n').length;
+
+  // Empty state: no fileId provided (navigated directly to /text-editor without a file)
+  if (!fileId && !loading) {
+    return (
+      <div className="h-full flex flex-col">
+        <PanelTitleBar title="TEXT EDITOR" icon={FileText} />
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-rmpg-500">
+          <FileText className="w-10 h-10 opacity-30" />
+          <p className="text-xs">No document selected.</p>
+          <button
+            type="button"
+            onClick={() => navigate('/documents')}
+            className="toolbar-btn"
+          >
+            Browse Documents
+          </button>
+          {canCreate && (
+            <p className="text-[10px] text-rmpg-600">
+              Press <kbd className="px-1 border border-rmpg-600 rounded-sm">N</kbd> to open Documents
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
       <PanelTitleBar title={`TEXT EDITOR — ${fileName}`} icon={FileText}>
-        <button type="button" onClick={revert} disabled={!isDirty} title="Revert to last saved"
-          className="toolbar-btn disabled:opacity-40">
-          <RotateCcw style={{ width: 10, height: 10 }} /> Revert
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => { if (isDirty) setRevertOpen(true); }}
+            disabled={!isDirty}
+            title="Revert to last saved"
+            className="toolbar-btn disabled:opacity-40"
+          >
+            <RotateCcw style={{ width: 10, height: 10 }} /> Revert
+          </button>
+        )}
         <button type="button" onClick={copyAll} className="toolbar-btn">
           {copied ? <Check style={{ width: 10, height: 10 }} className="text-green-400" /> : <Copy style={{ width: 10, height: 10 }} />}
           {copied ? 'Copied' : 'Copy all'}
         </button>
-        <a href={authedImageUrl(`/api/uploads/${fileId}/download`)} download={fileName}
-          className="toolbar-btn">
-          <Download style={{ width: 10, height: 10 }} /> Download
-        </a>
-        <button type="button" onClick={save} disabled={!isDirty || saving}
-          className="toolbar-btn toolbar-btn-primary disabled:opacity-40">
-          {saving ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Save style={{ width: 10, height: 10 }} />}
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        {fileId && (
+          <a href={authedImageUrl(`/api/uploads/${fileId}/download`)} download={fileName}
+            className="toolbar-btn">
+            <Download style={{ width: 10, height: 10 }} /> Download
+          </a>
+        )}
+        {canDelete && fileId && (
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            disabled={deleting}
+            title="Delete document"
+            className="toolbar-btn toolbar-btn-danger disabled:opacity-40"
+          >
+            {deleting ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Trash2 style={{ width: 10, height: 10 }} />}
+            Delete
+          </button>
+        )}
+        {canEdit && (
+          <button type="button" onClick={save} disabled={!isDirty || saving}
+            className="toolbar-btn toolbar-btn-primary disabled:opacity-40">
+            {saving ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Save style={{ width: 10, height: 10 }} />}
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        )}
       </PanelTitleBar>
 
       {/* Sub-toolbar: breadcrumb + metadata */}
       <div className="px-4 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-3 text-[9px] text-rmpg-500">
-        <button type="button" onClick={() => navigate(backTarget)}
+        <button type="button" onClick={() => navigate('/documents')}
           className="flex items-center gap-1 text-brand-400 hover:text-brand-300">
           <ArrowLeft className="w-3 h-3" /> Documents
         </button>
@@ -156,7 +297,8 @@ export default function TextEditorPage() {
         <span>{lineCount.toLocaleString()} lines</span>
         <span className="w-px h-3 bg-rmpg-700" />
         <span>{content.length.toLocaleString()} chars</span>
-        {isDirty && <span className="ml-1 text-[#d4a017] font-semibold">● unsaved</span>}
+        {isDirty && <span className="ml-1 text-brand-gold-500 font-semibold">● unsaved</span>}
+        {!canEdit && <span className="ml-auto text-rmpg-600 italic">view only</span>}
       </div>
 
       {loading ? (
@@ -167,16 +309,50 @@ export default function TextEditorPage() {
         <textarea
           ref={textareaRef}
           value={content}
-          onChange={e => setContent(e.target.value)}
+          onChange={e => { if (canEdit) setContent(e.target.value); }}
           onKeyDown={handleKeyDown}
+          readOnly={!canEdit}
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
           className="flex-1 resize-none bg-surface-base text-rmpg-100 p-4 font-mono text-[12px] leading-[1.6] outline-none border-none focus:ring-0 tab-scroll"
           style={{ tabSize: 2 }}
-          placeholder={loading ? '' : `${fileName} — start typing…`}
+          placeholder={`${fileName} — ${canEdit ? 'start typing…' : 'read-only'}`}
         />
       )}
+
+      {/* Revert confirm — replaces window.confirm */}
+      <ConfirmDialog
+        isOpen={revertOpen}
+        onClose={() => setRevertOpen(false)}
+        onConfirm={handleRevertConfirm}
+        title="Discard Changes"
+        message="Revert to the last saved version? All unsaved edits will be lost."
+        confirmLabel="Discard"
+        confirmVariant="warning"
+      />
+
+      {/* Delete confirm — gated to admin|manager via canDelete */}
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Document"
+        message={`Permanently delete "${fileName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
+
+      {/* N shortcut unsaved-changes gate — prompts before discarding and navigating to Documents */}
+      <ConfirmDialog
+        isOpen={newDocPendingOpen}
+        onClose={() => setNewDocPendingOpen(false)}
+        onConfirm={handleNewDocConfirm}
+        title="Unsaved Changes"
+        message="You have unsaved changes. Leave and browse Documents anyway?"
+        confirmLabel="Leave"
+        confirmVariant="warning"
+      />
     </div>
   );
 }
