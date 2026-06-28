@@ -454,7 +454,7 @@ export default function TrespassOrdersPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderToDelete, orderToLift, expirationCalendar, bulkMode, formOpen, canManage]);
+  }, [orderToDelete, expirationCalendar, bulkMode, formOpen, canManage]);
 
   // \u2500\u2500 Deep-link: ?order_id=<id> and ?person_id=<id> \u2500\u2500
   // Honors the Dashboard-emit / page-consume contract used across the
@@ -755,7 +755,7 @@ export default function TrespassOrdersPage() {
                   </>
                 )}
                 {canManage && (selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
-                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn text-rmpg-400" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'var(--rmpg-400)', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                   </button>
                 )}
