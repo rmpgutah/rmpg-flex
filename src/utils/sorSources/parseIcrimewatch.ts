@@ -34,8 +34,8 @@ export function stripTags(html: string): string {
     // Tag-strip pass — close tags may have whitespace before the `>`
     // (e.g. `</script >`), so allow optional \s* before the closing bracket.
     // CodeQL js/bad-tag-filter explicitly flags the unspaced variants.
-    .replace(/<script[\s\S]*?<\/script\s*>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style\s*>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script[^>]*>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style[^>]*>/gi, ' ')
     .replace(/<br\s*\/?>(?=)/gi, '\n')
     .replace(/<\/(td|tr|p|div|li)>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')

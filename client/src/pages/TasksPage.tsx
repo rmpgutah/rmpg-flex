@@ -77,6 +77,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
@@ -89,6 +90,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { getAuditEntityRoute } from '../utils/auditEntityRoute';
 import { describeDueDate, dueToneTextClass } from '../utils/taskDueCountdown';
 import { generateTasksPdf } from '../utils/taskPdf';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   ClipboardList, Clock, AlertTriangle, Plus, Pencil, Trash2, Eye,
   FileText, X, CheckCircle2, RotateCcw, ExternalLink,
@@ -131,6 +133,17 @@ export default function TasksPage() {
   const navigate = useNavigate();
   const { addToast } = useToast();
   const m = useMenuActions();
+  const { user } = useAuth();
+
+  // Backend role gates:
+  //   DELETE — admin | manager only
+  //   PUT    — admin | manager | supervisor | officer
+  //   POST   — admin | manager | supervisor (checklist: create gated)
+  // Mirror these client-side so a dispatcher/viewer doesn't see actions
+  // that will 403 on the server.
+  const canDelete = user?.role === 'admin' || user?.role === 'manager';
+  const canCreate = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+  const canAssign = canCreate;
 
   // ── State ──────────────────────────────────────────────────────
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -289,16 +302,16 @@ export default function TasksPage() {
       // 1) Confirm-delete dialog (ConfirmDialog handles its own Esc too,
       //    but this branch documents the cascade ordering and catches
       //    Esc bubbling that originated outside the dialog).
-      if (deleteId !== null) { setDeleteId(null); return; }
+      if (deleteId !== null) { e.stopPropagation(); setDeleteId(null); return; }
       // 2) Open form modal — FormModal already wires Esc internally,
       //    but a stray Esc on the page chrome should still close it.
-      if (formOpen) { setFormOpen(false); setEditingRecord(undefined); return; }
+      if (formOpen) { e.stopPropagation(); setFormOpen(false); setEditingRecord(undefined); return; }
       // 3) Active deep-link highlight
-      if (highlightId !== null) { setHighlightId(null); return; }
+      if (highlightId !== null) { e.stopPropagation(); setHighlightId(null); return; }
       // 4) Inline error banner
-      if (error) { setError(null); return; }
+      if (error) { e.stopPropagation(); setError(null); return; }
       // 5) Active filter set
-      if (hasActiveFilters) { setFilters(EMPTY_FILTERS); setAssigneeName(''); return; }
+      if (hasActiveFilters) { e.stopPropagation(); setFilters(EMPTY_FILTERS); setAssigneeName(''); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -306,11 +319,12 @@ export default function TasksPage() {
   }, [deleteId, formOpen, highlightId, error, hasActiveFilters]);
 
   // ── `N` shortcut to open a new task. Skips while a modal is open or
-  // a typing surface is focused. Matches the muscle memory established
-  // by GeographyPage / ServePage / DARs / CodeEnforcement / etc.
+  // a typing surface is focused. Gated by canCreate (admin|manager|supervisor).
+  // Matches the muscle memory established by GeographyPage / ServePage / DARs etc.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!canCreate) return;
       if (formOpen || deleteId !== null) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
@@ -321,7 +335,7 @@ export default function TasksPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [formOpen, deleteId, openNew]);
+  }, [canCreate, formOpen, deleteId, openNew]);
 
   const handleSubmit = async (data: TaskFormData) => {
     setFormSubmitting(true); setFormError(null);
@@ -432,7 +446,7 @@ export default function TasksPage() {
           // Brand-gold left rail when this is the deep-linked row.
           // Padding stays consistent so the rail doesn't shift the
           // text horizontally when it appears/disappears.
-          style={isHighlighted ? { borderLeft: '3px solid var(--rmpg-gold, #d4a017)', paddingLeft: 6 } : undefined}
+          style={isHighlighted ? { borderLeft: '3px solid var(--brand-gold)', paddingLeft: 6 } : undefined}
         >
           <div className="text-rmpg-100">{row.task_title}</div>
           {row.description && (
@@ -507,17 +521,19 @@ export default function TasksPage() {
         >
           <Pencil size={12} />
         </IconButton>
-        <IconButton
-          aria-label={`Delete task ${row.id}`}
-          onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }}
-          className="text-red-500 hover:text-red-300"
-        >
-          <Trash2 size={12} />
-        </IconButton>
+        {canDelete && (
+          <IconButton
+            aria-label={`Delete task ${row.id}`}
+            onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }}
+            className="text-red-500 hover:text-red-300"
+          >
+            <Trash2 size={12} />
+          </IconButton>
+        )}
       </div>
     )},
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [highlightId, openEdit]);
+  ], [highlightId, openEdit, canDelete]);
 
   // ── Render ─────────────────────────────────────────────────────
   return (
@@ -541,15 +557,17 @@ export default function TasksPage() {
         >
           <FileText size={13} /> Task PDF
         </button>
-        <button
-          type="button"
-          onClick={openNew}
-          className="toolbar-btn flex items-center gap-1.5"
-          style={{ height: 28, padding: '0 10px' }}
-          title="New task (shortcut: N)"
-        >
-          <Plus size={13} /> New Task
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={openNew}
+            className="toolbar-btn flex items-center gap-1.5"
+            style={{ height: 28, padding: '0 10px' }}
+            title="New task (shortcut: N)"
+          >
+            <Plus size={13} /> New Task
+          </button>
+        )}
       </PanelTitleBar>
 
       {/* Error banner — replaces the prior silent catch{}. Dismissable
@@ -587,7 +605,7 @@ export default function TasksPage() {
           >
             <option value="">All</option>
             {['pending', 'in_progress', 'review', 'completed', 'cancelled'].map((s) => (
-              <option key={s} value={s}>{s.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}</option>
+              <option key={s} value={s}>{toDisplayLabel(s)}</option>
             ))}
           </select>
         </div>
@@ -660,7 +678,7 @@ export default function TasksPage() {
         emptyMessage={hasActiveFilters ? 'No tasks match the active filters' : 'No tasks yet'}
         emptyDescription={hasActiveFilters
           ? 'Try widening the status / priority / assignee filter or toggling overdue-only.'
-          : 'Press N or click New Task above to create the first one.'}
+          : canCreate ? 'Press N or click New Task above to create the first one.' : 'No tasks have been created yet.'}
         emptyIcon={ClipboardList}
         onRowClick={(row) => openEdit(row)}
         rowContextMenu={(row) => {
@@ -679,8 +697,10 @@ export default function TasksPage() {
             m.copy('Copy task title', row.task_title),
             m.copy('Copy deep-link', selfLink),
             m.copyId(row.id),
-            m.separator(),
-            m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+            ...(canDelete ? [
+              m.separator(),
+              m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+            ] : []),
           ];
         }}
       />
@@ -692,6 +712,7 @@ export default function TasksPage() {
         isSubmitting={formSubmitting}
         editingRecord={editingRecord}
         submitError={formError}
+        canEscalatePriority={canAssign}
       />
 
       <ConfirmDialog

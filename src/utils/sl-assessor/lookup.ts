@@ -1,16 +1,13 @@
 // src/utils/sl-assessor/lookup.ts
 // Fallback orchestrator for the SLCo Assessor lookup. Order:
-//   1. Firecrawl scrape → structural parser
-//   2. Direct fetch (no scraper) → structural parser
-//   3. AI extract over whichever HTML we managed to grab
-//   4. Stale durable cache (last-known-good from any prior success)
+//   1. Fresh 30d KV cache
+//   2. Live fetch via client.ts (POST → redirect → parse; Firecrawl for multi-result)
+//   3. Stale durable cache (last-known-good from any prior success)
 //
 // Always returns a structured result — never throws. Routes use this so the
 // UI gets one consistent shape regardless of which layer (if any) succeeded.
 
-import { buildQueryUrl } from './client';
-import { parseParcelList, parseParcelDetail } from './parser';
-import { extractParcelsViaAi } from './aiExtract';
+import { buildQueryUrl, searchByAddress, getParcel } from './client';
 import {
   cacheKeyParcels, cacheKeyParcel,
   durableKeyParcels, durableKeyParcel,
@@ -19,16 +16,15 @@ import {
 import type { Parcel, ParcelSummary } from './types';
 
 export type LookupSource =
-  | 'firecrawl'      // structural parser on Firecrawl-rendered HTML
-  | 'direct'         // structural parser on a direct fetch
-  | 'ai'             // AI router extracted parcels from raw HTML
+  | 'direct'         // structural parser on a direct POST (single-result redirect)
+  | 'firecrawl'      // structural parser on Firecrawl-rendered HTML (multi-result)
   | 'stale_cache'    // last-known-good served because every live source failed
   | 'cache'          // fresh 30d-TTL cache hit (no upstream call needed)
   | 'none';          // nothing returned a result
 
 export type LookupCode =
   | 'ok'
-  | 'not_configured'   // no Firecrawl key AND no AI key — cannot try anything
+  | 'not_configured'   // no FIRECRAWL_API_KEY and no result from direct POST
   | 'no_match'         // chain ran, found nothing
   | 'upstream_error'   // every live source threw; stale cache also missing
   | 'timeout';
@@ -44,70 +40,12 @@ export interface LookupResult {
   parcels: ParcelSummary[];
   source: LookupSource;
   code: LookupCode;
-  /** True when source !== 'firecrawl' && source !== 'direct' — i.e. the user is
-   *  looking at AI-derived or stale data and should be told. */
+  /** True when source is stale_cache — the user is looking at possibly outdated data. */
   degraded: boolean;
-  /** Deep link to the manual SLCo Assessor search page — always populated so
-   *  the UI can offer a "search yourself" fallback even on total failure. */
+  /** Deep link to the manual SLCo Assessor search page — always present. */
   manual_url: string;
-  /** Short diagnostic for operators / logs. Safe to surface in dev tools. */
+  /** Short diagnostic for operators / logs. */
   diagnostic?: string;
-}
-
-const FC_SCRAPE = 'https://api.firecrawl.dev/v1/scrape';
-const ASSESSOR_BASE = 'https://apps.saltlakecounty.gov/assessor/new/query.cfm';
-const FETCH_TIMEOUT_MS = 25_000;
-const DIRECT_TIMEOUT_MS = 10_000;
-
-async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(`${label} timed out`), ms);
-  try { return await p; }
-  finally { clearTimeout(timer); }
-}
-
-async function firecrawlScrape(apiKey: string, url: string): Promise<string> {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(FC_SCRAPE, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url, formats: ['html'] }),
-      signal: ctl.signal,
-    });
-    if (!res.ok) throw new Error(`firecrawl ${res.status}`);
-    const json = await res.json() as any;
-    const html = json?.data?.html;
-    if (typeof html !== 'string') throw new Error('firecrawl returned no html');
-    return html;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-async function directFetch(url: string): Promise<string> {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), DIRECT_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      headers: {
-        // Mimic a desktop browser — SLCo's CF in front of query.cfm 403s pure
-        // curl-like UAs intermittently. Direct fetch is the cheap secondary
-        // path; if it 4xxs we just move on to the AI step.
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
-        Accept: 'text/html,application/xhtml+xml',
-      },
-      signal: ctl.signal,
-    });
-    if (!res.ok) throw new Error(`direct ${res.status}`);
-    return await res.text();
-  } finally {
-    clearTimeout(t);
-  }
 }
 
 /**
@@ -115,8 +53,8 @@ async function directFetch(url: string): Promise<string> {
  *
  * Cache strategy:
  * - Fresh (30d TTL) and durable (no TTL) keys are written on every success.
- * - We consult the fresh key BEFORE any network call.
- * - We consult the durable key ONLY when every live source failed.
+ * - Fresh key is consulted BEFORE any network call.
+ * - Durable key is consulted ONLY when every live source failed.
  *
  * @returns A LookupResult — never throws.
  */
@@ -125,62 +63,28 @@ export async function lookupParcelsWithFallback(
   address: string,
 ): Promise<LookupResult> {
   const manual_url = buildQueryUrl(address);
-  const errs: string[] = [];
+  let lastErr = '';
 
-  // 0. Fresh cache hit — shortest path, no upstream calls.
+  // 0. Fresh cache hit.
   const fresh = await getCached<ParcelSummary[]>({ KV: env.KV }, cacheKeyParcels(address));
   if (fresh && Array.isArray(fresh) && fresh.length > 0) {
     return { parcels: fresh, source: 'cache', code: 'ok', degraded: false, manual_url };
   }
 
-  // 1. Firecrawl — rendered HTML, then structural parse.
-  let firecrawlHtml = '';
-  if (env.FIRECRAWL_API_KEY) {
-    try {
-      firecrawlHtml = await firecrawlScrape(env.FIRECRAWL_API_KEY, manual_url);
-      const parsed = parseParcelList(firecrawlHtml);
-      if (parsed.length > 0) {
-        await putCached({ KV: env.KV }, cacheKeyParcels(address), parsed);
-        await putCachedDurable({ KV: env.KV }, durableKeyParcels(address), parsed);
-        return { parcels: parsed, source: 'firecrawl', code: 'ok', degraded: false, manual_url };
-      }
-    } catch (e) {
-      errs.push(`firecrawl: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  } else {
-    errs.push('firecrawl: no api key');
-  }
-
-  // 2. Direct fetch — free, sometimes works for non-JS-rendered pages.
-  let directHtml = '';
+  // 1. Live lookup (POST → single-result redirect, or Firecrawl for multi-result).
   try {
-    directHtml = await directFetch(manual_url);
-    const parsed = parseParcelList(directHtml);
-    if (parsed.length > 0) {
-      await putCached({ KV: env.KV }, cacheKeyParcels(address), parsed);
-      await putCachedDurable({ KV: env.KV }, durableKeyParcels(address), parsed);
-      return { parcels: parsed, source: 'direct', code: 'ok', degraded: false, manual_url };
+    const parcels = await searchByAddress(env, address);
+    if (parcels.length > 0) {
+      await putCached({ KV: env.KV }, cacheKeyParcels(address), parcels);
+      await putCachedDurable({ KV: env.KV }, durableKeyParcels(address), parcels);
+      return { parcels, source: 'direct', code: 'ok', degraded: false, manual_url };
     }
+    lastErr = 'no match from direct POST or firecrawl';
   } catch (e) {
-    errs.push(`direct: ${e instanceof Error ? e.message : String(e)}`);
+    lastErr = e instanceof Error ? e.message : String(e);
   }
 
-  // 3. AI extract — pricey, only fires if we have HTML AND an AI router.
-  const html = firecrawlHtml || directHtml;
-  if (html && env.AI && env.DB) {
-    try {
-      const parsed = await extractParcelsViaAi({ DB: env.DB, AI: env.AI }, html, address);
-      if (parsed.length > 0) {
-        await putCached({ KV: env.KV }, cacheKeyParcels(address), parsed);
-        await putCachedDurable({ KV: env.KV }, durableKeyParcels(address), parsed);
-        return { parcels: parsed, source: 'ai', code: 'ok', degraded: true, manual_url, diagnostic: errs.join(' | ') || undefined };
-      }
-    } catch (e) {
-      errs.push(`ai: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-
-  // 4. Stale durable cache — last-known-good from any prior success.
+  // 2. Stale durable cache — last-known-good from any prior success.
   const stale = await getCached<ParcelSummary[]>({ KV: env.KV }, durableKeyParcels(address));
   if (stale && Array.isArray(stale) && stale.length > 0) {
     return {
@@ -189,25 +93,25 @@ export async function lookupParcelsWithFallback(
       code: 'ok',
       degraded: true,
       manual_url,
-      diagnostic: errs.join(' | ') || undefined,
+      diagnostic: lastErr || undefined,
     };
   }
 
-  // 5. Nothing worked.
-  const noKey = !env.FIRECRAWL_API_KEY && !env.AI;
+  // 3. Nothing worked.
   return {
     parcels: [],
     source: 'none',
-    code: noKey ? 'not_configured' : (html ? 'no_match' : 'upstream_error'),
+    code: lastErr ? 'upstream_error' : 'no_match',
     degraded: false,
     manual_url,
-    diagnostic: errs.join(' | ') || undefined,
+    diagnostic: lastErr || undefined,
   };
 }
 
-// ----------------------------------------------------------------------------
-// Single-parcel detail variant. Same chain shape, but parses the detail page.
-// ----------------------------------------------------------------------------
+// ────────────────────────────────────────────────────────────────────────────
+// Single-parcel detail variant. Same chain shape; getParcel() hits the
+// valuationInfoExpanded.cfm detail URL directly (no form POST needed).
+// ────────────────────────────────────────────────────────────────────────────
 
 export interface ParcelLookupResult {
   parcel: Parcel | null;
@@ -222,53 +126,26 @@ export async function lookupParcelWithFallback(
   env: LookupEnv,
   parcelNo: string,
 ): Promise<ParcelLookupResult> {
-  const url = `${ASSESSOR_BASE}?parcel=${encodeURIComponent(parcelNo)}`;
-  const errs: string[] = [];
+  const manual_url = buildQueryUrl(parcelNo);
+  let lastErr = '';
 
+  // 0. Fresh cache.
   const fresh = await getCached<Parcel>({ KV: env.KV }, cacheKeyParcel(parcelNo));
   if (fresh && fresh.parcel_number) {
-    return { parcel: fresh, source: 'cache', code: 'ok', degraded: false, manual_url: url };
+    return { parcel: fresh, source: 'cache', code: 'ok', degraded: false, manual_url };
   }
 
-  // Firecrawl + structural parse.
-  let firecrawlHtml = '';
-  if (env.FIRECRAWL_API_KEY) {
-    try {
-      firecrawlHtml = await firecrawlScrape(env.FIRECRAWL_API_KEY, url);
-      try {
-        const parsed = parseParcelDetail(firecrawlHtml);
-        parsed.source_url = url;
-        await putCached({ KV: env.KV }, cacheKeyParcel(parcelNo), parsed);
-        await putCachedDurable({ KV: env.KV }, durableKeyParcel(parcelNo), parsed);
-        return { parcel: parsed, source: 'firecrawl', code: 'ok', degraded: false, manual_url: url };
-      } catch (e) {
-        errs.push(`parse: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    } catch (e) {
-      errs.push(`firecrawl: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  } else {
-    errs.push('firecrawl: no api key');
-  }
-
-  // Direct fetch fallback.
-  let directHtml = '';
+  // 1. Direct detail page (valuationInfoExpanded.cfm?parcel_id=<digits>).
   try {
-    directHtml = await directFetch(url);
-    try {
-      const parsed = parseParcelDetail(directHtml);
-      parsed.source_url = url;
-      await putCached({ KV: env.KV }, cacheKeyParcel(parcelNo), parsed);
-      await putCachedDurable({ KV: env.KV }, durableKeyParcel(parcelNo), parsed);
-      return { parcel: parsed, source: 'direct', code: 'ok', degraded: false, manual_url: url };
-    } catch (e) {
-      errs.push(`parse-direct: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    const parcel = await getParcel(env, parcelNo);
+    await putCached({ KV: env.KV }, cacheKeyParcel(parcelNo), parcel);
+    await putCachedDurable({ KV: env.KV }, durableKeyParcel(parcelNo), parcel);
+    return { parcel, source: 'direct', code: 'ok', degraded: false, manual_url };
   } catch (e) {
-    errs.push(`direct: ${e instanceof Error ? e.message : String(e)}`);
+    lastErr = e instanceof Error ? e.message : String(e);
   }
 
-  // Stale cache — last-known-good.
+  // 2. Stale durable cache.
   const stale = await getCached<Parcel>({ KV: env.KV }, durableKeyParcel(parcelNo));
   if (stale && stale.parcel_number) {
     return {
@@ -276,22 +153,17 @@ export async function lookupParcelWithFallback(
       source: 'stale_cache',
       code: 'ok',
       degraded: true,
-      manual_url: url,
-      diagnostic: errs.join(' | ') || undefined,
+      manual_url,
+      diagnostic: lastErr || undefined,
     };
   }
 
-  const noKey = !env.FIRECRAWL_API_KEY;
   return {
     parcel: null,
     source: 'none',
-    code: noKey ? 'not_configured' : ((firecrawlHtml || directHtml) ? 'no_match' : 'upstream_error'),
+    code: lastErr ? 'upstream_error' : 'no_match',
     degraded: false,
-    manual_url: url,
-    diagnostic: errs.join(' | ') || undefined,
+    manual_url,
+    diagnostic: lastErr || undefined,
   };
 }
-
-// Re-export withTimeout in case other callers want it — currently unused
-// externally but the symbol is useful for future fallback layers.
-export { withTimeout };
