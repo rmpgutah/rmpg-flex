@@ -13,7 +13,6 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { routeForEntity } from '../utils/notificationRouting';
 import { useAuth } from '../context/AuthContext';
-import { toDisplayLabel } from '../utils/formatters';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
@@ -286,7 +285,7 @@ export default function NotificationsPage() {
         const tag = t.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
       }
-      if (confirmDeleteId !== null || confirmClearRead || confirmCleanupOld || showPrefs) return;
+      if (confirmClearRead || confirmCleanupOld || showPrefs) return;
       if (!stats || stats.totalUnread === 0) return;
       e.preventDefault();
       void markAllRead();
@@ -294,7 +293,7 @@ export default function NotificationsPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmDeleteId, confirmClearRead, confirmCleanupOld, showPrefs, stats]);
+  }, [confirmClearRead, confirmCleanupOld, showPrefs, stats]);
 
   const deleteNotification = async (id: number) => {
     try {
