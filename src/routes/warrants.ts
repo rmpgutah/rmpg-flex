@@ -1708,9 +1708,9 @@ warrants.put('/:id{\\d+}/serve', requireRole(...ROLES_CRUD_WRITE), async (c) => 
       db,
       `UPDATE warrants
           SET status = 'served', served_by = ?, served_at = datetime('now'),
-              served_location = ?, updated_at = datetime('now')
+              updated_at = datetime('now')
         WHERE id = ?`,
-      user.id, servedLocation, id,
+      user.id, id,
     );
 
     const updated = await queryFirst<Record<string, unknown>>(

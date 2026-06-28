@@ -36,17 +36,11 @@ export interface RouteStep {
 }
 
 export interface RouteInfo {
-  /** Origin unit call sign */
   unitCallSign: string;
-  /** Destination call number */
   callNumber: string;
-  /** Driving ETA text (e.g. "8 min") */
   eta: string;
-  /** Driving distance text (e.g. "3.2 mi") */
   distance: string;
-  /** Raw duration in seconds */
   durationSec: number;
-  /** Raw distance in meters */
   distanceMeters: number;
   /** Point-by-point turn-by-turn directions (unit → call). */
   steps: RouteStep[];
@@ -264,7 +258,22 @@ const MULTI_SOURCE_ID = 'rmpg-multi-route-source';
 const MULTI_CASING_LAYER_ID = 'rmpg-multi-route-casing';
 const MULTI_LAYER_ID = 'rmpg-multi-route-layer';
 
-// ─── Hook ───────────────────────────────────────────────────
+function parseDuration(seconds: number): string {
+  if (seconds < 60) return '<1 min';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function parseDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
+const SOURCE_ID = 'route-source';
+const LAYER_ID = 'route-line';
 
 // ─── Coordinate validation guardrail ────────────────────────
 function validateCoordinate(lat: number, lng: number): { valid: boolean; reason?: string } {
@@ -447,6 +456,20 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
             modifier: man.modifier,
           };
         });
+
+        const durationSec = leg.duration || 0;
+        const distanceMeters = leg.distance || 0;
+
+        ensureRouteLayer();
+
+        const geojsonSource = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
+        if (geojsonSource) {
+          geojsonSource.setData({
+            type: 'Feature',
+            geometry: route.geometry,
+            properties: {},
+          });
+        }
 
         const info: RouteInfo = {
           unitCallSign: metaRef.current.unitCallSign,

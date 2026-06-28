@@ -483,8 +483,12 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   };
 
   // ── Trigger immediate media sync ──
+  // The Worker fires the sync via waitUntil and returns { started: true }
+  // immediately — video downloads can take 90 s+, so we don't block on them.
+  // Refresh stats 5 s after the response to catch the first completed clips.
   const handleSyncNow = async () => {
     setSyncing(true);
+    setError(null);
     try {
       await apiFetch<{ started: boolean }>('/clearpathgps/media-sync-now', { method: 'POST' });
       setError(null);
@@ -494,6 +498,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       setError(err instanceof Error ? err.message : 'Media sync failed');
       setSyncing(false);
     }
+    setSyncing(false);
   };
 
   // ── Auto-map dashcam devices ──
@@ -1145,7 +1150,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                   >
                     <Camera className="w-3 h-3 text-rmpg-400 shrink-0" />
                     <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase border ${typeColor}`}>
-                      {evt.event_type.replace(/_/g, ' ')}
+                      {evt.event_type.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     {evt.call_sign && (
                       <span className="text-brand-400 font-mono font-medium">{evt.call_sign}</span>
