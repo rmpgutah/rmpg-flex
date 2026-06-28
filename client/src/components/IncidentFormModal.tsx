@@ -1175,6 +1175,112 @@ export default function IncidentFormModal({
         </>
       )}
 
+      {/* ── PSO / Process Service Section ── */}
+      {activeSection === 'pso' && (
+        <>
+          {/* Service Type + Contract / Billing */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">PSO Service Type</label>
+              <select className="select-dark mt-1" value={formData.pso_service_type} onChange={(e) => update('pso_service_type', e.target.value)}>
+                <option value="">-- Select --</option>
+                <option value="patrol">Patrol</option>
+                <option value="standing_post">Standing Post</option>
+                <option value="escort">Escort</option>
+                <option value="process_service">Process Service</option>
+                <option value="alarm_response">Alarm Response</option>
+                <option value="event_security">Event Security</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Process Service Type</label>
+              <select className="select-dark mt-1" value={formData.process_service_type} onChange={(e) => update('process_service_type', e.target.value)}>
+                <option value="">-- Select --</option>
+                <option value="subpoena">Subpoena</option>
+                <option value="summons">Summons</option>
+                <option value="complaint">Complaint</option>
+                <option value="eviction">Eviction</option>
+                <option value="restraining_order">Restraining Order</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Billing / Authorization */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Billing Code / Contract ID</label>
+              <input type="text" className="input-dark mt-1" placeholder="Contract or billing code" value={formData.pso_billing_code} onChange={(e) => update('pso_billing_code', e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Authorization / PO Number</label>
+              <input type="text" className="input-dark mt-1" placeholder="Auth or PO number" value={formData.pso_authorization} onChange={(e) => update('pso_authorization', e.target.value)} />
+            </div>
+          </div>
+
+          {/* Requestor Info */}
+          <div className="border border-rmpg-600 p-3 space-y-3">
+            <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Client / Requestor Info</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Requestor Name</label>
+                <input type="text" className="input-dark mt-1" placeholder="Contact name" value={formData.pso_requestor_name} onChange={(e) => update('pso_requestor_name', e.target.value)} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
+                <input type="tel" className="input-dark mt-1" placeholder="(801) 555-0000" value={formData.pso_requestor_phone} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>
+                <input type="email" className="input-dark mt-1" placeholder="contact@example.com" value={formData.pso_requestor_email} onChange={(e) => update('pso_requestor_email', e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Service Details */}
+          <div className="border border-rmpg-600 p-3 space-y-3">
+            <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Service Details</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served To</label>
+                <input type="text" className="input-dark mt-1" placeholder="Name of person served" value={formData.process_served_to} onChange={(e) => update('process_served_to', e.target.value)} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served Address</label>
+                <input type="text" className="input-dark mt-1" placeholder="Address where served" value={formData.process_served_address} onChange={(e) => update('process_served_address', e.target.value)} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served At</label>
+                <input type="datetime-local" className="input-dark mt-1" value={formData.process_served_at} onChange={(e) => update('process_served_at', e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Attempt #</label>
+                <input type="number" min="1" className="input-dark mt-1" placeholder="1" value={formData.process_attempts} onChange={(e) => update('process_attempts', e.target.value)} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">PSO Attempt #</label>
+                <input type="number" min="1" className="input-dark mt-1" placeholder="1" value={formData.pso_attempt_number} onChange={(e) => update('pso_attempt_number', e.target.value)} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Service Result</label>
+                <select className="select-dark mt-1" value={formData.process_service_result} onChange={(e) => update('process_service_result', e.target.value)}>
+                  <option value="">-- Select --</option>
+                  <option value="served">Served</option>
+                  <option value="not_served">Not Served</option>
+                  <option value="refused">Refused</option>
+                  <option value="left_at_door">Left at Door</option>
+                  <option value="substitute_service">Substitute Service</option>
+                  <option value="unable_to_locate">Unable to Locate</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Flags & LE Section ── */}
       {activeSection === 'flags' && (
         <>
