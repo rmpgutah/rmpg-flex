@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import config from './config';
 import { initDatabase } from './models/database';
