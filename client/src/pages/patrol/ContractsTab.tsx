@@ -49,37 +49,37 @@ export default function ContractsTab() {
         <ul className="mt-2 text-[11px]">
           {contracts.map((c) => (
             <li key={c.id}>
-              <button className={`w-full text-left px-2 py-[3px] border-b border-[#121212] ${selected?.id === c.id ? 'text-[#d4a017]' : 'text-[#ccc]'}`} onClick={() => openContract(c)}>
-                {c.contract_number ?? `#${c.id}`} — {c.client_name ?? c.client_id} <span className="text-[#666]">({c.status})</span>
+              <button className={`w-full text-left px-2 py-[3px] border-b border-border-subtle ${selected?.id === c.id ? 'text-[var(--brand-gold)]' : 'text-rmpg-300'}`} onClick={() => openContract(c)}>
+                {c.contract_number ?? `#${c.id}`} — {c.client_name ?? c.client_id} <span className="text-rmpg-500">({c.status})</span>
               </button>
             </li>
           ))}
-          {contracts.length === 0 && <li className="text-[#888] px-2">No process-service contracts.</li>}
+          {contracts.length === 0 && <li className="text-[var(--spm-text-muted)] px-2">No process-service contracts.</li>}
         </ul>
       </div>
 
       <div>
-        {!selected ? <div className="text-[11px] text-[#888]">Select a contract.</div> : (
+        {!selected ? <div className="text-[11px] text-[var(--spm-text-muted)]">Select a contract.</div> : (
           <div className="space-y-4">
             <PanelTitleBar title={`TERMS — ${selected.contract_number ?? selected.id}`} icon={FileText} />
             {terms && (
               <div className="space-y-2 text-[11px]">
                 <label className="block">Billing trigger
-                  <select className="ml-2 bg-[#0b0b0b] border border-[#232323] px-1" value={terms.billing_trigger} onChange={(e) => setTerms({ ...terms, billing_trigger: e.target.value })}>
+                  <select className="ml-2 bg-surface-sunken border border-border-default px-1" value={terms.billing_trigger} onChange={(e) => setTerms({ ...terms, billing_trigger: e.target.value })}>
                     {['on_completion', 'on_service', 'per_attempt', 'manual'].map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </label>
-                <label className="block">SLA days <input type="number" className="ml-2 bg-[#0b0b0b] border border-[#232323] px-1 w-20" value={terms.sla_days ?? ''} onChange={(e) => setTerms({ ...terms, sla_days: e.target.value === '' ? null : Number(e.target.value) })} /></label>
-                <label className="block">Retainer <input type="number" step="0.01" className="ml-2 bg-[#0b0b0b] border border-[#232323] px-1 w-24" value={terms.retainer_amount ?? ''} onChange={(e) => setTerms({ ...terms, retainer_amount: e.target.value === '' ? null : Number(e.target.value) })} /></label>
+                <label className="block">SLA days <input type="number" className="ml-2 bg-surface-sunken border border-border-default px-1 w-20" value={terms.sla_days ?? ''} onChange={(e) => setTerms({ ...terms, sla_days: e.target.value === '' ? null : Number(e.target.value) })} /></label>
+                <label className="block">Retainer <input type="number" step="0.01" className="ml-2 bg-surface-sunken border border-border-default px-1 w-24" value={terms.retainer_amount ?? ''} onChange={(e) => setTerms({ ...terms, retainer_amount: e.target.value === '' ? null : Number(e.target.value) })} /></label>
 
-                <div className="mt-2 font-semibold text-[#888]">Per-contract rate overrides (blank = use rate card)</div>
-                <table className="w-full">
+                <div className="mt-2 font-semibold text-[var(--spm-text-muted)]">Per-contract rate overrides (blank = use rate card)</div>
+                <div className="overflow-x-auto"><table className="w-full">
                   <tbody>
                     {pricing.filter((p) => p.is_active).map((p) => (
                       <tr key={p.code}>
-                        <td className="text-[#ccc]">{p.label} <span className="text-[#666]">({formatUsd(p.amount)} default)</span></td>
+                        <td className="text-rmpg-300">{p.label} <span className="text-rmpg-500">({formatUsd(p.amount)} default)</span></td>
                         <td className="text-right">
-                          <input type="number" step="0.01" placeholder="—" className="bg-[#0b0b0b] border border-[#232323] px-1 w-24 text-right"
+                          <input type="number" step="0.01" placeholder="—" className="bg-surface-sunken border border-border-default px-1 w-24 text-right"
                             value={overrides[p.code] ?? ''} onChange={(e) => {
                               const v = e.target.value;
                               setOverrides((o) => { const n = { ...o }; if (v === '') delete n[p.code]; else n[p.code] = Number(v); return n; });
@@ -88,24 +88,24 @@ export default function ContractsTab() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-                <button className="mt-2 px-3 py-1 bg-[#d4a017] text-black" onClick={saveTerms}>Save Terms</button>
+                </table></div>
+                <button className="mt-2 px-3 py-1 bg-[var(--brand-gold)] text-black" onClick={saveTerms}>Save Terms</button>
               </div>
             )}
 
             <PanelTitleBar title="AUDIT HISTORY" icon={History} />
-            <table className="w-full text-[10px]">
+            <div className="overflow-x-auto"><table className="w-full text-[10px]">
               <tbody>
                 {audit.map((a) => (
-                  <tr key={a.id} className="border-b border-[#121212]">
-                    <td className="text-[#666] py-[2px]">{a.created_at}</td>
-                    <td className="text-[#d4a017]">{a.action}</td>
-                    <td className="text-[#888]">{a.user_name ?? '—'}</td>
+                  <tr key={a.id} className="border-b border-border-subtle">
+                    <td className="text-rmpg-500 py-[2px]">{a.created_at}</td>
+                    <td className="text-[var(--brand-gold)]">{a.action}</td>
+                    <td className="text-[var(--spm-text-muted)]">{a.user_name ?? '—'}</td>
                   </tr>
                 ))}
-                {audit.length === 0 && <tr><td className="text-[#888] py-[2px]">No history yet.</td></tr>}
+                {audit.length === 0 && <tr><td className="text-[var(--spm-text-muted)] py-[2px]">No history yet.</td></tr>}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
       </div>

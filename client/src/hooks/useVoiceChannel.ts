@@ -141,7 +141,7 @@ export function useVoiceChannel(): UseVoiceChannelResult {
 
       sock.onopen = () => {
         if (!alive) return;
-        attempts = 0;
+        attempts = 0; // reset so backoff starts fresh after each clean reconnect
         try { sock.send(JSON.stringify({ type: 'authenticate', token })); } catch { /* in-flight */ }
       };
 
@@ -164,10 +164,12 @@ export function useVoiceChannel(): UseVoiceChannelResult {
         if (!alive) return;
         // Don't leave the mic muted if the monitor drops mid-transmission.
         channelRef.current?.setRadioActive(false);
-        if (attempts < 6) {
-          attempts++;
-          retry = setTimeout(open, Math.min(1000 * attempts, 5000));
-        }
+        attempts++;
+        // No cap — keep retrying indefinitely with exponential backoff (max 30s).
+        // A hard cap of 6 could be exhausted in one Worker deployment cycle
+        // (each "script upgraded" close counts as one attempt), permanently
+        // breaking radio-channel mic muting until the component remounts.
+        retry = setTimeout(open, Math.min(500 * attempts, 30000));
       };
       sock.onerror = () => { try { sock.close(); } catch { /* noop */ } };
     };

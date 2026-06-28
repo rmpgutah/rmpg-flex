@@ -85,7 +85,7 @@ export default function WelfareCheckModal() {
       <div
         className={`w-full max-w-xl border-4 p-6 space-y-5 ${urgent ? 'animate-pulse' : ''}`}
         style={{
-          background: '#0a0a0a',
+          background: 'var(--surface-overlay)',
           borderColor: urgent ? '#ef4444' : '#d4a017',
           borderRadius: 2,
           boxShadow: `0 0 50px ${urgent ? '#ef4444' : '#d4a017'}`,
@@ -94,7 +94,7 @@ export default function WelfareCheckModal() {
         <div className="flex items-center gap-3 border-b pb-4" style={{ borderColor: urgent ? '#ef4444' : '#d4a017' }}>
           <Activity className={`w-9 h-9 ${urgent ? 'text-red-500' : 'text-brand-gold-500'}`} />
           <div className="flex-1">
-            <div id="welfare-title" className="text-2xl font-black uppercase tracking-wider text-white">
+            <div id="welfare-title" className="text-2xl font-black uppercase tracking-wider text-rmpg-100">
               Welfare Check
             </div>
             <div className="text-[10px] uppercase tracking-wider text-rmpg-300 font-bold">
@@ -108,7 +108,7 @@ export default function WelfareCheckModal() {
           </div>
         </div>
 
-        <div className="text-sm text-white leading-relaxed">
+        <div className="text-sm text-rmpg-100 leading-relaxed">
           {active.message || 'Dispatch requesting status check. Please confirm.'}
         </div>
 
@@ -146,7 +146,7 @@ export default function WelfareCheckModal() {
             onClick={() => handle('snooze')}
             disabled={submitting !== null}
             className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
-            style={{ background: '#444', color: '#fff', borderRadius: 2 }}
+            style={{ background: 'var(--surface-raised)', color: 'var(--text-primary)', borderRadius: 2 }}
           >
             {submitting === 'snooze' ? '…' : 'SNOOZE 5'}
           </button>

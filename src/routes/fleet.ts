@@ -4,6 +4,9 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { verifySignedResource } from '../utils/signedAccess';
 import { summarizeInspection } from '../utils/vehicleInspection';
+import { isEvidenceLocked } from '../utils/evidenceLock';
+import { recordAudit } from '../utils/auditLog';
+import { emitFleetioEvent } from '../utils/fleetio/events';
 
 const fleet = new Hono<Env>();
 
@@ -812,8 +815,29 @@ fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), asy
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
-    const existing = await queryFirst<{ id: number; file_path?: string | null }>(db, 'SELECT id, file_path FROM dashcam_videos WHERE id = ?', id);
+    const existing = await queryFirst<{ id: number; file_path?: string | null; retention_status?: string | null; classification?: string | null; case_number?: string | null }>(
+      db,
+      'SELECT id, file_path, retention_status, classification, case_number FROM dashcam_videos WHERE id = ?',
+      id,
+    );
     if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+
+    // Server-side evidence-lock with admin override. See bodyCameras.ts
+    // for the matching pattern. Non-admin (manager only on this route)
+    // still gets 409; admin can pass ?force=true with audit_log entry.
+    const user = c.get('user') as { role?: string; id?: number } | undefined;
+    const force = c.req.query('force') === 'true';
+    const canForce = force && user?.role === 'admin';
+    const locked = isEvidenceLocked(existing.retention_status);
+    if (locked && !canForce) {
+      return c.json({
+        error: 'Video under hold',
+        detail: `Retention status "${existing.retention_status}" indicates an active hold. Release the hold before deleting, OR pass ?force=true as admin.`,
+        canOverride: user?.role === 'admin',
+        retention_status: existing.retention_status,
+      }, 409);
+    }
+
     try { await execute(db, 'DELETE FROM dashcam_video_links WHERE video_id = ?', id); } catch { /* links table may be absent */ }
     await execute(db, 'DELETE FROM dashcam_videos WHERE id = ?', id);
     if (existing.file_path) {
@@ -821,6 +845,18 @@ fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), asy
       // is preferable to a 500 after a successful delete.
       await c.env.UPLOADS.delete(existing.file_path).catch(() => undefined);
     }
+
+    try {
+      await recordAudit(c, {
+        action: locked && canForce ? 'dashcam_video_force_deleted' : 'dashcam_video_deleted',
+        entityType: 'dashcam_video',
+        entityId: id,
+        details: locked && canForce
+          ? `ADMIN OVERRIDE: held video destroyed (retention=${existing.retention_status}; classification=${existing.classification ?? 'n/a'}; case=${existing.case_number ?? 'n/a'})`
+          : `Classification=${existing.classification ?? 'n/a'}; case=${existing.case_number ?? 'n/a'}; retention=${existing.retention_status ?? 'n/a'}`,
+      });
+    } catch { /* best-effort audit */ }
+
     return c.json({ success: true });
   } catch (err) {
     console.error('DELETE /fleet/dashcam-videos/:id failed:', err);
@@ -1084,6 +1120,22 @@ fleet.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM fleet_vehicles WHERE id = ?', newId,
     );
+
+    // Fleet.io outbound (PR 3 catalog kind 'vehicle.create'). New vehicles
+    // need to land in Fleet.io so PM schedules / inspections / fuel entries
+    // can attach to them on the Fleet.io side. waitUntil keeps the response
+    // latency unchanged; try/catch guards the test runtime where executionCtx
+    // is undefined.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'vehicle.create', created, {
+          rmpgTable: 'fleet_vehicles',
+          rmpgId: Number(newId),
+          versionToken: `create:${newId}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests — emit is best-effort */ }
+
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /fleet failed:', err);
@@ -1143,6 +1195,23 @@ fleet.put('/:id{[0-9]+}', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM fleet_vehicles WHERE id = ?', id,
     );
+
+    // Fleet.io outbound queue (PR 3). One call site per write path; the
+    // 30-min reconciliation cron (today a stub from PR 1, real consumer
+    // in PR 4) drains pending events into Fleet.io. We pass the row's
+    // updated_at as the versionToken so a second identical PUT in the
+    // same tick dedupes via the UNIQUE (direction, event_id) constraint.
+    // waitUntil keeps the request reply fast (<no network on the hot path).
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'vehicle.update', updated, {
+          rmpgTable: 'fleet_vehicles',
+          rmpgId: id,
+          versionToken: String(updated?.updated_at ?? new Date().toISOString()),
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests — emit is best-effort */ }
+
     return c.json(updated);
   } catch (err) {
     console.error('PUT /fleet/:id failed:', err);
@@ -1185,6 +1254,21 @@ fleet.delete('/:id{[0-9]+}', async (c) => {
        WHERE id = ?`,
       id,
     );
+
+    // Fleet.io outbound 'vehicle.delete' — Fleet.io should mirror our archive
+    // by archiving its own vehicle row (the sync engine maps this to the
+    // Fleet.io PATCH endpoint with archived: true). We send a tombstone-shape
+    // payload because the row is already archived locally.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'vehicle.delete', { id, archived: true }, {
+          rmpgTable: 'fleet_vehicles',
+          rmpgId: id,
+          versionToken: `delete:${id}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json({ success: true, id });
   } catch (err) {
     console.error('DELETE /fleet/:id failed:', err);
@@ -1331,6 +1415,21 @@ fleet.post('/:id/fuel', async (c) => {
     const isFullTank = body.is_full_tank == null ? 1 : (body.is_full_tank ? 1 : 0);
     const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location, mpg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null, isFullTank, body.payment_method ?? null, body.driver_name ?? null, body.location ?? null, body.mpg ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', result.meta.last_row_id);
+
+    // Fleet.io outbound queue (PR 3) — see the equivalent emit on PUT /:id
+    // (vehicle update) for the rationale. Token = last_row_id (immutable for
+    // this fuel row) so a second POST that lands with the same id (would
+    // only happen if a write got replayed at the framework level) dedupes.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'fuel.create', created, {
+          rmpgTable: 'fleet_fuel_log',
+          rmpgId: Number(result.meta.last_row_id),
+          versionToken: `create:${result.meta.last_row_id}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/fuel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
@@ -1361,6 +1460,20 @@ fleet.put('/fuel/:id', async (c) => {
     bindings.push(fuelId);
     await execute(db, `UPDATE fleet_fuel_log SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', fuelId);
+
+    // Fleet.io outbound 'fuel.update' — Fleet.io edits the corresponding
+    // fuel_entry. versionToken uses updated_at if present so retries against
+    // the same shape dedupe.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'fuel.update', updated, {
+          rmpgTable: 'fleet_fuel_log',
+          rmpgId: fuelId,
+          versionToken: String(updated?.updated_at ?? `update:${Date.now()}:${fuelId}`),
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json(updated);
   } catch (err) { console.error('PUT /fleet/fuel/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
@@ -1372,6 +1485,19 @@ fleet.delete('/fuel/:id', async (c) => {
     if (!Number.isInteger(fuelId) || fuelId <= 0) return c.json({ error: 'Invalid fuel log id' }, 400);
     const db = getDb(c.env);
     await execute(db, 'DELETE FROM fleet_fuel_log WHERE id = ?', fuelId);
+
+    // Fleet.io outbound 'fuel.delete' — tombstone shape (id + deleted flag);
+    // the row is gone locally so a SELECT would return undefined.
+    try {
+      c.executionCtx.waitUntil(
+        emitFleetioEvent(c, 'fuel.delete', { id: fuelId, deleted: true }, {
+          rmpgTable: 'fleet_fuel_log',
+          rmpgId: fuelId,
+          versionToken: `delete:${fuelId}`,
+        }),
+      );
+    } catch { /* executionCtx unavailable in tests */ }
+
     return c.json({ success: true });
   } catch (err) { console.error('DELETE /fleet/fuel/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
@@ -3928,6 +4054,64 @@ fleet.get('/daily-gps-mileage', async (c) => {
     return c.json({ daily_mileage: result });
   } catch (err) {
     console.error('GET /fleet/daily-gps-mileage failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── GET /:id/gps-history — breadcrumb trail + dashcam events for a vehicle ──
+// Drives FleetGpsHistoryTab. A vehicle's telematics keys off its ASSIGNED
+// UNIT (fleet_vehicles.assigned_unit_id → gps_breadcrumbs.unit_id /
+// dashcam_events.unit_id), so an unassigned vehicle has no history and we
+// return unit_id:null + a message (the tab renders a "Not assigned" empty
+// state). Response shape matches the tab's Breadcrumb / DashcamEvent
+// interfaces — columns those interfaces declare but the tables don't carry
+// (odometer/ignition/driver_name/city/state_province) are aliased NULL.
+fleet.get('/:id/gps-history', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId)) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '7', 10)));
+    const limit = Math.min(5000, Math.max(1, parseInt(c.req.query('limit') || '1000', 10)));
+
+    const veh = await queryFirst<{ assigned_unit_id: number | null }>(db,
+      'SELECT assigned_unit_id FROM fleet_vehicles WHERE id = ?', vehicleId);
+    if (!veh) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    if (veh.assigned_unit_id == null) {
+      return c.json({ breadcrumbs: [], dashcam_events: [], unit_id: null, message: 'Vehicle is not assigned to a unit' });
+    }
+    const unitId = veh.assigned_unit_id;
+
+    const breadcrumbs = await query<Record<string, unknown>>(db, `
+      SELECT id, latitude, longitude, accuracy, heading, speed, unit_status,
+             call_sign, officer_name, current_call_number, current_call_type,
+             recorded_at, road_name, nearest_intersection, gps_source,
+             NULL AS odometer, NULL AS ignition
+      FROM gps_breadcrumbs
+      WHERE unit_id = ? AND recorded_at >= datetime('now', ?)
+      ORDER BY recorded_at DESC, id DESC
+      LIMIT ?
+    `, unitId, `-${days} days`, limit);
+
+    // dashcam_events arrived in migration 0117; degrade to [] if absent.
+    let dashcamEvents: Record<string, unknown>[] = [];
+    try {
+      dashcamEvents = await query<Record<string, unknown>>(db, `
+        SELECT id, event_type, event_timestamp, latitude, longitude, speed_mph,
+               address, status_code_text, video_available,
+               NULL AS odometer, NULL AS driver_name, NULL AS city, NULL AS state_province
+        FROM dashcam_events
+        WHERE unit_id = ? AND event_timestamp >= datetime('now', ?)
+        ORDER BY event_timestamp DESC, id DESC
+        LIMIT ?
+      `, unitId, `-${days} days`, Math.min(1000, limit));
+    } catch (e) {
+      console.warn('GET /fleet/:id/gps-history dashcam_events unavailable:', (e as Error)?.message);
+    }
+
+    return c.json({ breadcrumbs, dashcam_events: dashcamEvents, unit_id: unitId });
+  } catch (err) {
+    console.error('GET /fleet/:id/gps-history failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
   }
 });

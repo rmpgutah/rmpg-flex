@@ -17,8 +17,8 @@ export default function ResultGroup({ type, items, onSelect, onOpen, highlightKe
 }) {
   return (
     <div className="space-y-1">
-      <div className="font-mono text-[8px] tracking-widest text-[#666] uppercase px-1">
-        {TYPE_LABELS[type] || type} <span className="text-[#444]">· {items.length}</span>
+      <div className="font-mono text-[8px] tracking-widest text-rmpg-500 uppercase px-1">
+        {TYPE_LABELS[type] || type} <span className="text-rmpg-700">· {items.length}</span>
       </div>
       {items.map((c) => {
         const key = `${c.hit.type}:${c.hit.id}`;

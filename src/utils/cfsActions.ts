@@ -57,9 +57,14 @@ export function planAction(
     }
     case 'priority': {
       let pr = num(p.to);
-      if (p.delta != null) pr = (num(call.priority) ?? 3) + (num(p.delta) ?? 0);
+      // call.priority is stored as the TEXT 'P1'..'P4'; strip the leading P
+      // before reading the current value so delta (Escalate/De-escalate)
+      // computes off the real priority instead of always assuming 3.
+      if (p.delta != null) pr = (num(String(call.priority ?? '').replace(/^P/i, '')) ?? 3) + (num(p.delta) ?? 0);
       if (pr == null || pr < 1 || pr > 4) return { error: 'priority must be 1–4' };
-      plan.updates.priority = pr;
+      // calls_for_service.priority is CHECK(priority IN ('P1','P2','P3','P4')),
+      // so the persisted value MUST be the canonical 'P{n}' string, not a number.
+      plan.updates.priority = `P${pr}`;
       plan.narrative = `Priority → P${pr}`;
       return plan;
     }

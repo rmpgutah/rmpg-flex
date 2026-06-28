@@ -185,17 +185,22 @@ export function PdfReviewModal<T extends Record<string, any>>({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-      <div className="bg-[#141414] border border-[#2e2e2e] w-[95vw] h-[90vh] flex flex-col">
-        <header className="flex justify-between items-center px-4 py-2 border-b border-[#222]">
+      <div className="bg-surface-base border border-rmpg-700 w-[95vw] h-[90vh] flex flex-col">
+        <header className="flex justify-between items-center px-4 py-2 border-b border-border-default">
           <h2 className="text-[#d4a017] font-bold">
             {schema.meta.title} — Form {schema.meta.formNumber}
           </h2>
-          <button onClick={onClose} className="text-gray-400" aria-label="Close">✕</button>
+          <button onClick={onClose} className="text-rmpg-400" aria-label="Close">✕</button>
         </header>
         <div className="flex-1 grid grid-cols-2 overflow-hidden">
-          <div className="overflow-y-auto p-4 border-r border-[#222]">
+          <div className="overflow-y-auto p-4 border-r border-border-default">
             {schema.sections.map((s, i) => {
               if (typeof s === 'function') return null;
+              // The PdfReviewModal editor only supports flow-section (labeled/
+              // narrative/checkbox/table/signature) fields — fixed-layout
+              // sections render in the PDF but aren't editable inline here.
+              // PR 4+ may add a fixed-layout editor; for now, skip.
+              if (s.kind !== 'section') return null;
               if (s.visibleIf && !s.visibleIf(data)) return null;
               return <EditorSection key={i} section={s} data={data} onChange={setData} />;
             })}
@@ -203,10 +208,10 @@ export function PdfReviewModal<T extends Record<string, any>>({
           <div className="overflow-y-auto p-4">
             {blobUrl
               ? <iframe title="pdf-preview" src={blobUrl} className="w-full h-full border-0" />
-              : <div className="text-gray-400 italic">Rendering preview…</div>}
+              : <div className="text-rmpg-400 italic">Rendering preview…</div>}
           </div>
         </div>
-        <footer className="flex justify-between items-center px-4 py-2 border-t border-[#222]">
+        <footer className="flex justify-between items-center px-4 py-2 border-t border-border-default">
           <div className="flex flex-col gap-1">
             <div className="text-xs text-amber-400">
               ⚠ Editing will update the source record. Use Cancel to discard.
@@ -221,7 +226,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-3 py-1 bg-gray-700 text-white">Cancel</button>
+            <button onClick={onClose} className="px-3 py-1 bg-rmpg-700 text-rmpg-100">Cancel</button>
             <CommitDropdown allowedActions={allowedActions} onSelect={handleCommit} />
           </div>
         </footer>
@@ -270,7 +275,7 @@ function LabeledEditor<T extends Record<string, any>>({
   const disabled = field.editable === false;
   return (
     <label className="block mb-2 text-xs">
-      <span className="block text-gray-400 uppercase mb-1">
+      <span className="block text-rmpg-400 uppercase mb-1">
         {field.label}
         {disabled && field.readOnlyReason && (
           <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
@@ -278,7 +283,7 @@ function LabeledEditor<T extends Record<string, any>>({
       </span>
       <input id="ff-pdfreviewmodal-0"
         aria-label={field.label}
-        className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
+        className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1 disabled:opacity-50"
         value={value}
         disabled={disabled}
         onChange={(e) => {
@@ -307,7 +312,7 @@ function CheckboxEditor<T extends Record<string, any>>({
           onChange(setPath(data, field.path, e.target.checked));
         }}
       />
-      <span className="text-gray-300">
+      <span className="text-rmpg-300">
         {field.label}
         {disabled && field.readOnlyReason && (
           <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
@@ -324,7 +329,7 @@ function NarrativeEditor<T extends Record<string, any>>({
   const disabled = field.editable === false;
   return (
     <label className="block mb-2 text-xs">
-      <span className="block text-gray-400 uppercase mb-1">
+      <span className="block text-rmpg-400 uppercase mb-1">
         {field.label}
         {disabled && field.readOnlyReason && (
           <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
@@ -333,7 +338,7 @@ function NarrativeEditor<T extends Record<string, any>>({
       <textarea id="ff-pdfreviewmodal-2"
         aria-label={field.label}
         rows={4}
-        className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
+        className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1 disabled:opacity-50"
         value={value}
         disabled={disabled}
         onChange={(e) => {
@@ -371,7 +376,7 @@ function TableEditor<T extends Record<string, any>>({
   return (
     <div className="mb-3 text-xs">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-gray-400 uppercase">
+        <span className="text-rmpg-400 uppercase">
           {field.label}
           {disabled && field.readOnlyReason && (
             <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
@@ -388,11 +393,11 @@ function TableEditor<T extends Record<string, any>>({
           </button>
         )}
       </div>
-      <table className="w-full border-collapse">
+      <div className="overflow-x-auto"><table className="w-full border-collapse">
         <thead>
-          <tr className="text-gray-500 uppercase text-[10px]">
+          <tr className="text-rmpg-500 uppercase text-[10px]">
             {field.columns.map((c) => (
-              <th key={c.key} className="text-left border-b border-[#222] py-1">{c.header}</th>
+              <th key={c.key} className="text-left border-b border-border-default py-1">{c.header}</th>
             ))}
             {!disabled && <th className="w-6"></th>}
           </tr>
@@ -400,7 +405,7 @@ function TableEditor<T extends Record<string, any>>({
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={field.columns.length + 1} className="text-gray-500 italic py-1">
+              <td colSpan={field.columns.length + 1} className="text-rmpg-500 italic py-1">
                 No rows
               </td>
             </tr>
@@ -414,7 +419,7 @@ function TableEditor<T extends Record<string, any>>({
                     value={String((row as Record<string, unknown>)[c.key] ?? '')}
                     disabled={disabled}
                     onChange={(e) => updateCell(i, c.key, e.target.value)}
-                    className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
+                    className="w-full bg-surface-overlay text-rmpg-100 border border-rmpg-700 p-1 disabled:opacity-50"
                   />
                 </td>
               ))}
@@ -433,7 +438,7 @@ function TableEditor<T extends Record<string, any>>({
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
@@ -441,8 +446,8 @@ function TableEditor<T extends Record<string, any>>({
 function SignaturePlaceholder<T>({ field }: { field: SignatureField<T> }) {
   return (
     <div className="block mb-2 text-xs">
-      <span className="block text-gray-400 uppercase mb-1">{field.label}</span>
-      <div className="w-full bg-[#050505] border border-dashed border-[#2e2e2e] p-2 text-gray-500 italic">
+      <span className="block text-rmpg-400 uppercase mb-1">{field.label}</span>
+      <div className="w-full bg-surface-overlay border border-dashed border-rmpg-700 p-2 text-rmpg-500 italic">
         Signature editor coming soon
       </div>
     </div>

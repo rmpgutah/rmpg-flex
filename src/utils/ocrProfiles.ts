@@ -45,10 +45,10 @@ export const PLATE_FIELDS: OcrField[] = [
   { key: 'plate_state', desc: '2-letter issuing state (read the plate banner)' },
   { key: 'plate_type', desc: 'passenger | commercial | temporary | dealer | government | disabled | other' },
   { key: 'registration_expiry', desc: 'month/year from the validation sticker if visible' },
-  { key: 'vehicle_make', desc: '' },
-  { key: 'vehicle_model', desc: '' },
-  { key: 'vehicle_color', desc: '' },
-  { key: 'vehicle_year', desc: '' },
+  { key: 'vehicle_make', desc: 'manufacturer brand name ONLY — uppercase, no trim/sub-brand (e.g. TOYOTA, FORD, CHEVROLET, HONDA, NISSAN, BMW, MERCEDES-BENZ, KIA, HYUNDAI, SUBARU); identify from hood badge or body badge; empty if not visible' },
+  { key: 'vehicle_model', desc: 'model name only, no trim/year (e.g. CAMRY, F-150, SILVERADO, CIVIC, ALTIMA, 3-SERIES, C-CLASS); uppercase; empty if not visible' },
+  { key: 'vehicle_color', desc: 'dominant exterior color as a single standard English word, uppercase: WHITE, BLACK, SILVER, GRAY, RED, BLUE, DARK BLUE, GREEN, DARK GREEN, BROWN, TAN, BEIGE, GOLD, YELLOW, ORANGE, MAROON, PURPLE; if two-tone write the body color; empty if not discernible' },
+  { key: 'vehicle_year', desc: 'single 4-digit model year (e.g. 2019); if the exact year is uncertain, estimate the midpoint of the visible generation (e.g. a 2018-2022 generation → 2020); empty if truly indeterminate' },
   { key: 'vehicle_body', desc: 'sedan | suv | pickup | van | motorcycle | truck | other' },
   { key: 'vehicle_condition', desc: 'overall body condition: clean | minor | moderate | heavy | salvage (clean = no visible damage)' },
   { key: 'vehicle_damage', desc: 'brief note of any VISIBLE damage and where (e.g. "dented rear bumper", "cracked windshield"); empty if none visible' },
@@ -75,7 +75,7 @@ export const OCR_PROFILES: Record<OcrProfileId, OcrProfile> = {
   },
   license_plate: {
     id: 'license_plate', label: 'License Plate / Vehicle',
-    hint: 'a photo of a vehicle license plate (read the plate and any visible vehicle details)',
+    hint: 'a photo of a vehicle license plate — read the plate text precisely AND identify the vehicle (make, model, color, year) from any visible badges, body panels, or design cues',
     fields: PLATE_FIELDS,
   },
   serve_document: {
@@ -122,12 +122,16 @@ export function buildVisionUserPrompt(sel: OcrProfileSelector): string {
     ].join('\n');
   }
   const p = OCR_PROFILES[sel];
+  const extra =
+    sel === 'license_plate'
+      ? '\nVehicle identification: use every visual cue — hood/trunk/pillar badges for make, body-line/tail-light shape for model generation, body-panel color for color, headlight/grille design for year generation (estimate midpoint). Do NOT leave make/model/color/year empty if the vehicle is visible in the frame — apply your automotive knowledge to identify it.'
+      : '';
   return [
     `This is ${p.hint}. Extract these fields:`,
     '{',
     fieldLines(p.fields),
     '}',
-    '',
+    extra,
     `Return JSON: { "documentType": "${sel}", "confidence": 0-1, "rawText": "<all visible text>", "fields": { "<field>": { "value": "<text|empty>", "confidence": 0-1 } } } using exactly the field names above.`,
   ].join('\n');
 }

@@ -288,7 +288,7 @@ export default function PageCanvas(props: Props) {
     }
     if (tool === 'stamp') {
       const w = 220; const h = 64;
-      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: '#555555' });
+      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: 'var(--rmpg-500)' });
       return;
     }
     if (tool === 'check' || tool === 'cross') {
@@ -591,7 +591,7 @@ export default function PageCanvas(props: Props) {
           {renderError && (
             <div className="absolute inset-0 flex items-center justify-center text-center p-4 pointer-events-none"
               style={{ background: 'rgba(220, 38, 38, 0.08)', border: '1px dashed rgba(220, 38, 38, 0.4)' }}>
-              <div className="bg-[#141414] border border-red-700/40 rounded-sm p-3 max-w-md text-[11px] pointer-events-auto">
+              <div className="bg-surface-base border border-red-700/40 rounded-sm p-3 max-w-md text-[11px] pointer-events-auto">
                 <div className="text-red-300 font-semibold mb-1">⚠ Page render failed</div>
                 <div className="text-rmpg-300">{renderError}</div>
                 <div className="text-rmpg-500 text-[10px] mt-2">

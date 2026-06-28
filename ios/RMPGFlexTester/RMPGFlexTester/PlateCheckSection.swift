@@ -18,16 +18,16 @@ struct PlateCheckSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("RUN PLATE — RECORDS / BOLO / STOLEN")
-                .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.gold)
+                .font(Theme.Typography.label).foregroundStyle(Theme.gold)
             HStack(spacing: 6) {
                 TextField("Plate", text: $plate)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .padding(6).background(Theme.sunken)
+                    .font(Theme.Typography.mono).fontWeight(.bold)
+                    .padding(Theme.Spacing.sm).background(Theme.sunken)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                 Button(busy ? "…" : "RUN") { Task { await run() } }
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.Typography.caption).fontWeight(.semibold)
                     .padding(.horizontal, 14).padding(.vertical, 7)
                     .background(Theme.gold).foregroundStyle(.black)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
@@ -35,7 +35,7 @@ struct PlateCheckSection: View {
             }
             ForEach(Array(lines.enumerated()), id: \.offset) { _, l in
                 Text(l.0)
-                    .font(.system(size: 11, weight: l.1 ? .bold : .regular, design: .monospaced))
+                    .font(Theme.Typography.mono).fontWeight(l.1 ? .bold : .regular)
                     .foregroundStyle(l.1 ? .black : .white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(l.1 ? 6 : 0)
@@ -48,7 +48,7 @@ struct PlateCheckSection: View {
             }
             if let linkStatus { StatusLine(text: linkStatus) }
         }
-        .padding(8).background(Theme.raised)
+        .padding(Theme.Spacing.md).background(Theme.raised)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
     }
 

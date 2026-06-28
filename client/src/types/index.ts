@@ -354,6 +354,7 @@ export interface CallForService {
   process_attempts?: number;
   process_served_at?: string;
   process_service_result?: string;
+  court_name?: string;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
@@ -541,6 +542,9 @@ export interface Person {
   dl_state?: string;
   dl_expiry?: string;
   dl_class?: string;
+  dl_issue_date?: string;
+  dl_restrictions?: string;
+  dl_endorsements?: string;
   ssn_last4?: string;
   ssn_full?: string;
   id_image_url?: string;
@@ -878,6 +882,12 @@ export interface TimeEntry {
   officer_name: string;
   clock_in: string;
   clock_out?: string;
+  /** Denver wall-clock string mirror of clock_in written by nowDualStamp(). */
+  clock_in_local?: string | null;
+  /** Denver wall-clock string mirror of clock_out written by nowDualStamp(). */
+  clock_out_local?: string | null;
+  /** Denver wall-clock string mirror of break_start written by nowDualStamp(). */
+  break_start_local?: string | null;
   scheduled_start?: string;
   scheduled_end?: string;
   break_start?: string;
@@ -946,7 +956,24 @@ export interface TrainingRequirement {
 
 export type CameraStatus = 'available' | 'assigned' | 'maintenance' | 'retired' | 'lost';
 export type VideoClassification = 'routine' | 'evidence' | 'flagged' | 'restricted';
-export type VideoRetention = 'active' | 'archived' | 'pending_deletion';
+// The retention vocabulary spans BOTH the original client union
+// (`active`/`archived`/`pending_deletion`) AND the server-side retention
+// dashboard values (`active`/`expired`/`purged`) AND the hold-list
+// values from `utils/evidenceLock.ts`. The 2026-06-21 audit caught
+// that the two vocabularies were silently disagreeing — see
+// utils/evidenceLock.ts for the canonical hold check.
+export type VideoRetention =
+  | 'active'
+  | 'archived'
+  | 'pending_deletion'
+  | 'expired'
+  | 'purged'
+  | 'legal_hold'
+  | 'court_hold'
+  | 'litigation_hold'
+  | 'subpoena_hold'
+  | 'ia_review'
+  | 'open_case';
 
 export interface BodyCamera {
   id: number;
@@ -1043,6 +1070,10 @@ export interface DashCamVideo {
   recorded_at?: string;
   case_number?: string;
   classification: VideoClassification;
+  // Server returns this via SELECT v.* on /api/fleet/dashcam-videos —
+  // declared explicitly so the evidence-lock guard doesn't silently
+  // degrade if anyone later narrows the SELECT to a column list.
+  retention_status?: VideoRetention;
   speed_mph?: number;
   latitude?: number;
   longitude?: number;
@@ -2014,6 +2045,7 @@ export type WSMessageType =
   // Serve manager
   | 'serve_attempt'
   | 'serve_created'
+  | 'serve_attempt_reminder'
   // Radio events (for cross-integration)
   | 'radio_check'
   | 'radio_check_ack'
@@ -2618,7 +2650,7 @@ export interface CaseFull {
   counts: {
     calls: number; incidents: number; persons: number;
     vehicles: number; properties: number; evidence: number;
-    warrants: number; citations: number; notes: number;
+    warrants: number; citations: number; notes: number; attachments?: number;
   };
 }
 
@@ -3141,12 +3173,52 @@ export interface ServeJob {
   sort_order: number;
   service_instructions: string | null;
   notes: string | null;
+  // Free-text "next attempt" message the server enters when logging a failed
+  // attempt — surfaced verbatim on the Notice of Attempt PDF. NULL means use
+  // the generic boilerplate. Persisted via migration 0134_serve_queue_next_attempt.
+  next_attempt_note: string | null;
   created_at: string;
   updated_at: string;
   call_id: number | null;
+  // Automation columns (migrations 0140, 0153, 0154)
+  closed_at?: string | null;
+  urgency_tier?: 'normal' | 'high' | 'critical' | null;
+  auto_assigned?: number | null;
+  intake_screened_at?: string | null;
   attempts?: ServeAttempt[];
   skipTraces?: ServeSkipTrace[];
 }
+
+// ── Serve folder helpers ───────────────────────────────────────────────────
+
+export type ServeFolder = 'in_progress' | 'pending' | 'served' | 'failed' | 'archived';
+
+/** Map a job's status to its display folder. */
+export function deriveServeFolder(job: ServeJob): ServeFolder {
+  if (job.status === 'in_progress') return 'in_progress';
+  if (job.status === 'pending') return 'pending';
+  if (job.status === 'served') return 'served';
+  if (job.status === 'failed') return 'failed';
+  return 'archived'; // skipped | archived
+}
+
+export interface ServeFolderConfig {
+  label: string;
+  dotClass: string;
+  borderClass: string;
+  bgClass: string;
+  defaultOpen: boolean;
+  order: number;
+  emptyLabel: string;
+}
+
+export const SERVE_FOLDER_CONFIG: Record<ServeFolder, ServeFolderConfig> = {
+  in_progress: { label: 'In Progress', dotClass: 'bg-amber-500 animate-pulse', borderClass: 'border-l-amber-500', bgClass: 'bg-amber-900/10', defaultOpen: true, order: 0, emptyLabel: 'No jobs in progress' },
+  pending:     { label: 'Queue',       dotClass: 'bg-rmpg-500',                 borderClass: 'border-l-rmpg-500',  bgClass: '',                  defaultOpen: true, order: 1, emptyLabel: 'No pending jobs' },
+  served:      { label: 'Served',      dotClass: 'bg-green-500',                borderClass: 'border-l-green-500', bgClass: 'bg-green-900/10',  defaultOpen: false, order: 2, emptyLabel: 'No served jobs today' },
+  failed:      { label: 'Non-Service', dotClass: 'bg-red-500',                  borderClass: 'border-l-red-500',   bgClass: 'bg-red-900/10',    defaultOpen: false, order: 3, emptyLabel: 'No non-service jobs' },
+  archived:    { label: 'Archived',    dotClass: 'bg-rmpg-600',                 borderClass: 'border-l-rmpg-600',  bgClass: 'bg-rmpg-800/20',   defaultOpen: false, order: 4, emptyLabel: 'No archived jobs' },
+};
 
 export interface ServeJobLinkedCall {
   id: number;
@@ -3165,9 +3237,12 @@ export interface ServeAttempt {
   id: number;
   serve_queue_id: number;
   officer_id: number;
+  officer_name?: string;
   attempt_number: number;
   attempt_type: 'personal' | 'substitute' | 'posting' | 'failed';
   result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
+  /** Structured PS/NN.NN disposition code (migration 0143). Null on legacy rows. */
+  disposition_code?: string | null;
   latitude: number | null;
   longitude: number | null;
   gps_accuracy: number | null;
@@ -3195,6 +3270,14 @@ export interface ServeAttemptData {
   photo_ids?: string[];
   signature_data?: string;
   notes?: string;
+  // Optional operator-set message for the next attempt window — stored on the
+  // parent serve_queue row, not on the attempt itself, so it persists across
+  // attempts and is read at Notice-of-Attempt PDF generation time.
+  next_attempt_note?: string;
+  // Structured PS disposition code (PS/00..PS/45.XX). When supplied, the
+  // server derives the legacy `result` enum from it via codeToLegacyResult
+  // and persists the full code in serve_attempts.disposition_code.
+  disposition_code?: string;
 }
 
 export interface ServeRoute {

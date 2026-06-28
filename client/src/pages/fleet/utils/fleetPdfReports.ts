@@ -12,25 +12,26 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../../types';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
-const RMPG_GOLD = '#d4a017';
-const RMPG_BLACK = '#0a0a0a';
 const RMPG_GRAY = '#888888';
 
 // ── Shared helpers ──────────────────────────────────────────
 
 function headerStrip(doc: jsPDF, title: string, subtitle?: string) {
   const m = 40; const w = doc.internal.pageSize.getWidth();
-  doc.setFillColor(RMPG_BLACK);
-  doc.rect(0, 0, w, 52, 'F');
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(0, 52, w, 3, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor('#ffffff');
-  doc.text('RMPG FLEX — FLEET MANAGEMENT', m, 26);
-  doc.setFontSize(11); doc.setFont('helvetica', 'normal');
-  doc.text(title, m, 42);
-  if (subtitle) { doc.setFontSize(9); doc.setTextColor(RMPG_GOLD); doc.text(subtitle, m, 50); }
-  doc.setTextColor('#000000');
-  return 70;
+  let y = 40;
+  doc.setFont('Arial', 'bold'); doc.setFontSize(16); doc.setTextColor('#000000');
+  doc.text('RMPG FLEX — FLEET MANAGEMENT', m, y); y += 18;
+  doc.setFontSize(12);
+  doc.text(title, m, y);
+  if (subtitle) {
+    doc.setFont('Arial', 'normal'); doc.setFontSize(9); doc.setTextColor(RMPG_GRAY);
+    doc.text(subtitle, w - m, y, { align: 'right' });
+    doc.setTextColor('#000000');
+  }
+  y += 12;
+  doc.setDrawColor(0); doc.setLineWidth(1.2); doc.line(m, y, w - m, y); y += 2;
+  doc.setLineWidth(0.4); doc.line(m, y, w - m, y); y += 10;
+  return y;
 }
 
 function footerStrip(doc: jsPDF, page: number, total: number) {
@@ -49,7 +50,7 @@ function vehicleSummaryBlock(doc: jsPDF, v: FleetVehicle, y: number): number {
 function drawGridBox(doc: jsPDF, x: number, y: number, w: number, label: string, value: string, highlight?: boolean) {
   doc.setDrawColor('#cccccc'); doc.setLineWidth(0.5);
   doc.rect(x, y, w, 32);
-  if (highlight) { doc.setFillColor(RMPG_GOLD); doc.rect(x, y, w, 3, 'F'); }
+  if (highlight) { doc.setDrawColor(0); doc.setLineWidth(2); doc.line(x, y, x + w, y); doc.setLineWidth(0.5); }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(RMPG_GRAY);
   doc.text(label, x + 5, y + 14);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor('#000');
@@ -89,8 +90,8 @@ export function generateFleetStatusReport(data: {
   // Vehicle table
   const headers = ['Unit #', 'Yr', 'Make', 'Model', 'Plate', 'Status', 'Mileage', 'Assigned'];
   const colW = [(pageW - 80) * 0.14, 30, (pageW - 80) * 0.16, (pageW - 80) * 0.16, (pageW - 80) * 0.14, 60, 50, 60];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22;
@@ -138,8 +139,8 @@ export function generateFleetMaintenanceReport(data: {
 
   const headers = ['Date', 'Type', 'Description', 'Mileage', 'Cost', 'Vendor', 'Next Due'];
   const colW = [70, 55, 140, 55, 55, 80, 70];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -258,8 +259,8 @@ export function generateFleetLifecycleReport(data: {
   const maintColW = [70, 55, 140, 55, 55, 80];
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
   doc.text('Maintenance History', 40, y); y += 16;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   maintHeaders.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += maintColW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -310,8 +311,8 @@ export function generateFleetComplianceReport(data: {
   // Compliance table
   const headers = ['Unit #', 'Yr/Make/Model', 'Plate', 'Status', 'Ins Expiry', 'Reg Expiry', 'Last Service', 'Next Due'];
   const colW = [55, 140, 70, 60, 70, 70, 70, 70];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -353,8 +354,8 @@ export function generateFleetUtilizationReport(data: {
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Days Used', 'Miles', 'Fuel Cost', 'Daily Avg Mi', 'Status'];
   const colW = [55, 160, 60, 60, 70, 70, 80];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -400,8 +401,8 @@ export function generateFleetFuelConsumptionReport(data: {
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Gallons', 'CO2 (kg)', 'CO2 (lbs)', 'Avg Gal/Mo'];
   const colW = [55, 160, 70, 70, 70, 80];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -526,8 +527,8 @@ export function generateFleetReplacementReport(data: {
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Mileage', 'Repl Year', 'Priority', 'Est. Cost', 'Reason', 'Status'];
   const colW = [50, 150, 55, 55, 55, 65, 120, 60];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -579,8 +580,8 @@ export function generateFleetDepreciationReport(data: {
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Purchase $', 'Salvage $', 'Life (mo)', 'Mo Deprec.', 'Accum Deprec', 'Book Value'];
   const colW = [50, 145, 65, 55, 55, 65, 70, 65];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -625,8 +626,8 @@ export function generateFleetKeyReport(data: {
 
   const headers = ['Unit #', 'Key #', 'Type', 'RFID', 'Status', 'Current Holder', 'Last Checkout', 'Last Return'];
   const colW = [55, 40, 55, 80, 60, 100, 90, 90];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -745,8 +746,8 @@ export function generatePersonnelProductivityReport(data: {
   // Header
   const headers = ['Officer', 'Call Sign', 'Vehicles Used', 'Assignments', 'Active', 'Miles', 'Hours'];
   const colW = [180, 80, 150, 80, 60, 80, 80];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -817,8 +818,8 @@ export function generateInspectionAnalysisReport(data: {
   // Header
   const headers = ['Unit #', 'Vehicle', 'Inspections', 'Passed', 'Failed', 'Pass %', 'Last Date', 'Last Result'];
   const colW = [55, 130, 60, 50, 50, 55, 75, 60];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -929,8 +930,8 @@ export function generateCostPerMileReport(data: {
 
   const headers = ['Rank', 'Unit #', 'Vehicle', 'Yr', 'Mileage', 'Total Cost', 'Fuel', 'Maint.', '$/Mile', 'MPG'];
   const colW = [40, 55, 180, 35, 70, 80, 70, 70, 60, 50];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -1007,8 +1008,8 @@ export function generateMaintenanceForecastReport(data: {
 
   const headers = ['Unit #', 'Vehicle', 'Current Mileage', 'Next Service', 'Miles Left', 'Avg Daily', 'Est Days', 'Urgency'];
   const colW = [50, 145, 80, 80, 60, 60, 50, 60];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');
@@ -1101,8 +1102,8 @@ export function generateComplianceAuditReport(data: {
 
   const headers = ['Unit #', 'Vehicle', 'Insurance', 'Registration', 'Inspection', 'Recalls', 'Overdue Svc', 'Score'];
   const colW = [55, 165, 100, 100, 100, 55, 75, 50];
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setFillColor('#1a1a1a'); doc.setTextColor('#ffffff');
-  doc.rect(40, y, pageW - 80, 18, 'F');
+  doc.setFont('Arial', 'bold'); doc.setFontSize(9); doc.setTextColor('#000000');
+  doc.setDrawColor(150); doc.setLineWidth(0.5); doc.line(40, y + 16, pageW - 40, y + 16);
   let cx = 40;
   headers.forEach((h, i) => { doc.text(h, cx + 3, y + 13); cx += colW[i]; });
   y += 22; doc.setTextColor('#000');

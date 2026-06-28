@@ -1,31 +1,26 @@
 // src/utils/researchEngine.ts
-// LLM engine ladder (Claude → Workers AI free) + PURE parsers and the derived
-// trust model. Trust is DERIVED (consensus + verification), never the model's
-// raw self-reported confidence — mirrors captureTrust()/OCR-trust.
-import { getAnthropicKey, getClaudeModel, callClaude } from './anthropic';
+// LLM engine ladder (Claude → OpenAI → Workers AI free) + PURE parsers and the
+// derived trust model. Trust is DERIVED (consensus + verification), never the
+// model's raw self-reported confidence — mirrors captureTrust()/OCR-trust.
+import { callAi } from './callAi';
 
 export interface ResearchEnv { DB: D1Database; AI: Ai; }
-const WORKERS_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 export interface LlmOpts { system?: string; user: string; maxTokens?: number; }
 
-/** Claude if a system_config key exists, else free Workers AI. Never throws on
- *  engine failure of the primary — falls through to Workers AI. */
+/** Claude → OpenAI → Workers AI fallback chain (via callAi router). Never
+ *  throws on transient/credit failure of paid tiers — Workers AI is the
+ *  always-available floor. JSON responses from Workers AI may come back
+ *  pre-parsed; downstream parsers run JSON.parse on strings, so the router
+ *  surfaces text and we re-serialize objects defensively below. */
 export async function runResearchLLM(env: ResearchEnv, opts: LlmOpts): Promise<string> {
   const { system, user, maxTokens = 2048 } = opts;
-  const key = await getAnthropicKey(env);
-  if (key) {
-    try {
-      const model = await getClaudeModel(env);
-      const text = await callClaude(key, { system, text: user, maxTokens, model });
-      if (text && text.trim()) return text;
-    } catch { /* fall through to Workers AI */ }
+  try {
+    const { text } = await callAi(env, { system, text: user, maxTokens });
+    return text || '';
+  } catch {
+    return '';
   }
-  const messages: { role: string; content: string }[] = [];
-  if (system) messages.push({ role: 'system', content: system });
-  messages.push({ role: 'user', content: user });
-  const r: any = await env.AI.run(WORKERS_AI_MODEL as any, { messages, max_tokens: maxTokens } as any);
-  return typeof r?.response === 'string' ? r.response : '';
 }
 
 function clamp01(n: number): number { return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0; }

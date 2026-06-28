@@ -38,7 +38,7 @@ struct SubjectRecordsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     if loading { ProgressView("Pulling records…").tint(Theme.gold) }
                     if let error {
-                        Text("✗ \(error)").font(.system(size: 11, design: .monospaced))
+                        Text("✗ \(error)").font(Theme.Typography.mono)
                             .foregroundStyle(Theme.red)
                     }
 
@@ -49,7 +49,7 @@ struct SubjectRecordsView: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                             Text("OFFICER CAUTION — " + cautionText)
                         }
-                        .font(.system(size: 13, weight: .heavy)).foregroundStyle(.white)
+                        .font(Theme.Typography.body).fontWeight(.heavy).foregroundStyle(.white)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10).background(Theme.red)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
@@ -61,7 +61,7 @@ struct SubjectRecordsView: View {
                         let severity = hit["severity"] as? String ?? "info"
                         let detail = hit["detail"] as? String ?? hit["kind"] as? String ?? "hit"
                         Text("\(severity == "critical" ? "⚠" : "ℹ") \(detail)")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(Theme.Typography.caption).fontWeight(.bold)
                             .foregroundStyle(severity == "critical" ? .black : Theme.gold)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8)
@@ -109,14 +109,14 @@ struct SubjectRecordsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { Task { await sendToMDT() } } label: {
-                        Label("MDT", systemImage: "car.fill").font(.system(size: 12, weight: .semibold))
+                        Label("MDT", systemImage: "car.fill").font(Theme.Typography.caption).fontWeight(.semibold)
                     }.foregroundStyle(Theme.gold)
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button { Task { await toggleWatch() } } label: {
                         Label(watching ? "Watching" : "Watch",
                               systemImage: watching ? "binoculars.fill" : "binoculars")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(Theme.Typography.caption).fontWeight(.semibold)
                     }
                     .foregroundStyle(watching ? Theme.orange : Theme.neutral)
                     .disabled(watchWorking)
@@ -129,7 +129,7 @@ struct SubjectRecordsView: View {
 
     private func chip(_ label: String, _ n: Int?, hot: Bool) -> some View {
         VStack(spacing: 1) {
-            Text("\(n ?? 0)").font(.system(size: 15, weight: .bold))
+            Text("\(n ?? 0)").font(Theme.Typography.body).fontWeight(.bold)
                 .foregroundStyle(hot ? .black : .white)
             Text(label).font(.system(size: 8, weight: .semibold))
                 .foregroundStyle(hot ? .black : Theme.neutral)
@@ -144,7 +144,7 @@ struct SubjectRecordsView: View {
                          @ViewBuilder row: @escaping ([String: Any]) -> some View) -> some View {
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.gold)
+                Text(title).font(Theme.Typography.label).foregroundStyle(Theme.gold)
                 ForEach(Array(rows.prefix(10).enumerated()), id: \.offset) { _, r in row(r) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -155,7 +155,7 @@ struct SubjectRecordsView: View {
 
     private func line(primary: String, secondary: String, hot: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(primary).font(.system(size: 12, weight: hot ? .bold : .regular))
+            Text(primary).font(Theme.Typography.caption).fontWeight(hot ? .bold : .regular)
                 .foregroundStyle(hot ? Theme.red : .white)
             if !secondary.isEmpty {
                 Text(secondary).font(.system(size: 10)).foregroundStyle(Theme.neutral)

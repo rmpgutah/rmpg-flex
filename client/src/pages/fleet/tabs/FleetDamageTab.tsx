@@ -25,15 +25,15 @@ interface DamageReport {
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  minor: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  minor: 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50',
   moderate: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   major: 'bg-red-900/50 text-red-400 border border-red-700/50',
   totaled: 'bg-red-900/70 text-red-300 border border-red-600/50',
 };
 
 const REPAIR_COLORS: Record<string, string> = {
-  reported: 'text-gray-400', estimated: 'text-amber-400', approved: 'text-purple-400',
-  in_repair: 'text-gray-400', completed: 'text-green-400', insurance_claim: 'text-amber-400',
+  reported: 'text-rmpg-400', estimated: 'text-amber-400', approved: 'text-purple-400',
+  in_repair: 'text-rmpg-400', completed: 'text-green-400', insurance_claim: 'text-amber-400',
 };
 
 export default function FleetDamageTab({ vehicleId }: { vehicleId: number | string }) {
@@ -143,13 +143,13 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
       <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
       <FloatingSaveBar visible={isDirty && showForm} onSave={handleSubmit} onCancel={() => { clearDraft(); setShowForm(false); }} isSaving={submitting} saveLabel="Submit" />
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold text-white flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Damage Reports</h3>
+        <h3 className="text-xs font-bold text-rmpg-100 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Damage Reports</h3>
         <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Report Damage</button>
       </div>
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="panel-inset p-2 text-center"><p className="field-label">Reports</p><p className="text-sm font-bold text-white">{reports.length}</p></div>
+        <div className="panel-inset p-2 text-center"><p className="field-label">Reports</p><p className="text-sm font-bold text-rmpg-100">{reports.length}</p></div>
         <div className="panel-inset p-2 text-center"><p className="field-label">Est. Cost</p><p className="text-sm font-bold text-amber-400 font-mono">${totalEstimate.toLocaleString()}</p></div>
         <div className="panel-inset p-2 text-center"><p className="field-label">Actual Cost</p><p className="text-sm font-bold text-red-400 font-mono">${totalCost.toLocaleString()}</p></div>
       </div>
@@ -191,7 +191,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${SEVERITY_COLORS[r.severity] || ''}`}>{r.severity}</span>
-                <span className="text-[10px] text-white font-bold">{r.damage_type}</span>
+                <span className="text-[10px] text-rmpg-100 font-bold">{r.damage_type}</span>
                 {(r.location_on_vehicle || (r as any).location) && <span className="text-[10px] text-rmpg-400">({r.location_on_vehicle || (r as any).location})</span>}
               </div>
               <p className="text-[10px] text-rmpg-300">{r.description}</p>

@@ -6,7 +6,7 @@
 # dispatcher with this rewrite, which has NO `JWT_SECRET` secret of its own →
 # every login 500s on token signing (incident 2026-06-02, PRs #937/#946 →
 # reverted by #945 and this one). See [[project-auth-login-500-incident]].
-name = "rmpg-flex-api"
+name = "rmpg-flex"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
@@ -82,6 +82,17 @@ class_name = "AlertHubDO"
 name = "DEEP_RESEARCH"
 class_name = "DeepResearchDO"
 
+[[durable_objects.bindings]]
+name = "PERSON_INTEL_DO"
+class_name = "PersonIntelDO"
+
+# FlexCamRemuxDO — one instance per footage_request_id (idFromName('rmx-' + id))
+# for lazy MP4 → fMP4 remux. Triggered by POST /api/flexcam/render/:id for
+# format='mp4'. See src/durable-objects/FlexCamRemuxDO.ts.
+[[durable_objects.bindings]]
+name = "FLEXCAM_REMUX"
+class_name = "FlexCamRemuxDO"
+
 [[migrations]]
 tag = "v1"
 # new_sqlite_classes (not new_classes) — free-plan compatible.
@@ -114,6 +125,53 @@ bucket_name = "rmpg-flex-uploads"
 [[r2_buckets]]
 binding = "DOWNLOADS"
 bucket_name = "rmpg-flex-downloads"
+
+# ─── Analytics lakehouse (R2 Data Catalog / Pipelines) ─────
+# OPTIONAL until provisioned. The ALPR dual-write (src/routes/alpr.ts) and the
+# query routes (src/routes/analytics.ts) BOTH no-op / 503 while these are unset,
+# so this is safe to deploy before the pipeline exists.
+#
+# One-time operator setup:
+#   1. npx wrangler pipelines setup
+#        Simple mode creates the R2 bucket (e.g. rmpg-flex-analytics), enables
+#        R2 Data Catalog, and makes a stream + sink writing the Iceberg table
+#        `default.alpr_reads`. Note the printed STREAM_ID and WAREHOUSE
+#        (WAREHOUSE = "<account_id>_<bucket>").
+#        Recommended structured-stream schema (matches alprReadEvent in
+#        src/utils/analytics.ts): event_type(string), occurred_at(string),
+#        captured_by(int64,opt), source(string), capture_id(int64,opt),
+#        call_id(int64,opt), incident_id(int64,opt), plate(string),
+#        raw_plate(string,opt), state(string,opt), make/model/color/vehicle_type
+#        (string,opt), year(string,opt), trust(float64,opt),
+#        vehicle_record_id(int64,opt), lat/lng(float64,opt),
+#        location_text(string,opt), hit_count(int64), critical_hit(bool).
+#   2. Uncomment the [[pipelines]] block below and set stream = "<STREAM_ID>".
+#   3. Set R2_ANALYTICS_WAREHOUSE in [vars] below to the printed WAREHOUSE.
+#   4. npx wrangler secret put R2_SQL_TOKEN
+#        API token with: R2 SQL (read) + R2 Data Catalog (read) + R2 (read) on
+#        the analytics bucket.
+#   5. Redeploy. Verify: GET /api/analytics/health → query_ready:true.
+#
+#   6. (System-wide events) Run `wrangler pipelines setup` AGAIN, pointing it at
+#        the SAME analytics bucket/catalog, writing a SECOND Iceberg table
+#        `default.flex_events`. Uncomment the EVENTS block below + set its stream.
+#        This one table is fed by GPS/AVL, calls-for-service, citations,
+#        incidents, patrol scans, and DAR (see flexEvent in src/utils/analytics.ts).
+#        Recommended structured schema: event_type(string), occurred_at(string),
+#        actor_id(int64,opt), source(string,opt), entity_type(string,opt),
+#        entity_id(string,opt), unit_id(string,opt), lat/lng(float64,opt),
+#        status(string,opt), label(string,opt), category(string,opt),
+#        priority(string,opt), value(float64,opt), payload(string,opt JSON).
+#        Sharing the bucket means the SAME R2_ANALYTICS_WAREHOUSE + R2_SQL_TOKEN
+#        query BOTH alpr_reads and flex_events.
+#
+# [[pipelines]]
+# binding = "ANALYTICS"
+# stream  = "<ALPR_STREAM_ID>"
+#
+# [[pipelines]]
+# binding = "EVENTS"
+# stream  = "<FLEX_EVENTS_STREAM_ID>"
 
 # ─── PDF Tools Container (DISABLED) ───────────────────────
 # The PdfToolsContainer sidecar is intentionally OFF in prod.
@@ -160,6 +218,20 @@ new_sqlite_classes = ["AlertHubDO"]
 tag = "v4-deepresearch"
 new_sqlite_classes = ["DeepResearchDO"]
 
+# FlexCamRemuxDO — APPENDED (same prefix rule as v2-voicehub: live tags
+# must be a prefix of this list, so new DO migrations go at the END).
+# SQLite-backed for free-plan + storage.put/getAlarm.
+[[migrations]]
+tag = "v5-flexcamremux"
+new_sqlite_classes = ["FlexCamRemuxDO"]
+
+# PersonIntelDO — APPENDED (prefix rule: live tags must be a prefix of this
+# list). One instance per dossier_id; alarm-driven multi-phase intelligence
+# pipeline. SQLite-backed for free-plan compatibility.
+[[migrations]]
+tag = "v6-personinteldo"
+new_sqlite_classes = ["PersonIntelDO"]
+
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload
 # for structured field extraction from OCR text and direct vision-LLM
@@ -191,17 +263,42 @@ CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:517
 JWT_ACCESS_EXPIRY = "15m"
 JWT_REFRESH_EXPIRY = "7d"
 SERVER_TIMEZONE = "America/Denver"
+# Analytics warehouse id from `wrangler pipelines setup` (= "<account_id>_<bucket>").
+# Uncomment + set once provisioned; /api/analytics 503s until then. The bearer
+# token is the R2_SQL_TOKEN secret (set via `wrangler secret put`).
+# R2_ANALYTICS_WAREHOUSE = "<account_id>_rmpg-flex-analytics"
+# Fleet.io integration (PR 1+). Base URL of the Fleet.io REST API v1.
+# Override in dev/test via .dev.vars. Set FLEETIO_API_KEY, FLEETIO_ACCOUNT_TOKEN,
+# and FLEETIO_WEBHOOK_SECRET via `npx wrangler secret put <NAME>` (PR 4 adds the
+# webhook receiver that needs the third one).
+FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
+
+# NSOPW nationwide SOR (mig 0146 + 0147). The federated search endpoint at
+# nsopw-api.ojp.gov is technically public + CORS-restricted; nsopw.gov's
+# Conditions of Use likely prohibit programmatic access regardless. The
+# integration is opt-in via NSOPW_ENABLED — sworn LE operators accept the
+# ToU posture explicitly by setting this. Without it, every NSOPW path
+# returns configured=false and the framework surfaces a coverage gap
+# (NEVER a clearance) — the false-clear guard stays intact.
+# Spec: docs/superpowers/specs/2026-06-22-nationwide-sor-nsopw-design.md
+NSOPW_ENABLED = "1"
 
 # Secrets (set via `npx wrangler secret put`)
 # JWT_SECRET (already set)
 # GOOGLE_MAPS_API_KEY
+#  - FLEETIO_API_KEY         Fleet.io API key (Token-style; app.fleetio.com/settings/api_keys)
+#  - FLEETIO_ACCOUNT_TOKEN   Fleet.io Account-Token (per-account; same settings page)
+#  - FLEETIO_WEBHOOK_SECRET  Fleet.io webhook signing secret (PR 4; set when webhooks are wired)
 
 # Scheduled cron triggers.
 # Utah warrant smoke poll runs every 4h, matching the legacy server's
 # scheduleUtahWarrantSync interval. Workers cron uses UTC; "0 */4 * * *"
 # means every 4 hours on the hour (00:00, 04:00, 08:00, ... UTC).
+# "0 3 1 * *" — Fleet.io PR 2: monthly NHTSA vPIC bulk-export refresh of
+# ref_vehicle_makes / ref_vehicle_models / xref_model_year_to_specs. PR 2
+# wires the trigger with a stub handler; the real bulk-import lands in PR 2b.
 [triggers]
-crons = ["0 */4 * * *", "* * * * *"]
+crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *", "0 3 1 * *"]
 
 # (Removed obsolete deleted_classes migration. The class is now properly
 # defined upstream (commit ccb3881b on main added src/durable-objects/

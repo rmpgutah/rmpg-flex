@@ -115,7 +115,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold text-white flex items-center gap-1">
+        <h3 className="text-xs font-bold text-rmpg-100 flex items-center gap-1">
           <AlertOctagon className="w-3.5 h-3.5 text-red-400" /> Recall Alerts
           {openCount > 0 && <span className="ml-1 px-1.5 py-0.5 bg-red-900/50 text-red-400 text-[9px] font-bold">{openCount} OPEN</span>}
         </h3>
@@ -152,7 +152,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[r.status] || ''}`}>{r.status.replace(/_/g, ' ')}</span>
-                    <span className="text-[10px] text-white font-bold font-mono">{r.recall_number || (r as any).nhtsa_number}</span>
+                    <span className="text-[10px] text-rmpg-100 font-bold font-mono">{r.recall_number || (r as any).nhtsa_number}</span>
                     {!vehicleId && <span className="text-[10px] text-rmpg-300">{r.vehicle_number} ({r.year} {r.make} {r.model})</span>}
                   </div>
                   <p className="text-[10px] text-rmpg-200">{r.description}</p>

@@ -248,6 +248,88 @@ export const SECTION_BLOCKS: SectionBlock[] = [
       '<h3>DISTRIBUTION</h3>' +
       '<p>Copies of this report have been routed to the following: Records, the assigned supervisor, and the appropriate follow-up unit. Original retained in the case file.</p>',
   },
+  // ── Law Enforcement — extended blocks ─────────────────────────────────────
+  {
+    id: 'probable-cause-statement',
+    label: 'Probable cause statement',
+    group: 'Probable Cause',
+    html:
+      '<h3>PROBABLE CAUSE</h3>' +
+      '<p>Based on my training and experience, and the totality of the circumstances observed, I formed probable cause to believe that [SUSPECT NAME] had committed the crime of [OFFENSE] in violation of [STATUTE]. Specifically, the following articulable facts supported this belief:</p>' +
+      '<ul>' +
+      '<li>[Fact 1 — direct observation / physical evidence]</li>' +
+      '<li>[Fact 2 — statements made by the subject or witnesses]</li>' +
+      '<li>[Fact 3 — circumstantial indicators consistent with criminal activity]</li>' +
+      '</ul>' +
+      '<p>These facts, taken together with my training and experience in [relevant area], support a reasonable belief that the offense described above had been committed and that [SUSPECT NAME] was responsible.</p>',
+  },
+  {
+    id: 'miranda-advisement',
+    label: 'Miranda rights advisement',
+    group: 'Miranda / Rights',
+    html:
+      '<h3>MIRANDA ADVISEMENT</h3>' +
+      '<p>Prior to questioning, I advised [SUSPECT NAME] of their Miranda rights as follows:</p>' +
+      '<ol>' +
+      '<li>You have the right to remain silent.</li>' +
+      '<li>Anything you say can and will be used against you in a court of law.</li>' +
+      '<li>You have the right to an attorney.</li>' +
+      '<li>If you cannot afford an attorney, one will be appointed for you before any questioning if you wish.</li>' +
+      '</ol>' +
+      '<p>[SUSPECT NAME] stated that they understood each of these rights. [ ] The subject invoked their right to counsel. [ ] The subject waived their rights and agreed to speak with me.</p>',
+  },
+  {
+    id: 'chain-of-custody',
+    label: 'Chain of custody block',
+    group: 'Evidence',
+    html:
+      '<h3>CHAIN OF CUSTODY</h3>' +
+      '<p>The following chain of custody was maintained for all evidence collected during this investigation:</p>' +
+      '<table>' +
+      '<tr><th>Item #</th><th>Description</th><th>Collected By</th><th>Date / Time</th><th>Transfer To</th></tr>' +
+      '<tr><td>1</td><td>[Description]</td><td>[Officer Name]</td><td>[Date/Time]</td><td>Property &amp; Evidence</td></tr>' +
+      '<tr><td>2</td><td>[Description]</td><td>[Officer Name]</td><td>[Date/Time]</td><td>Property &amp; Evidence</td></tr>' +
+      '</table>' +
+      '<p>All items were packaged, sealed, and labeled in accordance with agency policy prior to submission. Item numbers correspond to those recorded in the evidence log and property receipt.</p>',
+  },
+  {
+    id: 'use-of-force-justification',
+    label: 'Use-of-force justification narrative',
+    group: 'Use of Force',
+    html:
+      '<h3>USE OF FORCE — JUSTIFICATION</h3>' +
+      '<p>The force I used in this incident was objectively reasonable given the totality of the circumstances confronting me at the time. In forming my decision, I considered the following Graham factors:</p>' +
+      '<ul>' +
+      '<li><strong>Severity of the crime:</strong> [Describe the nature and severity of the offense being investigated or apprehended.]</li>' +
+      '<li><strong>Immediate threat:</strong> [Describe whether the subject posed an immediate threat to officer or public safety, including observable behaviors.]</li>' +
+      '<li><strong>Active resistance or flight:</strong> [Describe whether the subject was actively resisting arrest or attempting to evade by flight.]</li>' +
+      '</ul>' +
+      '<p>A supervisor was notified of the use of force. A medical evaluation was [ ] offered and refused / [ ] provided at the scene / [ ] not indicated. A Use of Force report has been submitted separately in accordance with agency policy.</p>',
+  },
+  {
+    id: 'consent-to-search',
+    label: 'Consent to search documentation',
+    group: 'Search / Seizure',
+    html:
+      '<h3>CONSENT TO SEARCH</h3>' +
+      '<p>I requested and received voluntary consent to search [LOCATION/VEHICLE/PERSON] from [PERSON NAME], who identified themselves as [RELATIONSHIP TO PROPERTY]. I advised [PERSON NAME] that:</p>' +
+      '<ul>' +
+      '<li>They had the right to refuse consent to search without consequence.</li>' +
+      '<li>The search would be limited to [scope of search].</li>' +
+      '<li>They could withdraw consent at any time during the search.</li>' +
+      '</ul>' +
+      '<p>[PERSON NAME] verbally agreed and provided written consent on [FORM NAME/NUMBER]. No coercion, threats, or promises were made to obtain consent. The search was conducted in the following manner: [description of search].</p>',
+  },
+  {
+    id: 'field-interview-contact',
+    label: 'Field interview / FI contact',
+    group: 'Contacts',
+    html:
+      '<h3>FIELD INTERVIEW</h3>' +
+      '<p>I made contact with [SUBJECT NAME] at [LOCATION] at approximately [TIME]. The contact was initiated because [reason for contact — reasonable suspicion, area check, request to speak, etc.].</p>' +
+      '<p>I identified myself as an officer with Rocky Mountain Protective Group and asked [SUBJECT NAME] to explain their presence in the area. [SUBJECT NAME] stated: "[Summary of subject\'s statement]."</p>' +
+      '<p>A records check was conducted. [ ] No wants or warrants were found. [ ] Wants/warrants: [describe]. The contact was [ ] brief and consensual / [ ] a detention based on the following: [articulate reasonable suspicion]. [SUBJECT NAME] was [ ] released / [ ] arrested / [ ] issued a citation.</p>',
+  },
 ];
 
 /** Group the section blocks by their `group` for menu rendering. */

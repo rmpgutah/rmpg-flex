@@ -154,8 +154,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/code-enforcement': 'Code Enforcement',
   '/court': 'Court Tracker',
   '/dar': 'Daily Activity Reports',
-  '/offender-registry': 'Offender Registry',
-  '/sex-offender-registry': 'Sex Offender Registry',
+  // NSOPW is the canonical SOR surface; old paths redirect (see App.tsx).
+  '/nsopw': 'Sex Offender Registry',
   '/reports': 'Reports',
   '/forensic-lab': 'Forensic Lab',
   '/audit': 'Audit Log',
@@ -251,7 +251,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
     { path: '/colorado-doc', icon: UserCheck, label: 'Colorado DOC Search' },
-    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
   ]},
   { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
@@ -281,8 +281,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/court-records', icon: Gavel, label: 'Court Records' },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
     { path: '/serve', icon: FileSignature, label: 'Process Server' },
     { path: '/serve-intake', icon: FileText, label: 'Serve Intake' },
     { path: '/use-of-force', icon: Shield, label: 'Use of Force' },
@@ -906,7 +905,7 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col text-white overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
+    <div className="flex flex-col text-rmpg-100 overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
@@ -936,7 +935,7 @@ export default function Layout() {
           >
             <div className="text-center space-y-1">
               <Shield className="w-8 h-8 text-brand-400 mx-auto mb-2" />
-              <div className="text-lg font-bold text-white">Operator Identification Required</div>
+              <div className="text-lg font-bold text-rmpg-100">Operator Identification Required</div>
               <div className="text-xs text-rmpg-400">
                 Enter your name to continue. This will appear in the OPR system and all reports.
               </div>
@@ -944,7 +943,7 @@ export default function Layout() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">First Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-0" className="field-label">First Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-0"
                   type="text"
                   value={setupFirstName}
@@ -955,7 +954,7 @@ export default function Layout() {
                 />
               </div>
               <div>
-                <label className="field-label">Last Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-1" className="field-label">Last Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-1"
                   type="text"
                   value={setupLastName}
@@ -1056,7 +1055,7 @@ export default function Layout() {
               <RmpgLogo height={44} />
               {/* 2: Tighter line-height on app name for compact branding */}
               <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
-                <span className="text-[14px] font-bold tracking-wider text-white leading-none">RMPG</span>
+                <span className="text-[14px] font-bold tracking-wider text-rmpg-100 leading-none">RMPG</span>
                 <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: 'var(--desktop-shell-subtle-text)' }}>FLEX</span>
               </div>
             </div>
@@ -1094,7 +1093,7 @@ export default function Layout() {
               >
                 <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-rmpg-500'} />
                 <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
-                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-white'}`}>{activeCallCount}</span>
+                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-rmpg-100'}`}>{activeCallCount}</span>
               </button>
 
               {/* 5: BOLO Indicator with improved glow effect */}
@@ -1115,10 +1114,10 @@ export default function Layout() {
               {/* GPS */}
               <div
                 className="flex items-center gap-1 px-1.5 py-0.5 panel-inset"
-                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#050505' }}
+                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : 'var(--surface-overlay)' }}
                 title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || (gps.hasTakeHome ? 'Take-Home Vehicle' : 'no unit')}` : 'GPS acquiring...'}
               >
-                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#666666', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
+                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : 'var(--rmpg-500)', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
                 {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}
               </div>
 
@@ -1190,13 +1189,13 @@ export default function Layout() {
             </div>
 
             {/* Separator */}
-            <div className="hidden lg:block w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="hidden lg:block w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* PANIC Button */}
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
@@ -1218,7 +1217,7 @@ export default function Layout() {
                     src={authedImageUrl(user.profile_image)}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover transition-shadow duration-150"
-                    style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
+                    style={{ border: '2px solid var(--border-strong)', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
                   />
                 ) : (
                   <div
@@ -1226,7 +1225,7 @@ export default function Layout() {
                     style={{
                       background: 'linear-gradient(135deg, #333333, #888888)',
                       color: '#fff',
-                      border: '2px solid #aaaaaa',
+                      border: '2px solid var(--rmpg-400)',
                       borderRadius: '50%',
                       boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none',
                     }}
@@ -1239,7 +1238,7 @@ export default function Layout() {
                   style={{
                     width: 10,
                     height: 10,
-                    color: '#666666',
+                    color: 'var(--rmpg-500)',
                     transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
                     transition: 'transform 0.15s',
                   }}
@@ -1256,7 +1255,7 @@ export default function Layout() {
                 >
                   {/* User info header */}
                   <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'var(--surface-sunken)' }}>
-                    <div className="text-xs font-bold text-white">
+                    <div className="text-xs font-bold text-rmpg-100">
                       {user?.first_name} {user?.last_name}
                     </div>
                     <div className="text-[9px] font-mono text-rmpg-500 mt-0.5">
@@ -1400,7 +1399,7 @@ export default function Layout() {
         </button>
         <div
           className="self-stretch mx-0.5"
-          style={{ width: 1, background: '#222222', margin: '6px 2px' }}
+          style={{ width: 1, background: 'var(--border-subtle)', margin: '6px 2px' }}
         />
 
         {(() => {
@@ -1449,7 +1448,7 @@ export default function Layout() {
                 {showSep && (
                   <div
                     className="self-stretch mx-0.5"
-                    style={{ width: 1, background: '#222222', margin: '6px 2px' }}
+                    style={{ width: 1, background: 'var(--border-subtle)', margin: '6px 2px' }}
                   />
                 )}
                 <div className="relative">
@@ -1498,7 +1497,7 @@ export default function Layout() {
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #141414',
+                          borderRadius: 2, border: '1px solid var(--border-subtle)',
                           boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
                       >
@@ -1518,7 +1517,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                         }}
                       >
                         {item.shortcut}
@@ -1532,7 +1531,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1587,7 +1586,7 @@ export default function Layout() {
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#aaaaaa' : '#666666', flexShrink: 0 }} />
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--rmpg-400)' : 'var(--rmpg-500)', flexShrink: 0 }} />
                             <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );
@@ -1619,7 +1618,7 @@ export default function Layout() {
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main
           id="main-content"
-          className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
+          className="spm-page flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
           key={location.pathname}
           style={{ background: 'var(--surface-sunken)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
           // Persist scroll per-path so SW-update reloads (and any other full
@@ -1722,8 +1721,8 @@ export default function Layout() {
           {/* 14: Keyboard shortcuts modal with blue top accent */}
           <div className="bg-surface-base border border-border-default rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default bg-surface-overlay">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
-              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
+              <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
+              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-rmpg-100 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
               <div className="space-y-1.5">

@@ -77,7 +77,7 @@ export default function Minimap({
   const scale = THUMB_WIDTH / pageW;
 
   return (
-    <div className="w-[170px] shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 flex flex-col overflow-hidden">
+    <div className="w-[170px] shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 flex flex-col overflow-hidden">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide flex items-center gap-1">
           <MapIcon className="w-3 h-3" /> Minimap

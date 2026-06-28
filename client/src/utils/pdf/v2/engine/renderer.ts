@@ -7,8 +7,9 @@ import { drawDefaultHeader } from './header';
 import { drawDefaultFooter } from './footer';
 import { makeRenderContext, drawSectionHeader, closeSection } from './context';
 import { drawBlankFormWatermark, drawDraftWatermark } from './watermark';
+import { renderFixedLayoutSection } from './fixedLayout';
 import type {
-  FormSchema, SchemaSection, RenderCallback, FieldSpec, LabeledField,
+  FormSchema, SchemaSection, FixedLayoutSection, RenderCallback, FieldSpec, LabeledField,
 } from './types';
 
 function drawWatermarkIfAny(doc: jsPDF, mode: string | undefined): void {
@@ -63,6 +64,10 @@ export async function renderPdfV2<T>(
     if (isCallback<T>(section)) {
       const ctx = makeRenderContext(doc, layout, prims, data);
       section(ctx, data);
+    } else if ((section as FixedLayoutSection<T>).kind === 'fixed-layout') {
+      const fixed = section as FixedLayoutSection<T>;
+      if (fixed.visibleIf && !fixed.visibleIf(data)) continue;
+      renderFixedLayoutSection(doc, layout, fixed, data);
     } else {
       const schemaSec = section as SchemaSection<T>;
       if (schemaSec.visibleIf && !schemaSec.visibleIf(data)) continue;

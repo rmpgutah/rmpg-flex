@@ -364,7 +364,7 @@ export default function FleetAnalysisFormsTab({
       <div className="px-3 pt-3">
         <div className="flex items-center gap-2 mb-1">
           <FileText size={14} style={{ color: '#d4a017' }} />
-          <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-rmpg-300">
             Analysis Reports
           </h2>
         </div>
@@ -394,7 +394,7 @@ export default function FleetAnalysisFormsTab({
                   onClick={() => setDateRange(r)}
                   className="px-2 py-0.5 text-[10px] font-mono border transition-colors"
                   style={{
-                    background: dateRange === r ? '#1a1a1a' : 'transparent',
+                    background: dateRange === r ? 'var(--surface-raised)' : 'transparent',
                     borderColor: dateRange === r ? '#d4a017' : 'var(--border-default)',
                     color: dateRange === r ? '#d4a017' : '#888',
                   }}
@@ -417,7 +417,7 @@ export default function FleetAnalysisFormsTab({
                   onClick={() => setGroupBy(g)}
                   className="px-2 py-0.5 text-[10px] font-mono border transition-colors"
                   style={{
-                    background: groupBy === g ? '#1a1a1a' : 'transparent',
+                    background: groupBy === g ? 'var(--surface-raised)' : 'transparent',
                     borderColor: groupBy === g ? '#d4a017' : 'var(--border-default)',
                     color: groupBy === g ? '#d4a017' : '#888',
                   }}
@@ -438,8 +438,7 @@ export default function FleetAnalysisFormsTab({
               step={1000}
               value={minMileage}
               onChange={(e) => setMinMileage(Number(e.target.value) || 0)}
-              className="w-full px-2 py-1 text-[11px] font-mono bg-surface-sunken border border-subtle focus:border-rmpg-400 outline-none"
-              style={{ color: 'var(--text-secondary)' }}
+                            className="w-full px-2 py-1 text-[11px] font-mono bg-surface-sunken border border-subtle focus:border-rmpg-400 outline-none text-rmpg-300"
               placeholder="0 (no minimum)"
             />
           </div>
@@ -509,7 +508,7 @@ export default function FleetAnalysisFormsTab({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <Icon size={12} style={{ color: '#d4a017' }} />
-                      <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                      <span className="text-[11px] font-semibold text-rmpg-300">
                         {REPORT_LABELS[r]}
                       </span>
                     </div>

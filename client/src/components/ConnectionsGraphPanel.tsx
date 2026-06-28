@@ -9,9 +9,9 @@ import { recordTypeLabel } from '../utils/recordTypeLabel';
 
 interface GraphNode {
   id: string;
-  type: 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident'
+  type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence' | 'case' | 'incident'
       | 'warrant' | 'citation' | 'arrest' | 'field_interview' | 'trespass_order' | 'serve_job'
-      | 'intel_report';
+      | 'call' | 'report' | 'intel_report';
   label: string;
   /** Original-case label for prose (label itself is uppercased for the node). */
   rawLabel?: string;
@@ -38,6 +38,7 @@ const NODE_COLORS: Record<string, string> = {
   incident: '#f59e0b',
   vehicle: '#10b981',
   property: '#8b5cf6',
+  business: '#f59e0b',
   evidence: '#ef4444',
   case: '#d4a017',
   warrant: '#dc2626',
@@ -46,6 +47,8 @@ const NODE_COLORS: Record<string, string> = {
   field_interview: '#64748b',
   trespass_order: '#a855f7',
   serve_job: '#14b8a6',
+  call: '#22d3ee',
+  report: '#ec4899',
   intel_report: '#e879f9',
 };
 
@@ -54,6 +57,7 @@ const NODE_RADIUS: Record<string, number> = {
   incident: 18,
   vehicle: 16,
   property: 16,
+  business: 16,
   evidence: 16,
   case: 16,
   warrant: 18,
@@ -62,6 +66,8 @@ const NODE_RADIUS: Record<string, number> = {
   field_interview: 14,
   trespass_order: 16,
   serve_job: 16,
+  call: 18,
+  report: 14,
   intel_report: 18,
 };
 
@@ -241,10 +247,10 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   />
                   <line
                     x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
-                    stroke="#333" strokeWidth={1.5} strokeDasharray="4,3"
+                    stroke="var(--border-default)" strokeWidth={1.5} strokeDasharray="4,3"
                   />
                   {e.label && (
-                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="#666" fontFamily="monospace">
+                    <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="var(--rmpg-500)" fontFamily="monospace">
                       <title>{sentence}</title>
                       {e.label}
                     </text>
@@ -275,7 +281,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {/* Node circle */}
                   <circle
                     cx={n.x} cy={n.y} r={r}
-                    fill="#0a0a0a" stroke={color} strokeWidth={2}
+                    fill="var(--surface-base)" stroke={color} strokeWidth={2}
                   />
                   {/* Type icon letter */}
                   <text
@@ -287,7 +293,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {/* Label below */}
                   <text
                     x={n.x} y={n.y + r + 10} textAnchor="middle"
-                    fontSize={8} fill="#ccc" fontFamily="monospace"
+                    fontSize={8} fill="var(--rmpg-300)" fontFamily="monospace"
                   >
                     {n.label.length > 18 ? n.label.slice(0, 16) + '…' : n.label}
                   </text>
@@ -295,7 +301,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   {n.subLabel && (
                     <text
                       x={n.x} y={n.y + r + 19} textAnchor="middle"
-                      fontSize={6} fill="#666" fontFamily="monospace"
+                      fontSize={6} fill="var(--rmpg-500)" fontFamily="monospace"
                     >
                       {n.subLabel}
                     </text>

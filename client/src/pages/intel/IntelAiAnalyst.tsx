@@ -7,7 +7,7 @@ import { Sparkles, Loader2, FileText, AlertTriangle, Search } from 'lucide-react
 import { apiFetch } from '../../hooks/useApi';
 
 interface Source { type: string; id: number; label: string; snippet?: string; }
-interface AskResult { answer: string; citations: Source[]; sources: Source[]; }
+interface AskResult { answer: string; citations: Source[]; sources: Source[]; engine?: 'claude' | 'workers-ai'; }
 interface Health { configured: boolean; model: string; ok: boolean | null; detail?: string; }
 
 const EXAMPLES = [
@@ -138,7 +138,16 @@ export default function IntelAiAnalyst() {
       {result && (
         <div className="space-y-4">
           <div className="bg-surface-raised border border-rmpg-700/50 rounded-sm p-4">
-            <div className="text-[10px] uppercase tracking-wide text-brand-400 mb-1">Answer</div>
+            <div className="flex items-center gap-2 mb-1">
+              <div className="text-[10px] uppercase tracking-wide text-brand-400">Answer</div>
+              {result.engine === 'workers-ai' && (
+                <span
+                  className="ml-auto flex items-center gap-1 text-[9px] font-semibold text-amber-400 bg-amber-900/20 border border-amber-700/40 rounded-sm px-1.5 py-0.5"
+                  title="Claude is unavailable (no key or out of credit) — answered by the free Workers AI fallback. Fund the Anthropic account in Admin → API Integrations for higher quality.">
+                  <AlertTriangle className="w-2.5 h-2.5" /> FREE FALLBACK AI
+                </span>
+              )}
+            </div>
             <p className="text-[13px] text-rmpg-100 whitespace-pre-wrap leading-relaxed">{result.answer}</p>
           </div>
 

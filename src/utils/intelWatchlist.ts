@@ -12,6 +12,7 @@
 // fresh on no-hit to bound the scan window via COALESCE in queries).
 // ============================================================
 
+import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute } from './db';
 
@@ -30,19 +31,19 @@ async function hitsForPerson(db: D1Database, personId: number, since: string): P
        JOIN call_persons cp ON cp.call_id = c.id
        WHERE cp.person_id = ? AND c.created_at > ? LIMIT 5`, personId, since))
       hits.push({ kind: 'call', label: `${r.call_number || 'CFS'} ${r.incident_type || ''}`.trim() });
-  } catch (err: any) { console.error('[watchlist] person calls failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-watchlist] person calls failed', { error: err?.message }); }
   try {
     for (const r of await query<any>(db,
       `SELECT fi_number, contact_reason FROM field_interviews
        WHERE person_id = ? AND created_at > ? LIMIT 5`, personId, since))
       hits.push({ kind: 'field interview', label: `${r.fi_number || 'FI'} ${r.contact_reason || ''}`.trim() });
-  } catch (err: any) { console.error('[watchlist] person FIs failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-watchlist] person FIs failed', { error: err?.message }); }
   try {
     for (const r of await query<any>(db,
       `SELECT citation_number FROM citations
        WHERE person_id = ? AND created_at > ? LIMIT 5`, personId, since))
       hits.push({ kind: 'citation', label: r.citation_number || 'Citation' });
-  } catch (err: any) { console.error('[watchlist] person citations failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-watchlist] person citations failed', { error: err?.message }); }
   return hits;
 }
 
@@ -54,13 +55,13 @@ async function hitsForVehicle(db: D1Database, vehicleId: number, since: string):
        JOIN call_vehicles cv ON cv.call_id = c.id
        WHERE cv.vehicle_id = ? AND c.created_at > ? LIMIT 5`, vehicleId, since))
       hits.push({ kind: 'call', label: `${r.call_number || 'CFS'} ${r.incident_type || ''}`.trim() });
-  } catch (err: any) { console.error('[watchlist] vehicle calls failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-watchlist] vehicle calls failed', { error: err?.message }); }
   try {
     for (const r of await query<any>(db,
       `SELECT fi_number FROM field_interviews
        WHERE vehicle_id = ? AND created_at > ? LIMIT 5`, vehicleId, since))
       hits.push({ kind: 'field interview', label: r.fi_number || 'FI' });
-  } catch (err: any) { console.error('[watchlist] vehicle FIs failed:', err?.message); }
+  } catch (err: any) { log.error('[intel-watchlist] vehicle FIs failed', { error: err?.message }); }
   return hits;
 }
 
@@ -85,7 +86,7 @@ export async function sweepWatchlist(db: D1Database): Promise<number> {
       'SELECT id, entity_type, entity_id, reason, added_by, last_alert_at FROM intel_watchlist WHERE active = 1 LIMIT 200');
   } catch (err: any) {
     // Table missing on live = migration drift; stay silent beyond one log.
-    console.error('[watchlist] sweep skipped:', err?.message);
+    log.error('[intel-watchlist] sweep skipped', { error: err?.message });
     return 0;
   }
   for (const w of watches) {
@@ -106,7 +107,7 @@ export async function sweepWatchlist(db: D1Database): Promise<number> {
       await execute(db, `UPDATE intel_watchlist SET last_alert_at = datetime('now') WHERE id = ?`, w.id);
       alerts++;
     } catch (err: any) {
-      console.error(`[watchlist] watch ${w.id} failed:`, err?.message);
+      log.error('[intel-watchlist] watch failed', { watch_id: w.id, error: err?.message });
     }
   }
   return alerts;

@@ -19,7 +19,7 @@ struct CallNavView: View {
                 Image(systemName: "location.north.line.fill").foregroundStyle(Theme.gold)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label.isEmpty ? "Destination" : label)
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                        .font(Theme.Typography.body).fontWeight(.semibold).foregroundStyle(.white).lineLimit(1)
                     Text(summary).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.gold)
                 }
                 Spacer()
@@ -37,7 +37,7 @@ struct CallNavView: View {
                             HStack(alignment: .top, spacing: 10) {
                                 Image(systemName: NavStepFormat.icon(for: step.instructions))
                                     .font(.system(size: 14)).foregroundStyle(Theme.gold).frame(width: 22)
-                                Text(step.instructions).font(.system(size: 12)).foregroundStyle(.white)
+                                Text(step.instructions).font(Theme.Typography.caption).foregroundStyle(.white)
                                 Spacer()
                                 Text(NavStepFormat.distance(step.distance))
                                     .font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.neutral)

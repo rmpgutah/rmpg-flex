@@ -31,10 +31,23 @@ function parseDetail(detail: CaseActivityRow['detail']): Record<string, any> {
   try { return JSON.parse(detail); } catch { return {}; }
 }
 
+const ENTITY_SINGULAR: Record<string, string> = {
+  properties: 'property',
+  vehicles: 'vehicle',
+  persons: 'person',
+  incidents: 'incident',
+  warrants: 'warrant',
+  citations: 'citation',
+  cases: 'case',
+  businesses: 'business',
+  evidence: 'evidence',
+};
+
 /** Map an activity action + detail to a display label and color. */
 export function formatActivity(action: string, detail?: CaseActivityRow['detail']): FormattedActivity {
   const d = parseDetail(detail);
-  const entity = d.entity ? String(d.entity).replace(/s$/, '') : '';
+  const rawEntity = d.entity ? String(d.entity).toLowerCase() : '';
+  const entity = rawEntity ? (ENTITY_SINGULAR[rawEntity] || rawEntity.replace(/s$/, '')) : '';
   const idSuffix = d.entity_id ? ` #${d.entity_id}` : '';
 
   switch (action) {
@@ -46,7 +59,7 @@ export function formatActivity(action: string, detail?: CaseActivityRow['detail'
         color: GRAY,
       };
     case 'status.changed':
-      return { label: `Status → ${d.to ?? '?'}${d.disposition ? ` (${d.disposition})` : ''}`, color: AMBER };
+      return { label: `Status -> ${d.to ?? '?'}${d.disposition ? ` (${d.disposition})` : ''}`, color: AMBER };
     case 'review.submitted':
       return { label: 'Submitted for supervisor review', color: AMBER };
     case 'review.approved':

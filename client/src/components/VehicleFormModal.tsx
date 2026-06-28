@@ -173,6 +173,7 @@ export default function VehicleFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<VehicleFormData>({
     storageKey: 'rmpg_vehicle_form',
@@ -254,19 +255,43 @@ export default function VehicleFormModal({
     } else {
       setForm((prev) => ({ ...prev, [name]: value }));
     }
+    // Editing year/vin clears the inline validation error for that field
+    // so the operator sees the error disappear as they correct the value.
+    if (name === 'year' || name === 'vin') {
+      setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
   };
 
   const [ownerAddressUnit, setOwnerAddressUnit] = useState('');
+  // Inline validation errors per field. Surface them on click — previously
+  // the handler silently `return`-ed on bad year/VIN with NO feedback,
+  // which read to the operator as "Create button is dead". Reported
+  // in-session 2026-06-21.
+  const [fieldErrors, setFieldErrors] = useState<{ year?: string; vin?: string }>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Validate year if provided
+    const errs: { year?: string; vin?: string } = {};
     if (form.year) {
       const yearNum = parseInt(form.year, 10);
-      if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2030) return;
+      if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2030) {
+        errs.year = 'Year must be between 1900 and 2030.';
+      }
     }
-    // Validate VIN length if provided
-    if (form.vin && form.vin.length !== 17) return;
+    if (form.vin && form.vin.length !== 17) {
+      errs.vin = `VIN must be exactly 17 characters (currently ${form.vin.length}).`;
+    }
+    if (errs.year || errs.vin) {
+      setFieldErrors(errs);
+      // Scroll the first invalid field into view + focus it.
+      const firstBadName = errs.year ? 'year' : 'vin';
+      const el = document.querySelector<HTMLElement>(`[name="${firstBadName}"], [id="${firstBadName}"]`);
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      (el as HTMLInputElement | null)?.focus?.();
+      return;
+    }
+    setFieldErrors({});
+    signalSaved();
     onSubmit({ ...form, owner_address: composeAddressUnit(form.owner_address, ownerAddressUnit) });
   };
 
@@ -291,6 +316,18 @@ export default function VehicleFormModal({
         </div>
       )}
 
+      {/* Inline validation errors (year, VIN). Surfaces the silent
+          handleSubmit returns the operator was previously hitting blind. */}
+      {(fieldErrors.year || fieldErrors.vin) && (
+        <div className="px-3 py-2 -mt-2 mb-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
+          <div className="font-semibold mb-1">Please fix:</div>
+          <ul className="list-disc pl-4 space-y-0.5">
+            {fieldErrors.year ? <li><span className="font-mono">year</span> — {fieldErrors.year}</li> : null}
+            {fieldErrors.vin ? <li><span className="font-mono">vin</span> — {fieldErrors.vin}</li> : null}
+          </ul>
+        </div>
+      )}
+
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {[
@@ -306,7 +343,7 @@ export default function VehicleFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -487,7 +524,7 @@ export default function VehicleFormModal({
           </div>
 
           <div className="border-t border-rmpg-700 pt-3">
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
+            <label htmlFor="ff-vehicleformmodal-addrunit" className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Owner Name">
                 <input name="owner_name" type="text" className="input-dark mt-1" placeholder="Vehicle owner name" value={form.owner_name} onChange={handleChange} />

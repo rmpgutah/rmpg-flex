@@ -107,18 +107,20 @@ describe('NOT NULL regression tests', () => {
     expect(write.args[idx]).toBe(1);
   });
 
-  it('POST /api/records/businesses inserts is_active', async () => {
+  it('POST /api/records/businesses writes to the canonical businesses table with created_at', async () => {
     const rec = recordingDb([
       { match: /SELECT id, username, role, full_name, status FROM users/, rows: [{ id: 1, username: 'tester', role: 'admin', full_name: 'Test Officer', status: 'active' }] },
     ]);
     const res = await authedRequest(rec.db, '/api/records/businesses', jsonReq({ name: 'Acme Inc', business_type: 'retail' }));
     expect(res.status).toBe(201);
-    const write = rec.calls.find((c) => /INSERT INTO properties/.test(c.sql))!;
+    // Unified onto the dedicated businesses table (migration 0125), no longer
+    // properties. created_at is supplied as a non-null datetime literal so the
+    // NOT NULL DEFAULT is always satisfied regardless of the posted body.
+    const write = rec.calls.find((c) => /INSERT INTO businesses/.test(c.sql))!;
     expect(write).toBeDefined();
-    expect(write.sql).toMatch(/is_active/);
-    const idx = colIdx(write.sql, 'is_active');
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(write.args[idx]).toBe(1);
+    expect(write.sql).toMatch(/created_at/);
+    expect(write.sql).toMatch(/datetime\('now'\)/);
+    expect(write.sql).toMatch(/business_type/);
   });
 
   it('POST /api/shift-plans/shift-swaps inserts created_at', async () => {

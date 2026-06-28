@@ -17,6 +17,14 @@ vi.mock('../../hooks/useApi', () => ({
   }),
 }));
 
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { role: 'admin', full_name: 'Test Admin', username: 'testadmin' } }),
+}));
+
+vi.mock('../../components/ToastProvider', () => ({
+  useToast: () => ({ addToast: vi.fn() }),
+}));
+
 describe('JailRecordsPage', () => {
   it('renders sources, bookings, and ingests a roster with cross-hit result', async () => {
     render(<MemoryRouter><JailRecordsPage /></MemoryRouter>);
