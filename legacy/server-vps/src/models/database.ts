@@ -534,8 +534,6 @@ function createTables(): void {
       vessel_owner TEXT,
       updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
-    CREATE INDEX IF NOT EXISTS idx_ofac_sdn_name ON ofac_sdn_entries(sdn_name COLLATE NOCASE);
-    CREATE INDEX IF NOT EXISTS idx_ofac_sdn_type ON ofac_sdn_entries(sdn_type);
 
     CREATE TABLE IF NOT EXISTS ofac_sdn_aliases (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1543,7 +1541,23 @@ function createTables(): void {
  * Uses try/catch per ALTER TABLE so it's idempotent (won't fail if column already exists).
  */
 function migrateSchema(): void {
+  const isValidIdentifier = (value: string): boolean => /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+  const quoteIdentifier = (value: string): string => `"${value.replace(/"/g, '""')}"`;
+  // Typedef must start with a valid SQLite base type and must not contain SQL injection
+  // characters (statement terminators or comment markers). DEFAULT expressions, REFERENCES,
+  // NOT NULL, etc. are permitted since all callers use hardcoded values.
+  const isValidTypeDef = (value: string): boolean => {
+    const trimmed = value.trim();
+    if (!/^(TEXT|INTEGER|REAL|BLOB|NUMERIC)\b/i.test(trimmed)) return false;
+    if (/;|--/.test(trimmed)) return false;
+    return true;
+  };
+
   const addCol = (table: string, col: string, typedef: string) => {
+    if (!isValidIdentifier(table) || !isValidIdentifier(col) || !isValidTypeDef(typedef)) {
+      throw new Error(`Invalid schema migration arguments: table=${table}, col=${col}, typedef=${typedef}`);
+    }
+
     try {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${typedef}`);
     } catch {
@@ -1757,7 +1771,13 @@ function migrateSchema(): void {
       `);
       // Copy existing data (use PRAGMA to get actual column list)
       const cfsCols = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
-      const cfsColNames = cfsCols.map((c: any) => c.name).join(', ');
+      const cfsColNames = cfsCols.map((c: any) => {
+        const name = String(c.name);
+        if (!isValidIdentifier(name)) {
+          throw new Error(`Unsafe column name in calls_for_service schema: ${name}`);
+        }
+        return quoteIdentifier(name);
+      }).join(', ');
       db.exec(`INSERT INTO calls_for_service_new (${cfsColNames}) SELECT ${cfsColNames} FROM calls_for_service`);
       db.exec(`DROP TABLE calls_for_service`);
       db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
@@ -3115,7 +3135,11 @@ function migrateSchema(): void {
     console.log(`[migrate] ${breadcrumbsNeedingGeocode.cnt} breadcrumbs need road/cross-street data — backfilling async...`);
 
     // Kick off async backfill after a short delay to let the server finish starting
-    setTimeout(() => backfillBreadcrumbRoads(), 10_000);
+    setTimeout(() => {
+      backfillBreadcrumbRoads().catch((err) => {
+        console.error('[migrate] Async breadcrumb road/cross-street backfill failed:', err);
+      });
+    }, 10_000);
   }
 
   // ── Reconcile dispatch_zones.sector_id with dispatch_sections data.
