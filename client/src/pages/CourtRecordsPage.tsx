@@ -16,7 +16,6 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
-import { toDisplayLabel } from '../utils/formatters';
 import { openCourtAppearancePdf } from '../utils/courtAppearancePdf';
 
 // ============================================================
