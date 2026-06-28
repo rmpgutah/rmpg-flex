@@ -215,6 +215,19 @@ export function extractBusinessInfo(
   return { name, description, industry, address, phone, email, socialLinks };
 }
 
+const SOCIAL_PLATFORM_MAP: Record<string, string> = {
+  linkedin: 'linkedin',
+  twitter: 'twitter',
+  x: 'twitter',
+  facebook: 'facebook',
+  instagram: 'instagram',
+  youtube: 'youtube',
+  github: 'github',
+  tiktok: 'tiktok',
+};
+
+const SOCIAL_PLATFORM_REGEX = /(?:\/\/|\.)\b(linkedin|twitter|x|facebook|instagram|youtube|github|tiktok)\.com/i;
+
 function detectSocialPlatform(url: string): string | null {
   // Host-boundary anchors (?:[/?#]|$) prevent matches like "linkedin.com.evil.com".
   if (/^https?:\/\/(?:www\.)?linkedin\.com(?:[/?#]|$)/i.test(url)) return 'linkedin';

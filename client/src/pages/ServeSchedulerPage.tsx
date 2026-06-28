@@ -110,7 +110,6 @@ export default function ServeSchedulerPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [backfilling, setBackfilling] = useState(false);
   const { addToast } = useToast();
 
   const refetch = useCallback(async () => {
@@ -219,18 +218,6 @@ export default function ServeSchedulerPage() {
       refetch();
     } catch (e) {
       addToast(`Could not assign paper: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
-    }
-  }, [refetch, addToast]);
-
-  const handleBackfill = useCallback(async () => {
-    setBackfilling(true);
-    try {
-      await apiFetch('/serve-intake/schedule/backfill', { method: 'POST' });
-      await refetch();
-    } catch (e) {
-      addToast(`Schedule generation failed: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
-    } finally {
-      setBackfilling(false);
     }
   }, [refetch, addToast]);
 

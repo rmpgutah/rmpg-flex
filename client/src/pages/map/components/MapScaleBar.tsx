@@ -11,13 +11,8 @@ function getMetersPerPixel(lat: number, zoom: number): number {
 }
 
 /** Pick a nice round distance value (in feet) for the scale bar */
-function pickNiceDistance(maxFeet: number): number {
+function pickNiceDistanceFeet(maxFeet: number): number {
   const niceValues = [50, 100, 200, 500, 1000, 2000, 2640, 5280, 10560, 26400, 52800, 132000, 264000, 528000];
-  for (const v of niceValues) {
-    if (v <= maxFeet) continue;
-    // Return the previous nice value that fits
-  }
-  // Find the largest nice value that fits within maxFeet
   let best = niceValues[0];
   for (const v of niceValues) {
     if (v <= maxFeet) best = v;
@@ -26,13 +21,33 @@ function pickNiceDistance(maxFeet: number): number {
   return best;
 }
 
+/** Pick a nice round distance value (in meters) for the scale bar */
+function pickNiceDistanceMeters(maxMeters: number): number {
+  const niceValues = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000];
+  let best = niceValues[0];
+  for (const v of niceValues) {
+    if (v <= maxMeters) best = v;
+    else break;
+  }
+  return best;
+}
+
 /** Format feet as a human-readable label */
-function formatDistance(feet: number): string {
+function formatDistanceFeet(feet: number): string {
   if (feet >= 5280) {
     const miles = feet / 5280;
     return miles === Math.floor(miles) ? `${miles} mi` : `${miles.toFixed(1)} mi`;
   }
   return `${feet} ft`;
+}
+
+/** Format meters as a human-readable label */
+function formatDistanceMetric(meters: number): string {
+  if (meters >= 1000) {
+    const km = meters / 1000;
+    return km === Math.floor(km) ? `${km} km` : `${km.toFixed(1)} km`;
+  }
+  return `${meters} m`;
 }
 
 const TARGET_BAR_WIDTH = 120; // pixels - target width for the bar
@@ -41,6 +56,8 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
   const [barWidth, setBarWidth] = useState(0);
   const [label, setLabel] = useState('');
   const listenerRefs = useRef<{ map: mapboxgl.Map; onUpdate: () => void }[]>([]);
+
+  const toggleUnit = useCallback(() => setShowMetric(prev => !prev), []);
 
   useEffect(() => {
     if (!mapInstance) return;
@@ -55,7 +72,10 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
       const feetPerPixel = metersPerPixel * 3.28084;
 
       const maxFeet = feetPerPixel * TARGET_BAR_WIDTH;
-      const niceFeet = pickNiceDistance(maxFeet);
+      const niceFeet = pickNiceDistanceFeet(maxFeet);
+      const exactWidthFt = niceFeet / feetPerPixel;
+      setBarWidth(Math.round(exactWidthFt));
+      setLabel(formatDistanceFeet(niceFeet));
 
       const exactWidth = niceFeet / feetPerPixel;
 
@@ -76,8 +96,10 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
 
   if (!mapInstance || barWidth === 0) return null;
 
+  const activeWidth = showMetric ? metricBarWidth : barWidth;
+  const activeLabel = showMetric ? metricLabel : label;
   const segments = 4;
-  const segWidth = barWidth / segments;
+  const segWidth = activeWidth / segments;
 
   return (
     <div
@@ -88,31 +110,34 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
         borderRadius: 2,
         background: 'rgba(10, 10, 10, 0.9)',
         padding: '4px 8px 5px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
       }}
     >
       {/* #19: Distance label with tabular-nums for stable width */}
       <div className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider text-center mb-1 cursor-pointer hover:text-rmpg-400 transition-colors tabular-nums" style={{ width: barWidth }}>
         {label}
       </div>
-      {/* Alternating bar segments with gradient */}
-      <div className="flex" style={{ width: barWidth, height: 4 }}>
+      {/* Dual-tone alternating bar segments */}
+      <div className="flex" style={{ width: activeWidth, height: 4 }}>
         {Array.from({ length: segments }).map((_, i) => (
           <div
             key={i}
             style={{
               width: segWidth,
               height: '100%',
-              background: i % 2 === 0 ? 'linear-gradient(to right, #5a6e80, #9ca3af)' : '#000000',
-              borderTop: '1px solid #ffffff',
-              borderBottom: '1px solid #ffffff',
+              background: i % 2 === 0 ? 'linear-gradient(to bottom, #7a8a9a, #5a6e80)' : '#0a0a0a',
+              borderTop: '1px solid rgba(255,255,255,0.7)',
+              borderBottom: '1px solid rgba(255,255,255,0.7)',
             }}
           />
         ))}
       </div>
-      {/* #20: End ticks with softer caps */}
-      <div className="relative" style={{ width: barWidth, height: 5 }}>
+      {/* End ticks */}
+      <div className="relative" style={{ width: activeWidth, height: 5 }}>
         <div className="absolute left-0 top-0 w-px h-full bg-white/80" />
         <div className="absolute right-0 top-0 w-px h-full bg-white/80" />
+        {/* Half-way tick */}
+        <div className="absolute top-0 w-px h-2/3 bg-white/40" style={{ left: activeWidth / 2 }} />
       </div>
     </div>
   );

@@ -150,10 +150,17 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
 
   const tag = document.createElement('div');
   tag.style.cssText =
-    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
+    `background:linear-gradient(180deg, ${color}, ${adjustBrightness(color, -20)});color:#fff;font-size:9px;font-weight:900;` +
     "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.85);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
     `display:flex;align-items:center;gap:3px;border-radius:1px;line-height:1.2;min-width:36px;text-align:center;justify-content:center;` +
-    `box-shadow:inset 0 1px 0 rgba(255,255,255,0.15), 0 0 8px ${color}40;filter:saturate(1.1);`;
+    `box-shadow:inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.15), 0 0 10px ${color}50;`;
+
+  // LED status dot
+  const led = document.createElement('div');
+  led.style.cssText =
+    `width:4px;height:4px;border-radius:50%;background:${color};flex-shrink:0;` +
+    `box-shadow:0 0 4px ${color}, 0 0 8px ${color}80;border:0.5px solid rgba(255,255,255,0.5);`;
+  tag.appendChild(led);
 
   const csSpan = document.createElement('span');
   csSpan.setAttribute('data-unit-label', '');
@@ -194,7 +201,7 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
 
   const caret = document.createElement('div');
   caret.style.cssText =
-    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};transition:border-color 0.2s ease;`;
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${adjustBrightness(color, -20)};transition:border-color 0.2s ease;`;
 
   const speedEl = document.createElement('span');
   speedEl.setAttribute('data-unit-speed', '');
@@ -222,6 +229,14 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
 
   if (priority === 'P1') {
     wrapper.style.animation = 'pulse-p1 1s ease-in-out infinite';
+    // Add expanding ripple for P1
+    const ripple = document.createElement('div');
+    ripple.style.cssText =
+      `position:absolute;top:50%;left:50%;width:30px;height:30px;` +
+      `border:2px solid ${color};border-radius:50%;opacity:0;pointer-events:none;z-index:-1;` +
+      `transform:translate(-50%,-50%) scale(0.3);` +
+      `animation:rmpg-unit-pulse 1.5s ease-out infinite;`;
+    wrapper.appendChild(ripple);
   } else if (priority === 'P2') {
     wrapper.style.animation = 'pulse-p2 2s ease-in-out infinite';
   }
@@ -627,6 +642,7 @@ export function injectKeyframes() {
     @keyframes pulse-p1 { 0%,100% { box-shadow:0 0 4px rgba(220,38,38,0.3); filter:brightness(1); } 50% { box-shadow:0 0 18px rgba(220,38,38,0.9), 0 0 30px rgba(220,38,38,0.4); filter:brightness(1.2); } }
     @keyframes pulse-p2 { 0%,100% { box-shadow:0 0 3px rgba(245,158,11,0.2); filter:brightness(1); } 50% { box-shadow:0 0 12px rgba(245,158,11,0.7), 0 0 20px rgba(245,158,11,0.3); filter:brightness(1.15); } }
     @keyframes pulse-gps { 0%,100% { transform:scale(1); opacity:0.7; } 50% { transform:scale(3.0); opacity:0; } }
+    @keyframes rmpg-unit-pulse { 0% { transform:translate(-50%,-50%) scale(0.5); opacity:0.6; } 100% { transform:translate(-50%,-50%) scale(2.5); opacity:0; } }
     @keyframes marker-enter { from { opacity:0; transform:scale(0.5) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
     @keyframes marker-exit { from { opacity:1; transform:scale(1); } to { opacity:0; transform:scale(0.8); } }
     @keyframes marker-selected { 0%,100% { box-shadow:0 0 0 0 rgba(160, 160, 160,0.4); } 50% { box-shadow:0 0 0 8px rgba(160, 160, 160,0); } }
