@@ -172,7 +172,7 @@ export default function SplitPanel({
     >
       {/* Left / Top Panel */}
       <div
-        className="overflow-hidden"
+        className="overflow-hidden min-h-0"
         style={{
           [isHorizontal ? 'width' : 'height']: rightVisible ? `${ratio * 100}%` : '100%',
           transition: isDragging ? 'none' : 'width 0.2s ease, height 0.2s ease',
@@ -210,7 +210,7 @@ export default function SplitPanel({
       {/* Right / Bottom Panel */}
       {rightVisible && (
         <div
-          className="overflow-hidden flex-1 min-w-0 min-h-0"
+          className="flex flex-col overflow-hidden flex-1 min-w-0 min-h-0"
           style={{
             transition: isDragging ? 'none' : 'opacity 0.2s ease',
           }}

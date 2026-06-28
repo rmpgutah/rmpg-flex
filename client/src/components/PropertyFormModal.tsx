@@ -13,6 +13,7 @@ import { AssessorSuggestionPanel } from './AssessorSuggestionPanel';
 
 import RichTextArea from './RichTextArea';
 import { ALARM_SYSTEM_OPTIONS } from '../constants/lawEnforcementEnums';
+import SectorZoneBeatPicker from './SectorZoneBeatPicker';
 interface PropertyFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -71,6 +72,10 @@ export interface PropertyFormData {
   patrol_frequency: string;
   opening_hours: string;
   closing_hours: string;
+  // Dispatch geography — TEXT codes; auto-fills from lat/lng when blank.
+  sector_id: string;
+  zone_id: string;
+  beat_id: string;
 }
 
 const EMPTY_FORM: PropertyFormData = {
@@ -120,6 +125,9 @@ const EMPTY_FORM: PropertyFormData = {
   patrol_frequency: '',
   opening_hours: '',
   closing_hours: '',
+  sector_id: '',
+  zone_id: '',
+  beat_id: '',
 };
 
 const US_STATES = [
@@ -249,6 +257,9 @@ export default function PropertyFormModal({
           patrol_frequency: (editingProperty as any).patrol_frequency || '',
           opening_hours: (editingProperty as any).opening_hours || '',
           closing_hours: (editingProperty as any).closing_hours || '',
+          sector_id: (editingProperty as any).sector_id || '',
+          zone_id: (editingProperty as any).zone_id || '',
+          beat_id: (editingProperty as any).beat_id || '',
         };
         setForm(initial);
         snapshot();
@@ -784,6 +795,9 @@ export default function PropertyFormModal({
             placeholder="How to access the property, key locations, entry points"
             value={form.access_instructions}
             onChange={handleChange}
+            pattern="\d{5}(-\d{4})?"
+            maxLength={10}
+            placeholder="e.g. 84101"
           />
         </FormField>
       </FormSection>

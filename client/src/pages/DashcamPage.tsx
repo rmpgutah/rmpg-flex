@@ -122,7 +122,7 @@ export default function DashcamPage() {
   }, [loading]);
 
   // N shortcut — triggers refresh.
-  // Esc cascade — closes deactivate confirm first, then detail panel.
+  // Esc cascade — closes detail panel first, then deactivate confirm.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
