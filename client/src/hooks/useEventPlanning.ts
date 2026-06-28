@@ -306,6 +306,22 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
     ));
   }, [activePlanId]);
 
+  // ── Helper: remove all rendered overlays ───────────────────
+
+  const clearOverlays = useCallback(() => {
+    for (const m of markersRef.current) m.remove();
+    markersRef.current = [];
+    if (map) {
+      for (const lid of layerIdsRef.current) {
+        try {
+          if (map.getLayer(lid)) map.removeLayer(lid);
+          if (map.getSource(lid)) map.removeSource(lid);
+        } catch { /* ignore */ }
+      }
+    }
+    layerIdsRef.current = [];
+  }, [map]);
+
   // ── Render plan overlays on map ────────────────────────────
   useEffect(() => {
     // Clear existing overlays

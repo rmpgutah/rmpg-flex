@@ -795,6 +795,9 @@ export default function PropertyFormModal({
             placeholder="How to access the property, key locations, entry points"
             value={form.access_instructions}
             onChange={handleChange}
+            pattern="\d{5}(-\d{4})?"
+            maxLength={10}
+            placeholder="e.g. 84101"
           />
         </FormField>
       </FormSection>

@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
+import { safeTimeStr } from '../utils/dateUtils';
 
 import { safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 

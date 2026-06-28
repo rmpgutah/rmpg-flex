@@ -184,7 +184,76 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
     if (ti > 0) doc.addPage();
     let y = 40;
 
-    // ── Header ────────────────────────────────────────────
+  // Add watermark to the first page (newPage() handles subsequent pages)
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState — safety reset after watermark
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  // ── Utility: add header/footer to each page ──────────
+  // Page 1 = cover (no top header bar — it has its own centered layout)
+  // Pages 2+ = dark header bar with logo + text
+  function addHeaderFooter(pageNum: number, totalPages: number) {
+    // Only draw the top header bar on pages 2+
+    if (pageNum > 1) {
+      // Dark gray header bar
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(0, 0, pageW, 14, 'F');
+
+      // Logo in header
+      if (logoB64) {
+        try {
+          doc.addImage(logoB64, 'PNG', margin, 2, 12, 10);
+        } catch { /* ignore */ }
+      }
+
+      const textX = logoB64 ? margin + 14 : margin;
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      doc.setFontSize(FONT.SIZE_SECTION_TITLE + 2);
+      doc.setFont('helvetica', 'bold');
+      doc.text(sanitizePdfText(branding.report_header_text).toUpperCase(), textX, 6);
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setFont('helvetica', 'normal');
+      doc.text('PATROL DIVISION', textX, 10);
+      doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+      doc.text(`PATROL TRACKING REPORT  |  ${formNum}  |  ${FORM_REVISION}`, pageW - margin, 9, { align: 'right' });
+
+      // Accent strip
+      doc.setFillColor(...primaryRgb);
+      doc.rect(0, 14, pageW / 2, 1, 'F');
+      doc.setFillColor(...accentRgb);
+      doc.rect(pageW / 2, 14, pageW / 2, 1, 'F');
+    }
+
+    // Footer on ALL pages. Pulled up 5mm from the bottom edge so the
+    // entire footer bar sits inside the printer SAFE PRINT ZONE (typical
+    // no-print margin is 3-6mm). Previous position (flush to bottom edge)
+    // was being clipped on cheaper office printers.
+    const footerH = 8;
+    const SAFE_PRINT_EDGE_BOTTOM = 5;
+    const footerY = pageH - footerH - SAFE_PRINT_EDGE_BOTTOM;
+    doc.setFillColor(...COLOR.BG_FORM_CELL_LABEL);
+    doc.rect(SAFE_PRINT_EDGE_BOTTOM, footerY, pageW - 2 * SAFE_PRINT_EDGE_BOTTOM, footerH, 'F');
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW);
+    doc.line(SAFE_PRINT_EDGE_BOTTOM, footerY, pageW - SAFE_PRINT_EDGE_BOTTOM, footerY);
+    doc.setTextColor(...COLOR.TEXT_MUTED);
+    doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.text(sanitizePdfText(`${formNum}  |  INTERNAL USE ONLY  |  Page ${pageNum} of ${totalPages}`), margin, footerY + footerH / 2 + 0.5);
+    doc.text(sanitizePdfText(`GENERATED: ${reportDate.toUpperCase()}`), pageW - margin, footerY + footerH / 2 + 0.5, { align: 'right' });
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  }
+
+  // ── Utility: draw a section header bar. Matches the incident-report
+  // styling from pdfGenerator.ts#openAutoSection — same fill color, same
+  // text size, same content pad below the bar — so patrol tracking reads
+  // visually consistent with every other report type.
+  function drawSectionHeader(title: string) {
+    const barH = SPACING.SECTION_HEADER_H;
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(margin, yPos, contentW, barH, 'F');
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.text(asciify('RMPG FLEX — PATROL TRACKING REPORT'), marginX, y);

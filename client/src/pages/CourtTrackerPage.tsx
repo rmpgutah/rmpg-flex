@@ -82,6 +82,20 @@ const EMPTY_FORM = {
   notes: '',
 };
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CourtTrackerPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -865,7 +879,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Outcomes</div>
                   {(stats.byOutcome || []).map((r: any) => (
                     <div key={r.outcome} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
-                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ')}</span>
+                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ').toUpperCase()}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 bg-rmpg-800 overflow-hidden">
                           <div

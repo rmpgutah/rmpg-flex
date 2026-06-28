@@ -35,6 +35,8 @@ export interface MapShortcutHandlers {
   toggleIncidentReports?: () => void;
   /** E — enforcement clusters toggle */
   toggleEnforcementClusters?: () => void;
+  /** G — coordinate grid toggle */
+  toggleGrid?: () => void;
 }
 
 /** Show a toast/banner with the shortcut list. Provided by caller. */

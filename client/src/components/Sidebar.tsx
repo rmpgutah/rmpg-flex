@@ -33,6 +33,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Tactical Map' },
+      { path: '/route-builder', icon: Route, label: 'Route Builder' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
@@ -44,11 +45,16 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/incidents', icon: FileText, label: 'Incidents' },
       { path: '/records', icon: Database, label: 'Records' },
+      { path: '/arrest-records', icon: Fingerprint, label: 'Arrest Records' },
       { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
       { path: '/criminal-history', icon: Search, label: 'Criminal History' },
       { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
       { path: '/evidence', icon: Package, label: 'Evidence' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
+      { path: '/crash-reports', icon: FileSearch, label: 'Crash Reports' },
+      { path: '/pawn-tracking', icon: Store, label: 'Pawn Tracking' },
+      { path: '/animal-control', icon: PawPrint, label: 'Animal Control' },
+      { path: '/impound', icon: Warehouse, label: 'Impound Lot' },
     ],
   },
   {
@@ -87,6 +93,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Personnel & Fleet',
     items: [
       { path: '/personnel', icon: Users, label: 'Personnel' },
+      { path: '/hr', icon: UserCog, label: 'Human Resources' },
       { path: '/fleet', icon: Car, label: 'Fleet' },
       { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
       { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
@@ -101,6 +108,19 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
 
       { path: '/email', icon: Mail, label: 'Email' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+      { path: '/community-reports', icon: Building2, label: 'Community Reports' },
+      { path: '/tips', icon: MessageCircleQuestion, label: 'Anonymous Tips' },
+    ],
+  },
+  {
+    id: 'investigate',
+    label: 'Investigations',
+    items: [
+      { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
+      { path: '/microbilt', icon: Search, label: 'Skip Tracer V2' },
+      { path: '/forensic-lab', icon: FlaskConical, label: 'Forensic Lab' },
+      { path: '/web-research', icon: Globe, label: 'Web Research' },
+      { path: '/crm', icon: Handshake, label: 'CRM' },
     ],
   },
   {
@@ -132,6 +152,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/audit', icon: ScrollText, label: 'Audit Log', adminOnly: true },
       { path: '/admin', icon: Settings, label: 'Admin', adminOnly: true },
+      { path: '/security-dashboard', icon: ShieldAlert, label: 'Security', adminOnly: true },
     ],
   },
   {

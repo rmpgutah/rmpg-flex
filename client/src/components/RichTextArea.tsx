@@ -113,6 +113,7 @@ const RichTextArea = forwardRef<HTMLTextAreaElement, RichTextAreaProps>(
         )}
         <textarea
           ref={innerRef}
+          name={rest.name || 'rich-text'}
           rows={rows}
           disabled={disabled}
           onKeyDown={handleKeyDown}

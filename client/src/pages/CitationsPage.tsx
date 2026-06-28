@@ -355,6 +355,20 @@ const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 // ── Component ──────────────────────────────────────────────
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CitationsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
@@ -1046,7 +1060,7 @@ export default function CitationsPage() {
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[11px] font-mono font-bold text-rmpg-100">{c.citation_number}</span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-                  {c.status.replace(/_/g, ' ')}
+                  {c.status.replace(/_/g, ' ').toUpperCase()}
                 </span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
                   {toDisplayLabel(c.type)}
@@ -1095,7 +1109,7 @@ export default function CitationsPage() {
           <Hash size={14} className="text-rmpg-400" />
           <h2 className="text-sm font-mono font-bold text-rmpg-100">{c.citation_number}</h2>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-            {c.status.replace(/_/g, ' ')}
+            {c.status.replace(/_/g, ' ').toUpperCase()}
           </span>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
             {toDisplayLabel(c.type)}
@@ -1679,8 +1693,15 @@ export default function CitationsPage() {
             </div>
 
             {form.person_id && (
-              <div className="text-[10px] text-brand-300 bg-brand-900/20 px-2 py-1 flex items-center gap-1">
+              <div
+                className="text-[10px] text-brand-300 bg-brand-900/20 px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-brand-900/30 transition-colors"
+                onClick={() => navigate(`/records?tab=persons&personId=${form.person_id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/records?tab=persons&personId=${form.person_id}`); }}
+              >
                 <Check size={10} /> Linked to person record #{form.person_id}
+                <ExternalLink size={9} className="ml-1 opacity-60" />
               </div>
             )}
 

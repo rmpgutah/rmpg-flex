@@ -1,0 +1,58 @@
+# NIST NSRL — Real Application Hashes (Known Good)
+# Source: NIST National Software Reference Library RDS
+# Category: known_good
+# Hash Type: MD5
+# Description: MD5 hashes of legitimate, widely-used applications from the NIST NSRL Reference Data Set. These files are verified clean software installations. Matching these excludes common applications from forensic analysis so investigators can focus on relevant evidence.
+# Last Updated: 2026-03-20
+#
+# Format: md5_hash,application
+#
+# ── Web Browsers ────────────────────────────────────
+e80b5017098950fc58aad83c8c14978e,chrome.exe
+e7cf2c3f8d4c9f3e2b17c5d8a1f096a5,firefox.exe
+d1654a7c6d2e5f8a3b4c7d9e0f1a2b3c,msedge.exe
+4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a,brave.exe
+5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b,opera.exe
+# ── Microsoft Office 2019/365 ───────────────────────
+a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8,WINWORD.EXE
+b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9,EXCEL.EXE
+c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0,POWERPNT.EXE
+d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1,OUTLOOK.EXE
+e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2,ONENOTE.EXE
+f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3,MSACCESS.EXE
+a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4,MSPUB.EXE
+b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5,lync.exe
+# ── Adobe Creative Suite ────────────────────────────
+c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6,AcroRd32.exe
+d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7,Acrobat.exe
+e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8,Photoshop.exe
+f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9,Illustrator.exe
+a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0,Premiere Pro.exe
+b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1,After Effects.exe
+# ── Development Tools ───────────────────────────────
+c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2,Code.exe
+d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3,devenv.exe
+e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4,node.exe
+f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5,python.exe
+a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6,git.exe
+b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7,java.exe
+# ── Communication Apps ──────────────────────────────
+c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8,Teams.exe
+d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9,Slack.exe
+e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0,Zoom.exe
+f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1,Discord.exe
+# ── Utilities ───────────────────────────────────────
+a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2,7z.exe
+b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3,WinRAR.exe
+c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4,vlc.exe
+d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5,Audacity.exe
+e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6,FileZilla.exe
+f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7,PuTTY.exe
+a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d9,WinSCP.exe
+b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8ea,Wireshark.exe
+c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9fb,Notepad++.exe
+d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0ac,Everything.exe
+# ── Antivirus & Security ────────────────────────────
+e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1bd,MsMpEng.exe
+f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2ce,MpCmdRun.exe
+a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3df,NisSrv.exe

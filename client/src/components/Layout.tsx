@@ -137,6 +137,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/patrol': 'Patrol',
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
+  '/national-warrants': 'National Warrant Search',
   '/citations': 'Citations',
   '/law-book': 'Law Book',
   '/field-interviews': 'Field Interviews',
@@ -394,6 +395,10 @@ export default function Layout() {
   const { isConnected, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Full-bleed pages (map, route-builder) need overflow-hidden on main so
+  // child height: 100% resolves correctly for Mapbox GL / map containers.
+  const isFullBleedPage = location.pathname === '/map' || location.pathname === '/route-builder' || location.pathname === '/geography';
 
   const gps = useGpsTracking();
   const presence = usePresence();
@@ -919,6 +924,9 @@ export default function Layout() {
       {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
       <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
 
+      {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
+      <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
+
       {/* GPS tracking runs silently — no blocking gate */}
 
       {/* ============================================================ */}
@@ -1386,7 +1394,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavBack}
           disabled={!canGoBack}
-          className="toolbar-btn"
+          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
           title="Back (Alt+←)"
           aria-label="Navigate back"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
@@ -1397,7 +1405,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavForward}
           disabled={!canGoForward}
-          className="toolbar-btn"
+          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
           title="Forward (Alt+→)"
           aria-label="Navigate forward"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
