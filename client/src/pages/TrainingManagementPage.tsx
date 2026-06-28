@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -46,6 +46,16 @@ export default function TrainingManagementPage() {
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
+
+  // Deep-link: ?course_id= — open edit form for that course once loaded
+  useEffect(() => {
+    const courseId = searchParams.get('course_id');
+    if (!courseId || courses.length === 0) return;
+    const found = courses.find((c) => String(c.id) === courseId);
+    if (found) openEdit(found);
+    setSearchParams({}, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courses, searchParams]);
 
   const BLANK_FORM = { course_name: '', course_code: '', category: 'other', duration_hours: '', instructor_id: '', location: '', is_mandatory: 0 };
 
