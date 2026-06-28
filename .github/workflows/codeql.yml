@@ -1,4 +1,15 @@
-name: "Security & Quality"
+name: "CodeQL"
+
+# Advanced CodeQL setup (replaces the repo's default setup) so we can exclude the
+# quarantined legacy/ tree via .github/codeql/codeql-config.yml. Scans the LIVE
+# stack: the Cloudflare Worker + React client (javascript-typescript), the PDF
+# sidecar (python), and the workflows themselves (actions).
+#
+# ⚠️ Advanced and default setup are mutually exclusive — GitHub blocks this
+# workflow while default setup is enabled. After this lands on main, default
+# setup must be turned OFF (Settings → Code security → CodeQL → disable default
+# setup, or PATCH .../code-scanning/default-setup state=not-configured) for these
+# runs to execute. See memory project-codeql-default-setup.
 
 on:
   push:
@@ -6,37 +17,48 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "17 8 * * 1"  # Weekly Monday 8:17am UTC
+    - cron: "17 8 * * 1" # weekly, Monday 08:17 UTC
   workflow_dispatch:
 
+# Least-privilege default; the analyze job opts into security-events: write.
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  security-scan:
-    name: Security & TypeScript Check
-    runs-on: self-hosted
-
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      security-events: write # upload SARIF results
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+          - language: actions
+            build-mode: none
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
         with:
-          node-version: "22"
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
 
-      - name: Install dependencies
-        run: |
-          npm ci --ignore-scripts
-          cd client && npm ci --ignore-scripts
-          cd ../server && npm ci --ignore-scripts
-
-      - name: TypeScript check (client)
-        run: cd client && npx tsc --noEmit
-
-      - name: Audit dependencies
-        run: |
-          echo "=== Root ===" && npm audit --audit-level=high || true
-          echo "=== Server ===" && cd server && npm audit --audit-level=high || true
-          echo "=== Client ===" && cd ../client && npm audit --audit-level=high || true
-
-      - name: Build client
-        run: cd client && npx vite build
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

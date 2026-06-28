@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { MapPin, Navigation, AlertTriangle, Loader2, Clock, Route, Gauge, Zap } from 'lucide-react';
 import type { CpgpsVehicle, CpgpsTrip, CpgpsAlert } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   vehicleId: string | number;
@@ -68,7 +69,7 @@ export default function FleetGpsTab({ vehicleId }: Props) {
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDuration = (seconds?: number) => {
@@ -93,7 +94,7 @@ export default function FleetGpsTab({ vehicleId }: Props) {
           <button
             key={key}
             className={`flex items-center gap-1 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider border-b-2 transition-colors ${
-              subTab === key ? 'text-white border-brand-500' : 'text-rmpg-400 border-transparent hover:text-rmpg-200'
+              subTab === key ? 'text-rmpg-100 border-brand-500' : 'text-rmpg-400 border-transparent hover:text-rmpg-200'
             }`}
             onClick={() => setSubTab(key)}
           >
@@ -104,7 +105,7 @@ export default function FleetGpsTab({ vehicleId }: Props) {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {/* Location Sub-Tab */}
         {subTab === 'location' && gpsVehicle && (
           <div className="space-y-4">

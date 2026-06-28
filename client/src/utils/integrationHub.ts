@@ -1,0 +1,21 @@
+// 10 integration hub features
+export interface Integration { id:string; name:string; type:string; status:'connected'|'disconnected'|'error'; lastSync:string|null; syncInterval:number; config:Record<string,string>; }
+export function checkIntegrationHealth(integrations:Integration[]): {online:number;offline:number;errorCount:number} { return{online:integrations.filter(i=>i.status==='connected').length,offline:integrations.filter(i=>i.status==='disconnected').length,errorCount:integrations.filter(i=>i.status==='error').length}; }
+export interface IntegrationLog { integrationId:string; timestamp:string; eventType:string; message:string; data:any; }
+export function analyzeIntegrationEvents(logs:IntegrationLog[]): {total:number;errors:number;byIntegration:Record<string,number>} { const byInt:Record<string,number>={};for(const l of logs)byInt[l.integrationId]=(byInt[l.integrationId]||0)+1; const errors=logs.filter(l=>l.eventType==='error').length; return{total:logs.length,errors,byIntegration:byInt}; }
+export interface APICredential { integrationId:string; apiKey:string; expiresAt:string; rotatedAt:string; scopes:string[]; }
+export function rotateAPIKey(credential:APICredential): APICredential { const exp=new Date();exp.setDate(exp.getDate()+90); return{...credential,apiKey:`key-${Date.now()}`,expiresAt:exp.toISOString(),rotatedAt:new Date().toISOString()}; }
+export interface WebhookEndpoint { id:string; url:string; events:string[]; secret:string; status:'active'|'disabled'; }
+export function registerWebhook(url:string,events:string[]): WebhookEndpoint { return{id:`wh-${Date.now()}`,url,events,secret:`whsec-${Date.now()}`,status:'active'}; }
+export interface DataMapping { sourceField:string; targetField:string; transformation:string|null; required:boolean; }
+export function mapDataFields(source:Record<string,any>,mappings:DataMapping[]): Record<string,any> { const out:Record<string,any>={};for(const m of mappings)out[m.targetField]=source[m.sourceField]||null; return out; }
+export interface SyncJob { id:string; integrationId:string; direction:'import'|'export'; startedAt:string; completedAt:string|null; records:number; status:'running'|'completed'|'failed'; }
+export function trackSyncJobs(jobs:SyncJob[]): {total:number;successRate:number;avgDuration:number} { const completed=jobs.filter(j=>j.status==='completed'); const durations=completed.filter(j=>j.completedAt).map(j=>(new Date(j.completedAt!).getTime()-new Date(j.startedAt).getTime())/1000); return{total:jobs.length,successRate:jobs.length>0?Math.round(completed.length/jobs.length*100):0,avgDuration:durations.length>0?Math.round(durations.reduce((s,v)=>s+v,0)/durations.length):0}; }
+export interface IntegrationSchema { entityType:string; fields:Array<{name:string;type:string;required:boolean;maxLength:number}>; }
+export function validateSchemaCompliance(data:Record<string,any>,schema:IntegrationSchema): {valid:boolean;violations:string[]} { const v:string[]=[];for(const f of schema.fields){if(f.required&&!data[f.name])v.push(`Missing required field: ${f.name}`); if(data[f.name]&&String(data[f.name]).length>f.maxLength)v.push(`Field ${f.name} exceeds max length ${f.maxLength}`);} return{valid:v.length===0,violations:v}; }
+export interface RateLimit { integrationId:string; requestsPerMinute:number; currentUsage:number; resetTime:string; }
+export function checkRateLimit(limit:RateLimit): {exceeded:boolean;remaining:number} { return{exceeded:limit.currentUsage>=limit.requestsPerMinute,remaining:limit.requestsPerMinute-limit.currentUsage}; }
+export interface OAuthToken { integrationId:string; accessToken:string; refreshToken:string; expiresAt:string; scope:string[]; }
+export function refreshOAuthToken(token:OAuthToken): OAuthToken { const exp=new Date();exp.setHours(exp.getHours()+1); return{...token,accessToken:`tok-${Date.now()}`,expiresAt:exp.toISOString()}; }
+export interface IntegrationDashboard { totalIntegrations:number; activeConnections:number; syncsToday:number; apiCalls:number; errorRate:number; }
+export function compileIntegrationDashboard(integrations:Integration[],jobs:SyncJob[]): IntegrationDashboard { return{totalIntegrations:integrations.length,activeConnections:integrations.filter(i=>i.status==='connected').length,syncsToday:jobs.length,apiCalls:0,errorRate:0}; }

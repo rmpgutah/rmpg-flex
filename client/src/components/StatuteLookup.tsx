@@ -5,9 +5,10 @@
 // statutes across all supported states (UT, CO, WY, ID, NV, AZ, NM).
 // ============================================================
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Scale, Car, X, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, Scale, Car, X, BookOpen } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 
 export interface StatuteResult {
   id: number;
@@ -19,10 +20,25 @@ export interface StatuteResult {
   /** Legal definition / elements of crime for law reference */
   definition?: string | null;
   offense_level: string | null;
-  category: 'criminal' | 'vehicle';
+  /** Area of law: criminal | vehicle | licensing | procedure | public_safety
+   *  | juvenile | wildlife | alcohol | controlled | protective | … */
+  category: string;
   subcategory: string;
+  /** Plain-language ("basic language") fields — utah_statutes migration 0074 */
+  plain_summary?: string | null;
+  /** Key-point bullets; the API parses the stored JSON into a string[] */
+  plain_elements?: string[] | null;
+  summary_model?: string | null;
   /** Base fine amount for traffic citations / infractions */
   citation_fine?: number | null;
+  /** Law-book fields (utah_statutes, migration 0073) */
+  chapter_code?: string | null;
+  part_name?: string | null;
+  /** 'statute' (Utah Code) | 'rule' (Utah Administrative Code) */
+  code_type?: string | null;
+  effective_date?: string | null;
+  /** Canonical le.utah.gov / adminrules.utah.gov link */
+  source_url?: string | null;
 }
 
 const STATE_CODES = ['ALL', 'UT', 'CO', 'WY', 'ID', 'NV', 'AZ', 'NM'] as const;
@@ -64,15 +80,14 @@ const OFFENSE_COLORS: Record<string, string> = {
   class_a_misdemeanor: 'bg-amber-900/40 text-amber-300 border-amber-700/40',
   class_b_misdemeanor: 'bg-amber-900/30 text-amber-400 border-amber-700/30',
   class_c_misdemeanor: 'bg-yellow-900/30 text-yellow-400 border-yellow-700/30',
-  infraction: 'bg-gray-900/30 text-gray-400 border-gray-700/30',
+  infraction: 'bg-surface-sunken/30 text-rmpg-400 border-border-default/30',
   enhancement: 'bg-purple-900/30 text-purple-400 border-purple-700/30',
 };
 
+// Delegates to the shared toDisplayLabel helper for acronym-aware Title Case
+// (e.g. dui_enhancement → "DUI Enhancement", not "Dui Enhancement").
 function formatOffenseLevel(level: string | null): string {
-  if (!level) return '';
-  return level
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return toDisplayLabel(level || '');
 }
 
 export default function StatuteLookup({
@@ -96,6 +111,7 @@ export default function StatuteLookup({
   const [showDefinition, setShowDefinition] = useState<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reqIdRef = useRef(0);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -109,7 +125,7 @@ export default function StatuteLookup({
   }, []);
 
   // Debounced search
-  const doSearch = useCallback(async (searchQuery: string, cat: string, st: string) => {
+  const doSearch = useCallback(async (searchQuery: string, cat: string, st: string, reqId: number) => {
     if (searchQuery.length < 2) {
       setResults([]);
       return;
@@ -119,11 +135,11 @@ export default function StatuteLookup({
       const catParam = cat !== 'all' ? `&category=${cat}` : '';
       const stateParam = st && st !== 'ALL' ? `&state=${st}` : '';
       const res = await apiFetch<{ data: StatuteResult[] }>(`/statutes/search?q=${encodeURIComponent(searchQuery)}${catParam}${stateParam}&limit=20`);
-      setResults(res.data || []);
+      if (reqId === reqIdRef.current) setResults(res.data || []);
     } catch {
-      setResults([]);
+      if (reqId === reqIdRef.current) setResults([]);
     } finally {
-      setLoading(false);
+      if (reqId === reqIdRef.current) setLoading(false);
     }
   }, []);
 
@@ -133,8 +149,9 @@ export default function StatuteLookup({
       setResults([]);
       return;
     }
+    const reqId = ++reqIdRef.current;
     timerRef.current = setTimeout(() => {
-      doSearch(query, activeCategory, activeState);
+      doSearch(query, activeCategory, activeState, reqId);
     }, 300);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [query, activeCategory, activeState, doSearch]);
@@ -173,7 +190,7 @@ export default function StatuteLookup({
       {/* Search Input */}
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-        <input
+        <input id="ff-statutelookup-0"
           type="text"
           className="input-dark text-xs w-full pl-8 pr-3"
           aria-label="Search statutes"
@@ -192,7 +209,7 @@ export default function StatuteLookup({
         <div className="absolute z-50 top-full left-0 right-0 border-x border-t border-rmpg-600 bg-surface-base">
           {/* State filter row */}
           {showStateFilter && !stateFilter && (
-            <div className="flex border-b border-rmpg-700/50 overflow-x-auto">
+            <div className="flex border-b border-rmpg-700/50 overflow-x-auto tab-scroll">
               {STATE_CODES.map((st) => (
                 <button
                   key={st}
@@ -272,7 +289,7 @@ export default function StatuteLookup({
                         )}
                         <span className="text-xs font-mono text-brand-400 font-bold">{s.citation}</span>
                         {s.category === 'vehicle' ? (
-                          <Car className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                          <Car className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
                         ) : (
                           <Scale className="w-3 h-3 text-red-400 flex-shrink-0" />
                         )}
