@@ -5,8 +5,20 @@ interface MapCompassRoseProps {
   mapInstance: mapboxgl.Map | null;
 }
 
+/** Degree tick marks at 30° intervals for the outer ring */
+const TICK_DEGREES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+const CENTER = 28;
+const OUTER_R = 26;
+const TICK_INNER_R = 23;
+const TICK_MAJOR_INNER_R = 21.5;
+
+function degToRad(deg: number) {
+  return (deg * Math.PI) / 180;
+}
+
 export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
   const [heading, setHeading] = useState(0);
+  const [tilt, setTilt] = useState(0);
   const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
@@ -17,7 +29,13 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
       setHeading(h);
     };
 
-    update();
+    const updateTilt = () => {
+      const t = mapInstance.getTilt?.() || 0;
+      setTilt(t);
+    };
+
+    updateHeading();
+    updateTilt();
 
     mapInstance.on('rotate', update);
 
@@ -29,6 +47,22 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
   if (!mapInstance) return null;
 
   const rotation = -heading;
+  const bearingStr = String(Math.round(((heading % 360) + 360) % 360)).padStart(3, '0');
+  const goldColor = hovered ? '#e8c44a' : '#d4a017';
+
+  // Generate degree tick marks for the outer ring
+  const ticks: { angle: number; length: number; width: number; color: string }[] = [];
+  for (let deg = 0; deg < 360; deg += 5) {
+    const isMajor = deg % 90 === 0;
+    const isMinor = deg % 45 === 0 && !isMajor;
+    const is15 = deg % 15 === 0 && !isMajor && !isMinor;
+    ticks.push({
+      angle: deg,
+      length: isMajor ? 5 : isMinor ? 4 : is15 ? 3 : 2,
+      width: isMajor ? 1.2 : isMinor ? 0.8 : 0.5,
+      color: isMajor ? '#d4a017' : isMinor ? '#888888' : is15 ? '#555555' : '#333333',
+    });
+  }
 
   return (
     <div
@@ -36,17 +70,20 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
       title="Compass - Click to reset north"
       className="backdrop-blur-md shadow-xl"
       style={{
-        width: 48,
-        height: 48,
+        width: 56,
+        height: 56,
         borderRadius: '50%',
         background: 'rgba(10, 10, 10, 0.88)',
         border: '1px solid #2b2b2b',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: 'grab',
-        boxShadow: hovered ? '0 0 12px rgba(212,160,23,0.3)' : undefined,
-        transition: 'box-shadow 0.2s ease',
+        boxShadow: hovered
+          ? '0 0 16px rgba(212,160,23,0.35), inset 0 0 12px rgba(0,0,0,0.4)'
+          : '0 4px 16px rgba(0,0,0,0.4), inset 0 0 12px rgba(0,0,0,0.3)',
+        transition: 'box-shadow 0.25s ease',
       }}
       onClick={() => { mapInstance.resetNorth(); }}
       onMouseEnter={() => setHovered(true)}
@@ -55,13 +92,15 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
       <svg
         role="img"
         aria-label="Compass pointing north"
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
+        width="48"
+        height="48"
+        viewBox="0 0 48 48"
         style={{
-          transform: `rotate(${rotation}deg)`,
-          transition: 'transform 0.25s ease-out',
-          filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 0,
+          lineHeight: 1.1,
         }}
       >
         <line x1="20" y1="6" x2="20" y2="34" stroke="#4b4b4b" strokeWidth="0.5" />
@@ -81,6 +120,13 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         <circle cx="20" cy="20" r="2" fill="#d4a017" opacity={hovered ? 1 : 0.75}>
           {hovered && <animate attributeName="r" values="2;2.5;2" dur="1.5s" repeatCount="indefinite" />}
         </circle>
+        {/* Outer glow ring on hover */}
+        {hovered && (
+          <circle cx="24" cy="24" r="4" fill="none" stroke="#d4a01740" strokeWidth="1">
+            <animate attributeName="r" values="4;5;4" dur="1.5s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.6;0.2;0.6" dur="1.5s" repeatCount="indefinite" />
+          </circle>
+        )}
       </svg>
     </div>
   );

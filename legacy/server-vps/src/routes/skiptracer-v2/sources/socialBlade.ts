@@ -7,7 +7,7 @@
 // Free OSINT source — no API key required.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, SocialProfile } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, SocialProfile } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const USER_AGENT = 'Mozilla/5.0 (compatible; RMPG-Flex/1.0)';
@@ -21,7 +21,7 @@ interface PlatformCheck {
 export default class SocialBladeSource extends BaseDataSource {
   readonly name = 'social_blade';
   readonly displayName = 'Social Media Stats';
-  readonly category: SourceCategory = 'osint';
+  readonly category: SkipTracerSourceCategory = 'osint';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 10;

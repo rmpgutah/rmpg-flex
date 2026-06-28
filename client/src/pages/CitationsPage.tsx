@@ -51,7 +51,7 @@ import type { CitationPdfData } from '../utils/recordPdfGenerator';
 import { localToday, formatDate, parseTimestamp } from '../utils/dateUtils';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
-import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
+import SectorZoneBeatPicker from '../components/SectorZoneBeatPicker';
 import ExportButton from '../components/ExportButton';
 import { formatAddressDisplay } from '../utils/statusLabels';
 import { useFormDraft } from '../hooks/useFormDraft';
