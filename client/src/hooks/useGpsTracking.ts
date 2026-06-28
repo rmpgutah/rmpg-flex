@@ -407,6 +407,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const firstPositionSentRef = useRef(false);
   // Track unitId via ref so sendBatch (empty deps) can read the latest value
   const unitIdRef = useRef<number | null>(null);
+  // Mounted guard — prevent setState on unmounted component from async callbacks
+  const mountedRef = useRef(true);
   /** Heartbeat restart counter — prevents infinite restart loops */
   const heartbeatRestartCountRef = useRef(0);
   const MAX_HEARTBEAT_RESTARTS = 5;
