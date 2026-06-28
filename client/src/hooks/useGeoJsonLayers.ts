@@ -18,8 +18,6 @@ import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource
 const COLOR_FALLBACK_FILL = '#0d1722';
 const COLOR_FALLBACK_STROKE = '#444444';
 
-// ── Layer Configuration ──────────────────────────────────────
-
 export interface GeoLayerConfig {
   id: string;
   label: string;
@@ -225,7 +223,7 @@ function buildDefaultInfoHtml(name: string, cfg: GeoLayerConfig, props: Record<s
   if (cfg.detailProps) {
     for (const p of cfg.detailProps) {
       if (props[p] !== undefined && props[p] !== null && props[p] !== '') {
-        const label = p.replace(/_/g, ' ').replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
+        const label = p.replace(/_/g, ' ').toUpperCase().replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${escapeForHtml(label)}:</span> ${escapeForHtml(String(props[p]))}</div>`;
       }
     }
@@ -392,7 +390,7 @@ export function useGeoJsonLayers({
       try {
         const resp = await fetch(`/geojson/${cfg.file}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        geojson = await resp.json();
+        geojson = (await resp.json()) as FeatureCollection;
         geojsonCacheRef.current[cfg.id] = geojson;
       } catch (err) {
         console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
@@ -584,6 +582,12 @@ export function useGeoJsonLayers({
         }
       }
 
+      // Show/hide label markers for this layer
+      const labels = labelMarkersRef.current[layerId];
+      if (labels) {
+        for (const m of labels) m.setMap(nowVisible ? map : null);
+      }
+
       return { ...prev, [layerId]: { ...curr, visible: nowVisible } };
     });
   }, [map]);
@@ -636,7 +640,7 @@ export function useGeoJsonLayers({
       }
       labelMarkerRefs.current = {};
     };
-  }, []);
+  }, [map]);
 
   // Reset per-map registration tracking when the map instance changes.
   // Mapbox handlers live on the map; a new map needs fresh bindings.
