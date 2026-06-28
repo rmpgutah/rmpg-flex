@@ -1016,10 +1016,48 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       LIMIT 1000
     `).all(call.id);
 
-    // Attach visit history for PSO calls
+    // Attach visit history for PSO calls — trace to the root of the re-dispatch
+    // chain, then collect visit rows for every call in the subtree (root + all
+    // descendants) so any attempt shows the complete sequence of prior visits,
+    // including siblings (e.g. 3rd attempt shows both 1st and 2nd).
     let visit_history: any[] = [];
     if (call.incident_type === 'pso_client_request') {
-      visit_history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(call.id) as any[];
+      // Walk up to find the root
+      let rootId: number = call.id;
+      let cursorId: number | null = (call as any).parent_call_id || null;
+      let depth = 0;
+      while (cursorId && depth < 20) {
+        rootId = cursorId;
+        const parent = db.prepare('SELECT parent_call_id FROM calls_for_service WHERE id = ?').get(cursorId) as any;
+        cursorId = parent?.parent_call_id || null;
+        depth++;
+      }
+      // Collect all descendants of the root (BFS)
+      const subtree: number[] = [rootId];
+      let frontier: number[] = [rootId];
+      while (frontier.length > 0) {
+        const placeholders = frontier.map(() => '?').join(',');
+        const children = db.prepare(
+          `SELECT id FROM calls_for_service WHERE parent_call_id IN (${placeholders})`
+        ).all(...frontier) as any[];
+        const childIds = children.map(c => c.id);
+        for (const cid of childIds) if (!subtree.includes(cid)) subtree.push(cid);
+        frontier = childIds;
+        if (subtree.length > 100) break; // safety
+      }
+      // Pull all visits for the subtree, exclude the current call's own rows
+      const placeholders = subtree.map(() => '?').join(',');
+      visit_history = db.prepare(
+        `SELECT * FROM call_visit_history WHERE call_id IN (${placeholders}) AND call_id != ? ORDER BY visit_number ASC`
+      ).all(...subtree, call.id) as any[];
+      // Dedupe by (call_id, visit_number) — some legacy rows are duplicated
+      const seen = new Set<string>();
+      visit_history = visit_history.filter((v: any) => {
+        const k = `${v.call_id}|${v.visit_number}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
     }
 
     // Surface the first linked incident number on the call object for display

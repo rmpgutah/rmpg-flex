@@ -1011,17 +1011,24 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       params.push(parseInt(officerId));
     }
 
+    // LIMIT was 1000 — truncated long-period reports to the earliest N points,
+    // which usually means "the officer parked at start-of-shift" when N is small
+    // relative to total. A multi-week query can easily hit 50k+ rows; we accept
+    // that cost and downsample in JS below if needed. Bumped to 100000 which
+    // covers a full quarter of continuous 10-second breadcrumbs.
+    // Source column defaults to 'unknown' — the real device/ingestion source
+    // is stored in gps_source. Prefer that, falling back through source.
     const rows = db.prepare(`
       SELECT b.id, b.unit_id, b.officer_id, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.call_sign, b.officer_name,
         b.badge_number, b.current_call_id, b.current_call_number,
         b.current_call_type, b.road_name, b.nearest_intersection,
-        b.recorded_at, COALESCE(b.source, 'unknown') as source
+        b.recorded_at,
+        COALESCE(NULLIF(b.gps_source, ''), NULLIF(b.source, ''), 'unknown') AS source
       FROM gps_breadcrumbs b
       WHERE ${dateClause} ${whereExtra}
       ORDER BY b.unit_id, b.recorded_at ASC
-    
-      LIMIT 1000
+      LIMIT 100000
     `).all(...params) as any[];
 
     // ── Constants for filtering ─────────────────────────
@@ -1301,13 +1308,21 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       });
     }
 
-    // ── Optional reverse geocoding (sampled) ─────────────
-    // Only geocode every point > 100m from last geocoded point,
-    // capped at 50 calls per report request.
-    if (includeGeocode) {
+    // ── Optional reverse geocoding (sampled + time-budgeted) ────
+    // OSM Nominatim enforces 1 req/sec; 50 sequential calls blows the 30s
+    // nginx/node request timeout on long-period reports. Respect a 15s wall
+    // budget, cap per-request calls, AND skip entirely when the raw point
+    // count is large — large reports are for route audit, not per-point
+    // address annotation. Points keep whatever road_name was stored at
+    // ingestion time (gps_breadcrumbs.road_name) as a fallback.
+    const totalPoints = trails.reduce((s, t) => s + t.points.length, 0);
+    const skipGeocodeLarge = totalPoints > 2000;
+    if (includeGeocode && !skipGeocodeLarge) {
       let geocodeCount = 0;
-      const MAX_GEOCODE_CALLS = 50;
-      const GEOCODE_MIN_DISTANCE = 100; // meters between geocoded points
+      const MAX_GEOCODE_CALLS = 25;
+      const GEOCODE_MIN_DISTANCE = 200; // meters between geocoded points (was 100)
+      const GEOCODE_BUDGET_MS = 15_000;
+      const geocodeStart = Date.now();
 
       for (const trail of trails) {
         let lastGeocodedLat = 0;
@@ -1317,24 +1332,28 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
         let lastAddress: string | null = null;
 
         for (const pt of trail.points) {
+          if (Date.now() - geocodeStart > GEOCODE_BUDGET_MS) break;
           const dist = lastGeocodedLat ? haversineM(lastGeocodedLat, lastGeocodedLng, pt.lat, pt.lng) : Infinity;
 
           if (dist > GEOCODE_MIN_DISTANCE && geocodeCount < MAX_GEOCODE_CALLS) {
-            const result = await reverseGeocodeDetailed(pt.lat, pt.lng);
-            if (result) {
-              lastRoadName = result.road_name;
-              lastIntersection = result.nearest_intersection;
-              lastAddress = result.formatted_address;
-            }
+            try {
+              const result = await reverseGeocodeDetailed(pt.lat, pt.lng);
+              if (result) {
+                lastRoadName = result.road_name;
+                lastIntersection = result.nearest_intersection;
+                lastAddress = result.formatted_address;
+              }
+            } catch { /* non-fatal, carry previous values */ }
             lastGeocodedLat = pt.lat;
             lastGeocodedLng = pt.lng;
             geocodeCount++;
           }
 
-          pt.road_name = lastRoadName;
-          pt.nearest_intersection = lastIntersection;
+          pt.road_name = lastRoadName || pt.road_name;
+          pt.nearest_intersection = lastIntersection || pt.nearest_intersection;
           pt.formatted_address = lastAddress;
         }
+        if (Date.now() - geocodeStart > GEOCODE_BUDGET_MS) break;
       }
     }
 

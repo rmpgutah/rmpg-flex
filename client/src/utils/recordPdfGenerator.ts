@@ -580,6 +580,8 @@ export interface CallPdfData {
   case_id?: number;
   case_number?: string;
   incident_number?: string;
+  // Serve queue linkage — enables QR code on printout for mobile status update
+  serve_queue_id?: number | string;
   // Contract ID (for PSO Client Request incidents)
   contract_id?: string;
   latitude?: number;

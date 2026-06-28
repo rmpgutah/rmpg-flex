@@ -21,6 +21,7 @@ GlobalWorkerOptions.workerSrc = workerUrl;
 interface UploadedFile {
   name: string;
   type: string;
+  file: File;
   text: string;
   status: 'pending' | 'extracted' | 'error';
   ocrResult?: any;
@@ -76,8 +77,11 @@ const RASTER_JPEG_QUALITY = 0.82;
 
 interface IntakeResult {
   success: boolean;
-  person_id: number;
+  defendant_person_id: number;
+  plaintiff_person_id: number | null;
+  attorney_person_id: number | null;
   property_id: number | null;
+  case_id: number;
   call_id: number;
   call_number: string;
   serve_queue_id: number | null;
@@ -86,15 +90,15 @@ interface IntakeResult {
   weather: string | null;
   lighting: string | null;
   extracted: {
-    name: { first: string; middle: string; last: string };
-    dob: string;
+    defendant: { first: string; middle: string; last: string; dob: string };
     address: string;
     plaintiff: string;
     court: string;
-    docs: string;
-    instructions: string;
+    documents: string;
+    primaryDoc: string;
+    serviceType: string;
+    clientJobNumber: string;
     jobNumber: string;
-    caseNumber: string;
     dueDate: string;
     attorney: { name: string; phone: string; email: string; bar: string };
     fee: string;
