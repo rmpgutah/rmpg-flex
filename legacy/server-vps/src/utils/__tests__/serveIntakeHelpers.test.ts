@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput, validateAddressFormat, normalizeAddress, addressesMatch } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
     const r = parseAddressParts('1812 WEST 4100 SOUTH UNIT E215, WEST VALLEY CITY, UT 84119');
     expect(r).toEqual({
-      building: '1812', floor: '1ST', suite: 'E215',
+      building: '1812', floor: '', suite: 'E215',
       street: '1812 WEST 4100 SOUTH UNIT E215',
       city: 'WEST VALLEY CITY', state: 'UT', zip: '84119',
     });
@@ -14,7 +14,7 @@ describe('parseAddressParts', () => {
   it('parses a plain single-family address', () => {
     const r = parseAddressParts('1176 EL MONTE DRIVE, SALT LAKE CITY, UT 84117');
     expect(r).toEqual({
-      building: '1176', floor: '1ST', suite: 'NOT APPLICABLE',
+      building: '1176', floor: '', suite: 'NOT APPLICABLE',
       street: '1176 EL MONTE DRIVE',
       city: 'SALT LAKE CITY', state: 'UT', zip: '84117',
     });
@@ -225,31 +225,52 @@ describe('buildNotesNarrative', () => {
     timestamp: '2026-04-19 07:30:12',
   };
 
-  // buildNotesNarrative defaults to 3 consolidated notes (briefing / case
-  // packet / dossier). When caseNarrativeText is supplied a 4th detailed
-  // narrative note slots between CASE PACKET and DOSSIER. Output is plain
-  // text without emoji or box-drawing characters.
-  it('produces 3 plain-text consolidated sections in order without narrative', () => {
+  // buildNotesNarrative now produces 4 consolidated notes:
+  //   [0] CASE SUMMARY  (top-of-file detailed narrative)
+  //   [1] OFFICER BRIEFING
+  //   [2] CASE PACKET
+  //   [3] SUBJECT & ADDRESS DOSSIER
+  // When caseNarrativeText is supplied, the standalone CASE NARRATIVE
+  // detail-drilldown slots between CASE PACKET and DOSSIER (index 3),
+  // pushing DOSSIER to index 4.
+  it('produces 4 plain-text consolidated sections in order without narrative', () => {
     const notes = buildNotesNarrative(input);
-    expect(notes).toHaveLength(3);
-    expect(notes[0].text).toMatch(/^OFFICER BRIEFING/);
-    expect(notes[1].text).toMatch(/^CASE PACKET/);
-    expect(notes[2].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
+    expect(notes).toHaveLength(4);
+    expect(notes[0].text).toMatch(/CASE SUMMARY/);
+    expect(notes[1].text).toMatch(/^OFFICER BRIEFING/);
+    expect(notes[2].text).toMatch(/^CASE PACKET/);
+    expect(notes[3].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
   });
 
-  it('inserts the 4th CASE NARRATIVE note when caseNarrativeText is supplied', () => {
+  it('inserts the standalone CASE NARRATIVE note when caseNarrativeText is supplied', () => {
     const narrativeText = 'CASE NARRATIVE - Detailed review of the Complaint\nWHO:\nPLAINTIFF: Capital One';
     const notes = buildNotesNarrative({ ...input, caseNarrativeText: narrativeText });
-    expect(notes).toHaveLength(4);
-    expect(notes[0].text).toMatch(/^OFFICER BRIEFING/);
-    expect(notes[1].text).toMatch(/^CASE PACKET/);
-    expect(notes[2].text).toMatch(/^CASE NARRATIVE/);
-    expect(notes[3].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
+    expect(notes).toHaveLength(5);
+    expect(notes[0].text).toMatch(/CASE SUMMARY/);
+    expect(notes[1].text).toMatch(/^OFFICER BRIEFING/);
+    expect(notes[2].text).toMatch(/^CASE PACKET/);
+    expect(notes[3].text).toMatch(/^CASE NARRATIVE/);
+    expect(notes[4].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
+  });
+
+  it('CASE SUMMARY embeds synopsis + narrative + bottom-line operational footer', () => {
+    const synopsis = 'Discover Bank is suing Daisy Doe to collect $14,500.';
+    const narrativeText = 'CASE NARRATIVE - Detailed review of the Complaint\nWHO:\nPLAINTIFF: Capital One';
+    const notes = buildNotesNarrative({ ...input, caseSynopsisText: synopsis, caseNarrativeText: narrativeText });
+    const summary = notes[0].text;
+    expect(summary).toContain('CASE SUMMARY');
+    expect(summary).toContain('SYNOPSIS');
+    expect(summary).toContain('Discover Bank is suing Daisy Doe');
+    expect(summary).toContain('COMPLAINT REVIEW');
+    expect(summary).toContain('BOTTOM LINE');
+    expect(summary).toContain('SERVE:');
+    expect(summary).toContain('DEADLINE:');
+    expect(summary).toContain('RESPONSE WINDOW:');
   });
 
   it('OFFICER BRIEFING contains the 3-day diligence plan with door-approach guidance', () => {
     const notes = buildNotesNarrative(input);
-    const brief = notes[0].text;
+    const brief = notes[1].text;
     expect(brief).toContain('3-DAY DILIGENCE PLAN');
     expect(brief).toContain('ATTEMPT 1');
     expect(brief).toContain('ATTEMPT 2');
@@ -263,13 +284,13 @@ describe('buildNotesNarrative', () => {
   it('CASE PACKET embeds caseSynopsisText when supplied', () => {
     const synopsis = '📖 WHAT YOU ARE SERVING (auto-synopsis)\nDiscover Bank is suing Daisy Doe to collect $14,500.';
     const notes = buildNotesNarrative({ ...input, caseSynopsisText: synopsis });
-    expect(notes[1].text).toContain('📖 WHAT YOU ARE SERVING');
-    expect(notes[1].text).toContain('Discover Bank is suing Daisy Doe');
+    expect(notes[2].text).toContain('📖 WHAT YOU ARE SERVING');
+    expect(notes[2].text).toContain('Discover Bank is suing Daisy Doe');
   });
 
   it('CASE PACKET section contains plaintiff, case #, documents, signed date, deadline', () => {
     const notes = buildNotesNarrative(input);
-    const caseText = notes[1].text;
+    const caseText = notes[2].text;
     expect(caseText).toContain('PLAINTIFF         : CAPITAL ONE');
     expect(caseText).toContain('CASE #            : 633570');
     expect(caseText).toContain('SUMMONS + COMPLAINT');
@@ -281,7 +302,7 @@ describe('buildNotesNarrative', () => {
 
   it('ATTORNEY block in CASE PACKET includes name, firm, bar #, address, phone, email', () => {
     const notes = buildNotesNarrative(input);
-    const caseText = notes[1].text;
+    const caseText = notes[2].text;
     expect(caseText).toContain('NAME              : HEATHER VALERGA');
     expect(caseText).toContain('FIRM              : GUGLIELMO & ASSOCIATES');
     expect(caseText).toContain('BAR #             : 14431');
@@ -293,11 +314,128 @@ describe('buildNotesNarrative', () => {
   it('DOSSIER folds in enrichmentText + verbatim instructions + job activity', () => {
     const enrichmentText = '🔍 INTAKE ENRICHMENT\n👤 SUBJECT HISTORY: 3 prior call(s)';
     const notes = buildNotesNarrative({ ...input, enrichmentText });
-    const dossier = notes[2].text;
+    const dossier = notes[3].text;
     expect(dossier).toContain('🔍 INTAKE ENRICHMENT');
     expect(dossier).toContain('SUBJECT HISTORY');
     expect(dossier).toContain('VERBATIM CLIENT INSTRUCTIONS');
     expect(dossier).toContain('Sub-serve on 1st attempt');
     expect(dossier).toContain('JOB ACTIVITY HISTORY');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// NEW TESTS — Serve Intake Enhancements
+// ═══════════════════════════════════════════════════════════════
+
+describe('parseAddressParts — floor extraction', () => {
+  it('extracts floor from "Floor 3" pattern', () => {
+    const r = parseAddressParts('100 MAIN ST FLOOR 3, SALT LAKE CITY, UT 84101');
+    expect(r.floor).toBe('3');
+  });
+
+  it('extracts floor from "3RD FLOOR" pattern', () => {
+    const r = parseAddressParts('100 MAIN ST 3RD FLOOR, SALT LAKE CITY, UT 84101');
+    expect(r.floor).toBe('3');
+  });
+
+  it('extracts floor from "FL 2" pattern', () => {
+    const r = parseAddressParts('200 STATE ST FL 2, SALT LAKE CITY, UT 84101');
+    expect(r.floor).toBe('2');
+  });
+
+  it('extracts floor from "LEVEL B" pattern', () => {
+    const r = parseAddressParts('300 S TEMPLE LEVEL B, SALT LAKE CITY, UT 84101');
+    expect(r.floor).toBe('B');
+  });
+
+  it('returns empty floor when no floor info in address', () => {
+    const r = parseAddressParts('456 ELM ST, PROVO, UT 84601');
+    expect(r.floor).toBe('');
+  });
+});
+
+describe('classifyEntityType — improved & classification', () => {
+  it('classifies "Tom & Mary Johnson" as individual', () => {
+    expect(classifyEntityType('Tom & Mary Johnson')).toBe('individual');
+  });
+
+  it('still classifies "GUGLIELMO & ASSOCIATES" as org', () => {
+    expect(classifyEntityType('GUGLIELMO & ASSOCIATES')).toBe('organization');
+  });
+
+  it('classifies org keywords: Foundation, Holdings, Enterprises', () => {
+    expect(classifyEntityType('Smith Foundation')).toBe('organization');
+    expect(classifyEntityType('ABC Holdings')).toBe('organization');
+    expect(classifyEntityType('XYZ Enterprises')).toBe('organization');
+  });
+
+  it('classifies simple names as individual', () => {
+    expect(classifyEntityType('John Smith')).toBe('individual');
+    expect(classifyEntityType('Maria Garcia')).toBe('individual');
+  });
+
+  it('"A & B Corp" → org due to Corp keyword', () => {
+    expect(classifyEntityType('A & B Corp')).toBe('organization');
+  });
+});
+
+describe('validateAddressFormat', () => {
+  it('returns valid for a complete address', () => {
+    const r = validateAddressFormat('123 Main St, Salt Lake City, UT 84101');
+    expect(r.valid).toBe(true);
+    expect(r.warnings).toHaveLength(0);
+  });
+
+  it('warns on missing ZIP', () => {
+    const r = validateAddressFormat('123 Main St, Salt Lake City, UT');
+    expect(r.valid).toBe(false);
+    expect(r.warnings.some(w => /ZIP/i.test(w))).toBe(true);
+  });
+
+  it('warns on missing street number', () => {
+    const r = validateAddressFormat('Main St, Salt Lake City, UT 84101');
+    expect(r.valid).toBe(false);
+    expect(r.warnings.some(w => /street number/i.test(w))).toBe(true);
+  });
+
+  it('warns on missing comma separator', () => {
+    const r = validateAddressFormat('123 Main St Salt Lake City UT 84101');
+    expect(r.valid).toBe(false);
+    expect(r.warnings.some(w => /separator/i.test(w))).toBe(true);
+  });
+
+  it('invalid for empty string', () => {
+    const r = validateAddressFormat('');
+    expect(r.valid).toBe(false);
+  });
+});
+
+describe('normalizeAddress', () => {
+  it('expands street abbreviations', () => {
+    expect(normalizeAddress('123 Main St, SLC, UT 84101')).toContain('STREET');
+  });
+
+  it('normalizes to uppercase', () => {
+    const n = normalizeAddress('123 Main Dr, Provo, UT 84601');
+    expect(n).toBe('123 MAIN DRIVE, PROVO, UT 84601');
+  });
+
+  it('collapses multiple spaces', () => {
+    const n = normalizeAddress('123  Main   St,  SLC,  UT  84101');
+    expect(n).not.toMatch(/  /);
+  });
+});
+
+describe('addressesMatch', () => {
+  it('matches addresses with different abbreviations', () => {
+    expect(addressesMatch('123 Main St, Salt Lake City, UT 84101', '123 Main Street, Salt Lake City, UT 84101')).toBe(true);
+  });
+
+  it('does not match different addresses', () => {
+    expect(addressesMatch('123 Main St, Salt Lake City, UT 84101', '456 Elm Dr, Provo, UT 84601')).toBe(false);
+  });
+
+  it('returns false for empty inputs', () => {
+    expect(addressesMatch('', '123 Main St, SLC, UT 84101')).toBe(false);
   });
 });

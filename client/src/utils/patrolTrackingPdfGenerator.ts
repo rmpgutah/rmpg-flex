@@ -17,6 +17,10 @@ export interface PatrolTrackingPdfOptions {
   printTarget?: PrintTarget;
 }
 
+export interface PatrolTrackingPdfOptions {
+  printTarget?: PrintTarget;
+}
+
 // ── Types matching the server patrol-tracking response ──────
 
 interface PatrolPoint {
@@ -153,6 +157,11 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
   const formNum = FORM_NUMBERS['patrol_tracking'] || 'FORM PS-210';
 
   let yPos: number = topMarginY(doc);
+
+  // Add watermark to the first page (newPage() handles subsequent pages)
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState — safety reset after watermark
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
 
   // Add watermark to the first page (newPage() handles subsequent pages)
   addConfidentialWatermark(doc);
@@ -312,7 +321,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
 
   // Bold report title
   doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setTextColor(...primaryRgb);
   doc.text('PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 
