@@ -53,36 +53,19 @@ export default function QAPage() {
     fetchData().finally(() => setLoading(false));
   }, [fetchData]);
 
-  // Deep-link: ?review_id=<id> / ?qa_id=<id> — open that review on mount
-  //            ?officer_id=<id> — open new review pre-filled for that officer
+  // Deep-link: ?qa_id=<id> or ?review_id=<id> — open that review on mount
   const deepLinkHandled = useRef(false);
   useEffect(() => {
     if (loading || deepLinkHandled.current) return;
-    const reviewId = searchParams.get('review_id') ?? searchParams.get('qa_id');
-    const officerId = searchParams.get('officer_id');
-    if (!reviewId && !officerId) return;
+    const qaId = searchParams.get('qa_id') ?? searchParams.get('review_id');
+    if (!qaId) return;
     deepLinkHandled.current = true;
     const next = new URLSearchParams(searchParams);
-    next.delete('review_id');
     next.delete('qa_id');
-    next.delete('officer_id');
+    next.delete('review_id');
     setSearchParams(next, { replace: true });
-    if (reviewId) {
-      const target = reviews.find((r) => String(r.id) === reviewId);
-      if (target) {
-        openEdit(target);
-        addToast(`QA Review #${target.review_number ?? reviewId} loaded`, 'success');
-      } else {
-        addToast(`QA review #${reviewId} not found`, 'error');
-      }
-    } else if (officerId && canWrite) {
-      setEditingRecord(null);
-      setFormData({
-        review_type: 'call_audit', entity_type: '', entity_id: '',
-        reviewed_officer_id: officerId, findings: '', recommendations: '',
-      });
-      setFormOpen(true);
-    }
+    const target = reviews.find((r) => String(r.id) === qaId);
+    if (target) openEdit(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, reviews, searchParams]);
 
