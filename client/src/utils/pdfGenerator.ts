@@ -107,6 +107,13 @@ export function displayStatus(status: string): string {
   return status.toUpperCase();
 }
 
+// ── Status Display Helper — "archived" shows as "CLOSED" in printed documents ──
+export function displayStatus(status: string): string {
+  if (!status) return '';
+  if (status.toLowerCase() === 'archived') return 'CLOSED';
+  return status.toUpperCase();
+}
+
 // ── Branding Interface (matches Admin BrandingConfig) ────────
 
 export interface PdfBranding {
@@ -156,18 +163,22 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
  * Falls back to defaults if the API is unreachable or has no branding saved.
  */
 export async function fetchPdfBranding(): Promise<PdfBranding> {
+  // Base: hardcoded defaults < Console Settings → Branding (system_settings,
+  // individual keys via the systemSettings cache) < any legacy
+  // branding_settings JSON blob (older Admin → Branding tab).
+  const fromSystem = brandingFromSystemSettings();
   try {
     const token = localStorage.getItem('rmpg_token');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const res = await fetch('/api/admin/system-settings', { headers });
-    if (!res.ok) return { ...DEFAULT_PDF_BRANDING };
+    if (!res.ok) return { ...DEFAULT_PDF_BRANDING, ...fromSystem };
     const settings = await res.json() as Record<string, string>;
-    if (!settings.branding_settings) return { ...DEFAULT_PDF_BRANDING };
+    if (!settings.branding_settings) return { ...DEFAULT_PDF_BRANDING, ...fromSystem };
     const parsed = JSON.parse(settings.branding_settings);
-    return { ...DEFAULT_PDF_BRANDING, ...parsed };
+    return { ...DEFAULT_PDF_BRANDING, ...fromSystem, ...parsed };
   } catch {
-    return { ...DEFAULT_PDF_BRANDING };
+    return { ...DEFAULT_PDF_BRANDING, ...fromSystem };
   }
 }
 
@@ -362,6 +373,20 @@ export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean;
   return s;
 }
 
+export function fitPdfText(doc: jsPDF, text: string, maxWidth: number): string {
+  const safeText = sanitizePdfText(text || '');
+  if (!safeText || maxWidth <= 0) return '';
+  if (doc.getTextWidth(safeText) <= maxWidth) return safeText;
+
+  const ellipsis = '...';
+  let trimmed = safeText;
+  while (trimmed.length > 0 && doc.getTextWidth(`${trimmed}${ellipsis}`) > maxWidth) {
+    trimmed = trimmed.slice(0, -1).trimEnd();
+  }
+
+  return trimmed ? `${trimmed}${ellipsis}` : ellipsis;
+}
+
 /**
  * Word-aware text wrapper — splits on spaces first, only breaking within
  * words as a last resort. Unlike jsPDF's splitTextToSize which can break
@@ -411,6 +436,12 @@ let cachedLogoDark: string | null = null;
 // Active form key for footer form numbers
 let activeFormKey = '';
 export function setActiveFormKey(key: string) { activeFormKey = key; }
+
+function resolveFormNumber(formKey?: string): string {
+  if (!formKey) return '';
+  if (FORM_NUMBERS[formKey]) return FORM_NUMBERS[formKey];
+  return /^FORM\b/i.test(formKey.trim()) ? formKey.trim() : '';
+}
 
 // Active case number for continuation headers
 let activeCaseNumber = '';
@@ -524,6 +555,15 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 }
 
+/** Enforce strict police-report typography defaults across all PDF generators. */
+export function applyPoliceReportFormatting(doc: jsPDF): void {
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  // Tighter character spacing for dense, typewriter-style report output.
+  doc.setCharSpace(-0.1);
+}
+
 export function addClassificationBar(doc: jsPDF, priority: string, yStart: number): number {
   const cw = getContentWidth(doc);
   const prio = PRIORITY_COLORS[priority?.toLowerCase()] || PRIORITY_COLORS['routine'];
@@ -598,22 +638,27 @@ export function addReportHeader(
     }
   }
 
+  const caseBoxH = LAYOUT.HEADER_HEIGHT - 2;
+  const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
+  const caseBoxY = LAYOUT.HEADER_TOP + 1;
+  const textMaxWidth = Math.max(20, caseBoxX - textStartX - SPACING.MD);
+
   // ── Line 1: Agency name ────────────────────────────────
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(headerTextColor[0], headerTextColor[1], headerTextColor[2]);
   doc.text(agencyName || brand.report_header_text, textStartX, headerY + 6.5);
 
   // ── Line 2: Subheader ──────────────────────────────────
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(subheaderColor[0], subheaderColor[1], subheaderColor[2]);
   doc.text(brand.report_subheader_text, textStartX, headerY + 11);
 
   // ── Line 3: Report type | form# | rev | date ──────────
-  const formNum = FORM_NUMBERS[activeFormKey] || '';
+  const formNum = resolveFormNumber(activeFormKey);
   const reportDate = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-  const metaParts = [reportType.toUpperCase()];
+  const metaParts = [sanitizePdfText(reportType)];
   if (formNum) metaParts.push(formNum);
   metaParts.push(FORM_REVISION);
   metaParts.push(reportDate);
@@ -639,13 +684,14 @@ export function addReportHeader(
         : pKey === 'P3' ? 'P3 - Routine' : pKey === 'P4' ? 'P4 - Low' : prio.label.replace('PRIORITY: ', ''));
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(5);
-    const prioW = doc.getTextWidth(prioLabelText) + 4;
+    const prioText = fitPdfText(doc, prioLabelText, textMaxWidth);
+    const prioW = Math.min(doc.getTextWidth(prioText) + 4, textMaxWidth);
     const prioX = textStartX;
     const prioY = headerY + 16.5;
     doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
     doc.roundedRect(prioX, prioY, prioW, 3, 0.5, 0.5, 'F');
     doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
-    doc.text(prioLabelText, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
+    doc.text(prioText, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
   }
 
   // ── Case number box (right) ────────────────────────────
@@ -662,9 +708,9 @@ export function addReportHeader(
 
   // Label
   doc.setFontSize(FONT.SIZE_SMALL_META);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setTextColor(...caseTextColor);
-  doc.text(caseBoxLabel, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 5, { align: 'center' });
+  doc.text(fitPdfText(doc, caseBoxLabel, LAYOUT.CASE_BOX_W - 4), caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 5, { align: 'center' });
 
   // Case number value
   doc.setFontSize(FONT.SIZE_CASE_NUMBER);
@@ -785,6 +831,7 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
   if (startPage !== currentPage) {
     doc.setPage(currentPage);
   }
+  // No enclosing section outline — section header bar is sufficient
 
   // Bottom rule — section accent color line marking section end
   const closeAccentRgb = activeBranding.section_accent_color
@@ -921,8 +968,9 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
     // Light fill + bold dark checkmark
     doc.setFillColor(235, 235, 235); // neutralized 2026-05-30
     doc.rect(x + 0.15, boxY + 0.15, boxSize - 0.3, boxSize - 0.3, 'F');
-    doc.setDrawColor(20, 20, 20);
-    doc.setLineWidth(0.7);
+    // [Improvement 13] Thicker, bolder check mark stroke for visibility
+    doc.setDrawColor(15, 15, 15);
+    doc.setLineWidth(0.8);
     // Check mark: short down-stroke then long up-stroke
     const cx = x + boxSize / 2;
     const cy = boxY + boxSize / 2;
@@ -955,6 +1003,12 @@ export function addFlagBadges(
   priority?: string,
 ): number {
   if (!flags || flags.length === 0) return y;
+  // Normalize: flags may be strings or objects with a name/label/flag property
+  const normalized: string[] = flags.map((f: any) => {
+    if (typeof f === 'string') return f;
+    if (typeof f === 'object' && f !== null) return f.name || f.label || f.flag || f.title || JSON.stringify(f);
+    return String(f);
+  }).filter(Boolean);
 
   // Dedup — callers may pass the same flag twice (e.g. from merging
   // multiple data sources). Normalize case/whitespace for matching so
@@ -1044,7 +1098,7 @@ export function addFlagBadges(
   let curX = x;
   let curY = y;
 
-  for (const flag of flags) {
+  for (const flag of normalized) {
     if (!flag) continue;
     const text = String(flag).toUpperCase();
     const tw = doc.getTextWidth(text);
@@ -1095,7 +1149,7 @@ export function addFlagBadges(
     doc.setTextColor(255, 255, 255);
     const pillCapH = fontSize * 0.35;
     const textY = curY + (pillH + pillCapH) / 2;
-    doc.text(text, curX + pillPadX, textY);
+    doc.text(fitPdfText(doc, text, Math.max(6, maxWidth - pillPadX * 2)), curX + pillPadX, textY);
 
     curX += pillW + pillGapX;
   }
@@ -1144,7 +1198,7 @@ export function addCautionBlock(
   doc.rect(x, y, width, boxH);
 
   // Label
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.CAUTION_TEXT);
   doc.text('[!] CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
@@ -1232,6 +1286,9 @@ export function addSignatureBlock(
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, row1Y, width, sigRowH);
+  // [Improvement 46] Subtle background tint in signature area
+  doc.setFillColor(...COLOR.SIGNATURE_BG);
+  doc.rect(x + 0.3, row1Y + 0.3, width - 0.6, sigRowH - 0.6, 'F');
 
   if (sigData?.signatureImage) {
     try {
@@ -1285,9 +1342,9 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('PRINTED NAME', x + SPACING.MD, row2Y + 2.2);
-  doc.text('BADGE NUMBER', x + colW + SPACING.MD, row2Y + 2.2);
-  doc.text('DATE/TIME', x + colW * 2 + SPACING.MD, row2Y + 2.2);
+  doc.text(fitPdfText(doc, 'PRINTED NAME', colW - SPACING.MD * 2), x + SPACING.MD, row2Y + 2.2);
+  doc.text(fitPdfText(doc, 'BADGE NUMBER', colW - SPACING.MD * 2), x + colW + SPACING.MD, row2Y + 2.2);
+  doc.text(fitPdfText(doc, 'DATE/TIME', colW - SPACING.MD * 2), x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
   // Values — auto-fill from sigData
   const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
@@ -1296,8 +1353,8 @@ export function addSignatureBlock(
     doc.setFontSize(8);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const valY = row2Y + infoRowH - 1.5;
-    if (sigData!.printedName) doc.text(sanitizePdfText(sigData!.printedName).toUpperCase(), x + SPACING.MD, valY);
-    if (sigData!.badgeNumber) doc.text(sanitizePdfText(sigData!.badgeNumber).toUpperCase(), x + colW + SPACING.MD, valY);
+    if (sigData!.printedName) doc.text(fitPdfText(doc, sigData!.printedName, colW - SPACING.MD * 2), x + SPACING.MD, valY);
+    if (sigData!.badgeNumber) doc.text(fitPdfText(doc, sigData!.badgeNumber, colW - SPACING.MD * 2), x + colW + SPACING.MD, valY);
     const now = new Date();
     // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
     // Legal documents require the correct local timestamp — UTC drift corrupts records.
@@ -1349,7 +1406,10 @@ export function addStackedSignatures(
   // ── Company Seal (right column) — aligned to full signature block height ──
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(mx + sigW, y, sealColW, totalH); // matches signature block height
+  doc.rect(mx + sigW, y, sealColW, totalH);
+  // [Improvement 47] Subtle tint behind seal area
+  doc.setFillColor(...COLOR.STAMP_BG);
+  doc.rect(mx + sigW + 0.3, y + 0.3, sealColW - 0.6, totalH - 0.6, 'F');
 
   // Dashed circle centered in seal column
   const sealH = totalH;
@@ -1435,6 +1495,8 @@ export function addPageFooter(
   void subRowY;
 
   // ── Accent line ──────────────────────────────────────
+  // [Improvement 14] Footer accent line uses primary brand color for
+  // visual consistency with the header accent strip.
   doc.setDrawColor(footerAccentRgb[0], footerAccentRgb[1], footerAccentRgb[2]);
   doc.setLineWidth(BORDER.ACCENT_FOOTER);
   doc.line(SAFE_PRINT_EDGE_SIDE, accentLineY, pageWidth - SAFE_PRINT_EDGE_SIDE, accentLineY);
@@ -1455,6 +1517,7 @@ export function addPageFooter(
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  // [Improvement 46 applied] Slightly larger page numbering for visibility
   doc.text(`PAGE ${pageNum} OF ${totalPages}`, pageWidth - SAFE_PRINT_EDGE_SIDE, textY, { align: 'right' });
 }
 
@@ -1960,7 +2023,7 @@ export function addNarrativeSection(
     doc.setTextColor(255, 255, 255);
     const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
-    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+    doc.text(fitPdfText(doc, contTitle, cw - SPACING.CONTENT_INSET * 2 - 2), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -2044,6 +2107,43 @@ export interface PdfImage {
 }
 
 /** Embed a single image into the PDF with aspect-ratio preservation. */
+/**
+ * Convert image to high-contrast monochrome B&W for document printing.
+ * Lower threshold = more black (darker faces, bolder text).
+ * Applies contrast enhancement before thresholding for detail retention.
+ */
+export async function convertToGrayscale(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(dataUrl); return; }
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+        // Six-tone posterize: black → dark → mid-dark → mid → light → white
+        let val: number;
+        if (lum < 45) val = 0;           // deep shadows → black
+        else if (lum < 85) val = 50;     // dark detail → very dark gray
+        else if (lum < 125) val = 100;   // mid-shadows → dark gray
+        else if (lum < 170) val = 150;   // mid-tones → medium gray
+        else if (lum < 210) val = 200;   // light areas → light gray
+        else val = 255;                  // highlights → white
+        d[i] = d[i + 1] = d[i + 2] = val;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 export function addImageToPage(
   doc: jsPDF,
   image: PdfImage,
@@ -2065,14 +2165,18 @@ export function addImageToPage(
 
   try {
     doc.addImage(image.dataUrl, image.format, x, y, renderW, renderH);
+    // [Improvement 48] Subtle image frame border for definition
+    doc.setDrawColor(...COLOR.BORDER_FIELD);
+    doc.setLineWidth(BORDER.IMAGE_FRAME);
+    doc.rect(x, y, renderW, renderH);
   } catch {
     doc.setDrawColor(...COLOR.BORDER_FIELD);
-    doc.setLineWidth(BORDER.FIELD);
+    doc.setLineWidth(BORDER.IMAGE_FRAME);
     doc.rect(x, y, renderW, renderH);
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('[Image unavailable]', x + renderW / 2, y + renderH / 2, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_PLACEHOLDER);
+    doc.text('[IMAGE UNAVAILABLE]', x + renderW / 2, y + renderH / 2, { align: 'center' });
   }
 
   return { w: renderW, h: renderH };
@@ -2112,7 +2216,7 @@ export function addImageGrid(
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
-      doc.text(caption, x, y + h + 3);
+      doc.text(fitPdfText(doc, caption, imgMaxW), x, y + h + 3);
 
       maxRowH = Math.max(maxRowH, h);
     }
@@ -2182,11 +2286,12 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
     // Form number + case number on right
     const rightParts: string[] = [];
-    const formNum = FORM_NUMBERS[activeFormKey] || '';
+    const formNum = resolveFormNumber(activeFormKey);
     if (formNum) rightParts.push(formNum);
     if (activeCaseNumber) rightParts.push(activeCaseNumber);
     if (rightParts.length > 0) {
-      doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
+      const rightText = fitPdfText(doc, rightParts.join('  |  '), Math.max(20, cw * 0.42));
+      doc.text(rightText, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
     // Thin full-width rule just below the black band (was contH-0.6 —
@@ -2274,8 +2379,9 @@ export function addTableWithShading(
     const fontSize = lightHdr ? FONT.SIZE_FIELD_LABEL : FONT.SIZE_TABLE_HEADER;
     const capH = fontSize * 0.35;  // approximate cap-height in mm
     const textY = atY + (headerRowH + capH) / 2;
-    for (const h of headers) {
-      doc.text(sanitizePdfText(h.label), h.x, textY);
+    for (let i = 0; i < headers.length; i++) {
+      const h = headers[i];
+      doc.text(fitPdfText(doc, h.label, Math.max(8, colWidths[i] || 20)), h.x, textY);
     }
     return atY + headerRowH;
   };
@@ -2352,14 +2458,13 @@ export function addTableWithShading(
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
     }
 
-    // y = top of this data row rect
-    // Zebra shading — rect starts at y, full rowH
-    if (i % 2 === 0) {
+    // Zebra shading — first row white, second light gray, alternating
+    if (i % 2 === 1) {
       doc.setFillColor(...COLOR.BG_ZEBRA);
       doc.rect(LAYOUT.PAGE_MARGIN, y, cw, rowH, 'F');
     }
 
-    // Row separator at bottom of row
+    // Light row separator
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
     doc.line(LAYOUT.PAGE_MARGIN, y + rowH, LAYOUT.PAGE_MARGIN + cw, y + rowH);
@@ -2372,7 +2477,7 @@ export function addTableWithShading(
       const lines = cellLines[c];
       let cellY = textStartY;
       for (const line of lines) {
-        doc.text(line, colPositions[c], cellY);
+        doc.text(fitPdfText(doc, line, (colWidths[c] || 30) - 1), colPositions[c], cellY);
         cellY += cellLineH;
       }
     }
@@ -2383,17 +2488,14 @@ export function addTableWithShading(
   // Update final segment bottom
   colSegments[colSegments.length - 1].bottom = y - 1;
 
-  // Draw column borders and outer border per segment (page-aware)
+  // Draw light column dividers only (no outer border box)
   const currentPage = doc.getNumberOfPages();
   for (const seg of colSegments) {
     const segH = seg.bottom - seg.top + 1;
     if (segH < 2) continue;
-
     doc.setPage(seg.page);
-
-    // Vertical column dividers
-    doc.setDrawColor(...COLOR.BORDER_COLUMN);
-    doc.setLineWidth(BORDER.TABLE_COLUMN);
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(0.15);
     for (let c = 1; c < colPositions.length; c++) {
       const sepX = colPositions[c] - 2;
       doc.line(sepX, seg.top, sepX, seg.bottom);
@@ -2401,7 +2503,6 @@ export function addTableWithShading(
 
     // No outer border — section header bar provides the visual frame
   }
-  // Restore to current (last) page
   doc.setPage(currentPage);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
@@ -2581,6 +2682,8 @@ interface IncidentData {
     status: string;
     created_at: string;
   }[];
+  // Map snapshot image (pre-resolved for PDF embedding)
+  _mapImage?: PdfImage;
 }
 
 type IncidentOverviewField = {
@@ -3129,7 +3232,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 20, data.priority);
   const vehicles = data.linked_vehicles || [];
-  { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.contentY;
+  { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.sectionY + 3.8;
     if (vehicles.length > 0) {
       const colPositions = [lx, mx + 30, mx + 65, mx + 120];
       const tableHeaders = [
@@ -3139,7 +3242,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         { label: 'COLOR', x: colPositions[3] },
       ];
       const tableRows = vehicles.map((v) => [
-        capFirst(v.role?.replace(/_/g, ' ') || ''),
+        capFirst(v.role?.replace(/_/g, ' ').toUpperCase() || ''),
         `${v.plate_number || 'N/A'}${v.state ? ' (' + v.state + ')' : ''}`,
         [v.year, v.make, v.model].filter(Boolean).join(' '),
         v.color || '',
@@ -3247,6 +3350,28 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     const fy1 = addFieldPair(doc, 'Latitude', String(data.latitude), lx, y, hfw);
     const fy2 = addFieldPair(doc, 'Longitude', String(data.longitude), rx, y, hfw);
     y = Math.max(fy1, fy2);
+    // Embed static map image if available
+    if (data._mapImage && data._mapImage.dataUrl) {
+      y += SPACING.MD;
+      const mapW = Math.min(ffw, 120);
+      const mapH = mapW * 0.5;
+      y = checkPageBreak(doc, y, mapH + SPACING.SM, data.priority);
+      const mapX = lx + (ffw - mapW) / 2;
+      addImageToPage(doc, data._mapImage, mapX, y, mapW, mapH);
+      y += mapH + SPACING.SM;
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Static Map in Dispatch Linkage (when call data present) ──
+  if (data.call_number && data.latitude != null && data.longitude != null && data._mapImage && data._mapImage.dataUrl) {
+    y = checkPageBreak(doc, y, 70, data.priority);
+    const sec = openAutoSection(doc, 'Incident Location Map', y); y = sec.contentY;
+    const mapW = Math.min(ffw, 120);
+    const mapH = mapW * 0.5;
+    const mapX = lx + (ffw - mapW) / 2;
+    addImageToPage(doc, data._mapImage, mapX, y, mapW, mapH);
+    y += mapH + SPACING.SM;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3327,7 +3452,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_INVERTED);
   doc.setLineWidth(BORDER.CASE_BOX);
   doc.rect(LAYOUT.PAGE_MARGIN + 1.5, y + 1.2, cw - 3, 7.6);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text('WARNING -- TRESPASS NOTICE', pageWidth / 2, y + 7, { align: 'center' });
@@ -3641,7 +3766,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_INVERTED);
   doc.setLineWidth(BORDER.BANNER);
   doc.rect(LAYOUT.PAGE_MARGIN + 1, y + 1, cw - 2, 6);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER_SMALL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text('MANDATORY REPORT -- MUST BE COMPLETED WITHIN 24 HOURS OF INCIDENT', pageWidth / 2, y + 5.5, { align: 'center' });
@@ -3765,7 +3890,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
     doc.line(LAYOUT.PAGE_MARGIN + 1, y + 5, LAYOUT.PAGE_MARGIN + cw - 1, y + 5);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text('TIME', lx, y + 2);
@@ -3994,7 +4119,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
       { label: 'Service Type', value: serviceTypeLabel },
-      { label: 'Contract ID', value: data.contract_id || '' },
+      { label: 'Contract ID', value: safeStr(data.contract_id) },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -4002,11 +4127,11 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   // Client / Requestor Information
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Client / Requestor Information', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Requestor Name', data.pso_requestor_name || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Requestor Phone', data.pso_requestor_phone || '', rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Requestor Name', safeStr(data.pso_requestor_name), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Requestor Phone', safeStr(data.pso_requestor_phone), rx, y, hfw);
       y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Requestor Email', data.pso_requestor_email || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', rx, y, hfw);
+    { const yL = addFieldPair(doc, 'Requestor Email', safeStr(data.pso_requestor_email), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Billing Code', safeStr(data.pso_billing_code), rx, y, hfw);
       y = Math.max(yL, yR); }
     { const yL = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'PSO Service Type', formatEnumValue(data.pso_service_type), rx, y, hfw);
@@ -4033,11 +4158,11 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   y = checkPageBreak(doc, y, 35, data.priority);
   { const sec = openAutoSection(doc, 'Service Attempt Details', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Document Type', serviceTypeLabel, lx, y, hfw);
-      const yR = addFieldPair(doc, 'Serve To (Name)', data.process_served_to || '', rx, y, hfw);
+      const yR = addFieldPair(doc, 'Serve To (Name)', safeStr(data.process_served_to), rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Service Address', data.process_served_address || data.location || '', lx, y, ffw);
-    { const yL = addFieldPair(doc, 'Attempts Made', String(data.process_attempts || 0), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Served At', data.process_served_at || '', rx, y, hfw);
+    y = addFieldPair(doc, 'Service Address', safeStr(data.process_served_address || data.location), lx, y, ffw);
+    { const yL = addFieldPair(doc, 'Attempts Made', String(data.process_attempts ?? 0), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Served At', safeStr(data.process_served_at), rx, y, hfw);
       y = Math.max(yL, yR); }
     y = addFieldPair(doc, 'Service Result', formatEnumValue(data.process_service_result), lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -4093,7 +4218,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   // Linked Persons
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 25, data.priority);
-    const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'Linked Individuals', y); y = sec.contentY;
     const colPositions = [gridX, gridX + 50, gridX + 100];
     const tableHeaders = [
       { label: 'NAME', x: colPositions[0] },
