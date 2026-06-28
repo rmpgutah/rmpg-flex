@@ -77,6 +77,120 @@ ai.get('/activity', (c) => c.json([] as Array<{
 
 ai.get('/dev-chat/history', (c) => c.json([]));
 
+// ============================================================
+// GET /ai/test/:provider — connectivity probe (admin/manager)
+// ============================================================
+// AIProvidersPanel + AICommandCenterPanel render a "Test" button per
+// configured external provider (groq/gemini/openai/ollama). The button
+// expects `{ ok, latencyMs, error? }` — the TestResult contract in
+// AISharedComponents.tsx. Prior to this handler the endpoint 404'd, so
+// the panel's per-provider connectivity indicator was permanently red.
+//
+// Implementation: fire a single low-cost HTTP probe to each provider's
+// /models endpoint (or /api/tags for Ollama) with the saved API key.
+// 200 response → ok:true. Anything else → ok:false + error. 8s timeout
+// per probe so a stuck provider can't hang the admin tab. The key lives
+// in system_config under `ai.provider.<name>` (set by the panel's Save).
+// If no key is configured, return a clear "No API key configured" error
+// rather than throwing on the missing Authorization header.
+//
+// Ollama lives on localhost or a LAN address; CF Workers cannot reach
+// private network space. Detect that and return a clear honest error
+// instead of a misleading timeout — the panel surfaces the message
+// straight to the admin so they understand the architectural limit.
+const KNOWN_PROVIDERS = new Set(['groq', 'gemini', 'openai', 'ollama']);
+const PROBE_TIMEOUT_MS = 8000;
+function isPrivateHost(hostname: string): boolean {
+  if (!hostname) return false;
+  const h = hostname.toLowerCase();
+  if (h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '::1') return true;
+  if (/^10\./.test(h)) return true;
+  if (/^192\.168\./.test(h)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(h)) return true;
+  if (h.endsWith('.local')) return true;
+  return false;
+}
+
+ai.get('/test/:provider', requireRole('admin', 'manager'), async (c): Promise<Response> => {
+  const provider = c.req.param('provider') ?? '';
+  if (!provider || !KNOWN_PROVIDERS.has(provider)) {
+    return c.json({ ok: false, latencyMs: 0, error: `Unknown provider "${provider}"` }, 400);
+  }
+
+  // Load this provider's saved config from system_config. The Save handler
+  // stores each provider's settings as one JSON-encoded row under
+  // `ai.provider.<name>`. Missing row → empty object → "no key configured".
+  let cfg: { apiKey?: string; url?: string; baseUrl?: string; model?: string } = {};
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ config_value: string }>(db,
+      `SELECT config_value FROM system_config
+       WHERE config_key = ? AND is_active = 1
+       ORDER BY id DESC LIMIT 1`,
+      `ai.provider.${provider}`);
+    if (row?.config_value) {
+      try { cfg = JSON.parse(row.config_value) ?? {}; } catch { /* leave empty */ }
+    }
+  } catch { /* DB unavailable — treat as no config */ }
+
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), PROBE_TIMEOUT_MS);
+  const start = Date.now();
+  try {
+    let res: Response;
+    switch (provider) {
+      case 'groq': {
+        if (!cfg.apiKey) throw new Error('No API key configured for Groq');
+        res = await fetch('https://api.groq.com/openai/v1/models', {
+          headers: { Authorization: `Bearer ${cfg.apiKey}` },
+          signal: ctl.signal,
+        });
+        break;
+      }
+      case 'gemini': {
+        if (!cfg.apiKey) throw new Error('No API key configured for Gemini');
+        res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cfg.apiKey)}`,
+          { signal: ctl.signal });
+        break;
+      }
+      case 'openai': {
+        if (!cfg.apiKey) throw new Error('No API key configured for OpenAI');
+        const rawBase = cfg.baseUrl && /^https?:\/\//i.test(cfg.baseUrl) ? cfg.baseUrl : 'https://api.openai.com/v1';
+        const base = rawBase.replace(/\/$/, '');
+        res = await fetch(`${base}/models`, {
+          headers: { Authorization: `Bearer ${cfg.apiKey}` },
+          signal: ctl.signal,
+        });
+        break;
+      }
+      case 'ollama': {
+        const url = cfg.url && /^https?:\/\//i.test(cfg.url) ? cfg.url : 'http://localhost:11434';
+        let host = '';
+        try { host = new URL(url).hostname; } catch { /* leave empty */ }
+        if (!host || isPrivateHost(host)) {
+          throw new Error('Ollama at private/local address is not reachable from Cloudflare Workers — configure a public URL or run a tunnel');
+        }
+        res = await fetch(`${url.replace(/\/$/, '')}/api/tags`, { signal: ctl.signal });
+        break;
+      }
+      default:
+        throw new Error(`Unknown provider "${provider}"`);
+    }
+    if (!res.ok) {
+      throw new Error(`Provider returned HTTP ${res.status}`);
+    }
+    return c.json({ ok: true, latencyMs: Date.now() - start });
+  } catch (err) {
+    const msg = (err as Error).name === 'AbortError'
+      ? `Provider did not respond within ${PROBE_TIMEOUT_MS}ms`
+      : ((err as Error).message || 'Probe failed');
+    return c.json({ ok: false, latencyMs: Date.now() - start, error: msg });
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 // ─── POST /ai/suggest-units ─────────────────────────────────
 // Body: { callId } (server fetches fresh-GPS units) OR { call, units }.
 // Returns LLM-picked suggestions + the deterministic candidate ranking.

@@ -220,7 +220,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
             onChange={v => { setOpenaiKey(v); setDirty(true); }}
             show={!!showKeys.openai} onToggle={() => setShowKeys(p => ({ ...p, openai: !p.openai }))} />
           <div className="flex items-center gap-2">
-            <label className="text-[10px] text-rmpg-500 w-20 shrink-0">Base URL</label>
+            <label htmlFor="ff-aiproviderspanel-1" className="text-[10px] text-rmpg-500 w-20 shrink-0">Base URL</label>
             <input id="ff-aiproviderspanel-1"
               type="text" value={openaiBaseUrl}
               onChange={e => { setOpenaiBaseUrl(e.target.value); setDirty(true); }}
@@ -237,7 +237,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
           testResult={testResults.ollama} onTest={() => testProvider('ollama')}
         >
           <div className="flex items-center gap-2">
-            <label className="text-[10px] text-rmpg-500 w-20 shrink-0">Server URL</label>
+            <label htmlFor="ff-aiproviderspanel-2" className="text-[10px] text-rmpg-500 w-20 shrink-0">Server URL</label>
             <input id="ff-aiproviderspanel-2"
               type="text" value={ollamaUrl}
               onChange={e => { setOllamaUrl(e.target.value); setDirty(true); }}

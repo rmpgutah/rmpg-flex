@@ -111,6 +111,9 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     dl_state: row.dl_state ? String(row.dl_state) : undefined,
     dl_expiry: row.dl_expiry ? String(row.dl_expiry) : undefined,
     dl_class: row.dl_class ? String(row.dl_class) : undefined,
+    dl_issue_date: row.dl_issue_date ? String(row.dl_issue_date) : undefined,
+    dl_restrictions: row.dl_restrictions ? String(row.dl_restrictions) : undefined,
+    dl_endorsements: row.dl_endorsements ? String(row.dl_endorsements) : undefined,
     ssn_last4: row.ssn_last4 ? String(row.ssn_last4) : undefined,
     ssn_full: row.ssn_full ? String(row.ssn_full) : undefined,
     id_image_url: row.id_image_url ? String(row.id_image_url) : undefined,
@@ -225,12 +228,19 @@ const FLAG_COLORS: Record<string, string> = {
 // "None", which is truthy and once fired a false GANG alert + badge) now lives
 // in the shared ../../utils/sentinel module — see hasValue import above.
 
+// Import-provenance tags written into flags[] by DL-scan import flows.
+// They are data-lineage metadata, not officer-caution flags, and must be
+// excluded from badge rendering, warning counts, and posture computation.
+function isProvenanceFlag(flag: string): boolean {
+  return /_IMPORTED$/i.test(flag);
+}
+
 // Single source of truth for a person's posture-relevant flags. Shared by the
 // list avatar ring, the detail hero, and the alert computation so all three
 // agree on severity (and all get the gang-"None" guard for free).
 function personPostureFlags(p: Person): Array<string | null | undefined> {
   return [
-    ...p.flags.map((f) => (typeof f === 'object' ? f.type : f)),
+    ...p.flags.map((f) => (typeof f === 'object' ? f.type : f)).filter(f => !isProvenanceFlag(f)),
     p.watchlist_match ? 'watchlist' : null,
     p.is_sex_offender ? 'sex offender' : null,
     hasValue(p.gang_affiliation) ? 'gang' : null,
@@ -469,15 +479,17 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 
   const openEditPerson = async (person: Person) => {
     setPersonSubmitError(null);
-    setEditingPerson(person); // Set immediately with list data so modal has context
-    setPersonModalOpen(true);
-    // Upgrade with full detail (list only returns limited columns)
+    // Fetch full detail before opening — prevents PersonFormModal's
+    // useEffect([isOpen, editingPerson]) from firing twice and wiping edits.
+    let fullPerson: Person = person;
     try {
       const full = await apiFetch<Record<string, unknown>>(`/records/persons/${person.id}`);
-      setEditingPerson(mapDbPerson(full as Record<string, unknown>));
+      fullPerson = mapDbPerson(full as Record<string, unknown>);
     } catch {
-      // Keep the list-level data already set
+      // Fall back to list-level data
     }
+    setEditingPerson(fullPerson);
+    setPersonModalOpen(true);
   };
   const openNewPerson = () => { setEditingPerson(undefined); setPersonSubmitError(null); setPersonModalOpen(true); };
   const closeModal = () => { setPersonModalOpen(false); setEditingPerson(undefined); setPersonSubmitError(null); };
@@ -681,9 +693,19 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         {displayPersons.length === 0 && (
           <div className="text-center py-16">
             <UserCircle className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No persons match your search.'
+                : showArchived
+                  ? 'No archived person records.'
+                  : 'No person records found.'}
+            </p>
             <p className="text-[10px] text-rmpg-600 mt-1">
-              {searchQuery ? 'Try broadening your search terms.' : 'Click "New Person" to create a record.'}
+              {searchQuery
+                ? 'Try broadening your search terms.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Person" to create a record.'}
             </p>
           </div>
         )}
@@ -756,19 +778,26 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
-                {person.flags.length > 0 && (
-                  <div className="flex gap-1">
-                    {person.flags.slice(0, 2).map((flag, i) => {
-                      const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-                      return (
-                        <RecordBadge key={`${label}-${i}`} flag={label} glow={false} title={humanizeFlag(label)}>{label}</RecordBadge>
-                      );
-                    })}
-                    {person.flags.length > 2 && (
-                      <span className="text-[9px] text-rmpg-400">+{person.flags.length - 2}</span>
-                    )}
-                  </div>
-                )}
+                {(() => {
+                  const securityFlags = person.flags.filter(f => {
+                    const label = typeof f === 'object' ? (f.type || '') : f;
+                    return !isProvenanceFlag(label);
+                  });
+                  if (securityFlags.length === 0) return null;
+                  return (
+                    <div className="flex gap-1">
+                      {securityFlags.slice(0, 2).map((flag, i) => {
+                        const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                        return (
+                          <RecordBadge key={`${label}-${i}`} flag={label} glow={false} title={humanizeFlag(label)}>{label}</RecordBadge>
+                        );
+                      })}
+                      {securityFlags.length > 2 && (
+                        <span className="text-[9px] text-rmpg-400">+{securityFlags.length - 2}</span>
+                      )}
+                    </div>
+                  );
+                })()}
                 {/* Phone: only the call action — the rest of the cluster would
                     eat the whole row width at 44px touch size; row tap opens
                     the detail panel and long-press has the full menu. */}
@@ -1016,13 +1045,13 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             <RecordField label="Language" value={selectedPerson.language} />
           </FieldGrid>
           {selectedPerson.scars_marks_tattoos && (
-            <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="#fbbf24" /></div>
+            <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="var(--sev-warn-soft)" /></div>
           )}
           {selectedPerson.clothing_description && (
             <div className="mt-1"><RecordField label="Clothing" value={selectedPerson.clothing_description} /></div>
           )}
           {selectedPerson.alias_nickname && (
-            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="#e8b820" /></div>
+            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="rgb(var(--brand-gold-400-rgb))" /></div>
           )}
         </CollapsibleSection>
 
@@ -1045,7 +1074,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Identification ──────────────────────── */}
         <CollapsibleSection title="Identification" icon={CreditCard} defaultOpen>
-          {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url) ? (
+          {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url || selectedPerson.dl_restrictions || selectedPerson.dl_endorsements || selectedPerson.dl_issue_date) ? (
             <div className="flex gap-3">
               {/* ID Image */}
               {selectedPerson.id_image_url ? (
@@ -1055,7 +1084,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                     title="Click to enlarge"
                   >
                     <img src={authedImageUrl(selectedPerson.id_image_url)} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex items-center justify-center">
                       <Eye className="w-4 h-4 text-rmpg-100" />
                     </div>
                   </div>
@@ -1073,12 +1102,31 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               )}
               <div className="flex-1 space-y-1.5">
                 {selectedPerson.dl_number && (
-                  <FieldGrid cols={2}>
-                    <RecordField label="DL" value={selectedPerson.dl_number} mono copyable />
-                    <RecordField label="State" value={selectedPerson.dl_state} />
-                    <RecordField label="Class" value={selectedPerson.dl_class} />
-                    <RecordField label="Expiry" value={selectedPerson.dl_expiry ? safeDateDisplay(selectedPerson.dl_expiry) : undefined} />
-                  </FieldGrid>
+                  <>
+                    <FieldGrid cols={2}>
+                      <RecordField label="DL" value={selectedPerson.dl_number} mono copyable />
+                      <RecordField label="State" value={selectedPerson.dl_state} />
+                      <RecordField label="Class" value={selectedPerson.dl_class} />
+                      <RecordField label="Expiry" value={selectedPerson.dl_expiry ? safeDateDisplay(selectedPerson.dl_expiry) : undefined} />
+                      <RecordField label="Issue Date" value={selectedPerson.dl_issue_date ? safeDateDisplay(selectedPerson.dl_issue_date) : undefined} />
+                    </FieldGrid>
+                    {(selectedPerson.dl_restrictions || selectedPerson.dl_endorsements) && (
+                      <div className="mt-1.5 space-y-1">
+                        {selectedPerson.dl_restrictions && (
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wider">Restrictions</span>
+                            <p className="text-[11px] text-rmpg-200 mt-0.5">{selectedPerson.dl_restrictions}</p>
+                          </div>
+                        )}
+                        {selectedPerson.dl_endorsements && (
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wider">Endorsements</span>
+                            <p className="text-[11px] text-rmpg-200 mt-0.5">{selectedPerson.dl_endorsements}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
                 {selectedPerson.id_number && (
                   <FieldGrid cols={2}>
@@ -1103,8 +1151,8 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                           onClick={() => setSSNRevealed(!ssnRevealed)}
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase border transition-colors"
                           style={ssnRevealed
-                            ? { color: '#f87171', background: 'rgba(220,38,38,0.15)', borderColor: 'rgba(220,38,38,0.4)' }
-                            : { color: 'var(--rmpg-400)', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
+                            ? { color: 'var(--sev-critical-soft)', background: 'rgb(var(--sev-critical-rgb) / 0.15)', borderColor: 'rgb(var(--sev-critical-rgb) / 0.4)' }
+                            : { color: 'rgb(var(--rmpg-400-rgb))', background: 'rgb(var(--rmpg-500-rgb) / 0.15)', borderColor: 'rgb(var(--rmpg-500-rgb) / 0.3)' }
                           }
                           title={ssnRevealed ? 'Hide SSN' : 'Reveal SSN'}
                         >
@@ -1148,14 +1196,14 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Officer Safety / Caution (conditional)  */}
         {selectedPerson.caution_flags && (
           <CollapsibleSection title="Officer Safety / Caution" icon={AlertTriangle} accent="red">
-            <p className="text-xs text-red-200/90 leading-relaxed">{selectedPerson.caution_flags}</p>
+            <p className="text-xs text-red-200/90 leading-relaxed break-words">{selectedPerson.caution_flags}</p>
           </CollapsibleSection>
         )}
 
         {/* ── Notes (conditional) ──────────────────── */}
         {selectedPerson.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed">{selectedPerson.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedPerson.notes}</p>
           </CollapsibleSection>
         )}
 

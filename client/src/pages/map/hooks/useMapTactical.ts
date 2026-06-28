@@ -205,7 +205,7 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
         id: hospitalSourceId,
         type: 'circle',
         source: hospitalSourceId,
-        paint: { 'circle-color': '#888888', 'circle-radius': 8, 'circle-stroke-color': 'var(--rmpg-500)', 'circle-stroke-width': 1 },
+        paint: { 'circle-color': '#888888', 'circle-radius': 8, 'circle-stroke-color': '#666666', 'circle-stroke-width': 1 },
       });
 
       map.on('click', hospitalSourceId, (e) => {

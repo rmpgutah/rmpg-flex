@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
+import { formatEnumValue } from '../../utils/formatters';
 interface RawCall {
   id: number;
   call_number: string;
@@ -278,7 +279,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                   </span>
                 )}
                 <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1" title={c.incident_type}>{c.incident_type?.replace(/_/g, ' ')}</span>
-                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: `${STATUS_COLOR[c.status] || '#888'}22` }}>{c.status}</span>
+                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: `${STATUS_COLOR[c.status] || '#888'}22` }}>{formatEnumValue(c.status)}</span>
                 <span className="text-[8px] font-mono text-rmpg-600 shrink-0">{fmtDateShort(c.dispatched_at || c.created_at)}</span>
               </div>
 

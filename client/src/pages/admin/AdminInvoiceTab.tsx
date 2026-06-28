@@ -12,6 +12,7 @@ import type {
   Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client,
 } from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
+import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -66,6 +67,7 @@ function formatCurrency(n: number | undefined | null): string {
 // ============================================================
 
 export default function AdminInvoiceTab({ clientId, clientName, client }: AdminInvoiceTabProps) {
+  const { addToast } = useToast();
   const [view, setView] = useState<'list' | 'detail' | 'create'>('list');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceDetail | null>(null);
@@ -272,7 +274,15 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         method: 'PUT',
         body: JSON.stringify({ internal_notes: notes }),
       });
-    } catch (e) { console.error('Failed to save invoice notes:', e); }
+    } catch (e: any) {
+      // Audit caught (2026-06-21): autosave handler for collection notes /
+      // payment-disputed-reason was silently swallowing failures. Notes
+      // are a billing audit-trail surface — subpoena-relevant — so a
+      // silent failure here is high-risk. Surface the error so the
+      // operator knows to retry.
+      console.error('Failed to save invoice notes:', e);
+      addToast(e?.message || 'Failed to save invoice notes — retry', 'error');
+    }
   };
 
   // ─── Render Stats Bar ─────────────────────────────
@@ -391,7 +401,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Billing Period</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Period Start</label>
+            <label htmlFor="ff-admininvoicetab-0" className="block text-[10px] uppercase text-rmpg-500 mb-1">Period Start</label>
             <input id="ff-admininvoicetab-0"
               type="date"
               className="input-dark w-full text-xs min-h-[36px]"
@@ -400,7 +410,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Period End</label>
+            <label htmlFor="ff-admininvoicetab-1" className="block text-[10px] uppercase text-rmpg-500 mb-1">Period End</label>
             <input id="ff-admininvoicetab-1"
               type="date"
               className="input-dark w-full text-xs min-h-[36px]"
@@ -410,7 +420,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           </div>
         </div>
         <div>
-          <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Issue Date</label>
+          <label htmlFor="ff-admininvoicetab-2" className="block text-[10px] uppercase text-rmpg-500 mb-1">Issue Date</label>
           <input id="ff-admininvoicetab-2"
             type="date"
             className="input-dark w-full text-xs min-h-[36px]"
@@ -538,7 +548,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             <div className="bg-surface-base border border-rmpg-700 rounded-sm p-2 mb-2">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
                 <div>
-                  <label className="text-rmpg-500 uppercase block mb-0.5">Type</label>
+                  <label htmlFor="ff-admininvoicetab-3" className="text-rmpg-500 uppercase block mb-0.5">Type</label>
                   <select id="ff-admininvoicetab-3" className="select-dark w-full text-[10px] min-h-[36px]" value={itemForm.line_type} onChange={e => setItemForm(f => ({ ...f, line_type: e.target.value }))}>
                     <option value="custom">Custom</option>
                     <option value="contract_base">Contract Base</option>
@@ -551,15 +561,15 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </select>
                 </div>
                 <div className="col-span-3">
-                  <label className="text-rmpg-500 uppercase block mb-0.5">Description</label>
+                  <label htmlFor="ff-admininvoicetab-4" className="text-rmpg-500 uppercase block mb-0.5">Description</label>
                   <input id="ff-admininvoicetab-4" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Description..." />
                 </div>
                 <div>
-                  <label className="text-rmpg-500 uppercase block mb-0.5">Qty</label>
+                  <label htmlFor="ff-admininvoicetab-5" className="text-rmpg-500 uppercase block mb-0.5">Qty</label>
                   <input id="ff-admininvoicetab-5" type="number" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.quantity} onChange={e => setItemForm(f => ({ ...f, quantity: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-rmpg-500 uppercase block mb-0.5">Unit Price</label>
+                  <label htmlFor="ff-admininvoicetab-6" className="text-rmpg-500 uppercase block mb-0.5">Unit Price</label>
                   <input id="ff-admininvoicetab-6" type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.unit_price} onChange={e => setItemForm(f => ({ ...f, unit_price: e.target.value }))} />
                 </div>
                 <div className="col-span-2 flex items-end gap-1">
@@ -639,15 +649,15 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             <div className="text-[10px] uppercase tracking-wider text-green-400 font-bold mb-2">Record Payment</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
               <div>
-                <label className="text-rmpg-500 uppercase block mb-0.5">Amount</label>
+                <label htmlFor="ff-admininvoicetab-7" className="text-rmpg-500 uppercase block mb-0.5">Amount</label>
                 <input id="ff-admininvoicetab-7" type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
               </div>
               <div>
-                <label className="text-rmpg-500 uppercase block mb-0.5">Date</label>
+                <label htmlFor="ff-admininvoicetab-8" className="text-rmpg-500 uppercase block mb-0.5">Date</label>
                 <input id="ff-admininvoicetab-8" type="date" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_date} onChange={e => setPayForm(f => ({ ...f, payment_date: e.target.value }))} />
               </div>
               <div>
-                <label className="text-rmpg-500 uppercase block mb-0.5">Method</label>
+                <label htmlFor="ff-admininvoicetab-9" className="text-rmpg-500 uppercase block mb-0.5">Method</label>
                 <select id="ff-admininvoicetab-9" className="select-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_method} onChange={e => setPayForm(f => ({ ...f, payment_method: e.target.value }))}>
                   <option value="check">Check</option>
                   <option value="ach">ACH</option>
@@ -658,11 +668,11 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 </select>
               </div>
               <div>
-                <label className="text-rmpg-500 uppercase block mb-0.5">Reference #</label>
+                <label htmlFor="ff-admininvoicetab-10" className="text-rmpg-500 uppercase block mb-0.5">Reference #</label>
                 <input id="ff-admininvoicetab-10" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.reference_number} onChange={e => setPayForm(f => ({ ...f, reference_number: e.target.value }))} placeholder="Check #, etc." />
               </div>
               <div className="col-span-2">
-                <label className="text-rmpg-500 uppercase block mb-0.5">Notes</label>
+                <label htmlFor="ff-admininvoicetab-11" className="text-rmpg-500 uppercase block mb-0.5">Notes</label>
                 <input id="ff-admininvoicetab-11" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />
               </div>
             </div>

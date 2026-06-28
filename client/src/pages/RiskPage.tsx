@@ -1,121 +1,457 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { useAuth } from '../context/AuthContext';
 import { Shield, AlertTriangle, ClipboardCheck, FileText, Plus, Pencil, Trash2 } from 'lucide-react';
 
-export default function RiskPage() {
-  const [assessments, setAssessments] = useState<Record<string, any>[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ active_assessments: 0, pending_inspections: 0, open_claims: 0 });
-  const [editingRecord, setEditingRecord] = useState<Record<string, any> | null>(null);
-  const [formData, setFormData] = useState<Record<string, any>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const { addToast } = useToast();
-  const m = useMenuActions();
+interface RiskAssessment {
+  id: number;
+  assessment_number?: string;
+  entity_type: string;
+  entity_id?: number | null;
+  risk_level: string;
+  risk_category?: string;
+  description?: string;
+  mitigation_plan?: string;
+  assessed_date?: string;
+  status?: string;
+}
 
+const EMPTY_FORM: Record<string, string> = {
+  entity_type:     '',
+  risk_level:      'low',
+  risk_category:   '',
+  description:     '',
+  mitigation_plan: '',
+};
+
+function isTypingInField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+}
+
+export default function RiskPage() {
+  const [assessments, setAssessments]     = useState<RiskAssessment[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [hasLoaded, setHasLoaded]         = useState(false);
+  const [stats, setStats]                 = useState({ active_assessments: 0, pending_inspections: 0, open_claims: 0 });
+  const [editingRecord, setEditingRecord] = useState<RiskAssessment | null>(null);
+  const [showForm, setShowForm]           = useState(false);
+  const [formData, setFormData]           = useState<Record<string, string>>(EMPTY_FORM);
+  const [submitting, setSubmitting]       = useState(false);
+  const [deleteId, setDeleteId]           = useState<number | null>(null);
+  const [deleteBusy, setDeleteBusy]       = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const [searchQuery, setSearchQuery]     = useState('');
+  const [highlightId, setHighlightId]     = useState<number | null>(null);
+  const { addToast }                      = useToast();
+  const m                                 = useMenuActions();
+  const { user }                          = useAuth();
+  const [searchParams, setSearchParams]   = useSearchParams();
+
+  // ── Role gates ─────────────────────────────────────────────────────
+  // POST / PUT / DELETE → admin | manager only (mirrors server-side gate)
+  const canWrite = user?.role === 'admin' || user?.role === 'manager';
+
+  // Capture deep-link params before any setSearchParams call clears them
+  const pendingAssessmentIdRef = useRef<string | null>(searchParams.get('assessment_id'));
+  const pendingSubjectIdRef    = useRef<string | null>(searchParams.get('subject_id'));
+
+  // Row ref map for scroll-to on deep-link (populated by DOM query post-render,
+  // as DataTable does not expose a per-row ref hook)
+  const rowRefs             = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
+  const deepLinkConsumedRef = useRef(false);
+
+  // ── Fetch ───────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const r = await apiFetch<{ data: Record<string, any>[] }>('/risk/assessments');
+      const r = await apiFetch<{ data: RiskAssessment[] }>('/risk/assessments');
       setAssessments(r.data || []);
       const s = await apiFetch<{ active_assessments: number; pending_inspections: number; open_claims: number }>('/risk/stats');
       setStats(s);
-    } catch { setError("Failed to load data"); }
+    } catch {
+      setError('Failed to load risk data');
+    }
   }, []);
 
-  useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
+  useEffect(() => {
+    fetchData().finally(() => {
+      setLoading(false);
+      setHasLoaded(true);
+    });
+  }, [fetchData]);
 
-  const openNew = () => { setEditingRecord(null); setFormData({ entity_type: '', risk_level: 'low', risk_category: '', description: '', mitigation_plan: '' }); };
-  const openEdit = (rec: Record<string, any>) => { setEditingRecord(rec); setFormData({ ...rec }); };
+  // ── Deep-link: ?assessment_id=<id> or ?subject_id=<id> ─────────────
+  // ?assessment_id= → open the matching assessment by PK + scroll+flash row
+  // ?subject_id=    → filter the list by entity_id (no modal open)
+  useEffect(() => {
+    if (!hasLoaded || deepLinkConsumedRef.current) return;
+    deepLinkConsumedRef.current = true;
+
+    const next = new URLSearchParams(searchParams);
+    let stripped = false;
+
+    // assessment_id deep-link — open edit form, scroll & flash row
+    const assessmentIdParam = pendingAssessmentIdRef.current;
+    if (assessmentIdParam) {
+      const numericId = parseInt(assessmentIdParam, 10);
+      if (!isNaN(numericId)) {
+        const hit = assessments.find((a) => a.id === numericId);
+        if (hit) {
+          openEdit(hit);
+          setHighlightId(numericId);
+          addToast(`Assessment ${hit.assessment_number ?? '#' + numericId} loaded`, 'success');
+        } else {
+          addToast(`Assessment #${assessmentIdParam} not found`, 'warning');
+        }
+      }
+      next.delete('assessment_id');
+      stripped = true;
+    }
+
+    // subject_id deep-link — pre-fill search to filter by entity_id
+    const subjectIdParam = pendingSubjectIdRef.current;
+    if (subjectIdParam && !assessmentIdParam) {
+      const numericSubject = parseInt(subjectIdParam, 10);
+      if (!isNaN(numericSubject)) {
+        const hits = assessments.filter((a) => a.entity_id === numericSubject);
+        if (hits.length > 0) {
+          addToast('Showing ' + hits.length + ' assessment' + (hits.length !== 1 ? 's' : '') + ' for subject #' + subjectIdParam, 'info');
+          setSearchQuery(subjectIdParam);
+        } else {
+          addToast('No assessments found for subject #' + subjectIdParam, 'warning');
+        }
+      }
+      next.delete('subject_id');
+      stripped = true;
+    }
+
+    if (stripped) {
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLoaded, assessments]);
+
+  // Flash-highlight row via DOM query (DataTable has no per-row ref hook).
+  // Finds the row whose cell text contains the assessment number or id.
+  useEffect(() => {
+    if (highlightId === null) return;
+    const target = assessments.find((a) => a.id === highlightId);
+    if (!target) return;
+    const needle = target.assessment_number ?? String(highlightId);
+    const rows = document.querySelectorAll<HTMLTableRowElement>('tr');
+    for (const tr of Array.from(rows)) {
+      if (tr.textContent?.includes(needle)) {
+        rowRefs.current.set(highlightId, tr);
+        tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        break;
+      }
+    }
+    const t = setTimeout(() => setHighlightId(null), 3000);
+    return () => clearTimeout(t);
+  }, [highlightId, assessments]);
+
+  // ── Form helpers ────────────────────────────────────────────────────
+  const openNew = () => {
+    setEditingRecord(null);
+    setFormData({ ...EMPTY_FORM });
+    setShowForm(true);
+  };
+  const openEdit = (rec: RiskAssessment) => {
+    setEditingRecord(rec);
+    setFormData({
+      entity_type:     rec.entity_type     ?? '',
+      risk_level:      rec.risk_level      ?? 'low',
+      risk_category:   rec.risk_category   ?? '',
+      description:     rec.description     ?? '',
+      mitigation_plan: rec.mitigation_plan ?? '',
+    });
+    setShowForm(true);
+  };
+  const closeForm = () => { setShowForm(false); setEditingRecord(null); };
+
   const handleSave = async () => {
+    if (!canWrite) return;
     setSubmitting(true);
     try {
       if (editingRecord) {
-        await apiFetch(`/risk/assessments/${editingRecord.id}`, { method: 'PUT', body: JSON.stringify(formData) });
+        await apiFetch('/risk/assessments/' + editingRecord.id, { method: 'PUT', body: JSON.stringify(formData) });
       } else {
         await apiFetch('/risk/assessments', { method: 'POST', body: JSON.stringify(formData) });
       }
-      setEditingRecord(null); fetchData(); addToast(editingRecord ? 'Updated' : 'Created', 'success');
-    } catch (err) { addToast(err instanceof Error ? err.message : 'Failed', 'error'); }
-    finally { setSubmitting(false); }
-  };
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    try { await apiFetch(`/risk/assessments/${deleteId}`, { method: 'DELETE' }); setDeleteId(null); fetchData(); addToast('Deleted', 'success'); }
-    catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
+      closeForm();
+      fetchData();
+      addToast(editingRecord ? 'Assessment updated' : 'Assessment created', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Save failed', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const showForm = editingRecord !== null;
+  const handleDelete = async () => {
+    if (!deleteId || !canWrite) return;
+    setDeleteBusy(true);
+    try {
+      await apiFetch('/risk/assessments/' + deleteId, { method: 'DELETE' });
+      setDeleteId(null);
+      fetchData();
+      addToast('Assessment deleted', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Delete failed', 'error');
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  // ── Keyboard shortcuts ──────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'n' || e.key === 'N') {
+        if (isTypingInField(e.target)) return;
+        if (showForm || deleteId !== null) return;
+        if (!canWrite) return;
+        e.preventDefault();
+        openNew();
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (isTypingInField(e.target)) return;
+        if (deleteId !== null) { e.stopPropagation(); setDeleteId(null); return; }
+        if (showForm)          { e.stopPropagation(); closeForm();       return; }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm, deleteId, canWrite]);
+
+  // ── Filtered list ───────────────────────────────────────────────────
+  const q = searchQuery.trim().toLowerCase();
+  const hasSearch = q.length > 0;
+  const filtered = hasSearch
+    ? assessments.filter(
+        (a) =>
+          (a.entity_type       ?? '').toLowerCase().includes(q) ||
+          (a.risk_category     ?? '').toLowerCase().includes(q) ||
+          (a.risk_level        ?? '').toLowerCase().includes(q) ||
+          (a.status            ?? '').toLowerCase().includes(q) ||
+          (a.assessment_number ?? '').toLowerCase().includes(q) ||
+          String(a.entity_id   ?? '').includes(q),
+      )
+    : assessments;
+
+  // ── Columns ─────────────────────────────────────────────────────────
   const columns = [
-    { key: 'assessment_number', label: 'Assessment #' }, { key: 'entity_type', label: 'Entity' },
-    { key: 'risk_level', label: 'Risk Level' }, { key: 'risk_category', label: 'Category' },
-    { key: 'assessed_date', label: 'Date' }, { key: 'status', label: 'Status' },
-    { key: 'actions', label: '', width: '100px', render: (row: any) => (
-      <div className="flex gap-2">
-        <button onClick={(e) => { e.stopPropagation(); openEdit(row); }} className="text-rmpg-400 hover:text-rmpg-100"><Pencil size={12} /></button>
-        <button onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }} className="text-red-500 hover:text-red-300"><Trash2 size={12} /></button>
-      </div>
-    )},
+    { key: 'assessment_number', label: 'Assessment #' },
+    { key: 'entity_type',       label: 'Entity' },
+    { key: 'risk_level',        label: 'Risk Level' },
+    { key: 'risk_category',     label: 'Category' },
+    { key: 'assessed_date',     label: 'Date' },
+    { key: 'status',            label: 'Status' },
+    ...(canWrite ? [{
+      key: 'actions',
+      label: '',
+      width: '80px',
+      render: (row: RiskAssessment) => (
+        <div className="flex gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); openEdit(row); }}
+            className="text-rmpg-400 hover:text-rmpg-100"
+            aria-label="Edit assessment"
+          >
+            <Pencil size={12} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setDeleteId(row.id); }}
+            className="text-red-500 hover:text-red-300"
+            aria-label="Delete assessment"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      ),
+    }] : []),
   ];
 
-  if (loading) return <div className="p-6 text-rmpg-400">Loading risk records...</div>;
+  // ── Empty state strings ─────────────────────────────────────────────
+  const emptyMessage = loading
+    ? 'Loading...'
+    : hasSearch
+    ? 'No assessments match "' + searchQuery + '"'
+    : 'No risk assessments on record';
+
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="RISK MANAGEMENT" icon={Shield}>
-        <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}><Plus size={13} /> New Assessment</button>
+        <input
+          type="search"
+          placeholder="Filter..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="input-dark text-[11px] h-[28px] px-2 w-40"
+          aria-label="Filter assessments"
+        />
+        {canWrite && (
+          <button
+            onClick={openNew}
+            className="toolbar-btn flex items-center gap-1.5"
+            style={{ height: 28, padding: '0 10px' }}
+            title="New Assessment (N)"
+          >
+            <Plus size={13} /> New Assessment
+          </button>
+        )}
       </PanelTitleBar>
-      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
+
+      {error && (
+        <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2" role="alert">
+          {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-3">
         <StatsCard icon={AlertTriangle} label="Active Assessments" value={stats.active_assessments} />
         <StatsCard icon={ClipboardCheck} label="Pending Inspections" value={stats.pending_inspections} />
         <StatsCard icon={FileText} label="Open Claims" value={stats.open_claims} />
       </div>
+
+      {loading && (
+        <div className="text-center py-8 text-rmpg-500 text-xs">Loading risk records...</div>
+      )}
+
+      {!loading && assessments.length === 0 && !hasSearch && canWrite && (
+        <div className="text-center py-2 text-xs text-rmpg-500">
+          <button onClick={openNew} className="text-brand-400 hover:text-brand-300 underline">
+            Create the first assessment
+          </button>
+        </div>
+      )}
+
       <DataTable
         columns={columns}
-        data={assessments}
-        emptyMessage="No risk assessments found"
-        onRowClick={(row) => openEdit(row)}
+        data={loading ? [] : filtered}
+        emptyMessage={emptyMessage}
+        onRowClick={(row) => openEdit(row as RiskAssessment)}
         rowContextMenu={(row) => [
-          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.action('Open / Edit', () => openEdit(row as RiskAssessment), { icon: <Pencil size={12} /> }),
           m.separator(),
-          m.copyId(row.id),
-          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+          m.copyId((row as RiskAssessment).id),
+          ...(canWrite
+            ? [m.action('Delete', () => setDeleteId((row as RiskAssessment).id), { danger: true, icon: <Trash2 size={12} /> })]
+            : []),
         ]}
       />
+
+      {/* Create / Edit modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
-          <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Assessment' : 'New Assessment'}</h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={closeForm}
+        >
+          <div
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-rmpg-100 mb-4">
+              {editingRecord ? 'Edit Assessment' : 'New Assessment'}
+            </h3>
             <div className="space-y-3">
-              <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Entity Type <span className="text-red-500">*</span></label>
-                <input id="ff-riskpage-0" className="input-dark mt-1" value={formData.entity_type || ''} onChange={e => setFormData({...formData, entity_type: e.target.value})} autoFocus placeholder="e.g. premise, officer, vehicle" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Risk Level</label>
-                  <select id="ff-riskpage-1" className="select-dark mt-1" value={formData.risk_level || 'low'} onChange={e => setFormData({...formData, risk_level: e.target.value})}>
-                    {['low','moderate','high','critical'].map(l=><option key={l} value={l}>{l}</option>)}
-                  </select></div>
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
-                  <input id="ff-riskpage-2" className="input-dark mt-1" value={formData.risk_category || ''} onChange={e => setFormData({...formData, risk_category: e.target.value})} /></div>
+              <div>
+                <label htmlFor="ff-riskpage-0" className="text-[10px] text-rmpg-400 uppercase font-semibold">
+                  Entity Type <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="ff-riskpage-0"
+                  className="input-dark mt-1"
+                  value={formData.entity_type}
+                  onChange={(e) => setFormData({ ...formData, entity_type: e.target.value })}
+                  autoFocus
+                  placeholder="e.g. premise, officer, vehicle"
+                />
               </div>
-              <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Description <span className="text-red-500">*</span></label>
-                <textarea id="ff-riskpage-3" rows={3} className="input-dark mt-1" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
-              <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Mitigation Plan</label>
-                <textarea id="ff-riskpage-4" rows={2} className="input-dark mt-1" value={formData.mitigation_plan || ''} onChange={e => setFormData({...formData, mitigation_plan: e.target.value})} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="ff-riskpage-1" className="text-[10px] text-rmpg-400 uppercase font-semibold">Risk Level</label>
+                  <select
+                    id="ff-riskpage-1"
+                    className="select-dark mt-1"
+                    value={formData.risk_level}
+                    onChange={(e) => setFormData({ ...formData, risk_level: e.target.value })}
+                  >
+                    {['low', 'moderate', 'high', 'critical'].map((l) => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="ff-riskpage-2" className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
+                  <input
+                    id="ff-riskpage-2"
+                    className="input-dark mt-1"
+                    value={formData.risk_category}
+                    onChange={(e) => setFormData({ ...formData, risk_category: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="ff-riskpage-3" className="text-[10px] text-rmpg-400 uppercase font-semibold">
+                  Description <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="ff-riskpage-3"
+                  rows={3}
+                  className="input-dark mt-1"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                />
+              </div>
+              <div>
+                <label htmlFor="ff-riskpage-4" className="text-[10px] text-rmpg-400 uppercase font-semibold">Mitigation Plan</label>
+                <textarea
+                  id="ff-riskpage-4"
+                  rows={2}
+                  className="input-dark mt-1"
+                  value={formData.mitigation_plan}
+                  onChange={(e) => setFormData({ ...formData, mitigation_plan: e.target.value })}
+                />
+              </div>
             </div>
             <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setEditingRecord(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
-              <button onClick={handleSave} disabled={submitting} className="toolbar-btn toolbar-btn-primary px-4" style={{ height: 28 }}>{submitting ? 'Saving...' : editingRecord ? 'Update' : 'Create'}</button>
+              <button onClick={closeForm} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
+              <button
+                onClick={handleSave}
+                disabled={submitting}
+                className="toolbar-btn toolbar-btn-primary px-4"
+                style={{ height: 28 }}
+              >
+                {submitting ? 'Saving...' : editingRecord ? 'Update' : 'Create'}
+              </button>
             </div>
           </div>
         </div>
       )}
-      {deleteId !== null && (<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setDeleteId(null)}><div className="bg-surface-raised border border-red-800 p-6 max-w-sm w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}><h3 className="text-sm font-bold text-red-400 mb-2">Delete Assessment</h3><p className="text-xs text-[#888888] mb-4">This permanently removes the assessment.</p><div className="flex justify-end gap-3"><button onClick={() => setDeleteId(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button><button onClick={handleDelete} className="toolbar-btn toolbar-btn-primary px-4" style={{ height: 28, borderColor: '#991b1b', color: '#f87171' }}>Delete</button></div></div></div>)}
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        isOpen={deleteId !== null}
+        onClose={() => setDeleteId(null)}
+        onConfirm={handleDelete}
+        title="Delete Assessment"
+        message="This permanently removes the risk assessment and cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deleteBusy}
+      />
     </div>
   );
 }

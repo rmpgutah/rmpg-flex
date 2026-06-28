@@ -228,7 +228,7 @@ export default function AIDevChatPanel() {
   }, [isStreaming]);
 
   // Generate session ID
-  const newSessionId = () => `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const newSessionId = () => `dev-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 6)}`;
 
   // Fetch sessions
   const fetchSessions = useCallback(async () => {
@@ -509,7 +509,7 @@ export default function AIDevChatPanel() {
               </div>
               <button
                 onClick={(e) => deleteSession(s.session_id, e)}
-                className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-all"
+                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-all"
               >
                 <Trash2 className="w-3 h-3" />
               </button>

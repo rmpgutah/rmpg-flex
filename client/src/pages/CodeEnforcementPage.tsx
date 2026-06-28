@@ -6,12 +6,12 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Construction, Search, Plus, Truck, MapPin, Clock, User,
-  X, Save, Loader2, AlertTriangle, DollarSign, FileText,
-  ChevronDown, Eye, Hash, CheckCircle, Calendar,
+  Construction, Search, Plus, Truck, MapPin, Clock,
+  X, Save, Loader2, AlertTriangle, FileText, Eye, Calendar,
 } from 'lucide-react';
-import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus, TowReason } from '../types';
+import type { CodeViolation, VehicleTow, ViolationType, TowReason } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
@@ -26,10 +26,13 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { isValidVIN, isValidPlate } from '../utils/validate';
 import { localToday, safeDateStr, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
 import EmptyState from '../components/EmptyState';
+import { openCodeViolationNoticePdf, openTowOrderPdf } from '../utils/codeEnforcementPdf';
+import { useAuth } from '../context/AuthContext';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },
@@ -92,6 +95,9 @@ const timeAgo = (date: string): string => {
 export default function CodeEnforcementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  // admin/manager/supervisor can void violations, cancel tows, and create records
+  const canEnforce = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { errors: vFormErrors, validate: validateVForm, clearAllErrors: clearVErrors } = useFormValidation();
   const { errors: tFormErrors, validate: validateTForm, clearAllErrors: clearTErrors } = useFormValidation();
@@ -155,56 +161,50 @@ export default function CodeEnforcementPage() {
     clearDraft: clearTFormDraft,
     snapshot: snapshotTForm,
   } = useFormDraft<typeof EMPTY_TOW>({
-    storageKey: 'rmpg_code_template_form',
+    storageKey: 'rmpg_code_tow_form',
     defaultValue: EMPTY_TOW,
     isActive: tFormOpen,
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // ── Feature 31: Severity Score ──
-  const [severityScore, setSeverityScore] = useState<any>(null);
-  const handleSeverityScore = async (id: number) => {
-    try {
-      const data = await apiFetch<any>(`/code-enforcement/violations/${id}/severity-score`);
-      setSeverityScore(data?.data || data);
-    } catch { addToast('Failed to calculate severity', 'error'); }
-  };
+  // ── ConfirmDialog state ───────────────────────────────────────────────
+  // Destructive status transitions (void violation / cancel tow) require an
+  // explicit confirmation and are restricted to admin/manager/supervisor.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmPending, setConfirmPending] = useState<(() => Promise<void>) | null>(null);
+  const [confirmTitle, setConfirmTitle] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmDetails, setConfirmDetails] = useState<React.ReactNode>(null);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
-  // ── Feature 32: Compliance Timeline ──
-  const [compTimeline, setCompTimeline] = useState<any>(null);
-  const handleCompTimeline = async (id: number) => {
-    try {
-      const data = await apiFetch<any>(`/code-enforcement/violations/${id}/timeline`);
-      setCompTimeline(data?.data || data);
-    } catch { addToast('Failed to load timeline', 'error'); }
-  };
+  const openConfirm = useCallback((opts: {
+    title: string;
+    message: string;
+    details?: React.ReactNode;
+    onConfirm: () => Promise<void>;
+  }) => {
+    setConfirmTitle(opts.title);
+    setConfirmMessage(opts.message);
+    setConfirmDetails(opts.details ?? null);
+    setConfirmPending(() => opts.onConfirm);
+    setConfirmOpen(true);
+  }, []);
 
-  // ── Feature 34: Fine Calculation ──
-  const [fineCalc, setFineCalc] = useState<any>(null);
-  const handleCalcFine = async (id: number) => {
-    try {
-      const data = await apiFetch<any>(`/code-enforcement/violations/${id}/calculate-fine`);
-      setFineCalc(data?.data || data);
-    } catch { addToast('Failed to calculate fine', 'error'); }
-  };
+  const handleConfirmAction = useCallback(async () => {
+    if (!confirmPending) return;
+    setConfirmSubmitting(true);
+    try { await confirmPending(); } finally {
+      setConfirmSubmitting(false);
+      setConfirmOpen(false);
+      setConfirmPending(null);
+    }
+  }, [confirmPending]);
 
-  // ── Feature 35: Compliance Dashboard ──
-  const [compDashboard, setCompDashboard] = useState<any>(null);
-  const handleLoadCompDashboard = async () => {
-    try {
-      const data = await apiFetch<any>('/code-enforcement/compliance-dashboard?days=90');
-      setCompDashboard(data?.data || data);
-    } catch { addToast('Failed to load compliance dashboard', 'error'); }
-  };
-
-  // ── Feature 33: Geographic Clustering ──
-  const [geoClusters, setGeoClusters] = useState<any>(null);
-  const handleLoadClusters = async () => {
-    try {
-      const data = await apiFetch<any>('/code-enforcement/violations/geo/clusters?days=90');
-      setGeoClusters(data?.data || data);
-    } catch { addToast('Failed to load clusters', 'error'); }
-  };
+  // NOTE: 5 unused state+handler blocks (severityScore, compTimeline, fineCalc,
+  // compDashboard, geoClusters) were declared but never rendered or called — dead
+  // since this page was first stubbed. Removed in v1036 to drop the bundle weight
+  // and `any`-flag count. The corresponding /code-enforcement/* routes still exist
+  // server-side; re-add the UI when an operator path actually consumes them.
 
   // Fetch violations
   const fetchViolations = useCallback(async (opts?: { silent?: boolean }) => {
@@ -358,14 +358,114 @@ export default function CodeEnforcementPage() {
   // Set document title
   useEffect(() => { document.title = 'Code Enforcement \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // \u2500\u2500 New-record helper (also used by the `N` keyboard shortcut) \u2500\u2500
+  const handleOpenNew = useCallback(() => {
+    if (activeTab === 'violations') {
+      clearVErrors();
+      setVFormData({ ...EMPTY_VIOLATION });
+      setVFormOpen(true);
+      snapshotVForm();
+    } else {
+      clearTErrors();
+      setTFormData({ ...EMPTY_TOW });
+      setTFormOpen(true);
+      snapshotTForm();
+    }
+  // setForm*/snapshot* are stable refs from useFormDraft; pulling them in
+  // would force handleOpenNew to re-create every render and re-bind the
+  // keyboard listener.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Keyboard shortcuts:
+  //   Esc \u2014 smart cascade: close the smallest-open thing first so a single
+  //         tap does not punch through every overlay (reinspection inline \u2192
+  //         tow form \u2192 violation form).
+  //   N   \u2014 open a new record from anywhere on the page, suppressed when
+  //         the user is actually typing into a field.
   useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setVFormOpen(false); }
+      if (e.key === 'Escape') {
+        if (confirmOpen)      { e.stopPropagation(); setConfirmOpen(false); return; }
+        if (showReinspection) { e.stopPropagation(); setShowReinspection(false); setReinspectionDate(''); return; }
+        if (tFormOpen)        { e.stopPropagation(); clearTFormDraft(); setTFormOpen(false); return; }
+        if (vFormOpen)        { e.stopPropagation(); clearVFormDraft(); setVFormOpen(false); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && canEnforce) {
+        e.preventDefault();
+        handleOpenNew();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [canEnforce, confirmOpen, showReinspection, tFormOpen, vFormOpen, clearTFormDraft, clearVFormDraft, handleOpenNew]);
+
+  // \u2500\u2500 /code-enforcement?violation_id=\u2026 / ?case_id=\u2026 / ?tow_id=\u2026 deep-link \u2500\u2500
+  // ?case_id= is an alias for ?violation_id= \u2014 inbound links from case pages
+  // use the case_id field to cross-reference an attached violation.
+  // Once the matching list hydrates, find by id, switch tabs if needed, and
+  // strip the query so a manual refresh doesn't re-select. Surfaces a one-time
+  // toast when the id misses (e.g. archived or in another org's view).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingViolationIdRef = useRef<string | null>(
+    searchParams.get('violation_id') ?? searchParams.get('case_id')
+  );
+  const pendingTowIdRef = useRef<string | null>(searchParams.get('tow_id'));
+  useEffect(() => {
+    const target = pendingViolationIdRef.current;
+    if (!target || vLoading) return;
+    const hit = violations.find((v) => String(v.id) === String(target));
+    if (!hit) {
+      if (violations.length === 0) return;
+      pendingViolationIdRef.current = null;
+      addToast(`Violation ${target} not in the current view (try clearing filters)`, 'warning');
+      const next = new URLSearchParams(searchParams);
+      next.delete('violation_id');
+      next.delete('case_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    pendingViolationIdRef.current = null;
+    setActiveTab('violations');
+    setSelectedViolation(hit);
+    const next = new URLSearchParams(searchParams);
+    next.delete('violation_id');
+    next.delete('case_id');
+    setSearchParams(next, { replace: true });
+  }, [violations, vLoading, searchParams, setSearchParams, addToast]);
+
+  useEffect(() => {
+    const target = pendingTowIdRef.current;
+    if (!target || tLoading) return;
+    const hit = tows.find((t) => String(t.id) === String(target));
+    if (!hit) {
+      if (tows.length === 0) return;
+      pendingTowIdRef.current = null;
+      addToast(`Tow ${target} not in the current view (try clearing filters)`, 'warning');
+      const next = new URLSearchParams(searchParams);
+      next.delete('tow_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    pendingTowIdRef.current = null;
+    setActiveTab('tows');
+    setSelectedTow(hit);
+    const next = new URLSearchParams(searchParams);
+    next.delete('tow_id');
+    setSearchParams(next, { replace: true });
+  }, [tows, tLoading, searchParams, setSearchParams, addToast]);
+
+  // \u2500\u2500 Empty-state copy that distinguishes "filters active" vs "truly empty" \u2500\u2500
+  const violationsTrulyEmpty = !vSearch && !vFilterStatus;
+  const towsTrulyEmpty = !tSearch && !tFilterStatus;
 
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
@@ -373,31 +473,29 @@ export default function CodeEnforcementPage() {
       <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Code Enforcement" icon={Construction}>
           <ExportButton exportUrl="/api/code-enforcement/export/csv" exportFilename="code_violations_export.csv" />
-          <button type="button"
-            onClick={() => {
-              if (activeTab === 'violations') {
-                clearVErrors();
-                setVFormData({ ...EMPTY_VIOLATION });
-                setVFormOpen(true);
-                snapshotVForm();
-              } else {
-                clearTErrors();
-                setTFormData({ ...EMPTY_TOW });
-                setTFormOpen(true);
-                snapshotTForm();
-              }
-            }}
-            className="toolbar-btn toolbar-btn-primary print:hidden"
-          >
-            <Plus style={{ width: 11, height: 11 }} />
-            New
-          </button>
+          {canEnforce && (
+            <button type="button"
+              onClick={handleOpenNew}
+              className="toolbar-btn toolbar-btn-primary print:hidden"
+              title={`New ${activeTab === 'violations' ? 'violation' : 'tow order'} (N)`}
+            >
+              <Plus style={{ width: 11, height: 11 }} />
+              New
+            </button>
+          )}
         </PanelTitleBar>
 
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
-            <span>⚠ {fetchError}</span>
-            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300">✕</button>
+            <AlertTriangle style={{ width: 12, height: 12 }} />
+            <span>{fetchError}</span>
+            <IconButton
+              onClick={() => setFetchError('')}
+              className="ml-auto text-red-500 hover:text-red-300"
+              aria-label="Dismiss error"
+            >
+              <X style={{ width: 12, height: 12 }} />
+            </IconButton>
           </div>
         )}
 
@@ -468,7 +566,11 @@ export default function CodeEnforcementPage() {
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
           {activeTab === 'violations' ? (
             vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
-            violations.length === 0 ? <EmptyState icon={Construction} title="No violations found" description="Try adjusting your filters or create a new one." /> :
+            violations.length === 0 ? <EmptyState
+              icon={Construction}
+              title={violationsTrulyEmpty ? 'No violations yet' : 'No violations match your filters'}
+              description={violationsTrulyEmpty ? 'Press N or click + New to log a code violation.' : 'Try clearing search or status filter.'}
+            /> :
             violations.map(v => (
               <button type="button"
                 key={v.id}
@@ -510,7 +612,11 @@ export default function CodeEnforcementPage() {
             ))
           ) : (
             tLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
-            tows.length === 0 ? <EmptyState icon={Truck} title="No tows found" description="Try adjusting your filters or create a new one." /> :
+            tows.length === 0 ? <EmptyState
+              icon={Truck}
+              title={towsTrulyEmpty ? 'No tow orders yet' : 'No tows match your filters'}
+              description={towsTrulyEmpty ? 'Press N or click + New to open a tow order.' : 'Try clearing search or status filter.'}
+            /> :
             tows.map(t => (
               <button type="button"
                 key={t.id}
@@ -545,6 +651,15 @@ export default function CodeEnforcementPage() {
         {activeTab === 'violations' && selectedViolation ? (
           <>
             <PanelTitleBar title={selectedViolation.violation_number} icon={Construction}>
+              <button
+                type="button"
+                onClick={() => openCodeViolationNoticePdf(selectedViolation)}
+                className="toolbar-btn print:hidden"
+                title="Print court-ready Notice of Violation"
+              >
+                <FileText style={{ width: 11, height: 11 }} />
+                Notice PDF
+              </button>
             </PanelTitleBar>
             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
@@ -557,19 +672,42 @@ export default function CodeEnforcementPage() {
               </div>
               {/* Status actions */}
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Actions</div>
+                <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
-                  {['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'].filter(s => s !== selectedViolation.status).map(s => (
-                    <button type="button" key={s} onClick={() => handleViolationStatus(selectedViolation.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
+                  {(['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'] as const)
+                    .filter(s => s !== selectedViolation.status)
+                    .filter(s => (s === 'voided' || s === 'referred') ? canEnforce : true)
+                    .map(s => (
+                    <button
+                      type="button"
+                      key={s}
+                      onClick={() => {
+                        if (s === 'voided') {
+                          openConfirm({
+                            title: 'Void Violation',
+                            message: 'Voiding this violation is a destructive action. It will remove the violation from active enforcement and cannot be reversed without admin intervention.',
+                            details: <><div>Violation: <strong>{selectedViolation.violation_number}</strong></div><div className="mt-0.5">{selectedViolation.description}</div></>,
+                            onConfirm: async () => { await handleViolationStatus(selectedViolation.id, 'voided'); },
+                          });
+                        } else {
+                          handleViolationStatus(selectedViolation.id, s);
+                        }
+                      }}
+                      className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`}
+                      style={isMobile ? { minHeight: 48 } : undefined}
+                    >
                       {s.replace(/_/g, ' ')}
                     </button>
                   ))}
+                  {!canEnforce && (
+                    <span className="text-[9px] text-rmpg-500 italic self-center">Void/refer require supervisor+</span>
+                  )}
                 </div>
               </div>
               {/* Schedule Reinspection */}
               <div className="panel-beveled p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Reinspection</div>
+                  <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">Reinspection</div>
                   <button type="button"
                     onClick={() => setShowReinspection(!showReinspection)}
                     className="text-[10px] px-2 py-1 border border-rmpg-600 text-rmpg-400 bg-surface-sunken hover:bg-rmpg-800/40 transition-colors"
@@ -611,7 +749,7 @@ export default function CodeEnforcementPage() {
               {propertyHistory && (
                 <div className={`panel-beveled p-3 ${propertyHistory.is_repeat_offender ? 'border-red-700/50 bg-red-900/10' : ''}`}>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Property Violation History (12 mo)</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">Property Violation History (12 mo)</div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 border ${
                       propertyHistory.is_repeat_offender ? 'bg-red-900/50 text-red-400 border-red-700/50' : 'bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50'
                     }`}>
@@ -639,7 +777,7 @@ export default function CodeEnforcementPage() {
                   ['Created', safeDateTimeStr(selectedViolation.created_at)],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '—'}</div>
                   </div>
                 ))}
@@ -649,6 +787,15 @@ export default function CodeEnforcementPage() {
         ) : activeTab === 'tows' && selectedTow ? (
           <>
             <PanelTitleBar title={selectedTow.tow_number} icon={Truck}>
+              <button
+                type="button"
+                onClick={() => openTowOrderPdf(selectedTow)}
+                className="toolbar-btn print:hidden"
+                title="Print court-ready Vehicle Tow Order"
+              >
+                <FileText style={{ width: 11, height: 11 }} />
+                Tow Order PDF
+              </button>
             </PanelTitleBar>
             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
@@ -660,13 +807,36 @@ export default function CodeEnforcementPage() {
                 </span>
               </div>
               <div className="panel-beveled p-3">
-                <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Actions</div>
+                <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Actions</div>
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
-                  {['dispatched', 'in_progress', 'completed', 'released', 'cancelled'].filter(s => s !== selectedTow.status).map(s => (
-                    <button type="button" key={s} onClick={() => handleTowStatus(selectedTow.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
+                  {(['dispatched', 'in_progress', 'completed', 'released', 'cancelled'] as const)
+                    .filter(s => s !== selectedTow.status)
+                    .filter(s => s === 'cancelled' ? canEnforce : true)
+                    .map(s => (
+                    <button
+                      type="button"
+                      key={s}
+                      onClick={() => {
+                        if (s === 'cancelled') {
+                          openConfirm({
+                            title: 'Cancel Tow Order',
+                            message: 'Cancelling this tow order will remove it from active dispatch. This action requires supervisor authorization.',
+                            details: <><div>Tow Order: <strong>{selectedTow.tow_number}</strong></div><div className="mt-0.5">{[selectedTow.vehicle_year, selectedTow.vehicle_color, selectedTow.vehicle_make, selectedTow.vehicle_model].filter(Boolean).join(' ')}</div></>,
+                            onConfirm: async () => { await handleTowStatus(selectedTow.id, 'cancelled'); },
+                          });
+                        } else {
+                          handleTowStatus(selectedTow.id, s);
+                        }
+                      }}
+                      className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`}
+                      style={isMobile ? { minHeight: 48 } : undefined}
+                    >
                       {s.replace(/_/g, ' ')}
                     </button>
                   ))}
+                  {!canEnforce && (
+                    <span className="text-[9px] text-rmpg-500 italic self-center">Cancel requires supervisor+</span>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -681,7 +851,7 @@ export default function CodeEnforcementPage() {
                   ['Storage Fee', selectedTow.storage_fee_daily && !isNaN(Number(selectedTow.storage_fee_daily)) ? `$${Number(selectedTow.storage_fee_daily).toFixed(2)}` : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
-                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
+                    <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider">{label}</div>
                     <div className="text-xs text-rmpg-100 mt-0.5">{value || '—'}</div>
                   </div>
                 ))}
@@ -712,7 +882,7 @@ export default function CodeEnforcementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               {vFormWasRestored && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgba(212,160,23,0.12)' }}>
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)' }}>
                   <div className="flex items-center gap-2">
                     <Clock size={14} className="text-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -724,41 +894,41 @@ export default function CodeEnforcementPage() {
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Type</label>
+                  <label htmlFor="ff-codeenforcementpage-5" className="field-label">Type</label>
                   <select id="ff-codeenforcementpage-5" value={vFormData.violation_type} onChange={e => setVFormData(p => ({ ...p, violation_type: e.target.value as ViolationType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                     {VIOLATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Severity</label>
+                  <label htmlFor="ff-codeenforcementpage-6" className="field-label">Severity</label>
                   <select id="ff-codeenforcementpage-6" value={vFormData.severity} onChange={e => setVFormData(p => ({ ...p, severity: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">
                     <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
                   </select>
                 </div>
               </div>
               <div>
-                <label className="field-label">Location *</label>
+                <label htmlFor="ff-codeenforcementpage-7" className="field-label">Location *</label>
                 <input id="ff-codeenforcementpage-7" value={vFormData.location} onChange={e => setVFormData(p => ({ ...p, location: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${vFormErrors.location ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {vFormErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.location}</p>}
               </div>
               <div>
-                <label className="field-label">Description *</label>
+                <label htmlFor="ff-codeenforcementpage-8" className="field-label">Description *</label>
                 <textarea id="ff-codeenforcementpage-8" value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {vFormErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.description}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">Code Section</label>
+                  <label htmlFor="ff-codeenforcementpage-9" className="field-label">Code Section</label>
                   <input id="ff-codeenforcementpage-9" value={vFormData.code_section} onChange={e => setVFormData(p => ({ ...p, code_section: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
                 <div>
-                  <label className="field-label">Fine Amount</label>
+                  <label htmlFor="ff-codeenforcementpage-10" className="field-label">Fine Amount</label>
                   <input id="ff-codeenforcementpage-10" value={vFormData.fine_amount} onChange={e => setVFormData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="field-label">Section</label>
+                  <label htmlFor="ff-codeenforcementpage-11" className="field-label">Section</label>
                   <select id="ff-codeenforcementpage-11" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600"
                     value={vFormData.sector_id || ''} onChange={e => setVFormData(p => ({...p, sector_id: e.target.value, zone_id: '', beat_id: ''}))}>
                     <option value="">—</option>
@@ -766,7 +936,7 @@ export default function CodeEnforcementPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Zone</label>
+                  <label htmlFor="ff-codeenforcementpage-12" className="field-label">Zone</label>
                   <select id="ff-codeenforcementpage-12" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600"
                     value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value, beat_id: ''}))}>
                     <option value="">—</option>
@@ -774,7 +944,7 @@ export default function CodeEnforcementPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Beat</label>
+                  <label htmlFor="ff-codeenforcementpage-13" className="field-label">Beat</label>
                   <select id="ff-codeenforcementpage-13" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600"
                     value={vFormData.beat_id || ''} onChange={e => setVFormData(p => ({...p, beat_id: e.target.value}))}>
                     <option value="">—</option>
@@ -808,7 +978,7 @@ export default function CodeEnforcementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               {tFormWasRestored && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgba(212,160,23,0.12)' }}>
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)' }}>
                   <div className="flex items-center gap-2">
                     <Clock size={14} className="text-amber-400" />
                     <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
@@ -819,19 +989,19 @@ export default function CodeEnforcementPage() {
                 </div>
               )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div><label className="field-label">Year</label><input id="ff-codeenforcementpage-14" value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-                <div><label className="field-label">Make *</label><input id="ff-codeenforcementpage-15" value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.vehicle_make ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_make && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_make}</p>}</div>
-                <div><label className="field-label">Model</label><input id="ff-codeenforcementpage-16" value={tFormData.vehicle_model} onChange={e => setTFormData(p => ({ ...p, vehicle_model: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-                <div><label className="field-label">Color</label><input id="ff-codeenforcementpage-17" value={tFormData.vehicle_color} onChange={e => setTFormData(p => ({ ...p, vehicle_color: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-14" className="field-label">Year</label><input id="ff-codeenforcementpage-14" value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-15" className="field-label">Make *</label><input id="ff-codeenforcementpage-15" value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.vehicle_make ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_make && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_make}</p>}</div>
+                <div><label htmlFor="ff-codeenforcementpage-16" className="field-label">Model</label><input id="ff-codeenforcementpage-16" value={tFormData.vehicle_model} onChange={e => setTFormData(p => ({ ...p, vehicle_model: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-17" className="field-label">Color</label><input id="ff-codeenforcementpage-17" value={tFormData.vehicle_color} onChange={e => setTFormData(p => ({ ...p, vehicle_color: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="field-label">Plate</label><input id="ff-codeenforcementpage-18" value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.vehicle_plate ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_plate}</p>}</div>
-                <div><label className="field-label">Reason</label><select id="ff-codeenforcementpage-19" value={tFormData.tow_reason} onChange={e => setTFormData(p => ({ ...p, tow_reason: e.target.value as TowReason }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">{TOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
+                <div><label htmlFor="ff-codeenforcementpage-18" className="field-label">Plate</label><input id="ff-codeenforcementpage-18" value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.vehicle_plate ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_plate}</p>}</div>
+                <div><label htmlFor="ff-codeenforcementpage-19" className="field-label">Reason</label><select id="ff-codeenforcementpage-19" value={tFormData.tow_reason} onChange={e => setTFormData(p => ({ ...p, tow_reason: e.target.value as TowReason }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600">{TOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
               </div>
-              <div><label className="field-label">Tow From *</label><input id="ff-codeenforcementpage-20" value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.tow_from ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.tow_from && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.tow_from}</p>}</div>
+              <div><label htmlFor="ff-codeenforcementpage-20" className="field-label">Tow From *</label><input id="ff-codeenforcementpage-20" value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-rmpg-100 outline-none ${tFormErrors.tow_from ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.tow_from && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.tow_from}</p>}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="field-label">Tow Company</label><input id="ff-codeenforcementpage-21" value={tFormData.tow_company} onChange={e => setTFormData(p => ({ ...p, tow_company: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
-                <div><label className="field-label">Tow Fee ($)</label><input id="ff-codeenforcementpage-22" value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-21" className="field-label">Tow Company</label><input id="ff-codeenforcementpage-21" value={tFormData.tow_company} onChange={e => setTFormData(p => ({ ...p, tow_company: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
+                <div><label htmlFor="ff-codeenforcementpage-22" className="field-label">Tow Fee ($)</label><input id="ff-codeenforcementpage-22" value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none focus:border-brand-600" /></div>
               </div>
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="button" onClick={handleCreateTow} disabled={submitting} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>
@@ -859,6 +1029,19 @@ export default function CodeEnforcementPage() {
         onCancel={() => { clearTFormDraft(); setTFormOpen(false); }}
         isSaving={submitting}
         saveLabel="Create Tow"
+      />
+
+      {/* ── Destructive-action confirm dialog ── */}
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleConfirmAction}
+        title={confirmTitle}
+        message={confirmMessage}
+        details={confirmDetails}
+        confirmLabel="Confirm"
+        confirmVariant="warning"
+        isLoading={confirmSubmitting}
       />
     </div>
   );

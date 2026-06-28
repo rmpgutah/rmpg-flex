@@ -26,6 +26,7 @@ import {
   ensureCpgConfig, backupConfig, clearConfigBackup, vehicleToCamera,
   CpgAuthError, CpgRateLimitError, CpgHttpError,
 } from '../utils/clearpathGps';
+import { isCameraOfflineFromMapping } from '../utils/clearpathSync';
 import {
   createFullDriveJob, getJobStatus, ensureFullDriveSchema,
 } from '../utils/fullDrivePipeline';
@@ -91,6 +92,29 @@ cpg.get('/status', async (c) => {
   const client = await getApiConfig(db, c.env).catch(() => null);
   const pollInterval = parseInt((await getConfigValue(db, CPG_KEYS.pollInterval)) || '30', 10);
   const mediaPoll = parseInt((await getConfigValue(db, CPG_KEYS.mediaPollInterval)) || '300', 10);
+
+  // Per-camera online state — surfaces "Waiting for Camera…" upstream rather
+  // than leaving the admin tab to wonder why video pulls keep coming back
+  // empty. Same heuristic the cron uses to suspend polling (ignition off +
+  // GPS stale), so the UI and the poller stay in lockstep.
+  const cameraRows = await query<{
+    cpg_device_id: string; cpg_display_name: string | null;
+    ignition_state: string | null; last_synced_at: string | null;
+  }>(db, `SELECT cpg_device_id, cpg_display_name, ignition_state, last_synced_at
+            FROM cpg_device_mappings WHERE is_active = 1`).catch(() =>
+    [] as Array<{ cpg_device_id: string; cpg_display_name: string | null;
+                  ignition_state: string | null; last_synced_at: string | null }>,
+  );
+  const now = Date.now();
+  const cameras = cameraRows.map((r) => ({
+    cpg_device_id: r.cpg_device_id,
+    cpg_display_name: r.cpg_display_name,
+    ignition_state: r.ignition_state,
+    last_synced_at: r.last_synced_at,
+    camera_offline: isCameraOfflineFromMapping(r, now),
+  }));
+  const any_camera_offline = cameras.some((c) => c.camera_offline);
+
   return c.json({
     configured: !!client,
     enabled: await isTruthy(db, CPG_KEYS.enabled),
@@ -101,6 +125,8 @@ cpg.get('/status', async (c) => {
     media_sync_enabled: await isTruthy(db, CPG_KEYS.mediaEnabled),
     media_poll_interval_seconds: mediaPoll,
     last_media_sync: await getConfigValue(db, 'clearpathgps_last_media_sync'),
+    any_camera_offline,
+    cameras,
   });
 });
 
@@ -246,6 +272,113 @@ cpg.get('/devices', async (c) => {
   }
 });
 
+// ── Vehicles (active mappings + live position) ───────────────
+// Returned in BOTH legacy (`last_lat`/`last_lon`/`last_reported_at`) and v2
+// (`latitude`/`longitude`/`last_seen`) shapes so FleetGpsTab.tsx and
+// GpsTrackingRoute.tsx can both consume the same handler without a
+// client-side rename. Empty array (200) when nothing is mapped — callers
+// treat 404 here as a hard error.
+cpg.get('/vehicles', async (c) => {
+  const db = getDb(c.env);
+  await ensureCpgSchema(db);
+  let rows: Record<string, unknown>[] = [];
+  try {
+    rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        m.id,
+        m.unit_id,
+        m.cpg_device_id           AS device_id,
+        m.cpg_serial_number       AS device_serial,
+        m.cpg_display_name        AS display_name,
+        m.vehicle_make,
+        m.vehicle_model,
+        m.vehicle_vin             AS vin,
+        m.last_odometer           AS odometer,
+        m.last_synced_at          AS synced_at,
+        m.last_media_synced_at    AS media_synced_at,
+        m.driver_name,
+        fv.id                     AS vehicle_id,
+        fv.vehicle_number,
+        fv.vehicle_name,
+        un.latitude               AS latitude,
+        un.longitude              AS longitude,
+        un.gps_speed              AS speed,
+        un.gps_heading            AS heading,
+        un.gps_updated_at         AS last_seen,
+        un.call_sign              AS unit_call_sign
+      FROM cpg_device_mappings m
+      LEFT JOIN units un          ON un.id = m.unit_id
+      LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = m.unit_id
+      WHERE m.is_active = 1
+      ORDER BY m.id DESC
+    `);
+  } catch {
+    // If the joined view fails (e.g. units schema drift), fall back to a
+    // mappings-only read so the page degrades to "no position" rather than
+    // 500. Same defensive pattern used by /mappings above.
+    try {
+      rows = await query<Record<string, unknown>>(
+        db, 'SELECT * FROM cpg_device_mappings WHERE is_active = 1 ORDER BY id DESC',
+      );
+    } catch {
+      rows = [];
+    }
+  }
+
+  const vehicles = rows.map((r) => {
+    const lat = r.latitude == null ? null : Number(r.latitude);
+    const lon = r.longitude == null ? null : Number(r.longitude);
+    const speed = r.speed == null ? null : Number(r.speed);
+    const heading = r.heading == null ? null : Number(r.heading);
+    const lastSeen = (r.last_seen as string | null) ?? null;
+    const label = (r.vehicle_number as string | null)
+      ?? (r.vehicle_name as string | null)
+      ?? (r.display_name as string | null)
+      ?? (r.unit_call_sign as string | null)
+      ?? (r.device_id as string | null)
+      ?? `#${r.id}`;
+    return {
+      // Legacy CpgpsVehicle shape (FleetGpsTab):
+      id: r.id,
+      vehicle_id: r.vehicle_id ?? null,
+      name: label,
+      device_serial: r.device_serial ?? null,
+      vin: r.vin ?? null,
+      odometer: r.odometer ?? null,
+      last_lat: lat,
+      last_lon: lon,
+      last_speed: speed,
+      last_heading: heading,
+      last_reported_at: lastSeen,
+      synced_at: r.synced_at ?? null,
+      // GpsVehicle shape (GpsTrackingRoute):
+      device_id: r.device_id ?? null,
+      rmpg_vehicle_id: r.vehicle_id ?? null,
+      vehicle_name: label,
+      latitude: lat,
+      longitude: lon,
+      speed_mph: speed,
+      speed,
+      heading,
+      last_seen: lastSeen,
+      last_update: lastSeen,
+      // Extras handy in the UI without an extra round-trip:
+      unit_id: r.unit_id ?? null,
+      call_sign: r.unit_call_sign ?? null,
+      driver_name: r.driver_name ?? null,
+    };
+  });
+  return c.json(vehicles);
+});
+
+// Per-vehicle trips + alerts — placeholders until ClearPath's per-device
+// trip/alert endpoints are wired into utils/clearpathGps.ts. Returning
+// `[]` (200) is intentional: FleetGpsTab already `.catch(() => [])` and
+// distinguishes "linked but no trips" from "404 — broken backend". A 404
+// here would falsely flip the tab into the "not linked" state.
+cpg.get('/vehicles/:id{[0-9]+}/trips', async (_c) => _c.json([]));
+cpg.get('/vehicles/:id{[0-9]+}/alerts', async (_c) => _c.json([]));
+
 // ── Mappings (camera ↔ dispatch unit) ────────────────────────
 
 cpg.get('/mappings', async (c) => {
@@ -320,6 +453,13 @@ cpg.get('/media-status', async (c) => {
       db, "SELECT COUNT(*) AS n, COALESCE(SUM(file_size),0) AS b FROM dashcam_videos WHERE source = 'clearpathgps'");
     if (r) totals = { total_synced_clips: r.n ?? 0, total_synced_bytes: r.b ?? 0 };
   } catch { /* table may predate Phase B */ }
+  // Also count Full Drive clips (footage_chunks) so the stats panel reflects
+  // trips downloaded via the full-drive job, not only the legacy media-sync path.
+  try {
+    const fd = await queryFirst<{ n: number; b: number }>(
+      db, "SELECT COUNT(*) AS n, COALESCE(SUM(bytes),0) AS b FROM footage_chunks WHERE status='downloaded'");
+    if (fd) { totals.total_synced_clips += fd.n ?? 0; totals.total_synced_bytes += fd.b ?? 0; }
+  } catch { /* footage_chunks may not exist yet */ }
   // Dashcam ALPR reads landed in alpr_captures (capture_id 'cpg_dashcam:*'). The
   // plate-log panel's "reads" tile previously counted only the recent-sightings
   // window (→ 0 even with hundreds of captures); surface the real total here.
@@ -567,6 +707,68 @@ cpg.get('/full-drive/jobs/:id', adminOnly, async (c) => {
     const job = await getJobStatus(db, jobId);
     if (!job) return c.json({ error: 'not found' }, 404);
     return c.json(job);
+  } catch (err) {
+    return c.json({ error: clientErrorMessage(err) }, 500);
+  }
+});
+
+// Retry all 'missing' chunks for a job trip — resets them to 'pending_request'
+// so the next cron cycle re-attempts the ClearPath vendor request.
+cpg.post('/full-drive/trips/:tripId/retry', adminOnly, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const tripId = parseInt(c.req.param('tripId') ?? '', 10);
+    if (!Number.isFinite(tripId)) return c.json({ error: 'invalid id' }, 400);
+    const trip = await queryFirst<{ id: number; job_id: number; footage_request_id: number | null }>(
+      db, 'SELECT id, job_id, footage_request_id FROM cpg_drive_job_trips WHERE id = ? LIMIT 1', tripId);
+    if (!trip) return c.json({ error: 'not found' }, 404);
+    let reset = 0;
+    if (trip.footage_request_id) {
+      // Reset missing chunks to pending_request so the cron re-requests them.
+      const r = await execute(db,
+        `UPDATE footage_chunks SET status='pending_request', vendor_media_id=NULL, attempts=0, updated_at=datetime('now')
+         WHERE request_id=? AND status='missing'`, trip.footage_request_id);
+      reset = r.meta.changes ?? 0;
+    }
+    // Reset trip status so getJobStatus tracks it as in-flight again.
+    // cpg_drive_job_trips has no updated_at column — omit it.
+    await execute(db,
+      `UPDATE cpg_drive_job_trips SET status='fulfilling', chunks_done=0, chunks_missing=0 WHERE id=?`,
+      tripId);
+    // Mark parent job as running so it doesn't appear done.
+    await execute(db,
+      `UPDATE cpg_drive_jobs SET status='running', updated_at=datetime('now') WHERE id=? AND status IN ('done','partial')`,
+      trip.job_id);
+    return c.json({ ok: true, reset });
+  } catch (err) {
+    return c.json({ error: clientErrorMessage(err) }, 500);
+  }
+});
+
+// Bulk-retry all trips in a job that have 0 clips downloaded (all chunks expired as missing).
+cpg.post('/full-drive/jobs/:jobId/retry-failed', adminOnly, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const jobId = parseInt(c.req.param('jobId') ?? '', 10);
+    if (!Number.isFinite(jobId)) return c.json({ error: 'invalid id' }, 400);
+    const job = await queryFirst<{ id: number }>(db, 'SELECT id FROM cpg_drive_jobs WHERE id=? LIMIT 1', jobId);
+    if (!job) return c.json({ error: 'not found' }, 404);
+    // Reset all missing chunks for every request belonging to this job.
+    const r = await execute(db,
+      `UPDATE footage_chunks SET status='pending_request', vendor_media_id=NULL, attempts=0, updated_at=datetime('now')
+       WHERE request_id IN (
+         SELECT footage_request_id FROM cpg_drive_job_trips
+         WHERE job_id=? AND footage_request_id IS NOT NULL
+       ) AND status='missing'`, jobId);
+    // Reset trips with 0 downloads back to 'fulfilling'.
+    await execute(db,
+      `UPDATE cpg_drive_job_trips SET status='fulfilling', chunks_missing=0
+       WHERE job_id=? AND chunks_done=0 AND status IN ('done','partial')`, jobId);
+    // Un-complete the parent job so it re-polls.
+    await execute(db,
+      `UPDATE cpg_drive_jobs SET status='running', updated_at=datetime('now')
+       WHERE id=? AND status IN ('done','partial')`, jobId);
+    return c.json({ ok: true, reset: r.meta.changes ?? 0 });
   } catch (err) {
     return c.json({ error: clientErrorMessage(err) }, 500);
   }

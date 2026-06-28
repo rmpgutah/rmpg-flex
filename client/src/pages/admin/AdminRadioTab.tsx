@@ -402,7 +402,7 @@ export default function AdminRadioTab() {
             </div>
             <div className="p-3 space-y-2.5">
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Name *</label>
+                <label htmlFor="ff-adminradiotab-1" className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Name *</label>
                 <input id="ff-adminradiotab-1"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -412,7 +412,7 @@ export default function AdminRadioTab() {
                 />
               </div>
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Description</label>
+                <label htmlFor="ff-adminradiotab-2" className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Description</label>
                 <input id="ff-adminradiotab-2"
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -422,7 +422,7 @@ export default function AdminRadioTab() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Frequency</label>
+                  <label htmlFor="ff-adminradiotab-3" className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Frequency</label>
                   <input id="ff-adminradiotab-3"
                     value={form.frequency}
                     onChange={(e) => setForm({ ...form, frequency: e.target.value })}
@@ -431,7 +431,7 @@ export default function AdminRadioTab() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Talkgroup</label>
+                  <label htmlFor="ff-adminradiotab-4" className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Talkgroup</label>
                   <input id="ff-adminradiotab-4"
                     value={form.talkgroup}
                     onChange={(e) => setForm({ ...form, talkgroup: e.target.value })}
@@ -442,7 +442,7 @@ export default function AdminRadioTab() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Color</label>
+                  <label htmlFor="ff-adminradiotab-5" className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Color</label>
                   <div className="flex items-center gap-1.5">
                     <input id="ff-adminradiotab-5"
                       value={form.color}
@@ -469,7 +469,7 @@ export default function AdminRadioTab() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Sort Order</label>
+                  <label htmlFor="ff-adminradiotab-6" className="block text-[10px] uppercase text-rmpg-500 mb-0.5">Sort Order</label>
                   <input id="ff-adminradiotab-6"
                     type="number"
                     value={form.sort_order}

@@ -8,6 +8,7 @@ import { useMenuActions } from '../../../utils/contextMenuActions';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
@@ -63,6 +64,8 @@ export default function GrievancesTab() {
   const [submitting, setSubmitting] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDismissId, setConfirmDismissId] = useState<number | null>(null);
+  const [confirmDismissLoading, setConfirmDismissLoading] = useState(false);
   const {
     form,
     setForm,
@@ -134,11 +137,23 @@ export default function GrievancesTab() {
   };
 
   const updateStatus = async (id: number, status: string) => {
-    if (status === 'dismissed' && !window.confirm('Dismiss this grievance? This action cannot be undone.')) return;
+    if (status === 'dismissed') { setConfirmDismissId(id); return; }
     try {
       await apiFetch(`/hr/grievances/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
       addToast('Status updated', 'success'); load();
     } catch { addToast('Failed to update status', 'error'); }
+  };
+
+  const doDismiss = async () => {
+    if (confirmDismissId === null) return;
+    setConfirmDismissLoading(true);
+    try {
+      await apiFetch(`/hr/grievances/${confirmDismissId}`, { method: 'PUT', body: JSON.stringify({ status: 'dismissed' }) });
+      addToast('Grievance dismissed', 'success');
+      setConfirmDismissId(null);
+      load();
+    } catch { addToast('Failed to dismiss grievance', 'error'); }
+    finally { setConfirmDismissLoading(false); }
   };
 
   // Client-side search filter
@@ -154,7 +169,7 @@ export default function GrievancesTab() {
       <FloatingSaveBar
         visible={showForm && isDirty}
         onSave={handleSubmit}
-        onCancel={() => { if (isDirty && !window.confirm('Discard unsaved changes?')) return; setShowForm(false); clearDraft(); }}
+        onCancel={() => { setShowForm(false); clearDraft(); }}
         isSaving={submitting}
         saveLabel="Submit Grievance"
       />
@@ -169,7 +184,7 @@ export default function GrievancesTab() {
             <option value="all">All Statuses</option>
             {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
-          <button type="button" onClick={() => { setShowForm(!showForm); if (!showForm) snapshot(); }} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
+          <button type="button" data-hr-new-btn onClick={() => { setShowForm(!showForm); if (!showForm) snapshot(); }} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
         </div>
       </div>
 
@@ -177,7 +192,7 @@ export default function GrievancesTab() {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Type</label>
+              <label htmlFor="ff-grievancestab-2" className="field-label">Type</label>
               <select id="ff-grievancestab-2" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="input-field w-full text-xs">
                 <option value="general">General</option>
                 <option value="workplace">Workplace</option>
@@ -188,7 +203,7 @@ export default function GrievancesTab() {
               </select>
             </div>
             <div>
-              <label className="field-label">Priority</label>
+              <label htmlFor="ff-grievancestab-3" className="field-label">Priority</label>
               <select id="ff-grievancestab-3" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className="input-field w-full text-xs">
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
@@ -198,7 +213,7 @@ export default function GrievancesTab() {
             </div>
           </div>
           <div>
-            <label className="field-label">Subject *</label>
+            <label htmlFor="ff-grievancestab-4" className="field-label">Subject *</label>
             <input id="ff-grievancestab-4" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="input-field w-full text-xs" placeholder="Brief subject line" maxLength={200} required autoComplete="off" onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} />
           </div>
           <div>
@@ -254,6 +269,17 @@ export default function GrievancesTab() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDismissId !== null}
+        onClose={() => setConfirmDismissId(null)}
+        onConfirm={doDismiss}
+        title="Dismiss Grievance"
+        message="Dismiss this grievance? This action cannot be undone."
+        confirmLabel="Dismiss"
+        confirmVariant="warning"
+        isLoading={confirmDismissLoading}
+      />
     </div>
   );
 }

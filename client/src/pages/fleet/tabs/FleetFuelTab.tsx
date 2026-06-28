@@ -165,7 +165,7 @@ function MonthlySpendBars({ logs }: { logs: FleetFuelLog[] }) {
       <div className="flex items-end gap-1 h-20">
         {months.map(([month, a]) => (
           <div key={month} className="flex-1 flex flex-col items-center justify-end gap-0.5 group" title={`${month}: $${a.cost.toFixed(2)} · ${a.gallons.toFixed(1)} gal`}>
-            <span className="text-[7px] text-rmpg-500 font-mono opacity-0 group-hover:opacity-100 transition-opacity">${Math.round(a.cost)}</span>
+            <span className="text-[7px] text-rmpg-500 font-mono opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">${Math.round(a.cost)}</span>
             <div className="w-full bg-green-700/60 hover:bg-green-500 transition-colors rounded-t-sm" style={{ height: `${Math.max(2, (a.cost / maxCost) * 100)}%` }} />
             <span className="text-[6px] text-rmpg-600 font-mono">{month.slice(5)}</span>
           </div>

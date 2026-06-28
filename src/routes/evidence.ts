@@ -42,15 +42,38 @@ async function ensureTable(db: ReturnType<typeof getDb>): Promise<void> {
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_evidence_sha ON evidence_manifests(sha256)`);
 }
 
+// Role allow-list for filing a manifest. Audit 2026-06-21 caught that
+// ANY authenticated user could forge manifests with arbitrary sha256
+// + officer_name + badge + case_ref. Restricted to roles that can
+// legitimately be present at an evidence event.
+// 2026-06-22 softened: dispatcher is added — during an in-progress
+// CAD call, the dispatcher commonly files on-behalf-of when a unit's
+// iOS app is offline or the field officer is mid-pursuit. The
+// officer_id is still forced from the JWT (dispatchers can't claim to
+// BE the field officer), so a dispatcher manifest will carry
+// officer_id=<dispatcher's id> in the audit trail.
+const EVIDENCE_FILE_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+
 // POST / — file a manifest.
 evidence.post('/', async (c): Promise<Response> => {
+  // Role gate. Reject before reading the body — we don't want to even
+  // parse user-controlled payloads when the caller has no business
+  // filing custody entries.
+  const user = c.get('user') as { id?: number; role?: string } | undefined;
+  if (!user || !user.role || !EVIDENCE_FILE_ROLES.has(user.role)) {
+    return c.json({ error: 'Insufficient role to file an evidence manifest' }, 403);
+  }
+
   const db = getDb(c.env);
   await ensureTable(db);
   const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
   const check = validateManifest(body);
   if (!check.ok) return c.json({ error: check.error }, 400);
 
-  const userId = (c.get('userId') as number | undefined) ?? null;
+  // officer_id is ALWAYS the authenticated user — never the body. The
+  // previous version trusted body.officer_id which let a forged
+  // manifest claim any officer was at the scene.
+  const userId = (c.get('userId') as number | undefined) ?? user.id ?? null;
   const year = new Date().getFullYear();
   const countRow = await queryFirst<{ n: number }>(
     db,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Play, GitCompare, Save, Pencil, Trash2, ArrowDownToLine } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { toDisplayLabel } from '../../../utils/formatters';
 import { asArray } from '../../../utils/asArray';
 
 import RichTextArea from '../../../components/RichTextArea';
@@ -173,7 +174,7 @@ export default function AIPromptWorkshopPanel() {
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-rmpg-400 mb-1 block">System Prompt</label>
+            <label htmlFor="ff-aipromptworkshoppanel-2" className="text-xs text-rmpg-400 mb-1 block">System Prompt</label>
             <RichTextArea
               rows={4}
               value={systemPrompt}
@@ -184,7 +185,7 @@ export default function AIPromptWorkshopPanel() {
           </div>
 
           <div>
-            <label className="text-xs text-rmpg-400 mb-1 block">User Message</label>
+            <label htmlFor="ff-aipromptworkshoppanel-1" className="text-xs text-rmpg-400 mb-1 block">User Message</label>
             <RichTextArea
               rows={3}
               value={userMessage}
@@ -196,7 +197,7 @@ export default function AIPromptWorkshopPanel() {
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <label className="text-[10px] text-rmpg-500">Temp override:</label>
+              <label htmlFor="ff-aipromptworkshoppanel-0" className="text-[10px] text-rmpg-500">Temp override:</label>
               <input id="ff-aipromptworkshoppanel-0"
                 type="range"
                 min={0} max={2} step={0.05}
@@ -304,7 +305,7 @@ export default function AIPromptWorkshopPanel() {
                   <>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-rmpg-100 min-w-0 truncate flex-1">{t.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-rmpg-700 text-rmpg-400 rounded shrink-0">{(t.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-rmpg-700 text-rmpg-400 rounded shrink-0">{toDisplayLabel(t.category)}</span>
                     </div>
                     <p className="text-[10px] text-rmpg-500 line-clamp-2">{(t.system_prompt || '').slice(0, 80)}{(t.system_prompt || '').length > 80 ? '...' : ''}</p>
                     <div className="flex gap-2 pt-1">

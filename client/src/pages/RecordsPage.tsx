@@ -18,6 +18,7 @@ import {
   X,
   Users,
   Briefcase,
+  ScanLine,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { recordTypeLabel } from '../utils/recordTypeLabel';
@@ -35,6 +36,10 @@ import LinkRecordModal from '../components/LinkRecordModal';
 import PersonDuplicatesModal from '../components/PersonDuplicatesModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
+import { AssessorBackfillButton } from '../components/AssessorBackfillButton';
+import { AssessorReviewQueueBanner } from '../components/AssessorReviewQueueBanner';
+import DlScanImportModal from '../components/DlScanImportModal';
 
 // Tab hooks + components
 import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
@@ -60,27 +65,50 @@ type TabId = 'persons' | 'vehicles' | 'properties' | 'businesses' | 'evidence';
 export default function RecordsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
-  const [urlParams] = useSearchParams();
+  const { user } = useAuth();
+  const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  const [urlParams, setUrlParams] = useSearchParams();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
 
-  // Handle cross-module navigation params (?tab=persons&personId=X&q=smith).
-  // `q` pre-fills the search box (used by the Cmd+K command palette to land on
-  // a specific record's filtered list); `personId` is the legacy param.
+  // ── Cross-module URL deep-link contract ──
+  // Accepts: ?tab=<persons|vehicles|properties|businesses|evidence>
+  //          &record_id=<id> (generic alias when tab= is also set)
+  //          &type=<persons|vehicles|properties|businesses|evidence> (alias for tab=)
+  //          &person_id= | &vehicle_id= | &property_id= | &business_id= | &evidence_id=
+  //          (legacy camelCase: personId, vehicleId, propertyId, businessId, evidenceId
+  //           and `id` when paired with a `tab`)
+  //          &q=<search box pre-fill>
+  // On mount: pick the tab and remember the target id; once the hydrated list
+  // contains it we auto-select that record and strip the params so a refresh
+  // doesn't re-trigger. Pending id sits in pendingIdRef across re-renders.
+  const pendingIdRef = useRef<{ tab: TabId; id: string } | null>(null);
   useEffect(() => {
-    const tab = urlParams.get('tab');
-    const personId = urlParams.get('personId');
+    const tab = urlParams.get('tab') || urlParams.get('type');
     const q = urlParams.get('q');
-    if (tab && ['persons', 'vehicles', 'properties', 'businesses', 'evidence'].includes(tab)) {
-      setActiveTab(tab as TabId);
+    const validTab = tab && (['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const).includes(tab as TabId)
+      ? (tab as TabId) : null;
+    const recordId = urlParams.get('record_id');
+    // Infer target tab from whichever *_id is present, even if tab= is omitted.
+    const idByTab: Record<TabId, string | null> = {
+      persons:    urlParams.get('person_id')   || urlParams.get('personId')   || (validTab === 'persons'    ? (recordId || urlParams.get('id')) : null),
+      vehicles:   urlParams.get('vehicle_id')  || urlParams.get('vehicleId')  || (validTab === 'vehicles'   ? (recordId || urlParams.get('id')) : null),
+      properties: urlParams.get('property_id') || urlParams.get('propertyId') || (validTab === 'properties' ? (recordId || urlParams.get('id')) : null),
+      businesses: urlParams.get('business_id') || urlParams.get('businessId') || (validTab === 'businesses' ? (recordId || urlParams.get('id')) : null),
+      evidence:   urlParams.get('evidence_id') || urlParams.get('evidenceId') || (validTab === 'evidence'   ? (recordId || urlParams.get('id')) : null),
+    };
+    // Pick the tab to land on: explicit tab=/type=, else the first *_id that's set.
+    const tabsOrder: TabId[] = ['persons', 'vehicles', 'properties', 'businesses', 'evidence'];
+    const inferredTab: TabId | null = validTab ?? tabsOrder.find((t) => idByTab[t]) ?? null;
+    if (inferredTab) {
+      setActiveTab(inferredTab);
+      const targetId = idByTab[inferredTab];
+      if (targetId) pendingIdRef.current = { tab: inferredTab, id: String(targetId) };
     }
-    if (q) {
-      setSearchQuery(q);
-    } else if (personId && tab === 'persons') {
-      setSearchQuery(personId);
-    }
+    if (q) setSearchQuery(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only on mount
 
   // Data state
@@ -114,6 +142,9 @@ export default function RecordsPage() {
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [linkSource, setLinkSource] = useState<{ type: RecordEntityType; id: string } | null>(null);
   const [linkRefreshKey, setLinkRefreshKey] = useState(0);
+
+  // DL barcode scan-to-import
+  const [showDlScan, setShowDlScan] = useState(false);
 
   // "New" record triggers
   const [newPersonTrigger, setNewPersonTrigger] = useState(0);
@@ -316,9 +347,118 @@ export default function RecordsPage() {
     openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
   });
 
-  // ── Derived ──────────────────────────────────────────
+  // ── Deep-link auto-select ──────────────────────────────
+  // Once the active tab's list hydrates, find pendingIdRef and select that
+  // record. Falls back to a direct fetch by id if the list doesn't contain
+  // it (archived, paged-out, or fresh from a sibling page). Strips the
+  // params on success so a refresh doesn't re-trigger; surfaces a toast
+  // when the id truly misses everywhere.
+  useEffect(() => {
+    const pending = pendingIdRef.current;
+    if (!pending || pending.tab !== activeTab) return;
+    const stripParams = () => {
+      const next = new URLSearchParams(urlParams);
+      ['person_id', 'personId', 'vehicle_id', 'vehicleId', 'property_id', 'propertyId',
+       'business_id', 'businessId', 'evidence_id', 'evidenceId', 'id', 'record_id', 'type'].forEach((k) => next.delete(k));
+      setUrlParams(next, { replace: true });
+    };
+    const handleMissing = (label: string) => {
+      pendingIdRef.current = null;
+      addToast(`${label} not in the current view (try unarchiving or clearing filters)`, 'warning');
+      stripParams();
+    };
 
-  const isLoading = loadingPersons || loadingVehicles || loadingProperties || loadingEvidence;
+    if (pending.tab === 'persons') {
+      if (loadingPersons) return;
+      const hit = persons.find(p => String(p.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        personsState.setSelectedPerson(hit);
+        stripParams();
+        return;
+      }
+      // Direct-fetch fallback for archived/foreign/paged-out records.
+      // Claim the slot immediately so this effect doesn't loop while
+      // the fetch is in flight.
+      pendingIdRef.current = null;
+      (async () => {
+        try {
+          const full = await apiFetch<Record<string, unknown>>(`/records/persons/${pending.id}`);
+          if (full && (full as any).id) {
+            personsState.setSelectedPerson(mapDbPerson(full));
+            stripParams();
+            return;
+          }
+          handleMissing(`Person ${pending.id}`);
+        } catch {
+          handleMissing(`Person ${pending.id}`);
+        }
+      })();
+    } else if (pending.tab === 'vehicles') {
+      if (loadingVehicles) return;
+      const hit = vehicles.find(v => String(v.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        vehiclesState.setSelectedVehicle(hit);
+        stripParams();
+        return;
+      }
+      handleMissing(`Vehicle ${pending.id}`);
+    } else if (pending.tab === 'properties') {
+      if (loadingProperties) return;
+      const hit = properties.find(p => String(p.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        propertiesState.setSelectedProperty(hit);
+        stripParams();
+        return;
+      }
+      pendingIdRef.current = null;
+      (async () => {
+        try {
+          const full = await apiFetch<Record<string, unknown>>(`/records/properties/${pending.id}`);
+          if (full && (full as any).id) {
+            propertiesState.setSelectedProperty(mapDbProperty(full));
+            stripParams();
+            return;
+          }
+          handleMissing(`Property ${pending.id}`);
+        } catch {
+          handleMissing(`Property ${pending.id}`);
+        }
+      })();
+    } else if (pending.tab === 'businesses') {
+      if (businessState.loading) return;
+      const hit = businessState.businesses.find(b => String(b.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        businessState.setSelectedBusiness(hit);
+        stripParams();
+        return;
+      }
+      handleMissing(`Business ${pending.id}`);
+    } else if (pending.tab === 'evidence') {
+      if (loadingEvidence) return;
+      const hit = evidence.find((e: any) => String(e.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        evidenceState.setSelectedEvidence(hit);
+        stripParams();
+        return;
+      }
+      handleMissing(`Evidence ${pending.id}`);
+    }
+  }, [
+    activeTab,
+    persons, loadingPersons, personsState,
+    vehicles, loadingVehicles, vehiclesState,
+    properties, loadingProperties, propertiesState,
+    businessState,
+    evidence, loadingEvidence, evidenceState,
+    urlParams, setUrlParams, addToast,
+  ]);
+
+  // ── Derived ──────────────────────────────────────────
 
   const tabs: { id: TabId; label: string; icon: React.ElementType; count: number }[] = [
     { id: 'persons', label: 'Persons', icon: UserCircle, count: persons.length },
@@ -411,6 +551,12 @@ export default function RecordsPage() {
               Duplicates
             </button>
             {!showArchived && (
+              <button type="button" className="toolbar-btn print:hidden text-brand-400" title="Scan a driver's license barcode to import" onClick={() => setShowDlScan(true)}>
+                <ScanLine className="w-3.5 h-3.5" />
+                Scan ID
+              </button>
+            )}
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Person
@@ -421,7 +567,7 @@ export default function RecordsPage() {
         {activeTab === 'vehicles' && (
           <>
             <ExportButton exportUrl={`/records/vehicles/export?format=csv&archived=${showArchived}`} exportFilename="vehicles_export.csv" />
-            {!showArchived && (
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewVehicleTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Vehicle
@@ -431,7 +577,8 @@ export default function RecordsPage() {
         )}
         {activeTab === 'properties' && (
           <>
-            {!showArchived && (
+            <AssessorBackfillButton isAdminOrManager={isAdminOrManager} />
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Property
@@ -441,7 +588,8 @@ export default function RecordsPage() {
         )}
         {activeTab === 'businesses' && (
           <>
-            {!showArchived && (
+            <AssessorBackfillButton isAdminOrManager={isAdminOrManager} />
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => businessState.setShowFormModal(true)}>
                 <Plus className="w-3.5 h-3.5" /> New Business
               </button>
@@ -451,7 +599,7 @@ export default function RecordsPage() {
         {activeTab === 'evidence' && (
           <>
             <ExportButton exportUrl={`/records/evidence/export?format=csv&archived=${showArchived}`} exportFilename="evidence_export.csv" />
-            {!showArchived && (
+            {!showArchived && isAdminOrManager && (
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Evidence
@@ -462,13 +610,13 @@ export default function RecordsPage() {
       </PanelTitleBar>
 
       <SpillmanMenuBar
-        onNew={() => {
+        onNew={isAdminOrManager && !showArchived ? () => {
           if (activeTab === 'persons') setNewPersonTrigger(t => t + 1);
           else if (activeTab === 'vehicles') setNewVehicleTrigger(t => t + 1);
           else if (activeTab === 'properties') setNewPropertyTrigger(t => t + 1);
           else if (activeTab === 'businesses') businessState.setShowFormModal(true);
           else if (activeTab === 'evidence') setNewEvidenceTrigger(t => t + 1);
-        }}
+        } : undefined}
         onFind={() => {
           const el = document.querySelector<HTMLInputElement>('.records-page input[type="search"], .records-page input[type="text"]');
           el?.focus();
@@ -565,10 +713,12 @@ export default function RecordsPage() {
             )}
           </>
         )}
-        {persons.some(p => p.flags.length > 0) && (
+        {persons.some(p => p.flags.some(f => !/_IMPORTED$/i.test(typeof f === 'object' ? (f as any).type ?? '' : f))) && (
           <div className="flex items-center gap-1 ml-auto">
             <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
-            <span className="text-amber-400 font-bold">{persons.filter(p => p.flags.length > 0).length}</span>
+            <span className="text-amber-400 font-bold">
+              {persons.filter(p => p.flags.some(f => !/_IMPORTED$/i.test(typeof f === 'object' ? (f as any).type ?? '' : f))).length}
+            </span>
           </div>
         )}
       </div>
@@ -603,18 +753,48 @@ export default function RecordsPage() {
         </div>
       )}
 
-      {/* Active TabList Content */}
+      {/* Salt Lake County Assessor backfill — ambiguous-match review queue.
+          Self-renders nothing when the queue is empty. */}
+      <div className="px-3 pt-2">
+        <AssessorReviewQueueBanner />
+      </div>
+
+      {/* Active TabList Content — per-tab loading/no-data/no-results distinct states */}
       <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`} style={{ overscrollBehavior: 'contain' }}>
-        {isLoading && (
+        {activeTab === 'persons' && loadingPersons && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading records" />
-            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading records...</span>
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading persons" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading persons...</span>
+          </div>
+        )}
+        {activeTab === 'vehicles' && loadingVehicles && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading vehicles" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading vehicles...</span>
+          </div>
+        )}
+        {activeTab === 'properties' && loadingProperties && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading properties" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading properties...</span>
+          </div>
+        )}
+        {activeTab === 'evidence' && loadingEvidence && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading evidence" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading evidence...</span>
+          </div>
+        )}
+        {activeTab === 'businesses' && businessState.loading && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading businesses" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading businesses...</span>
           </div>
         )}
         {activeTab === 'persons' && !loadingPersons && <PersonsTabList state={personsState} />}
         {activeTab === 'vehicles' && !loadingVehicles && <VehiclesTabList state={vehiclesState} />}
         {activeTab === 'properties' && !loadingProperties && <PropertiesTabList state={propertiesState} />}
-        {activeTab === 'businesses' && <BusinessTabList state={businessState} />}
+        {activeTab === 'businesses' && !businessState.loading && <BusinessTabList state={businessState} />}
         {activeTab === 'evidence' && !loadingEvidence && <EvidenceTabList state={evidenceState} />}
       </div>
     </div>
@@ -678,14 +858,51 @@ export default function RecordsPage() {
   // Set document title
   useEffect(() => { document.title = 'Records Management \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // Esc smart-cascade — closes the smallest-open-first overlay so a single
+  // tap doesn't blow away the open record while a nested modal is showing.
+  // Order: delete-confirm → duplicates modal → business form modal →
+  // link-record modal → selected record (closes the right detail panel).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setLinkModalOpen(false); }
+      if (e.key !== 'Escape') return;
+      if (deleteTarget !== null) { e.stopPropagation(); setDeleteTarget(null); return; }
+      if (showDuplicatesModal) { e.stopPropagation(); setShowDuplicatesModal(false); return; }
+      if (businessState.showFormModal) { e.stopPropagation(); businessState.setShowFormModal(false); return; }
+      if (linkModalOpen) { e.stopPropagation(); setLinkModalOpen(false); setLinkSource(null); return; }
+      if (hasSelection) { e.stopPropagation(); closeSelection(); return; }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [deleteTarget, showDuplicatesModal, businessState, linkModalOpen, hasSelection, closeSelection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "N" keyboard shortcut → opens the active tab's New record flow.
+  // Typing-suppressed (skipped while focus is in any input/textarea/
+  // contenteditable). Skipped while any modal/overlay is open so it
+  // doesn't fight focus traps. Gated to admin/manager (create role gate).
+  // Same contract used across MDT / Patrol / Field Interviews / Cases / Court Tracker.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+      }
+      // Don't open New on top of an already-open modal/picker.
+      if (deleteTarget !== null || showDuplicatesModal || linkModalOpen || businessState.showFormModal) return;
+      if (showArchived) return; // archives mode is read-only
+      if (!isAdminOrManager) return; // create gated to admin/manager
+      e.preventDefault();
+      if (activeTab === 'persons') setNewPersonTrigger(n => n + 1);
+      else if (activeTab === 'vehicles') setNewVehicleTrigger(n => n + 1);
+      else if (activeTab === 'properties') setNewPropertyTrigger(n => n + 1);
+      else if (activeTab === 'businesses') businessState.setShowFormModal(true);
+      else if (activeTab === 'evidence') setNewEvidenceTrigger(n => n + 1);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeTab, deleteTarget, showDuplicatesModal, linkModalOpen, businessState, showArchived, isAdminOrManager]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="records-page flex flex-col h-full animate-fade-in">
@@ -725,6 +942,25 @@ export default function RecordsPage() {
         isOpen={showDuplicatesModal}
         onClose={() => setShowDuplicatesModal(false)}
         onMergeComplete={() => fetchPersons({ silent: true })}
+      />
+
+      <DlScanImportModal
+        isOpen={showDlScan}
+        onClose={() => setShowDlScan(false)}
+        onImported={(person, created) => {
+          setShowDlScan(false);
+          addToast(
+            created
+              ? `Person record created for ${person.first_name} ${person.last_name}`
+              : `Matched existing record for ${person.first_name} ${person.last_name}`,
+            'success',
+          );
+          // Reload persons list and select the imported/matched person
+          fetchPersons({ silent: true }).then(() => {
+            personsState.setSelectedPerson(person);
+            if (activeTab !== 'persons') setActiveTab('persons');
+          });
+        }}
       />
     </div>
   );

@@ -7,9 +7,10 @@
 // being turned on.
 // ============================================================
 
+import { log } from './logger';
 import type { Bindings } from '../types';
 import { getDb, query, queryFirst, execute } from './db';
-import { enqueueFootage, ensureFootageSchema, runRequestPass, pollAndDownload } from './footage/captureOrchestrator';
+import { enqueueFootage, ensureFootageSchema, runRequestPass, pollAndDownload, resumeTruncatedRequests } from './footage/captureOrchestrator';
 import { getApiConfig, isEnabled } from './clearpathGps';
 
 // A gap of 15+ minutes between GPS pings means the vehicle was stopped / engine off.
@@ -84,8 +85,7 @@ async function detectTrips(
   const toIso = new Date(toMs).toISOString();
 
   // Option 1: Use already-detected unit_trips for this unit.
-  // Filter to trips with real duration (≥ MIN_TRIP_MS) to skip single-ping GPS records
-  // that unit_trips captures as 0-second "trips".
+  // Filter by real duration (≥ MIN_TRIP_SEC) so single-ping GPS records are excluded.
   const MIN_TRIP_SEC = Math.ceil(MIN_TRIP_MS / 1000);
   if (unitId) {
     const rows = await query<{ start_time: string; end_time: string }>(db, `
@@ -192,7 +192,7 @@ export async function createFullDriveJob(env: Bindings, args: CreateJobArgs): Pr
           WHERE id = ?`, requestId, chunkCount, tripRowId);
       }
     } catch (err) {
-      console.error(`[full-drive] enqueue trip ${i + 1} failed:`, (err as Error).message);
+      log.error('enqueue trip failed', { tripIndex: i + 1 }, err);
     }
     result.push({ tripId: tripRowId, label: trip.label, chunkCount, requestId });
   }
@@ -265,23 +265,27 @@ export async function maybePollFullDriveChunks(env: Bindings): Promise<void> {
   if (!client) return;
   if (!(await isEnabled(db))) return;
 
-  // Are there any full-drive requests with pending chunks?
+  // Resume any requests where chunk creation was truncated by a Worker timeout.
+  const resumed = await resumeTruncatedRequests(env).catch(() => null);
+  if (resumed?.added) log.info('resumed requests', { resumed: resumed.resumed, added: resumed.added });
+
+  // Are there any full-drive requests with pending chunks (any reason)?
   const pending = await queryFirst<{ n: number }>(db, `
     SELECT COUNT(*) AS n FROM footage_chunks ch
     JOIN footage_requests rq ON rq.id = ch.request_id
-    WHERE rq.reason = 'on_demand' AND ch.status IN ('pending_request','requested') LIMIT 1`).catch(() => null);
+    WHERE ch.status IN ('pending_request','requested') LIMIT 1`).catch(() => null);
   if (!pending?.n) return;
 
   const r = await runRequestPass(env).catch((err) => {
-    console.error('[full-drive] request pass failed:', (err as Error).message);
+    log.error('request pass failed', {}, err);
     return null;
   });
-  if (r?.requested) console.log(`[full-drive] requested ${r.requested} chunks`);
+  if (r?.requested) log.info('requested chunks', { requested: r.requested });
 
   // Also run the download pass so requested → downloaded without flexcam_enabled gate.
   const d = await pollAndDownload(env).catch((err) => {
-    console.error('[full-drive] download pass failed:', (err as Error).message);
+    log.error('download pass failed', {}, err);
     return null;
   });
-  if (d?.downloaded) console.log(`[full-drive] downloaded ${d.downloaded} chunks`);
+  if (d?.downloaded) log.info('downloaded chunks', { downloaded: d.downloaded });
 }

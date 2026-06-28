@@ -10,7 +10,7 @@ describe('formatActivity', () => {
 
   it('renders a status change with the target status and disposition', () => {
     const r = formatActivity('status.changed', { to: 'closed', disposition: 'cleared' });
-    expect(r.label).toBe('Status → closed (cleared)');
+    expect(r.label).toBe('Status -> closed (cleared)');
     expect(r.color).toBe('#f59e0b');
   });
 

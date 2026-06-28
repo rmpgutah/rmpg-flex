@@ -101,6 +101,54 @@ export function navThemeStyleUrl(
   return resolved === 'day' ? urls.light : urls.dark;
 }
 
+// ── Overlay palette (route line + position halo/dot + pins) ──
+// Mapbox layer `paint` properties don't accept CSS variables, so the
+// theme-aware overlay colors live here as plain hex. Gold (#d4a017) reads
+// well on the dark steel-blue night basemap; a deeper amber lifts contrast
+// over the bright light-grey day basemap so the route line stays legible.
+export interface NavOverlayPalette {
+  /** Route line + predicted path color. */
+  route: string;
+  /** Position dot + halo color. */
+  position: string;
+  /** Halo opacity 0..1 (slightly lower over day so the basemap shines through). */
+  haloOpacity: number;
+}
+
+export function navOverlayPalette(theme: 'night' | 'day'): NavOverlayPalette {
+  return theme === 'day'
+    ? { route: '#a07d12', position: '#a07d12', haloOpacity: 0.22 }
+    : { route: '#d4a017', position: '#d4a017', haloOpacity: 0.18 };
+}
+
+// Re-color the known overlay layers on a live map. IDs must match the
+// constants NavMapView creates (POSITION_HALO_LAYER_ID / POSITION_LAYER_ID /
+// ROUTE_LAYER_ID / PREDICTED_LAYER_ID). Each call is guarded the same way
+// applyNavTheme guards its layer ops — a missing layer is a no-op.
+export function applyNavOverlayPalette(
+  map: {
+    getLayer?: (id: string) => unknown;
+    setPaintProperty?: (id: string, prop: string, value: unknown) => void;
+  } | null | undefined,
+  palette: NavOverlayPalette,
+  layerIds: { route?: string; predicted?: string; positionHalo?: string; position?: string },
+): void {
+  if (!map || typeof map.setPaintProperty !== 'function') return;
+  const safeSet = (id: string | undefined, prop: string, value: unknown) => {
+    if (!id) return;
+    try {
+      if (typeof map.getLayer === 'function' && !map.getLayer(id)) return;
+      map.setPaintProperty!(id, prop, value);
+    } catch { /* missing layer / wrong type — ignore */ }
+  };
+  safeSet(layerIds.route, 'line-color', palette.route);
+  safeSet(layerIds.predicted, 'line-color', palette.route);
+  safeSet(layerIds.positionHalo, 'circle-color', palette.position);
+  safeSet(layerIds.positionHalo, 'circle-stroke-color', palette.position);
+  safeSet(layerIds.positionHalo, 'circle-opacity', palette.haloOpacity);
+  safeSet(layerIds.position, 'circle-color', palette.position);
+}
+
 // ── Theme recolor presets ──────────────────────────────────
 // applyNavTheme walks the style layers. For 'night' it darkens the
 // basemap toward pure-black (HUD-safe under gold overlays). For 'day'
@@ -110,8 +158,13 @@ export const navThemePresets = {
     // Layer-type → paint props to push toward black.
     background: '#0a0a0a',
     fill: '#101010',
-    water: 'var(--surface-overlay)',
-    road: 'var(--surface-raised)',
+    // Mapbox paint properties don't resolve CSS variables — these had been
+    // silently swallowed by safeSet's try/catch, leaving water + road at
+    // their stock basemap colors. Use the night-theme literals for
+    // --surface-overlay (#060b10) and --surface-raised (#15212e) so the
+    // basemap actually re-skins to RMPG steel-blue.
+    water: '#060b10',
+    road: '#15212e',
     text: '#888888',
     textHalo: '#000000',
   },

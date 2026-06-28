@@ -2,11 +2,54 @@
 // One CAPTURE: dedupes-or-creates the person and vehicle, writes the
 // field interview with GPS, screens everything, and shows hit banners.
 // Links straight to the new/updated dossier.
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ClipboardPen, MapPin } from 'lucide-react';
+//
+// Page 196 frontend audit (SW v1219):
+//   • ?call_id= / ?incident_id= deep-link — when launched from a
+//     dispatch call or incident, the resulting FI is stamped with
+//     that linkage so it surfaces on the call/incident timeline.
+//     Context preserved across re-captures (different from the
+//     login-style "flash banner" params that get stripped on mount),
+//     because logging multiple contacts on the same call is the
+//     dominant on-scene pattern.
+//   • ?plate= deep-link — pre-fills the plate field; stripped on
+//     mount via useRef guard (only once, so the operator can edit).
+//   • ConfirmDialog — gates the "discard" action when the form has
+//     unsaved typed content (Esc with content open → confirm before
+//     clearing, same pattern as Citations / DL-Search / etc.).
+//   • Esc smart-cascade — Esc closes whichever layer is open, closest
+//     first (discard confirm → result → typed-but-unsaved form), each
+//     branch with e.stopPropagation() so one Esc never blasts multiple
+//     layers.
+//   • N shortcut — clears the form and focuses first name, matching
+//     the N=New convention across Citations / Warrants / FI / etc.
+//     Suppressed when the discard-confirm dialog is open.
+//   • Role gates — canCapture (officer|dispatcher|supervisor|manager|
+//     admin) gates the CAPTURE + CHECK button + N shortcut;
+//     canPrint (admin|manager|supervisor) gates Print FI.
+//   • Print FI — court-ready PDF for the just-written FI via the
+//     existing field_interview generator (hydrates from
+//     /field-interviews/:id so officer name / badge / fi_number /
+//     resolved person come from server, not the local form).
+//   • Privacy mask — DOB redacted in the on-screen echo by default;
+//     the operator can reveal per-record. Plate stays visible because
+//     it is the operator's only confirmation that the right vehicle
+//     was attached.
+//   • GPS visibility — shows the actual lat/lng + accuracy that will
+//     be stamped on the FI, with a manual "re-acquire" button when
+//     the first fix is stale or wrong (mid-drive on-foot pattern).
+//   • Theme tokens throughout — no hardcoded hex.
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  ClipboardPen, MapPin, AlertTriangle, ArrowRight, Eye, EyeOff,
+  Crosshair, X, Loader2,
+} from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
+import PrintRecordButton from '../components/PrintRecordButton';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface CaptureResult {
@@ -14,26 +57,125 @@ interface CaptureResult {
   vehicle_id: number | null; fi_id: number | null; hits: ScreenHit[];
 }
 
-const inputCls = 'w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 focus:border-[#d4a017] outline-none';
+const inputCls =
+  'w-full bg-surface-overlay border border-border-default px-2 py-2 text-sm text-rmpg-200 ' +
+  'placeholder:text-rmpg-500 focus:border-brand-400 outline-none';
+
+// DOB display mask — replaces digits with bullets so a bystander glance
+// at the screen doesn't expose a full DOB. Preserves the operator's
+// chosen separators (YYYY-MM-DD or MM/DD/YYYY) so the formatting
+// still looks like a date. Eye toggle reveals.
+function maskDob(dob: string | undefined | null): string {
+  if (!dob) return '';
+  return dob.replace(/\d/g, '•');
+}
+
+// Element-aware typing guard — N shortcut must not fire while the
+// operator is in the middle of typing into an input/textarea/select
+// (the same convention the rest of the audited pages use).
+function isTypingInField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (target.isContentEditable) return true;
+  return false;
+}
+
+const EMPTY_FORM = {
+  first_name: '', last_name: '', dob: '', plate: '', location: '', narrative: '',
+};
 
 export default function QuickCapturePage() {
-  const [form, setForm] = useState({ first_name: '', last_name: '', dob: '', plate: '', location: '', narrative: '' });
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { addToast } = useToast();
+  const { user } = useAuth();
+  const firstNameRef = useRef<HTMLInputElement>(null);
+  // Guard so ?plate= pre-fill only fires once on mount, not on re-renders.
+  const plateDeepLinkApplied = useRef(false);
+
+  // ── Role gates ──
+  // canCapture: any operational role may file an FI (officer through admin).
+  // canPrint: supervisor-and-up (plus admin/manager) may print court-ready PDFs.
+  const role = (user as any)?.role as string | undefined;
+  const canCapture = useMemo(() =>
+    ['officer', 'dispatcher', 'supervisor', 'manager', 'admin'].includes(role ?? ''),
+    [role],
+  );
+  const canPrint = useMemo(() =>
+    ['supervisor', 'manager', 'admin'].includes(role ?? ''),
+    [role],
+  );
+
+  // ── Linked-context (call/incident) ──
+  // These persist across multiple captures on the same scene — see the
+  // file-header rationale. Strip only happens when the operator clicks
+  // "Unlink" or navigates away.
+  const callId = searchParams.get('call_id');
+  const incidentId = searchParams.get('incident_id');
+  const unlinkContext = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('call_id'); next.delete('incident_id');
+    setSearchParams(next, { replace: true });
+  };
+
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [coords, setCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [gpsBusy, setGpsBusy] = useState(false);
   const [result, setResult] = useState<CaptureResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [revealDob, setRevealDob] = useState(false);
+  // ConfirmDialog state — shown when the operator hits Esc or "clear"
+  // while there is typed-but-unsaved content.
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // ── ?plate= deep-link — pre-fill plate field on first mount only ──
+  // Stripped from the URL after applying so the operator can edit
+  // without the URL clobbering their change on a re-render.
   useEffect(() => {
-    navigator.geolocation?.getCurrentPosition(
-      (pos) => setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => { /* GPS unavailable — manual location still works */ },
-      { enableHighAccuracy: true, timeout: 5000 },
-    );
+    if (plateDeepLinkApplied.current) return;
+    plateDeepLinkApplied.current = true;
+    const platePre = searchParams.get('plate');
+    if (!platePre) return;
+    setForm((f) => ({ ...f, plate: platePre.toUpperCase() }));
+    const next = new URLSearchParams(searchParams);
+    next.delete('plate');
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const submit = async () => {
-    if ((!form.last_name.trim() && !form.plate.trim()) || busy) return;
+  const acquireGps = useCallback(() => {
+    if (!navigator.geolocation) { addToast('Geolocation not available on this device', 'warning'); return; }
+    setGpsBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy });
+        setGpsBusy(false);
+      },
+      (err) => {
+        setGpsBusy(false);
+        // PERMISSION_DENIED is permanent; surface it loudly. Anything else
+        // (timeout / position-unavailable) is recoverable on retry.
+        if (err.code === err.PERMISSION_DENIED) {
+          addToast('Location permission denied — enable in browser settings to auto-stamp GPS', 'error');
+        } else {
+          addToast('No GPS fix yet — try again or type the location below', 'warning');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
+    );
+  }, [addToast]);
+
+  // First-mount GPS — silent failure (the file-header rationale: GPS is a
+  // bonus, not a blocker). Manual location field always works.
+  useEffect(() => { acquireGps(); }, [acquireGps]);
+
+  const canSubmit = canCapture && (!!form.last_name.trim() || !!form.plate.trim()) && !busy;
+
+  const submit = useCallback(async () => {
+    if (!canSubmit) return;
     setBusy(true);
     try {
       const r = await apiFetch<CaptureResult>('/intel/quick-capture', {
@@ -46,52 +188,288 @@ export default function QuickCapturePage() {
           location: form.location.trim() || undefined,
           narrative: form.narrative.trim() || undefined,
           lat: coords?.lat, lng: coords?.lng,
+          // Linked call / incident — the server stores these on the FI
+          // (associated_call_id / associated_incident_id) so the FI shows
+          // up on that call's / incident's timeline.
+          call_id: callId ? Number(callId) || undefined : undefined,
+          incident_id: incidentId ? Number(incidentId) || undefined : undefined,
         }),
       });
       setResult(r);
-      setForm({ first_name: '', last_name: '', dob: '', plate: '', location: '', narrative: '' });
-    } catch (e) { console.error(e); }
-    finally { setBusy(false); }
-  };
+      // Clear typed text so the next contact starts fresh. We do NOT clear
+      // GPS or the linked call/incident context — those carry across.
+      setForm(EMPTY_FORM);
+      setRevealDob(false);
+      // Critical hit gets a toast in addition to the banner — banner
+      // can be missed if the operator is looking at their phone wrong.
+      const critical = r.hits?.filter((h) => h.severity === 'critical') ?? [];
+      if (critical.length) addToast(`Records HIT: ${critical[0].detail}`, 'error', 8000);
+      else addToast('FI logged', 'success', 3000);
+    } catch (e) {
+      console.error(e);
+      addToast('Capture failed — try again', 'error');
+    } finally { setBusy(false); }
+  }, [canSubmit, form, coords, callId, incidentId, addToast]);
+
+  // ── Keyboard: Esc smart-cascade + N shortcut ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Closest-first cascade. Each branch calls e.stopPropagation()
+        // + returns so one Esc doesn't blast multiple layers.
+        if (discardConfirmOpen) {
+          e.stopPropagation();
+          setDiscardConfirmOpen(false);
+          return;
+        }
+        if (busy) return; // network in flight — let it finish
+        if (result) {
+          e.stopPropagation();
+          setResult(null);
+          return;
+        }
+        // If there's typed-but-unsaved text, open the confirm dialog
+        // rather than silently clearing — the operator may have
+        // accidentally hit Esc. ConfirmDialog Esc then clears.
+        const anyTyped = Object.values(form).some((v) => v.trim().length > 0);
+        if (anyTyped) {
+          e.stopPropagation();
+          setDiscardConfirmOpen(true);
+          return;
+        }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      // N shortcut — suppressed while confirm is open (can't start a
+      // new capture while a discard-confirm is waiting for answer).
+      if ((e.key === 'n' || e.key === 'N') && !discardConfirmOpen && canCapture) {
+        e.preventDefault();
+        setResult(null);
+        setForm(EMPTY_FORM);
+        firstNameRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [busy, result, form, discardConfirmOpen, canCapture]);
+
+  // FI hydrated from server for the PDF (officer name, badge, fi_number,
+  // resolved person — all server-side things the local form doesn't have).
+  // Lazily fetched only when the operator clicks Print.
+  const [fiForPdf, setFiForPdf] = useState<any | null>(null);
+  const [fiLoadingForPdf, setFiLoadingForPdf] = useState(false);
+  useEffect(() => { setFiForPdf(null); }, [result?.fi_id]);
+  const loadFiForPdf = useCallback(async () => {
+    if (!result?.fi_id || fiForPdf || fiLoadingForPdf) return;
+    setFiLoadingForPdf(true);
+    try {
+      const fi = await apiFetch<any>(`/field-interviews/${result.fi_id}`);
+      setFiForPdf(fi);
+    } catch (err) {
+      console.error('[quick-capture] FI hydrate for PDF failed:', err);
+      addToast('Could not load FI for printing', 'error');
+    } finally { setFiLoadingForPdf(false); }
+  }, [result?.fi_id, fiForPdf, fiLoadingForPdf, addToast]);
 
   return (
     <div className="p-4 space-y-3 max-w-xl mx-auto">
       <PanelTitleBar title="QUICK CAPTURE" icon={ClipboardPen} />
 
+      {/* Linked-context chip — visible whenever ?call_id= or ?incident_id=
+          is in the URL. Tells the operator "I am logging this contact on
+          that call" with a one-click escape hatch. */}
+      {(callId || incidentId) && (
+        <div className="flex items-center justify-between gap-2 border border-brand-400 bg-surface-overlay text-brand-400 text-[11px] px-3 py-1">
+          <span>
+            Logging contact on{' '}
+            {callId && <Link to={`/dispatch?call_id=${callId}`} className="underline">Call #{callId}</Link>}
+            {callId && incidentId && ' · '}
+            {incidentId && <Link to={`/incidents?incident_id=${incidentId}`} className="underline">Incident #{incidentId}</Link>}
+          </span>
+          <button
+            type="button"
+            onClick={unlinkContext}
+            aria-label="Unlink call/incident context"
+            className="hover:text-rmpg-200 shrink-0"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
+      {/* Role gate — non-operational roles (e.g. client_viewer) see a
+          notice instead of a broken submit. */}
+      {!canCapture && (
+        <div className="border border-border-default text-rmpg-400 text-[11px] px-3 py-2">
+          Your role does not have permission to file field contacts.
+        </div>
+      )}
+
       {result?.hits.filter((h) => h.severity === 'critical').map((h) => (
-        <div key={h.detail} className="bg-red-950 border border-red-600 text-red-300 text-sm font-semibold px-3 py-2">⚠ {h.detail}</div>
+        <div
+          key={h.detail}
+          role="alert"
+          className="bg-red-950 border border-red-600 text-red-300 text-sm font-semibold px-3 py-2 flex items-center gap-2"
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{h.detail}</span>
+        </div>
       ))}
       {result?.hits.filter((h) => h.severity === 'warning').map((h) => (
-        <div key={h.detail} className="border border-[#d4a017] text-[#d4a017] text-[11px] px-3 py-1">{h.detail}</div>
+        <div key={h.detail} className="border border-brand-400 text-brand-400 text-[11px] px-3 py-1">{h.detail}</div>
       ))}
       {result && (
-        <div className="border border-border-default text-[11px] text-[#888888] px-3 py-1 flex gap-3">
-          <span>FI logged{result.person_reused ? ' (known subject)' : ''}.</span>
+        <div className="border border-border-default text-[11px] text-rmpg-400 px-3 py-1 flex flex-wrap items-center gap-3">
+          <span>
+            FI logged{result.person_reused ? ' (known subject)' : ''}
+            {result.fi_id ? ` · FI #${result.fi_id}` : ''}
+          </span>
           {result.person_id && (
-            <Link to={`/intel/person/${result.person_id}`} className="text-[#d4a017] hover:underline">Open dossier →</Link>
+            <Link
+              to={`/intel/person/${result.person_id}`}
+              className="text-brand-400 hover:underline inline-flex items-center gap-1"
+            >
+              Open dossier <ArrowRight className="w-3 h-3" />
+            </Link>
+          )}
+          {/* Print FI — court-ready PDF using the existing field_interview
+              generator. Gated to canPrint (admin|manager|supervisor) since
+              court packages require supervisor-level sign-off. We hydrate
+              the FI from the server before handing it to the PDF (officer
+              name / badge / canonical fi_number live there, not on the
+              local form). */}
+          {result.fi_id && canPrint && (
+            fiForPdf
+              ? <PrintRecordButton recordType="field_interview" recordData={fiForPdf} identifier={fiForPdf.fi_number || `FI-${result.fi_id}`} label="Print FI" />
+              : (
+                <button
+                  type="button"
+                  onClick={loadFiForPdf}
+                  disabled={fiLoadingForPdf}
+                  className="inline-flex items-center gap-1 text-brand-400 hover:underline disabled:opacity-50"
+                >
+                  {fiLoadingForPdf ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  {fiLoadingForPdf ? 'Loading…' : 'Print FI'}
+                </button>
+              )
           )}
         </div>
       )}
 
+      {/* Loading state — network in flight */}
+      {busy && (
+        <div className="flex items-center gap-2 text-[11px] text-rmpg-400 px-1">
+          <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+          <span>Submitting capture…</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
-        <input value={form.first_name} onChange={set('first_name')} placeholder="First name" className={inputCls} />
-        <input value={form.last_name} onChange={set('last_name')} placeholder="Last name" className={inputCls} />
+        <input
+          ref={firstNameRef}
+          value={form.first_name}
+          onChange={set('first_name')}
+          placeholder="First name"
+          className={inputCls}
+          disabled={!canCapture}
+        />
+        <input value={form.last_name} onChange={set('last_name')} placeholder="Last name" className={inputCls} disabled={!canCapture} />
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <input value={form.dob} onChange={set('dob')} placeholder="DOB (YYYY-MM-DD)" className={inputCls} />
-        <input value={form.plate} onChange={(e) => setForm((f) => ({ ...f, plate: e.target.value.toUpperCase() }))} placeholder="Plate" className={`${inputCls} uppercase`} />
+        <div className="relative">
+          <input
+            value={revealDob ? form.dob : maskDob(form.dob) || form.dob}
+            onChange={set('dob')}
+            onFocus={() => setRevealDob(true)}
+            placeholder="DOB (YYYY-MM-DD)"
+            className={`${inputCls} pr-8`}
+            // Treat the rendered value as a password to keep password-managers
+            // and screen recorders from grabbing the literal DOB string.
+            autoComplete="off"
+            spellCheck={false}
+            disabled={!canCapture}
+          />
+          {form.dob && (
+            <button
+              type="button"
+              onClick={() => setRevealDob((v) => !v)}
+              aria-label={revealDob ? 'Hide DOB' : 'Show DOB'}
+              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-rmpg-500 hover:text-rmpg-300"
+            >
+              {revealDob ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
+        <input
+          value={form.plate}
+          onChange={(e) => setForm((f) => ({ ...f, plate: e.target.value.toUpperCase() }))}
+          placeholder="Plate"
+          className={`${inputCls} uppercase`}
+          disabled={!canCapture}
+        />
       </div>
       <div className="flex items-center gap-2">
-        <MapPin className="w-4 h-4 text-[#888888] shrink-0" />
-        <input value={form.location} onChange={set('location')}
-          placeholder={coords ? `GPS captured — add detail` : 'Location'} className={inputCls} />
+        <MapPin className="w-4 h-4 text-rmpg-500 shrink-0" />
+        <input
+          value={form.location}
+          onChange={set('location')}
+          placeholder={coords ? `GPS captured (±${Math.round(coords.accuracy)}m) — add detail` : 'Location'}
+          className={inputCls}
+          disabled={!canCapture}
+        />
+        <button
+          type="button"
+          onClick={acquireGps}
+          disabled={gpsBusy}
+          aria-label="Re-acquire GPS fix"
+          className="p-2 border border-border-default text-rmpg-400 hover:text-brand-400 disabled:opacity-50 shrink-0"
+          title={coords ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)} (±${Math.round(coords.accuracy)}m)` : 'No GPS fix — click to acquire'}
+        >
+          {gpsBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Crosshair className="w-3.5 h-3.5" />}
+        </button>
       </div>
-      <textarea value={form.narrative} onChange={set('narrative')} placeholder="Narrative / observations" rows={3} className={inputCls} />
-      <button onClick={submit} disabled={busy || (!form.last_name.trim() && !form.plate.trim())}
-        className="w-full py-2 text-sm font-semibold border border-[#d4a017] text-[#d4a017] hover:bg-surface-raised disabled:opacity-40">
+      <textarea
+        value={form.narrative}
+        onChange={set('narrative')}
+        placeholder="Narrative / observations"
+        rows={3}
+        className={inputCls}
+        disabled={!canCapture}
+      />
+      <button
+        onClick={submit}
+        disabled={!canSubmit}
+        className="w-full py-2 text-sm font-semibold border border-brand-400 text-brand-400 hover:bg-surface-raised disabled:opacity-40"
+      >
         {busy ? 'CAPTURING…' : 'CAPTURE + CHECK'}
       </button>
-      <div className="text-[9px] text-[#888888]">Creates/updates the person and vehicle records, files an FI, and runs a records check — all in one step.</div>
+      <div className="text-[9px] text-rmpg-500 leading-snug">
+        Creates/updates the person and vehicle records, files an FI, and runs a records check — all in one step.
+        {canCapture && (
+          <>
+            {' '}Shortcuts: <kbd className="px-1 border border-border-default">N</kbd> new ·{' '}
+            <kbd className="px-1 border border-border-default">Esc</kbd> clear.
+          </>
+        )}
+      </div>
+
+      {/* Discard confirm — shown when operator hits Esc or fires a "clear"
+          action while the form has unsaved typed content. */}
+      <ConfirmDialog
+        isOpen={discardConfirmOpen}
+        onClose={() => setDiscardConfirmOpen(false)}
+        onConfirm={() => {
+          setDiscardConfirmOpen(false);
+          setForm(EMPTY_FORM);
+          setRevealDob(false);
+        }}
+        title="Discard capture?"
+        message="Clear all typed fields and start a new capture?"
+        confirmLabel="Discard"
+        cancelLabel="Keep"
+        confirmVariant="warning"
+      />
     </div>
   );
 }

@@ -19,6 +19,7 @@ import { applyRmpgBasemap, type BasemapVariant } from '../utils/mapboxBasemap';
 import type { NavRoutePoint } from '../types';
 import {
   applyNavTheme, resolveNavTheme, navThemeStyleUrl, trailFilter, speedAdaptiveZoom,
+  navOverlayPalette, applyNavOverlayPalette,
   type NavMapTheme, type NavMapOrientation, type TrailPoint,
 } from './navMapHelpers';
 
@@ -86,6 +87,13 @@ export interface NavMapViewProps {
   maxTrailMinutes?: number | null;
   /** #99 Low-power mode: skip the 3D inset map + snap (0ms) the main camera. */
   lowPower?: boolean;
+  /**
+   * Allow callers to suppress the 3D look-ahead inset map even outside
+   * low-power (e.g. Forensic Playback views where multiple NavMapView
+   * instances render concurrently and the 16-WebGL-context browser cap
+   * matters). Default true preserves existing behavior.
+   */
+  showInset?: boolean;
   /** #100 Speed-aware adaptive zoom for the follow-me camera (default off). */
   adaptiveZoom?: boolean;
   /** #100 Current speed in m/s (drives adaptiveZoom). */
@@ -97,7 +105,10 @@ export default function NavMapView({
   initialStyle = 'dark', onDropPin, pins = [], extraPath,
   theme = 'night', mapOrientation = 'heading-up', heading = null,
   maxTrailMinutes = null, lowPower = false, adaptiveZoom = false, speed = null,
+  showInset = true,
 }: NavMapViewProps) {
+  // Combined gate: either signal disables the inset map and its WebGL context.
+  const insetEnabled = !lowPower && showInset;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -258,6 +269,16 @@ export default function NavMapView({
           if (style === 'dark') {
             try { applyNavTheme(map as any, resolvedTheme); } catch { /* ignore */ }
           }
+          // Overlay palette swap — gold reads on dark, deeper amber on day.
+          // The layer paint values created above use the night gold by default;
+          // this re-skins them when the resolved theme is 'day'.
+          try {
+            applyNavOverlayPalette(map as any, navOverlayPalette(resolvedTheme), {
+              route: TRAIL_LAYER_ID,
+              positionHalo: POSITION_HALO_LAYER_ID,
+              position: POSITION_LAYER_ID,
+            });
+          } catch { /* ignore */ }
 
           if (cancelled) {
             map.remove();
@@ -334,6 +355,15 @@ export default function NavMapView({
         if (next === 'dark') {
           try { applyNavTheme(m as any, resolvedTheme); } catch { /* ignore */ }
         }
+        // Re-apply overlay palette after the style swap (overlay layers were
+        // dropped + re-added with default gold paint; day mode needs amber).
+        try {
+          applyNavOverlayPalette(m as any, navOverlayPalette(resolvedTheme), {
+            route: TRAIL_LAYER_ID,
+            positionHalo: POSITION_HALO_LAYER_ID,
+            position: POSITION_LAYER_ID,
+          });
+        } catch { /* ignore */ }
         m.off('styledata', onStyledata);
       };
       mapRef.current.on('styledata', onStyledata);
@@ -383,6 +413,14 @@ export default function NavMapView({
           mm.addLayer({ id: PIN_LAYER_ID, type: 'circle', source: PIN_SOURCE_ID, paint: { 'circle-radius': 7, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#000', 'circle-stroke-width': 2 } });
         }
         try { applyNavTheme(mm as any, resolvedTheme); } catch { /* ignore */ }
+        // Re-apply overlay palette after the theme-change style swap.
+        try {
+          applyNavOverlayPalette(mm as any, navOverlayPalette(resolvedTheme), {
+            route: TRAIL_LAYER_ID,
+            positionHalo: POSITION_HALO_LAYER_ID,
+            position: POSITION_LAYER_ID,
+          });
+        } catch { /* ignore */ }
         mm.off('styledata', onStyledata);
       };
       m.on('styledata', onStyledata);
@@ -393,11 +431,13 @@ export default function NavMapView({
   }, [mapReady, resolvedTheme, style]);
 
   // ── #99 Inset 3D look-ahead map ────────────────────────────
-  // A small pitched chase-cam in the corner. Skipped entirely in low-power
-  // mode so weak GPUs aren't asked to render a second 3D context.
+  // A small pitched chase-cam in the corner. Skipped entirely when the inset
+  // is disabled (low-power OR showInset=false) so weak GPUs aren't asked to
+  // render a second WebGL context — browsers cap at ~16 concurrent contexts
+  // and stacking multiple NavMapView instances in a list previously hit it.
   useEffect(() => {
-    if (lowPower) {
-      // Tear down any existing inset when toggled into low-power.
+    if (!insetEnabled) {
+      // Tear down any existing inset when toggled off.
       if (insetMapRef.current) {
         try { insetMapRef.current.remove(); } catch { /* ignore */ }
         insetMapRef.current = null;
@@ -448,11 +488,11 @@ export default function NavMapView({
       setInsetReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, lowPower]);
+  }, [mapReady, insetEnabled]);
 
   // #99 Drive the inset camera from live position/heading (follows the main).
   useEffect(() => {
-    if (lowPower || !insetReady || !insetMapRef.current || !position) return;
+    if (!insetEnabled || !insetReady || !insetMapRef.current || !position) return;
     const inset = insetMapRef.current;
     const bearing = (mapOrientation === 'heading-up' && typeof heading === 'number' && Number.isFinite(heading))
       ? heading
@@ -654,7 +694,7 @@ export default function NavMapView({
       <div ref={mapContainerRef} className="absolute inset-0" />
 
       {/* #99 3D look-ahead inset (hidden in low-power mode). */}
-      {!lowPower && !error && (
+      {insetEnabled && !error && (
         <div
           className="absolute rounded-sm border overflow-hidden"
           style={{

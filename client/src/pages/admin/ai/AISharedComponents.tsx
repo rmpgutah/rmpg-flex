@@ -127,7 +127,7 @@ export function KeyInput({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-[10px] text-rmpg-500 w-20 shrink-0">{label}</label>
+      <label htmlFor="ff-aisharedcomponents-0" className="text-[10px] text-rmpg-500 w-20 shrink-0">{label}</label>
       <div className="relative flex-1">
         <input id="ff-aisharedcomponents-0"
           type={show ? 'text' : 'password'}
@@ -151,7 +151,7 @@ export function KeyInput({
 export function ModelInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-[10px] text-rmpg-500 w-20 shrink-0">Model</label>
+      <label htmlFor="ff-aisharedcomponents-1" className="text-[10px] text-rmpg-500 w-20 shrink-0">Model</label>
       <input id="ff-aisharedcomponents-1"
         type="text"
         value={value}

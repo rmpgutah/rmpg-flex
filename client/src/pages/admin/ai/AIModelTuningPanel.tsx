@@ -313,7 +313,7 @@ function Slider({ label, description, value, min, max, step, onChange }: {
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
-        <label className="text-rmpg-300">{label}</label>
+        <label htmlFor="ff-aimodeltuningpanel-2" className="text-rmpg-300">{label}</label>
         <span className="text-rmpg-400 font-mono">{value}</span>
       </div>
       <input id="ff-aimodeltuningpanel-2" type="range" min={min} max={max} step={step} value={value}

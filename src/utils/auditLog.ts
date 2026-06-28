@@ -15,6 +15,7 @@
 //    (waitUntil) — audit must NEVER break the request it describes. This matches
 //    the best-effort stance every inline site already had.
 // ============================================================
+import { log } from './logger';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, execute } from './db';
@@ -36,10 +37,29 @@ export interface AuditEntry {
   createdAt?: string | null;
 }
 
-/** Write an audit_log row AND mirror it to flex_events. Never throws. */
-export async function recordAudit(c: Context<Env>, e: AuditEntry): Promise<void> {
-  const db = getDb(c.env);
-  const actorId = e.actorId ?? (c.get('userId') as number | undefined) ?? null;
+/**
+ * Context-free core. Writes the audit_log row AND mirrors it to flex_events,
+ * given ONLY `env` (the Workers Bindings) — no Hono context required. Use this
+ * from non-request callers (scheduled() handlers, Durable Object alarms) that
+ * can't synthesize a Hono context. Route-side callers should keep using
+ * recordAudit(c, e) below — it derives actorId + execution ctx from `c` and
+ * delegates here.
+ *
+ * Never throws. The DB write is try/catch'd and the analytics emit is
+ * fire-and-forget — best-effort; audit must NEVER break the work it describes.
+ *
+ * The optional `ctx` parameter mirrors Hono's `c.executionCtx`, used only to
+ * keep the isolate alive across the analytics emit's microtask. When absent
+ * (cron, alarm, test harness) the analytics send still runs un-awaited — see
+ * emitAnalytics() for the matching guard.
+ */
+export async function recordAuditCore(
+  env: Env['Bindings'],
+  e: AuditEntry,
+  ctx?: { waitUntil(p: Promise<unknown>): void },
+): Promise<void> {
+  const db = getDb(env);
+  const actorId = e.actorId ?? null;
   const entityId = e.entityId ?? null;
   const createdAt = e.createdAt ?? null;
   const details = e.details == null
@@ -54,12 +74,31 @@ export async function recordAudit(c: Context<Env>, e: AuditEntry): Promise<void>
       actorId, e.action, e.entityType, entityId, details, createdAt,
     );
   } catch (err) {
-    console.warn('[audit] insert failed:', err instanceof Error ? err.message : String(err));
+    log.warn('insert failed', { err: err instanceof Error ? err.message : String(err) });
   }
-  emitAnalytics(c, c.env.EVENTS, [flexEvent({
+  // emitAnalytics reads executionCtx lazily and handles the missing-ctx case
+  // (un-awaited send). Pass a thin holder so this works identically with or
+  // without a real Hono context.
+  emitAnalytics({ executionCtx: ctx }, env.EVENTS, [flexEvent({
     event_type: 'audit', occurred_at: createdAt ?? new Date().toISOString(),
     actor_id: actorId, entity_type: e.entityType, entity_id: entityId,
     label: e.action, category: 'audit',
     payload: details ? { details: details.slice(0, 2000) } : null,
   })]);
+}
+
+/** Write an audit_log row AND mirror it to flex_events. Never throws.
+ *
+ *  Route-side shim that derives actorId from `c.get('userId')` and the
+ *  execution context from `c.executionCtx`, then delegates to
+ *  recordAuditCore. Public signature is preserved — every existing call site
+ *  in the codebase keeps working unchanged. */
+export async function recordAudit(c: Context<Env>, e: AuditEntry): Promise<void> {
+  const actorId = e.actorId ?? (c.get('userId') as number | undefined) ?? null;
+  // `c.executionCtx` is a Hono getter that THROWS when there is none (DO
+  // alarms, vitest harness paths that synthesize a Context). Guard the access
+  // so we degrade to "no waitUntil" — emitAnalytics already tolerates this.
+  let ctx: { waitUntil(p: Promise<unknown>): void } | undefined;
+  try { ctx = c.executionCtx; } catch { ctx = undefined; }
+  await recordAuditCore(c.env, { ...e, actorId }, ctx);
 }

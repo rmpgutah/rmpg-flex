@@ -16,6 +16,14 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+interface CameraOnlineState {
+  cpg_device_id: string;
+  cpg_display_name: string | null;
+  ignition_state: string | null;
+  last_synced_at: string | null;
+  camera_offline: boolean;
+}
+
 interface CpgStatus {
   configured: boolean;
   enabled: boolean;
@@ -25,6 +33,14 @@ interface CpgStatus {
   media_sync_enabled?: boolean;
   media_poll_interval_seconds?: number;
   last_media_sync?: string | null;
+  any_camera_offline?: boolean;
+  cameras?: CameraOnlineState[];
+}
+
+interface TripClip {
+  streamUrl: string;
+  from_ts: number;
+  to_ts: number;
 }
 
 interface FullDriveTrip {
@@ -39,7 +55,6 @@ interface FullDriveJob {
   created_at: string; trips: FullDriveTrip[];
 }
 
-interface TripClip { seq: number; streamUrl: string; from_ts: number; to_ts: number; }
 
 interface MediaSyncStatus {
   media_sync_enabled: boolean;
@@ -118,6 +133,7 @@ interface DashcamEvent {
   officer_name: string | null;
 }
 
+
 export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }: Props) {
   // Status
   const [status, setStatus] = useState<CpgStatus | null>(null);
@@ -171,9 +187,6 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [fullDriveError, setFullDriveError] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
   const [jobStatus, setJobStatus] = useState<FullDriveJob | null>(null);
-  const [playingTrip, setPlayingTrip] = useState<{ requestId: number; label: string } | null>(null);
-  const [tripClips, setTripClips] = useState<TripClip[]>([]);
-  const [currentClipIdx, setCurrentClipIdx] = useState(0);
   const [tickNow, setTickNow] = useState(Date.now());
 
   // ── Right-click context menu ──
@@ -591,19 +604,6 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     return () => clearInterval(t);
   }, [activeJobId, jobStatus?.status]);
 
-  // ── Load trip clips for playback ──
-  const handlePlayTrip = async (requestId: number, label: string) => {
-    setPlayingTrip({ requestId, label });
-    setCurrentClipIdx(0);
-    setTripClips([]);
-    try {
-      const r = await apiFetch<{ clips: TripClip[] }>(`/clearpathgps/full-drive/trips/${requestId}/clips`);
-      setTripClips(r.clips ?? []);
-    } catch (err) {
-      setFullDriveError(err instanceof Error ? err.message : 'Failed to load clips');
-    }
-  };
-
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -690,7 +690,43 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         )}
       </div>
 
+      {/* Camera offline banner — surfaces why on-demand video requests are
+          sitting at "Waiting for Camera…" upstream. Dashcam can only deliver
+          mp4s when the LTE modem is awake (ignition on). While the vehicle is
+          parked the cron poller intentionally pauses these chunks instead of
+          burning their attempt counter, so they fulfill the next time the
+          vehicle drives. (Auto-uploaded events — FCW, hard brake, lane
+          departure — are NOT affected; the camera pushes those in real time.) */}
+      {status?.configured && status.any_camera_offline && (status.cameras?.length ?? 0) > 0 && (
+        <div className="panel-beveled p-3 bg-amber-950/30 border-l-2 border-amber-500/70 space-y-2">
+          <div className="flex items-center gap-2 text-[11px] font-bold text-amber-300 uppercase tracking-wider">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            Camera offline — pending video requests are paused
+          </div>
+          <div className="text-[10px] text-amber-200/80 leading-snug">
+            ClearPath only delivers on-demand clips when the dashcam is online
+            (vehicle ignition on, LTE modem awake). Queued requests stay in
+            "Waiting for Camera…" upstream and will resume automatically the
+            next time the vehicle drives. Auto-events (FCW, hard brake, lane
+            departure) are unaffected — those upload in real time.
+          </div>
+          <div className="text-[10px] text-amber-200/90 space-y-0.5">
+            {(status.cameras ?? []).filter((c) => c.camera_offline).map((c) => (
+              <div key={c.cpg_device_id} className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span className="font-medium">{c.cpg_display_name || c.cpg_device_id}</span>
+                <span className="text-amber-200/60">
+                  · ignition {c.ignition_state || 'unknown'}
+                  {c.last_synced_at ? ` · last GPS ${safeTimeStr(c.last_synced_at)}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ═══ Section 1: Credentials ═══ */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
@@ -699,13 +735,15 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* Refresh Token */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Refresh Token</label>
+          <label htmlFor="ff-adminclearpathgpstab-0" className="text-[10px] text-rmpg-400">Refresh Token</label>
           <div className="relative">
             <input id="ff-adminclearpathgpstab-0"
               type={showSecret ? 'text' : 'password'}
               value={refreshToken}
               onChange={(e) => setRefreshToken(e.target.value)}
               placeholder={status?.configured ? 'Enter new Refresh Token to replace...' : 'ClearPath session refresh token...'}
+              autoComplete="new-password"
+              spellCheck={false}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
             <button type="button"
@@ -719,7 +757,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* User ID */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">User ID <span className="text-rmpg-600">(optional)</span></label>
+          <label htmlFor="ff-adminclearpathgpstab-1" className="text-[10px] text-rmpg-400">User ID <span className="text-rmpg-600">(optional)</span></label>
           <input id="ff-adminclearpathgpstab-1"
             type="text"
             value={userId}
@@ -731,7 +769,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* Account ID (optional — derived server-side; for display/scoping) */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Account ID <span className="text-rmpg-600">(optional)</span></label>
+          <label htmlFor="ff-adminclearpathgpstab-2" className="text-[10px] text-rmpg-400">Account ID <span className="text-rmpg-600">(optional)</span></label>
           <input id="ff-adminclearpathgpstab-2"
             type="text"
             value={accountId}
@@ -818,6 +856,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+      </form>
 
       {/* ═══ Section 2: Enable/Disable + Poll Interval ═══ */}
       {status?.configured && (
@@ -1317,14 +1356,13 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                   : 0;
                 const elapsed = tickNow - Date.parse(jobStatus.created_at);
                 const rate = elapsed > 0 && jobStatus.clips_ready > 0
-                  ? jobStatus.clips_ready / elapsed  // clips per ms
+                  ? jobStatus.clips_ready / elapsed
                   : 0;
                 const remaining = jobStatus.clips_requested - jobStatus.clips_ready;
-                const etaMs = rate > 0 ? remaining / rate : 0;
                 const etaStr = (() => {
                   if (jobStatus.status === 'done') return 'Complete';
                   if (!rate || remaining <= 0) return 'Calculating…';
-                  const s = Math.round(etaMs / 1000);
+                  const s = Math.round((remaining / rate) / 1000);
                   if (s < 60) return `~${s}s remaining`;
                   const m = Math.floor(s / 60);
                   const rs = s % 60;
@@ -1344,7 +1382,6 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                         <XIcon className="w-3 h-3" />
                       </button>
                     </div>
-                    {/* Big total progress bar */}
                     <div className="h-2.5 bg-surface-sunken rounded-full overflow-hidden">
                       <div className="h-full bg-purple-500 transition-all duration-1000"
                         style={{ width: `${totalPct}%` }} />
@@ -1368,11 +1405,9 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                     const durationMin = Math.round((trip.to_ts - trip.from_ts) / 60_000);
                     const tripRemaining = trip.chunk_count - settled;
                     const tripEta = (() => {
-                      if (ready) return null;
-                      if (!rate || tripRemaining <= 0) return null;
+                      if (ready || !rate || tripRemaining <= 0) return null;
                       const s = Math.round((tripRemaining / rate) / 1000);
-                      if (s < 60) return `~${s}s`;
-                      return `~${Math.ceil(s / 60)}m`;
+                      return s < 60 ? `~${s}s` : `~${Math.ceil(s / 60)}m`;
                     })();
                     return (
                       <div key={trip.id} className="border border-purple-700/20 bg-purple-950/30 p-2 space-y-1">
@@ -1390,13 +1425,12 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                           <div className="flex items-center gap-1.5 shrink-0">
                             <span className="text-[9px] font-bold text-purple-400 w-7 text-right">{pct}%</span>
                             {ready && trip.footage_request_id && (
-                              <button type="button"
-                                onClick={() => handlePlayTrip(trip.footage_request_id!, trip.label)}
+                              <a href={`/flexcam/${trip.footage_request_id}`} target="_blank" rel="noreferrer"
                                 className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
                                            bg-green-800/60 hover:bg-green-700/60 border border-green-600/40 text-green-300
                                            transition-colors">
                                 <Play className="w-2.5 h-2.5" /> Play
-                              </button>
+                              </a>
                             )}
                           </div>
                         </div>
@@ -1417,57 +1451,6 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 );
               })()}
 
-              {/* Trip video player */}
-              {playingTrip && (
-                <div className="border border-green-700/30 bg-green-950/20 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-bold text-green-300 flex items-center gap-1.5">
-                      <Play className="w-3 h-3" /> {playingTrip.label}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] text-rmpg-500">
-                        Clip {currentClipIdx + 1} / {tripClips.length}
-                      </span>
-                      <button type="button" onClick={() => setPlayingTrip(null)}
-                        className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
-                        <XIcon className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                  {tripClips.length > 0 ? (
-                    <>
-                      <video
-                        key={tripClips[currentClipIdx]?.streamUrl}
-                        src={tripClips[currentClipIdx]?.streamUrl}
-                        className="w-full max-h-48 bg-black"
-                        controls autoPlay
-                        onEnded={() => {
-                          if (currentClipIdx < tripClips.length - 1) setCurrentClipIdx((i) => i + 1);
-                        }}
-                      />
-                      <div className="flex items-center gap-2 justify-center">
-                        <button type="button" disabled={currentClipIdx === 0}
-                          onClick={() => setCurrentClipIdx((i) => Math.max(0, i - 1))}
-                          className="text-[9px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-40 transition-colors">
-                          ← Prev
-                        </button>
-                        <span className="text-[9px] text-rmpg-500">
-                          {new Date(tripClips[currentClipIdx]?.from_ts ?? 0).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })}
-                        </span>
-                        <button type="button" disabled={currentClipIdx >= tripClips.length - 1}
-                          onClick={() => setCurrentClipIdx((i) => Math.min(tripClips.length - 1, i + 1))}
-                          className="text-[9px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-40 transition-colors">
-                          Next <ChevronRight className="inline w-2.5 h-2.5" />
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex items-center justify-center h-12">
-                      <Loader2 className="w-4 h-4 animate-spin text-green-500" />
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
 

@@ -3,11 +3,13 @@
 // decide() engine, applies its intents to D1 (unit_trips + telemetry rollups via
 // accumulate), and broadcasts trip_update. Honors the engine's CALLER WRITE
 // CONTRACT. Stateless per call — all accumulator continuity lives in row columns.
+import { log } from './logger';
 import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
 import { decide, type ActiveTrip, type TripEvent, type EngineCtx } from './tripEngine';
 import { accumulate, type TripAgg, type IncomingFix } from './tripTelemetry';
-import { setFleetOdometer, accrueFleetOdometer } from './fleetOdometer';
+import { setFleetOdometer, accrueFleetOdometer, vehicleOdometerForUnit } from './fleetOdometer';
+import { getSuggestedMileage, deriveEndMileage } from './mileageAnchor';
 
 type DB = D1Database;
 const iso = (epochMs: number) => new Date(epochMs).toISOString().replace('T', ' ').slice(0, 19);
@@ -58,18 +60,30 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
     const durS = c ? Math.max(0, Math.round((d.close.endTs - (epoch(c.start_time) ?? d.close.endTs)) / 1000)) : null;
     const avg = c && c.fix_count > 0 ? c.speed_sum / c.fix_count : null;
 
-    // Noise discard: a PATROL trip that accumulated <50m AND <180s is detector
-    // noise (idle-close right after a momentary speed spike, sweep-close on a
-    // single-fix trip). Delete it instead of closing — that's what produced
-    // the "0.0 mi · 0 m" rows that flooded the TRIPS drawer. CALL_RESPONSE
-    // trips are NEVER discarded; a 0-mile dispatch is real audit data.
-    // Idle-timeout / stale closures get checked too because those reasons can
-    // fire on a freshly-opened trip that never accumulated.
+    // Noise discard: a PATROL trip that accumulated < HALF_MILE_METERS is
+    // not real travel for audit / billing purposes — it's the parking-lot
+    // shuffle, an officer pulling forward 50ft between buildings, a single-
+    // fix sweep close, or a 4-hour parked-engine session that crossed the
+    // patrol detector's accel threshold once. Below 0.5 mi the GPS jitter
+    // budget can account for the entire "distance" with no actual travel.
+    //
+    // CALL_RESPONSE trips are NEVER discarded; a 0-mile dispatch is real
+    // audit data. Idle-timeout / stale closures get checked too because
+    // those reasons can fire on a freshly-opened trip that never moved.
+    //
+    // History of the threshold:
+    //   v1 (pre-2026-06-21): <50m AND <180s — let parked-engine 4-hour
+    //     sessions through as "0.0 mi" rows that cluttered the chain.
+    //   v2 (#1465): distance_m <= 0 OR (<50m AND <180s) — caught the
+    //     literal-zero case but missed 0.1-mi/0.3-mi micro-shuffles.
+    //   v3 (this change): distance_m <= HALF_MILE_METERS, unconditional
+    //     on duration. Operator request after seeing both classes of
+    //     noise side-by-side on the live Mileage Audit chain.
+    const HALF_MILE_METERS = 805; // 0.5 mi * 1609.344 / 1000, rounded
     const isNoise =
       c &&
       c.trip_type === 'patrol' &&
-      (c.distance_m == null || c.distance_m < 50) &&
-      (durS == null || durS < 180);
+      (c.distance_m == null || c.distance_m <= HALF_MILE_METERS);
 
     if (isNoise) {
       await execute(db, "DELETE FROM unit_trips WHERE id = ? AND status = 'active'", d.close.tripId);
@@ -78,19 +92,42 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
       // missing trip self-heals on the next refresh — emitting a 'closed'
       // would mislead the client into rendering the ghost row.
     } else {
-      const setMileage = args.endMileage != null && Number.isFinite(args.endMileage);
+      // Auto-stamp end_mileage on patrol trips whose caller didn't pass one.
+      // CFS routes hand the engine a real odometer (calls.ts on 'enroute');
+      // patrol-detected trips never did — so every PATROL row showed "—" in
+      // the trip log. Derive end = start + distance_m/1609.34 when the trip
+      // already has a stamped start_mileage and the distance is sane (the
+      // outlier guard rejects >75mi single-trip distances so one bad GPS run
+      // can't poison the anchor for the rest of the shift).
+      let endMileage: number | null = args.endMileage != null && Number.isFinite(args.endMileage)
+        ? (args.endMileage as number) : null;
+      let endMileageDerived = false;
+      if (endMileage == null && c?.trip_type === 'patrol') {
+        const startMileage = await queryFirst<{ start_mileage: number | null }>(
+          db, 'SELECT start_mileage FROM unit_trips WHERE id = ?', d.close.tripId);
+        const derived = deriveEndMileage(startMileage?.start_mileage ?? null, c.distance_m);
+        if (derived) { endMileage = derived.endMileage; endMileageDerived = true; }
+        else if (startMileage?.start_mileage != null && c.distance_m != null && c.distance_m > 0) {
+          console.warn('[tripStore] patrol trip', d.close.tripId, 'rejected end_mileage auto-stamp',
+            'distance_m=', c.distance_m, '(>75mi outlier guard)');
+        }
+      }
+      const setMileage = endMileage != null;
       await execute(db,
         `UPDATE unit_trips SET status='closed', end_time=?, end_lat=?, end_lng=?, close_reason=?,
            duration_s=?, avg_speed=?${setMileage ? ', end_mileage=?' : ''}, updated_at=datetime('now')
          WHERE id=? AND status='active'`,
         iso(d.close.endTs), d.close.endLat, d.close.endLng, d.close.reason, durS, avg,
-        ...(setMileage ? [args.endMileage] : []), d.close.tripId);
+        ...(setMileage ? [endMileage] : []), d.close.tripId);
       // Roll the trip's GPS-measured distance onto the fleet odometer. An
       // explicit end_mileage (a real odometer reading) is authoritative and
-      // re-anchors instead of accruing — see fleetOdometer.ts semantics.
-      if (setMileage) await setFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, args.endMileage);
+      // re-anchors instead of accruing — see fleetOdometer.ts semantics. A
+      // derived end_mileage is also authoritative for the anchor: it's
+      // start_mileage + GPS distance, the same math accrueFleetOdometer does.
+      if (setMileage) await setFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, endMileage);
       else await accrueFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, c?.distance_m ?? null);
       await broadcastTrip(env, db, d.close.tripId, 'closed');
+      void endMileageDerived; // reserved for future audit annotation
 
       // FlexCam: auto-capture footage on trip close. With flexcam_full_drive ON,
       // capture EVERY camera-mapped trip (the full drive, road camera); when OFF,
@@ -126,6 +163,30 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
   }
 
   if (d.open) {
+    // Pull a suggested start_mileage when the caller didn't pass one. CFS
+    // routes always pass the call's starting_mileage (snapshot of the live
+    // fleet_vehicles.current_mileage at enroute); patrol-detected trips have
+    // nothing to pass, so the column went NULL and PATROL rows showed "—".
+    //
+    // Source order matters here. fleet_vehicles.current_mileage is the LIVE
+    // running odometer — both calls.ts (via setFleetOdometer) and our own
+    // d.close branch keep it up to date in real time. mileage_anchor, by
+    // contrast, is only ever written by admin /mileage/fix actions, so it
+    // freezes between corrections. The first cut of this code pulled from
+    // the anchor and produced PATROL rows ~60 mi behind CFS rows in the
+    // trip log (PR #1464 → bug observed on prod). Read fleet_vehicles first,
+    // exactly like calls.ts does, and fall back to the anchor only when the
+    // unit has no assigned vehicle. Both paths now share one source of
+    // truth, so the interleaved chain stays continuous.
+    let startMileage: number | null = args.startMileage != null && Number.isFinite(args.startMileage)
+      ? (args.startMileage as number) : null;
+    if (startMileage == null && d.open.type === 'patrol') {
+      startMileage = await vehicleOdometerForUnit(db, unitId);
+      if (startMileage == null) {
+        const suggestion = await getSuggestedMileage(db, args.officerId ?? null, unitId);
+        if (suggestion) startMileage = suggestion.suggested_mileage;
+      }
+    }
     const res = await execute(db,
       `INSERT INTO unit_trips (unit_id, officer_id, vehicle_id, trip_type, status, call_id, call_number, call_type,
          prev_trip_id, start_time, start_lat, start_lng, start_mileage,
@@ -134,7 +195,7 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
       unitId, args.officerId ?? null, args.vehicleId ?? null, d.open.type,
       d.open.callId ?? null, d.open.callNumber ?? null, d.open.callType ?? null,
       d.open.prevTripId ?? null, iso(d.open.startTs), d.open.startLat, d.open.startLng,
-      args.startMileage ?? null, d.open.startLat, d.open.startLng, iso(d.open.startTs), iso(d.open.startTs),
+      startMileage, d.open.startLat, d.open.startLng, iso(d.open.startTs), iso(d.open.startTs),
       d.open.startLat, d.open.startLng);
     const newId = res.meta?.last_row_id as number | undefined;
     if (newId) await broadcastTrip(env, db, newId, 'opened');

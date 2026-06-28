@@ -154,8 +154,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/code-enforcement': 'Code Enforcement',
   '/court': 'Court Tracker',
   '/dar': 'Daily Activity Reports',
-  '/offender-registry': 'Offender Registry',
-  '/sex-offender-registry': 'Sex Offender Registry',
+  // NSOPW is the canonical SOR surface; old paths redirect (see App.tsx).
+  '/nsopw': 'Sex Offender Registry',
   '/reports': 'Reports',
   '/forensic-lab': 'Forensic Lab',
   '/audit': 'Audit Log',
@@ -251,7 +251,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
     { path: '/colorado-doc', icon: UserCheck, label: 'Colorado DOC Search' },
-    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
   ]},
   { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
@@ -281,8 +281,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/court-records', icon: Gavel, label: 'Court Records' },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
     { path: '/serve', icon: FileSignature, label: 'Process Server' },
     { path: '/serve-intake', icon: FileText, label: 'Serve Intake' },
     { path: '/use-of-force', icon: Shield, label: 'Use of Force' },
@@ -944,7 +943,7 @@ export default function Layout() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">First Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-0" className="field-label">First Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-0"
                   type="text"
                   value={setupFirstName}
@@ -955,7 +954,7 @@ export default function Layout() {
                 />
               </div>
               <div>
-                <label className="field-label">Last Name <span className="text-red-500">*</span></label>
+                <label htmlFor="ff-layout-1" className="field-label">Last Name <span className="text-red-500">*</span></label>
                 <input id="ff-layout-1"
                   type="text"
                   value={setupLastName}
@@ -1619,7 +1618,7 @@ export default function Layout() {
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main
           id="main-content"
-          className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
+          className="spm-page flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
           key={location.pathname}
           style={{ background: 'var(--surface-sunken)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
           // Persist scroll per-path so SW-update reloads (and any other full

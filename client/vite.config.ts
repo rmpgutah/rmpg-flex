@@ -25,7 +25,7 @@ export default defineConfig({
         try {
           const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD']).toString().trim();
           let content = readFileSync(distSw, 'utf-8');
-          content = content.replace("'rmpg-flex-BUILD'", `'rmpg-flex-${sha}'`);
+          content = content.replaceAll("'rmpg-flex-BUILD'", `'rmpg-flex-${sha}'`);
           writeFileSync(distSw, content, 'utf-8');
         } catch {
           // dist/sw.js absent during watch mode or if build failed — no-op
@@ -83,10 +83,12 @@ export default defineConfig({
           if (id.includes('node_modules/recharts') || /node_modules\/d3-[a-z]+\//.test(id)) {
             return 'vendor-charts';
           }
-          // Graph viz — connections analyst tool
-          if (id.includes('node_modules/force-graph') || id.includes('node_modules/react-force-graph')) {
-            return 'vendor-graph';
-          }
+          // (removed: vendor-graph chunk for react-force-graph-2d — the only
+          // consumer was the dead client/src/pages/ForensicsPage.tsx, which
+          // was an older Canvas-based reimplementation of the live d3-force
+          // ConnectionsPage. The `/forensics` route already redirects to
+          // `/connections`. Dropping the chunk + the dependency shrinks the
+          // production bundle by ~120KB.)
           // Barcode + QR — citation/warrant printouts only
           if (id.includes('node_modules/bwip-js') || id.includes('node_modules/jsbarcode') || id.includes('node_modules/qrcode')) {
             return 'vendor-barcode';
