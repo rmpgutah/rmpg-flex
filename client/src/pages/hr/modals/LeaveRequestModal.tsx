@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { CalendarDays } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
 import type { LeaveRequest, LeaveType } from '../../../types';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 interface LeaveRequestModalProps {
   isOpen: boolean;
@@ -22,6 +23,14 @@ export interface LeaveFormData {
   hours_requested: number;
   reason: string;
 }
+
+const EMPTY_FORM: LeaveFormData = {
+  type: 'vacation' as LeaveType,
+  start_date: '',
+  end_date: '',
+  hours_requested: 0,
+  reason: '',
+};
 
 const LEAVE_TYPES: { value: LeaveType; label: string }[] = [
   { value: 'vacation', label: 'Vacation' },
@@ -54,67 +63,61 @@ export default function LeaveRequestModal({
   onSubmit,
   editRequest,
 }: LeaveRequestModalProps) {
-  const [type, setType] = useState<LeaveType>('vacation');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [hours, setHours] = useState(0);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<LeaveFormData>({
+    storageKey: 'rmpg_hr_leave_request_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [hoursManual, setHoursManual] = useState(false);
-  const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Populate from editRequest when opening
   useEffect(() => {
     if (!isOpen) return;
     if (editRequest) {
-      setType(editRequest.type);
-      setStartDate(editRequest.start_date);
-      setEndDate(editRequest.end_date);
-      setHours(editRequest.hours_requested);
+      setForm({
+        type: editRequest.type,
+        start_date: editRequest.start_date,
+        end_date: editRequest.end_date,
+        hours_requested: editRequest.hours_requested,
+        reason: editRequest.reason || '',
+      });
       setHoursManual(false);
-      setReason(editRequest.reason || '');
     } else {
-      setType('vacation');
-      setStartDate('');
-      setEndDate('');
-      setHours(0);
+      setForm({ ...EMPTY_FORM });
       setHoursManual(false);
-      setReason('');
     }
+    snapshot();
     setSubmitting(false);
-  }, [isOpen, editRequest]);
+  }, [isOpen, editRequest, setForm, snapshot]);
 
   // Auto-calculate hours from dates unless user has overridden
-  const autoHours = useMemo(() => countBusinessDays(startDate, endDate) * 8, [startDate, endDate]);
+  const autoHours = useMemo(() => countBusinessDays(form.start_date, form.end_date) * 8, [form.start_date, form.end_date]);
   useEffect(() => {
-    if (!hoursManual) setHours(autoHours);
-  }, [autoHours, hoursManual]);
-
-  const isDirty = useMemo(() => {
-    if (editRequest) {
-      return (
-        type !== editRequest.type ||
-        startDate !== editRequest.start_date ||
-        endDate !== editRequest.end_date ||
-        hours !== editRequest.hours_requested ||
-        reason !== (editRequest.reason || '')
-      );
-    }
-    return !!(type !== 'vacation' || startDate || endDate || hours || reason);
-  }, [type, startDate, endDate, hours, reason, editRequest]);
+    if (!hoursManual) setForm(f => ({ ...f, hours_requested: autoHours }));
+  }, [autoHours, hoursManual, setForm]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!startDate || !endDate) return;
+    if (!form.start_date || !form.end_date) return;
     setSubmitting(true);
     try {
-      await onSubmit({ type, start_date: startDate, end_date: endDate, hours_requested: hours, reason });
+      await onSubmit(form);
+      clearDraft();
     } finally {
       setSubmitting(false);
     }
   };
 
   const inputClass =
-    'w-full bg-surface-sunken border border-rmpg-700 text-white text-xs px-3 py-2 rounded-sm focus:outline-none focus:border-brand-500 transition-colors';
+    'w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-3 py-2 rounded-sm focus:outline-none focus:border-brand-500 transition-colors';
   const labelClass = 'block text-xs font-medium text-rmpg-300 mb-1';
 
   return (
@@ -127,14 +130,16 @@ export default function LeaveRequestModal({
       submitLabel={editRequest ? 'Update Request' : 'Submit Request'}
       isSubmitting={submitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={() => { setForm({ ...EMPTY_FORM }); snapshot(); }}
       maxWidth="max-w-lg"
     >
       {/* Leave Type */}
       <div>
-        <label className={labelClass}>Leave Type</label>
-        <select
-          value={type}
-          onChange={e => setType(e.target.value as LeaveType)}
+        <label htmlFor="ff-leaverequestmodal-0" className={labelClass}>Leave Type</label>
+        <select id="ff-leaverequestmodal-0"
+          value={form.type}
+          onChange={e => setForm(f => ({ ...f, type: e.target.value as LeaveType }))}
           className={inputClass}
         >
           {LEAVE_TYPES.map(lt => (
@@ -146,22 +151,22 @@ export default function LeaveRequestModal({
       {/* Dates */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelClass}>Start Date</label>
-          <input
+          <label htmlFor="ff-leaverequestmodal-1" className={labelClass}>Start Date</label>
+          <input id="ff-leaverequestmodal-1"
             type="date"
-            value={startDate}
-            onChange={e => setStartDate(e.target.value)}
+            value={form.start_date}
+            onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
             required
             className={inputClass}
           />
         </div>
         <div>
-          <label className={labelClass}>End Date</label>
-          <input
+          <label htmlFor="ff-leaverequestmodal-2" className={labelClass}>End Date</label>
+          <input id="ff-leaverequestmodal-2"
             type="date"
-            value={endDate}
-            onChange={e => setEndDate(e.target.value)}
-            min={startDate || undefined}
+            value={form.end_date}
+            onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))}
+            min={form.start_date || undefined}
             required
             className={inputClass}
           />
@@ -170,12 +175,12 @@ export default function LeaveRequestModal({
 
       {/* Hours */}
       <div>
-        <label className={labelClass}>Hours Requested</label>
-        <input
+        <label htmlFor="ff-leaverequestmodal-3" className={labelClass}>Hours Requested</label>
+        <input id="ff-leaverequestmodal-3"
           type="number"
-          value={hours}
+          value={form.hours_requested}
           onChange={e => {
-            setHours(Number(e.target.value));
+            setForm(f => ({ ...f, hours_requested: Number(e.target.value) }));
             setHoursManual(true);
           }}
           min={0}
@@ -184,11 +189,11 @@ export default function LeaveRequestModal({
         />
         {autoHours > 0 && (
           <p className="text-xs text-rmpg-500 mt-1">
-            Auto-calculated: {countBusinessDays(startDate, endDate)} business day{countBusinessDays(startDate, endDate) !== 1 ? 's' : ''} x 8 hrs = {autoHours} hrs
+            Auto-calculated: {countBusinessDays(form.start_date, form.end_date)} business day{countBusinessDays(form.start_date, form.end_date) !== 1 ? 's' : ''} x 8 hrs = {autoHours} hrs
             {hoursManual && (
               <button
                 type="button"
-                onClick={() => { setHoursManual(false); setHours(autoHours); }}
+                onClick={() => { setHoursManual(false); setForm(f => ({ ...f, hours_requested: autoHours })); }}
                 className="ml-2 text-brand-400 hover:text-brand-300 underline"
               >
                 reset
@@ -200,16 +205,16 @@ export default function LeaveRequestModal({
 
       {/* Reason */}
       <div>
-        <label className={labelClass}>Reason</label>
-        <textarea
-          value={reason}
-          onChange={e => setReason(e.target.value)}
+        <label htmlFor="ff-leaverequestmodal-4" className={labelClass}>Reason</label>
+        <textarea id="ff-leaverequestmodal-4"
+          value={form.reason}
+          onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
           rows={3}
           placeholder="Optional — provide context for your request"
           maxLength={2000}
           className={inputClass + ' resize-none'}
         />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{reason.length}/2000</div>
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.reason.length}/2000</div>
       </div>
     </FormModal>
   );

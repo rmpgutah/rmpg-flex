@@ -2,9 +2,9 @@
 // RMPG Flex — Officer Schedule Detail Tab
 // ============================================================
 
-import React from 'react';
 import { Calendar, Plus, Trash2, MapPin, Sun, Moon } from 'lucide-react';
 import type { Schedule } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   schedules: Schedule[];
@@ -15,19 +15,19 @@ interface Props {
 const STATUS_BADGE: Record<string, string> = {
   completed: 'bg-green-900/50 text-green-400 border border-green-700/50',
   cancelled: 'bg-red-900/50 text-red-400 border border-red-700/50',
-  confirmed: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  confirmed: 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50',
   no_show: 'bg-red-900/50 text-red-400 border border-red-700/50',
 };
 
 function isNightShift(shiftStart: string): boolean {
   if (!shiftStart) return false;
-  const hour = new Date(shiftStart).getHours();
+  const hour = parseTimestamp(shiftStart).getHours();
   return hour >= 18 || hour < 6;
 }
 
 function formatShiftStart(shiftStart: string): string {
   if (!shiftStart) return '-';
-  return new Date(shiftStart).toLocaleString('en-US', {
+  return parseTimestamp(shiftStart).toLocaleString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -39,26 +39,12 @@ function formatShiftStart(shiftStart: string): string {
 
 function formatShiftEnd(shiftEnd: string): string {
   if (!shiftEnd) return '-';
-  return new Date(shiftEnd).toLocaleString('en-US', {
+  return parseTimestamp(shiftEnd).toLocaleString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   });
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function ScheduleDetailTab({
   schedules,

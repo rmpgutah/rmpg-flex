@@ -4,10 +4,10 @@
 // Replaces the old Utah Search tab on WarrantsPage
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
-  Search, Loader2, Shield, AlertTriangle, ChevronDown, ChevronRight,
-  Download, User, Scale, FileText, ExternalLink, CheckCircle,
+  Search, Loader2, Shield, AlertTriangle, ChevronDown, ChevronRight, Download,
+  User, Scale, FileText, CheckCircle,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 
@@ -44,7 +44,7 @@ const SEVERITY_STYLES: Record<string, string> = {
   felony: 'bg-red-900/50 text-red-300 border-red-600',
   misdemeanor: 'bg-amber-900/50 text-amber-300 border-amber-600',
   bench: 'bg-orange-900/50 text-orange-300 border-orange-600',
-  civil: 'bg-gray-900/50 text-gray-300 border-gray-600',
+  civil: 'bg-surface-sunken/50 text-rmpg-300 border-border-subtle',
 };
 
 // ── Component ────────────────────────────────────────────────
@@ -170,8 +170,8 @@ export default function PersonIntelPanel() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div>
-            <label className="text-[9px] uppercase text-rmpg-400 font-bold">First Name *</label>
-            <input
+            <label htmlFor="ff-personintelpanel-0" className="text-[9px] uppercase text-rmpg-400 font-bold">First Name *</label>
+            <input id="ff-personintelpanel-0"
               type="text"
               className="input-dark w-full text-sm"
               value={firstName}
@@ -181,8 +181,8 @@ export default function PersonIntelPanel() {
             />
           </div>
           <div>
-            <label className="text-[9px] uppercase text-rmpg-400 font-bold">Last Name *</label>
-            <input
+            <label htmlFor="ff-personintelpanel-1" className="text-[9px] uppercase text-rmpg-400 font-bold">Last Name *</label>
+            <input id="ff-personintelpanel-1"
               type="text"
               className="input-dark w-full text-sm"
               value={lastName}
@@ -192,8 +192,8 @@ export default function PersonIntelPanel() {
             />
           </div>
           <div>
-            <label className="text-[9px] uppercase text-rmpg-400 font-bold">DOB (optional)</label>
-            <input
+            <label htmlFor="ff-personintelpanel-2" className="text-[9px] uppercase text-rmpg-400 font-bold">DOB (optional)</label>
+            <input id="ff-personintelpanel-2"
               type="date"
               className="input-dark w-full text-sm"
               value={dob}
@@ -224,7 +224,7 @@ export default function PersonIntelPanel() {
         <div className="space-y-3">
           {results.length === 0 ? (
             <div className="text-center py-8 text-rmpg-400 text-sm">
-              No results found for <span className="font-bold text-white">{firstName} {lastName}</span>
+              No results found for <span className="font-bold text-rmpg-100">{firstName} {lastName}</span>
             </div>
           ) : (
             <>
@@ -244,7 +244,7 @@ export default function PersonIntelPanel() {
                       {expanded ? <ChevronDown className="w-4 h-4 text-rmpg-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-rmpg-400 shrink-0" />}
                       <User className="w-4 h-4 text-rmpg-400 shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <span className="font-bold text-white text-sm">{result.searchName}</span>
+                        <span className="font-bold text-rmpg-100 text-sm">{result.searchName}</span>
                         {result.age && <span className="text-rmpg-400 text-xs ml-2">Age {result.age}</span>}
                         {result.city && <span className="text-rmpg-400 text-xs ml-2">{result.city}</span>}
                       </div>
@@ -260,7 +260,7 @@ export default function PersonIntelPanel() {
                           </span>
                         )}
                         {result.courtRecords.length > 0 && (
-                          <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border bg-gray-900/40 text-gray-400 border-gray-700/50">
+                          <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm border bg-surface-sunken/40 text-rmpg-400 border-border-default/50">
                             {result.courtRecords.length} court
                           </span>
                         )}
@@ -299,7 +299,7 @@ export default function PersonIntelPanel() {
                                   <div key={wKey} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-3 py-2 text-xs">
                                     <div className="flex items-center justify-between">
                                       <div>
-                                        <span className="font-bold text-white">{w.court_name || 'Unknown Court'}</span>
+                                        <span className="font-bold text-rmpg-100">{w.court_name || 'Unknown Court'}</span>
                                         {w.case_id && <span className="text-rmpg-400 ml-2">Case: {w.case_id}</span>}
                                       </div>
                                       {isIngested ? (
@@ -336,14 +336,14 @@ export default function PersonIntelPanel() {
                         {result.courtRecords.length > 0 && (
                           <div>
                             <div className="flex items-center gap-2 mb-2">
-                              <FileText className="w-3.5 h-3.5 text-gray-400" />
-                              <span className="text-xs font-bold uppercase text-gray-400">Court Records ({result.courtRecords.length})</span>
+                              <FileText className="w-3.5 h-3.5 text-rmpg-400" />
+                              <span className="text-xs font-bold uppercase text-rmpg-400">Court Records ({result.courtRecords.length})</span>
                             </div>
                             <div className="space-y-1">
                               {result.courtRecords.slice(0, 10).map((cr: any, i: number) => (
                                 <div key={`court-${cr.case_number || i}`} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-3 py-1.5 text-xs flex items-center justify-between">
                                   <div>
-                                    <span className="font-bold text-white">{cr.case_number || 'N/A'}</span>
+                                    <span className="font-bold text-rmpg-100">{cr.case_number || 'N/A'}</span>
                                     <span className="text-rmpg-400 ml-2">{cr.court_name || ''}</span>
                                     {cr.charge && <span className="text-rmpg-300 ml-2">{cr.charge}</span>}
                                   </div>
@@ -365,7 +365,7 @@ export default function PersonIntelPanel() {
                               {result.localWarrants.map((lw: any, i: number) => (
                                 <div key={lw.id || i} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-3 py-1.5 text-xs flex items-center justify-between">
                                   <div>
-                                    <span className="font-bold text-white">{lw.warrant_number}</span>
+                                    <span className="font-bold text-rmpg-100">{lw.warrant_number}</span>
                                     <span className="text-rmpg-400 ml-2">{lw.charge_description || ''}</span>
                                   </div>
                                   <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border ${SEVERITY_STYLES[lw.offense_level || ''] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
@@ -397,7 +397,7 @@ export default function PersonIntelPanel() {
       <div className="mt-4 pt-4 border-t border-rmpg-600">
         <div className="text-xs font-bold text-rmpg-300 uppercase mb-2">Alias / AKA Search</div>
         <div className="flex gap-2">
-          <input
+          <input id="ff-personintelpanel-3"
             type="text"
             className="input-dark flex-1 text-xs"
             placeholder="Search by alias, nickname, AKA..."
@@ -414,7 +414,7 @@ export default function PersonIntelPanel() {
           <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
             {aliasResults.map((p: any) => (
               <div key={p.id} className="text-xs px-2 py-1.5 bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm">
-                <span className="font-bold text-white">{p.first_name} {p.last_name}</span>
+                <span className="font-bold text-rmpg-100">{p.first_name} {p.last_name}</span>
                 {p.dob && <span className="text-rmpg-400 ml-2">DOB: {p.dob}</span>}
                 {p.aliases && <div className="text-rmpg-300 text-[10px] mt-0.5">AKA: {p.aliases}</div>}
               </div>
@@ -443,14 +443,14 @@ export default function PersonIntelPanel() {
                 <div key={idx} className="text-xs p-2 bg-amber-950/20 border border-amber-700/30 rounded-sm">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-white font-bold">#{d.id1}</span>
+                      <span className="text-rmpg-100 font-bold">#{d.id1}</span>
                       <span className="text-rmpg-300 ml-1">{d.first_name1} {d.last_name1}</span>
                       {d.dob1 && <span className="text-rmpg-500 ml-1">({d.dob1})</span>}
                     </div>
                     <span className="text-amber-400 text-[9px] font-bold">POSSIBLE DUPLICATE</span>
                   </div>
                   <div className="mt-1">
-                    <span className="text-white font-bold">#{d.id2}</span>
+                    <span className="text-rmpg-100 font-bold">#{d.id2}</span>
                     <span className="text-rmpg-300 ml-1">{d.first_name2} {d.last_name2}</span>
                     {d.dob2 && <span className="text-rmpg-500 ml-1">({d.dob2})</span>}
                   </div>
@@ -465,7 +465,7 @@ export default function PersonIntelPanel() {
                     <button type="button"
                       onClick={() => handleMerge(d.id2, d.id1)}
                       disabled={merging}
-                      className="toolbar-btn text-[8px] bg-gray-900/30 text-gray-400 border-gray-700/30"
+                      className="toolbar-btn text-[8px] bg-surface-sunken/30 text-rmpg-400 border-border-default/30"
                     >
                       Keep #{d.id2}, Merge #{d.id1}
                     </button>

@@ -1,107 +1,145 @@
-name: "Deploy to Production"
+name: Deploy to Cloudflare
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      include_installers:
-        description: "Include desktop installers (--all flag)"
-        required: false
-        default: "false"
-        type: boolean
+
+concurrency:
+  group: cf-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+# Least-privilege GITHUB_TOKEN (CWE-275). Deploys run against Cloudflare using
+# CLOUDFLARE_* secrets, not the GITHUB_TOKEN — nothing here pushes commits,
+# creates releases, or comments, so read-only is sufficient.
+permissions:
+  contents: read
 
 jobs:
   deploy:
-    name: Deploy to Hostinger VPS
     runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-
+    timeout-minutes: 10
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: |
-            client/package-lock.json
-            server/package-lock.json
+          node-version: 22
+          cache: npm
 
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Schema drift check — verifies every CREATE TABLE and ALTER TABLE from
+      # migration files exists on live D1. Catches the continue-on-error trap:
+      # if a migration's DDL never actually landed (wrangler swallowed the
+      # error), this step fails loudly. Override with SKIP_DRIFT_CHECK=1 for
+      # emergency hotfixes where schema drift is intentional.
+      - name: Schema drift check (remote D1)
+        if: ${{ env.SKIP_DRIFT_CHECK != '1' }}
+        run: DB_MODE=remote scripts/check-migration-drift.sh
+
+      # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
+      #
+      # `continue-on-error: true` — kept because some migrations contain bare
+      # `ALTER TABLE ADD COLUMN` (D1 has no IF NOT EXISTS for ADD COLUMN), so
+      # they fail harmlessly on re-apply if the column already exists.
+      #
+      # History: through 2026-06-17, `d1_migrations` only tracked up to
+      # 0078_company_documents.sql. Wrangler aborted at 0079_missing_tables.sql
+      # (bare ALTER TABLE persons ADD COLUMN fi_count that was already present)
+      # on every deploy, so migrations 0079-0126 were silently never recorded —
+      # even though their DDL had been applied directly to live D1. Fixed
+      # 2026-06-17: all 0079-0127 bulk-inserted into d1_migrations via the D1
+      # API; 0127 DDL also applied directly. Future deploys start from 0128.
+      #
+      # Rule going forward: always verify a new migration landed by querying
+      #   pragma_table_info('<table>')
+      # on live D1 after deploy — don't trust the migration log alone
+      # (continue-on-error means a failure here never fails the build).
+      - name: Apply D1 migrations (remote)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply rmpg-flex --remote
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # [[containers]] removed from wrangler.toml (PdfToolsContainer
+          # intentionally off). No --containers-rollout flag needed.
+          command: deploy
+
+      # Client SPA build + deploy to Cloudflare Pages.
+      # Without these steps the Worker (API) ships but the React app
+      # at https://rmpgutah.us stays stuck on whatever bundle was
+      # last pushed manually. Incident 2026-05-24: SW v321 lived in
+      # prod for weeks while source moved to v563 because deploy.yml
+      # only ran the Worker step. All UI fixes silently rotted.
       - name: Install client dependencies
-        working-directory: client
-        run: npm ci
-
-      - name: Install server dependencies
-        working-directory: server
-        run: npm ci
-
-      - name: TypeScript check
-        working-directory: client
-        run: npx tsc --noEmit || true
-
-      - name: Run server tests
-        working-directory: server
-        run: npx vitest run
+        run: cd client && npm ci
 
       - name: Build client
-        working-directory: client
-        run: npx vite build
+        run: cd client && npm run build
+        env:
+          VITE_MAPBOX_ACCESS_TOKEN: ${{ secrets.VITE_MAPBOX_ACCESS_TOKEN }}
 
-      - name: Set up SSH key
+      # Copy Pages Functions into the deployment directory so wrangler picks
+      # them up. In wrangler v4 there is no --functions flag; functions must
+      # be inside the output directory or at the project root. Copying makes
+      # the dependency explicit and avoids root-directory ambiguity.
+      - name: Stage Pages Functions
+        run: cp -r functions/ client/dist/functions/
+
+      - name: Deploy client to Pages
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy client/dist --project-name=rmpg-flex --branch=main --commit-dirty=true
+
+      # Deploy the routing proxy (rmpg-api-proxy) LAST. It dispatches
+      # rmpgutah.us/api/* to the rewrite (env.API = rmpg-flex-api) or legacy
+      # (env.LEGACY = rmpg-flex); both service-binding targets are already
+      # deployed above by the time this runs.
+      #
+      # BLOCKING again (no continue-on-error): the 2026-06-02 hedge was added
+      # because the deployed rmpg-api-proxy had orphan Durable Object namespaces
+      # (WelfareWatchDO/VoiceHubDO/AlertHubDO/PdfToolsContainer) left by the #937
+      # name-collision, so every proxy deploy hit Cloudflare error 10064. PR #947
+      # cleared that by exporting inert stub DO classes from proxy/index.ts, so
+      # the proxy deploys cleanly now. This step is sequenced LAST specifically so
+      # a genuine proxy failure fails the run loudly WITHOUT skipping the
+      # worker/client/Pages deploys above (the regression #943's continue-on-error
+      # was guarding against). If this 10064s again, do NOT re-add
+      # continue-on-error — confirm proxy/index.ts still exports those four stub
+      # classes. See memory project-auth-outage-name-collision.
+      - name: Deploy proxy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: proxy
+          command: deploy
+
+      # Post-deploy verification — smoke-test the Worker health endpoint.
+      # This catches deploy failures that return a non-2xx Wrangler exit code
+      # but still "succeed" because the old Worker version keeps running.
+      - name: Verify Worker health
+        if: ${{ env.SKIP_VERIFY != '1' }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H 194.113.64.90 >> ~/.ssh/known_hosts
-
-      - name: Rsync code to Hostinger VPS
-        run: |
-          rsync -az --delete \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            --exclude='server/data' \
-            --exclude='server/certs' \
-            --exclude='server/.env' \
-            --exclude='server/uploads' \
-            --exclude='client/.env' \
-            --exclude='desktop' \
-            --exclude='.DS_Store' \
-            --exclude='.claude' \
-            --exclude='client/android' \
-            ./ root@194.113.64.90:/opt/rmpg-flex/
-
-      - name: Deploy on VPS (install deps, restart service)
-        run: |
-          ssh root@194.113.64.90 bash << 'REMOTEEOF'
-            set -e
-            APP_DIR="/opt/rmpg-flex"
-            cd "$APP_DIR"
-
-            echo ">>> Installing server dependencies..."
-            cd server && npm install --production --legacy-peer-deps 2>&1 | tail -5 && cd ..
-
-            echo ">>> Restarting RMPG Flex service..."
-            systemctl restart rmpg-flex
-
-            echo ">>> Waiting for service to start..."
-            sleep 3
-
-            if systemctl is-active --quiet rmpg-flex; then
-              echo "✓ rmpg-flex service is running"
-            else
-              echo "✗ rmpg-flex service failed to start"
-              journalctl -u rmpg-flex --no-pager -n 30
-              exit 1
-            fi
-          REMOTEEOF
-
-      - name: Health check
-        run: |
-          sleep 5
-          curl -sf https://rmpgutah.us/api/health || (echo "Health check failed!" && exit 1)
+          set -euo pipefail
+          echo "Verifying Worker health..."
+          curl -sf --max-time 10 https://api.rmpgutah.us/api/health | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+assert data.get('status') in ('ok', 'degraded'), f'unexpected status: {data.get(\"status\")}'
+assert data.get('version'), 'version missing'
+print(f'Worker health OK: status={data[\"status\"]}, version={data[\"version\"]}')
+"
