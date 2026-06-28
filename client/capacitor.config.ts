@@ -12,18 +12,18 @@ const config: CapacitorConfig = {
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
-      backgroundColor: '#000000',
+      backgroundColor: '#0a0e14',
       showSpinner: true,
-      spinnerColor: '#9ca4ad',
+      spinnerColor: '#1a5a9e',
       androidSpinnerStyle: 'small',
     },
     StatusBar: {
-      style: 'LIGHT' as any,
-      backgroundColor: '#000000',
+      style: 'DARK' as any,
+      backgroundColor: '#0a0e14',
     },
   },
   android: {
-    backgroundColor: '#000000',
+    backgroundColor: '#0a0e14',
     allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false,
@@ -31,7 +31,7 @@ const config: CapacitorConfig = {
     appendUserAgent: 'RMPGFlex/Android',
   },
   ios: {
-    backgroundColor: '#000000',
+    backgroundColor: '#0a0e14',
     contentInset: 'always',
     allowsLinkPreview: false,
     appendUserAgent: 'RMPGFlex/iOS',
