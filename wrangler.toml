@@ -6,7 +6,7 @@
 # dispatcher with this rewrite, which has NO `JWT_SECRET` secret of its own →
 # every login 500s on token signing (incident 2026-06-02, PRs #937/#946 →
 # reverted by #945 and this one). See [[project-auth-login-500-incident]].
-name = "rmpg-flex-api"
+name = "rmpg-flex"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
@@ -81,6 +81,10 @@ class_name = "AlertHubDO"
 [[durable_objects.bindings]]
 name = "DEEP_RESEARCH"
 class_name = "DeepResearchDO"
+
+[[durable_objects.bindings]]
+name = "PERSON_INTEL_DO"
+class_name = "PersonIntelDO"
 
 # FlexCamRemuxDO — one instance per footage_request_id (idFromName('rmx-' + id))
 # for lazy MP4 → fMP4 remux. Triggered by POST /api/flexcam/render/:id for
@@ -220,6 +224,13 @@ new_sqlite_classes = ["DeepResearchDO"]
 [[migrations]]
 tag = "v5-flexcamremux"
 new_sqlite_classes = ["FlexCamRemuxDO"]
+
+# PersonIntelDO — APPENDED (prefix rule: live tags must be a prefix of this
+# list). One instance per dossier_id; alarm-driven multi-phase intelligence
+# pipeline. SQLite-backed for free-plan compatibility.
+[[migrations]]
+tag = "v6-personinteldo"
+new_sqlite_classes = ["PersonIntelDO"]
 
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload
