@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Camera, Printer, ChevronDown, Loader2 } from 'lucide-react';
+import { Download, Camera, Printer, ChevronDown, Loader2, FileText } from 'lucide-react';
 import { isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
 import type { MapStyleId } from '../utils/mapConstants';
 
@@ -8,9 +8,11 @@ interface MapExportMenuProps {
   isMobile: boolean;
   onScreenshot: () => Promise<boolean>;
   onPrint: () => void;
+  /** Generate the branded Tactical Situation Report PDF (optional). */
+  onReport?: () => Promise<void> | void;
 }
 
-export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrint }: MapExportMenuProps) {
+export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrint, onReport }: MapExportMenuProps) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -40,10 +42,10 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
   const light = isLightMapStyle(mapStyle);
   const sat = isSatelliteStyle(mapStyle);
 
-  const bgBase = light ? 'rgba(255,255,255,0.92)' : sat ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)';
-  const borderBase = light ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)';
-  const textColor = light ? 'text-gray-700' : 'text-rmpg-200';
-  const hoverBg = light ? 'hover:bg-[#181818]' : 'hover:bg-[#181818]';
+  const bgBase = light ? 'rgba(255,255,255,0.92)' : sat ? 'rgba(10,10,10,0.92)' : 'rgba(10,10,10,0.95)';
+  const borderBase = light ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(43,43,43,0.6)';
+  const textColor = light ? 'text-rmpg-500' : 'text-rmpg-200';
+  const hoverBg = light ? 'hover:bg-surface-raised' : 'hover:bg-surface-raised';
 
   const handleScreenshot = async () => {
     setBusy(true);
@@ -62,6 +64,19 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
     onPrint();
   };
 
+  const handleReport = async () => {
+    if (!onReport) return;
+    setBusy(true);
+    setOpen(false);
+    try {
+      await onReport();
+    } catch {
+      // Report generation failed — busy resets below.
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div ref={menuRef} className="relative">
       {/* Trigger button */}
@@ -70,7 +85,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
         disabled={busy}
         className={`backdrop-blur-md shadow-xl transition-colors ${
           light
-            ? 'bg-white/90 border border-gray-300 hover:bg-[#181818]'
+            ? 'bg-white/90 border border-gray-300 hover:bg-surface-raised'
             : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
         }`}
         style={isMobile
@@ -82,12 +97,12 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
         aria-haspopup="menu"
       >
         {busy ? (
-          <Loader2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-gray-600' : 'text-rmpg-300'} animate-spin`} />
+          <Loader2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-rmpg-500' : 'text-rmpg-300'} animate-spin`} />
         ) : (
           <>
-            <Download className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-gray-600' : 'text-rmpg-300'}`} />
+            <Download className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${light ? 'text-rmpg-500' : 'text-rmpg-300'}`} />
             {/* #23: Dropdown chevron with smooth rotation */}
-            {!isMobile && <ChevronDown className={`w-3 h-3 ${light ? 'text-gray-500' : 'text-rmpg-400'} transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />}
+            {!isMobile && <ChevronDown className={`w-3 h-3 ${light ? 'text-rmpg-500' : 'text-rmpg-400'} transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />}
           </>
         )}
       </button>
@@ -96,7 +111,7 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
       <div
         role="menu"
         className={`absolute bottom-full mb-2 right-0 z-[1100] backdrop-blur-md shadow-xl overflow-hidden transition-all duration-150 origin-bottom-right border ${
-          light ? 'border-gray-300' : 'border-[#2b2b2b]'
+          light ? 'border-gray-300' : 'border-rmpg-700'
         } ${
           open
             ? 'scale-100 opacity-100 pointer-events-auto'
@@ -121,6 +136,20 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
             <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Download as PNG</div>
           </div>
         </button>
+        {onReport && (
+          <button type="button"
+            role="menuitem"
+            onClick={handleReport}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-100 active:scale-[0.97] ${textColor} ${hoverBg}`}
+            style={{ borderBottom: borderBase }}
+          >
+            <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: '#d4a017' }} />
+            <div>
+              <div className="text-xs font-medium">Situation Report</div>
+              <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Branded PDF w/ snapshot</div>
+            </div>
+          </button>
+        )}
         {/* #22: Removed duplicate divider between items */}
         <button type="button"
           role="menuitem"

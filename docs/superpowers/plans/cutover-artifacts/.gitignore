@@ -1,0 +1,4 @@
+# Deployed legacy worker bundle pulled via Cloudflare MCP for Task 0.2 —
+# 3.6 MB of compiled JS, re-pullable on demand; do not commit. The derived
+# inventory (legacy-routes-static.md) IS committed.
+legacy-worker-snapshot/

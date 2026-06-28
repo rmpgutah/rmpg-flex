@@ -1,24 +1,82 @@
 {
-  "name": "RMPG Flex — CAD/RMS",
+  "name": "RMPG Flex",
   "short_name": "RMPG Flex",
-  "description": "Rocky Mountain Protective Group — Computer-Aided Dispatch & Records Management System",
+  "description": "Rocky Mountain Protective Group — CAD/RMS Dispatch Console",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
   "orientation": "any",
+  "theme_color": "#000000",
+  "background_color": "#0a0a0a",
   "categories": ["business", "productivity", "utilities"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/favicon.png",
-      "sizes": "64x64",
-      "type": "image/png"
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/rmpg flex.png",
-      "sizes": "1024x1024",
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dispatch",
+      "short_name": "Dispatch",
+      "description": "Live CAD dispatch console",
+      "url": "/dispatch",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Units",
+      "short_name": "Units",
+      "description": "Field unit roster + GPS",
+      "url": "/map",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Warrants",
+      "short_name": "Warrants",
+      "description": "Active warrant checks",
+      "url": "/warrants",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }
