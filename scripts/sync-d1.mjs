@@ -22,7 +22,7 @@ console.log(`Tables: ${creates.length}, addCols: ${addCols.length}`);
 
 // Query D1
 function d1(sql) {
-  const escaped = sql.replace(/"/g, '\\"');
+  const escaped = sql.replace(/\\/g, '\\\\').replace(/"/g, '\\"'); // backslash first, then quotes
   const r = execSync(`npx wrangler d1 execute rmpg-flex --remote --json --command "${escaped}"`, {
     encoding: 'utf-8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe']
   });
