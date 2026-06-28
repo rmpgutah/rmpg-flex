@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Plus,
   Edit,
@@ -10,9 +11,13 @@ import {
   Building2,
   Archive,
   RotateCcw,
+  Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { toDisplayLabel } from '../../utils/formatters';
+import { asArray } from '../../utils/asArray';
+import { toDisplayLabel, formatPhoneInput } from '../../utils/formatters';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type { Client } from '../../types';
 import AdminInvoiceTab from './AdminInvoiceTab';
 import { ClientPersonLinks } from '../../components/ClientPersonLinksSection';
@@ -198,6 +203,29 @@ export default function AdminClientsTab({
     }, 1500);
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildClientMenu = (client: Client & { property_count?: number }): ContextMenuItem[] => {
+    const isArchived = !!(client as any).archived_at;
+    return [
+      m.action('Open client', () => { setSelectedClient(client); setClientDetailTab('profile'); }, { icon: <Eye size={12} /> }),
+      m.action('Edit client', () => openEditClient(client), { icon: <Edit size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', client.name),
+      ...(client.contact_name ? [m.copy('Copy contact', client.contact_name)] : []),
+      ...(client.contact_email ? [m.copy('Copy email', client.contact_email)] : []),
+      ...(client.contact_phone ? [m.copy('Copy phone', client.contact_phone)] : []),
+      m.copyId(client.id),
+      m.separator(),
+      ...(isArchived
+        ? [m.action('Unarchive', () => handleUnarchiveClient(client.id), { icon: <RotateCcw size={12} /> })]
+        : [m.action('Archive', () => handleArchiveClient(client.id), { icon: <Archive size={12} /> })]),
+      m.action('Delete client', () => openDeleteClient(client), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
   // Flush client save on unmount or tab switch
   useEffect(() => {
     return () => {
@@ -221,9 +249,9 @@ export default function AdminClientsTab({
         apiFetch<any>(`/admin/clients/${selectedClient.id}/billing`).catch(() => null),
       ]).then(([detail, incidents, calls, billing]) => {
         if (cancelled) return;
-        setClientProperties(detail?.properties || []);
-        setClientIncidents(incidents || []);
-        setClientCalls(calls || []);
+        setClientProperties(asArray<any>(detail?.properties));
+        setClientIncidents(asArray<any>(incidents));
+        setClientCalls(asArray<any>(calls));
         setClientBilling(billing);
       }).finally(() => { if (!cancelled) setLoadingClientDetail(false); });
     } else {
@@ -257,6 +285,7 @@ export default function AdminClientsTab({
               <div
                 key={client.id}
                 onClick={() => { setSelectedClient(selectedClient?.id === client.id ? null : client); setClientDetailTab('profile'); }}
+                onContextMenu={(e) => openMenu(e, buildClientMenu(client))}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedClient(selectedClient?.id === client.id ? null : client); setClientDetailTab('profile'); } }}
@@ -270,7 +299,7 @@ export default function AdminClientsTab({
                 <div className="flex items-center gap-3">
                   <Building2 className="w-5 h-5 text-brand-400 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">{client.name}</div>
+                    <div className="text-sm font-semibold text-rmpg-100 truncate">{client.name}</div>
                     <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
                       <span>{client.contact_name}</span>
                       {client.property_count != null && <span>{client.property_count} properties</span>}
@@ -282,7 +311,7 @@ export default function AdminClientsTab({
                     }`}>
                       {client.is_active ? 'Active' : 'Inactive'}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="hidden md:flex items-center gap-1">
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); openEditClient(client); }}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors rounded-sm"
@@ -340,7 +369,7 @@ export default function AdminClientsTab({
           <div className="p-4 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <h2 className="text-lg font-bold text-rmpg-100 flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-brand-400" />
                   {selectedClient.name}
                 </h2>
@@ -355,7 +384,7 @@ export default function AdminClientsTab({
                 <button type="button" onClick={() => openEditClient(selectedClient)} className="toolbar-btn">
                   <Edit className="w-3.5 h-3.5" /> Edit
                 </button>
-                <button type="button" onClick={() => setSelectedClient(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors rounded-sm" aria-label="Close client details">
+                <button type="button" onClick={() => setSelectedClient(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors rounded-sm" aria-label="Close client details">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -380,8 +409,8 @@ export default function AdminClientsTab({
                 onClick={() => setClientDetailTab(tab.id)}
                 className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative ${
                   clientDetailTab === tab.id
-                    ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
-                    : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                    ? 'bg-rmpg-700 text-rmpg-100 border border-rmpg-600 border-b-rmpg-700'
+                    : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50'
                 }`}
               >
                 {tab.label}
@@ -403,20 +432,20 @@ export default function AdminClientsTab({
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Contact Information</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contact Name</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_name || ''} onChange={(e) => setClientField('contact_name', e.target.value)} placeholder="Contact name" />
+                      <label htmlFor="ff-adminclientstab-0" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contact Name</label>
+                      <input id="ff-adminclientstab-0" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_name || ''} onChange={(e) => setClientField('contact_name', e.target.value)} placeholder="Contact name" />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Email</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_email || ''} onChange={(e) => setClientField('contact_email', e.target.value)} placeholder="Email" />
+                      <label htmlFor="ff-adminclientstab-1" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Email</label>
+                      <input id="ff-adminclientstab-1" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_email || ''} onChange={(e) => setClientField('contact_email', e.target.value)} placeholder="Email" />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Phone</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', e.target.value)} placeholder="Phone" />
+                      <label htmlFor="ff-adminclientstab-2" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Phone</label>
+                      <input id="ff-adminclientstab-2" className="input-dark text-xs w-full min-h-[36px]" type="tel" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" />
                     </div>
                     <div className="col-span-3">
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Address</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.address || ''} onChange={(e) => setClientField('address', e.target.value)} placeholder="Address" />
+                      <label htmlFor="ff-adminclientstab-3" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Address</label>
+                      <input id="ff-adminclientstab-3" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.address || ''} onChange={(e) => setClientField('address', e.target.value)} placeholder="Address" />
                     </div>
                   </div>
                 </div>
@@ -425,8 +454,8 @@ export default function AdminClientsTab({
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Contract Details</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Type</label>
-                      <select className="select-dark text-xs w-full" value={clientEdit.contract_type || ''} onChange={(e) => setClientField('contract_type', e.target.value)}>
+                      <label htmlFor="ff-adminclientstab-4" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Type</label>
+                      <select id="ff-adminclientstab-4" className="select-dark text-xs w-full" value={clientEdit.contract_type || ''} onChange={(e) => setClientField('contract_type', e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="Fixed Price">Fixed Price</option>
                         <option value="Hourly">Hourly</option>
@@ -437,12 +466,12 @@ export default function AdminClientsTab({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Value ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
+                      <label htmlFor="ff-adminclientstab-5" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Value ($)</label>
+                      <input id="ff-adminclientstab-5" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Payment Terms</label>
-                      <select className="select-dark text-xs w-full" value={clientEdit.payment_terms || ''} onChange={(e) => setClientField('payment_terms', e.target.value)}>
+                      <label htmlFor="ff-adminclientstab-6" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Payment Terms</label>
+                      <select id="ff-adminclientstab-6" className="select-dark text-xs w-full" value={clientEdit.payment_terms || ''} onChange={(e) => setClientField('payment_terms', e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="Net 15">Net 15</option>
                         <option value="Net 30">Net 30</option>
@@ -453,22 +482,22 @@ export default function AdminClientsTab({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Start Date</label>
-                      <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_start || ''} onChange={(e) => setClientField('contract_start', e.target.value)} />
+                      <label htmlFor="ff-adminclientstab-7" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Start Date</label>
+                      <input id="ff-adminclientstab-7" type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_start || ''} onChange={(e) => setClientField('contract_start', e.target.value)} />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">End Date</label>
-                      <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_end || ''} onChange={(e) => setClientField('contract_end', e.target.value)} />
+                      <label htmlFor="ff-adminclientstab-8" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">End Date</label>
+                      <input id="ff-adminclientstab-8" type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_end || ''} onChange={(e) => setClientField('contract_end', e.target.value)} />
                     </div>
                     <div className="flex items-end gap-3">
                       <label className="flex items-center gap-2 p-1.5 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
-                        <input type="checkbox" checked={!!clientEdit.auto_renew} onChange={(e) => setClientField('auto_renew', e.target.checked)} className="w-3.5 h-3.5 accent-red-500" />
+                        <input id="ff-adminclientstab-9" type="checkbox" checked={!!clientEdit.auto_renew} onChange={(e) => setClientField('auto_renew', e.target.checked)} className="w-3.5 h-3.5 accent-red-500" />
                         <span className="text-[10px] text-rmpg-200">Auto-Renew</span>
                       </label>
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">SLA Response (min)</label>
-                      <input type="number" min="1" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.sla_response_minutes || ''} onChange={(e) => setClientField('sla_response_minutes', e.target.value)} placeholder="e.g. 15" />
+                      <label htmlFor="ff-adminclientstab-10" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">SLA Response (min)</label>
+                      <input id="ff-adminclientstab-10" type="number" min="1" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.sla_response_minutes || ''} onChange={(e) => setClientField('sla_response_minutes', e.target.value)} placeholder="e.g. 15" />
                     </div>
                   </div>
                 </div>
@@ -484,7 +513,7 @@ export default function AdminClientsTab({
                     <div className="text-[10px] text-rmpg-400 uppercase mt-1">Incidents</div>
                   </div>
                   <div className="panel-beveled p-3 text-center bg-surface-base">
-                    <div className="text-2xl font-bold text-gray-400">{clientCalls.length}</div>
+                    <div className="text-2xl font-bold text-rmpg-400">{clientCalls.length}</div>
                     <div className="text-[10px] text-rmpg-400 uppercase mt-1">CFS Calls</div>
                   </div>
                 </div>
@@ -507,16 +536,16 @@ export default function AdminClientsTab({
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Billing Information</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Email</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_email || ''} onChange={(e) => setClientField('billing_email', e.target.value)} placeholder="billing@example.com" />
+                      <label htmlFor="ff-adminclientstab-11" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Email</label>
+                      <input id="ff-adminclientstab-11" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_email || ''} onChange={(e) => setClientField('billing_email', e.target.value)} placeholder="billing@example.com" />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Address</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_address || ''} onChange={(e) => setClientField('billing_address', e.target.value)} placeholder="Billing address" />
+                      <label htmlFor="ff-adminclientstab-12" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Address</label>
+                      <input id="ff-adminclientstab-12" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_address || ''} onChange={(e) => setClientField('billing_address', e.target.value)} placeholder="Billing address" />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Payment Terms</label>
-                      <select className="select-dark text-xs w-full" value={clientEdit.payment_terms || ''} onChange={(e) => setClientField('payment_terms', e.target.value)}>
+                      <label htmlFor="ff-adminclientstab-13" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Payment Terms</label>
+                      <select id="ff-adminclientstab-13" className="select-dark text-xs w-full" value={clientEdit.payment_terms || ''} onChange={(e) => setClientField('payment_terms', e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="Net 15">Net 15</option>
                         <option value="Net 30">Net 30</option>
@@ -527,8 +556,8 @@ export default function AdminClientsTab({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Cycle</label>
-                      <select className="select-dark text-xs w-full" value={clientEdit.billing_cycle || ''} onChange={(e) => setClientField('billing_cycle', e.target.value)}>
+                      <label htmlFor="ff-adminclientstab-14" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Cycle</label>
+                      <select id="ff-adminclientstab-14" className="select-dark text-xs w-full" value={clientEdit.billing_cycle || ''} onChange={(e) => setClientField('billing_cycle', e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="weekly">Weekly</option>
                         <option value="bi-weekly">Bi-Weekly</option>
@@ -539,8 +568,8 @@ export default function AdminClientsTab({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contract Value ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
+                      <label htmlFor="ff-adminclientstab-15" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contract Value ($)</label>
+                      <input id="ff-adminclientstab-15" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
                     </div>
                   </div>
                 </div>
@@ -558,16 +587,16 @@ export default function AdminClientsTab({
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Billing Rates</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per Hour ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_hour || ''} onChange={(e) => setClientField('rate_per_hour', e.target.value)} placeholder="0.00" />
+                      <label htmlFor="ff-adminclientstab-16" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per Hour ($)</label>
+                      <input id="ff-adminclientstab-16" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_hour || ''} onChange={(e) => setClientField('rate_per_hour', e.target.value)} placeholder="0.00" />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per Incident ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_incident || ''} onChange={(e) => setClientField('rate_per_incident', e.target.value)} placeholder="0.00" />
+                      <label htmlFor="ff-adminclientstab-17" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per Incident ($)</label>
+                      <input id="ff-adminclientstab-17" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_incident || ''} onChange={(e) => setClientField('rate_per_incident', e.target.value)} placeholder="0.00" />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per CFS ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_cfs || ''} onChange={(e) => setClientField('rate_per_cfs', e.target.value)} placeholder="0.00" />
+                      <label htmlFor="ff-adminclientstab-18" className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per CFS ($)</label>
+                      <input id="ff-adminclientstab-18" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_cfs || ''} onChange={(e) => setClientField('rate_per_cfs', e.target.value)} placeholder="0.00" />
                     </div>
                   </div>
                   <p className="text-[9px] text-rmpg-500 mt-2">These rates are used when auto-generating invoice line items.</p>
@@ -576,7 +605,7 @@ export default function AdminClientsTab({
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Invoice Summary</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
-                    <div><span className="text-rmpg-400">Total Invoiced:</span> <span className="text-white font-bold ml-1">${(clientBilling?.total_invoiced || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+                    <div><span className="text-rmpg-400">Total Invoiced:</span> <span className="text-rmpg-100 font-bold ml-1">${(clientBilling?.total_invoiced || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                     <div><span className="text-rmpg-400">Total Paid:</span> <span className="text-green-400 font-bold ml-1">${(clientBilling?.total_paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                     <div><span className="text-rmpg-400">Outstanding:</span> <span className="text-amber-400 font-bold ml-1">${(clientBilling?.outstanding_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                   </div>
@@ -597,7 +626,7 @@ export default function AdminClientsTab({
                       <div key={prop.id} className="flex items-center gap-3 px-3 py-2 bg-surface-raised border border-rmpg-700">
                         <MapPin className="w-3.5 h-3.5 text-brand-400 flex-shrink-0" />
                         <div className="flex-1">
-                          <div className="text-xs text-white font-medium">{prop.name}</div>
+                          <div className="text-xs text-rmpg-100 font-medium">{prop.name}</div>
                           <div className="text-[10px] text-rmpg-400">{prop.address}</div>
                         </div>
                         <span className={`px-1.5 py-0.5 text-[9px] font-bold ${prop.is_active !== 0 ? 'text-green-400' : 'text-rmpg-500'}`}>
@@ -631,7 +660,7 @@ export default function AdminClientsTab({
                     <tbody>
                       {clientIncidents.map((inc: any) => (
                         <tr key={inc.id}>
-                          <td className="font-bold text-white text-xs font-mono">{inc.incident_number}</td>
+                          <td className="font-bold text-rmpg-100 text-xs font-mono">{inc.incident_number}</td>
                           <td className="text-xs text-brand-400">{(inc.incident_type || '').replace(/_/g, ' ')}</td>
                           <td className="text-xs font-mono font-bold text-rmpg-300">{inc.priority}</td>
                           <td className="text-xs text-rmpg-300">{toDisplayLabel(inc.status)}</td>
@@ -667,7 +696,7 @@ export default function AdminClientsTab({
                       {clientCalls.map((call: any) => (
                         <tr key={call.id}>
                           <td className="font-bold text-green-400 text-xs font-mono">{call.call_number}</td>
-                          <td className="text-xs text-rmpg-200">{(call.call_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
+                          <td className="text-xs text-rmpg-200">{toDisplayLabel(call.call_type || '')}</td>
                           <td className="text-xs font-mono font-bold text-rmpg-300">{call.priority}</td>
                           <td className="text-xs text-rmpg-300">{toDisplayLabel(call.status)}</td>
                           <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{formatAddressDisplay(call.location)}</td>
@@ -689,7 +718,7 @@ export default function AdminClientsTab({
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Notes</h3>
                   {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</div>}
                 </div>
-                <textarea
+                <RichTextArea
                   className="input-dark text-xs w-full leading-relaxed resize-y min-h-[36px]"
                   style={{ minHeight: '180px' }}
                   value={clientEdit.notes || ''}

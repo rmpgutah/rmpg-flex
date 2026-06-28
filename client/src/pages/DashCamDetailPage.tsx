@@ -5,20 +5,23 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Camera, Edit2, Flame, Download, Maximize2, Minimize2,
-  Loader2, AlertTriangle, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, Info, SkipBack, SkipForward,
-  Play, Pause, Volume2, VolumeX, Map, Shield, FileText,
-  Link2, Car, User, Gauge, Copy, Check,
+  Edit2, Flame, Download, Maximize2, Minimize2, Loader2, AlertTriangle,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, SkipBack, SkipForward,
+  Play, Pause, Volume2, VolumeX, Map, Shield, FileText, Link2, Car, User, Gauge,
+  Copy, Check, Video,
 } from 'lucide-react';
-import type { DashCamVideo } from '../types';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
-import { DARK_MAP_STYLE } from '../utils/googleMapsLoader';
+import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
+import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -108,7 +111,7 @@ function formatDuration(sec?: number): string {
 
 function formatTimestamp(isoStr: string | undefined, offsetSec: number): string {
   if (!isoStr) return '--:--:--';
-  const base = new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00');
+  const base = parseTimestamp(isoStr);
   const d = new Date(base.getTime() + offsetSec * 1000);
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -121,7 +124,7 @@ function formatTimestamp(isoStr: string | undefined, offsetSec: number): string 
 
 function formatDate(d?: string): string {
   if (!d) return '-';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
+  return parseTimestamp(d).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -163,6 +166,7 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
       const x = ((p.timestamp - startMs) / totalMs) * 100;
       const y = h - (speeds[i] / maxSpeed) * (h - 4);
       const mph = speeds[i];
+      // Speed colors: red >65, amber >45, green ≤45
       const color = mph > 65 ? '#ef4444' : mph > 45 ? '#f59e0b' : '#22c55e';
       return { x, y, color };
     });
@@ -237,29 +241,23 @@ function HudSection({ title, icon: Icon, children, defaultOpen = false, isOpen, 
 export default function DashCamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { addToast } = useToast();
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
+  const isAdminOrManager = ['admin', 'manager'].includes(user?.role || '');
 
   // Set document title
-  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to go back
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { navigate(-1); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [navigate]);
+  useEffect(() => { document.title = 'Dash Cam Player — RMPG Flex'; }, []);
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const animFrameRef = useRef<number>(0);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markerRef = useRef<google.maps.Marker | null>(null);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const downloadRef = useRef<HTMLAnchorElement>(null);
+  const deepLinkRef = useRef(false);
 
   // State
   const [video, setVideo] = useState<any>(null);
@@ -280,6 +278,13 @@ export default function DashCamDetailPage() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [mapSectionOpen, setMapSectionOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [mapRecoverNonce, setMapRecoverNonce] = useState(0);
+  const mapRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
+  // ConfirmDialog state — burn HUD overlay
+  const [burnConfirmOpen, setBurnConfirmOpen] = useState(false);
+  const [burning, setBurning] = useState(false);
 
   // Section open states
   const [sections, setSections] = useState({
@@ -307,12 +312,13 @@ export default function DashCamDetailPage() {
   // ── Data Fetching ────────────────────────────
 
   const fetchVideo = useCallback(async () => {
-    if (!id) return;
+    if (!id) { setError('Invalid camera ID'); setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<any>(`/fleet/dashcam-videos/${id}`);
-      setVideo(data);
+      const res = await apiFetch<any>(`/fleet/dashcam-videos/${id}`);
+      // Unwrap .data envelope if present
+      setVideo(res?.data ?? res);
     } catch (err: any) {
       setError(err?.message || 'Video not found');
     } finally {
@@ -323,12 +329,38 @@ export default function DashCamDetailPage() {
   const fetchNeighbors = useCallback(async () => {
     if (!id) return;
     try {
-      const data = await apiFetch<{ prev?: number; next?: number }>(`/fleet/dashcam-videos/${id}/neighbors`);
+      const res = await apiFetch<any>(`/fleet/dashcam-videos/${id}/neighbors`);
+      const data: { prev?: number; next?: number } = res?.data ?? res;
       setNeighbors(data);
     } catch { setNeighbors(null); }
   }, [id]);
 
   useEffect(() => { fetchVideo(); fetchNeighbors(); }, [fetchVideo, fetchNeighbors]);
+
+  // ── Deep-link: ?clip_id=<id> ─────────────────
+  // Navigates to the referenced clip and strips the param.
+
+  useEffect(() => {
+    if (deepLinkRef.current) return;
+    const clipId = searchParams.get('clip_id');
+    if (!clipId) return;
+    deepLinkRef.current = true;
+    const numId = parseInt(clipId, 10);
+    if (!numId || isNaN(numId)) {
+      addToast('Clip not found', 'error');
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('clip_id'); return n; }, { replace: true });
+      return;
+    }
+    if (String(numId) !== id) {
+      // Navigate to the targeted clip
+      navigate(`/dash-cameras/${numId}`, { replace: true });
+      return;
+    }
+    // Same page — just strip param and toast
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('clip_id'); return n; }, { replace: true });
+    addToast(`Clip #${numId} loaded`, 'info');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── GPS Track ────────────────────────────────
 
@@ -389,86 +421,105 @@ export default function DashCamDetailPage() {
     return () => vid.removeEventListener('seeked', onSeeked);
   }, [video]);
 
-  // ── Google Map ───────────────────────────────
+  // ── Mapbox Map ───────────────────────────────
 
   useEffect(() => {
     if (!mapSectionOpen || !mapContainerRef.current || mapRef.current) return;
-    if (!window.google?.maps) return;
+    if (!mapboxgl || !mapboxgl.accessToken) return;
 
-    const center = telemetry
-      ? { lat: telemetry.lat, lng: telemetry.lng }
-      : video?.latitude && video?.longitude
-        ? { lat: video.latitude, lng: video.longitude }
-        : { lat: 40.76, lng: -111.89 };
+    const centerLng = telemetry
+      ? telemetry.lng
+      : video?.longitude
+        ? video.longitude
+        : -111.89;
+    const centerLat = telemetry
+      ? telemetry.lat
+      : video?.latitude
+        ? video.latitude
+        : 40.76;
 
-    const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
-    const mapOptions: google.maps.MapOptions = {
-      center,
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: MAPBOX_STYLE_DARK,
+      center: [centerLng, centerLat],
       zoom: 15,
-      renderingType: 'RASTER' as any,
-      disableDefaultUI: true,
-      zoomControl: true,
-      styles: mapId ? undefined : DARK_MAP_STYLE,
-      backgroundColor: '#000000',
-    };
-    if (mapId) (mapOptions as any).mapId = mapId;
-    const map = new google.maps.Map(mapContainerRef.current, mapOptions);
+    });
+
     mapRef.current = map;
 
-    // Marker
-    const marker = new google.maps.Marker({
-      position: center,
-      map,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 7,
-        fillColor: '#888888',
-        fillOpacity: 1,
-        strokeColor: '#cccccc',
-        strokeWeight: 2,
+    // Rebuild in place if the GPU drops the context. The load handler below
+    // re-adds the marker + GPS-track layer, so a rebuild fully restores.
+    mapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+      label: 'DashCamDetail',
+      onRebuild: () => {
+        if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
+        try { markerRef.current?.remove(); } catch { /* gone */ }
+        markerRef.current = null;
+        if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+        setMapReady(false);
+        setMapRecoverNonce((n) => n + 1);
       },
     });
-    markerRef.current = marker;
 
-    // Route polyline from GPS track
-    if (gpsTrack && gpsTrack.length > 1) {
-      const path = gpsTrack.map(p => ({ lat: p.latitude, lng: p.longitude }));
-      const polyline = new google.maps.Polyline({
-        path,
-        strokeColor: '#888888',
-        strokeOpacity: 0.5,
-        strokeWeight: 2,
-        map,
-      });
-      polylineRef.current = polyline;
+    map.on('load', () => {
+      // Marker
+      const marker = new mapboxgl.Marker({
+        color: 'var(--text-muted)',
+      })
+        .setLngLat([centerLng, centerLat])
+        .addTo(map);
+      markerRef.current = marker;
 
-      // Fit bounds to track
-      const bounds = new google.maps.LatLngBounds();
-      path.forEach(p => bounds.extend(p));
-      map.fitBounds(bounds, 20);
-    }
+      // Route polyline from GPS track
+      if (gpsTrack && gpsTrack.length > 1) {
+        const coords = gpsTrack.map(p => [p.longitude, p.latitude] as [number, number]);
+        map.addSource('gps-track', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: coords },
+          },
+        });
+        map.addLayer({
+          id: 'gps-track-line',
+          type: 'line',
+          source: 'gps-track',
+          paint: {
+            // Night-theme literal for --text-muted (#8fa3b8). Mapbox paint
+            // properties don't resolve CSS variables — the layer fails to
+            // add at all if we pass one, so we use the literal here.
+            'line-color': '#8fa3b8',
+            'line-opacity': 0.5,
+            'line-width': 2,
+          },
+        });
 
-    setMapReady(true);
-  }, [mapSectionOpen, video, gpsTrack]);
+        // Fit bounds to track
+        const bounds = new mapboxgl.LngLatBounds();
+        coords.forEach(c => bounds.extend(c));
+        map.fitBounds(bounds, { padding: 20 });
+      }
 
-  // Cleanup Google Maps on unmount to prevent memory leak
-  useEffect(() => {
-    return () => {
-      markerRef.current?.setMap(null);
-      polylineRef.current?.setMap(null);
-      markerRef.current = null;
-      polylineRef.current = null;
-      mapRef.current = null;
-    };
+      setMapReady(true);
+    });
+  }, [mapSectionOpen, video, gpsTrack, mapRecoverNonce]);
+
+  // Tear down the map + recovery listener on unmount
+  useEffect(() => () => {
+    if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
+    try { markerRef.current?.remove(); } catch { /* gone */ }
+    markerRef.current = null;
+    if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
   }, []);
 
   // Update marker position during playback
   useEffect(() => {
     if (!mapReady || !markerRef.current || !telemetry) return;
-    const pos = { lat: telemetry.lat, lng: telemetry.lng };
-    markerRef.current.setPosition(pos);
+    const lngLat: [number, number] = [telemetry.lng, telemetry.lat];
+    markerRef.current.setLngLat(lngLat);
     if (isPlaying) {
-      mapRef.current?.panTo(pos);
+      mapRef.current?.panTo(lngLat);
     }
   }, [telemetry, mapReady, isPlaying]);
 
@@ -539,13 +590,19 @@ export default function DashCamDetailPage() {
     finally { setClassifying(false); }
   };
 
-  const handleBurn = async () => {
+  const handleBurnConfirmed = async () => {
     if (!video) return;
+    setBurning(true);
     try {
       await apiFetch(`/fleet/dashcam-videos/${video.id}/burn`, { method: 'POST' });
       addToast('HUD burn started', 'success');
+      setBurnConfirmOpen(false);
       fetchVideo();
-    } catch (err: any) { addToast(err?.message || 'Burn failed', 'error'); }
+    } catch (err: any) {
+      addToast(err?.message || 'Burn failed', 'error');
+    } finally {
+      setBurning(false);
+    }
   };
 
   const handleEditSave = async (videoId: number, data: DashCamVideoEditData) => {
@@ -567,6 +624,23 @@ export default function DashCamDetailPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       // Don't capture when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Esc cascade: burnConfirm → editModal → fullscreen → back
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (burnConfirmOpen) { setBurnConfirmOpen(false); return; }
+        if (editingVideo) { setEditingVideo(null); return; }
+        if (isFullscreen) { toggleFullscreen(); return; }
+        navigate(-1);
+        return;
+      }
+
+      // N shortcut — primary action: trigger download of original clip
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        downloadRef.current?.click();
+        return;
+      }
 
       switch (e.key) {
         case ' ':
@@ -624,7 +698,11 @@ export default function DashCamDetailPage() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [togglePlayPause, skip, toggleFullscreen, setSpeed]);
+  }, [
+    togglePlayPause, skip, toggleFullscreen, setSpeed,
+    burnConfirmOpen, editingVideo, isFullscreen, navigate,
+    playbackRate,
+  ]);
 
   // ── Derived Values ───────────────────────────
 
@@ -635,39 +713,26 @@ export default function DashCamDetailPage() {
   const incidentLink = links.find((l: any) => l.entity_type === 'call');
   const otherLinks = links.filter((l: any) => l.entity_type !== 'call');
 
-  // ── Loading / Error ──────────────────────────
-
-  // ── Render ────────────────────────────────────
-
-  // Set document title
-  useEffect(() => { document.title = 'Dash Cam Player \u2014 RMPG Flex'; }, []);
-
-  // Keyboard shortcut: Escape to close modals
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setEditingVideo(null); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+  // ── Loading / Error / Empty States ──────────────────────────
 
   if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ height: 'calc(100dvh - 120px)' }}>
-        <div className="flex items-center gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" />
-          <span className="text-[11px] text-rmpg-400">Loading video...</span>
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-6 h-6 animate-spin text-brand-400" role="status" aria-label="Loading" />
+          <span className="text-[11px] text-rmpg-400">Loading video&hellip;</span>
         </div>
       </div>
     );
   }
 
-  if (error || !video) {
+  if (error) {
     return (
       <div className="flex items-center justify-center" style={{ height: 'calc(100dvh - 120px)' }}>
         <div className="text-center">
           <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-          <p className="text-xs text-rmpg-400 mb-3">{error || 'Video not found'}</p>
+          <p className="text-xs text-rmpg-400 mb-1">{error}</p>
+          <p className="text-[10px] text-rmpg-500 mb-3">The video could not be loaded.</p>
           <button type="button" onClick={() => navigate('/dash-cameras')}
             className="toolbar-btn text-[10px] px-4 py-1.5 inline-flex items-center gap-1">
             <ChevronLeft className="w-3 h-3" /> Back to Gallery
@@ -677,6 +742,22 @@ export default function DashCamDetailPage() {
     );
   }
 
+  if (!video) {
+    return (
+      <div className="flex items-center justify-center" style={{ height: 'calc(100dvh - 120px)' }}>
+        <div className="text-center">
+          <Video className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
+          <p className="text-xs text-rmpg-400 mb-3">No video found for this ID.</p>
+          <button type="button" onClick={() => navigate('/dash-cameras')}
+            className="toolbar-btn text-[10px] px-4 py-1.5 inline-flex items-center gap-1">
+            <ChevronLeft className="w-3 h-3" /> Back to Gallery
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render ─────────────────────────────────────
 
   return (
     <div id="hud-container" className="relative flex" style={{ height: 'calc(100dvh - 120px)', background: '#000' }}>
@@ -715,7 +796,7 @@ export default function DashCamDetailPage() {
 
             {/* Unit call sign */}
             {video.unit_call_sign && (
-              <span className="text-gray-400 font-bold tracking-wide">
+              <span className="text-rmpg-400 font-bold tracking-wide">
                 {video.unit_call_sign}
               </span>
             )}
@@ -734,7 +815,7 @@ export default function DashCamDetailPage() {
 
             {/* Info panel toggle */}
             <button type="button" onClick={() => setPanelOpen(p => !p)}
-              className="text-rmpg-400 hover:text-white transition-colors p-0.5" title="Toggle panel (I)">
+              className="text-rmpg-400 hover:text-rmpg-100 transition-colors p-0.5" title="Toggle panel (I)">
               <Info className="w-4 h-4" />
             </button>
           </div>
@@ -838,7 +919,7 @@ export default function DashCamDetailPage() {
               ? <VolumeX className="w-4 h-4" />
               : <Volume2 className="w-4 h-4" />}
           </button>
-          <input type="range" min="0" max="1" step="0.05"
+          <input id="ff-dashcamdetailpage-0" type="range" min="0" max="1" step="0.05"
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
             className="w-16 h-1 accent-brand-500 cursor-pointer"
@@ -873,7 +954,7 @@ export default function DashCamDetailPage() {
       <div className={`hud-panel ${panelOpen ? 'open' : ''}`}
         style={{ position: panelOpen ? 'relative' : 'absolute', transform: panelOpen ? 'none' : undefined }}>
         <div className="flex flex-col h-full">
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
 
             {/* 1. OFFICER & UNIT */}
             <HudSection title="Officer & Unit" icon={User}
@@ -972,8 +1053,8 @@ export default function DashCamDetailPage() {
               isOpen={sections.gps} onToggle={() => toggleSection('gps')}>
               <div ref={mapContainerRef}
                 className="w-full rounded-sm"
-                style={{ height: 200, background: '#050505' }}>
-                {!window.google?.maps && (
+                style={{ height: 200, background: 'var(--surface-deep)' }}>
+                {!mapboxgl?.accessToken && (
                   <div className="flex items-center justify-center h-full">
                     <span className="text-[9px] text-rmpg-500">Maps unavailable</span>
                   </div>
@@ -1006,7 +1087,7 @@ export default function DashCamDetailPage() {
                   {incidentLink.incident_type && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Type</span>
-                      <span className="text-[11px] text-rmpg-200">{(incidentLink.incident_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className="text-[11px] text-rmpg-200">{toDisplayLabel(incidentLink.incident_type || '')}</span>
                     </div>
                   )}
                   {incidentLink.status && (
@@ -1045,7 +1126,8 @@ export default function DashCamDetailPage() {
                     <span className={`text-[10px] font-bold uppercase ${CLASSIFICATION_BADGE[video.classification] || ''}`}>
                       {video.classification}
                     </span>
-                    {canManage && (
+                    {/* Role gate: admin/manager only may reclassify */}
+                    {isAdminOrManager && (
                       <div className="flex gap-0.5 ml-1">
                         {(['routine', 'evidence', 'flagged', 'restricted'] as const).map(cls => (
                           <button type="button" key={cls} onClick={() => handleClassify(cls)} disabled={classifying}
@@ -1115,15 +1197,16 @@ export default function DashCamDetailPage() {
           </div>
 
           {/* ── Panel Bottom Actions ── */}
-          <div className="border-t border-[#141414] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
+          <div className="border-t border-border-subtle p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
             {/* File info */}
             <div className="flex items-center justify-between text-[9px] text-rmpg-500 font-mono mb-1">
               <span>{formatSize(video.file_size)}</span>
               <span>{formatDuration(video.duration_seconds)}</span>
             </div>
 
-            {canManage && (
-              <button type="button" onClick={handleBurn}
+            {/* Role gate: admin/manager only for burn */}
+            {isAdminOrManager && (
+              <button type="button" onClick={() => setBurnConfirmOpen(true)}
                 disabled={video.burn_status === 'processing' || video.burn_status === 'pending'}
                 className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 disabled:opacity-30">
                 <Flame className="w-3.5 h-3.5" /> Burn HUD Overlay
@@ -1139,15 +1222,20 @@ export default function DashCamDetailPage() {
               {linkCopied ? <><Check className="w-3.5 h-3.5 text-green-400" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Link</>}
             </button>
 
+            {/* Hidden anchor target for N-shortcut — same href as the visible button below */}
+            {/* eslint-disable-next-line jsx-a11y/anchor-has-content */}
+            <a ref={downloadRef} href={streamUrl} download aria-hidden="true" tabIndex={-1} className="sr-only" />
+
             <a href={streamUrl} download
-              className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
+              className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline"
+              title="Download original (N)">
               <Download className="w-3.5 h-3.5" /> Download Original
             </a>
 
             {video.burned_file_path && (
               <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/download-burned?token=${encodeURIComponent(token)}`}
                 download
-                className="toolbar-btn-primary text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
+                className="toolbar-btn toolbar-btn-primary text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
                 <Download className="w-3.5 h-3.5" /> Download Burned
               </a>
             )}
@@ -1185,6 +1273,24 @@ export default function DashCamDetailPage() {
         video={editingVideo}
         onSave={handleEditSave}
         isSubmitting={editSubmitting}
+      />
+
+      {/* ── Burn HUD Confirm Dialog ── */}
+      <ConfirmDialog
+        isOpen={burnConfirmOpen}
+        onClose={() => setBurnConfirmOpen(false)}
+        onConfirm={handleBurnConfirmed}
+        title="Burn HUD Overlay"
+        message="This will permanently burn the on-screen HUD overlay (GPS, speed, timestamp, unit) into a new copy of the video. The original is preserved. Continue?"
+        details={
+          <>
+            <div>Clip: {video.unit_call_sign || '—'} &middot; {formatDate(video.recorded_at)}</div>
+            {video.case_number && <div>Case #: {video.case_number}</div>}
+          </>
+        }
+        confirmLabel="Start Burn"
+        confirmVariant="warning"
+        isLoading={burning}
       />
     </div>
   );

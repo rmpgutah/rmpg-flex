@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { coded } from '../../utils/searchText';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import {
   Search,
   Package,
@@ -22,28 +24,32 @@ import {
   CheckCircle2,
   AlertTriangle,
   Shield,
+  Eye,
+  Pencil,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { safeDateStr } from '../../utils/dateUtils';
+import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
+import EmailedDocuments from '../../components/EmailedDocuments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import RecordField from '../../components/records/RecordField';
+import FieldGrid from '../../components/records/FieldGrid';
+import RecordBadge from '../../components/records/RecordBadge';
+import RecordHero from '../../components/records/RecordHero';
+import PrintRecordButton from '../../components/PrintRecordButton';
 import type { CustodyEntry, RecordEntityType } from '../../types';
 
 // ── Helpers ──────────────────────────────────────
 
+// Delegates to the shared RecordField primitive. See PersonsTab for the pattern.
 function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
   if (!value) return null;
-  const Icon = icon;
-  return (
-    <div className="flex items-start gap-2 text-xs group">
-      {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
-      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
-    </div>
-  );
+  return <RecordField label={label} value={value} icon={icon} />;
 }
 
 // ── Props ──────────────────────────────────────────
@@ -57,7 +63,7 @@ export interface EvidenceTabProps {
   setEvidence: React.Dispatch<React.SetStateAction<any[]>>;
   loadingEvidence: boolean;
   setLoadingEvidence: React.Dispatch<React.SetStateAction<boolean>>;
-  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null>>;
+  setDeleteTarget: React.Dispatch<React.SetStateAction<{ type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null>>;
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
   handleArchiveRecord: (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => Promise<void>;
@@ -157,7 +163,7 @@ export function useEvidenceTab(props: EvidenceTabProps): EvidenceTabState {
     return (
       (ev.evidence_number || '').toLowerCase().includes(q) ||
       (ev.description || '').toLowerCase().includes(q) ||
-      (ev.evidence_type || '').toLowerCase().includes(q) ||
+      coded(ev.evidence_type, formatEnumValue).includes(q) ||
       (ev.serial_number || '').toLowerCase().includes(q) ||
       (ev.brand || '').toLowerCase().includes(q) ||
       (ev.storage_location || '').toLowerCase().includes(q) ||
@@ -192,13 +198,33 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
     evidenceModalOpen, editingEvidence, setEvidenceModalOpen, setEditingEvidence, evidence,
   } = state;
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+  const buildEvidenceMenu = (ev: any): ContextMenuItem[] => {
+    return [
+      m.action('Open record', () => setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev), { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit evidence', () => { setEditingEvidence(ev); setEvidenceModalOpen(true); }, { icon: <Pencil size={12} /> })] : []),
+      m.separator(),
+      m.copy('Copy evidence #', ev.evidence_number),
+      m.copyId(ev.id),
+      ...(ev.serial_number ? [m.copy('Copy serial #', ev.serial_number, <Hash size={12} />)] : []),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('evidence', ev.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('evidence', ev.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'evidence', id: ev.id, label: ev.evidence_number }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
       <div className="p-3 border-b border-rmpg-600" role="search">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-          <input
+          <input id="ff-evidencetab-0"
             type="text"
             className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
             placeholder="Search by evidence #, description, serial #, incident..." aria-label="Search by evidence #, description, serial #, incident..."
@@ -206,7 +232,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors" aria-label="Clear search">
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100 transition-colors" aria-label="Clear search">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -218,8 +244,20 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
         {filteredEvidence.length === 0 && (
           <div className="text-center py-16">
             <Package className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
-            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No evidence matches your search.' : 'No evidence records found.'}</p>
-            <p className="text-[10px] text-rmpg-600 mt-1">Click "New Evidence" to add a record</p>
+            <p className="text-sm text-rmpg-400 font-medium">
+              {searchQuery
+                ? 'No evidence matches your search.'
+                : showArchived
+                  ? 'No archived evidence records.'
+                  : 'No evidence records found.'}
+            </p>
+            <p className="text-[10px] text-rmpg-600 mt-1">
+              {searchQuery
+                ? 'Try broadening your search.'
+                : showArchived
+                  ? 'Records you archive will appear here.'
+                  : 'Click "New Evidence" to add a record.'}
+            </p>
           </div>
         )}
         {filteredEvidence.map((ev: any, idx: number) => {
@@ -232,6 +270,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev); } }}
               onClick={() => setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev)}
+              onContextMenu={(e) => openMenu(e, buildEvidenceMenu(ev))}
               className={`
                 px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
                 ${selectedEvidence?.id === ev.id
@@ -263,7 +302,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
                   <div className="text-[10px] text-rmpg-300 mt-0.5 truncate">{ev.description}</div>
                   <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
                     <span className="uppercase">{(ev.evidence_type || 'physical').replace(/_/g, ' ')}</span>
-                    {ev.category && <span>{ev.category.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>}
+                    {ev.category && <span>{toDisplayLabel(ev.category)}</span>}
                     {ev.incident_number && (
                       <span className="flex items-center gap-0.5">
                         <Link2 className="w-2.5 h-2.5" />{ev.incident_number}
@@ -279,6 +318,11 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
                     <span className="text-[9px] text-rmpg-500 font-mono">S/N: {ev.serial_number}</span>
                   )}
                   <div className="flex items-center gap-1">
+                    {(!showArchived || user?.role === 'admin') && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingEvidence(ev); setEvidenceModalOpen(true); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors" title="Edit">
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
                     {(!showArchived || user?.role === 'admin') && (
                       <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'evidence', id: ev.id, label: ev.evidence_number }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors" title="Delete">
                         <Trash2 className="w-3 h-3" />
@@ -406,7 +450,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
         <button type="button"
           onClick={handleComputeHashes}
           disabled={computing}
-          className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40"
+          className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-40"
         >
           {computing ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Hash className="w-3 h-3" />}
           {computing ? 'Computing...' : 'Compute Hashes'}
@@ -433,7 +477,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                <span className="font-medium text-rmpg-200 truncate flex-1">{h.file_name}</span>
+                <span className="font-medium text-rmpg-200 min-w-0 truncate flex-1">{h.file_name}</span>
                 {h.flagged ? (
                   <span className="px-1.5 py-0.5 text-[8px] font-bold bg-red-900/40 text-red-400 border border-red-700/40 shrink-0">
                     FLAGGED{h.hash_set_name ? `: ${h.hash_set_name}` : ''}
@@ -444,11 +488,11 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                   </span>
                 ) : null}
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[9px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[9px]">
                 {h.md5 && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">MD5:</span>
-                    <span className="text-rmpg-300 font-mono truncate">{h.md5}</span>
+                    <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.md5}</span>
                     <button type="button" onClick={() => copyToClipboard(h.md5!, `md5-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `md5-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
@@ -457,7 +501,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                 {h.sha256 && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">SHA-256:</span>
-                    <span className="text-rmpg-300 font-mono truncate">{h.sha256.slice(0, 24)}...</span>
+                    <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.sha256.slice(0, 24)}...</span>
                     <button type="button" onClick={() => copyToClipboard(h.sha256!, `sha256-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
                       {copiedField === `sha256-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
@@ -466,14 +510,14 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                 {h.photodna_hash && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">PhotoDNA:</span>
-                    <span className="text-purple-400 font-mono truncate">{h.photodna_hash.slice(0, 20)}...</span>
+                    <span className="min-w-0 flex-1 text-purple-400 font-mono truncate">{h.photodna_hash.slice(0, 20)}...</span>
                     <Shield className="w-2.5 h-2.5 text-purple-400 shrink-0" />
                   </div>
                 )}
                 {h.phash && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">pHash:</span>
-                    <span className="text-rmpg-300 font-mono truncate">{h.phash}</span>
+                    <span className="min-w-0 flex-1 text-rmpg-300 font-mono truncate">{h.phash}</span>
                   </div>
                 )}
               </div>
@@ -501,10 +545,16 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
   if (!selectedEvidence) return null;
 
+  const retentionOverdue = !!(
+    selectedEvidence.retention_until &&
+    parseTimestamp(selectedEvidence.retention_until) < new Date() &&
+    !selectedEvidence.disposition
+  );
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Feature 38: Retention overdue badge */}
-      {selectedEvidence.retention_until && new Date(selectedEvidence.retention_until) < new Date() && !selectedEvidence.disposition && (
+      {retentionOverdue && (
         <div className="px-4 py-2 bg-red-950/30 border-b border-red-800/40 flex items-center gap-2 text-[11px] text-red-400 font-bold flex-shrink-0">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 animate-pulse" />
           RETENTION OVERDUE — Past retention date ({safeDateStr(selectedEvidence.retention_until)})
@@ -512,39 +562,39 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         </div>
       )}
 
-      {/* Status header */}
-      <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
-        <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
-          <span className="px-1.5 py-0.5 font-bold bg-purple-900/40 text-purple-300 border border-purple-600/40 uppercase">
-            {(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}
-          </span>
-          {selectedEvidence.category && (
-            <span className="px-1.5 py-0.5 font-bold bg-rmpg-700 text-rmpg-300 border border-rmpg-600">
-              {selectedEvidence.category}
+      {/* Hero identity band + print action */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <RecordHero
+          name={selectedEvidence.evidence_number || 'EVIDENCE'}
+          icon={Package}
+          subtitle={
+            <span className="flex items-center gap-2 flex-wrap">
+              <span className="uppercase font-semibold text-purple-300">{(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}</span>
+              {selectedEvidence.category && <span>· {selectedEvidence.category}</span>}
+              {selectedEvidence.incident_number && (
+                <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />Incident <span className="font-mono text-rmpg-100">{selectedEvidence.incident_number}</span></span>
+              )}
             </span>
-          )}
-          {selectedEvidence.incident_number && (
-            <span className="flex items-center gap-1">
-              <Link2 className="w-3 h-3" />
-              Incident: <span className="font-mono text-white">{selectedEvidence.incident_number}</span>
-            </span>
-          )}
-        </div>
-        {/* Status badges */}
-        <div className="flex gap-2 mt-1.5">
-          {selectedEvidence.lab_submitted && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-900/50 text-purple-400 border border-purple-700/50 flex items-center gap-1">
-              <FlaskConical className="w-3 h-3" /> LAB SUBMITTED
-            </span>
-          )}
-          {selectedEvidence.disposal_method && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">
-              DISPOSED: {selectedEvidence.disposal_method}
-            </span>
-          )}
-          {selectedEvidence.photo_taken && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">PHOTO ON FILE</span>
-          )}
+          }
+          flags={[retentionOverdue ? 'evidence hold' : null]}
+          tone="gold"
+        >
+          {selectedEvidence.lab_submitted && <RecordBadge tone="purple" icon={FlaskConical}>LAB SUBMITTED</RecordBadge>}
+          {selectedEvidence.disposal_method && <RecordBadge tone="red">DISPOSED: {selectedEvidence.disposal_method}</RecordBadge>}
+          {selectedEvidence.photo_taken && <RecordBadge tone="gray" glow={false}>PHOTO ON FILE</RecordBadge>}
+        </RecordHero>
+        {/* Print / Preview / Sign & Export — generates the v1 evidence PDF
+            (already implemented in recordPdfGenerator.ts as a `RecordPdfType`).
+            Wires entityType so attachment images auto-fetch into the PDF. */}
+        <div className="px-4 pb-2 flex items-center justify-end gap-1 print:hidden">
+          <PrintRecordButton
+            recordType="evidence"
+            recordData={selectedEvidence}
+            identifier={selectedEvidence.evidence_number}
+            entityType="evidence"
+            entityId={selectedEvidence.id}
+            iconOnly
+          />
         </div>
       </div>
 
@@ -553,65 +603,53 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
         {/* ── Description ─────────────────────── */}
         <CollapsibleSection title="Description" icon={FileText} defaultOpen>
-          <p className="text-sm text-rmpg-200 leading-relaxed">{selectedEvidence.description}</p>
+          <p className="text-sm text-rmpg-200 leading-relaxed break-words">{selectedEvidence.description}</p>
         </CollapsibleSection>
 
         {/* ── Collection & Storage ──────────── */}
         <CollapsibleSection title="Collection & Storage" icon={Warehouse} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <FieldGrid cols={3}>
             {renderInfoRow('Collected By', selectedEvidence.collected_by_name)}
             {renderInfoRow('Date Collected', selectedEvidence.collected_date, Calendar)}
             {renderInfoRow('Storage Location', selectedEvidence.storage_location, MapPin)}
             {renderInfoRow('Packaging', selectedEvidence.packaging_type, Boxes)}
             {renderInfoRow('Condition', selectedEvidence.condition)}
             {renderInfoRow('Location Found', selectedEvidence.location_found, MapPin)}
-          </div>
+          </FieldGrid>
         </CollapsibleSection>
 
         {/* ── Item Details (conditional) ──────── */}
         {(selectedEvidence.serial_number || selectedEvidence.brand || selectedEvidence.estimated_value || selectedEvidence.dimensions || selectedEvidence.weight) && (
           <CollapsibleSection title="Item Details" icon={Package} defaultOpen>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {selectedEvidence.serial_number && (
-                <div className="text-xs"><span className="text-rmpg-400">Serial #:</span> <span className="text-rmpg-200 font-mono">{selectedEvidence.serial_number}</span></div>
-              )}
-              {selectedEvidence.brand && (
-                <div className="text-xs"><span className="text-rmpg-400">Brand/Model:</span> <span className="text-rmpg-200">{selectedEvidence.brand}{selectedEvidence.model ? ` ${selectedEvidence.model}` : ''}</span></div>
-              )}
-              {selectedEvidence.estimated_value && (
-                <div className="text-xs"><span className="text-rmpg-400">Est. Value:</span> <span className="text-green-400 font-bold">${Number(selectedEvidence.estimated_value).toLocaleString()}</span></div>
-              )}
-              {selectedEvidence.dimensions && (
-                <div className="text-xs"><span className="text-rmpg-400">Dimensions:</span> <span className="text-rmpg-200">{selectedEvidence.dimensions}</span></div>
-              )}
-              {selectedEvidence.weight && (
-                <div className="text-xs"><span className="text-rmpg-400">Weight:</span> <span className="text-rmpg-200">{selectedEvidence.weight}</span></div>
-              )}
-              {selectedEvidence.quantity && (
-                <div className="text-xs"><span className="text-rmpg-400">Quantity:</span> <span className="text-rmpg-200">{selectedEvidence.quantity}</span></div>
-              )}
-            </div>
+            <FieldGrid cols={3}>
+              <RecordField label="Serial #" value={selectedEvidence.serial_number} mono copyable />
+              <RecordField label="Brand/Model" value={selectedEvidence.brand ? `${selectedEvidence.brand}${selectedEvidence.model ? ` ${selectedEvidence.model}` : ''}` : undefined} />
+              <RecordField label="Est. Value" value={selectedEvidence.estimated_value ? `$${Number(selectedEvidence.estimated_value).toLocaleString()}` : undefined} valueColor="var(--sev-ok-soft)" />
+              <RecordField label="Dimensions" value={selectedEvidence.dimensions} />
+              <RecordField label="Weight" value={selectedEvidence.weight} />
+              <RecordField label="Quantity" value={selectedEvidence.quantity} />
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Lab / Analysis (conditional) ────── */}
         {selectedEvidence.lab_submitted && (
           <CollapsibleSection title="Lab / Analysis" icon={FlaskConical}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <FieldGrid cols={2}>
               {renderInfoRow('Lab Name', selectedEvidence.lab_name)}
               {renderInfoRow('Lab Case #', selectedEvidence.lab_case_number, Hash)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Disposal (conditional) ──────────── */}
         {selectedEvidence.disposal_method && (
           <CollapsibleSection title="Disposal" icon={Trash2}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <FieldGrid cols={3}>
               {renderInfoRow('Method', selectedEvidence.disposal_method)}
               {renderInfoRow('Date', selectedEvidence.disposal_date, Calendar)}
               {renderInfoRow('Authorized By', selectedEvidence.disposal_authorized_by)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
@@ -626,9 +664,9 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                 {evidenceCustody.map((entry: CustodyEntry, idx: number) => {
                   const actionColors: Record<string, string> = {
                     collected: 'bg-green-500',
-                    transferred: 'bg-gray-500',
+                    transferred: 'bg-rmpg-500',
                     checked_out: 'bg-amber-500',
-                    returned: 'bg-cyan-500',
+                    returned: 'bg-rmpg-500',
                     released: 'bg-purple-500',
                     destroyed: 'bg-red-500',
                   };
@@ -637,8 +675,8 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                       <div className={`absolute left-1.5 top-1 w-3 h-3 rounded-full border-2 border-surface-base ${actionColors[entry.action] || 'bg-rmpg-500'}`} />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-white uppercase">{entry.action.replace(/_/g, ' ')}</span>
-                          <span className="text-[9px] text-rmpg-500">{entry.timestamp ? new Date(entry.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
+                          <span className="text-[10px] font-bold text-rmpg-100 uppercase">{entry.action.replace(/_/g, ' ')}</span>
+                          <span className="text-[9px] text-rmpg-500">{safeDateTimeStr(entry.timestamp, '')}</span>
                         </div>
                         <div className="text-xs text-rmpg-300 mt-0.5">
                           {entry.from_person && <span className="text-rmpg-400">From: {entry.from_person}</span>}
@@ -660,7 +698,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Notes (conditional) ──────────────── */}
         {selectedEvidence.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed">{selectedEvidence.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedEvidence.notes}</p>
           </CollapsibleSection>
         )}
 
@@ -747,7 +785,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                   <div
                     key={idx}
                     className="aspect-square bg-surface-sunken border border-rmpg-600 rounded-sm overflow-hidden cursor-pointer hover:border-brand-500 transition-colors"
-                    onClick={() => window.open(photo, '_blank')}
+                    onClick={() => window.open(photo, '_blank', 'noopener,noreferrer')}
                   >
                     <img src={photo} alt={`Evidence photo ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
                   </div>
@@ -760,8 +798,8 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Created', selectedEvidence.created_at ? new Date(selectedEvidence.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
-            {renderInfoRow('Updated', selectedEvidence.updated_at ? new Date(selectedEvidence.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
+            {renderInfoRow('Created', safeDateTimeStr(selectedEvidence.created_at, ''), Calendar)}
+            {renderInfoRow('Updated', safeDateTimeStr(selectedEvidence.updated_at, ''), Calendar)}
           </div>
         </CollapsibleSection>
 
@@ -776,6 +814,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── File Attachments ─────────────────── */}
         <div className="panel-beveled p-3 bg-surface-base">
           <FileAttachments entityType="evidence" entityId={String(selectedEvidence.id)} />
+          <EmailedDocuments recordType="evidence" recordId={selectedEvidence.id} />
         </div>
       </div>
     </div>
@@ -806,11 +845,11 @@ export default function EvidenceTab(props: EvidenceTabProps) {
   // Keyboard shortcut: Escape to deselect
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { /* close detail panel if open */ }
+      if (e.key === 'Escape') { state.setSelectedEvidence(null); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [state]);
+  }, [state.setSelectedEvidence]);
 
   if (props.loadingEvidence) return null;
 

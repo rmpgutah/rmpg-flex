@@ -1,23 +1,23 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import {
-  loadGoogleMaps,
-  DARK_MAP_STYLE,
-  NIGHT_NAV_STYLE,
-  TERRAIN_STYLE,
-  registerMapInstance,
-  unregisterMapInstance,
-  updateMapStyles,
-  onOnlineRetryMaps,
-  monitorTileLoading,
-} from '../../../utils/googleMapsLoader';
+import mapboxgl from 'mapbox-gl';
 import { devLog, devWarn } from '../../../utils/devLog';
-import { injectKeyframes, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { injectKeyframes } from '../utils/mapMarkerBuilders';
 import type { MapStyleId } from '../utils/mapConstants';
+import { resolveMapboxAccessToken } from '../../../utils/mapboxLoader';
+
+const STYLE_MAP: Record<MapStyleId, string> = {
+  dark: 'mapbox://styles/mapbox/dark-v11',
+  night_nav: 'mapbox://styles/mapbox/dark-v11',
+  satellite: 'mapbox://styles/mapbox/satellite-v9',
+  hybrid: 'mapbox://styles/mapbox/satellite-streets-v12',
+  terrain: 'mapbox://styles/mapbox/outdoors-v12',
+  streets: 'mapbox://styles/mapbox/streets-v12',
+};
 
 export interface UseMapInitResult {
   mapRef: MutableRefObject<HTMLDivElement | null>;
-  mapInstanceRef: MutableRefObject<google.maps.Map | null>;
-  infoWindowRef: MutableRefObject<google.maps.InfoWindow | null>;
+  mapInstanceRef: MutableRefObject<mapboxgl.Map | null>;
+  infoWindowRef: MutableRefObject<mapboxgl.Popup | null>;
   markersRef: MutableRefObject<any[]>;
   useAdvancedMarkersRef: MutableRefObject<boolean>;
   mapLoaded: boolean;
@@ -32,10 +32,9 @@ export interface UseMapInitResult {
 
 export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  // NOTE: typed as any[] because markers can be AdvancedMarkerElement or OverlayView instances
+  const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<any[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
   const useAdvancedMarkersRef = useRef(false);
 
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -44,16 +43,16 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
   const [tilesStalled, setTilesStalled] = useState(false);
   const [retryingGmaps, setRetryingGmaps] = useState(false);
 
-  const isAuthError = mapError != null && (mapError.includes('API key') || mapError.includes('authentication') || mapError.includes('not configured'));
+  const isAuthError = mapError != null && (mapError.includes('token') || mapError.includes('authentication') || mapError.includes('not configured'));
   const showOfflineFallback = mapError != null && !isAuthError;
 
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 
-  // Google Maps Initialization
   useEffect(() => {
     if (!mapRef.current) return;
 
     injectKeyframes();
+    injectMapStyles();
     setMapError(null);
 
     if (mapInstanceRef.current) {
@@ -61,231 +60,150 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       return;
     }
 
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-    if (!apiKey) {
-      setMapError('Google Maps API key not configured. Add VITE_GOOGLE_MAPS_API_KEY to client/.env');
-      setMapLoaded(false);
-      return;
-    }
-
     let authFailed = false;
-    (window as any).gm_authFailure = () => {
-      authFailed = true;
-      console.error('[MapPage] Google Maps authentication failure — API key rejected');
-      setMapError(
-        'Google Maps API key was rejected.\n\n' +
-        'Fix these in Google Cloud Console (console.cloud.google.com):\n\n' +
-        '1. BILLING: Link a billing account to the project\n' +
-        '   (Google Maps requires billing — free tier covers most usage)\n\n' +
-        '2. ENABLE APIs: Go to APIs & Services → Library → enable:\n' +
-        '   • Maps JavaScript API\n' +
-        '   • Places API (New)\n\n' +
-        '3. KEY RESTRICTIONS: Go to Credentials → click your key:\n' +
-        '   • API restrictions: "Don\'t restrict key" (or add Maps JS + Places APIs)\n' +
-        '   • Website restrictions: set to "None" for dev, or add:\n' +
-        '     http://localhost:3001/*\n' +
-        '     http://localhost:5173/*\n' +
-        '     http://localhost:4173/*'
-      );
-    };
-
     let cancelled = false;
-    let pendingOnlineListener: (() => void) | null = null;
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000];
-    let dismissObserver: MutationObserver | null = null;
-    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
-    function initMap() {
+    function initMap(token: string) {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
-      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
-      const mapOptions: google.maps.MapOptions = {
-        center: { lat: 40.7608, lng: -111.8910 },
+      while (mapRef.current.firstChild) {
+        mapRef.current.removeChild(mapRef.current.firstChild);
+      }
+
+      mapboxgl.accessToken = token;
+
+      const map = new mapboxgl.Map({
+        container: mapRef.current,
+        style: STYLE_MAP[mapStyle] || STYLE_MAP.dark,
+        center: [-111.8910, 40.7608],
         zoom: 12,
-        disableDefaultUI: true,
-        zoomControl: false,
-        styles: mapId ? undefined : DARK_MAP_STYLE,
-        backgroundColor: '#171717',
-        renderingType: 'RASTER' as any,
-        isFractionalZoomEnabled: false,
-        gestureHandling: 'greedy',
-      };
-      if (mapId) (mapOptions as any).mapId = mapId;
-      const map = new google.maps.Map(mapRef.current, mapOptions);
+        attributionControl: false,
+        interactive: true,
+        failIfMajorPerformanceCaveat: false,
+      });
+
+      map.dragRotate.disable();
+      map.touchZoomRotate.disableRotation();
 
       mapInstanceRef.current = map;
-      registerMapInstance(map);
 
-      infoWindowRef.current = new google.maps.InfoWindow();
+      infoWindowRef.current = new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+        maxWidth: '320px',
+        className: 'rmpg-map-popup',
+      });
 
-      const hideStyleId = '__rmpg_hide_gm_dialog__';
-      if (!document.getElementById(hideStyleId)) {
-        const s = document.createElement('style');
-        s.id = hideStyleId;
-        s.textContent = '[role="alertdialog"] { display: none !important; }';
-        document.head.appendChild(s);
-      }
+      useAdvancedMarkersRef.current = false;
+      devLog('[MapPage] Using Mapbox markers');
 
-      dismissObserver = new MutationObserver(() => {
-        if (authFailed) return;
-        const hardErr = mapRef.current?.querySelector('.gm-err-container');
-        if (hardErr) {
-          console.error('[MapPage] Google Maps hard error overlay detected');
+      // Block pointer events until Mapbox's internal transform/projection is
+      // ready (the 'load' event). Without this, mouseover/mousemove handlers
+      // inside Mapbox GL JS call map.unproject() before the matrix is set,
+      // producing "Invalid LngLat object: (NaN, NaN)" errors.
+      const canvas = map.getCanvas();
+      if (canvas) canvas.style.pointerEvents = 'none';
+
+      map.on('load', () => {
+        if (canvas) canvas.style.pointerEvents = '';
+        if (!authFailed) setMapLoaded(true);
+      });
+
+      map.on('error', (e) => {
+        if (e.error?.message?.includes('token') || e.error?.message?.includes('401')) {
           authFailed = true;
-          dismissObserver?.disconnect();
-          setMapError(
-            'Google Maps failed to load.\n\n' +
-            'Check Google Cloud Console:\n' +
-            '1. Billing account linked to the project\n' +
-            '2. Maps JavaScript API enabled\n' +
-            '3. API key restrictions allow this domain'
-          );
-          return;
-        }
-        const dialog = document.querySelector('[role="alertdialog"]');
-        if (dialog) {
-          const btn = dialog.querySelector('button');
-          if (btn) btn.click();
-          dialog.remove();
+          setMapError('Mapbox authentication failed — check your access token.');
         }
       });
-      dismissObserver.observe(document.body, { childList: true, subtree: true });
-      dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
-      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
-      // When mapId is configured, enable AdvancedMarkerElement for modern marker support.
-      // Without mapId, fall back to OverlayView-based markers which work on all map types.
-      if (mapId && google.maps.marker?.AdvancedMarkerElement) {
-        useAdvancedMarkersRef.current = true;
-        devLog('[MapPage] Using AdvancedMarkerElement (mapId configured)');
-      } else {
-        useAdvancedMarkersRef.current = false;
-        devLog('[MapPage] Using OverlayView markers (no mapId configured)');
-      }
-
-      if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
-      tileMonitorCleanupRef.current = monitorTileLoading(map, {
-        onStalled: () => {
-          devWarn('[MapPage] Map tiles stalled');
-          setTilesStalled(true);
-        },
-        onLoaded: () => {
-          devLog('[MapPage] Map tiles loaded successfully');
-          setTilesStalled(false);
-        },
-        onRecovering: () => {
-          devLog('[MapPage] Attempting tile recovery...');
-        },
+      map.on('idle', () => {
+        setTilesStalled(false);
       });
-
-      if (!authFailed) setMapLoaded(true);
     }
 
-    function attemptLoad(attempt: number) {
+    async function attemptLoad(attempt: number) {
       if (cancelled) return;
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         devWarn('[MapPage] Device offline — pausing retries until connectivity returns');
         const onBack = () => {
           window.removeEventListener('online', onBack);
-          pendingOnlineListener = null;
           if (!cancelled) {
             devLog('[MapPage] Back online — resuming map load');
             attemptLoad(attempt);
           }
         };
-        pendingOnlineListener = onBack;
         window.addEventListener('online', onBack);
         return;
       }
 
-      loadGoogleMaps(apiKey)
-        .then(() => initMap())
-        .catch((err: any) => {
-          if (cancelled) return;
-          const errMsg = err?.message || String(err);
-          devWarn(`[MapPage] Google Maps load attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, errMsg);
-
+      try {
+        const token = await resolveMapboxAccessToken();
+        if (!token) {
           if (attempt < MAX_RETRIES) {
             const delay = RETRY_DELAYS[attempt] || 30000;
-            devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
             setTimeout(() => attemptLoad(attempt + 1), delay);
           } else {
-            console.error('[MapPage] Google Maps load failed after all retries');
-            setMapError(
-              'Failed to load Google Maps after multiple attempts.\n\n' +
-              'If you are on a slow or intermittent connection (vehicle WiFi),\n' +
-              'wait for a stronger signal and click Retry below.\n\n' +
-              (errMsg ? `Technical details: ${errMsg}` : '')
-            );
+            setMapError('Failed to load map — no Mapbox access token configured.');
           }
-        });
+          return;
+        }
+        initMap(token);
+      } catch (err: any) {
+        if (cancelled) return;
+        const errMsg = err?.message || String(err);
+        devWarn(`[MapPage] Map load attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, errMsg);
+
+        if (attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAYS[attempt] || 30000;
+          setTimeout(() => attemptLoad(attempt + 1), delay);
+        } else {
+          setMapError('Failed to load map after multiple attempts.\n\n' + (errMsg ? `Technical details: ${errMsg}` : ''));
+        }
+      }
     }
 
     attemptLoad(0);
 
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !mapInstanceRef.current) {
-        devLog('[MapPage] Online auto-retry triggered — reinitializing map');
-        setMapError(null);
-        initMap();
-      }
-    });
-
     return () => {
       cancelled = true;
-      if (pendingOnlineListener) { window.removeEventListener('online', pendingOnlineListener); pendingOnlineListener = null; }
-      unsubOnline();
-      if (dismissTimer) clearTimeout(dismissTimer);
-      if (dismissObserver) dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
-      // Remove injected style element to prevent DOM leaks across re-mounts
-      const hideStyle = document.getElementById('__rmpg_hide_gm_dialog__');
-      if (hideStyle) hideStyle.remove();
-      if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {
         if (m && typeof m.remove === 'function') m.remove();
-        else if (m) m.map = null;
       });
       markersRef.current = [];
-      mapInstanceRef.current = null;
-      delete (window as any).gm_authFailure;
+      if (infoWindowRef.current) {
+        infoWindowRef.current.remove();
+        infoWindowRef.current = null;
+      }
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRetry, mapStyle]);
 
-  // Switch Map Style
+  // Track which MapStyleId was last applied to this map. `map.getStyle().sprite`
+  // returns the resolved CDN URL (e.g. `https://api.mapbox.com/styles/v1/...
+  // /sprite?access_token=...`), which never equals the input `mapbox://styles/...`
+  // URL — so the previous comparison was always truthy and `setStyle()` ran on
+  // every effect tick. setStyle is one of the most expensive map operations
+  // (full reload of tiles, sources, layers, sprite atlas), so we now compare
+  // against the MapStyleId we actually applied.
+  const lastAppliedStyleRef = useRef<MapStyleId>(mapStyle);
+
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    if (!map || !mapLoaded) return;
+    if (lastAppliedStyleRef.current === mapStyle) return;
 
-    if (mapStyle === 'dark') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: DARK_MAP_STYLE, backgroundColor: '#000000' });
-      updateMapStyles(map, DARK_MAP_STYLE);
-    } else if (mapStyle === 'night_nav') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: NIGHT_NAV_STYLE });
-      updateMapStyles(map, NIGHT_NAV_STYLE);
-    } else if (mapStyle === 'satellite') {
-      map.setMapTypeId('satellite');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
-    } else if (mapStyle === 'hybrid') {
-      map.setMapTypeId('hybrid');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
-    } else if (mapStyle === 'terrain') {
-      map.setMapTypeId('terrain');
-      map.setOptions({ styles: TERRAIN_STYLE });
-      updateMapStyles(map, TERRAIN_STYLE);
-    } else if (mapStyle === 'streets') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
-    }
+    const styleUrl = STYLE_MAP[mapStyle] || STYLE_MAP.dark;
+    map.setStyle(styleUrl);
+    lastAppliedStyleRef.current = mapStyle;
   }, [mapStyle, mapLoaded]);
 
   return {

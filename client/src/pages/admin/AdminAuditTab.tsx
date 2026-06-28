@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Clock, Download, Search, Filter } from 'lucide-react';
-import { apiFetch } from '../../hooks/useApi';
 import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // Types
@@ -55,6 +56,23 @@ export default function AdminAuditTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [exporting, setExporting] = useState(false);
 
+  // Right-click context menu — audit rows are read-only logs, so copy only.
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildEntryMenu = (entry: AuditEntry): ContextMenuItem[] => {
+    const full = `${safeDateTimeStr(entry.timestamp)} | ${entry.user} | ${entry.action} | ${entry.details}`;
+    return [
+      m.copy('Copy entry', full),
+      m.separator(),
+      m.copy('Copy user', entry.user),
+      m.copy('Copy action', entry.action),
+      m.copy('Copy details', entry.details),
+      m.copy('Copy timestamp', safeDateTimeStr(entry.timestamp), <Clock size={12} />),
+      m.copyId(entry.id),
+    ];
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -99,15 +117,15 @@ export default function AdminAuditTab({
   return (
     <div className="flex flex-col h-full">
       {/* Export toolbar */}
-      <div className="flex items-center gap-2 p-3 border-b border-[#181818] bg-surface-sunken flex-wrap" role="toolbar" aria-label="Audit log filters">
+      <div className="flex items-center gap-2 p-3 border-b border-rmpg-700 bg-surface-sunken flex-wrap" role="toolbar" aria-label="Audit log filters">
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 panel-inset bg-surface-sunken relative">
           <Search className="w-3 h-3 text-rmpg-500 shrink-0" aria-hidden="true" />
-          <input
+          <input id="ff-adminaudittab-0"
             type="text"
             placeholder="Search logs..." aria-label="Search audit logs"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-xs text-white placeholder-rmpg-500 w-[140px] focus-visible:outline-none"
+            className="bg-transparent border-none outline-none text-xs text-rmpg-100 placeholder-rmpg-500 w-[140px] focus-visible:outline-none"
             autoComplete="off"
             spellCheck={false}
           />
@@ -117,7 +135,7 @@ export default function AdminAuditTab({
             </button>
           )}
         </div>
-        <select
+        <select id="ff-adminaudittab-1"
           value={filterAction}
           onChange={e => setFilterAction(e.target.value)}
           className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2.5 py-1.5 outline-none focus:border-brand-500 transition-colors cursor-pointer"
@@ -127,7 +145,7 @@ export default function AdminAuditTab({
           {uniqueActions.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
         <div className="flex items-center gap-1.5">
-          <input
+          <input id="ff-adminaudittab-2"
             type="date"
             value={exportDateFrom}
             onChange={e => setExportDateFrom(e.target.value)}
@@ -135,7 +153,7 @@ export default function AdminAuditTab({
             aria-label="Export from date"
           />
           <span className="text-[9px] text-rmpg-600" aria-hidden="true">to</span>
-          <input
+          <input id="ff-adminaudittab-3"
             type="date"
             value={exportDateTo}
             onChange={e => setExportDateTo(e.target.value)}
@@ -156,7 +174,7 @@ export default function AdminAuditTab({
       </div>
 
       <div className="flex-1 overflow-auto scrollbar-dark">
-        <table className="table-dark" aria-label="Audit log entries">
+        <div className="overflow-x-auto"><table className="table-dark" aria-label="Audit log entries">
           <thead className="sticky top-0 z-10">
             <tr>
               <th className="whitespace-nowrap" scope="col">Timestamp</th>
@@ -167,14 +185,14 @@ export default function AdminAuditTab({
           </thead>
           <tbody>
             {filteredLog.map((entry, idx) => (
-              <tr key={entry.id} className={idx % 2 === 0 ? '' : 'bg-rmpg-800/15'}>
+              <tr key={entry.id} onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))} className={idx % 2 === 0 ? '' : 'bg-rmpg-800/15'}>
                 <td className="text-xs text-rmpg-300 font-mono whitespace-nowrap tabular-nums">
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3 h-3 text-rmpg-400" aria-hidden="true" />
                     {safeDateTimeStr(entry.timestamp)}
                   </div>
                 </td>
-                <td className="text-xs font-semibold text-white">{entry.user}</td>
+                <td className="text-xs font-semibold text-rmpg-100">{entry.user}</td>
                 <td className="text-xs text-brand-400 font-medium">{entry.action}</td>
                 <td className="text-xs text-rmpg-300 max-w-[300px] truncate" title={entry.details}>{entry.details}</td>
               </tr>
@@ -193,7 +211,7 @@ export default function AdminAuditTab({
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   );

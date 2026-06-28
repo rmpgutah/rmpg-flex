@@ -2,9 +2,9 @@
 // RMPG Flex — Officer Activity Detail Tab
 // ============================================================
 
-import React from 'react';
 import { Activity } from 'lucide-react';
 import { ACTION_COLORS } from '../utils/personnelConstants';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface ActivityEntry {
   id: string;
@@ -31,13 +31,13 @@ function borderColor(action: string): string {
   if (action === 'clock_in' || action === 'user_login') return 'border-l-2 border-l-green-500';
   if (action === 'clock_out' || action === 'user_logout') return 'border-l-2 border-l-amber-500';
   if (action.startsWith('incident')) return 'border-l-2 border-l-brand-500';
-  if (action.startsWith('call')) return 'border-l-2 border-l-blue-500';
+  if (action.startsWith('call')) return 'border-l-2 border-l-rmpg-500';
   return 'border-l-2 border-l-rmpg-600';
 }
 
 function formatTimestamp(dateStr: string): string {
   if (!dateStr) return '-';
-  return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
+  return parseTimestamp(dateStr).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

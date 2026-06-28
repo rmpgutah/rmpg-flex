@@ -1,0 +1,35 @@
+import { Camera, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+export default function QuickActionsCard() {
+  const navigate = useNavigate();
+
+  const actions: { label: string; path: string; icon?: typeof Plus }[] = [
+    { label: 'FI', path: '/field-interviews?new=1' },
+    { label: 'Citation', path: '/citations?new=1' },
+    { label: 'Incident', path: '/incidents?new=1' },
+    { label: 'Camera', path: '/field-camera', icon: Camera },
+  ];
+
+  return (
+    <section className="bg-surface-base border border-border-default p-3">
+      <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">QUICK ACTIONS</h2>
+      <div className="space-y-2">
+        {actions.map((a) => {
+          const Icon = a.icon ?? Plus;
+          return (
+            <button
+              key={a.path}
+              type="button"
+              onClick={() => navigate(a.path)}
+              className="w-full min-h-[56px] bg-surface-raised border border-border-default text-[#d4a017] text-sm font-bold tracking-wider uppercase flex items-center justify-center gap-2"
+            >
+              <Icon className="w-4 h-4" aria-hidden="true" />
+              <span>{a.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
