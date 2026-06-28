@@ -299,43 +299,12 @@ async function scanDocumentHandler(c: any): Promise<Response> {
       ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      let text = clientText;
-      ocrEngine = 'pdfjs-client';
-
-      if (clientText.length < MIN_CLIENT_TEXT_CHARS) {
-        // Insufficient born-digital text — race the (prod-disabled) container
-        // against its timeout rather than awaiting it bare. On timeout /
-        // unavailable AND no usable client text, this is a scanned PDF we
-        // cannot OCR server-side: return a clean 422 with guidance instead of
-        // hanging to a 500. The client rasterizes to images and resends those.
-        try {
-          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-          const txt = await withTimeout(
-            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
-            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
-          );
-          text = txt.text;
-          pageCount = txt.page_count;
-          ocrUsed = txt.ocr_used;
-          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-        } catch {
-          return c.json({
-            error: 'scanned_pdf_unsupported',
-            code: 'SCANNED_PDF',
-            message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
-          }, 422);
-        }
-      }
-
-      if (text.trim().length < 20) {
-        return c.json({
-          error: 'scanned_pdf_unsupported',
-          code: 'SCANNED_PDF',
-          message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
-        }, 422);
-      }
-
-      extraction = await ocrText(c.env, text);
+      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
+      pageCount = txt.page_count;
+      ocrUsed = txt.ocr_used;
+      ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+      extraction = await extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA);
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
@@ -490,8 +459,10 @@ si.post('/upload', async (c) => {
           }
         }
         const ex = text.trim().length >= 20
-          ? await ocrText(c.env, text.slice(0, PER_DOC_CAP))
-              .catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
+          ? await withTimeout(
+              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA),
+              AI_TIMEOUT_MS, 'Field extraction timed out',
+            ).catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
           : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
         ex.rawText = text;
         for (const d of ex.allDates) allDates.add(d);
@@ -977,7 +948,7 @@ si.post('/intake', async (c) => {
   if (docs.length === 0) return c.json({ error: 'No documents in request' }, 400);
 
   const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
-  const extraction = await ocrText(c.env, combined);
+  const extraction = await extractFromText(c.env.AI, combined, c.env.SERVE_INTAKE_LORA);
   // Same deterministic normalization the /upload path applies, so the
   // legacy single-call route produces equally clean field shapes.
   const normalized = normalizeFields(extraction.fields);

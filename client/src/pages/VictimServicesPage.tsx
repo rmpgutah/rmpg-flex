@@ -31,15 +31,12 @@ const EMPTY_FORM = {
   phone: '', email: '', address: '', safety_plan: 0, protective_order: 0, notes: '',
 };
 
-// Roles that may create / edit victim records.
+// Roles that may create / edit / delete victim records.
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
-// Roles that may delete victim records (mirrors server-side gate in victimServices.ts).
-const DELETE_ROLES = new Set(['admin', 'manager']);
 
 export default function VictimServicesPage() {
   const { user } = useAuth();
   const canManage = MANAGE_ROLES.has(user?.role ?? '');
-  const canDelete = DELETE_ROLES.has(user?.role ?? '');
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -261,12 +258,11 @@ export default function VictimServicesPage() {
               <Pencil size={12} />
             </button>
           )}
-          {canDelete && (
+          {canManage && (
             <button
               onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}
               className="text-red-500 hover:text-red-300"
               title="Delete"
-              aria-label={`Delete victim record ${r.victim_name}`}
             >
               <Trash2 size={12} />
             </button>
@@ -324,7 +320,7 @@ export default function VictimServicesPage() {
           m.copy('Copy name',  row.victim_name),
           m.copy('Copy phone', row.phone, <Phone size={12} />),
           m.copyId(row.id),
-          ...(canDelete ? [
+          ...(canManage ? [
             m.separator(),
             m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> }),
           ] : []),
