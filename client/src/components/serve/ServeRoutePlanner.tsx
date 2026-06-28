@@ -4,10 +4,12 @@ import {
   Loader2, Navigation, Clock, DollarSign, Gauge, User,
 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -62,7 +64,14 @@ function timeWindowPriority(tw: ServeJob['time_window']): number {
 }
 
 function priorityWeight(p: ServeJob['priority']): number {
-  switch (p) { case 'rush': return 0; case 'high': return 1; case 'normal': return 2; case 'low': return 3; }
+  // Lower weight sorts first (most urgent). Matches serve_queue priority enum.
+  switch (p) {
+    case 'urgent': return 0;
+    case 'rush': return 1;
+    case 'normal': return 2;
+    case 'routine': return 3;
+    default: return 2;
+  }
 }
 
 // ─── Geographic Clustering for >25 Stops ────────────────────────────────
@@ -139,7 +148,7 @@ async function fetchDirections(coordSets: [number, number][][]): Promise<{ legs:
 function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
   const colors: Record<string, string> = {
     morning: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
-    afternoon: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+    afternoon: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
     evening: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
     anytime: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
   };
@@ -180,6 +189,9 @@ export default function ServeRoutePlanner({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [routeMapRecoverNonce, setRouteMapRecoverNonce] = useState(0);
+  const routeMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const currentLocMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const routeSourceIdRef = useRef<string | null>(null);
 
@@ -218,7 +230,8 @@ export default function ServeRoutePlanner({
     let cancelled = false;
     (async () => {
       try {
-        const saved = await apiFetch<any>(`/process-server/routes/${routeDate}?officer_id=${officerId}`);
+        const resp = await apiFetch<any[]>(`/process-server/routes/${routeDate}?officer_id=${officerId}`);
+        const saved = Array.isArray(resp) ? resp[0] : resp;
         if (cancelled || !saved?.optimized_order_json) return;
         const orderJson = typeof saved.optimized_order_json === 'string' ? JSON.parse(saved.optimized_order_json) : saved.optimized_order_json;
         if (Array.isArray(orderJson) && orderJson.length > 0) {
@@ -260,6 +273,20 @@ export default function ServeRoutePlanner({
       });
       mapRef.current = map;
       setMapReady(true);
+
+      // Rebuild in place if the GPU drops the context. The marker effect
+      // (keyed on mapReady) re-runs and re-fits bounds to the stops.
+      routeMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'ServeRoutePlanner',
+        onRebuild: () => {
+          if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
+          markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+          markersRef.current = [];
+          if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+          setMapReady(false);
+          setRouteMapRecoverNonce((n) => n + 1);
+        },
+      });
     };
 
     (async () => {
@@ -274,8 +301,15 @@ export default function ServeRoutePlanner({
       }
     })();
 
-    return () => { cancelled = true; setMapReady(false); };
-  }, [isOpen]);
+    return () => {
+      cancelled = true;
+      setMapReady(false);
+      if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
+      markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+      markersRef.current = [];
+      if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+    };
+  }, [isOpen, routeMapRecoverNonce]);
 
   // Update markers when stops change
   useEffect(() => {
@@ -338,8 +372,8 @@ export default function ServeRoutePlanner({
     if (!mapRef.current) return;
     const srcId = routeSourceIdRef.current;
     if (srcId) {
-      try { if (mapRef.current.getLayer(srcId)) mapRef.current.removeLayer(srcId); } catch {}
-      try { if (mapRef.current.getSource(srcId)) mapRef.current.removeSource(srcId); } catch {}
+      safeRemoveLayer(mapRef.current, srcId);
+      safeRemoveSource(mapRef.current, srcId);
       routeSourceIdRef.current = null;
     }
   }, []);
@@ -456,7 +490,9 @@ export default function ServeRoutePlanner({
             total_distance_miles: totalDistance, total_time_minutes: totalDuration,
           }),
         });
-      } catch {}
+      } catch {
+        setError('Route saved locally but failed to persist to server');
+      }
     }
     onClose();
   }, [stops, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, onRouteOptimized, onClose]);
@@ -468,19 +504,24 @@ export default function ServeRoutePlanner({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
-      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
+      <div className="bg-surface-base border border-rmpg-700 rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-[#d4a017]" />
-            <h2 className="text-sm font-semibold text-white tracking-wider">ROUTE PLANNER</h2>
+            <h2 className="text-sm font-semibold text-rmpg-100 tracking-wider">ROUTE PLANNER</h2>
             <span className="text-[11px] text-rmpg-500 ml-2">{selectedCount} of {stops.length} stops selected</span>
+            {totalDistance > 0 && (
+              <span className="text-[10px] text-rmpg-400 ml-2 pl-2 border-l border-rmpg-700 font-mono">
+                {totalDistance.toFixed(1)} mi · {Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m
+              </span>
+            )}
             {officers && officers.length > 0 && (
-              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#2b2b2b]">
+              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-rmpg-700">
                 <User size={12} className="text-rmpg-400" />
-                <select
+                <select id="ff-serverouteplanner-0"
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
-                  className="px-2 py-0.5 text-[11px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  className="px-2 py-0.5 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                 >
                   {officers.map(o => (<option key={o.id} value={o.id}>{o.name}</option>))}
                 </select>
@@ -490,14 +531,14 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={selectAll} className="toolbar-btn text-xs px-2 py-1"><CheckSquare className="w-3 h-3" /> All</button>
             <button type="button" onClick={deselectAll} className="toolbar-btn text-xs px-2 py-1"><Square className="w-3 h-3" /> None</button>
-            <X size={20} className="text-rmpg-400 hover:text-white cursor-pointer transition-colors" onClick={onClose} aria-label="Close route planner" />
+            <X size={20} className="text-rmpg-400 hover:text-rmpg-100 cursor-pointer transition-colors" onClick={onClose} aria-label="Close route planner" />
           </div>
         </div>
 
         <div className="flex-1 flex overflow-hidden">
           {/* Left: Stop list */}
-          <div className="w-[380px] border-r border-[#2b2b2b] flex flex-col bg-[#0c0c0c]">
-            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[#2b2b2b]">
+          <div className="w-[380px] border-r border-rmpg-700 flex flex-col bg-surface-sunken">
+            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-rmpg-700">
               <button type="button" onClick={optimizeRoute} disabled={optimizing || !mapReady || selectedCount < 2}
                 className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-40 flex-1 justify-center">
                 {optimizing ? <><Loader2 className="w-3 h-3 animate-spin" /> Optimizing...</> : <><Route className="w-3 h-3" /> Optimize Route</>}
@@ -505,25 +546,25 @@ export default function ServeRoutePlanner({
             </div>
             {error && <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-[10px]">{error}</div>}
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
               {stops.map((stop, idx) => (
-                <div key={stop.job.id} className={`flex items-center gap-2 px-3 py-2 border-b border-[#222222] transition-colors ${stop.selected ? 'bg-[#141414]' : 'opacity-50'}`}>
+                <div key={stop.job.id} className={`flex items-center gap-2 px-3 py-2 border-b border-border-default transition-colors ${stop.selected ? 'bg-surface-base' : 'opacity-50'}`}>
                   <button type="button" onClick={() => toggleStop(idx)} className="flex-shrink-0 p-0.5">
                     {stop.selected ? <CheckSquare size={16} className="text-brand-400" /> : <Square size={16} className="text-rmpg-600" />}
                   </button>
                   <span className="w-5 text-xs font-mono font-bold text-rmpg-300 flex-shrink-0">{idx + 1}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-white truncate">{stop.job.recipient_name}</div>
+                    <div className="text-xs font-medium text-rmpg-100 truncate">{stop.job.recipient_name}</div>
                     <div className="text-[10px] text-rmpg-500 truncate">{stop.job.recipient_address || 'No address'}</div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <PriorityBadge p={stop.job.priority} />
                     <TimeWindowBadge tw={stop.job.time_window} />
                     <div className="flex flex-col gap-0.5 ml-1">
-                      <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-rmpg-500 hover:text-white disabled:opacity-30">
+                      <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-rmpg-500 hover:text-rmpg-100 disabled:opacity-30">
                         <ChevronUp size={10} />
                       </button>
-                      <button type="button" onClick={() => moveStop(idx, 1)} disabled={idx === stops.length - 1} className="text-rmpg-500 hover:text-white disabled:opacity-30">
+                      <button type="button" onClick={() => moveStop(idx, 1)} disabled={idx === stops.length - 1} className="text-rmpg-500 hover:text-rmpg-100 disabled:opacity-30">
                         <ChevronDown size={10} />
                       </button>
                     </div>
@@ -532,11 +573,11 @@ export default function ServeRoutePlanner({
               ))}
             </div>
 
-            <div className="px-4 py-3 border-t border-[#2b2b2b] bg-[#0c0c0c] space-y-2">
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-white font-mono">{totalDistance.toFixed(1)} mi</span></div>
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-white font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-white font-mono">${fuelCost.toFixed(2)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-white font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
+            <div className="px-4 py-3 border-t border-rmpg-700 bg-surface-sunken space-y-2">
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-rmpg-100 font-mono">{totalDistance.toFixed(1)} mi</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-rmpg-100 font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
 
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={handleApplyAndClose} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-2 flex-1 justify-center">
@@ -548,7 +589,7 @@ export default function ServeRoutePlanner({
           </div>
 
           {/* Right: Map */}
-          <div className="flex-1 relative bg-[#050505]">
+          <div className="flex-1 relative bg-surface-overlay">
             <div ref={mapContainerRef} className="absolute inset-0" />
             {(!mapReady || optimizing) && (
               <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.5)]">

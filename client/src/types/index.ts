@@ -240,10 +240,12 @@ export type CallSource =
 export interface CallNote {
   id: string;
   author: string;
+  author_username?: string | null; // server-stamped JWT username; keys note-edit ownership
   text: string;
   timestamp: string;
   edited_at?: string | null;
   edited_by?: string | null;
+  broadcast?: boolean;
 }
 
 export interface CallForService {
@@ -268,6 +270,12 @@ export interface CallForService {
   hazard_notes?: string;
   client_id?: string;
   client_name?: string;
+  /** Contracting-client record fields (from the clients JOIN) — authoritative
+   *  addressee + service-type source for the PSO Notice of Communication. */
+  client_contact_name?: string;
+  client_phone?: string;
+  client_address?: string;
+  client_industry?: string;
   description: string;
   source: CallSource;
   assigned_units: string[];
@@ -346,6 +354,7 @@ export interface CallForService {
   process_attempts?: number;
   process_served_at?: string;
   process_service_result?: string;
+  court_name?: string;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
@@ -431,9 +440,33 @@ export interface Unit {
   latitude?: number | null;
   longitude?: number | null;
   vehicle?: string;
+  /** Unit setup fields (admin create/edit). capabilities is parsed from the
+   *  units.capabilities JSON text column; assigned_beat is a default patrol
+   *  beat; audio_mode is the MDT default (audible | silent | vibrate). */
+  capabilities?: string[];
+  assigned_beat?: string;
+  audio_mode?: string;
   last_status_change: string;
   /** Feature 2: GPS timestamp for stale indicator */
   gps_updated_at?: string;
+  /** Source of the last fix ('gps' | 'manual'); drives the map source badge. */
+  gps_source?: string;
+  /** Heading (deg 0-360) + ground speed (m/s) of the last fix — drives the map
+   *  nav-cursor arrow rotation + speed label. Mirrored onto the unit row from
+   *  the latest breadcrumb (src/routes/dispatch/gps.ts). */
+  gps_heading?: number | null;
+  gps_speed?: number | null;
+  /** Spillman EMERGENCY overlay (panic activation). 1 = the officer has an
+   *  active panic — the unit flashes red on the Status Monitor / map until a
+   *  terminal panic transition clears it. Set/cleared server-side in
+   *  src/routes/dispatch/panic.ts. */
+  emergency_active?: number | boolean | null;
+  emergency_call_id?: number | string | null;
+  emergency_since?: string | null;
+  /** On-foot (walking) detection — orthogonal to status. 1/true while the
+   *  officer is detected out of the vehicle (CoreMotion). */
+  on_foot?: number | boolean | null;
+  on_foot_since?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -498,6 +531,8 @@ export interface Person {
   scars_marks_tattoos?: string;
   clothing_description?: string;
   address?: string;
+  address_2?: string;
+  suffix?: string;
   city?: string;
   state?: string;
   zip?: string;
@@ -507,6 +542,9 @@ export interface Person {
   dl_state?: string;
   dl_expiry?: string;
   dl_class?: string;
+  dl_issue_date?: string;
+  dl_restrictions?: string;
+  dl_endorsements?: string;
   ssn_last4?: string;
   ssn_full?: string;
   id_image_url?: string;
@@ -647,6 +685,7 @@ export interface Evidence {
   incident_id?: string;
   incident_number?: string;
   type: string;
+  evidence_type?: string;
   description: string;
   location_found: string;
   collected_by: string;
@@ -843,11 +882,20 @@ export interface TimeEntry {
   officer_name: string;
   clock_in: string;
   clock_out?: string;
+  /** Denver wall-clock string mirror of clock_in written by nowDualStamp(). */
+  clock_in_local?: string | null;
+  /** Denver wall-clock string mirror of clock_out written by nowDualStamp(). */
+  clock_out_local?: string | null;
+  /** Denver wall-clock string mirror of break_start written by nowDualStamp(). */
+  break_start_local?: string | null;
   scheduled_start?: string;
   scheduled_end?: string;
   break_start?: string;
   break_minutes: number;
   total_hours?: number;
+  starting_mileage?: number;
+  ending_mileage?: number;
+  total_miles?: number;
   status: 'clocked_in' | 'clocked_out' | 'on_break' | 'edited';
   notes?: string;
   created_at: string;
@@ -908,7 +956,24 @@ export interface TrainingRequirement {
 
 export type CameraStatus = 'available' | 'assigned' | 'maintenance' | 'retired' | 'lost';
 export type VideoClassification = 'routine' | 'evidence' | 'flagged' | 'restricted';
-export type VideoRetention = 'active' | 'archived' | 'pending_deletion';
+// The retention vocabulary spans BOTH the original client union
+// (`active`/`archived`/`pending_deletion`) AND the server-side retention
+// dashboard values (`active`/`expired`/`purged`) AND the hold-list
+// values from `utils/evidenceLock.ts`. The 2026-06-21 audit caught
+// that the two vocabularies were silently disagreeing — see
+// utils/evidenceLock.ts for the canonical hold check.
+export type VideoRetention =
+  | 'active'
+  | 'archived'
+  | 'pending_deletion'
+  | 'expired'
+  | 'purged'
+  | 'legal_hold'
+  | 'court_hold'
+  | 'litigation_hold'
+  | 'subpoena_hold'
+  | 'ia_review'
+  | 'open_case';
 
 export interface BodyCamera {
   id: number;
@@ -1005,6 +1070,10 @@ export interface DashCamVideo {
   recorded_at?: string;
   case_number?: string;
   classification: VideoClassification;
+  // Server returns this via SELECT v.* on /api/fleet/dashcam-videos —
+  // declared explicitly so the evidence-lock guard doesn't silently
+  // degrade if anyone later narrows the SELECT to a column list.
+  retention_status?: VideoRetention;
   speed_mph?: number;
   latitude?: number;
   longitude?: number;
@@ -1245,8 +1314,9 @@ export interface PatrolScan {
 
 // --- Incident Linking ---
 
-export type PersonRole = 'suspect' | 'victim' | 'witness' | 'reporting_party' | 'involved' | 'other';
-export type VehicleRole = 'suspect_vehicle' | 'victim_vehicle' | 'witness_vehicle' | 'involved' | 'evidence' | 'other';
+// Roles are admin-configurable (open-ended via link_options table) — widened to string.
+export type PersonRole = string;
+export type VehicleRole = string;
 
 export interface IncidentPerson {
   id: string;
@@ -1410,6 +1480,7 @@ export interface FleetVehicle {
   insurance_expiry?: string;
   registration_expiry?: string;
   equipment: string[];
+  take_home?: number;
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -1865,6 +1936,7 @@ export type WSMessageType =
   | 'message'
   | 'activity'
   | 'dispatch_alert'
+  | 'call_status_for_officer'
   | 'system_alert'
   | 'notification'
   | 'panic_alert'
@@ -1876,6 +1948,16 @@ export type WSMessageType =
   | 'panic_false_alarm'
   | 'panic_escalated'
   | 'dispatch_update'
+  // High-frequency GPS pin glide (gps.ts → AlertHubDO). Its OWN type, kept
+  // off 'dispatch_update' so a ~1 Hz breadcrumb never runs the dispatcher
+  // brain fan-in — MapPage moves the marker / rotates the arrow directly.
+  | 'unit_position'
+  // Trip lifecycle (unit_trips → AlertHubDO). Payload:
+  // { type:'trip_update', action:'opened'|'closed', unit_id, trip }.
+  // 'appended' is intentionally NOT broadcast — live distance/duration
+  // rollups come from polling /dispatch/trips/active; the socket only
+  // carries lifecycle (open/close). Feeds the board's current-trip badge.
+  | 'trip_update'
   | 'premise_alert_for_unit'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
@@ -1943,7 +2025,7 @@ export type WSMessageType =
   | 'warrants_updated'
   | 'warrant_served'
   | 'warrant_recalled'
-  | 'scraper_event'
+  | 'scraper_events'
   // Trespass orders
   | 'trespass_order_violated'
   | 'trespass_order_created'
@@ -1963,6 +2045,7 @@ export type WSMessageType =
   // Serve manager
   | 'serve_attempt'
   | 'serve_created'
+  | 'serve_attempt_reminder'
   // Radio events (for cross-integration)
   | 'radio_check'
   | 'radio_check_ack'
@@ -1973,7 +2056,8 @@ export type WSMessageType =
   | 'security:updated'
   // Speed tracking
   | 'speed:alert'
-  | 'geofence:alert';
+  | 'geofence:alert'
+  | 'officer_on_foot_overdue';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -2566,7 +2650,7 @@ export interface CaseFull {
   counts: {
     calls: number; incidents: number; persons: number;
     vehicles: number; properties: number; evidence: number;
-    warrants: number; citations: number; notes: number;
+    warrants: number; citations: number; notes: number; attachments?: number;
   };
 }
 
@@ -3079,7 +3163,8 @@ export interface ServeJob {
   jurisdiction: string | null;
   client_name: string | null;
   attorney_name: string | null;
-  priority: 'low' | 'normal' | 'high' | 'rush';
+  // Matches the serve_queue.priority CHECK constraint.
+  priority: 'routine' | 'normal' | 'rush' | 'urgent';
   time_window: 'morning' | 'afternoon' | 'evening' | 'anytime';
   deadline: string | null;
   attempt_count: number;
@@ -3088,12 +3173,52 @@ export interface ServeJob {
   sort_order: number;
   service_instructions: string | null;
   notes: string | null;
+  // Free-text "next attempt" message the server enters when logging a failed
+  // attempt — surfaced verbatim on the Notice of Attempt PDF. NULL means use
+  // the generic boilerplate. Persisted via migration 0134_serve_queue_next_attempt.
+  next_attempt_note: string | null;
   created_at: string;
   updated_at: string;
   call_id: number | null;
+  // Automation columns (migrations 0140, 0153, 0154)
+  closed_at?: string | null;
+  urgency_tier?: 'normal' | 'high' | 'critical' | null;
+  auto_assigned?: number | null;
+  intake_screened_at?: string | null;
   attempts?: ServeAttempt[];
   skipTraces?: ServeSkipTrace[];
 }
+
+// ── Serve folder helpers ───────────────────────────────────────────────────
+
+export type ServeFolder = 'in_progress' | 'pending' | 'served' | 'failed' | 'archived';
+
+/** Map a job's status to its display folder. */
+export function deriveServeFolder(job: ServeJob): ServeFolder {
+  if (job.status === 'in_progress') return 'in_progress';
+  if (job.status === 'pending') return 'pending';
+  if (job.status === 'served') return 'served';
+  if (job.status === 'failed') return 'failed';
+  return 'archived'; // skipped | archived
+}
+
+export interface ServeFolderConfig {
+  label: string;
+  dotClass: string;
+  borderClass: string;
+  bgClass: string;
+  defaultOpen: boolean;
+  order: number;
+  emptyLabel: string;
+}
+
+export const SERVE_FOLDER_CONFIG: Record<ServeFolder, ServeFolderConfig> = {
+  in_progress: { label: 'In Progress', dotClass: 'bg-amber-500 animate-pulse', borderClass: 'border-l-amber-500', bgClass: 'bg-amber-900/10', defaultOpen: true, order: 0, emptyLabel: 'No jobs in progress' },
+  pending:     { label: 'Queue',       dotClass: 'bg-rmpg-500',                 borderClass: 'border-l-rmpg-500',  bgClass: '',                  defaultOpen: true, order: 1, emptyLabel: 'No pending jobs' },
+  served:      { label: 'Served',      dotClass: 'bg-green-500',                borderClass: 'border-l-green-500', bgClass: 'bg-green-900/10',  defaultOpen: false, order: 2, emptyLabel: 'No served jobs today' },
+  failed:      { label: 'Non-Service', dotClass: 'bg-red-500',                  borderClass: 'border-l-red-500',   bgClass: 'bg-red-900/10',    defaultOpen: false, order: 3, emptyLabel: 'No non-service jobs' },
+  archived:    { label: 'Archived',    dotClass: 'bg-rmpg-600',                 borderClass: 'border-l-rmpg-600',  bgClass: 'bg-rmpg-800/20',   defaultOpen: false, order: 4, emptyLabel: 'No archived jobs' },
+};
 
 export interface ServeJobLinkedCall {
   id: number;
@@ -3112,9 +3237,12 @@ export interface ServeAttempt {
   id: number;
   serve_queue_id: number;
   officer_id: number;
+  officer_name?: string;
   attempt_number: number;
   attempt_type: 'personal' | 'substitute' | 'posting' | 'failed';
   result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
+  /** Structured PS/NN.NN disposition code (migration 0143). Null on legacy rows. */
+  disposition_code?: string | null;
   latitude: number | null;
   longitude: number | null;
   gps_accuracy: number | null;
@@ -3142,6 +3270,14 @@ export interface ServeAttemptData {
   photo_ids?: string[];
   signature_data?: string;
   notes?: string;
+  // Optional operator-set message for the next attempt window — stored on the
+  // parent serve_queue row, not on the attempt itself, so it persists across
+  // attempts and is read at Notice-of-Attempt PDF generation time.
+  next_attempt_note?: string;
+  // Structured PS disposition code (PS/00..PS/45.XX). When supplied, the
+  // server derives the legacy `result` enum from it via codeToLegacyResult
+  // and persists the full code in serve_attempts.disposition_code.
+  disposition_code?: string;
 }
 
 export interface ServeRoute {
@@ -3392,8 +3528,8 @@ export interface MniPersonDetail {
 }
 
 export interface GeographyTree {
-  areas: (DispatchArea & { sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
-  unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
+  areas: (DispatchArea & { sectors: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
+  unassigned_sectors: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
 }
 
 // --- Integration Hub ---
@@ -3448,4 +3584,131 @@ export interface CpgpsAlert {
   triggered_at?: string;
   lat?: number;
   lon?: number;
+}
+
+// ── Nav Trip Log ─────────────────────────────────────────────
+
+export type NavTripStatus = 'pending' | 'active' | 'completed' | 'cancelled';
+
+export interface NavRoutePoint {
+  lat: number;
+  lng: number;
+  ts: string;
+  speed?: number;
+  heading?: number;
+}
+
+export interface NavTrip {
+  id: number;
+  officer_id: number;
+  vehicle_id?: number;
+  unit_id?: number;
+  start_lat: number;
+  start_lng: number;
+  start_accuracy?: number;
+  start_location?: string;
+  start_time: string;
+  end_lat?: number;
+  end_lng?: number;
+  end_accuracy?: number;
+  end_location?: string;
+  end_time?: string;
+  distance_miles?: number;
+  max_speed_mph?: number;
+  duration_seconds?: number;
+  route_points?: NavRoutePoint[];
+  status: NavTripStatus;
+  detected_by: 'auto' | 'manual';
+  purpose?: string;
+  device_type?: string;
+  notes?: string;
+  vehicle_number?: string;
+  make?: string;
+  model?: string;
+  plate_number?: string;
+  unit_call_sign?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NavTripDetectionState {
+  loginPosition: { lat: number; lng: number; accuracy: number } | null;
+  loginTime: number | null;
+  movementConfirmed: boolean;
+  pendingTripId: number | null;
+  activeTripId: number | null;
+  lastMovementAt: number | null;
+  stationarySince: number | null;
+  bufferStartTime: number | null;
+  bufferPosition: { lat: number; lng: number } | null;
+  windowStartTime: number | null;
+  windowStartPosition: { lat: number; lng: number } | null;
+  windowMovementDetected: boolean;
+}
+
+// ── Document subsystem (Phase 2) ──────────────────────────────
+// NOTE: named DocRecord, not Document — `Document` is a DOM global.
+export interface DocLink {
+  id: number;
+  document_id: number;
+  target_type: 'call' | 'incident';
+  target_id: number;
+  linked_by: number | null;
+  linked_at: string;
+}
+
+export interface DocRevisionMeta {
+  id: number;
+  revision_number: number;
+  title: string;
+  saved_by: number | null;
+  saved_by_username: string | null;
+  saved_at: string;
+  change_note: string | null;
+}
+
+// Full revision row returned by GET /docs/:id/revisions/:rev (raw document_revisions row).
+export interface DocRevisionBody {
+  id: number;
+  document_id: number;
+  revision_number: number;
+  title: string;
+  body: string;
+  body_format: string;
+  saved_by: number | null;
+  saved_by_username: string | null;
+  saved_at: string;
+  change_note: string | null;
+}
+
+export interface DocRecord {
+  id: number;
+  title: string;
+  body: string;
+  body_format: string;
+  status: 'draft' | 'finalized';
+  owner_id: number | null;
+  owner_username: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string | null;
+  finalized_at: string | null;
+  finalized_by: string | null;
+  reopened_at: string | null;
+  reopened_by: string | null;
+  links?: DocLink[];
+}
+
+export interface DocListItem {
+  id: number;
+  title: string;
+  status: 'draft' | 'finalized';
+  body_format: string;
+  owner_id: number | null;
+  owner_username: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string | null;
+  finalized_at: string | null;
+  finalized_by: string | null;
 }

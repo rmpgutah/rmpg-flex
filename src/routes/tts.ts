@@ -5,20 +5,22 @@
 // The legacy server used edge-tts-universal (a Node lib that opens a WebSocket
 // to Microsoft Edge's TTS endpoint via node:net) — incompatible with Workers.
 //
-// This implementation synthesizes server-side voice with the Workers AI
-// text-to-speech model @cf/myshell-ai/melotts (single env.AI.run call, no
-// WebSocket, no Node deps). The model returns base64-encoded MP3; the client
-// (client/src/utils/edgeTTS.ts) expects raw binary it can hand to
-// AudioContext.decodeAudioData, so we base64-decode and return audio/mpeg —
-// keeping the client contract identical to the legacy endpoint.
+// PRIMARY voice is Deepgram Aura-2 (@cf/deepgram/aura-2-en) — the same
+// context-aware, genuinely human-sounding model the radio dispatcher uses, so
+// every spoken surface in the app is the advanced English voice rather than the
+// robotic melotts. melotts (@cf/myshell-ai/melotts) is kept as a FALLBACK so a
+// voice alert is never silent if Aura hiccups. Both return MP3 the client hands
+// to AudioContext.decodeAudioData (Aura via returnRawResponse + encoding:'mp3';
+// melotts via base64) — the audio/mpeg contract is identical to the legacy
+// endpoint either way.
 //
-// The client still POSTs { text, urgent, voice, rate, pitch }. melotts only
-// accepts text + language, so voice/rate/pitch are intentionally ignored here:
-// the client's P25 radio-processing chain (bandpass + bitcrusher + AGC) does
-// the voice "coloring", and the persona voice names (en-US-JennyNeural, …) have
-// no melotts equivalent. lang is fixed to 'en'.
+// The client POSTs { text, urgent, voice, rate, pitch }. `voice` is honored
+// when it names a valid Aura-2 speaker (resolveAura2Voice coerces anything else
+// — e.g. a browser persona name like "en-US-JennyNeural" — to the default);
+// rate/pitch are ignored (the client's P25 radio-processing chain does the
+// "coloring"). lang/encoding are fixed to English MP3.
 //
-// On ANY failure (model error, empty audio) we return a non-2xx with a
+// On ANY failure (both models error / empty audio) we return a non-2xx with a
 // structured code. edgeTTS.ts treats every non-ok response as a signal to fall
 // back to the browser's built-in SpeechSynthesis, so voice alerts degrade
 // gracefully rather than going silent.
@@ -26,12 +28,16 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { AURA2_EN_MODEL, resolveAura2Voice } from '../utils/aiDispatcher';
 
 const tts = new Hono<Env>();
 
-const MODEL = '@cf/myshell-ai/melotts';
-const MAX_TEXT_LEN = 1500; // matches legacy cap; melotts is billed per audio-minute
-const CACHE_PREFIX = 'tts:melotts:v1:';
+const MELOTTS_MODEL = '@cf/myshell-ai/melotts';
+const MAX_TEXT_LEN = 1500; // matches legacy cap; TTS is billed per audio-minute/char
+// Cache key carries the engine + speaker so Aura-2 audio never collides with a
+// previously-cached melotts clip of the same text (the v1 melotts cache is left
+// to expire on its own 7-day TTL).
+const CACHE_PREFIX = 'tts:aura2:v1:';
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days — CAD phrases repeat verbatim
 
 // SHA-256 → hex. Used as the KV cache key because alert text (≤1500 chars) can
@@ -42,7 +48,7 @@ async function textHash(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// base64 (model output) → raw MP3 bytes (client decode contract).
+// base64 (melotts output) → raw MP3 bytes (client decode contract).
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -50,12 +56,12 @@ function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
-function audioResponse(bytes: Uint8Array, cache: 'HIT' | 'MISS'): Response {
+function audioResponse(bytes: Uint8Array, cache: 'HIT' | 'MISS', engine: string): Response {
   return new Response(bytes, {
     status: 200,
     headers: {
       'Content-Type': 'audio/mpeg',
-      'X-TTS-Engine': 'workers-ai-melotts',
+      'X-TTS-Engine': engine,
       'X-TTS-Cache': cache,
       // Let the SPA cache identical phrases briefly so rapid repeats
       // (e.g. a status readback fired twice) don't re-hit the model.
@@ -64,10 +70,41 @@ function audioResponse(bytes: Uint8Array, cache: 'HIT' | 'MISS'): Response {
   });
 }
 
-tts.post('/', async (c) => {
-  let body: { text?: unknown };
+// Aura-2 primary. Returns the raw MP3 bytes, or null on any failure/empty so the
+// caller can fall through to melotts.
+async function synthAura(ai: Ai, text: string, speaker: string): Promise<Uint8Array | null> {
   try {
-    body = await c.req.json<{ text?: unknown }>();
+    const resp = (await ai.run(
+      AURA2_EN_MODEL,
+      { text, speaker, encoding: 'mp3' } as never,
+      { returnRawResponse: true } as never,
+    )) as unknown as Response;
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    return bytes.byteLength > 0 ? bytes : null;
+  } catch (err) {
+    console.warn('[TTS] aura-2 failed, falling back to melotts:', (err as Error)?.message);
+    return null;
+  }
+}
+
+// melotts fallback. {audio} base64 → MP3 bytes, or null on failure/empty.
+async function synthMelotts(ai: Ai, text: string): Promise<Uint8Array | null> {
+  try {
+    const result = (await ai.run(MELOTTS_MODEL, { prompt: text, lang: 'en' } as never)) as { audio?: string };
+    const b64 = result?.audio;
+    if (!b64) return null;
+    const bytes = base64ToBytes(b64);
+    return bytes.byteLength > 0 ? bytes : null;
+  } catch (err) {
+    console.error('[TTS] melotts run failed:', (err as Error)?.message);
+    return null;
+  }
+}
+
+tts.post('/', async (c) => {
+  let body: { text?: unknown; voice?: unknown };
+  try {
+    body = await c.req.json<{ text?: unknown; voice?: unknown }>();
   } catch {
     return c.json({ error: 'invalid JSON body', code: 'TTS_BAD_BODY' }, 400);
   }
@@ -80,36 +117,30 @@ tts.post('/', async (c) => {
     return c.json({ error: `text must be ${MAX_TEXT_LEN} characters or less`, code: 'TTS_TEXT_TOO_LONG' }, 400);
   }
 
-  // ── Cache lookup (best-effort) ──
+  const speaker = resolveAura2Voice(typeof body.voice === 'string' ? body.voice : null);
+
+  // ── Cache lookup (best-effort) — keyed on speaker + text ──
   let cacheKey: string | null = null;
   try {
-    cacheKey = CACHE_PREFIX + (await textHash(text));
+    cacheKey = CACHE_PREFIX + speaker + ':' + (await textHash(text));
     const cached = await c.env.KV.get(cacheKey, 'arrayBuffer');
     if (cached && cached.byteLength > 0) {
-      return audioResponse(new Uint8Array(cached), 'HIT');
+      return audioResponse(new Uint8Array(cached), 'HIT', 'workers-ai-aura-2');
     }
   } catch (err) {
     console.warn('[TTS] cache read failed (continuing):', (err as Error)?.message);
   }
 
-  // ── Synthesize ──
-  let audioB64: string | undefined;
-  try {
-    const result = (await c.env.AI.run(MODEL, { prompt: text, lang: 'en' })) as { audio?: string };
-    audioB64 = result?.audio;
-  } catch (err) {
-    console.error('[TTS] melotts run failed:', (err as Error)?.message);
+  // ── Synthesize: Aura-2 primary, melotts fallback ──
+  let engine = 'workers-ai-aura-2';
+  let bytes = await synthAura(c.env.AI, text, speaker);
+  if (!bytes) {
+    engine = 'workers-ai-melotts';
+    bytes = await synthMelotts(c.env.AI, text);
+  }
+  if (!bytes) {
     // 503 → client falls back to browser SpeechSynthesis.
     return c.json({ error: 'TTS synthesis failed', code: 'TTS_SYNTH_FAILED' }, 503);
-  }
-
-  if (!audioB64) {
-    return c.json({ error: 'TTS engine returned no audio', code: 'TTS_NO_AUDIO' }, 502);
-  }
-
-  const bytes = base64ToBytes(audioB64);
-  if (bytes.byteLength === 0) {
-    return c.json({ error: 'TTS engine returned empty audio', code: 'TTS_NO_AUDIO' }, 502);
   }
 
   // ── Cache store (best-effort, non-blocking on failure) ──
@@ -121,7 +152,7 @@ tts.post('/', async (c) => {
     }
   }
 
-  return audioResponse(bytes, 'MISS');
+  return audioResponse(bytes, 'MISS', engine);
 });
 
 export default tts;

@@ -24,7 +24,8 @@ const DEBOUNCE_MS = 500;
  * broadcast from any connected device.
  *
  * @param modules - Module name(s) to listen for: 'records', 'personnel', 'fleet',
- *                  'incidents', 'citations', 'patrol', 'admin', 'dispatch'
+ *                  'incidents', 'citations', 'patrol', 'admin', 'dispatch',
+ *                  'process-server'
  * @param onRefresh - Function to call when data changes (e.g., reload data from API)
  * @param options - Optional configuration
  */
@@ -61,8 +62,11 @@ export function useLiveSync(
   const handleDataChanged = useCallback((message: WSMessage) => {
     if (optionsRef.current?.disabled) return;
 
-    const data = (message as any).data;
-    if (!data) return;
+    // broadcastAll() (src/routes/ws.ts) sends { type, ...data }, so module/entity
+    // arrive at the TOP LEVEL of the message — there is no `.data` wrapper. Fall
+    // back to the message itself (matching DispatchPage's `msg.data || msg`).
+    const data = (message as any).data || (message as any);
+    if (!data || !data.module) return;
 
     // Check if this change is for one of our watched modules
     if (!moduleList.includes(data.module)) return;
@@ -83,16 +87,33 @@ export function useLiveSync(
     }, delay);
   }, [moduleList]);
 
-  // The live Worker broadcasts dispatch-family mutations under the
-  // 'dispatch_update' message type (with an `action` discriminator), NOT the
-  // 'data_changed' shape this hook was written for. 'data_changed' is never
-  // emitted by the deployed worker, so a consumer like DispatchPage
-  // (useLiveSync('dispatch', …)) got no reconciliation refresh at all. Bridge
-  // the real channel: any 'dispatch_update' counts as a change for the
-  // dispatch-family modules below, so those consumers get their debounced
-  // silent-refresh safety net back. (records/personnel/fleet still need
-  // server-side broadcasts on their own mutations — tracked separately.)
-  const DISPATCH_FAMILY = useMemo(() => ['dispatch', 'incidents', 'patrol'], []);
+  // ⚠️ NOTE: The 'process-server' module is NOT broadcast over WebSocket by the
+  // server. Instead, ServePage/MyRunTab rely on a periodic silent poll (via
+  // fetchData/refreshJobs) and on cross-tab CustomEvent 'serve:statusChanged'
+  // for real-time-ish updates. The WS subscription for 'process-server' below
+  // will only fire if the server ever emits a matching broadcast; until then,
+  // consumers should NOT remove their polling fallback.
+  //
+  // The live Worker broadcasts dispatch mutations under the 'dispatch_update'
+  // message type (action discriminator), NOT the 'data_changed' shape this hook
+  // was written for. So bridge the real channel for the 'dispatch' module only.
+  //
+  // ⚠️ BEST-EFFORT, NOT A GUARANTEE: /api/ws is served by the LEGACY worker, but
+  // most dispatch mutations (create/status/assign/hold) are proxied to the
+  // REWRITE worker (env.API), whose broadcastAll() fans out in a different
+  // isolate than the connected WS clients. So this subscription only actually
+  // fires for the minority of dispatch events the legacy worker still serves.
+  // The REAL cross-device freshness mechanism is the adaptive units poll on
+  // DispatchPage/MapPage + the periodic silent fetchData poll — do not remove
+  // them assuming this WS net covers it. A true fix needs /api/ws and the
+  // emitters co-located (+ a Durable Object fan-out hub, since broadcastAll is
+  // per-isolate even then). Tracked in project-dispatch-ws memory.
+  //
+  // Scope: 'dispatch' ONLY. Earlier this also included 'incidents'/'patrol',
+  // which made the Crime Analysis / Statute Analytics / Patrol pages refetch
+  // their heavy /reports aggregates on every org-wide dispatch action (those
+  // rows never change on a dispatch_update). Narrowed to stop that waste.
+  const DISPATCH_FAMILY = useMemo(() => ['dispatch'], []);
 
   const handleDispatchUpdate = useCallback((message: WSMessage) => {
     if (optionsRef.current?.disabled) return;

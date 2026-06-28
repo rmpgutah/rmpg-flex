@@ -54,6 +54,8 @@ adminSettings.get('/:key', async (c) => {
 // PUT /api/admin/settings/:key — update a single setting
 adminSettings.put('/:key', async (c) => {
   try {
+    const actor = (c as any).var?.user;
+    if (!actor || !['admin', 'manager'].includes(actor.role)) return c.json({ error: 'Admin or manager required' }, 403);
     const db = getDb(c.env);
     const key = c.req.param('key');
     const body = await c.req.json<{ value: string | number | boolean }>();
@@ -64,7 +66,7 @@ adminSettings.put('/:key', async (c) => {
     if (!existing) return c.json({ error: 'Setting not found' }, 404);
 
     await execute(db,
-      'UPDATE system_settings SET value = ?, updated_at = datetime(\'now\',\'localtime\') WHERE key = ?',
+      'UPDATE system_settings SET value = ?, updated_at = datetime(\'now\') WHERE key = ?',
       String(body.value), key);
     return c.json({ success: true, key, value: String(body.value) });
   } catch (err) { return c.json({ error: 'Failed to update setting' }, 500); }
@@ -73,17 +75,17 @@ adminSettings.put('/:key', async (c) => {
 // PUT /api/admin/settings — batch update multiple settings
 adminSettings.put('/', async (c) => {
   try {
+    const actor = (c as any).var?.user;
+    if (!actor || !['admin', 'manager'].includes(actor.role)) return c.json({ error: 'Admin or manager required' }, 403);
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, string | number | boolean>>();
     if (!body || Object.keys(body).length === 0) return c.json({ error: 'No settings provided' }, 400);
 
-    const stmt = db.prepare(
-      'UPDATE system_settings SET value = ?, updated_at = datetime(\'now\',\'localtime\') WHERE key = ?');
-    const batch: Promise<unknown>[] = [];
-    for (const [key, value] of Object.entries(body)) {
-      batch.push(stmt.bind(String(value), key).run());
-    }
-    await Promise.all(batch);
+    const stmts = Object.entries(body).map(([key, value]) =>
+      db.prepare('UPDATE system_settings SET value = ?, updated_at = datetime(\'now\') WHERE key = ?')
+        .bind(String(value), key)
+    );
+    await db.batch(stmts);
     return c.json({ success: true, updated: Object.keys(body).length });
   } catch (err) { return c.json({ error: 'Failed to update settings' }, 500); }
 });
@@ -91,8 +93,10 @@ adminSettings.put('/', async (c) => {
 // POST /api/admin/settings/reset — reset all settings to defaults
 adminSettings.post('/reset', async (c) => {
   try {
+    const actor = (c as any).var?.user;
+    if (!actor || !['admin', 'manager'].includes(actor.role)) return c.json({ error: 'Admin or manager required' }, 403);
     const db = getDb(c.env);
-    await execute(db, 'UPDATE system_settings SET value = NULL, updated_at = datetime(\'now\',\'localtime\')');
+    await execute(db, 'UPDATE system_settings SET value = NULL, updated_at = datetime(\'now\')');
     return c.json({ success: true, message: 'All settings reset to defaults' });
   } catch (err) { return c.json({ error: 'Failed to reset settings' }, 500); }
 });

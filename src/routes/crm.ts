@@ -91,14 +91,25 @@ crm.get('/contacts', async (c) => {
 
 // ── Tasks ────────────────────────────────────────────────────────
 crm.get('/tasks', async (c) => {
-  try { const db = getDb(c.env); return c.json(await query(db, "SELECT * FROM crm_tasks WHERE status != 'completed' ORDER BY (due_date IS NULL), due_date, id DESC")); }
-  catch { return c.json([]); }
+  try {
+    const db = getDb(c.env);
+    // Honor the client's status filter (comma-separated). Only exclude completed
+    // by default (no param); selecting Completed/Cancelled/All must work.
+    const statuses = (c.req.query('status') || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (statuses.length) {
+      const placeholders = statuses.map(() => '?').join(',');
+      return c.json(await query(db,
+        `SELECT * FROM crm_tasks WHERE status IN (${placeholders}) ORDER BY (due_date IS NULL), due_date, id DESC`,
+        ...statuses));
+    }
+    return c.json(await query(db, "SELECT * FROM crm_tasks WHERE status != 'completed' ORDER BY (due_date IS NULL), due_date, id DESC"));
+  } catch { return c.json([]); }
 });
 crm.post('/tasks', async (c) => {
   try {
     const db = getDb(c.env); const b = await c.req.json<Record<string, any>>();
-    const r = await execute(db, "INSERT INTO crm_tasks (client_id, lead_id, title, description, due_date, priority, status, assigned_to, created_by) VALUES (?,?,?,?,?,?,?,?,?)",
-      b.client_id ?? null, b.lead_id ?? null, b.title ?? null, b.description ?? null, b.due_date ?? null, b.priority ?? 'normal', b.status ?? 'pending', b.assigned_to ?? null, actorId(c));
+    const r = await execute(db, "INSERT INTO crm_tasks (client_id, lead_id, title, description, task_type, due_date, priority, status, assigned_to, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      b.client_id ?? null, b.lead_id ?? null, b.title ?? null, b.description ?? null, b.task_type ?? 'follow_up', b.due_date ?? null, b.priority ?? 'normal', b.status ?? 'pending', b.assigned_to ?? null, actorId(c));
     return c.json({ id: r.meta.last_row_id }, 201);
   } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
@@ -106,7 +117,7 @@ crm.put('/tasks/:id', async (c) => {
   try {
     const db = getDb(c.env); const id = Number(c.req.param('id')); const b = await c.req.json<Record<string, any>>();
     const cols: string[] = []; const vals: unknown[] = [];
-    for (const k of ['title', 'description', 'due_date', 'priority', 'status', 'assigned_to', 'completed_at']) if (k in b) { cols.push(`${k} = ?`); vals.push(b[k]); }
+    for (const k of ['title', 'description', 'task_type', 'due_date', 'priority', 'status', 'assigned_to', 'completed_at']) if (k in b) { cols.push(`${k} = ?`); vals.push(b[k]); }
     if (b.status === 'completed' && !('completed_at' in b)) { cols.push("completed_at = datetime('now')"); }
     if (!cols.length) return c.json({});
     vals.push(id);

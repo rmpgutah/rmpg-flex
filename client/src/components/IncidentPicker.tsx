@@ -18,6 +18,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, FileText } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { humanizeType, humanizeStatus } from '../utils/statusLabels';
+import { coded } from '../utils/searchText';
 
 export interface IncidentSummary {
   id: number;
@@ -68,7 +70,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
     return incidents
       .filter((i) =>
         i.incident_number?.toLowerCase().includes(q) ||
-        i.type?.toLowerCase().includes(q) ||
+        coded(i.type, humanizeType).includes(q) ||
         i.location?.toLowerCase().includes(q) ||
         (i.narrative_summary ?? '').toLowerCase().includes(q),
       )
@@ -76,24 +78,24 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
   }, [query, incidents, visibleLimit]);
 
   return (
-    <div className="bg-[#141414] border border-[#222] panel-beveled" style={{ borderRadius: 2 }}>
-      <div className="px-3 py-2 border-b border-[#222] flex items-center justify-between gap-2">
+    <div className="bg-surface-base border border-border-default panel-beveled" style={{ borderRadius: 2 }}>
+      <div className="px-3 py-2 border-b border-border-default flex items-center justify-between gap-2">
         <span className="text-[10px] uppercase font-semibold text-[#888]">
           Attach To Incident <span className="text-[#ef4444]">*</span>
         </span>
-        <span className="text-[9px] text-[#666]">
+        <span className="text-[9px] text-rmpg-500">
           {loading ? 'loading…' : `${filtered.length} of ${incidents.length}`}
         </span>
       </div>
-      <div className="px-3 py-2 border-b border-[#222]">
+      <div className="px-3 py-2 border-b border-border-default">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-[#666]" />
-          <input
+          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
+          <input id="ff-incidentpicker-0"
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by incident #, type, location, narrative…"
-            className="w-full bg-[#0a0a0a] border border-[#2a2a2a] pl-7 pr-2 py-1.5 text-[11px] text-white"
+            className="w-full bg-surface-sunken border border-border-default pl-7 pr-2 py-1.5 text-[11px] text-rmpg-100"
             style={{ borderRadius: 2 }}
           />
         </div>
@@ -116,7 +118,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
               key={i.id}
               type="button"
               onClick={() => onSelect(i)}
-              className={`w-full text-left px-3 py-2 border-b border-[#1a1a1a] hover:bg-[#1a1a1a] flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''}`}
+              className={`w-full text-left px-3 py-2 border-b border-border-default hover:bg-surface-raised flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''}`}
               style={{
                 borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent',
               }}
@@ -126,10 +128,10 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
                 <div className="text-[11px] font-mono font-semibold text-[#d4a017]">
                   {i.incident_number}
                 </div>
-                <div className="text-[10px] text-[#ccc] mt-0.5">
+                <div className="text-[10px] text-rmpg-300 mt-0.5">
                   {i.type || 'Unknown type'}
-                  {i.status && <span className="ml-2 text-[#888]">[{i.status}]</span>}
-                  {i.officer_name && <span className="ml-2 text-[#666]">· {i.officer_name}</span>}
+                  {i.status && <span className="ml-2 text-[#888]">[{humanizeStatus(i.status, 'incident')}]</span>}
+                  {i.officer_name && <span className="ml-2 text-rmpg-500">· {i.officer_name}</span>}
                 </div>
                 {i.location && (
                   <div className="text-[10px] text-[#888] mt-0.5 truncate">{i.location}</div>

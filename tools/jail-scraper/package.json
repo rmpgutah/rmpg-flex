@@ -1,0 +1,18 @@
+{
+  "name": "rmpg-jail-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "External Playwright runner that scrapes Utah county jail rosters and feeds RMPG Flex intel.",
+  "scripts": {
+    "start": "node index.mjs",
+    "dry-run": "node index.mjs --dry-run",
+    "test": "node --test lib/extract.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

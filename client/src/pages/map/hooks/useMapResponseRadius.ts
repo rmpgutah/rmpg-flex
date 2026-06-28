@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface UseMapResponseRadiusReturn {
   showRadiusAt: (lat: number, lng: number) => void;
@@ -38,8 +39,8 @@ export function useMapResponseRadius(
 
   const clearRadius = useCallback(() => {
     if (!map) return;
-    if (map.getLayer(sourceId)) map.removeLayer(sourceId);
-    if (map.getSource(sourceId)) map.removeSource(sourceId);
+    safeRemoveLayer(map, sourceId);
+    safeRemoveSource(map, sourceId);
     setActivePoint(null);
   }, [map]);
 
@@ -89,8 +90,8 @@ export function useMapResponseRadius(
   useEffect(() => {
     if (!map || !enabled || !cursorRingsEnabled) {
       if (map) {
-        if (map.getLayer(cursorSourceId)) map.removeLayer(cursorSourceId);
-        if (map.getSource(cursorSourceId)) map.removeSource(cursorSourceId);
+        safeRemoveLayer(map, cursorSourceId);
+        safeRemoveSource(map, cursorSourceId);
       }
       if (mouseMoveHandlerRef.current) {
         map?.getCanvas()?.removeEventListener('mousemove', mouseMoveHandlerRef.current);
@@ -109,7 +110,7 @@ export function useMapResponseRadius(
       map.addSource(cursorSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
 
       CURSOR_RINGS.forEach((ring, i) => {
-        if (map.getLayer(`${cursorSourceId}-${i}`)) map.removeLayer(`${cursorSourceId}-${i}`);
+        safeRemoveLayer(map, `${cursorSourceId}-${i}`);
         map.addLayer({
           id: `${cursorSourceId}-${i}`,
           type: 'circle',
@@ -132,10 +133,12 @@ export function useMapResponseRadius(
       throttleTimerRef.current = setTimeout(() => { throttleTimerRef.current = null; }, 100);
 
       const rect = map.getCanvas().getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
       const point: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
       const lngLat = map.unproject(point);
+      if (!Number.isFinite(lngLat.lng) || !Number.isFinite(lngLat.lat)) return;
 
-      const source = map.getSource(cursorSourceId) as mapboxgl.GeoJSONSource | undefined;
+      const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, cursorSourceId);
       if (source) {
         const updatedFeatures = CURSOR_RINGS.map((ring) => ({
           type: 'Feature' as const,
@@ -152,8 +155,8 @@ export function useMapResponseRadius(
     return () => {
       map.getCanvas().removeEventListener('mousemove', handler);
       mouseMoveHandlerRef.current = null;
-      if (map.getLayer(cursorSourceId)) map.removeLayer(cursorSourceId);
-      if (map.getSource(cursorSourceId)) map.removeSource(cursorSourceId);
+      safeRemoveLayer(map, cursorSourceId);
+      safeRemoveSource(map, cursorSourceId);
       if (throttleTimerRef.current) { clearTimeout(throttleTimerRef.current); throttleTimerRef.current = null; }
     };
   }, [map, enabled, cursorRingsEnabled]);

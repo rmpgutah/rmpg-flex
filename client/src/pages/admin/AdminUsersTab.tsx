@@ -20,12 +20,16 @@ import {
   Globe,
   Clock,
   Users,
+  Eye,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { safeDateTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // Shared types
@@ -51,7 +55,7 @@ interface UserSession {
   last_used_at: string;
 }
 
-const ALL_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+const ALL_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'client_viewer', 'human_resources'];
 
 const ROLE_COLORS: Record<UserRole, string> = {
   admin: 'bg-red-900/50 text-red-400 border-red-700/50',
@@ -124,6 +128,33 @@ export default function AdminUsersTab({
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [roleEditing, setRoleEditing] = useState(false);
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
+
+  // Centralized destructive-action ConfirmDialog state — replaces the four
+  // window.confirm() prompts that scattered through Suspend / Reactivate /
+  // Reset 2FA / Revoke Sessions. Each handler stores its title/message/
+  // onConfirm here; the dialog renders once at the bottom of the tab so
+  // there is a single Esc target and a single overlay (the AdminPage Esc
+  // smart-cascade does NOT see browser-native confirms; they were
+  // unreachable by keyboard cascade and broke the day/night surface).
+  interface DeleteConfirm {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    confirmVariant?: 'danger' | 'warning' | 'default';
+    onConfirm: () => Promise<void> | void;
+  }
+  const [confirmDlg, setConfirmDlg] = useState<DeleteConfirm | null>(null);
+  const [confirmDlgLoading, setConfirmDlgLoading] = useState(false);
+  const runConfirmDlg = async () => {
+    if (!confirmDlg) return;
+    setConfirmDlgLoading(true);
+    try {
+      await confirmDlg.onConfirm();
+    } finally {
+      setConfirmDlgLoading(false);
+      setConfirmDlg(null);
+    }
+  };
 
   const handleReset2FA = async (userId: string) => {
     setSecurityActionLoading('reset-2fa');
@@ -210,14 +241,45 @@ export default function AdminUsersTab({
     setSecurityActionLoading(null);
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildUserMenu = (user: User & { last_login_display?: string }): ContextMenuItem[] => {
+    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+    const rawStatus = ((user as any).raw_status || (user.is_active ? 'active' : 'inactive')) as UserStatus;
+    return [
+      m.action('Open user', () => { setSelectedUser(user); setUserDetailTab('profile'); }, { icon: <Eye size={12} /> }),
+      m.action('Edit user', () => openEditUser(user), { icon: <Edit size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', fullName),
+      m.copy('Copy username', user.username),
+      m.copy('Copy email', user.email, <Globe size={12} />),
+      m.copyId(user.id),
+      m.separator(),
+      m.action('Force password change', () => handleForcePasswordChange(user.id), { icon: <KeyRound size={12} /> }),
+      m.action('Reset 2FA', () => handleReset2FA(user.id), { icon: <ShieldOff size={12} /> }),
+      m.action('Revoke all sessions', () => handleRevokeAllSessions(user.id), { icon: <LogOut size={12} /> }),
+      ...(onStatusChange
+        ? (rawStatus === 'active'
+            ? [m.action('Suspend user', () => onStatusChange(user.id, 'inactive'), { icon: <Ban size={12} /> })]
+            : rawStatus === 'inactive'
+              ? [m.action('Reactivate user', () => onStatusChange(user.id, 'active'), { icon: <UserCheck size={12} /> })]
+              : [])
+        : []),
+      m.separator(),
+      m.action('Terminate user', () => openDeleteUser(user), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: User List */}
-      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-[#242424] flex flex-col overflow-hidden transition-all duration-200`}>
-        <div className="px-4 py-3 flex items-center justify-between border-b border-[#242424] flex-shrink-0 bg-surface-sunken">
+      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-rmpg-700 flex flex-col overflow-hidden transition-all duration-200`}>
+        <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-700 flex-shrink-0 bg-surface-sunken">
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" aria-hidden="true" />
-            <input
+            <input id="ff-adminuserstab-0"
               type="text"
               className="input-dark pl-9 text-xs min-h-[36px]"
               placeholder="Search users..." aria-label="Search users"
@@ -254,11 +316,12 @@ export default function AdminUsersTab({
                 <div
                   key={user.id}
                   onClick={() => { setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); }}
+                  onContextMenu={(e) => openMenu(e, buildUserMenu(user))}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); } }}
                   aria-label={`Select ${user.first_name} ${user.last_name}`}
-                  className={`px-4 py-3 border-b border-[#242424]/60 cursor-pointer transition-all duration-150 ${
+                  className={`px-4 py-3 border-b border-rmpg-700/60 cursor-pointer transition-all duration-150 ${
                     selectedUser?.id === user.id
                       ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
                       : `hover:bg-[rgba(42,42,42,0.6)] border-l-2 border-l-transparent ${idx % 2 === 0 ? '' : 'bg-rmpg-800/10'}`
@@ -272,7 +335,7 @@ export default function AdminUsersTab({
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-white truncate">
+                        <span className="text-sm font-semibold text-rmpg-100 truncate">
                           {user.first_name} {user.last_name}
                         </span>
                         <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold uppercase border ${ROLE_COLORS[user.role]}`}>
@@ -337,7 +400,7 @@ export default function AdminUsersTab({
       {selectedUser && (
         <div className="w-[60%] flex flex-col overflow-hidden">
           {/* Detail Header */}
-          <div className="p-4 border-b border-[#242424] bg-surface-sunken flex-shrink-0">
+          <div className="p-4 border-b border-rmpg-700 bg-surface-sunken flex-shrink-0">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 {selectedUser.profile_image ? (
@@ -348,7 +411,7 @@ export default function AdminUsersTab({
                   </div>
                 )}
                 <div>
-                  <h2 className="text-lg font-bold text-white">
+                  <h2 className="text-lg font-bold text-rmpg-100">
                     {selectedUser.first_name} {selectedUser.last_name}
                   </h2>
                   <div className="flex items-center gap-3 mt-0.5 text-xs text-rmpg-300">
@@ -375,7 +438,13 @@ export default function AdminUsersTab({
                   if (rawStatus === 'active' && onStatusChange) {
                     return (
                       <button type="button"
-                        onClick={() => { if (window.confirm(`Suspend ${selectedUser.first_name} ${selectedUser.last_name}? Their sessions will be terminated.`)) onStatusChange(selectedUser.id, 'inactive'); }}
+                        onClick={() => setConfirmDlg({
+                          title: 'Suspend User',
+                          message: `Suspend ${selectedUser.first_name} ${selectedUser.last_name}? Their active sessions will be terminated and they will be unable to log in until reactivated.`,
+                          confirmLabel: 'Suspend',
+                          confirmVariant: 'warning',
+                          onConfirm: () => onStatusChange(selectedUser.id, 'inactive'),
+                        })}
                         className="toolbar-btn text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30"
                         title="Suspend user"
                       >
@@ -385,7 +454,13 @@ export default function AdminUsersTab({
                   } else if (rawStatus === 'inactive' && onStatusChange) {
                     return (
                       <button type="button"
-                        onClick={() => { if (window.confirm(`Reactivate ${selectedUser.first_name} ${selectedUser.last_name}?`)) onStatusChange(selectedUser.id, 'active'); }}
+                        onClick={() => setConfirmDlg({
+                          title: 'Reactivate User',
+                          message: `Reactivate ${selectedUser.first_name} ${selectedUser.last_name}? They will be able to log in again.`,
+                          confirmLabel: 'Reactivate',
+                          confirmVariant: 'default',
+                          onConfirm: () => onStatusChange(selectedUser.id, 'active'),
+                        })}
                         className="toolbar-btn text-green-400 hover:text-green-300 hover:bg-green-900/30"
                         title="Reactivate user"
                       >
@@ -395,14 +470,23 @@ export default function AdminUsersTab({
                   }
                   return null;
                 })()}
-                {(selectedUser as any).totp_enabled ? (
+                {(selectedUser as any).totpEnabled ? (
                   <button type="button"
-                    onClick={() => {
-                      if (window.confirm(`Reset 2FA for ${selectedUser.first_name} ${selectedUser.last_name}? They will need to set up 2FA again.`))
-                        apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
-                          .then(() => { setSelectedUser({ ...selectedUser, totp_enabled: false } as any); })
-                          .catch((err) => { console.warn('[AdminUsersTab] reset 2FA failed:', err); });
-                    }}
+                    onClick={() => setConfirmDlg({
+                      title: 'Reset 2FA',
+                      message: `Reset two-factor authentication for ${selectedUser.first_name} ${selectedUser.last_name}? They will be prompted to set up 2FA again on their next login. This action is audited.`,
+                      confirmLabel: 'Reset 2FA',
+                      confirmVariant: 'warning',
+                      onConfirm: () => apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
+                        .then(() => {
+                          setSelectedUser({ ...selectedUser, totpEnabled: false } as any);
+                          addToast('2FA reset', 'success');
+                        })
+                        .catch((err) => {
+                          console.warn('[AdminUsersTab] reset 2FA failed:', err);
+                          addToast(err?.message || 'Failed to reset 2FA', 'error');
+                        }),
+                    })}
                     className="toolbar-btn text-amber-400 hover:text-amber-300 hover:bg-amber-900/30"
                     title="Reset two-factor authentication"
                   >
@@ -416,7 +500,7 @@ export default function AdminUsersTab({
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Terminate
                 </button>
-                <button type="button" onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors rounded-sm" aria-label="Close user details">
+                <button type="button" onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors rounded-sm" aria-label="Close user details">
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
@@ -424,7 +508,7 @@ export default function AdminUsersTab({
           </div>
 
           {/* Detail Tabs */}
-          <div className="flex gap-0.5 px-4 pt-2 border-b border-[#242424] flex-shrink-0 overflow-x-auto scrollbar-dark" role="tablist" aria-label="User detail sections">
+          <div className="flex gap-0.5 px-4 pt-2 border-b border-rmpg-700 flex-shrink-0 overflow-x-auto scrollbar-dark" role="tablist" aria-label="User detail sections">
             {([
               { id: 'profile' as const, label: 'Profile' },
               { id: 'personal' as const, label: 'Personal' },
@@ -440,8 +524,8 @@ export default function AdminUsersTab({
                 onClick={() => setUserDetailTab(tab.id)}
                 className={`px-3 py-1.5 text-[10px] font-medium transition-all duration-150 whitespace-nowrap relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                   userDetailTab === tab.id
-                    ? 'bg-[#181818] text-white border border-[#242424] border-b-[#181818]'
-                    : 'text-rmpg-400 hover:text-white hover:bg-[rgba(42,42,42,0.6)]'
+                    ? 'bg-surface-raised text-rmpg-100 border border-rmpg-700 border-b-surface-raised'
+                    : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-[rgba(42,42,42,0.6)]'
                 }`}
               >
                 {tab.label}
@@ -456,7 +540,7 @@ export default function AdminUsersTab({
             {userDetailTab === 'profile' && (
               <>
                 <div className="panel-beveled p-3 bg-surface-base">
-                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-[#242424] pb-1.5">Employment Information</h3>
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-1.5">Employment Information</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Department:</span> <span className="text-rmpg-200 ml-1">{selectedUser.department || '--'}</span></div>
                     <div><span className="text-rmpg-400">Rank:</span> <span className="text-rmpg-200 ml-1">{selectedUser.rank || '--'}</span></div>
@@ -580,7 +664,7 @@ export default function AdminUsersTab({
                   </div>
                   {roleEditing && (
                     <div className="mt-3 flex items-center gap-2">
-                      <select
+                      <select id="ff-adminuserstab-1"
                         className="input-dark text-xs flex-1 min-h-[36px]"
                         value={pendingRole || selectedUser.role}
                         onChange={(e) => setPendingRole(e.target.value as UserRole)}
@@ -648,7 +732,7 @@ export default function AdminUsersTab({
                       Reset 2FA
                     </button>
                   </div>
-                  <p className="text-[9px] mt-2" style={{ color: '#555555' }}>
+                  <p className="text-[9px] mt-2" style={{ color: 'var(--rmpg-500)' }}>
                     Resetting 2FA will delete the user's TOTP secret, backup codes, and trusted devices.
                   </p>
                 </div>
@@ -713,10 +797,13 @@ export default function AdminUsersTab({
                       </button>
                       {userSessions.length > 0 && (
                         <button type="button"
-                          onClick={() => {
-                            if (window.confirm(`Revoke all ${userSessions.length} active sessions for ${selectedUser.first_name} ${selectedUser.last_name}? They will be logged out from all devices.`))
-                              handleRevokeAllSessions(selectedUser.id);
-                          }}
+                          onClick={() => setConfirmDlg({
+                            title: 'Revoke All Sessions',
+                            message: `Revoke all ${userSessions.length} active session${userSessions.length === 1 ? '' : 's'} for ${selectedUser.first_name} ${selectedUser.last_name}? They will be logged out from every device immediately. This action is audited.`,
+                            confirmLabel: 'Revoke All',
+                            confirmVariant: 'danger',
+                            onConfirm: () => handleRevokeAllSessions(selectedUser.id),
+                          })}
                           disabled={securityActionLoading === 'revoke-sessions'}
                           className="toolbar-btn text-[9px] text-red-400 hover:text-red-300 hover:bg-red-900/30 flex items-center gap-1"
                         >
@@ -787,7 +874,7 @@ export default function AdminUsersTab({
                           {safeDateTimeStr(entry.timestamp)}
                         </span>
                         <span className="text-brand-400 font-medium">{entry.action}</span>
-                        <span className="text-rmpg-300 flex-1 truncate">{entry.details}</span>
+                        <span className="text-rmpg-300 min-w-0 flex-1 truncate">{entry.details}</span>
                       </div>
                     ))}
                   </div>
@@ -818,6 +905,21 @@ export default function AdminUsersTab({
           </div>
         </div>
       )}
+
+      {/* Centralized destructive-action confirm — Suspend / Reactivate /
+          Reset 2FA / Revoke Sessions all flow through here. The dialog
+          handles Esc, focus trap, and the day/night surface; the old
+          window.confirm() did none of these. */}
+      <ConfirmDialog
+        isOpen={!!confirmDlg}
+        onClose={() => { if (!confirmDlgLoading) setConfirmDlg(null); }}
+        onConfirm={runConfirmDlg}
+        title={confirmDlg?.title || ''}
+        message={confirmDlg?.message || ''}
+        confirmLabel={confirmDlg?.confirmLabel || 'Confirm'}
+        confirmVariant={confirmDlg?.confirmVariant || 'danger'}
+        isLoading={confirmDlgLoading}
+      />
     </div>
   );
 }

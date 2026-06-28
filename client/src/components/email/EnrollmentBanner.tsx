@@ -30,7 +30,7 @@ export default function EnrollmentBanner() {
     <div className="flex flex-col items-center justify-center h-full p-8 space-y-4">
       <div className="text-2xl">📧</div>
       <div className="text-sm font-semibold text-[#d4a017]">CONNECT YOUR MICROSOFT 365 MAILBOX</div>
-      <div className="text-xs text-gray-400 max-w-md text-center">
+      <div className="text-xs text-rmpg-400 max-w-md text-center">
         To use email in RMPG Flex, you need to authorize access to your Microsoft 365 mailbox.
         Your email stays in Microsoft's servers — RMPG Flex only displays it.
       </div>

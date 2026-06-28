@@ -140,7 +140,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
     }
   };
 
-  const inputClass = 'w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none';
+  const inputClass = 'w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none';
   const labelClass = 'block text-xs text-rmpg-400 mb-1';
 
   return (
@@ -152,11 +152,11 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
         <div className="px-4 py-2 border-b border-rmpg-700 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-brand-400" />
-            <h3 className="text-sm font-semibold text-white">
+            <h3 className="text-sm font-semibold text-rmpg-100">
               {review?.id ? 'Edit Performance Review' : 'Create Performance Review'}
             </h3>
           </div>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -182,8 +182,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Employee *</label>
-              <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={inputClass}>
+              <label htmlFor="ff-performancereviewmodal-0" className={labelClass}>Employee *</label>
+              <select id="ff-performancereviewmodal-0" value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={inputClass}>
                 <option value="">Select employee...</option>
                 {users.map(u => (
                   <option key={u.id} value={u.id}>
@@ -193,8 +193,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
               </select>
             </div>
             <div>
-              <label className={labelClass}>Review Cycle</label>
-              <select value={form.cycle_id ?? ''} onChange={e => setForm(f => ({ ...f, cycle_id: e.target.value ? Number(e.target.value) : null }))} className={inputClass}>
+              <label htmlFor="ff-performancereviewmodal-1" className={labelClass}>Review Cycle</label>
+              <select id="ff-performancereviewmodal-1" value={form.cycle_id ?? ''} onChange={e => setForm(f => ({ ...f, cycle_id: e.target.value ? Number(e.target.value) : null }))} className={inputClass}>
                 <option value="">None</option>
                 {cycles.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -205,8 +205,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Review Date *</label>
-              <input
+              <label htmlFor="ff-performancereviewmodal-2" className={labelClass}>Review Date *</label>
+              <input id="ff-performancereviewmodal-2"
                 type="date"
                 value={form.review_date}
                 onChange={e => setForm(f => ({ ...f, review_date: e.target.value }))}
@@ -234,8 +234,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           </div>
 
           <div>
-            <label className={labelClass}>Strengths</label>
-            <textarea
+            <label htmlFor="ff-performancereviewmodal-3" className={labelClass}>Strengths</label>
+            <textarea id="ff-performancereviewmodal-3"
               value={form.strengths}
               onChange={e => setForm(f => ({ ...f, strengths: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
@@ -244,8 +244,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           </div>
 
           <div>
-            <label className={labelClass}>Areas for Improvement</label>
-            <textarea
+            <label htmlFor="ff-performancereviewmodal-4" className={labelClass}>Areas for Improvement</label>
+            <textarea id="ff-performancereviewmodal-4"
               value={form.areas_for_improvement}
               onChange={e => setForm(f => ({ ...f, areas_for_improvement: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
@@ -254,8 +254,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           </div>
 
           <div>
-            <label className={labelClass}>Goals</label>
-            <textarea
+            <label htmlFor="ff-performancereviewmodal-5" className={labelClass}>Goals</label>
+            <textarea id="ff-performancereviewmodal-5"
               value={form.goals}
               onChange={e => setForm(f => ({ ...f, goals: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
@@ -264,8 +264,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           </div>
 
           <div>
-            <label className={labelClass}>Additional Comments</label>
-            <textarea
+            <label htmlFor="ff-performancereviewmodal-6" className={labelClass}>Additional Comments</label>
+            <textarea id="ff-performancereviewmodal-6"
               value={form.comments}
               onChange={e => setForm(f => ({ ...f, comments: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
@@ -276,13 +276,13 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
         {/* Footer */}
         <div className="px-4 py-2 border-t border-rmpg-700 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-100">
             Cancel
           </button>
           <button type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="px-3 py-1.5 text-xs bg-brand-500 text-white rounded-sm hover:bg-brand-600 disabled:opacity-50"
+            className="px-3 py-1.5 text-xs bg-brand-500 text-rmpg-100 rounded-sm hover:bg-brand-600 disabled:opacity-50"
           >
             {saving ? 'Saving...' : review?.id ? 'Update Review' : 'Create Review'}
           </button>

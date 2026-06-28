@@ -1,25 +1,22 @@
 // ============================================================
 // RMPG Flex — Human Resources (Cloudflare Worker)
 // ============================================================
-// Phase 1 port of the legacy HR module — Leave, Disciplinary,
-// Reviews, Benefits. Bucket I deferrals (payroll, exit interviews,
-// grievances, PIPs, attendance, salary history, workers' comp,
-// handbook acks, leave-balances-as-real-data) remain on legacy
-// until the dedicated tables land.
+// Full port of the legacy HR module — Leave, Disciplinary, Reviews,
+// Payroll, Grievances, Documents, Attendance, PIPs. All tables
+// are created via migration 0157_hr_tables_complete.sql (see
+// CLAUDE.md gotcha #6 for apply instructions).
 //
-// Tables on live D1 (un-prefixed, created via direct patches in
-// PR #660 — NOT in /migrations/, see [[project-hr-tables-stub-created]]):
+// Leave, disciplinary, reviews live on D1 tables created in PR #660:
 //   - leave_requests       (13 cols)
 //   - disciplinary_records (15 cols)
 //   - review_cycles        ( 6 cols)
 //   - performance_reviews  (17 cols)
 //
-// hr_benefits intentionally NOT created — /benefits returns [] so
-// the BenefitsTab renders an empty state instead of 500ing.
+// Payroll, Grievances, Documents, Attendance, PIPs created by
+// migration 0157. hr_benefits intentionally NOT created — /benefits
+// returns [] so BenefitsTab renders empty state instead of 500ing.
 //
-// Mounts at /api/hr (see src/routesConfig.ts, alphabetical slot
-// between /api/grievances and /api/incidents — but only /api/hr
-// today since the other two don't exist as rewrite ports yet).
+// Mounts at /api/hr (auth: required, see src/routesConfig.ts).
 // ============================================================
 
 import { Hono } from 'hono';
@@ -141,6 +138,79 @@ hr.get('/leave', requireRole(...ALL_ROLES), async (c) => {
   } catch (err) {
     console.error('[hr] GET /leave', err);
     return c.json({ error: 'Failed to load leave requests', code: 'HR_LEAVE_LIST_ERR' }, 500);
+  }
+});
+
+// ── CSV exports (Leave / Disciplinary / Reviews tabs' "Export → CSV") ──
+// The three HR tabs hit /api/hr/{leave|disciplinary|reviews}/export/csv via
+// <ExportButton>, which 404'd (no handler) → "Export failed with status 404".
+// These re-run each list query (no UI filters) and stream a CSV download. The
+// joins are copied verbatim from the corresponding list handlers so no guessed
+// column 500s the export. GET /…/export/csv is 3 segments — never shadows the
+// 2-segment GET /…/:id.
+function rowsToCsv(rows: Record<string, unknown>[]): string {
+  if (!rows.length) return '';
+  const cols = Object.keys(rows[0]);
+  const esc = (v: unknown) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n');
+}
+function csvResponse(csv: string, filename: string): Response {
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  });
+}
+
+hr.get('/leave/export/csv', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT lr.*, o.full_name AS officer_name, r.full_name AS reviewer_name
+      FROM leave_requests lr
+      LEFT JOIN users o ON o.id = lr.officer_id
+      LEFT JOIN users r ON r.id = lr.reviewed_by
+      ORDER BY lr.created_at DESC LIMIT 5000`);
+    return csvResponse(rowsToCsv(rows), 'leave_requests.csv');
+  } catch (err) {
+    console.error('[hr] GET /leave/export/csv', err);
+    return c.json({ error: 'Export failed' }, 500);
+  }
+});
+
+hr.get('/disciplinary/export/csv', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT dr.*, o.full_name AS officer_name, i.full_name AS issuer_name
+      FROM disciplinary_records dr
+      LEFT JOIN users o ON o.id = dr.officer_id
+      LEFT JOIN users i ON i.id = dr.issued_by
+      ORDER BY dr.incident_date DESC, dr.id DESC LIMIT 5000`);
+    return csvResponse(rowsToCsv(rows), 'disciplinary_records.csv');
+  } catch (err) {
+    console.error('[hr] GET /disciplinary/export/csv', err);
+    return c.json({ error: 'Export failed' }, 500);
+  }
+});
+
+hr.get('/reviews/export/csv', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT pr.*, o.full_name AS officer_name, r.full_name AS reviewer_name
+      FROM performance_reviews pr
+      LEFT JOIN users o ON o.id = pr.officer_id
+      LEFT JOIN users r ON r.id = pr.reviewer_id
+      ORDER BY pr.review_period_end DESC, pr.id DESC LIMIT 5000`);
+    return csvResponse(rowsToCsv(rows), 'performance_reviews.csv');
+  } catch (err) {
+    console.error('[hr] GET /reviews/export/csv', err);
+    return c.json({ error: 'Export failed' }, 500);
   }
 });
 
@@ -352,15 +422,22 @@ hr.post('/leave/:id/deny', requireRole(...MANAGER_ROLES), async (c) => {
 // ── /disciplinary ───────────────────────────────────────────
 
 // GET /hr/disciplinary?officer_id=&status=
-hr.get('/disciplinary', requireRole(...MANAGER_ROLES), async (c) => {
+hr.get('/disciplinary', requireRole(...ALL_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
+    const user = c.get('user');
     const officerId = c.req.query('officer_id');
     const status = c.req.query('status');
 
     const where: string[] = [];
     const params: unknown[] = [];
-    if (officerId) { where.push('dr.officer_id = ?'); params.push(Number(officerId)); }
+    // Non-managers may only ever see their OWN disciplinary records (mirrors the
+    // /leave + /reviews self-scoping). Managers may filter by officer_id.
+    if (!isManager(user.role)) {
+      where.push('dr.officer_id = ?'); params.push(user.id);
+    } else if (officerId) {
+      where.push('dr.officer_id = ?'); params.push(Number(officerId));
+    }
     if (status && DISC_STATUSES.has(status)) { where.push('dr.status = ?'); params.push(status); }
 
     const sql = `
@@ -687,6 +764,723 @@ hr.post('/reviews/:id/acknowledge', requireRole(...ALL_ROLES), async (c) => {
   } catch (err) {
     console.error('[hr] POST /reviews/:id/acknowledge', err);
     return c.json({ error: 'Failed to acknowledge review', code: 'HR_REV_ACK_ERR' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Payroll — Pay Periods, Pay Rates, Payroll Entries, Overtime
+// ═══════════════════════════════════════════════════════════════
+
+// ─── Pay Periods ─────────────────────────────────────────────
+
+hr.get('/payroll/periods', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { status, year } = c.req.query();
+    let where = 'WHERE 1=1';
+    const params: unknown[] = [];
+    if (status) { where += ' AND pp.status = ?'; params.push(status); }
+    if (year) { where += ' AND pp.start_date >= ? AND pp.start_date < ?'; params.push(`${year}-01-01`, `${Number(year)+1}-01-01`); }
+    const rows = await query(db, `
+      SELECT pp.*, u.full_name AS created_by_name,
+        (SELECT COUNT(*) FROM hr_payroll_entries pe WHERE pe.pay_period_id = pp.id) AS entry_count,
+        (SELECT COALESCE(SUM(pe.gross_pay), 0) FROM hr_payroll_entries pe WHERE pe.pay_period_id = pp.id) AS total_gross,
+        (SELECT COALESCE(SUM(pe.net_pay), 0) FROM hr_payroll_entries pe WHERE pe.pay_period_id = pp.id) AS total_net
+      FROM hr_pay_periods pp
+      LEFT JOIN users u ON u.id = pp.created_by
+      ${where}
+      ORDER BY pp.start_date DESC
+    `, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /payroll/periods', err);
+    return c.json({ error: 'Failed to fetch pay periods', code: 'HR_PAY_PERIODS_ERR' }, 500);
+  }
+});
+
+hr.post('/payroll/periods', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const { name, start_date, end_date, pay_date } = body ?? {};
+    if (!start_date || !end_date || !pay_date) {
+      return c.json({ error: 'start_date, end_date, and pay_date are required' }, 400);
+    }
+    const res = await execute(db,
+      `INSERT INTO hr_pay_periods (name, start_date, end_date, pay_date, status, created_by)
+       VALUES (?, ?, ?, ?, 'open', ?)`,
+      name || `Pay Period ${start_date} - ${end_date}`, start_date, end_date, pay_date, user.id
+    );
+    const period = await queryFirst(db, 'SELECT * FROM hr_pay_periods WHERE id = ?', Number(res.meta.last_row_id));
+    return c.json(period, 201);
+  } catch (err) {
+    console.error('[hr] POST /payroll/periods', err);
+    return c.json({ error: 'Failed to create pay period', code: 'HR_PAY_PERIOD_CREATE_ERR' }, 500);
+  }
+});
+
+hr.put('/payroll/periods/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const existing = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM hr_pay_periods WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Pay period not found' }, 404);
+    const body = await c.req.json();
+    const { name, start_date, end_date, pay_date, status } = body ?? {};
+    const sets: string[] = []; const params: unknown[] = [];
+    if (name !== undefined) { sets.push('name = ?'); params.push(name); }
+    if (start_date) { sets.push('start_date = ?'); params.push(start_date); }
+    if (end_date) { sets.push('end_date = ?'); params.push(end_date); }
+    if (pay_date) { sets.push('pay_date = ?'); params.push(pay_date); }
+    if (status) {
+      const valid = ['open', 'processing', 'finalized', 'paid', 'closed'];
+      if (!valid.includes(status)) return c.json({ error: 'Invalid status' }, 400);
+      sets.push('status = ?'); params.push(status);
+    }
+    if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
+    params.push(id);
+    await execute(db, `UPDATE hr_pay_periods SET ${sets.join(', ')} WHERE id = ?`, ...params);
+    const updated = await queryFirst(db, 'SELECT * FROM hr_pay_periods WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[hr] PUT /payroll/periods/:id', err);
+    return c.json({ error: 'Failed to update pay period', code: 'HR_PAY_PERIOD_UPDATE_ERR' }, 500);
+  }
+});
+
+hr.delete('/payroll/periods/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const existing = await queryFirst<{ status: string }>(db, 'SELECT status FROM hr_pay_periods WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Pay period not found' }, 404);
+    await execute(db, 'DELETE FROM hr_payroll_entries WHERE pay_period_id = ?', id);
+    await execute(db, 'DELETE FROM hr_pay_periods WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] DELETE /payroll/periods/:id', err);
+    return c.json({ error: 'Failed to delete pay period', code: 'HR_PAY_PERIOD_DEL_ERR' }, 500);
+  }
+});
+
+// ─── Pay Rates ───────────────────────────────────────────────
+
+hr.get('/payroll/rates', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.req.query('user_id');
+    let where = 'WHERE pr.end_date IS NULL';
+    const params: unknown[] = [];
+    if (userId) { where += ' AND pr.user_id = ?'; params.push(Number(userId)); }
+    const rows = await query(db, `
+      SELECT pr.*, u.full_name AS officer_name, cb.full_name AS created_by_name
+      FROM hr_pay_rates pr
+      JOIN users u ON u.id = pr.user_id
+      LEFT JOIN users cb ON cb.id = pr.created_by
+      ${where}
+      ORDER BY u.full_name, pr.effective_date DESC
+    `, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /payroll/rates', err);
+    return c.json({ error: 'Failed to fetch pay rates', code: 'HR_PAY_RATES_ERR' }, 500);
+  }
+});
+
+hr.post('/payroll/rates', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const { user_id, pay_type, rate, overtime_rate, holiday_rate, effective_date, notes } = body ?? {};
+    if (!user_id || !pay_type || rate === undefined || !effective_date) {
+      return c.json({ error: 'user_id, pay_type, rate, and effective_date are required' }, 400);
+    }
+    await execute(db, `UPDATE hr_pay_rates SET end_date = ? WHERE user_id = ? AND end_date IS NULL`, effective_date, user_id);
+    const res = await execute(db,
+      `INSERT INTO hr_pay_rates (user_id, pay_type, rate, overtime_rate, holiday_rate, effective_date, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      user_id, pay_type, rate, overtime_rate ?? 1.5, holiday_rate ?? 1.5, effective_date, notes || null, user.id
+    );
+    const newRate = await queryFirst(db,
+      'SELECT pr.*, u.full_name AS officer_name FROM hr_pay_rates pr JOIN users u ON u.id = pr.user_id WHERE pr.id = ?',
+      Number(res.meta.last_row_id)
+    );
+    return c.json(newRate, 201);
+  } catch (err) {
+    console.error('[hr] POST /payroll/rates', err);
+    return c.json({ error: 'Failed to create pay rate', code: 'HR_PAY_RATE_CREATE_ERR' }, 500);
+  }
+});
+
+// ─── Payroll Entries ─────────────────────────────────────────
+
+hr.get('/payroll/entries', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const payPeriodId = c.req.query('pay_period_id');
+    const userId = c.req.query('user_id');
+    const allParam = c.req.query('all');
+    if (!payPeriodId && !allParam) return c.json({ error: 'pay_period_id or all=1 is required' }, 400);
+    let where = allParam ? 'WHERE 1=1' : 'WHERE pe.pay_period_id = ?';
+    const params: unknown[] = allParam ? [] : [Number(payPeriodId)];
+    if (userId) {
+      where += ' AND pe.user_id = ?';
+      params.push(Number(userId));
+    }
+    const rows = await query(db, `
+      SELECT pe.*, u.full_name AS officer_name, u.badge_number,
+        pr.pay_type, pr.rate AS hourly_rate,
+        ab.full_name AS approved_by_name
+      FROM hr_payroll_entries pe
+      JOIN users u ON u.id = pe.user_id
+      LEFT JOIN hr_pay_rates pr ON pr.id = pe.pay_rate_id
+      LEFT JOIN users ab ON ab.id = pe.approved_by
+      ${where}
+      ORDER BY u.full_name
+    `, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /payroll/entries', err);
+    return c.json({ error: 'Failed to fetch payroll entries', code: 'HR_PAY_ENTRIES_ERR' }, 500);
+  }
+});
+
+hr.post('/payroll/entries', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json();
+    const { pay_period_id, user_id, regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, other_hours_description, notes } = body ?? {};
+    if (!pay_period_id || !user_id) return c.json({ error: 'pay_period_id and user_id are required' }, 400);
+
+    const payRate = await queryFirst<{ id: number; rate: number; overtime_rate: number; holiday_rate: number }>(db,
+      `SELECT * FROM hr_pay_rates WHERE user_id = ? AND end_date IS NULL ORDER BY effective_date DESC LIMIT 1`, user_id);
+    const rate = payRate?.rate ?? 0;
+    const otMult = payRate?.overtime_rate ?? 1.5;
+    const holMult = payRate?.holiday_rate ?? 1.5;
+    const regHrs = regular_hours ?? 0;
+    const otHrs = overtime_hours ?? 0;
+    const holHrs = holiday_hours ?? 0;
+    const basePay = regHrs * rate;
+    const overtimePay = otHrs * rate * otMult;
+    const holidayPay = holHrs * rate * holMult;
+    const grossPay = basePay + overtimePay + holidayPay;
+
+    const now = nowIso();
+    const res = await execute(db,
+      `INSERT INTO hr_payroll_entries (user_id, pay_period_id, pay_rate_id, regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, other_hours_description, base_pay, overtime_pay, holiday_pay, gross_pay, total_deductions, net_pay, status, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'draft', ?, ?, ?)`,
+      user_id, pay_period_id, payRate?.id ?? null,
+      regHrs, otHrs, holHrs, pto_hours ?? 0, sick_hours ?? 0, other_hours ?? 0, other_hours_description || null,
+      basePay, overtimePay, holidayPay, grossPay, grossPay,
+      notes || null, now, now
+    );
+    const entry = await queryFirst(db,
+      'SELECT pe.*, u.full_name AS officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?',
+      Number(res.meta.last_row_id)
+    );
+    return c.json(entry, 201);
+  } catch (err) {
+    console.error('[hr] POST /payroll/entries', err);
+    return c.json({ error: 'Failed to create payroll entry', code: 'HR_PAY_ENTRY_CREATE_ERR' }, 500);
+  }
+});
+
+hr.put('/payroll/entries/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const existing = await queryFirst<any>(db, 'SELECT * FROM hr_payroll_entries WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Payroll entry not found' }, 404);
+    const body = await c.req.json();
+    const { regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, other_hours_description, notes, status } = body ?? {};
+
+    const payRate = existing.pay_rate_id
+      ? await queryFirst<{ rate: number; overtime_rate: number; holiday_rate: number }>(db, 'SELECT * FROM hr_pay_rates WHERE id = ?', existing.pay_rate_id)
+      : null;
+    const rate = payRate?.rate ?? 0;
+    const otMult = payRate?.overtime_rate ?? 1.5;
+    const holMult = payRate?.holiday_rate ?? 1.5;
+    const regHrs = regular_hours ?? existing.regular_hours;
+    const otHrs = overtime_hours ?? existing.overtime_hours;
+    const holHrs = holiday_hours ?? existing.holiday_hours;
+    const basePay = regHrs * rate;
+    const overtimePay = otHrs * rate * otMult;
+    const holidayPay = holHrs * rate * holMult;
+    const grossPay = basePay + overtimePay + holidayPay;
+    const now = nowIso();
+    const userId = (c.get('user') as { id: number })?.id;
+
+    await execute(db,
+      `UPDATE hr_payroll_entries SET regular_hours = ?, overtime_hours = ?, holiday_hours = ?,
+        pto_hours = ?, sick_hours = ?, other_hours = ?, other_hours_description = ?,
+        base_pay = ?, overtime_pay = ?, holiday_pay = ?, gross_pay = ?, net_pay = ?,
+        status = ?, notes = ?,
+        approved_by = CASE WHEN ? = 'approved' THEN ? ELSE approved_by END,
+        approved_at = CASE WHEN ? = 'approved' THEN ? ELSE approved_at END,
+        updated_at = ? WHERE id = ?`,
+      regHrs, otHrs, holHrs,
+      pto_hours ?? existing.pto_hours, sick_hours ?? existing.sick_hours,
+      other_hours ?? existing.other_hours, other_hours_description ?? existing.other_hours_description,
+      basePay, overtimePay, holidayPay, grossPay, grossPay,
+      status ?? existing.status, notes ?? existing.notes,
+      status, userId, status, now, now, id
+    );
+    const updated = await queryFirst(db,
+      'SELECT pe.*, u.full_name AS officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('[hr] PUT /payroll/entries/:id', err);
+    return c.json({ error: 'Failed to update payroll entry', code: 'HR_PAY_ENTRY_UPDATE_ERR' }, 500);
+  }
+});
+
+// ─── Auto-populate period ────────────────────────────────────
+
+hr.post('/payroll/periods/:id/populate', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const period = await queryFirst<{ name: string; status: string }>(db, 'SELECT name, status FROM hr_pay_periods WHERE id = ?', id);
+    if (!period) return c.json({ error: 'Pay period not found' }, 404);
+
+    const activeUsers = await query<{ id: number; full_name: string }>(db,
+      `SELECT u.id FROM users u WHERE u.status = 'active' ORDER BY u.full_name`);
+    const existingEntries = await query<{ user_id: number }>(db,
+      'SELECT user_id FROM hr_payroll_entries WHERE pay_period_id = ?', id);
+    const existingIds = new Set(existingEntries.map(e => e.user_id));
+    const now = nowIso();
+    let created = 0;
+    for (const u of activeUsers) {
+      if (existingIds.has(u.id)) continue;
+      const payRate = await queryFirst<{ id: number }>(db,
+        `SELECT id FROM hr_pay_rates WHERE user_id = ? AND end_date IS NULL ORDER BY effective_date DESC LIMIT 1`, u.id);
+      await execute(db,
+        `INSERT INTO hr_payroll_entries (user_id, pay_period_id, pay_rate_id, regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, base_pay, overtime_pay, holiday_pay, gross_pay, total_deductions, net_pay, status, created_at, updated_at)
+         VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'draft', ?, ?)`,
+        u.id, id, payRate?.id ?? null, now, now);
+      created++;
+    }
+    return c.json({ success: true, created, total: activeUsers.length });
+  } catch (err) {
+    console.error('[hr] POST /payroll/periods/:id/populate', err);
+    return c.json({ error: 'Failed to populate pay period', code: 'HR_PAY_PERIOD_POP_ERR' }, 500);
+  }
+});
+
+// ─── Overtime Requests ───────────────────────────────────────
+
+hr.get('/payroll/overtime', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; role: string };
+    const { status: otStatus, officer_id } = c.req.query();
+    let where = 'WHERE 1=1';
+    const params: unknown[] = [];
+    if (!isManager(user.role)) { where += ' AND officer_id = ?'; params.push(user.id); }
+    else if (officer_id) { where += ' AND officer_id = ?'; params.push(Number(officer_id)); }
+    if (otStatus) { where += ' AND status = ?'; params.push(otStatus); }
+    const rows = await query(db, `SELECT * FROM overtime_requests ${where} ORDER BY created_at DESC`, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /payroll/overtime', err);
+    return c.json({ error: 'Failed to fetch OT requests', code: 'HR_OT_LIST_ERR' }, 500);
+  }
+});
+
+hr.post('/payroll/overtime', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const { requested_date, hours_requested, reason } = body ?? {};
+    if (!requested_date || !hours_requested) {
+      return c.json({ error: 'requested_date and hours_requested are required' }, 400);
+    }
+    const officer = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', user.id);
+    const now = nowIso();
+    const res = await execute(db,
+      `INSERT INTO overtime_requests (officer_id, officer_name, requested_date, hours_requested, reason, status, created_at)
+       VALUES (?, ?, ?, ?, ?, 'requested', ?)`,
+      user.id, officer?.full_name || '', requested_date, Number(hours_requested), reason || null, now
+    );
+    return c.json({ id: res.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[hr] POST /payroll/overtime', err);
+    return c.json({ error: 'Failed to create OT request', code: 'HR_OT_CREATE_ERR' }, 500);
+  }
+});
+
+hr.put('/payroll/overtime/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json();
+    const { status: otStatus, review_notes } = body ?? {};
+    if (!['approved', 'denied'].includes(otStatus)) {
+      return c.json({ error: 'Status must be approved or denied' }, 400);
+    }
+    const reviewer = await queryFirst<{ full_name: string }>(db, 'SELECT full_name FROM users WHERE id = ?', user.id);
+    const now = nowIso();
+    await execute(db,
+      `UPDATE overtime_requests SET status = ?, reviewed_by = ?, reviewed_by_name = ?, reviewed_at = ?, review_notes = ? WHERE id = ?`,
+      otStatus, user.id, reviewer?.full_name || '', now, review_notes || null, id
+    );
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] PUT /payroll/overtime/:id', err);
+    return c.json({ error: 'Failed to update OT request', code: 'HR_OT_UPDATE_ERR' }, 500);
+  }
+});
+
+// ─── Payroll CSV Export ──────────────────────────────────────
+
+hr.get('/payroll/export/csv', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const payPeriodId = c.req.query('pay_period_id');
+    if (!payPeriodId) return c.json({ error: 'pay_period_id required' }, 400);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT pe.*, u.full_name AS officer_name, u.badge_number
+      FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id
+      WHERE pe.pay_period_id = ? ORDER BY u.full_name`, Number(payPeriodId));
+    return csvResponse(rowsToCsv(rows), 'payroll.csv');
+  } catch (err) {
+    console.error('[hr] GET /payroll/export/csv', err);
+    return c.json({ error: 'Export failed' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Grievances
+// ═══════════════════════════════════════════════════════════════
+
+const GRIEVANCE_STATUSES = new Set(['filed', 'under_review', 'investigation', 'mediation', 'resolved', 'dismissed', 'appealed']);
+
+hr.get('/grievances', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; role: string };
+    const { status, officer_id } = c.req.query();
+    let where = 'WHERE 1=1';
+    const params: unknown[] = [];
+    if (!isManager(user.role)) { where += ' AND g.officer_id = ?'; params.push(user.id); }
+    else if (officer_id) { where += ' AND g.officer_id = ?'; params.push(Number(officer_id)); }
+    if (status && GRIEVANCE_STATUSES.has(status)) { where += ' AND g.status = ?'; params.push(status); }
+    const rows = await query(db, `
+      SELECT g.*, o.full_name AS officer_name, a.full_name AS assigned_to_name
+      FROM hr_grievances g
+      LEFT JOIN users o ON o.id = g.officer_id
+      LEFT JOIN users a ON a.id = g.assigned_to
+      ${where} ORDER BY g.created_at DESC`, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /grievances', err);
+    return c.json({ error: 'Failed to load grievances', code: 'HR_GRIEV_LIST_ERR' }, 500);
+  }
+});
+
+hr.post('/grievances', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const { type, subject, description, priority, assigned_to } = body ?? {};
+    if (!subject || !description) return c.json({ error: 'subject and description are required' }, 400);
+    const now = nowIso();
+    const res = await execute(db,
+      `INSERT INTO hr_grievances (officer_id, type, subject, description, status, priority, assigned_to, filed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'filed', ?, ?, ?, ?, ?)`,
+      user.id, type || 'general', subject, description, priority || 'normal', assigned_to || null, now, now, now
+    );
+    return c.json({ success: true, id: res.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[hr] POST /grievances', err);
+    return c.json({ error: 'Failed to create grievance', code: 'HR_GRIEV_CREATE_ERR' }, 500);
+  }
+});
+
+hr.put('/grievances/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json();
+    const fields = ['type', 'subject', 'description', 'priority', 'assigned_to', 'resolution'];
+    const sets: string[] = []; const params: unknown[] = [];
+    for (const f of fields) {
+      if (f in body) { sets.push(`${f} = ?`); params.push(body[f]); }
+    }
+    if (body.status) {
+      if (!GRIEVANCE_STATUSES.has(body.status)) return c.json({ error: 'Invalid status' }, 400);
+      sets.push('status = ?'); params.push(body.status);
+      if (body.status === 'resolved' || body.status === 'dismissed') {
+        sets.push('resolved_at = ?'); params.push(nowIso());
+      }
+    }
+    if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
+    sets.push('updated_at = ?'); params.push(nowIso());
+    params.push(id);
+    await execute(db, `UPDATE hr_grievances SET ${sets.join(', ')} WHERE id = ?`, ...params);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] PUT /grievances/:id', err);
+    return c.json({ error: 'Failed to update grievance', code: 'HR_GRIEV_UPDATE_ERR' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Documents & Acknowledgments
+// ═══════════════════════════════════════════════════════════════
+
+hr.get('/documents', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { category } = c.req.query();
+    let where = 'WHERE 1=1';
+    const params: unknown[] = [];
+    if (category) { where += ' AND category = ?'; params.push(category); }
+    const rows = await query(db, `
+      SELECT d.*, u.full_name AS uploaded_by_name
+      FROM hr_documents d
+      LEFT JOIN users u ON u.id = d.uploaded_by
+      ${where} ORDER BY d.created_at DESC`, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /documents', err);
+    return c.json({ error: 'Failed to load documents', code: 'HR_DOC_LIST_ERR' }, 500);
+  }
+});
+
+hr.post('/documents', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const { title, category, description, file_path, file_name, file_size } = body ?? {};
+    if (!title) return c.json({ error: 'title is required' }, 400);
+    const now = nowIso();
+    const res = await execute(db,
+      `INSERT INTO hr_documents (title, category, description, file_path, file_name, file_size, uploaded_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      title, category || 'policy', description || null, file_path || null, file_name || null, file_size || 0, user.id, now, now
+    );
+    return c.json({ success: true, id: res.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[hr] POST /documents', err);
+    return c.json({ error: 'Failed to create document', code: 'HR_DOC_CREATE_ERR' }, 500);
+  }
+});
+
+hr.delete('/documents/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    await execute(db, 'DELETE FROM hr_documents WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] DELETE /documents/:id', err);
+    return c.json({ error: 'Failed to delete document', code: 'HR_DOC_DEL_ERR' }, 500);
+  }
+});
+
+hr.get('/acknowledgments', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const documentId = c.req.query('document_id');
+    const officerId = c.req.query('officer_id');
+    let where = 'WHERE 1=1';
+    const params: unknown[] = [];
+    if (documentId) { where += ' AND a.document_id = ?'; params.push(Number(documentId)); }
+    if (officerId) { where += ' AND a.officer_id = ?'; params.push(Number(officerId)); }
+    const rows = await query(db, `
+      SELECT a.*, u.full_name AS officer_name, d.title AS document_title
+      FROM hr_handbook_acknowledgments a
+      LEFT JOIN users u ON u.id = a.officer_id
+      LEFT JOIN hr_documents d ON d.id = a.document_id
+      ${where} ORDER BY a.acknowledged_at DESC`, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /acknowledgments', err);
+    return c.json({ error: 'Failed to load acknowledgments', code: 'HR_ACK_LIST_ERR' }, 500);
+  }
+});
+
+hr.post('/acknowledgments', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const { document_id, signature } = body ?? {};
+    if (!document_id) return c.json({ error: 'document_id is required' }, 400);
+    const now = nowIso();
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || null;
+    const res = await execute(db,
+      `INSERT OR IGNORE INTO hr_handbook_acknowledgments (officer_id, document_id, acknowledged_at, signature, ip_address)
+       VALUES (?, ?, ?, ?, ?)`,
+      user.id, document_id, now, signature || null, ip
+    );
+    if (res.meta.changes === 0) return c.json({ error: 'Already acknowledged' }, 409);
+    return c.json({ success: true, id: res.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[hr] POST /acknowledgments', err);
+    return c.json({ error: 'Failed to acknowledge document', code: 'HR_ACK_CREATE_ERR' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Attendance
+// ═══════════════════════════════════════════════════════════════
+
+const ATTENDANCE_TYPES = new Set(['absent', 'tardy', 'early_departure', 'no_call_no_show']);
+
+hr.get('/attendance', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; role: string };
+    const { officer_id, type: attType, date_from, date_to } = c.req.query();
+    let where = 'WHERE 1=1';
+    const params: unknown[] = [];
+    if (!isManager(user.role)) { where += ' AND a.officer_id = ?'; params.push(user.id); }
+    else if (officer_id) { where += ' AND a.officer_id = ?'; params.push(Number(officer_id)); }
+    if (attType && ATTENDANCE_TYPES.has(attType)) { where += ' AND a.type = ?'; params.push(attType); }
+    if (date_from) { where += ' AND a.date >= ?'; params.push(date_from); }
+    if (date_to) { where += ' AND a.date <= ?'; params.push(date_to); }
+    const rows = await query(db, `
+      SELECT a.*, o.full_name AS officer_name, d.full_name AS documented_by_name
+      FROM hr_attendance a
+      LEFT JOIN users o ON o.id = a.officer_id
+      LEFT JOIN users d ON d.id = a.documented_by
+      ${where} ORDER BY a.date DESC, a.created_at DESC`, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /attendance', err);
+    return c.json({ error: 'Failed to load attendance records', code: 'HR_ATTEND_LIST_ERR' }, 500);
+  }
+});
+
+hr.post('/attendance', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const { officer_id, date, type, minutes_late, reason, excused } = body ?? {};
+    if (!officer_id || !date || !type) return c.json({ error: 'officer_id, date, and type are required' }, 400);
+    if (!ATTENDANCE_TYPES.has(type)) return c.json({ error: 'Invalid attendance type' }, 400);
+    const now = nowIso();
+    const res = await execute(db,
+      `INSERT INTO hr_attendance (officer_id, date, type, minutes_late, reason, excused, documented_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      officer_id, date, type, minutes_late ?? 0, reason || null, excused ? 1 : 0, user.id, now
+    );
+    return c.json({ success: true, id: res.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[hr] POST /attendance', err);
+    return c.json({ error: 'Failed to create attendance record', code: 'HR_ATTEND_CREATE_ERR' }, 500);
+  }
+});
+
+hr.get('/attendance/summary/:officerId', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('officerId'));
+    const year = c.req.query('year') || String(new Date().getFullYear());
+    const rows = await query<{ type: string; count: number }>(db,
+      `SELECT type, COUNT(*) AS count FROM hr_attendance
+       WHERE officer_id = ? AND substr(date, 1, 4) = ?
+       GROUP BY type`, officerId, year);
+    const total = rows.reduce((sum, r) => sum + r.count, 0);
+    const absent = rows.find(r => r.type === 'absent')?.count ?? 0;
+    const tardy = rows.find(r => r.type === 'tardy')?.count ?? 0;
+    return c.json({ officer_id: officerId, year: Number(year), total, absent, tardy, early_departure: rows.find(r => r.type === 'early_departure')?.count ?? 0, no_call_no_show: rows.find(r => r.type === 'no_call_no_show')?.count ?? 0 });
+  } catch (err) {
+    console.error('[hr] GET /attendance/summary/:officerId', err);
+    return c.json({ error: 'Failed to load attendance summary', code: 'HR_ATTEND_SUM_ERR' }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Performance Improvement Plans (PIPs)
+// ═══════════════════════════════════════════════════════════════
+
+const PIP_STATUSES = new Set(['active', 'completed', 'extended', 'failed', 'cancelled']);
+
+hr.get('/pips', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number; role: string };
+    const { status: pipStatus, officer_id } = c.req.query();
+    let where = 'WHERE 1=1';
+    const params: unknown[] = [];
+    if (!isManager(user.role)) { where += ' AND p.officer_id = ?'; params.push(user.id); }
+    else if (officer_id) { where += ' AND p.officer_id = ?'; params.push(Number(officer_id)); }
+    if (pipStatus && PIP_STATUSES.has(pipStatus)) { where += ' AND p.status = ?'; params.push(pipStatus); }
+    const rows = await query(db, `
+      SELECT p.*, o.full_name AS officer_name, s.full_name AS supervisor_name
+      FROM hr_pips p
+      LEFT JOIN users o ON o.id = p.officer_id
+      LEFT JOIN users s ON s.id = p.supervisor_id
+      ${where} ORDER BY p.created_at DESC`, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[hr] GET /pips', err);
+    return c.json({ error: 'Failed to load PIPs', code: 'HR_PIP_LIST_ERR' }, 500);
+  }
+});
+
+hr.post('/pips', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { id: number };
+    const body = await c.req.json();
+    const { officer_id, supervisor_id, start_date, end_date, reason, goals } = body ?? {};
+    if (!officer_id || !start_date || !end_date || !reason) {
+      return c.json({ error: 'officer_id, start_date, end_date, and reason are required' }, 400);
+    }
+    const now = nowIso();
+    const goalsJson = Array.isArray(goals) ? JSON.stringify(goals) : '[]';
+    const res = await execute(db,
+      `INSERT INTO hr_pips (officer_id, supervisor_id, start_date, end_date, reason, goals, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+      officer_id, supervisor_id || user.id, start_date, end_date, reason, goalsJson, now, now
+    );
+    return c.json({ success: true, id: res.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[hr] POST /pips', err);
+    return c.json({ error: 'Failed to create PIP', code: 'HR_PIP_CREATE_ERR' }, 500);
+  }
+});
+
+hr.put('/pips/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json();
+    const fields = ['supervisor_id', 'start_date', 'end_date', 'reason', 'outcome', 'milestones'];
+    const sets: string[] = []; const params: unknown[] = [];
+    for (const f of fields) {
+      if (f in body) {
+        if (f === 'milestones' || f === 'goals') {
+          sets.push(`${f} = ?`); params.push(Array.isArray(body[f]) ? JSON.stringify(body[f]) : body[f]);
+        } else {
+          sets.push(`${f} = ?`); params.push(body[f]);
+        }
+      }
+    }
+    if (body.status) {
+      if (!PIP_STATUSES.has(body.status)) return c.json({ error: 'Invalid status' }, 400);
+      sets.push('status = ?'); params.push(body.status);
+    }
+    if ('goals' in body) { sets.push('goals = ?'); params.push(Array.isArray(body.goals) ? JSON.stringify(body.goals) : body.goals); }
+    if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
+    sets.push('updated_at = ?'); params.push(nowIso());
+    params.push(id);
+    await execute(db, `UPDATE hr_pips SET ${sets.join(', ')} WHERE id = ?`, ...params);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] PUT /pips/:id', err);
+    return c.json({ error: 'Failed to update PIP', code: 'HR_PIP_UPDATE_ERR' }, 500);
   }
 });
 
