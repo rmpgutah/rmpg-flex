@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface DashboardData {
   total_active: number;
@@ -40,7 +41,10 @@ interface LeaveBalances {
   personal_used: number;
 }
 
-const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+// Must match the server tier (hr.ts MANAGER_ROLES includes human_resources) —
+// omitting it gave HR users the officer view while the server returned
+// manager-scoped data.
+const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 
 function activityColor(type: string): string {
   switch (type) {
@@ -49,7 +53,7 @@ function activityColor(type: string): string {
     case 'disciplinary': return '#ef4444';
     case 'review': return '#888888';
     case 'commendation': return '#8b5cf6';
-    default: return '#666666';
+    default: return 'var(--rmpg-500)';
   }
 }
 
@@ -68,7 +72,7 @@ function activityIcon(type: string) {
 }
 
 function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseTimestamp(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -96,14 +100,14 @@ function MetricCard({
     <button type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4 text-left transition-all duration-200 hover:border-[#2a3f5a] hover:shadow-lg hover:brightness-110 disabled:cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
+      className="bg-surface-base border border-rmpg-700 rounded-sm p-4 text-left transition-all duration-200 hover:border-border-strong hover:shadow-lg hover:brightness-110 disabled:cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
       aria-label={`${label}: ${value}`}
     >
       <div className="flex items-center gap-2 mb-2">
         <Icon size={16} style={{ color: accent }} aria-hidden="true" />
         <span className="text-xs text-rmpg-400 uppercase tracking-wide">{label}</span>
       </div>
-      <div className="text-2xl font-bold text-white font-mono">{value}</div>
+      <div className="text-2xl font-bold text-rmpg-100 font-mono">{value}</div>
     </button>
   );
 }
@@ -114,9 +118,9 @@ function ProgressBar({ label, pct, color = '#888888' }: { label: string; pct: nu
     <div>
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-rmpg-300">{label}</span>
-        <span className="text-xs font-medium text-white">{pct}%</span>
+        <span className="text-xs font-medium text-rmpg-100">{pct}%</span>
       </div>
-      <div className="h-2 bg-[#050505] rounded-full overflow-hidden">
+      <div className="h-2 bg-surface-sunken rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
@@ -142,12 +146,12 @@ function BalanceCard({
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
 
   return (
-    <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4 transition-all duration-200 hover:border-[#2a3f5a] hover:brightness-105">
+    <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4 transition-all duration-200 hover:border-border-strong hover:brightness-105">
       <div className="text-xs text-rmpg-400 uppercase tracking-wide mb-1">{label}</div>
-      <div className="text-2xl font-bold text-white mb-1 font-mono">
+      <div className="text-2xl font-bold text-rmpg-100 mb-1 font-mono">
         {remaining} <span className="text-sm font-normal text-rmpg-400 font-sans">/ {total} remaining</span>
       </div>
-      <div className="h-2 bg-[#050505] rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
+      <div className="h-2 bg-surface-sunken rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, backgroundColor: color }}
@@ -177,15 +181,15 @@ function ManagerDashboard({
           icon={Clock}
           label="Pending Approvals"
           value={data.pending_approvals}
-          accent={data.pending_approvals > 0 ? '#ef4444' : '#666666'}
+          accent={data.pending_approvals > 0 ? '#ef4444' : 'var(--rmpg-500)'}
           onClick={data.pending_approvals > 0 ? onNavigateToLeave : undefined}
         />
       </div>
 
       {/* Compliance */}
-      <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
-        <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
-          <ShieldCheck size={14} className="text-gray-400" />
+      <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
+        <h3 className="text-sm font-medium text-rmpg-100 mb-3 flex items-center gap-2">
+          <ShieldCheck size={14} className="text-rmpg-400" />
           Compliance Overview
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -203,16 +207,16 @@ function ManagerDashboard({
             <AlertTriangle size={16} className={data.overdue_items > 0 ? 'text-red-400' : 'text-green-400'} />
             <div>
               <div className="text-xs text-rmpg-400">Overdue Items</div>
-              <div className="text-lg font-bold text-white">{data.overdue_items}</div>
+              <div className="text-lg font-bold text-rmpg-100">{data.overdue_items}</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Recent Activity */}
-      <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
-        <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
-          <Activity size={14} className="text-gray-400" />
+      <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
+        <h3 className="text-sm font-medium text-rmpg-100 mb-3 flex items-center gap-2">
+          <Activity size={14} className="text-rmpg-400" />
           Recent HR Activity
         </h3>
         {data.recent_activity.length === 0 ? (
@@ -224,7 +228,7 @@ function ManagerDashboard({
               return (
                 <div
                   key={item.id}
-                  className="flex items-start gap-3 bg-[#050505] border border-[#222222] rounded-sm p-2.5 transition-colors duration-150 hover:border-[#2a3f5a]"
+                  className="flex items-start gap-3 bg-surface-sunken border border-rmpg-700 rounded-sm p-2.5 transition-colors duration-150 hover:border-border-strong"
                 >
                   <div
                     className="w-1 self-stretch rounded-full flex-shrink-0"
@@ -232,7 +236,7 @@ function ManagerDashboard({
                   />
                   <Icon size={14} className="text-rmpg-400 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs text-white">{item.description}</div>
+                    <div className="text-xs text-rmpg-100">{item.description}</div>
                     <div className="text-xs text-rmpg-500 mt-0.5">
                       {item.officer_name} &middot; {formatRelativeTime(item.created_at)}
                     </div>
@@ -260,8 +264,10 @@ function OfficerDashboard({
 
   useEffect(() => {
     const year = new Date().getFullYear();
-    apiFetch<LeaveBalances>(`/hr/leave/balances?year=${year}`)
-      .then(setBalances)
+    // /hr/leave/balances returns an ARRAY (one row per officer; one element for
+    // an officer's own view). Reading it as an object gave NaN balances.
+    apiFetch<LeaveBalances[]>(`/hr/leave/balances?year=${year}`)
+      .then((rows) => setBalances(Array.isArray(rows) ? (rows[0] ?? null) : rows))
       .catch(() => setBalances(null))
       .finally(() => setLoading(false));
   }, [userId]);
@@ -284,7 +290,7 @@ function OfficerDashboard({
           <BalanceCard label="Personal" used={balances.personal_used} total={balances.personal_total} color="#8b5cf6" />
         </div>
       ) : (
-        <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
           <p className="text-xs text-rmpg-500">Leave balances not available</p>
         </div>
       )}
@@ -292,7 +298,7 @@ function OfficerDashboard({
       {/* Quick actions */}
       <button type="button"
         onClick={onNavigateToLeave}
-        className="flex items-center gap-2 bg-[#0a0a0a] border border-[#222222] rounded-sm px-4 py-3 text-sm text-white hover:border-brand-500 transition-all duration-200 hover:shadow-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 w-full md:w-auto"
+        className="flex items-center gap-2 bg-surface-base border border-rmpg-700 rounded-sm px-4 py-3 text-sm text-rmpg-100 hover:border-brand-500 transition-all duration-200 hover:shadow-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 w-full md:w-auto"
       >
         <CalendarOff size={14} className="text-amber-400" />
         Request Time Off
@@ -301,11 +307,11 @@ function OfficerDashboard({
 
       {/* Placeholders */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
           <h3 className="text-xs text-rmpg-400 uppercase tracking-wide mb-2">Next Performance Review</h3>
           <p className="text-xs text-rmpg-500">No upcoming reviews scheduled</p>
         </div>
-        <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
           <h3 className="text-xs text-rmpg-400 uppercase tracking-wide mb-2">Expiring Credentials</h3>
           <p className="text-xs text-rmpg-500">No credentials expiring soon</p>
         </div>
@@ -350,7 +356,7 @@ export default function HRDashboardTab({
       {isManager && data ? (
         <ManagerDashboard data={data} onNavigateToLeave={onNavigateToLeave} />
       ) : isManager && !data ? (
-        <div className="bg-[#0a0a0a] border border-[#222222] rounded-sm p-4">
+        <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">
           <p className="text-xs text-rmpg-500">Unable to load HR dashboard data</p>
         </div>
       ) : (

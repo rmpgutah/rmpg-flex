@@ -84,14 +84,14 @@ export function ProviderCard({
 }) {
   const isAvailable = status?.available ?? false;
   return (
-    <div className="bg-[#0a0a12] border border-[#1a1a2e] rounded p-3 space-y-2">
+    <div className="bg-surface-sunken border border-border-default rounded p-3 space-y-2">
       <div className="flex items-center gap-2">
         <div className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-green-500' : 'bg-rmpg-600'}`} />
-        <span className="text-xs font-medium text-white flex-1">{label}</span>
+        <span className="text-xs font-medium text-rmpg-100 flex-1">{label}</span>
         <button
           onClick={onTest}
           disabled={testResult === 'loading'}
-          className="flex items-center gap-1 text-[10px] px-2 py-1 bg-[#0f1218] border border-[#1a1a2e] text-rmpg-300 hover:text-white hover:border-brand-500/50 rounded transition-colors disabled:opacity-50"
+          className="flex items-center gap-1 text-[10px] px-2 py-1 bg-surface-base border border-border-default text-rmpg-300 hover:text-rmpg-100 hover:border-brand-500/50 rounded transition-colors disabled:opacity-50"
         >
           {testResult === 'loading' ? (
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -127,19 +127,19 @@ export function KeyInput({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-[10px] text-rmpg-500 w-20 shrink-0">{label}</label>
+      <label htmlFor="ff-aisharedcomponents-0" className="text-[10px] text-rmpg-500 w-20 shrink-0">{label}</label>
       <div className="relative flex-1">
-        <input
+        <input id="ff-aisharedcomponents-0"
           type={show ? 'text' : 'password'}
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder="Enter API key..."
-          className="w-full bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 pr-8 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
+          className="w-full bg-surface-sunken border border-border-default text-rmpg-100 text-xs rounded px-2 py-1.5 pr-8 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
         />
         <button
           type="button"
           onClick={onToggle}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-rmpg-500 hover:text-white"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-rmpg-500 hover:text-rmpg-100"
         >
           {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
         </button>
@@ -151,13 +151,13 @@ export function KeyInput({
 export function ModelInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-[10px] text-rmpg-500 w-20 shrink-0">Model</label>
-      <input
+      <label htmlFor="ff-aisharedcomponents-1" className="text-[10px] text-rmpg-500 w-20 shrink-0">Model</label>
+      <input id="ff-aisharedcomponents-1"
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="flex-1 bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
+        className="flex-1 bg-surface-sunken border border-border-default text-rmpg-100 text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
       />
     </div>
   );
@@ -166,7 +166,7 @@ export function ModelInput({ value, onChange, placeholder }: { value: string; on
 export function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="text-center">
-      <div className="text-lg font-bold text-white font-mono">{value}</div>
+      <div className="text-lg font-bold text-rmpg-100 font-mono">{value}</div>
       <div className="text-[10px] text-rmpg-500 mt-0.5">{label}</div>
     </div>
   );
@@ -226,7 +226,7 @@ export function CleanupSection({
         ) : (
           <ChevronRight className="w-3.5 h-3.5 text-rmpg-500" />
         )}
-        <span className="text-xs text-white font-medium">{title}</span>
+        <span className="text-xs text-rmpg-100 font-medium">{title}</span>
         {empty && <span className="text-[10px] text-green-500 ml-1">All clear</span>}
       </button>
       {expanded && !empty && (
@@ -248,10 +248,10 @@ export function ProviderSelect({
   className?: string;
 }) {
   return (
-    <select
+    <select id="ff-aisharedcomponents-2"
       value={value}
       onChange={e => onChange(e.target.value)}
-      className={`bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none ${className}`}
+      className={`bg-surface-sunken border border-border-default text-rmpg-100 text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none ${className}`}
     >
       <option value="auto">Auto (Fallback)</option>
       <option value="groq">Groq (LLaMA)</option>

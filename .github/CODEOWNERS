@@ -1,0 +1,26 @@
+# Default owner for everything
+* @rmpgutah
+
+# Worker API (Cloudflare) — live backend
+/src/ @rmpgutah
+
+# Dispatch subsystem — critical path
+/src/routes/dispatch/ @rmpgutah
+/client/src/pages/dispatch/ @rmpgutah
+
+# Auth and security
+/src/middleware/auth* @rmpgutah
+/src/routes/auth* @rmpgutah
+
+# Database migrations (D1)
+/migrations/ @rmpgutah
+
+# Durable Objects
+/src/durable-objects/ @rmpgutah
+
+# Deploy and CI
+/.github/ @rmpgutah
+/wrangler.toml @rmpgutah
+
+# Legacy VPS code (read-only quarantine) — see legacy/README.md
+/legacy/ @rmpgutah

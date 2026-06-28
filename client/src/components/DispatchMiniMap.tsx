@@ -1,20 +1,39 @@
 // ============================================================
 // RMPG Flex — Dispatch Mini-Map
-// Lightweight embeddable Google Maps panel showing the selected
+// Lightweight embeddable Mapbox GL JS panel showing the selected
 // call location and assigned unit positions. Used inline in the
 // Dispatch right column.
 //
-// When Google Maps fails to load (vehicle WiFi dead zones), falls
-// back to a compact Leaflet map using pre-cached offline tiles.
+// Mapbox GL JS handles its own offline caching via the browser's
+// tile cache — no separate Leaflet fallback needed.
 // ============================================================
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
+import { Maximize2, MapPin, RefreshCw, Car } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
+import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
+import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
+import { applyRmpgBasemap } from '../utils/mapboxBasemap';
+import { buildUnitMarker, buildCallMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
 import { useMapRouting } from '../hooks/useMapRouting';
-import OfflineMapFallback from './OfflineMapFallback';
+import { useGpsTracking } from '../hooks/useGpsTracking';
+import { apiFetch } from '../hooks/useApi';
+import { speak } from '../utils/edgeTTS';
+import ManeuverArrow from './ManeuverArrow';
 import type { CallForService, Unit } from '../types';
+
+// `call.assigned_units` can arrive as id strings/numbers OR as full unit
+// objects (the call-detail endpoint returns objects). Normalize to a Set of
+// id-strings so assigned-unit matching works either way. Previously the code
+// did `assigned_units.includes(String(u.id))`, which is always false when the
+// array holds objects — so the assigned unit never matched, and the unit
+// marker, route line, and turn-by-turn directions never appeared.
+function assignedUnitIdSet(call: { assigned_units?: unknown } | null | undefined): Set<string> {
+  const a = (call as { assigned_units?: unknown } | null | undefined)?.assigned_units;
+  if (!Array.isArray(a)) return new Set();
+  return new Set(a.map((x) => String(x && typeof x === 'object' ? (x as { id: unknown }).id : x)));
+}
 
 interface DispatchMiniMapProps {
   call: CallForService | null;
@@ -26,216 +45,314 @@ interface DispatchMiniMapProps {
   onRouteUpdate?: (info: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null) => void;
 }
 
-const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
+const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608]; // Salt Lake City fallback [lng, lat]
 const MINI_ZOOM = 15;
-
-/** Build a call marker DOM element (red label with caret) */
-function buildCallMarker(label: string): HTMLElement {
-  const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
-
-  const tag = document.createElement('div');
-  /* #54: Call marker with subtle shadow for depth */
-  tag.style.cssText =
-    'background:#ef4444;color:#fff;font-size:7px;font-weight:900;' +
-    "padding:1px 3px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
-  tag.textContent = label;
-
-  const caret = document.createElement('div');
-  caret.style.cssText =
-    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #ef4444;';
-
-  wrapper.appendChild(tag);
-  wrapper.appendChild(caret);
-  return wrapper;
-}
-
-/** Build a unit marker DOM element (blue chip) */
-function buildUnitMarker(callSign: string): HTMLElement {
-  const el = document.createElement('div');
-  /* #55: Unit marker with shadow */
-  el.style.cssText =
-    'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
-    "padding:1px 4px;border:1px solid #222222;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
-  el.textContent = callSign;
-  return el;
-}
 
 export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<any[]>([]);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const callMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const unitMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tilesStalled, setTilesStalled] = useState(false);
-  const [retryingGmaps, setRetryingGmaps] = useState(false);
-  const [gmapsRetry, setGmapsRetry] = useState(0);
-  const tileMonitorRef = useRef<(() => void) | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [mapTokenRetry, setMapTokenRetry] = useState(0);
+  // Bumped to true the moment the Mapbox instance is created. mapRef is a ref
+  // (assigning it does NOT re-render), so without this the useMapRouting hook
+  // below would stay bound to map=null forever and queryRoute would bail before
+  // ever fetching the Directions API — no route line, no turn-by-turn banner.
+  const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (see installWebglContextRecovery below).
+  const [recovering, setRecovering] = useState(false);
+  const [recoverNonce, setRecoverNonce] = useState(0);
+  const recoverCamRef = useRef<MapCamera | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
+  // Always-visible assigned vehicle (independent of dispatch)
+  interface AssignedVehicle {
+    id: number;
+    vehicle_number: string;
+    plate_number: string | null;
+    gps_lat: number | null;
+    gps_lon: number | null;
+    status: string;
+    current_mileage: number | null;
+  }
+  const [assignedVehicle, setAssignedVehicle] = useState<AssignedVehicle | null>(null);
+  const assignedVehicleMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   // Classify error: auth/config vs connectivity
-  const isAuthError = error != null && (error.includes('key') || error.includes('configured'));
-  const showLeafletFallback = error != null && !isAuthError;
+  const isAuthError = error != null && (error.includes('token') || error.includes('configured'));
 
   // Routing (auto-route when a single assigned unit has GPS)
-  const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapRef.current });
+  const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapReady ? mapRef.current : null });
   const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
 
-  // Load Google Maps script with retry + online auto-recovery
-  useEffect(() => {
-    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string;
-    if (!apiKey) {
-      setError('Map key not configured');
-      return;
-    }
+  // Device's OWN live GPS (read-only — Layout owns the upload). Drives
+  // continuous, phone-maps-style route recomputation from watchPosition
+  // (~1/sec) when THIS device is the unit being routed, instead of waiting
+  // for the server units feed to round-trip on a tab switch.
+  const devGps = useGpsTracking({ upload: false });
 
+  // Load Mapbox token + init map
+  useEffect(() => {
     let cancelled = false;
     setError(null);
+    setLoaded(false);
 
-    function attemptLoad(attempt: number) {
-      if (cancelled) return;
-      loadGoogleMaps(apiKey)
-        .then(() => { if (!cancelled) { setLoaded(true); setError(null); } })
-        .catch(() => {
-          if (cancelled) return;
-          if (attempt < 3) {
-            setTimeout(() => attemptLoad(attempt + 1), [3000, 6000, 12000][attempt]);
-          } else {
-            setError('Map load failed — check connection');
-          }
-        });
-    }
-    attemptLoad(0);
+    (async () => {
+      try {
+        const token = await getMapboxAccessToken();
+        if (cancelled) return;
+        initMapbox(token);
+        if (cancelled) return;
+        setLoaded(true);
+        setError(null);
+      } catch (err: any) {
+        if (!cancelled) {
+          setLoaded(false);
+          setError(err?.message || getMapboxTokenErrorMessage());
+        }
+      }
+    })();
 
-    // Auto-retry when device comes back online
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !loaded) { setError(null); setLoaded(true); }
-    });
+    return () => { cancelled = true; };
+  }, [mapTokenRetry]);
 
-    return () => { cancelled = true; unsubOnline(); };
-  }, [gmapsRetry]);
-
-  // Initialize or update map
+  // Initialize the map ONCE, then re-center + re-pin the call only when the
+  // SELECTED CALL changes. Deliberately does NOT depend on `units`, so a unit
+  // GPS poll never re-centers the map ("reload while the unit moves") or
+  // disturbs the static call pin.
   useEffect(() => {
     if (!loaded || !mapContainerRef.current) return;
 
-    const center = call?.latitude != null && call?.longitude != null
-      ? { lat: call.latitude, lng: call.longitude }
-      : DEFAULT_CENTER;
+    // isValidLngLat rejects NaN/Infinity and the exact (0,0) no-fix signature
+    // so a call with bad coordinates never anchors the map / drops a teardrop.
+    const hasCallLoc = isValidLngLat(call?.longitude, call?.latitude);
+    // A WebGL-loss rebuild reopens at the captured view; otherwise center on the
+    // call (or the SLC fallback). One-shot: cleared after the new map is built.
+    const recoverCam = recoverCamRef.current;
+    const center: [number, number] = recoverCam
+      ? recoverCam.center
+      : hasCallLoc
+        ? [call!.longitude!, call!.latitude!]
+        : DEFAULT_CENTER;
+    const zoom = recoverCam ? recoverCam.zoom : MINI_ZOOM;
 
     if (!mapRef.current) {
-      const map = new google.maps.Map(mapContainerRef.current, {
+      recoverCamRef.current = null;
+      const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: MAPBOX_STYLE_DARK,
         center,
-        zoom: MINI_ZOOM,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
-        gestureHandling: 'cooperative',
+        zoom,
+        attributionControl: false,
       });
+      map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       mapRef.current = map;
       registerMapInstance(map);
+      setMapReady(true); // re-render so useMapRouting picks up the real map instance
+      setRecovering(false);
 
-      // Monitor tile loading for vehicle WiFi resilience
-      if (tileMonitorRef.current) tileMonitorRef.current();
-      tileMonitorRef.current = monitorTileLoading(map, {
-        onStalled: () => setTilesStalled(true),
-        onLoaded: () => setTilesStalled(false),
-        onRecovering: () => {},
+      // WebGL context-loss recovery: rebuild this map in place if the GPU drops
+      // its context (long shift / Toughbook GPU pressure / sleep-wake). We null
+      // mapRef + bump recoverNonce so THIS effect re-creates the map; the marker
+      // and routing effects (keyed on mapReady) re-attach to the new instance.
+      webglRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'DispatchMiniMap',
+        onContextLost: () => setRecovering(true),
+        onContextRestored: () => setRecovering(false),
+        onRebuild: (camera) => {
+          recoverCamRef.current = camera;
+          if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
+          callMarkerRef.current?.remove(); callMarkerRef.current = null;
+          unitMarkersRef.current.forEach((m) => m.remove()); unitMarkersRef.current.clear();
+          if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+          setMapReady(false);
+          setRecovering(true);
+          setRecoverNonce((n) => n + 1);
+        },
+        onGiveUp: () => setRecovering(false),
       });
-    } else {
+
+      // Monitor tile loading
+      map.on('idle', () => setTilesStalled(false));
+      const stallCheck = setInterval(() => {
+        if (!map.loaded()) setTilesStalled(true);
+      }, 15000);
+
+      map.on('remove', () => clearInterval(stallCheck));
+    } else if (hasCallLoc) {
+      // Only re-center when a new call is selected (this effect's deps), never
+      // on a unit GPS update — preserves the dispatcher's pan/zoom.
       mapRef.current.setCenter(center);
     }
 
-    // Clear old markers
-    markersRef.current.forEach(m => {
-      if (typeof m.setMap === 'function') m.setMap(null);
-      else if (typeof m.remove === 'function') m.remove();
-    });
-    markersRef.current = [];
+    // Call marker (red) — static per call. Move the existing marker in place
+    // rather than tearing it down so it never flickers / "flies around".
+    if (hasCallLoc && mapRef.current) {
+      if (callMarkerRef.current) {
+        callMarkerRef.current.setLngLat([call!.longitude!, call!.latitude!]);
+        // The builder nests the label in a <span>; update it in place so the
+        // teardrop shape/rotation isn't wiped by setting textContent on the root.
+        const label = callMarkerRef.current.getElement()?.querySelector('span');
+        if (label) label.textContent = call!.call_number || 'CALL';
+      } else {
+        const el = buildCallMarker({ priority: call!.priority, label: call!.call_number || 'CALL' });
+        callMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([call!.longitude!, call!.latitude!])
+          .addTo(mapRef.current);
+      }
+    } else if (!hasCallLoc && callMarkerRef.current) {
+      callMarkerRef.current.remove();
+      callMarkerRef.current = null;
+    }
+  }, [loaded, call?.id, call?.latitude, call?.longitude, recoverNonce]);
 
-    // Helper: create an OverlayView-based marker
-    const createOverlay = (map: google.maps.Map, pos: google.maps.LatLngLiteral, content: HTMLElement, zIndex: number) => {
-      const overlay = new google.maps.OverlayView();
-      let container: HTMLDivElement | null = null;
-      overlay.onAdd = () => {
-        container = document.createElement('div');
-        container.style.position = 'absolute';
-        container.style.zIndex = String(zIndex);
-        container.appendChild(content);
-        overlay.getPanes()?.overlayMouseTarget.appendChild(container);
-      };
-      overlay.draw = () => {
-        if (!container) return;
-        const proj = overlay.getProjection();
-        if (!proj) return;
-        const pt = proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat, pos.lng));
-        if (pt) {
-          container.style.left = `${pt.x}px`;
-          container.style.top = `${pt.y}px`;
-          container.style.transform = 'translate(-50%, -100%)';
-        }
-      };
-      overlay.onRemove = () => { container?.parentElement?.removeChild(container); container = null; };
-      overlay.setMap(map);
-      return overlay;
+  // Fetch assigned vehicle — always visible, independent of dispatch
+  useEffect(() => {
+    let cancelled = false;
+    const fetchAssignedVehicle = () => {
+      apiFetch<AssignedVehicle | null>('/dispatch/gps/my-vehicle')
+        .then((v) => {
+          if (cancelled || !v) return;
+          setAssignedVehicle(v);
+        })
+        .catch(() => { /* no assigned vehicle — normal */ });
     };
+    fetchAssignedVehicle();
+    const interval = setInterval(fetchAssignedVehicle, 60_000); // refresh every 60s
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
 
-    // Call marker (red pin)
-    if (call?.latitude != null && call?.longitude != null && mapRef.current) {
-      const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL'), 100);
-      markersRef.current.push(m);
+  // Render assigned vehicle marker on map (always visible)
+  useEffect(() => {
+    if (!loaded || !mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    const av = assignedVehicle;
+
+    // Remove existing marker if vehicle info changed or GPS lost
+    if (assignedVehicleMarkerRef.current) {
+      assignedVehicleMarkerRef.current.remove();
+      assignedVehicleMarkerRef.current = null;
     }
 
-    // Assigned unit markers (blue dots)
-    // assigned_units contains numeric unit IDs as strings (from mapDbCall parsing assigned_unit_ids)
+    if (!av || !isValidLngLat(av.gps_lon, av.gps_lat)) return;
+
+    // Take-home vehicle: no dispatch status in scope, so render the shared unit
+    // pin with the vehicle number as its label (gold-ring 'onscene' tone keeps
+    // the original gold-branded accent the plain neutral ring would have lost).
+    const el = buildUnitMarker({ label: av.vehicle_number || 'V', status: 'onscene' });
+    const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([av.gps_lon!, av.gps_lat!])
+      .addTo(map);
+    assignedVehicleMarkerRef.current = marker;
+
+    return () => {
+      if (assignedVehicleMarkerRef.current) {
+        assignedVehicleMarkerRef.current.remove();
+        assignedVehicleMarkerRef.current = null;
+      }
+    };
+  }, [loaded, mapReady, assignedVehicle?.gps_lat, assignedVehicle?.gps_lon, assignedVehicle?.vehicle_number]);
+
+  // Assigned-unit markers — keyed by unit id and MOVED in place on each GPS
+  // update so the pin glides to its new position instead of being destroyed and
+  // recreated (which made it flicker / jump around the map). Match by the
+  // call's assigned_units OR the unit's current_call_id (list/WS payloads omit
+  // assigned_units).
+  useEffect(() => {
+    if (!loaded || !mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+
+    const assignedIds = assignedUnitIdSet(call);
     const assignedUnits = units.filter(u =>
-      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
+      (assignedIds.has(String(u.id)) ||
+        (u.current_call_id != null && String(u.current_call_id) === String(call?.id))) &&
+      isValidLngLat(u.longitude, u.latitude)
     );
 
+    const liveIds = new Set<string>();
     for (const unit of assignedUnits) {
-      if (mapRef.current) {
-        const m = createOverlay(mapRef.current, { lat: unit.latitude!, lng: unit.longitude! }, buildUnitMarker(unit.call_sign), 50);
-        markersRef.current.push(m);
+      const id = String(unit.id);
+      liveIds.add(id);
+      const existing = unitMarkersRef.current.get(id);
+      if (existing) {
+        existing.setLngLat([unit.longitude!, unit.latitude!]);
+        // Label lives in the builder's <span>; update it (not the root) in place.
+        const label = existing.getElement()?.querySelector('span');
+        if (label && label.textContent !== unit.call_sign) label.textContent = unit.call_sign;
+      } else {
+        const el = buildUnitMarker({ label: unit.call_sign, status: unit.status });
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([unit.longitude!, unit.latitude!])
+          .addTo(map);
+        unitMarkersRef.current.set(id, marker);
       }
     }
-  }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
+    // Drop markers for units no longer assigned / no longer in the feed.
+    for (const [id, marker] of unitMarkersRef.current) {
+      if (!liveIds.has(id)) { marker.remove(); unitMarkersRef.current.delete(id); }
+    }
+  }, [loaded, mapReady, units, call?.id]);
 
-  // Track whether we have an active route via ref to avoid double-render from state dependency
+  // Auto-route: show driving route when exactly 1 assigned unit has GPS
   const hasActiveRouteRef = useRef(false);
   hasActiveRouteRef.current = !!activeRoute;
 
-  // Auto-route: show driving route when exactly 1 assigned unit has GPS
   useEffect(() => {
     if (!loaded || !mapRef.current || call?.latitude == null || call?.longitude == null) {
       if (hasActiveRouteRef.current) clearRoute();
       return;
     }
 
+    const assignedIds = assignedUnitIdSet(call);
     const assignedWithGps = units.filter(u =>
-      call.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
+      (assignedIds.has(String(u.id)) ||
+        (u.current_call_id != null && String(u.current_call_id) === String(call.id))) &&
+      u.latitude != null && u.longitude != null
     );
 
     if (assignedWithGps.length === 1) {
       const u = assignedWithGps[0];
       const combo = `${u.call_sign}:${call.call_number}`;
 
-      // Only re-show if the assignment changed
       if (combo !== lastAutoRouteRef.current) {
+        // Set the combo eagerly to avoid spamming the Directions API across
+        // rapid re-renders, but clear it again if the query actually failed
+        // (e.g. the map wasn't ready yet) so the next render retries instead
+        // of falling through to the throttled updateOrigin path forever.
         lastAutoRouteRef.current = combo;
-        showRoute(u.call_sign, call.call_number || 'CALL', u.latitude!, u.longitude!, call.latitude, call.longitude);
+        showRoute(u.call_sign, call.call_number || 'CALL', u.latitude!, u.longitude!, call.latitude, call.longitude)
+          .then((info) => { if (!info) lastAutoRouteRef.current = ''; });
       } else {
-        // Same unit+call — just update GPS origin for re-routing
         updateOrigin(u.latitude!, u.longitude!);
       }
     } else {
-      // Multiple or zero assigned units — clear route
       if (hasActiveRouteRef.current) {
         clearRoute();
         lastAutoRouteRef.current = '';
       }
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, call?.assigned_units, units, showRoute, clearRoute, updateOrigin]);
+
+  // ── Live turn-by-turn recompute from the DEVICE's own GPS ──
+  // Standard phone-GPS behavior: when the officer viewing this map IS the unit
+  // routed to the call (call-sign match), recompute the route from the device's
+  // continuous watchPosition fixes (~1/sec) rather than the server units poll.
+  // useMapRouting.updateOrigin re-snaps progress, advances the turn-by-turn
+  // step, and auto-reroutes when off-corridor — so directions + ETA stay live
+  // without ever leaving the page. Dispatchers watching ANOTHER unit are
+  // unaffected (the call-sign guard fails, server position keeps driving it).
+  useEffect(() => {
+    if (!activeRoute) return;
+    const { latitude: lat, longitude: lng, unitCallSign } = devGps;
+    if (lat == null || lng == null) return;
+    if (!unitCallSign || unitCallSign !== activeRoute.unitCallSign) return;
+    updateOrigin(lat, lng);
+  }, [devGps.latitude, devGps.longitude, devGps.unitCallSign, activeRoute, updateOrigin]);
 
   // Notify parent of route changes
   useEffect(() => {
@@ -249,103 +366,55 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
   }, [activeRoute, onRouteUpdate]);
 
-  // Cleanup: unregister map instance + tile monitor on unmount
+  // Voice-announce the current driving direction at the appropriate time.
+  // Because useMapRouting recomputes from the unit's live origin, steps[0]
+  // becomes the next maneuver as the unit drives — so we speak whenever that
+  // instruction CHANGES (the moment it becomes current). Throttled to one
+  // utterance per distinct instruction so we don't repeat on every re-render.
+  //
+  // AUDIBLE nav is gated to the EN-ROUTE phase only: it starts speaking when
+  // the call goes 'enroute' and stops once the unit is 'onscene' (and never
+  // speaks while pending/dispatched/cleared). The route line + on-screen
+  // maneuver banner still render at any status — this gate is voice-only, so
+  // simply opening the dispatch screen no longer triggers spoken directions.
+  // Resetting the throttle ref outside en-route means the first instruction is
+  // announced the instant status flips to 'enroute'.
+  const lastSpokenRef = useRef<string>('');
+  useEffect(() => {
+    const isEnRoute = call?.status === 'enroute';
+    const current = activeRoute?.steps?.[0]?.instruction?.trim();
+    if (!isEnRoute || !current) { lastSpokenRef.current = ''; return; }
+    if (current === lastSpokenRef.current) return;
+    lastSpokenRef.current = current;
+    // distanceText gives the lead-in ("In 0.3 mi, turn left …") for natural cadence.
+    const dist = activeRoute?.steps?.[0]?.distanceText;
+    const phrase = dist ? `In ${dist}, ${current}` : current;
+    void speak(phrase, 'moderate', 'conversational');
+  }, [activeRoute?.steps, call?.status]);
+
+  // Cleanup: remove persistent markers + unregister map instance on unmount
   useEffect(() => {
     return () => {
-      if (tileMonitorRef.current) { tileMonitorRef.current(); tileMonitorRef.current = null; }
+      if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
+      callMarkerRef.current?.remove();
+      callMarkerRef.current = null;
+      unitMarkersRef.current.forEach((m) => m.remove());
+      unitMarkersRef.current.clear();
       if (mapRef.current) unregisterMapInstance(mapRef.current);
     };
   }, []);
 
-  // ── Leaflet fallback when Google Maps fails (connectivity) ──
-  if (showLeafletFallback) {
-    // Build assigned unit positions for the fallback
-    const assignedUnits = units
-      .filter(u => call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null)
-      .map(u => ({
-        call_sign: u.call_sign,
-        lat: u.latitude!,
-        lng: u.longitude!,
-        status: u.status,
-      }));
-
-    // Build active call for the fallback
-    const fallbackCalls = call?.latitude != null && call?.longitude != null
-      ? [{
-          id: String(call.id),
-          call_number: call.call_number || 'CALL',
-          incident_type: call.incident_type || '',
-          location_address: call.location || '',
-          latitude: call.latitude,
-          longitude: call.longitude,
-          priority: call.priority || 'P3',
-        }]
-      : [];
-
-    return (
-      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
-        {/* Toolbar (same as online mode) */}
-        <div style={{
-          position: 'absolute', top: 4, left: 4, right: 4, zIndex: 1001,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          pointerEvents: 'none',
-        }}>
-          <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider px-1 py-0.5"
-            style={{ background: 'rgba(0,0,0,0.7)', pointerEvents: 'auto' }}>
-            <MapPin style={{ width: 8, height: 8, display: 'inline', marginRight: 3 }} />
-            Mini-Map
-          </span>
-          <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
-            <button type="button"
-              onClick={() => navigate('/map')}
-              className="text-rmpg-400 hover:text-white"
-              style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
-              title="Open full map"
-            >
-              <Maximize2 style={{ width: 10, height: 10 }} />
-            </button>
-            {onClose && (
-              <button type="button"
-                onClick={onClose}
-                className="text-rmpg-400 hover:text-white"
-                style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
-                title="Close mini-map"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-
-        <OfflineMapFallback
-          className="absolute inset-0"
-          compact
-          unitPositions={assignedUnits}
-          activeCalls={fallbackCalls}
-          onRetry={() => {
-            setRetryingGmaps(true);
-            setError(null);
-            setLoaded(false);
-            setGmapsRetry(n => n + 1);
-            setTimeout(() => setRetryingGmaps(false), 5000);
-          }}
-          retrying={retryingGmaps}
-        />
-      </div>
-    );
-  }
-
-  // ── Auth error (config problem, not connectivity) ──
+  // Auth error (config problem, not connectivity)
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#060c14' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-base)' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid var(--border-subtle)' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -360,7 +429,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
-            className="text-rmpg-400 hover:text-white"
+            className="text-rmpg-400 hover:text-rmpg-100"
             style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
             title="Open full map"
           >
@@ -369,7 +438,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {onClose && (
             <button type="button"
               onClick={onClose}
-              className="text-rmpg-400 hover:text-white"
+              className="text-rmpg-400 hover:text-rmpg-100"
               style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
               title="Close mini-map"
             >
@@ -386,11 +455,54 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           background: 'rgba(0,0,0,0.9)', border: '1px solid #88888850',
           padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
         }}>
-          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: 'var(--rmpg-400)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
           <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#666666' }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 8, color: 'var(--rmpg-500)' }}>{activeRoute.distance}</span>
+        </div>
+      )}
+
+      {/* Turn-by-turn nav banner — ONE direction at a time, pinned to the bottom
+          of the map. ETA + remaining miles sit above the current instruction.
+          useMapRouting recomputes the route from the unit's live origin, so
+          steps[0] is always the current/next maneuver; it auto-advances as the
+          unit drives, and each new instruction is announced by voice (effect
+          below). */}
+      {activeRoute?.steps && activeRoute.steps.length > 0 && (
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
+          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
+        }}>
+          {/* ETA + miles, above */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+            padding: '2px 6px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)',
+          }}>
+            <span style={{ fontSize: 8, color: STATUS_COLORS.offline, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+              {activeRoute.unitCallSign}→{activeRoute.callNumber}
+            </span>
+            <span style={{ fontSize: 13, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em' }}>
+              {activeRoute.eta} <span style={{ fontSize: 8, color: '#16a34a' }}>ETA</span>
+            </span>
+            <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>{activeRoute.distance}</span>
+          </div>
+          {/* Current direction, one at a time */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
+            <ManeuverArrow
+              type={activeRoute.steps[0].maneuverType}
+              modifier={activeRoute.steps[0].modifier}
+              size={28}
+            />
+            <span style={{ fontSize: 13, color: '#ffffff', fontWeight: 700, flex: 1, lineHeight: 1.25 }}>
+              {activeRoute.steps[0].instruction}
+            </span>
+            {activeRoute.steps[0].distanceMeters > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--rmpg-400)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                {activeRoute.steps[0].distanceText}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -401,9 +513,27 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#060c14',
+          background: 'var(--surface-overlay)',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: 'var(--rmpg-500)' }} className="animate-spin" />
+        </div>
+      )}
+
+      {/* WebGL recovery badge — map briefly rebuilding after a GPU context drop */}
+      {recovering && (
+        <div style={{
+          position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', zIndex: 12,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.9)', border: `1px solid ${STATUS_COLORS.warning}55`,
+            padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+          }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.warning }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.warning, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+              RECONNECTING
+            </span>
+          </div>
         </div>
       )}
 
@@ -414,11 +544,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
+            background: 'rgba(0,0,0,0.85)', border: `1px solid ${STATUS_COLORS.caution}40`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
           }}>
-            <RefreshCw style={{ width: 8, height: 8, color: '#f59e0b' }} className="animate-spin" />
-            <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+            <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.caution }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: STATUS_COLORS.caution, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               OFFLINE
             </span>
           </div>
