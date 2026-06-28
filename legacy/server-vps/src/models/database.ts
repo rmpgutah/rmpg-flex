@@ -468,6 +468,39 @@ function createTables(): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS trusted_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      device_fingerprint TEXT NOT NULL,
+      device_name TEXT,
+      ip_address TEXT,
+      trusted_until TEXT NOT NULL,
+      last_used_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS password_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS security_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      details TEXT,
+      ip_address TEXT,
+      device_info TEXT,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       file_id TEXT UNIQUE NOT NULL,
@@ -2778,6 +2811,39 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_officer ON field_interviews(officer_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_property ON field_interviews(property_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_created ON field_interviews(created_at)`);
+  } catch { /* table already exists */ }
+
+  // ── Use of Force Reports ──
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS use_of_force (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        incident_id INTEGER,
+        officer_id INTEGER NOT NULL,
+        subject_person_id INTEGER,
+        force_type TEXT,
+        force_level TEXT,
+        justification TEXT,
+        subject_injuries TEXT,
+        officer_injuries TEXT,
+        de_escalation_attempted INTEGER DEFAULT 0,
+        de_escalation_details TEXT,
+        weapons_used TEXT,
+        body_camera_active INTEGER DEFAULT 0,
+        witness_officers TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'draft',
+        reviewed_by INTEGER,
+        reviewed_at TEXT,
+        narrative TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (incident_id) REFERENCES incidents(id),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (subject_person_id) REFERENCES persons(id)
+      )
+    `).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_uof_incident ON use_of_force(incident_id)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_uof_officer ON use_of_force(officer_id)`).run();
   } catch { /* table already exists */ }
 
   // ── Trespass / Exclusion Orders ──
@@ -6379,6 +6445,42 @@ function migrateSchema(): void {
     `);
   } catch (e) { /* */ }
 
+  // Warrant scraper enhancement — Phase 1 columns
+  addCol('warrant_scraper_config', 'priority', 'INTEGER DEFAULT 3');
+  addCol('warrant_scraper_config', 'content_hash', 'TEXT');
+  addCol('warrant_scraper_config', 'content_hash_updated_at', 'TEXT');
+  addCol('warrant_scraper_config', 'etag', 'TEXT');
+  addCol('warrant_scraper_config', 'last_modified', 'TEXT');
+  addCol('warrant_scraper_config', 'last_success_at', 'TEXT');
+  addCol('warrant_scraper_config', 'avg_parse_count', 'REAL');
+  addCol('warrant_scraper_config', 'p95_latency_ms', 'INTEGER');
+  addCol('warrant_scraper_config', 'jitter_seed', 'INTEGER');
+
+  // Warrant scraper enhancement — Phase 1 runs metrics table
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS warrant_scraper_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        duration_ms INTEGER,
+        http_status INTEGER,
+        bytes_received INTEGER,
+        parsed_count INTEGER DEFAULT 0,
+        inserted_count INTEGER DEFAULT 0,
+        updated_count INTEGER DEFAULT 0,
+        skipped_reason TEXT,
+        error_message TEXT,
+        parser_used TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_scraper_runs_source_time
+        ON warrant_scraper_runs (source_key, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_scraper_runs_started_at
+        ON warrant_scraper_runs (started_at DESC);
+    `);
+  } catch (e) { /* */ }
+
   // ── scraped_warrants missing columns ──
   addCol('scraped_warrants', 'middle_name', 'TEXT');
   addCol('scraped_warrants', 'age', 'INTEGER');
@@ -8033,25 +8135,6 @@ function seedData(): void {
   )`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_call_stack_unit ON call_stack(unit_id)`).run();
   db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_stack_unit_call ON call_stack(unit_id, call_id)`).run();
-
-  // ─── 1.1b Dispatch Routes (multi-call route builder) ──
-  db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_routes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    unit_id TEXT NOT NULL,
-    created_by INTEGER,
-    origin_lat REAL,
-    origin_lng REAL,
-    waypoints_json TEXT,
-    optimized_order_json TEXT,
-    total_distance_miles REAL,
-    estimated_time_minutes REAL,
-    notes TEXT,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    updated_at TEXT DEFAULT (datetime('now','localtime'))
-  )`).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dispatch_routes_unit ON dispatch_routes(unit_id)`).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dispatch_routes_status ON dispatch_routes(status)`).run();
 
   // ─── 1.2 Dispatch Timer Profiles ─────────────────────
   db.prepare(`CREATE TABLE IF NOT EXISTS timer_profiles (

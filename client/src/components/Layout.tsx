@@ -395,6 +395,10 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Full-bleed pages (map, route-builder) need overflow-hidden on main so
+  // child height: 100% resolves correctly for Mapbox GL / map containers.
+  const isFullBleedPage = location.pathname === '/map' || location.pathname === '/route-builder' || location.pathname === '/geography';
+
   const gps = useGpsTracking();
   const presence = usePresence();
 

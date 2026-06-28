@@ -85,7 +85,10 @@ const MAPBOX_KEYS: ApiKeyConfig[] = [
 ];
 
 const MAP_PROVIDER_KEYS: ApiKeyConfig[] = [
-  { key: 'mapbox_api_key', label: 'Mapbox (Primary Map UI)', desc: 'Primary client-side map rendering engine for Map page, dispatch overlays, and beat polygons', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com' },
+  { key: 'mapbox_api_key', label: 'Mapbox Access Token', desc: 'Primary client-side map rendering engine for Map page, dispatch overlays, and beat polygons', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Tokens' },
+  { key: 'mapbox_username', label: 'Mapbox Username', desc: 'Your Mapbox account username — used for account-specific style access', secret: false },
+  { key: 'mapbox_password', label: 'Mapbox Password', desc: 'Mapbox account password — stored encrypted, used for direct account authentication' },
+  { key: 'mapbox_style_url', label: 'Mapbox Style URL', desc: 'Custom map style link — e.g. mapbox://styles/username/styleid or full URL from Mapbox Studio → Share', secret: false, formatHint: 'mapbox://styles/... or https://api.mapbox.com/styles/v1/...' },
 ];
 
 const AI_ML_KEYS: ApiKeyConfig[] = [
@@ -304,6 +307,11 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
       });
       setConfigured(prev => ({ ...prev, [configKey]: true }));
       setValues(prev => ({ ...prev, [configKey]: '' }));
+      // Invalidate client-side Mapbox token cache so the map page
+      // picks up the new token without a full page reload.
+      if (configKey.startsWith('mapbox_')) {
+        getMapboxToken(true);
+      }
     } catch { /* silent */ }
     setSaving(null);
   };

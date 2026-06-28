@@ -20,7 +20,7 @@ import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../c
 import { zoneLeaf, beatLeaf, sectionPrefix } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import MapboxMiniMap from '../../components/MapboxMiniMap';
-import { getResolvedEngine } from '../../utils/mapProvider';
+import { getResolvedEngine, detectMapEngine, type MapEngine } from '../../utils/mapProvider';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
 import NewCallModal from '../../components/NewCallModal';
@@ -842,6 +842,9 @@ export default function DispatchPage() {
   const [officers, setOfficers] = useState<{ id: string; full_name: string; badge_number?: string }[]>([]);
   // Disposition codes from admin config
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
+  // Map engine detection (ensure minimap knows whether to use Mapbox or MapLibre)
+  const [mapEngine, setMapEngine] = useState<MapEngine | null>(getResolvedEngine);
+  useEffect(() => { detectMapEngine().then(setMapEngine); }, []);
   // Mini-map visibility toggle
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
@@ -1914,7 +1917,7 @@ export default function DispatchPage() {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT',
-        body: JSON.stringify({ [field]: value || null }),
+        body: JSON.stringify({ [field]: payloadValue }),
       });
       // DEFENSIVE: only adopt the server response if it's actually a full
       // call row. Some backends return an error/"no changes" body for a
@@ -2156,11 +2159,6 @@ export default function DispatchPage() {
   // ═══════════════════════════════════════════════════════════════
   // NEW DISPATCH FEATURES
   // ═══════════════════════════════════════════════════════════════
-
-  // Feature 1: Auto-escalation timer — REMOVED 2026-05-04.
-  // Priority is now stale until manually escalated by admin / supervisor /
-  // dispatcher / officer via the call detail panel. See server endpoint
-  // POST /api/dispatch/calls/:id/escalate (callActions.ts).
 
   // Feature 4: Unit availability counter
   const unitAvailability = useMemo(() => {
@@ -6328,7 +6326,7 @@ export default function DispatchPage() {
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-[var(--spm-border)] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
             {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
-              getResolvedEngine() === 'mapbox' ? (
+              mapEngine === 'mapbox' ? (
                 <MapboxMiniMap
                   call={selectedCall}
                   units={units}

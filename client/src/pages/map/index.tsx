@@ -7,6 +7,7 @@
 // ============================================================
 
 import { lazy, Suspense } from 'react';
+import { useMapProvider } from './hooks/useMapProvider';
 
 const MapboxMapPage = lazy(() => import('./MapboxMapPage'));
 
@@ -20,9 +21,11 @@ const LOADING_FALLBACK = (
 );
 
 export default function MapPageRouter() {
+  const { engine, detecting } = useMapProvider();
+
   return (
     <Suspense fallback={LOADING_FALLBACK}>
-      <MapboxMapPage />
+      {detecting || !engine ? LOADING_FALLBACK : <MapboxMapPage preferredEngine={engine} />}
     </Suspense>
   );
 }
