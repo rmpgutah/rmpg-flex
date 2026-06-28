@@ -1,55 +1,35 @@
-// ============================================================
-// RMPG Flex — Mapbox Access Token Management
-// ============================================================
-// Runtime key fetching for Mapbox GL JS. The Mapbox access token
-// is stored encrypted in system_config and served at runtime via
-// /api/integrations/mapbox/client-key — same pattern as the
-// Google Maps key (see googleMapsApiKey.ts).
-// ============================================================
+// Thin re-export wrapper around mapboxLoader's token resolver so every Mapbox
+// surface (MapPage / FleetMapCard / ForensicTrackMap / NavMapView / …) shares
+// one async path, one in-flight dedupe, and one cache. Historically this file
+// owned its own cache + fetch logic, which let one surface's cache invalidation
+// leave a stale token in the other path.
 
-import { apiFetch } from '../hooks/useApi';
+import {
+  resolveMapboxAccessToken,
+  clearMapboxConfigCache,
+} from './mapboxLoader';
 
-let cachedMapboxToken: string | null = null;
-let inflightMapboxToken: Promise<string | null> | null = null;
+const MISSING_TOKEN_MESSAGE =
+  'Mapbox access token not configured. Set VITE_MAPBOX_ACCESS_TOKEN in client/.env or Cloudflare Pages environment variables.';
 
-/**
- * Get the cached Mapbox access token (empty string if not yet fetched).
- */
-export function getCachedMapboxToken(): string {
-  return cachedMapboxToken || '';
+/** Sync getter for build-time-only callers (e.g. early SSR-style reads). */
+export function getCachedMapboxAccessToken(): string {
+  return ((import.meta as any).env?.VITE_MAPBOX_ACCESS_TOKEN as string | undefined)?.trim() || '';
+}
+
+export function getMapboxTokenErrorMessage(): string {
+  return MISSING_TOKEN_MESSAGE;
 }
 
 /**
- * Check whether a Mapbox token has been fetched and is non-empty.
+ * Async resolver — throws when the token cannot be obtained from either the
+ * build-time env var or the server fallback. Callers that prefer "empty string
+ * on miss" semantics should call `resolveMapboxAccessToken` from mapboxLoader
+ * directly.
  */
-export function hasMapboxToken(): boolean {
-  return !!cachedMapboxToken;
-}
-
-/**
- * Fetch the Mapbox access token from the server.
- * Returns the token string, or null if not configured.
- */
-export async function getMapboxToken(forceRefresh = false): Promise<string | null> {
-  if (!forceRefresh && cachedMapboxToken) return cachedMapboxToken;
-  if (!forceRefresh && inflightMapboxToken) return inflightMapboxToken;
-
-  inflightMapboxToken = apiFetch<{ configured?: boolean; accessToken?: string }>(
-    '/integrations/mapbox/client-key'
-  )
-    .then((response) => {
-      const token = typeof response?.accessToken === 'string' ? response.accessToken.trim() : '';
-      cachedMapboxToken = token || null;
-      return cachedMapboxToken;
-    })
-    .catch(() => {
-      // Mapbox is optional — don't throw if endpoint not available
-      cachedMapboxToken = null;
-      return null;
-    })
-    .finally(() => {
-      inflightMapboxToken = null;
-    });
-
-  return inflightMapboxToken;
+export async function getMapboxAccessToken(forceRefresh = false): Promise<string> {
+  if (forceRefresh) clearMapboxConfigCache();
+  const token = await resolveMapboxAccessToken();
+  if (!token) throw new Error(MISSING_TOKEN_MESSAGE);
+  return token;
 }

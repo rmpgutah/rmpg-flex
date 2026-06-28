@@ -12,6 +12,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+export { formatEnumValue } from './formatters';
 
 // ── Color Tokens (RGB tuples) ────────────────────────────────
 
@@ -19,63 +20,63 @@ export type RGBColor = readonly [number, number, number];
 
 export const COLOR = {
   // Text hierarchy
-  // [Improvement 16] Softer primary text — pure black (#000) is harsh on
-  // white paper under fluorescent lighting; #111 (near-black) reads
-  // identically at arm's length but scans softer under document cameras.
-  TEXT_PRIMARY:    [17, 17, 17]      as const,  // Near-black field values
-  // [Improvement 17] Warmer secondary labels — shifted from blue-gray to
-  // neutral warm-gray for better monochrome photocopy fidelity.
-  TEXT_SECONDARY:  [68, 72, 82]      as const,  // Helvetica labels (neutral)
-  TEXT_TERTIARY:   [100, 100, 100]   as const,  // Placeholders, sub-labels
-  TEXT_INVERTED:   [255, 255, 255]   as const,  // White on dark backgrounds
-  TEXT_MUTED:      [140, 140, 140]   as const,  // Form number, report date
-  // [Improvement 18] Dedicated empty-field placeholder color — lighter than
-  // TEXT_TERTIARY so "N/A" reads as intentional blank, not data.
-  TEXT_PLACEHOLDER: [165, 165, 172]  as const,  // "N/A" / "—" empty-field markers
-  // [Improvement 19] Caption text — used for image captions, footnotes,
-  // and annotation labels that need to be subordinate to body text.
-  TEXT_CAPTION:    [115, 118, 125]   as const,  // Image captions, footnotes
+  TEXT_PRIMARY:    [0, 0, 0]        as const,  // Courier field values
+  TEXT_SECONDARY:  [84, 84, 84]     as const,  // Helvetica labels (#545454 — neutralized 2026-05-30: the value had silently drifted to blue-slate [74,85,104], violating the zero-blue rule + contradicting this very comment)
+  TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
+  TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds — PRIMARY headers/titles
+  TEXT_SUBHEAD_INVERTED: [184, 184, 184] as const,  // #b8b8b8 light-medium grey — SUB-HEADINGS on dark header bars (descriptor/subtitle/labels); legible against BG_SECTION_HDR while staying clearly secondary to the white title
+  TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
   // Borders — clean, professional lines
   // Border palette — darkened 2026-05-05 design-definition pass.
-  // [Improvement 20] Warmer border tones — shifted from blue-gray to
-  // neutral gray so borders don't look tinted on warm-white paper stock.
-  BORDER_FIELD:    [78, 82, 92]      as const,  // Field box borders (neutral)
-  BORDER_TABLE:    [115, 118, 125]   as const,  // Row separator lines (neutral)
-  BORDER_COLUMN:   [105, 108, 115]  as const,  // Vertical column separators
-  BORDER_OUTER:    [38, 40, 48]      as const,  // Table outer border (deeper)
-  BORDER_SECTION:  [48, 52, 60]      as const,  // Section outline (deeper)
-  BORDER_FIELD_RULE: [135, 140, 150] as const,  // Field underline rule
-  // [Improvement 21] Double-rule separator — used between major document
-  // sections (e.g. between incident overview and persons involved).
-  BORDER_DOUBLE_RULE: [90, 92, 100]  as const,  // Double-rule separator color
+  // The previous values produced a soft, government-form-faded look;
+  // sharper, darker rule colors give the report the crisp visual
+  // structure of a real PD form where every cell is bounded by a
+  // visible line. Field bodies stay white; only the rule colors
+  // change.
+  // Neutralized 2026-05-30: every border value carried a blue cast (B channel
+  // 20-30 above R/G — e.g. [80,92,110], [140,148,162]) which read as cool slate
+  // against the white field bodies and violated the zero-blue rule. Each is now
+  // a luminance-matched neutral gray (R=G=B at the same perceived brightness)
+  // so the form's line structure is visually identical minus the blue tint.
+  BORDER_FIELD:    [90, 90, 90]     as const,  // Field box borders
+  BORDER_TABLE:    [122, 122, 122]  as const,  // Row separator lines
+  BORDER_COLUMN:   [112, 112, 112]  as const,  // Vertical column separators
+  BORDER_OUTER:    [44, 44, 44]     as const,  // Table outer border
+  BORDER_SECTION:  [55, 55, 55]     as const,  // Section outline
+  BORDER_FIELD_RULE: [148, 148, 148] as const, // Field underline rule
 
-  // Backgrounds
-  // [Improvement 22] Warmer zebra stripe — cream instead of cool-gray so
-  // alternating rows don't look blue-tinged on warm-white paper.
-  BG_ZEBRA:        [245, 244, 240]   as const,  // Warm cream zebra stripe
-  BG_SECTION_HDR:  [44, 50, 64]      as const,  // Subheader bar
-  BG_TABLE_HDR:    [54, 60, 76]      as const,  // Table column header
-  BG_SECTION_TINT: [248, 248, 252]   as const,  // Field-body tint
-  BG_TABLE_HDR_LIGHT: [220, 225, 234] as const, // Nested table header (light slate)
-  TEXT_TABLE_HDR_LIGHT: [45, 55, 72]  as const,  // Dark slate text on light hdr
-  // [Improvement 23] Narrative background — slightly warmer tint for
-  // narrative/notes sections to visually distinguish from field grids.
-  BG_NARRATIVE:    [252, 251, 248]   as const,  // Warm off-white for narratives
-  // [Improvement 24] Highlight background — used for search-match
-  // highlighting in find-in-document and key data callouts.
-  BG_HIGHLIGHT:    [255, 250, 220]   as const,  // Pale yellow highlight
+  // Backgrounds — page stays white; structural elements (headers,
+  // banners) deepen to true charcoal for strong contrast against
+  // white field bodies (2026-05-05 darker-shading pass).
+  // Neutralized 2026-05-30: the header / subheader / table-header fills were
+  // blue-slate ([44,50,64], [54,60,76], [45,55,72] all have B well above R/G),
+  // so the big agency header bar, the "FORM PS-XXX" subheader strip, and every
+  // section/column header read with a cool blue tint — the exact thing the
+  // zero-blue rule forbids. Remapped to luminance-matched neutral charcoals so
+  // the headers stay strong/dark but are true gray. Zebra + tint backgrounds
+  // also de-blued ([242,242,246]→[243,243,243], [248,248,252]→[249,249,249]).
+  BG_ZEBRA:        [243, 243, 243]  as const,  // Even-row table shading
+  BG_SECTION_HDR: [51, 51, 51]    as const,  // #333 dark grey — section/hero header bars. Softened from solid black 2026-06-16 (white titles stay legible; sub-headings use TEXT_SUBHEAD_INVERTED)
+  BG_TABLE_HDR:    [51, 51, 51]    as const,  // #333 dark grey — table column-header band. Matched to BG_SECTION_HDR 2026-06-16 for a uniform dark-grey header treatment
+  BG_SECTION_TINT: [255, 255, 255]  as const,  // Pure white — no background tint (removed 2026-05-30)
+  BG_TABLE_HDR_LIGHT: [224, 224, 224] as const, // Nested table header (light gray)
+  TEXT_TABLE_HDR_LIGHT: [54, 54, 54]  as const,  // Dark gray text on light hdr
 
-  // Brand accent
-  ACCENT_GOLD:     [60, 60, 60]      as const,  // dark charcoal accent
+  // Brand accent — pivoted to grayscale 2026-05-04 (user request).
+  // Token name retained for backwards compatibility with existing call
+  // sites; the underlying value is now a dark charcoal so every site
+  // that previously rendered a gold accent (agency header strip,
+  // quick-reference banner left rule, district bar accent, notes entry
+  // left rule, horizontal section dividers) automatically becomes
+  // grayscale via this single point of change.
+  ACCENT_GOLD:     [0, 0, 0]       as const,  // Pure black accent (Spillman convention, 2026-05-30)
 
-  // Financial
-  AMOUNT_CREDIT:   [0, 120, 60]      as const,
-  AMOUNT_DEBIT:    [180, 0, 0]       as const,
-  // [Improvement 25] Financial subtotal background — light tint behind
-  // subtotal rows in invoice and fee tables for visual grouping.
-  AMOUNT_SUBTOTAL_BG: [248, 252, 248] as const,  // Pale green subtotal row
-  AMOUNT_TOTAL_BG:    [240, 240, 245] as const,  // Light gray total row
+  // Financial — neutralized 2026-05-30: credit green and debit red converted to
+  // neutral grays so financial indicators carry zero color splash. Distinct
+  // luminance levels preserve the semantic difference without hue.
+  AMOUNT_CREDIT:   [60, 60, 60]     as const,
+  AMOUNT_DEBIT:    [90, 90, 90]     as const,
 
   // Watermark
   WATERMARK:       [120, 120, 120]   as const,
@@ -84,52 +85,46 @@ export const COLOR = {
   // CONFIDENTIAL (gray) and DRAFT (red with border).
   WATERMARK_VOID:  [200, 30, 30]     as const,  // Red for VOID watermark
 
-  // Caution / Warning
-  CAUTION_BG:      [255, 248, 230]   as const,  // Amber background
-  CAUTION_ACCENT:  [200, 80, 10]     as const,  // Amber accent bar
-  CAUTION_TEXT:    [180, 60, 0]      as const,  // Warning text
-  FLAG_ARMED:      [180, 20, 20]     as const,  // ARMED & DANGEROUS
-  FLAG_WARRANT:    [200, 60, 0]      as const,  // Active warrant
-  FLAG_GANG:       [120, 40, 140]    as const,  // Gang affiliation
-  FLAG_MENTAL:     [40, 90, 170]     as const,  // Mental health
-  FLAG_MEDICAL:    [0, 130, 80]      as const,  // Medical condition
-  FLAG_DEFAULT:    [80, 80, 90]      as const,  // Generic flag
-  // [Improvement 27] Additional flag colors for expanded coverage
-  FLAG_JUVENILE:   [180, 120, 40]    as const,  // Juvenile involved
-  FLAG_DOMESTIC:   [160, 40, 80]     as const,  // Domestic violence
-  FLAG_ESCAPE:     [130, 20, 20]     as const,  // Escape risk
+  // Caution / Warning — neutralized 2026-05-30: all caution highlights and
+  // subject-safety flags are now luminance-distinguished grays. The semantic
+  // weight (armed vs medical vs gang) is conveyed by the label text alone,
+  // not by red/orange/purple/blue/green hues.
+  CAUTION_BG:      [243, 243, 243]  as const,  // Neutral light gray (was amber)
+  CAUTION_ACCENT:  [90, 90, 90]     as const,  // Neutral mid-gray (was amber accent)
+  CAUTION_TEXT:    [60, 60, 60]     as const,  // Dark gray warning text (was amber)
+  FLAG_ARMED:      [55, 55, 55]     as const,  // Dark charcoal (was red)
+  FLAG_WARRANT:    [75, 75, 75]     as const,  // Medium-dark (was orange)
+  FLAG_GANG:       [90, 90, 90]     as const,  // Mid-gray (was purple)
+  FLAG_MENTAL:     [105, 105, 105]  as const,  // Medium gray (was blue)
+  FLAG_MEDICAL:    [120, 120, 120]  as const,  // Lighter gray (was green)
+  FLAG_DEFAULT:    [84, 84, 84]     as const,  // Generic flag (unchanged)
 
   // NIBRS Grid Form — sidebar tabs + dense cells
-  BG_SIDEBAR_TAB:      [25, 25, 30]     as const,
-  BG_FORM_CELL_LABEL:  [240, 240, 245]  as const,
-  BORDER_FORM_GRID:    [60, 60, 60]     as const,
+  BG_SIDEBAR_TAB:      [0, 0, 0]        as const,  // Black sidebar tab (Spillman convention, 2026-05-30)
+  BG_FORM_CELL_LABEL:  [241, 241, 241]  as const,  // Light gray label strip inside cell (de-blued 2026-05-30)
+  BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
 
-  // Police-form furniture
-  RULE_GOLD:           [80, 80, 80]     as const,
-  RULE_STRONG:         [30, 30, 30]     as const,
-  BATES_STAMP:         [90, 50, 50]     as const,
-  BARCODE_BAR:         [0, 0, 0]        as const,
-  BARCODE_BG:          [255, 255, 255]  as const,
-  BARCODE_STRIP_BG:    [250, 250, 250]  as const,
-  BARCODE_STRIP_RULE:  [180, 180, 185]  as const,
-  CERT_BG:             [248, 246, 238]  as const,
-  CERT_RULE:           [160, 140, 90]   as const,
-  MUGSHOT_RULE:        [60, 60, 60]     as const,
-  // [Improvement 28] Signature block background — subtle tint behind
-  // signature areas to visually separate from adjacent data fields.
-  SIGNATURE_BG:        [250, 249, 246]  as const,  // Warm off-white
-  // [Improvement 29] Divider rule — medium-weight horizontal rule used
-  // between logical sub-groups within a section (e.g. between officer
-  // details and vehicle details within incident overview).
-  DIVIDER_RULE:        [180, 182, 188]  as const,  // Medium gray divider
-  // [Improvement 30] Stamp/seal tint — background for company seal area
-  STAMP_BG:            [252, 250, 246]  as const,  // Ivory seal background
+  // Police-form furniture (added 2026-04-17 for enhanced LE styling)
+  RULE_GOLD:           [80, 80, 80]     as const,  // Dark gray accent rule (was gold; grayscale 2026-05-04)
+  RULE_STRONG:         [30, 30, 30]     as const,  // Heavy black rule for top/bottom
+  BATES_STAMP:         [70, 70, 70]     as const,  // Neutral gray (was burgundy; neutralized 2026-05-30)
+  BARCODE_BAR:         [0, 0, 0]        as const,  // Code 39 black bars
+  BARCODE_BG:          [255, 255, 255]  as const,  // Code 39 white space
+  BARCODE_STRIP_BG:    [250, 250, 250]  as const,  // Light strip background for scan row
+  BARCODE_STRIP_RULE:  [182, 182, 182]  as const,  // Neutralized 2026-05-30 (was carrying a blue cast)
+  CERT_BG:             [248, 248, 248]  as const,  // Light gray cert bg (was ivory; neutralized 2026-05-30)
+  CERT_RULE:           [130, 130, 130]  as const,  // Neutral gray cert rule (was olive; neutralized 2026-05-30)
+  MUGSHOT_RULE:        [60, 60, 60]     as const,  // Dark frame around arrest photo
 
-  // Priority bar palette
-  PRIO_1_BG:           [185, 25, 25]    as const,  // Emergency / Code 3
-  PRIO_2_BG:           [210, 110, 20]   as const,  // Urgent
-  PRIO_3_BG:           [200, 160, 30]   as const,  // Routine
-  PRIO_4_BG:           [60, 120, 70]    as const,  // Non-emergency
+  // Priority bar palette (separate from PRIORITY_COLORS in pdfGenerator.ts —
+  // these are the tokenized fills used by drawPriorityBar helper)
+  // Priority bar palette — neutralized 2026-05-30: red/orange/yellow/green
+  // hues replaced by a luminance gradient (darkest → lightest) so the urgency
+  // level is still visually distinguishable on grayscale printouts.
+  PRIO_1_BG:           [50, 50, 50]     as const,  // Darkest (was red)
+  PRIO_2_BG:           [75, 75, 75]     as const,  // Medium-dark (was orange)
+  PRIO_3_BG:           [100, 100, 100]  as const,  // Medium (was yellow)
+  PRIO_4_BG:           [125, 125, 125]  as const,  // Lightest (was green)
   PRIO_FG:             [255, 255, 255]  as const,
 } as const;
 
@@ -146,12 +141,16 @@ export const CLASSIFICATION: Record<
   'LES' | 'CUI' | 'FOUO' | 'UNCLAS' | 'CONFIDENTIAL' | 'SEALED' | 'DRAFT',
   ClassificationSpec
 > = {
-  LES:          { bg: [180, 30, 30],  fg: [255, 255, 255], label: 'LAW ENFORCEMENT SENSITIVE // CJIS' },
-  CUI:          { bg: [80, 50, 130],  fg: [255, 255, 255], label: 'CONTROLLED UNCLASSIFIED INFORMATION // LE' },
-  FOUO:         { bg: [200, 130, 20], fg: [0, 0, 0],       label: 'FOR OFFICIAL USE ONLY' },
-  UNCLAS:       { bg: [0, 110, 60],   fg: [255, 255, 255], label: 'UNCLASSIFIED' },
-  CONFIDENTIAL: { bg: [120, 0, 0],    fg: [255, 255, 255], label: 'CONFIDENTIAL // NOFORN' },
-  SEALED:       { bg: [30, 30, 30],   fg: [255, 215, 0],   label: 'SEALED BY COURT ORDER -- DO NOT DISSEMINATE' },
+  // Classification banner colors — neutralized 2026-05-30: all hue-based
+  // distinctions (LES red, CUI purple, FOUO amber, UNCLAS green, CONFIDENTIAL
+  // dark red, SEALED gold text) replaced with luminance-graded grays. CJIS
+  // markings remain visually distinguishable via bar shade + label text.
+  LES:          { bg: [50, 50, 50],   fg: [255, 255, 255], label: 'LAW ENFORCEMENT SENSITIVE // CJIS' },
+  CUI:          { bg: [65, 65, 65],   fg: [255, 255, 255], label: 'CONTROLLED UNCLASSIFIED INFORMATION // LE' },
+  FOUO:         { bg: [80, 80, 80],   fg: [255, 255, 255], label: 'FOR OFFICIAL USE ONLY' },
+  UNCLAS:       { bg: [100, 100, 100], fg: [255, 255, 255], label: 'UNCLASSIFIED' },
+  CONFIDENTIAL: { bg: [40, 40, 40],   fg: [255, 255, 255], label: 'CONFIDENTIAL // NOFORN' },
+  SEALED:       { bg: [30, 30, 30],   fg: [200, 200, 200], label: 'SEALED BY COURT ORDER -- DO NOT DISSEMINATE' },
   DRAFT:        { bg: [110, 110, 110], fg: [255, 255, 255], label: 'DRAFT -- UNOFFICIAL -- NOT FOR DISTRIBUTION' },
 } as const;
 
@@ -180,12 +179,8 @@ export const PDF_VALUE_FONT: 'helvetica' | 'courier' | 'times' = 'helvetica';
 // Labels: Helvetica (clean, small-caps feel)
 
 export const FONT = {
-  // [Improvement 1] Slightly larger agency name for better header
-  // prominence on printed documents scanned at arm's length.
-  SIZE_HEADER_TITLE:      13.5,  // Agency name in header bar (+0.5pt)
-  // [Improvement 2] Section titles bumped for readability on
-  // monochrome photocopies where color contrast is lost.
-  SIZE_SECTION_TITLE:     7.5,   // Section header bar text (+0.5pt)
+  SIZE_HEADER_TITLE:      13,    // Agency name in header bar
+  SIZE_SECTION_TITLE:     9,     // Section header text (all-caps, Helvetica Bold 9pt — bumped 2026-05-30 for Spillman/LexisNexis readability)
   SIZE_FIELD_VALUE:       8,     // Courier values (compact without box borders)
   // [Improvement 3] Field labels bumped 5→5.5pt — the previous 5pt
   // was at the legibility threshold on 300dpi office printers;
@@ -216,11 +211,9 @@ export const FONT = {
   // [Improvement 7] Subheader text bumped for readability
   SIZE_SUBHEADER:         7,     // Subheader text in report header (+0.5pt)
   SIZE_REPORT_TYPE:       7,     // Report type label in header
-  // [Improvement 8] Case number value larger for faster visual
-  // lookup when scanning a stack of printed reports.
-  SIZE_CASE_NUMBER:       9.5,   // Case number value (+0.5pt)
-  SIZE_FORM_CELL_LABEL:   6,     // Form cell label
-  SIZE_FORM_CELL_VALUE:   8.5,   // Form cell value
+  SIZE_CASE_NUMBER:       8.5,   // Case number value (courier bold)
+  SIZE_FORM_CELL_LABEL:   6,     // Form cell label (same as field label)
+  SIZE_FORM_CELL_VALUE:   8.5,   // Form cell value (same as field value)
   SIZE_SIDEBAR_TAB:       7,     // Sidebar tab rotated text
   SIZE_CLASSIFICATION:    8,     // Classification banner text
   SIZE_CERTIFICATION:     6.8,   // Officer certification paragraph
@@ -265,11 +258,11 @@ export const BORDER = {
   TABLE_COLUMN:     0.3,   // Column separators (+0.05mm)
   CHECKBOX:         0.4,   // Checkbox square border
   CHECK_MARK:       0.6,   // Check mark stroke
-  SIGNATURE_LINE:   0.5,   // Signature line
-  ACCENT_HEADER:    1.0,   // Accent line below header
-  ACCENT_FOOTER:    0.6,   // Accent line above footer
-  ACCENT_SECTION:   2.0,   // Section header left-accent strip
-  FIELD_UNDERLINE:  0.3,   // Field underline rule
+  SIGNATURE_LINE:   0.5,   // Signature line (was 0.4)
+  ACCENT_HEADER:    1.0,   // Accent line below header (was 0.8)
+  ACCENT_FOOTER:    0.6,   // Accent line above footer (was 0.5)
+  ACCENT_SECTION:   0,     // Section header left-accent strip REMOVED 2026-05-30 (was 2.0). Zero-width = no left highlight anywhere; section-header bars span full width and titles start at the left margin across all PDF generators.
+  FIELD_UNDERLINE:  0.3,   // Field underline rule (was 0.15 — visibly defined)
   CASE_BOX:         1.0,   // White border inside case number box
   BANNER:           0.8,   // Banner borders
   DIAGRAM_GRID:     0.1,   // Accident diagram grid lines
@@ -314,16 +307,16 @@ export const SPACING = {
   XXL:                4,     // Extra-large gap for major breaks
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
-  // [Improvement 36] Section header slightly taller for 7.5pt title
-  SECTION_HEADER_H:   5,     // Section header bar height (+0.5mm)
-  SECTION_GAP:        1.0,   // Gap between sections
-  SECTION_CONTENT_PAD: 2,    // Breathing room below header bar
+  SECTION_HEADER_H:   4.5,   // Section header bar height (readable with accent strip)
+  SECTION_GAP:        0.6,   // Gap between sections (condensed 2026-05-31: 1.0 → 0.6)
+  // Breathing room between section header bar and first content row.
+  // 1.2mm keeps the first label clear of the bar without hugging while
+  // keeping multi-section forms compact (condensed 2026-05-31: 2 → 1.2).
+  SECTION_CONTENT_PAD: 1.2,
   SECTION_BOTTOM_PAD:  0.5,  // Padding inside section before bottom border
 
-  // [Improvement 37] Field row height bumped for the larger 5.5pt
-  // label — keeps proportions right so labels don't crowd values.
-  FIELD_ROW_HEIGHT:   3.0,   // Value area height (+0.2mm)
-  FIELD_ROW_ADVANCE:  3.0,   // Y-advance after field row (+0.2mm)
+  FIELD_ROW_HEIGHT:   2.0,   // Value area height (condensed 2026-05-31: 2.8 → 2.0)
+  FIELD_ROW_ADVANCE:  2.0,   // Y-advance after field row (condensed 2026-05-31: 2.8 → 2.0)
 
   SIGNATURE_BOX_H:    20,    // Signature block total height
   SIGNATURE_ROLE_H:   4,     // Role label header bar height
@@ -492,31 +485,6 @@ export function getLineHeight(fontSizePt: number): number {
  *  Cap height is typically ~70% of font size in points, converted to mm. */
 export function getCapHeight(fontSizePt: number): number {
   return fontSizePt * 0.3528 * 0.7;
-}
-
-/**
- * Normalize an enum-like value for display.
- *
- * Database stores enum values as snake_case lowercase tokens
- * (`pso_client_request`, `in_progress`, `not_filed`). The PDF/UI
- * surface expects them rendered as "PSO CLIENT REQUEST", "IN PROGRESS",
- * etc. — readable, professional, and consistent across the system.
- *
- * Free-form text (names, addresses, narratives) passes through
- * untouched so we don't accidentally uppercase user-entered names
- * like "Christopher Zamora" into "CHRISTOPHER ZAMORA". The heuristic:
- * a value is enum-like if it's a single token of lowercase letters /
- * digits / underscores, OR if it contains an underscore at all.
- *
- * Returns '' for null/undefined/empty so callers can chain it with
- * `|| ''` fallbacks.
- */
-export function formatEnumValue(s: string | null | undefined): string {
-  if (s == null) return '';
-  const trimmed = String(s).trim();
-  if (!trimmed) return '';
-  const isEnumLike = /^[a-z][a-z0-9_]*$/.test(trimmed) || /_/.test(trimmed);
-  return isEnumLike ? trimmed.replace(/_/g, ' ').toUpperCase() : trimmed;
 }
 
 /** Generate proportional column X positions from ratio array */

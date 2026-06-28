@@ -1,9 +1,12 @@
 // ============================================================
 // RMPG Flex — Print Button (Toolbar Style)
+// Switches Mapbox maps to light style before printing, then
+// restores dark style after the print dialog closes.
 // Hidden during print via @media print styles.
 // ============================================================
 
 import { Printer } from 'lucide-react';
+import { printWithLightMaps } from '../utils/mapboxLoader';
 
 interface PrintButtonProps {
   label?: string;
