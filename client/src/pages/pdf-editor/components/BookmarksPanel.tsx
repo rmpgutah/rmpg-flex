@@ -42,10 +42,10 @@ export default function BookmarksPanel({ bookmarks, activePage, pageCount, onAdd
       </button>
       {!child && (
         <IconButton onClick={() => add(b.id)} aria-label={`Add child bookmark under ${b.title}`} title={`Add child bookmark (page ${activePage}) under "${b.title}"`}
-          className="p-0.5 text-rmpg-500 hover:text-[#d4a017] opacity-0 group-hover:opacity-100"><Plus className="w-3 h-3" /></IconButton>
+          className="p-0.5 text-rmpg-500 hover:text-[#d4a017] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"><Plus className="w-3 h-3" /></IconButton>
       )}
       <IconButton onClick={() => onDelete(b.id)} aria-label="Delete bookmark"
-        className="p-0.5 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="w-3 h-3" /></IconButton>
+        className="p-0.5 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"><Trash2 className="w-3 h-3" /></IconButton>
     </div>
   );
 

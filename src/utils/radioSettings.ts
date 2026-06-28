@@ -13,6 +13,7 @@
 // the settings layer is a no-op until someone changes a value.
 // ============================================================
 
+import { log } from './logger';
 import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
 import { query, execute } from './db';
 
@@ -268,7 +269,7 @@ export async function getRadioSettings(db: D1Database): Promise<RadioSettings> {
       (out as unknown as Record<string, unknown>)[key] = coerce(key, String(r.config_value));
     }
   } catch (err) {
-    console.warn('[radioSettings] read failed — using defaults:', (err as Error)?.message);
+    log.warn('read failed — using defaults', { err });
   }
   return out;
 }

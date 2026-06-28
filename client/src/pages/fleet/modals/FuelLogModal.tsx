@@ -122,13 +122,13 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
+              <label htmlFor="ff-fuellogmodal-0" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
               <input id="ff-fuellogmodal-0" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1"
                 value={form.fuel_date}
                 onChange={(e) => setField('fuel_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Fuel Type</label>
+              <label htmlFor="ff-fuellogmodal-1" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Fuel Type</label>
               <select id="ff-fuellogmodal-1" className="select-dark w-full text-[11px] min-h-[36px]" value={form.fuel_type}
                 onChange={(e) => setField('fuel_type', e.target.value)}>
                 {FUEL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -139,22 +139,22 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
               </div>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Gallons *</label>
+              <label htmlFor="ff-fuellogmodal-2" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Gallons *</label>
               <input id="ff-fuellogmodal-2" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.001" value={form.gallons}
                 onChange={(e) => setField('gallons', e.target.value)} placeholder="e.g. 15.500" />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Cost per Gallon ($)</label>
+              <label htmlFor="ff-fuellogmodal-3" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Cost per Gallon ($)</label>
               <input id="ff-fuellogmodal-3" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.001" value={form.cost_per_gallon}
                 onChange={(e) => setField('cost_per_gallon', e.target.value)} placeholder="e.g. 3.450" />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Total Cost ($)</label>
+              <label htmlFor="ff-fuellogmodal-4" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Total Cost ($)</label>
               <input id="ff-fuellogmodal-4" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" value={form.total_cost}
                 onChange={(e) => setField('total_cost', e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Odometer Reading</label>
+              <label htmlFor="ff-fuellogmodal-5" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Odometer Reading</label>
               <input id="ff-fuellogmodal-5" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.1" value={form.odometer_reading}
                 onChange={(e) => setField('odometer_reading', e.target.value)} placeholder="for MPG calc" />
             </div>
@@ -173,7 +173,7 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
               </label>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Payment Method</label>
+              <label htmlFor="ff-fuellogmodal-7" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Payment Method</label>
               <input id="ff-fuellogmodal-7" className="input-dark w-full text-[11px] min-h-[36px]" value={form.payment_method} list="fuel-pay-methods"
                 onChange={(e) => setField('payment_method', e.target.value)} placeholder="e.g. Fuel Card" />
               <datalist id="fuel-pay-methods">
@@ -181,7 +181,7 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
               </datalist>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Driver / Officer</label>
+              <label htmlFor="ff-fuellogmodal-8" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Driver / Officer</label>
               <input id="ff-fuellogmodal-8" className="input-dark w-full text-[11px] min-h-[36px]" value={form.driver_name}
                 onChange={(e) => setField('driver_name', e.target.value)} placeholder="who fueled" />
             </div>
@@ -202,17 +202,17 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
             )}
 
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Station</label>
+              <label htmlFor="ff-fuellogmodal-9" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Station</label>
               <input id="ff-fuellogmodal-9" className="input-dark w-full text-[11px] min-h-[36px]" value={form.station}
                 onChange={(e) => setField('station', e.target.value)} placeholder="e.g. Shell - Main St" />
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Location / City</label>
+              <label htmlFor="ff-fuellogmodal-10" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Location / City</label>
               <input id="ff-fuellogmodal-10" className="input-dark w-full text-[11px] min-h-[36px]" value={form.location}
                 onChange={(e) => setField('location', e.target.value)} placeholder="e.g. Salt Lake City" />
             </div>
             <div className="col-span-2">
-              <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
+              <label htmlFor="ff-fuellogmodal-11" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
               <textarea id="ff-fuellogmodal-11" className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)} maxLength={2000} />
               <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>

@@ -168,7 +168,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
       {/* Search */}
       <div>
-        <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Search Person</label>
+        <label htmlFor="ff-linkpersonmodal-0" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Search Person</label>
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
           <input id="ff-linkpersonmodal-0"
@@ -284,7 +284,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
       {/* Role */}
       <div>
-        <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
+        <label htmlFor="ff-linkpersonmodal-1" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
         <select id="ff-linkpersonmodal-1" className="select-dark" value={role} onChange={(e) => setRole(e.target.value)}>
           {options.person_role.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { toDisplayLabel, formatPhoneInput } from '../utils/formatters';
 import { parseTimestamp } from '../utils/dateUtils';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
 import {
   X,
   User,
@@ -30,12 +31,51 @@ import TotpCodeInput from './TotpCodeInput';
 import SignaturePad from './SignaturePad';
 import TrustedDevicesList from './security/TrustedDevicesList';
 import LoginHistoryTable from './security/LoginHistoryTable';
+import { isNotificationSoundEnabled, setNotificationSoundEnabled } from '../utils/notificationTones';
 import VoicePersonaSettings from './settings/VoicePersonaSettings';
 import SecurityKeyManager from './security/SecurityKeyManager';
 import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
 import TwoFactorSetupWizard from './security/TwoFactorSetupWizard';
 import { applyThemePreference, normalizeThemePreference, writeThemeOverride, resolveCurrentTheme, readThemeOverride } from '../utils/theme';
+
+/**
+ * Per-user notification-sound toggle. Reads the current state via the
+ * per-user helper (which falls back to the legacy global key) and writes
+ * back through the helper so a shared MDT doesn't leak a former
+ * operator's "off" pref into the next login.
+ *
+ * Kept inline (single use site) to avoid a separate file for what is
+ * effectively a stateful wrapper around two existing utility calls.
+ */
+function NotificationSoundToggle() {
+  const [enabled, setEnabled] = useState(() => isNotificationSoundEnabled());
+  const onChange = (next: boolean) => {
+    setEnabled(next);
+    setNotificationSoundEnabled(next);
+  };
+  return (
+    <div className="mt-3" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '8px 10px' }}>
+      <label className="flex items-center justify-between cursor-pointer">
+        <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
+        <div className="flex items-center gap-2">
+          <input
+            id="ff-userprofilemodal-10"
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => onChange(e.target.checked)}
+            className="w-4 h-4 accent-green-500"
+          />
+          <span
+            className={`text-[9px] font-mono ${enabled ? 'text-green-400' : 'text-red-400'}`}
+          >
+            {enabled ? 'ON' : 'OFF'}
+          </span>
+        </div>
+      </label>
+    </div>
+  );
+}
 
 interface UserPreferences {
   notify_dispatch_email: number;
@@ -145,14 +185,14 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   useEffect(() => {
     if (isOpen) {
       const scrollY = window.scrollY;
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
       document.body.style.top = `-${scrollY}px`;
     }
     return () => {
       const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       document.body.style.position = '';
       document.body.style.width = '';
       document.body.style.top = '';
@@ -632,7 +672,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">First Name <span className="text-red-500">*</span></label>
+                  <label htmlFor="ff-userprofilemodal-0" className="field-label">First Name <span className="text-red-500">*</span></label>
                   <input id="ff-userprofilemodal-0"
                     type="text"
                     value={firstName}
@@ -642,7 +682,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   />
                 </div>
                 <div>
-                  <label className="field-label">Last Name <span className="text-red-500">*</span></label>
+                  <label htmlFor="ff-userprofilemodal-1" className="field-label">Last Name <span className="text-red-500">*</span></label>
                   <input id="ff-userprofilemodal-1"
                     type="text"
                     value={lastName}
@@ -653,7 +693,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 </div>
               </div>
               <div>
-                <label className="field-label">Email</label>
+                <label htmlFor="ff-userprofilemodal-2" className="field-label">Email</label>
                 <input id="ff-userprofilemodal-2"
                   type="email"
                   value={email}
@@ -662,7 +702,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 />
               </div>
               <div>
-                <label className="field-label">Phone</label>
+                <label htmlFor="ff-userprofilemodal-3" className="field-label">Phone</label>
                 <input id="ff-userprofilemodal-3"
                   type="tel"
                   value={phone}
@@ -675,7 +715,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               {/* Username (editable) + Badge # (read-only) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                 <div>
-                  <label className="field-label">Username *</label>
+                  <label htmlFor="ff-userprofilemodal-4" className="field-label">Username *</label>
                   <input id="ff-userprofilemodal-4"
                     type="text"
                     value={username}
@@ -691,7 +731,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   </div>
                 </div>
                 <div>
-                  <label className="field-label">Badge #</label>
+                  <label htmlFor="ff-userprofilemodal-14" className="field-label">Badge #</label>
                   <div className="text-xs text-rmpg-100 px-3 py-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}>
                     {user.badge_number || '—'}
                   </div>
@@ -700,7 +740,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
               {/* Profile Photo Upload */}
               <div className="mt-3 pt-3 border-t border-rmpg-700">
-                <label className="field-label flex items-center gap-1.5 mb-2">
+                <label htmlFor="ff-userprofilemodal-13" className="field-label flex items-center gap-1.5 mb-2">
                   <Camera style={{ width: 11, height: 11 }} />
                   Profile Photo
                 </label>
@@ -813,7 +853,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
           {activeTab === 'password' && (
             <>
               <div>
-                <label className="field-label">Current Password</label>
+                <label htmlFor="ff-userprofilemodal-5" className="field-label">Current Password</label>
                 <div className="relative">
                   <input id="ff-userprofilemodal-5"
                     type={showCurrentPw ? 'text' : 'password'}
@@ -831,7 +871,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 </div>
               </div>
               <div>
-                <label className="field-label">New Password</label>
+                <label htmlFor="ff-userprofilemodal-6" className="field-label">New Password</label>
                 <div className="relative">
                   <input id="ff-userprofilemodal-6"
                     type={showNewPw ? 'text' : 'password'}
@@ -849,7 +889,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 </div>
               </div>
               <div>
-                <label className="field-label">Confirm New Password</label>
+                <label htmlFor="ff-userprofilemodal-7" className="field-label">Confirm New Password</label>
                 <input id="ff-userprofilemodal-7"
                   type="password" autoComplete="new-password"
                   value={confirmPassword}
@@ -939,25 +979,12 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     </div>
                   </div>
 
-                  {/* Feature 23: Notification sound toggle */}
-                  <div className="mt-3" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '8px 10px' }}>
-                    <label className="flex items-center justify-between cursor-pointer">
-                      <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
-                      <div className="flex items-center gap-2">
-                        <input id="ff-userprofilemodal-10"
-                          type="checkbox"
-                          checked={localStorage.getItem('rmpg_notification_sounds') !== 'false'}
-                          onChange={(e) => {
-                            localStorage.setItem('rmpg_notification_sounds', String(e.target.checked));
-                          }}
-                          className="w-4 h-4 accent-green-500"
-                        />
-                        <span className="text-[9px] font-mono" style={{ color: localStorage.getItem('rmpg_notification_sounds') !== 'false' ? '#22c55e' : '#ef4444' }}>
-                          {localStorage.getItem('rmpg_notification_sounds') !== 'false' ? 'ON' : 'OFF'}
-                        </span>
-                      </div>
-                    </label>
-                  </div>
+                  {/* Feature 23: Notification sound toggle.
+                      v1056: routed through the per-user notificationTones
+                      helpers so a shared MDT no longer inherits the previous
+                      operator's "off" pref. */}
+                  <NotificationSoundToggle />
+
 
                   {/* Quiet Hours */}
                   <div className="mt-3">
@@ -966,7 +993,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     </span>
                     <div className="grid grid-cols-2 gap-2 mt-1.5">
                       <div>
-                        <label className="field-label">Start</label>
+                        <label htmlFor="ff-userprofilemodal-11" className="field-label">Start</label>
                         <input id="ff-userprofilemodal-11"
                           type="time"
                           value={prefs.quiet_hours_start || ''}
@@ -975,7 +1002,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         />
                       </div>
                       <div>
-                        <label className="field-label">End</label>
+                        <label htmlFor="ff-userprofilemodal-12" className="field-label">End</label>
                         <input id="ff-userprofilemodal-12"
                           type="time"
                           value={prefs.quiet_hours_end || ''}
@@ -1537,7 +1564,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </div>
 
                       <div>
-                        <label className="field-label">Current Password</label>
+                        <label htmlFor="ff-userprofilemodal-22" className="field-label">Current Password</label>
                         <input id="ff-userprofilemodal-22"
                           type="password" autoComplete="new-password"
                           value={regenPassword}

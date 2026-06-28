@@ -114,7 +114,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-2">
             <div>
-              <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">Format</label>
+              <label htmlFor="ff-barcodedialog-0" className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">Format</label>
               <select id="ff-barcodedialog-0" value={format} onChange={(e) => setFormat(e.target.value as BarcodeFormat)}
                 className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]">
                 {FORMATS.map((f) => (
@@ -123,7 +123,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
               </select>
             </div>
             <div>
-              <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">
+              <label htmlFor="ff-barcodedialog-1" className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">
                 {format === 'qrcode' ? 'Text or URL' : 'Value'}
               </label>
               <input id="ff-barcodedialog-1"
@@ -142,7 +142,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
             </div>
             {format === 'qrcode' && (
               <div>
-                <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">Error correction</label>
+                <label htmlFor="ff-barcodedialog-2" className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">Error correction</label>
                 <select id="ff-barcodedialog-2" value={errorCorrection} onChange={(e) => setErrorCorrection(e.target.value as typeof errorCorrection)}
                   className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]">
                   <option value="L">Low (~7%) — densest</option>

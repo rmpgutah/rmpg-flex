@@ -1,18 +1,20 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Network, Loader2, Eye, Pencil, Route } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
 import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
 import { select } from 'd3-selection';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { apiFetch } from '../hooks/useApi';
 import { svgElementToPngDataUrl, downloadDataUrl } from '../utils/graphToPng';
 import { exportGraphToPdf } from '../utils/graphToPdf';
 import { useToast } from '../components/ToastProvider';
-
+import { useAuth } from '../context/AuthContext';
 import RichTextArea from '../components/RichTextArea';
+
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
 
@@ -43,43 +45,86 @@ interface SimEdge {
   sourceTable: string;
 }
 
+// Entity-type color palette for the d3 force graph. Categorical hues — each
+// entity type gets a distinct color so an operator can scan the graph at a
+// glance. Previously 3 collisions silently rendered different entity types
+// as the same dot:
+//   person + case        both #d4a017 → case bumped to #84cc16 lime
+//   evidence + arrest    both #ef4444 → arrest bumped to #f43f5e rose
+//   incident + business  both #f59e0b → business bumped to #0ea5e9 sky
+// This is the LEGITIMATE use of raw hex literals in this codebase: a
+// categorical palette where every entry must be distinguishable. The
+// semantic --sev-* tokens can't serve here — only 5 tokens vs 16 entity
+// types — but the 3 hues that DO match sev (brand gold, sev-warn, sev-
+// critical) stay perceptually consistent with the rest of the app.
 const NODE_COLORS: Record<string, string> = {
-  person: '#d4a017',
-  vehicle: '#10b981',
-  property: '#8b5cf6',
-  evidence: '#ef4444',
-  case: '#d4a017',
-  incident: '#f59e0b',
-  warrant: '#dc2626',
-  citation: '#fbbf24',
-  arrest: '#ef4444',
-  field_interview: '#64748b',
-  trespass_order: '#a855f7',
-  serve_job: '#14b8a6',
-  call: '#22d3ee',
-  report: '#ec4899',
-  intel_report: '#e879f9',
+  person:          '#d4a017', // brand gold (mirrors --brand-gold)
+  vehicle:         '#10b981', // emerald
+  property:        '#8b5cf6', // violet
+  business:        '#0ea5e9', // sky (was #f59e0b — collided with incident)
+  evidence:        '#ef4444', // red (mirrors --sev-critical)
+  case:            '#84cc16', // lime (was #d4a017 — collided with person)
+  incident:        '#f59e0b', // amber (mirrors --sev-warn)
+  warrant:         '#dc2626', // darker red — wider use across the app
+  citation:        '#fbbf24', // yellow (mirrors --sev-warn-soft)
+  arrest:          '#f43f5e', // rose (was #ef4444 — collided with evidence)
+  field_interview: '#64748b', // slate
+  trespass_order:  '#a855f7', // purple
+  serve_job:       '#14b8a6', // teal
+  call:            '#22d3ee', // cyan
+  report:          '#ec4899', // pink
+  intel_report:    '#e879f9', // fuchsia
 };
 
 const NODE_RADIUS: Record<string, number> = {
-  person: 28, vehicle: 18, property: 18, evidence: 16,
+  person: 28, vehicle: 18, property: 18, business: 18, evidence: 16,
   case: 18, incident: 20, warrant: 18, citation: 16,
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
   call: 20, report: 14, intel_report: 20,
 };
 
-const TIMELINE_KIND_COLOR: Record<string, string> = { intel: '#e879f9', incident: '#f59e0b', call: '#22d3ee', citation: '#fbbf24', warrant: '#dc2626', arrest: '#ef4444', field_interview: '#64748b', trespass_order: '#a855f7', case: '#d4a017', evidence: '#ef4444' };
+// Timeline-drawer colors — mirror NODE_COLORS exactly so the same entity
+// type renders the same dot color in both the graph AND the timeline.
+// Previously this map drifted: case used brand-gold (collided with the
+// person-node color in the graph) and arrest used the same red as
+// evidence. Re-aligned 2026-06-22.
+const TIMELINE_KIND_COLOR: Record<string, string> = {
+  intel:           '#e879f9', // fuchsia (matches intel_report)
+  incident:        '#f59e0b',
+  call:            '#22d3ee',
+  citation:        '#fbbf24',
+  warrant:         '#dc2626',
+  arrest:          '#f43f5e', // was '#ef4444' — collided with evidence
+  field_interview: '#64748b',
+  trespass_order:  '#a855f7',
+  case:            '#84cc16', // was '#d4a017' — collided with person
+  evidence:        '#ef4444',
+};
 
 const VIEW_W = 1000;
 const VIEW_H = 600;
 const DEBOUNCE_MS = 250;
 const MIN_QUERY_LEN = 2;
 
+// Roles that can save/delete investigations
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 export default function ConnectionsPage() {
   const { addToast } = useToast();
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
-  const [searchParams] = useSearchParams();
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Deep-link: read params ONCE at mount so they survive later setSearchParams calls.
+  // Supports both ?connection_id=<id>&type=<type> and the legacy ?type=<t>&id=<n> forms.
+  const pendingConnectionTypeRef = useRef<string | null>(searchParams.get('type'));
+  const pendingConnectionIdRef   = useRef<string | null>(
+    searchParams.get('connection_id') ?? searchParams.get('id')
+  );
+
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -107,6 +152,8 @@ export default function ConnectionsPage() {
   const [editingAnnotationFor, setEditingAnnotationFor] = useState<string | null>(null);
   const [annotationDraft, setAnnotationDraft] = useState('');
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  // ConfirmDialog state for deleting a saved investigation
+  const [confirmDelete, setConfirmDelete] = useState<{ invId: number; name: string } | null>(null);
   const pendingLayoutRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
@@ -120,15 +167,71 @@ export default function ConnectionsPage() {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState('');
 
-  // Pre-seed graph from URL params on mount (e.g. /connections?type=person&id=42)
+  // Deep-link: seed graph from URL params on mount, then strip them so refresh doesn't loop.
   useEffect(() => {
-    const t = searchParams.get('type');
-    const idNum = Number(searchParams.get('id'));
-    if (t && Number.isInteger(idNum) && idNum > 0) {
-      setSeed({ type: t, id: idNum, label: `${t} #${idNum}` });
+    const t     = pendingConnectionTypeRef.current;
+    const rawId = pendingConnectionIdRef.current;
+    pendingConnectionTypeRef.current = null;
+    pendingConnectionIdRef.current   = null;
+
+    if (t && rawId) {
+      const idNum = Number(rawId);
+      if (Number.isInteger(idNum) && idNum > 0) {
+        setSeed({ type: t, id: idNum, label: `${t} #${idNum}` });
+      }
     }
+
+    // Strip deep-link params from the URL.
+    const next = new URLSearchParams(searchParams);
+    let stripped = false;
+    for (const key of ['type', 'id', 'connection_id']) {
+      if (next.has(key)) { next.delete(key); stripped = true; }
+    }
+    if (stripped) setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keyboard shortcuts:
+  //   N — open Save Investigation modal (canManage + graph loaded, not while typing)
+  //   Esc cascade — annotation modal → save modal → load dropdown → path-from mode
+  useEffect(() => {
+    const isTypingInField = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+    };
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (editingAnnotationFor) {
+          e.stopPropagation();
+          setEditingAnnotationFor(null);
+          setAnnotationDraft('');
+          return;
+        }
+        if (saveModalOpen) {
+          e.stopPropagation();
+          setSaveModalOpen(false);
+          setSaveName('');
+          setSaveDescription('');
+          setSaveError(null);
+          return;
+        }
+        if (loadDropdownOpen) { e.stopPropagation(); setLoadDropdownOpen(false); return; }
+        if (pathFrom)         { e.stopPropagation(); setPathFrom(null); setPathNodes(new Set()); setPathEdges(new Set()); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && canManage && seed && nodes.length > 0) {
+        e.preventDefault();
+        setSaveModalOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editingAnnotationFor, saveModalOpen, loadDropdownOpen, pathFrom, canManage, seed, nodes.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -173,7 +276,7 @@ export default function ConnectionsPage() {
         );
         if (cancelled) return;
         const isSeedNode = (n: ServerNode) => n.type === seed.type && n.entityId === seed.id;
-        const hydrated: SimNode[] = data.nodes.map(n => {
+        const hydrated: SimNode[] = (data?.nodes || []).map(n => {
           const isSeed = isSeedNode(n);
           return {
             ...n,
@@ -183,7 +286,7 @@ export default function ConnectionsPage() {
             fy: isSeed ? VIEW_H / 2 : null,
           };
         });
-        const hydratedEdges: SimEdge[] = data.edges.map(e => ({ ...e }));
+        const hydratedEdges: SimEdge[] = (data?.edges || []).map(e => ({ ...e }));
         if (pendingLayoutRef.current) {
           const layout = pendingLayoutRef.current;
           pendingLayoutRef.current = null;
@@ -354,7 +457,7 @@ export default function ConnectionsPage() {
     }
   }
 
-  async function openLoadDropdown() {
+  const openLoadDropdown = useCallback(async () => {
     setLoadDropdownOpen(true);
     setLoadingInvestigations(true);
     try {
@@ -365,7 +468,7 @@ export default function ConnectionsPage() {
     } finally {
       setLoadingInvestigations(false);
     }
-  }
+  }, []);
 
   async function openInvestigation(id: number) {
     setLoadDropdownOpen(false);
@@ -381,6 +484,19 @@ export default function ConnectionsPage() {
     } catch (err) {
       console.error('load investigation err:', err);
       addToast('Failed to load investigation — the saved data may be corrupted. See console for details.', 'error');
+    }
+  }
+
+  async function handleDeleteInvestigation(id: number) {
+    try {
+      await apiFetch(`/connections/investigations/${id}`, { method: 'DELETE' });
+      setInvestigations(prev => prev.filter(inv => inv.id !== id));
+      addToast('Investigation deleted.', 'success');
+    } catch (err) {
+      console.error('delete investigation err:', err);
+      addToast('Failed to delete investigation.', 'error');
+    } finally {
+      setConfirmDelete(null);
     }
   }
 
@@ -456,33 +572,37 @@ export default function ConnectionsPage() {
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
 
+      {/* Search bar + toolbar */}
       <div className="relative">
         <div className="flex items-center gap-2">
           <input id="ff-connectionspage-0"
             type="text"
             placeholder="Search for a person, vehicle, case, incident..."
-            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-rmpg-500 focus:border-[#d4a017] focus:outline-none"
+            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-rmpg-500 focus:border-brand-400 focus:outline-none"
             style={{ borderRadius: 2 }}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onFocus={() => { if (results.length) setDropdownOpen(true); }}
             aria-label="Seed search"
           />
-          {searching && <Loader2 className="w-4 h-4 animate-spin text-[#d4a017]" />}
-          <button
-            type="button"
-            disabled={!seed || nodes.length === 0}
-            onClick={() => setSaveModalOpen(true)}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ borderRadius: 2 }}
-          >
-            SAVE INVESTIGATION
-          </button>
+          {searching && <Loader2 className="w-4 h-4 animate-spin text-brand-400" />}
+          {canManage && (
+            <button
+              type="button"
+              disabled={!seed || nodes.length === 0}
+              onClick={() => setSaveModalOpen(true)}
+              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-brand-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ borderRadius: 2 }}
+              title="N to save"
+            >
+              SAVE INVESTIGATION
+            </button>
+          )}
           <button
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPng}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-brand-400 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PNG
@@ -491,7 +611,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPdf}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-brand-400 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PDF
@@ -500,7 +620,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={openLoadDropdown}
-              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-[#d4a017]"
+              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-brand-400"
               style={{ borderRadius: 2 }}
             >
               LOAD INVESTIGATION
@@ -512,26 +632,44 @@ export default function ConnectionsPage() {
                 className="absolute right-0 z-40 mt-1 w-80 bg-surface-raised border border-rmpg-700"
                 style={{ borderRadius: 2 }}
               >
-                {loadingInvestigations && <div className="p-3 text-xs text-rmpg-400">Loading...</div>}
+                {loadingInvestigations && (
+                  <div className="p-4 flex items-center gap-2 text-xs text-rmpg-400">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                  </div>
+                )}
                 {!loadingInvestigations && investigations.length === 0 && (
-                  <div className="p-3 text-xs text-rmpg-500">No saved investigations yet.</div>
+                  <div className="p-4 text-xs text-rmpg-500 text-center">No saved investigations yet.</div>
                 )}
                 {!loadingInvestigations && investigations.length > 0 && (
                   <ul className="max-h-80 overflow-y-auto">
                     {investigations.map(inv => (
                       <li
                         key={inv.id}
-                        onClick={() => openInvestigation(inv.id)}
-                        className="px-3 py-2 text-sm text-rmpg-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle"
+                        className="px-3 py-2 text-sm text-rmpg-200 border-b border-border-subtle flex items-start gap-2"
                       >
-                        <div className="font-semibold">{inv.name}</div>
-                        {inv.description && <div className="text-xs text-rmpg-500 mt-0.5">{inv.description}</div>}
+                        <span
+                          className="flex-1 min-w-0 cursor-pointer hover:text-rmpg-100"
+                          onClick={() => openInvestigation(inv.id)}
+                        >
+                          <div className="font-semibold">{inv.name}</div>
+                          {inv.description && <div className="text-xs text-rmpg-500 mt-0.5">{inv.description}</div>}
+                        </span>
+                        {canManage && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete({ invId: inv.id, name: inv.name })}
+                            className="shrink-0 text-xs text-rmpg-600 hover:text-red-400 mt-0.5"
+                            aria-label={`Delete investigation ${inv.name}`}
+                          >
+                            DEL
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>
                 )}
                 <div className="p-2 border-t border-rmpg-700 text-right">
-                  <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-rmpg-400 hover:text-[#d4a017]">Close</button>
+                  <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-rmpg-400 hover:text-brand-400">Close</button>
                 </div>
               </div>
             )}
@@ -541,6 +679,7 @@ export default function ConnectionsPage() {
           )}
         </div>
 
+        {/* Search results dropdown */}
         {dropdownOpen && results.length > 0 && (
           <ul
             role="listbox"
@@ -555,21 +694,38 @@ export default function ConnectionsPage() {
                 onClick={() => pickSeed(r)}
                 className="px-3 py-2 text-sm text-rmpg-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle last:border-b-0"
               >
-                <span className="text-[#d4a017] text-xs uppercase mr-2">{r.type}</span>
+                <span className="text-brand-400 text-xs uppercase mr-2">{r.type}</span>
                 {r.label}
               </li>
             ))}
           </ul>
         )}
+
+        {/* No search results empty state */}
+        {dropdownOpen && !searching && searchQuery.trim().length >= MIN_QUERY_LEN && results.length === 0 && (
+          <div
+            className="absolute z-10 mt-1 w-full bg-surface-raised border border-rmpg-700 px-3 py-3 text-xs text-rmpg-500"
+            style={{ borderRadius: 2 }}
+          >
+            No results for &ldquo;{searchQuery.trim()}&rdquo;
+          </div>
+        )}
       </div>
+
+      {/* No-seed empty state */}
+      {!seed && !loadingGraph && (
+        <div className="flex-1 flex items-center justify-center text-rmpg-500 text-sm">
+          Search for an entity above to start a connections graph.
+        </div>
+      )}
 
       {seed && (
         <div
           data-testid="seed-display"
-          className="px-3 py-2 bg-surface-raised border border-[#d4a017] text-sm text-rmpg-200 flex items-center gap-3"
+          className="px-3 py-2 bg-surface-raised border border-brand-400 text-sm text-rmpg-200 flex items-center gap-3"
           style={{ borderRadius: 2 }}
         >
-          <span className="text-[#d4a017] text-xs uppercase font-semibold">{seed.type}</span>
+          <span className="text-brand-400 text-xs uppercase font-semibold">{seed.type}</span>
           <span className="font-semibold">{seed.label}</span>
           <span className="text-rmpg-500 text-xs ml-auto">#{seed.id}</span>
           <div className="flex items-center gap-2 border-l border-rmpg-700 pl-3">
@@ -582,10 +738,10 @@ export default function ConnectionsPage() {
               step={1}
               value={graphDepth}
               onChange={e => setGraphDepth(Number(e.target.value))}
-              className="accent-[#d4a017]"
+              className="accent-brand-400"
               aria-label="Graph depth"
             />
-            <span className="text-[#d4a017] font-mono w-4 text-center text-xs">{graphDepth}</span>
+            <span className="text-brand-400 font-mono w-4 text-center text-xs">{graphDepth}</span>
           </div>
           <button
             type="button"
@@ -599,7 +755,7 @@ export default function ConnectionsPage() {
           <button
             type="button"
             onClick={() => { setSeed(null); setAnnotations({}); }}
-            className="text-xs text-rmpg-400 hover:text-[#d4a017]"
+            className="text-xs text-rmpg-400 hover:text-brand-400"
             aria-label="Clear seed"
           >
             CLEAR
@@ -607,6 +763,7 @@ export default function ConnectionsPage() {
         </div>
       )}
 
+      {seed && (
       <div className="flex-1 flex gap-2 min-h-0" style={{ minHeight: 400 }}>
       <div
         data-testid="graph-canvas"
@@ -614,16 +771,11 @@ export default function ConnectionsPage() {
         style={{ borderRadius: 2 }}
       >
         {loadingGraph && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-[#d4a017] gap-2 z-10">
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-brand-400 gap-2 z-10">
             <Loader2 className="w-4 h-4 animate-spin" /> Building graph...
           </div>
         )}
-        {!seed && (
-          <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-sm">
-            Seed a graph by searching above.
-          </div>
-        )}
-        {seed && hasOnlySeed && !loadingGraph && (
+        {hasOnlySeed && !loadingGraph && (
           <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-sm">
             No connections found for {seed.label}.
           </div>
@@ -682,7 +834,7 @@ export default function ConnectionsPage() {
                   )}
                   <circle
                     cx={n.x} cy={n.y} r={r}
-                    fill="#0a0a0a" stroke={inPath ? '#22c55e' : color} strokeWidth={inPath ? 3 : 2}
+                    fill="var(--surface-sunken)" stroke={inPath ? '#22c55e' : color} strokeWidth={inPath ? 3 : 2}
                   />
                   {n.type === 'intel_report' && (() => {
                     const THREAT_RING: Record<string, string> = { critical: '#ef4444', high: '#f59e0b', medium: '#d4a017', low: '#64748b' };
@@ -694,7 +846,7 @@ export default function ConnectionsPage() {
                         {n.metadata?.grade ? (
                           <>
                             <rect x={(n.x ?? 0) - 12} y={(n.y ?? 0) - rr - 16} width={24} height={13} rx={2} fill="#e879f9" />
-                            <text x={n.x} y={(n.y ?? 0) - rr - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="#0a0a0a">
+                            <text x={n.x} y={(n.y ?? 0) - rr - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--surface-sunken)">
                               {String(n.metadata.grade)}
                             </text>
                           </>
@@ -712,7 +864,7 @@ export default function ConnectionsPage() {
                   {annotations[n.id] && (
                     <text
                       x={n.x + r - 4} y={n.y - r + 8}
-                      fontSize={10} fill="#d4a017" fontFamily="monospace" fontWeight="bold"
+                      fontSize={10} fill="var(--brand-gold)" fontFamily="monospace" fontWeight="bold"
                       style={{ pointerEvents: 'none' }}
                     >
                       ✎
@@ -761,15 +913,15 @@ export default function ConnectionsPage() {
                     y={labelY - textH + 1}
                     width={textW}
                     height={textH + 2}
-                    fill="#0a0a0a"
+                    fill="var(--surface-sunken)"
                     fillOpacity={0.82}
-                    stroke={important ? '#d4a017' : 'none'}
+                    stroke={important ? 'var(--brand-gold)' : 'none'}
                     strokeWidth={important ? 0.5 : 0}
                   />
                   <text
                     x={n.x} y={labelY} textAnchor="middle"
                     fontSize={9}
-                    fill={isSeed ? '#d4a017' : important ? '#fff' : '#ccc'}
+                    fill={isSeed ? 'var(--brand-gold)' : important ? '#fff' : '#ccc'}
                     fontWeight={important ? 'bold' : 'normal'}
                     fontFamily="monospace"
                   >
@@ -783,7 +935,7 @@ export default function ConnectionsPage() {
           <button
             type="button"
             onClick={resetView}
-            className="absolute top-2 right-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-[#d4a017]"
+            className="absolute top-2 right-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-brand-400"
             style={{ borderRadius: 2 }}
             aria-label="Reset view"
           >
@@ -793,7 +945,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={() => { setPathNodes(new Set()); setPathEdges(new Set()); }}
-              className="absolute top-2 right-28 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-[#d4a017]"
+              className="absolute top-2 right-28 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-brand-400"
               style={{ borderRadius: 2 }}
             >
               CLEAR PATH
@@ -812,7 +964,7 @@ export default function ConnectionsPage() {
                   const sel = nodes.find(n => n.id === selectedNodeId);
                   if (sel) setPathFrom({ type: sel.type, id: sel.entityId, label: sel.label });
                 }}
-                className="text-[#d4a017] hover:underline uppercase font-semibold"
+                className="text-brand-400 hover:underline uppercase font-semibold"
               >
                 Start Path
               </button>
@@ -822,7 +974,7 @@ export default function ConnectionsPage() {
                   setEditingAnnotationFor(selectedNodeId);
                   setAnnotationDraft(annotations[selectedNodeId] || '');
                 }}
-                className="text-[#d4a017] hover:underline uppercase font-semibold"
+                className="text-brand-400 hover:underline uppercase font-semibold"
               >
                 {annotations[selectedNodeId] ? 'Edit note' : 'Add note'}
               </button>
@@ -834,7 +986,7 @@ export default function ConnectionsPage() {
               </div>
               {selectedNode?.type === 'intel_report' && (
                 <div className="mt-2 space-y-1 text-[11px]">
-                  <div style={{ color: 'var(--text-muted)' }}>
+                  <div className="text-rmpg-500">
                     Grade {String(selectedNode.metadata?.grade || '—')} · Threat {String(selectedNode.metadata?.threat_level || '—')} · Handling {String(selectedNode.metadata?.handling_code || '—')}
                   </div>
                   <Link to={`/intel/reports/${selectedNode.entityId}`} style={{ color: '#e879f9' }}>Open intelligence product →</Link>
@@ -844,14 +996,14 @@ export default function ConnectionsPage() {
           )}
           {pathFrom && (
             <div
-              className="absolute top-2 left-2 right-32 bg-surface-raised border border-[#d4a017] px-3 py-2 flex items-center justify-between text-xs text-[#d4a017] z-20"
+              className="absolute top-2 left-2 right-32 bg-surface-raised border border-brand-400 px-3 py-2 flex items-center justify-between text-xs text-brand-400 z-20"
               style={{ borderRadius: 2 }}
             >
               <span>Click a second node to find the path from <strong>{pathFrom.label}</strong></span>
               <button
                 type="button"
                 onClick={() => { setPathFrom(null); setPathNodes(new Set()); setPathEdges(new Set()); }}
-                className="text-rmpg-300 hover:text-[#d4a017] uppercase font-semibold"
+                className="text-rmpg-300 hover:text-brand-400 uppercase font-semibold"
                 aria-label="Cancel path"
               >
                 Cancel Path
@@ -866,18 +1018,18 @@ export default function ConnectionsPage() {
           className="w-40 bg-surface-raised border border-rmpg-700 p-2 space-y-1 overflow-y-auto"
           style={{ borderRadius: 2 }}
         >
-          <div className="text-[#d4a017] text-xs uppercase font-semibold mb-2">Filter by Type</div>
+          <div className="text-brand-400 text-xs uppercase font-semibold mb-2">Filter by Type</div>
           {availableTypes.map(t => (
             <label
               key={t}
-              className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer hover:text-[#d4a017]"
+              className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer hover:text-brand-400"
             >
               <input id="ff-connectionspage-1"
                 type="checkbox"
                 checked={!hiddenTypes.has(t)}
                 onChange={() => toggleType(t)}
                 aria-label={`Show ${t}`}
-                className="accent-[#d4a017]"
+                className="accent-brand-400"
               />
               <span
                 className="inline-block w-2 h-2 rounded-full"
@@ -891,9 +1043,11 @@ export default function ConnectionsPage() {
       {timelineOpen && (
         <div style={{ width: 320, background: 'var(--surface-overlay)', borderLeft: '1px solid var(--border-subtle)', overflowY: 'auto', padding: 8, flexShrink: 0, maxHeight: '100%' }}>
           <div className="text-[9px] font-semibold mb-2" style={{ color: '#e879f9' }}>TIMELINE — {nodes.length} NODES</div>
-          {timelineError && <div style={{ color: '#ef4444', fontSize: 11 }}>{timelineError}</div>}
+          {timelineError && <div style={{ color: 'var(--sev-critical)', fontSize: 11 }}>{timelineError}</div>}
           {timelineLoading && <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>Loading…</div>}
-          {!timelineLoading && timeline.length === 0 && <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>No dated events.</div>}
+          {!timelineLoading && !timelineError && timeline.length === 0 && (
+            <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>No dated events in this graph.</div>
+          )}
           {timeline.map((ev, i) => {
             return (
               <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid var(--border-subtle)' }}>
@@ -909,16 +1063,18 @@ export default function ConnectionsPage() {
         </div>
       )}
       </div>
+      )}
 
+      {/* Annotation edit modal */}
       {editingAnnotationFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
           <div role="dialog" className="w-96 bg-surface-raised border border-rmpg-700 p-4 space-y-3" style={{ borderRadius: 2 }}>
-            <h2 className="text-[#d4a017] text-sm uppercase font-semibold">
+            <h2 className="text-brand-400 text-sm uppercase font-semibold">
               Note for {nodes.find(n => n.id === editingAnnotationFor)?.label}
             </h2>
             <RichTextArea
               aria-label={`Note for ${nodes.find(n => n.id === editingAnnotationFor)?.label}`}
-              className="w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[#d4a017] focus:outline-none h-28"
+              className="w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-brand-400 focus:outline-none h-28"
               style={{ borderRadius: 2 }}
               value={annotationDraft}
               onChange={e => setAnnotationDraft(e.target.value)}
@@ -928,7 +1084,7 @@ export default function ConnectionsPage() {
               <button
                 type="button"
                 onClick={() => { setEditingAnnotationFor(null); setAnnotationDraft(''); }}
-                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-[#d4a017]"
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-brand-400"
               >
                 Cancel
               </button>
@@ -957,7 +1113,7 @@ export default function ConnectionsPage() {
                   setEditingAnnotationFor(null);
                   setAnnotationDraft('');
                 }}
-                className="px-3 py-1.5 text-xs bg-[#d4a017] text-black font-semibold hover:bg-[#e0b030]"
+                className="px-3 py-1.5 text-xs bg-brand-700 text-rmpg-100 font-semibold hover:bg-brand-600"
                 style={{ borderRadius: 2 }}
               >
                 Save note
@@ -967,6 +1123,7 @@ export default function ConnectionsPage() {
         </div>
       )}
 
+      {/* Save investigation modal */}
       {saveModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
           <div
@@ -975,13 +1132,13 @@ export default function ConnectionsPage() {
             className="w-96 bg-surface-raised border border-rmpg-700 p-4 space-y-3"
             style={{ borderRadius: 2 }}
           >
-            <h2 className="text-[#d4a017] text-sm uppercase font-semibold">Save Investigation</h2>
+            <h2 className="text-brand-400 text-sm uppercase font-semibold">Save Investigation</h2>
 
             <label className="block text-xs text-rmpg-300">
               Name
               <input id="ff-connectionspage-2"
                 type="text"
-                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[#d4a017] focus:outline-none"
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-brand-400 focus:outline-none"
                 style={{ borderRadius: 2 }}
                 value={saveName}
                 onChange={e => setSaveName(e.target.value)}
@@ -992,7 +1149,7 @@ export default function ConnectionsPage() {
             <label className="block text-xs text-rmpg-300">
               Description
               <RichTextArea
-                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-[#d4a017] focus:outline-none h-20"
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-brand-400 focus:outline-none h-20"
                 style={{ borderRadius: 2 }}
                 value={saveDescription}
                 onChange={e => setSaveDescription(e.target.value)}
@@ -1010,7 +1167,7 @@ export default function ConnectionsPage() {
                   setSaveDescription('');
                   setSaveError(null);
                 }}
-                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-[#d4a017]"
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-brand-400"
               >
                 Cancel
               </button>
@@ -1018,7 +1175,7 @@ export default function ConnectionsPage() {
                 type="button"
                 onClick={handleSave}
                 disabled={!saveName.trim() || saving}
-                className="px-3 py-1.5 text-xs bg-[#d4a017] text-black font-semibold hover:bg-[#e0b030] disabled:opacity-40"
+                className="px-3 py-1.5 text-xs bg-brand-700 text-rmpg-100 font-semibold hover:bg-brand-600 disabled:opacity-40"
                 style={{ borderRadius: 2 }}
               >
                 {saving ? 'Saving...' : 'Save'}
@@ -1027,6 +1184,18 @@ export default function ConnectionsPage() {
           </div>
         </div>
       )}
+
+      {/* Delete investigation confirm dialog */}
+      <ConfirmDialog
+        isOpen={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && handleDeleteInvestigation(confirmDelete.invId)}
+        title="Delete Investigation"
+        message="Permanently delete this saved investigation? This cannot be undone."
+        details={confirmDelete ? <span>{confirmDelete.name}</span> : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

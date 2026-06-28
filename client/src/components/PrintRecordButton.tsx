@@ -46,7 +46,20 @@ interface PrintRecordButtonProps {
 /** Record-links vehicle labels read "Make Model (PLATE)". Split into the
  *  separate fields the PDF table expects — otherwise the whole label lands
  *  in the PLATE column and VEHICLE prints "N/A". */
-function splitVehicleLabel(l: any): { license_plate: string; model: string; relationship: string } {
+function splitVehicleLabel(l: any): { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship: string } {
+  // Prefer structured metadata returned by the API (year, color, make, model, plate)
+  const meta = l.linked_meta as { year?: number; color?: string; make?: string; model?: string; plate_number?: string } | undefined;
+  if (meta) {
+    return {
+      license_plate: meta.plate_number || '',
+      year: meta.year != null ? String(meta.year) : undefined,
+      make: meta.make || undefined,
+      model: meta.model || undefined,
+      color: meta.color || undefined,
+      relationship: l.relationship,
+    };
+  }
+  // Fallback: parse "Make Model (PLATE)" label format
   const raw = String(l.linked_label || '').trim();
   const m = raw.match(/^(.*?)\s*\(([^()]+)\)$/);
   return {
@@ -198,23 +211,46 @@ export default function PrintRecordButton({
       }
     }
 
-    // For person records, fetch linked vehicles and properties
+    // For person records, fetch all linked records (all entity types)
     if (recordType === 'person' && data.id) {
       try {
         const links = await apiFetch<any[]>(`/records/links?source_type=person&source_id=${data.id}`);
         if (links && links.length > 0) {
-          // The API enriches each row with the OTHER side as linked_type /
-          // linked_label (covering links where this record is source OR
-          // target). The vehicle label reads "Make Model (PLATE)" — split it
-          // so the PDF's PLATE column gets the plate, not the whole label
-          // (live PDFs printed PLATE="RAM 1500 (8JAR3)" / VEHICLE="N/A").
+          // Vehicles: split "Make Model (PLATE)" label so PDF columns populate correctly
           enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
+          // Properties (real-estate only, not businesses)
           enriched.linked_properties = links
-            .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
+            .filter((l: any) => l.linked_type === 'property')
+            .map((l: any) => ({ name: l.linked_label || '', relationship: l.relationship }));
+          // Businesses (separate table since migration 0125)
+          enriched.linked_businesses = links
+            .filter((l: any) => l.linked_type === 'business')
+            .map((l: any) => ({ name: l.linked_label || '', relationship: l.relationship }));
+          // Other persons linked to this person
+          enriched.linked_persons = links
+            .filter((l: any) => l.linked_type === 'person')
             .map((l: any) => ({
               name: l.linked_label || '',
               relationship: l.relationship,
+              dob: l.linked_meta?.dob || '',
+              flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
             }));
+          // Evidence items cross-referenced to this person
+          enriched.linked_evidence = links
+            .filter((l: any) => l.linked_type === 'evidence')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
+          // Incidents cross-referenced to this person (manual links, separate from incident history)
+          enriched.linked_incidents_xref = links
+            .filter((l: any) => l.linked_type === 'incident')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
+          // Cases cross-referenced to this person
+          enriched.linked_cases = links
+            .filter((l: any) => l.linked_type === 'case')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
+          // Warrants cross-referenced to this person (manual links, separate from active-warrants history)
+          enriched.linked_warrants_xref = links
+            .filter((l: any) => l.linked_type === 'warrant')
+            .map((l: any) => ({ label: l.linked_label || '', relationship: l.relationship }));
         }
       } catch { /* non-fatal */ }
     }
@@ -241,6 +277,8 @@ export default function PrintRecordButton({
           enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
             name: l.linked_label || '',
             relationship: l.relationship,
+            dob: l.linked_meta?.dob || '',
+            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
           }));
           enriched.linked_properties = links
             .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
@@ -281,6 +319,8 @@ export default function PrintRecordButton({
           enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
             name: l.linked_label || '',
             relationship: l.relationship,
+            dob: l.linked_meta?.dob || '',
+            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
           }));
           enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
         }

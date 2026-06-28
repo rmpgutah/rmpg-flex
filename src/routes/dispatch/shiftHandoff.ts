@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, queryFirst, execute } from '../../utils/db';
+import { log } from '../../utils/logger';
 
 const handoff = new Hono<Env>();
 
@@ -16,6 +17,7 @@ handoff.get('/', async (c) => {
       updated_at: row.updated_at ?? null,
     } : { text: '', updated_by: null, updated_at: null });
   } catch {
+    log.warn('[shiftHandoff] GET failed, table may not exist', {});
     return c.json({ text: '', updated_by: null, updated_at: null });
   }
 });
@@ -24,8 +26,8 @@ handoff.put('/', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
-    const body: any = await c.req.json().catch(() => ({}));
-    const text = typeof (body as any)?.text === 'string' ? (body as any).text : '';
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const text = typeof body.text === 'string' ? body.text : '';
     await execute(db,
       `INSERT INTO shift_handoff (id, text, updated_by, updated_at) VALUES (1, ?, ?, datetime('now'))
        ON CONFLICT(id) DO UPDATE SET text = excluded.text, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
@@ -36,7 +38,7 @@ handoff.put('/', async (c) => {
     );
     return c.json({ success: true, ...row });
   } catch (err) {
-    console.error('[shiftHandoff] PUT failed:', err);
+    log.error('[shiftHandoff] PUT failed', {}, err);
     return c.json({ success: false, error: 'Failed to save shift handoff' }, 500);
   }
 });

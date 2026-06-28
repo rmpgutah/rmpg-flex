@@ -3,7 +3,7 @@ import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
   Radio, Clock, Truck, Search, Camera, History, RefreshCw, Video,
-  HardDrive, Download,
+  HardDrive, Download, Play, X as XIcon, ChevronRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
@@ -16,6 +16,14 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+interface CameraOnlineState {
+  cpg_device_id: string;
+  cpg_display_name: string | null;
+  ignition_state: string | null;
+  last_synced_at: string | null;
+  camera_offline: boolean;
+}
+
 interface CpgStatus {
   configured: boolean;
   enabled: boolean;
@@ -25,7 +33,28 @@ interface CpgStatus {
   media_sync_enabled?: boolean;
   media_poll_interval_seconds?: number;
   last_media_sync?: string | null;
+  any_camera_offline?: boolean;
+  cameras?: CameraOnlineState[];
 }
+
+interface TripClip {
+  streamUrl: string;
+  from_ts: number;
+  to_ts: number;
+}
+
+interface FullDriveTrip {
+  id: number; trip_number: number; label: string;
+  from_ts: number; to_ts: number; footage_request_id: number | null;
+  chunk_count: number; chunks_done: number; chunks_missing: number; status: string;
+}
+
+interface FullDriveJob {
+  id: number; device_id: string; from_ts: number; to_ts: number; status: string;
+  trip_count: number; clips_requested: number; clips_ready: number;
+  created_at: string; trips: FullDriveTrip[];
+}
+
 
 interface MediaSyncStatus {
   media_sync_enabled: boolean;
@@ -104,6 +133,7 @@ interface DashcamEvent {
   officer_name: string | null;
 }
 
+
 export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }: Props) {
   // Status
   const [status, setStatus] = useState<CpgStatus | null>(null);
@@ -148,6 +178,16 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [syncing, setSyncing] = useState(false);
   const [savingMedia, setSavingMedia] = useState(false);
   const [actionResult, setActionResult] = useState<string | null>(null);
+
+  // Full-drive download
+  const [showFullDrive, setShowFullDrive] = useState(false);
+  const [fullDriveDeviceId, setFullDriveDeviceId] = useState('');
+  const [fullDriveHours, setFullDriveHours] = useState(8);
+  const [fullDriveRunning, setFullDriveRunning] = useState(false);
+  const [fullDriveError, setFullDriveError] = useState<string | null>(null);
+  const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const [jobStatus, setJobStatus] = useState<FullDriveJob | null>(null);
+  const [tickNow, setTickNow] = useState(Date.now());
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -446,14 +486,12 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const handleSyncNow = async () => {
     setSyncing(true);
     try {
-      const result = await apiFetch<{ synced: number; errors: number }>('/clearpathgps/media-sync-now', { method: 'POST' });
-      await fetchMediaStatus();
-      if (result.synced > 0) {
-        setError(null);
-      }
+      await apiFetch<{ started: boolean }>('/clearpathgps/media-sync-now', { method: 'POST' });
+      setError(null);
+      // Sync runs in background — poll stats after a delay
+      setTimeout(() => { fetchMediaStatus().catch(() => {}); setSyncing(false); }, 30_000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Media sync failed');
-    } finally {
       setSyncing(false);
     }
   };
@@ -521,6 +559,51 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     }
   };
 
+  // ── Trigger full-drive trip job ──
+  const handleFullDrive = async () => {
+    setFullDriveRunning(true);
+    setFullDriveError(null);
+    setActiveJobId(null);
+    setJobStatus(null);
+    try {
+      const body: Record<string, unknown> = { hours_back: fullDriveHours };
+      if (fullDriveDeviceId) body.device_id = fullDriveDeviceId;
+      const r = await apiFetch<{ started: boolean; job_id?: number; trip_count?: number; error?: string }>(
+        '/clearpathgps/full-drive', { method: 'POST', body: JSON.stringify(body) });
+      if (r.error || !r.started) {
+        setFullDriveError(r.error ?? 'Failed to start');
+      } else if (r.job_id) {
+        setActiveJobId(r.job_id);
+      }
+    } catch (err) {
+      setFullDriveError(err instanceof Error ? err.message : 'Full-drive request failed');
+    } finally {
+      setFullDriveRunning(false);
+    }
+  };
+
+  // ── Poll active job status ──
+  const pollJobStatus = useCallback(async (jobId: number) => {
+    try {
+      const j = await apiFetch<FullDriveJob>(`/clearpathgps/full-drive/jobs/${jobId}`);
+      setJobStatus(j);
+    } catch { /* non-fatal */ }
+  }, []);
+
+  useEffect(() => {
+    if (!activeJobId) return;
+    pollJobStatus(activeJobId);
+    const t = setInterval(() => pollJobStatus(activeJobId), 10_000);
+    return () => clearInterval(t);
+  }, [activeJobId, pollJobStatus]);
+
+  // 1-second tick so ETA countdown animates without re-polling the API.
+  useEffect(() => {
+    if (!activeJobId || jobStatus?.status === 'done') return;
+    const t = setInterval(() => setTickNow(Date.now()), 1_000);
+    return () => clearInterval(t);
+  }, [activeJobId, jobStatus?.status]);
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -581,18 +664,6 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
   if (loading) return <LoadingSpinner />;
 
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
-
-
-  if (loading) return <LoadingSpinner />;
-
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
@@ -619,7 +690,43 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         )}
       </div>
 
+      {/* Camera offline banner — surfaces why on-demand video requests are
+          sitting at "Waiting for Camera…" upstream. Dashcam can only deliver
+          mp4s when the LTE modem is awake (ignition on). While the vehicle is
+          parked the cron poller intentionally pauses these chunks instead of
+          burning their attempt counter, so they fulfill the next time the
+          vehicle drives. (Auto-uploaded events — FCW, hard brake, lane
+          departure — are NOT affected; the camera pushes those in real time.) */}
+      {status?.configured && status.any_camera_offline && (status.cameras?.length ?? 0) > 0 && (
+        <div className="panel-beveled p-3 bg-amber-950/30 border-l-2 border-amber-500/70 space-y-2">
+          <div className="flex items-center gap-2 text-[11px] font-bold text-amber-300 uppercase tracking-wider">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            Camera offline — pending video requests are paused
+          </div>
+          <div className="text-[10px] text-amber-200/80 leading-snug">
+            ClearPath only delivers on-demand clips when the dashcam is online
+            (vehicle ignition on, LTE modem awake). Queued requests stay in
+            "Waiting for Camera…" upstream and will resume automatically the
+            next time the vehicle drives. Auto-events (FCW, hard brake, lane
+            departure) are unaffected — those upload in real time.
+          </div>
+          <div className="text-[10px] text-amber-200/90 space-y-0.5">
+            {(status.cameras ?? []).filter((c) => c.camera_offline).map((c) => (
+              <div key={c.cpg_device_id} className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span className="font-medium">{c.cpg_display_name || c.cpg_device_id}</span>
+                <span className="text-amber-200/60">
+                  · ignition {c.ignition_state || 'unknown'}
+                  {c.last_synced_at ? ` · last GPS ${safeTimeStr(c.last_synced_at)}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ═══ Section 1: Credentials ═══ */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
@@ -628,13 +735,15 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* Refresh Token */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Refresh Token</label>
+          <label htmlFor="ff-adminclearpathgpstab-0" className="text-[10px] text-rmpg-400">Refresh Token</label>
           <div className="relative">
             <input id="ff-adminclearpathgpstab-0"
               type={showSecret ? 'text' : 'password'}
               value={refreshToken}
               onChange={(e) => setRefreshToken(e.target.value)}
               placeholder={status?.configured ? 'Enter new Refresh Token to replace...' : 'ClearPath session refresh token...'}
+              autoComplete="new-password"
+              spellCheck={false}
               className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
             <button type="button"
@@ -648,7 +757,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* User ID */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">User ID <span className="text-rmpg-600">(optional)</span></label>
+          <label htmlFor="ff-adminclearpathgpstab-1" className="text-[10px] text-rmpg-400">User ID <span className="text-rmpg-600">(optional)</span></label>
           <input id="ff-adminclearpathgpstab-1"
             type="text"
             value={userId}
@@ -660,7 +769,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
 
         {/* Account ID (optional — derived server-side; for display/scoping) */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Account ID <span className="text-rmpg-600">(optional)</span></label>
+          <label htmlFor="ff-adminclearpathgpstab-2" className="text-[10px] text-rmpg-400">Account ID <span className="text-rmpg-600">(optional)</span></label>
           <input id="ff-adminclearpathgpstab-2"
             type="text"
             value={accountId}
@@ -747,6 +856,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+      </form>
 
       {/* ═══ Section 2: Enable/Disable + Poll Interval ═══ */}
       {status?.configured && (
@@ -1176,7 +1286,173 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               )}
               Scan ALPR now
             </button>
+
+            {/* Full-drive download toggle */}
+            <button type="button"
+              onClick={() => { setShowFullDrive(!showFullDrive); setFullDriveError(null); }}
+              disabled={!status?.enabled}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide
+                         bg-purple-900/50 hover:bg-purple-800/60 border border-purple-700/50 text-purple-300
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Video className="w-3 h-3" />
+              Full Drive
+            </button>
           </div>
+
+          {/* Full-drive panel */}
+          {showFullDrive && (
+            <div className="border border-purple-700/30 bg-purple-950/20 p-3 space-y-3">
+              <div className="text-[10px] text-purple-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Video className="w-3 h-3" /> Full Drive — Smart Trip Recorder
+              </div>
+              <p className="text-[10px] text-rmpg-500 leading-relaxed">
+                Requests continuous 40-second footage chunks for the selected window. GPS gaps
+                (engine off, stops &gt;15 min) are automatically excluded — each driving segment
+                becomes its own labeled trip video.
+              </p>
+
+              {/* Controls */}
+              {!activeJobId && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {mappings.length > 1 && (
+                    <select value={fullDriveDeviceId} onChange={(e) => setFullDriveDeviceId(e.target.value)}
+                      className="select-dark text-[10px] py-0.5 px-1.5">
+                      <option value="">First active device</option>
+                      {mappings.map((m) => (
+                        <option key={m.cpg_device_id} value={m.cpg_device_id}>
+                          {m.cpg_display_name || m.cpg_device_id}{m.call_sign ? ` (${m.call_sign})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <select value={fullDriveHours} onChange={(e) => setFullDriveHours(Number(e.target.value))}
+                    className="select-dark text-[10px] py-0.5 px-1.5">
+                    <option value={2}>Last 2 hours</option>
+                    <option value={4}>Last 4 hours</option>
+                    <option value={8}>Last 8 hours (shift)</option>
+                    <option value={12}>Last 12 hours</option>
+                    <option value={24}>Last 24 hours</option>
+                    <option value={72}>Last 3 days</option>
+                  </select>
+                  <button type="button" onClick={handleFullDrive}
+                    disabled={fullDriveRunning || !status?.enabled}
+                    className="inline-flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wide
+                               bg-purple-700/60 hover:bg-purple-600/60 border border-purple-500/50 text-purple-200
+                               disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    {fullDriveRunning
+                      ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />
+                      : <Download className="w-3 h-3" />}
+                    {fullDriveRunning ? 'Detecting trips...' : 'Start Full Drive'}
+                  </button>
+                </div>
+              )}
+              {fullDriveError && <p className="text-[10px] text-red-400">{fullDriveError}</p>}
+
+              {/* Job progress */}
+              {jobStatus && (() => {
+                const totalPct = jobStatus.clips_requested > 0
+                  ? Math.round((jobStatus.clips_ready / jobStatus.clips_requested) * 100)
+                  : 0;
+                const elapsed = tickNow - Date.parse(jobStatus.created_at);
+                const rate = elapsed > 0 && jobStatus.clips_ready > 0
+                  ? jobStatus.clips_ready / elapsed
+                  : 0;
+                const remaining = jobStatus.clips_requested - jobStatus.clips_ready;
+                const etaStr = (() => {
+                  if (jobStatus.status === 'done') return 'Complete';
+                  if (!rate || remaining <= 0) return 'Calculating…';
+                  const s = Math.round((remaining / rate) / 1000);
+                  if (s < 60) return `~${s}s remaining`;
+                  const m = Math.floor(s / 60);
+                  const rs = s % 60;
+                  return rs > 0 ? `~${m}m ${rs}s remaining` : `~${m}m remaining`;
+                })();
+                return (
+                <div className="space-y-2">
+                  {/* Total progress header */}
+                  <div className="border border-purple-600/30 bg-purple-900/20 p-2 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-purple-200 font-bold uppercase tracking-wider">
+                        {jobStatus.trip_count} Trip{jobStatus.trip_count !== 1 ? 's' : ''} · Total Download
+                      </span>
+                      <button type="button"
+                        onClick={() => { setActiveJobId(null); setJobStatus(null); }}
+                        className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
+                        <XIcon className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <div className="h-2.5 bg-surface-sunken rounded-full overflow-hidden">
+                      <div className="h-full bg-purple-500 transition-all duration-1000"
+                        style={{ width: `${totalPct}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-purple-300">{totalPct}%</span>
+                      <span className="text-[10px] text-rmpg-400">
+                        {jobStatus.clips_ready} / {jobStatus.clips_requested} clips
+                      </span>
+                      <span className={`text-[10px] font-bold ${jobStatus.status === 'done' ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {etaStr}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Trip cards */}
+                  {jobStatus.trips.map((trip) => {
+                    const settled = trip.chunks_done + trip.chunks_missing;
+                    const pct = trip.chunk_count > 0 ? Math.round((settled / trip.chunk_count) * 100) : 0;
+                    const ready = trip.status === 'done' || trip.status === 'partial';
+                    const durationMin = Math.round((trip.to_ts - trip.from_ts) / 60_000);
+                    const tripRemaining = trip.chunk_count - settled;
+                    const tripEta = (() => {
+                      if (ready || !rate || tripRemaining <= 0) return null;
+                      const s = Math.round((tripRemaining / rate) / 1000);
+                      return s < 60 ? `~${s}s` : `~${Math.ceil(s / 60)}m`;
+                    })();
+                    return (
+                      <div key={trip.id} className="border border-purple-700/20 bg-purple-950/30 p-2 space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-bold text-purple-200 truncate">{trip.label}</p>
+                            <p className="text-[9px] text-rmpg-500">
+                              {durationMin > 0 ? `${durationMin} min · ` : ''}
+                              {trip.chunks_done}/{trip.chunk_count} clips
+                              {trip.chunks_missing > 0 ? ` · ${trip.chunks_missing} gaps` : ''}
+                              {tripEta ? <span className="text-yellow-500 ml-1">· {tripEta}</span> : null}
+                              {ready ? <span className="text-green-400 ml-1">· Ready</span> : null}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[9px] font-bold text-purple-400 w-7 text-right">{pct}%</span>
+                            {ready && trip.footage_request_id && (
+                              <a href={`/flexcam/${trip.footage_request_id}`} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase
+                                           bg-green-800/60 hover:bg-green-700/60 border border-green-600/40 text-green-300
+                                           transition-colors">
+                                <Play className="w-2.5 h-2.5" /> Play
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-1000 ${ready ? 'bg-green-500' : 'bg-purple-500'}`}
+                            style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <button type="button" onClick={() => { setActiveJobId(null); setJobStatus(null); }}
+                    className="text-[10px] text-purple-400 hover:text-purple-300 underline transition-colors">
+                    Start another full drive
+                  </button>
+                </div>
+                );
+              })()}
+
+            </div>
+          )}
 
           {actionResult && (
             <p className="mt-1 text-[10px] text-green-400">{actionResult}</p>

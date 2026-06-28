@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import RichTextArea from '../components/RichTextArea';
 import {
@@ -41,6 +41,8 @@ import FileAttachments from '../components/FileAttachments';
 import LinkPersonModal from '../components/LinkPersonModal';
 import LinkVehicleModal from '../components/LinkVehicleModal';
 import EvidenceFormModal from '../components/EvidenceFormModal';
+import OfficerPicker from '../components/OfficerPicker';
+import RecordPicker, { type LinkableRecordType } from '../components/RecordPicker';
 import CollapsibleSection from '../components/CollapsibleSection';
 import LinkedEmailsSection from '../components/LinkedEmailsSection';
 import SupplementFormModal from '../components/SupplementFormModal';
@@ -52,6 +54,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { toDisplayLabel } from '../utils/formatters';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
@@ -253,7 +256,12 @@ export default function IncidentsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const isManager = user?.role === 'manager';
+  const isSupervisor = user?.role === 'supervisor';
+  // canSupervise: roles that can approve, return, close, and delete incidents
+  const canSupervise = isAdmin || isManager || isSupervisor;
+  // isGodMode alias retained for backward compat with existing gate expressions below
+  const isGodMode = canSupervise;
   const isMobile = useIsMobile();
 
   // ── Right-click context menu ──
@@ -300,10 +308,45 @@ export default function IncidentsPage() {
   const [incidentOfficerOptionsLoading, setIncidentOfficerOptionsLoading] = useState(false);
   const [showAddOffenseModal, setShowAddOffenseModal] = useState(false);
   const [showAddOfficerModal, setShowAddOfficerModal] = useState(false);
+  const [addOfficerPickerId, setAddOfficerPickerId] = useState<number | null>(null);
   const [showAddLinkModal, setShowAddLinkModal] = useState(false);
+  const [addLinkType, setAddLinkType] = useState<LinkableRecordType | ''>('');
+  const [addLinkId, setAddLinkId] = useState<number | null>(null);
 
   // ---------- chain of custody expansion ----------
   const [expandedCustody, setExpandedCustody] = useState<Set<string>>(new Set());
+
+  // ---------- unlink/remove confirmation state ----------
+  // Replaces the six native window.confirm / confirm() calls on this page
+  // (unlink-person, unlink-vehicle, remove-offense, remove-officer, remove-
+  // cross-reference). A single themed ConfirmDialog drives all five flows;
+  // payload carries the action callback so the dialog stays generic.
+  const [removalConfirm, setRemovalConfirm] = useState<{
+    title: string;
+    message: string;
+    detail?: string;
+    run: () => Promise<void> | void;
+  } | null>(null);
+  const [removalSubmitting, setRemovalSubmitting] = useState(false);
+
+  // ---------- return-incident modal state ----------
+  // Replaces window.prompt('Return comments…'). Inline modal mirrors the
+  // Cases page pattern (PR #1604 / SW v1028) so operators get a real
+  // textarea + Cancel/Confirm flow instead of the browser-native prompt
+  // that strips formatting and dies in some kiosk modes.
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnComments, setReturnComments] = useState('');
+
+  const runRemovalConfirm = async () => {
+    if (!removalConfirm) return;
+    setRemovalSubmitting(true);
+    try {
+      await removalConfirm.run();
+    } finally {
+      setRemovalSubmitting(false);
+      setRemovalConfirm(null);
+    }
+  };
 
   // ---------- custody transfer modal ----------
   const [custodyTransfer, setCustodyTransfer] = useState<{ evidenceId: string; evidenceNumber: string; currentLocation: string } | null>(null);
@@ -336,8 +379,15 @@ export default function IncidentsPage() {
         const evData = await apiFetch<any>(`/records/evidence?incident_id=${selectedIncident.id}`);
         setDetailEvidence(evData?.data || evData || []);
       }
-    } catch {
-      addToast('Network error', 'error');
+    } catch (err: any) {
+      // Audit caught (2026-06-21): the original bare `} catch { addToast(
+      // 'Network error', ...) }` discarded the error object. Operators
+      // re-tried the chain-of-custody action several times not realizing
+      // the failure was 401 (re-auth needed), 409 (duplicate transfer),
+      // or 422 (missing location) — not actually a network issue. Mirror
+      // the pattern that EvidencePropertyPage.handleChainAction:319-320
+      // already uses correctly.
+      addToast(err?.message || 'Failed to record custody action', 'error');
     }
     setCustodySubmitting(false);
   };
@@ -557,24 +607,52 @@ export default function IncidentsPage() {
     };
   }, [showAddOfficerModal, incidentOfficerOptions.length]);
 
-  const handleUnlinkPerson = async (personId: string | number) => {
+  const handleUnlinkPerson = (personId: string | number) => {
     if (!selectedIncident) return;
-    try {
-      await apiFetch(`/incidents/${selectedIncident.id}/persons/${personId}`, { method: 'DELETE' });
-      fetchIncidentDetail(selectedIncident.id);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to unlink person', 'error');
-    }
+    // Audit caught (2026-06-21): silent unlink with no confirm + no success
+    // toast. Operator destroyed link with zero feedback. Look up the
+    // person's display name from detailPersons (already loaded) so the
+    // confirm shows WHO is being removed, not just "this person".
+    // 2026-06-22 (SW v1032): native window.confirm → themed ConfirmDialog
+    // (same pattern Cases SW v1028 / FI SW v1024 adopted).
+    const person = (detailPersons || []).find((p: any) => String(p?.id ?? p?.person_id) === String(personId));
+    const name = person
+      ? ([person.first_name, person.last_name].filter(Boolean).join(' ').trim() || (person as any).full_name || 'this person')
+      : 'this person';
+    setRemovalConfirm({
+      title: 'Unlink Person',
+      message: `Unlink ${name} from this incident?`,
+      detail: name,
+      run: async () => {
+        try {
+          await apiFetch(`/incidents/${selectedIncident.id}/persons/${personId}`, { method: 'DELETE' });
+          fetchIncidentDetail(selectedIncident.id);
+          addToast(`Unlinked ${name}`, 'success');
+        } catch (err: any) {
+          addToast(err?.message || 'Failed to unlink person', 'error');
+        }
+      },
+    });
   };
 
-  const handleUnlinkVehicle = async (vehicleId: string | number) => {
+  const handleUnlinkVehicle = (vehicleId: string | number) => {
     if (!selectedIncident) return;
-    try {
-      await apiFetch(`/incidents/${selectedIncident.id}/vehicles/${vehicleId}`, { method: 'DELETE' });
-      fetchIncidentDetail(selectedIncident.id);
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to unlink vehicle', 'error');
-    }
+    const vehicle = (detailVehicles || []).find((v: any) => String(v?.id ?? v?.vehicle_id) === String(vehicleId));
+    const label = vehicle ? (vehicle.plate_number || (vehicle as any).vin || `vehicle #${vehicleId}`) : `vehicle #${vehicleId}`;
+    setRemovalConfirm({
+      title: 'Unlink Vehicle',
+      message: `Unlink ${label} from this incident?`,
+      detail: label,
+      run: async () => {
+        try {
+          await apiFetch(`/incidents/${selectedIncident.id}/vehicles/${vehicleId}`, { method: 'DELETE' });
+          fetchIncidentDetail(selectedIncident.id);
+          addToast(`Unlinked ${label}`, 'success');
+        } catch (err: any) {
+          addToast(err?.message || 'Failed to unlink vehicle', 'error');
+        }
+      },
+    });
   };
 
   // ============================================================
@@ -676,16 +754,26 @@ export default function IncidentsPage() {
     }
   };
 
-  const handleReturn = async () => {
+  // Opens the inline return modal (replaces window.prompt — 2026-06-22).
+  // Native prompt strips line breaks, kills focus management on iPad
+  // kiosks, and isn't themable. The modal gives operators a real textarea
+  // + Cancel/Confirm with proper review feedback.
+  const handleReturn = () => {
     if (!selectedIncident) return;
-    const comments = window.prompt('Return comments (optional):');
-    if (comments === null) return; // cancelled
+    setReturnComments('');
+    setShowReturnModal(true);
+  };
+
+  const submitReturn = async () => {
+    if (!selectedIncident) return;
     try {
       setIsSubmitting(true);
       await apiFetch(`/incidents/${selectedIncident.id}/return`, {
         method: 'PUT',
-        body: JSON.stringify({ comments }),
+        body: JSON.stringify({ comments: returnComments }),
       });
+      setShowReturnModal(false);
+      setReturnComments('');
       await fetchIncidents({ silent: true });
     } catch (err: any) {
       addToast(err.message ?? 'Failed to return incident', 'error');
@@ -915,7 +1003,7 @@ export default function IncidentsPage() {
             </button>
             <button type="button"
               className="toolbar-btn"
-              style={{ color: '#f87171', borderColor: '#991b1b' }}
+              style={{ color: 'rgb(var(--sev-critical-rgb) / 0.85)', borderColor: 'rgb(var(--sev-critical-rgb) / 0.55)' }}
               onClick={() => {
                 setEditingIncident(undefined);
                 setFormDefaultType('use_of_force');
@@ -1109,7 +1197,35 @@ export default function IncidentsPage() {
                 <tr>
                   <td colSpan={isMobile ? 5 : 7} className="text-center py-12">
                     <FileText className="w-6 h-6 mx-auto mb-2 text-rmpg-600" />
-                    <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider">No incidents found</span>
+                    {/* Distinguish empty-shelf from no-match — operator
+                        needs to know whether the search dropped them off
+                        the cliff or there's just nothing here yet (e.g.
+                        on a fresh property w/o any incidents on file). */}
+                    {incidents.length === 0 ? (
+                      <>
+                        <div className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider">
+                          {showArchived ? 'No archived incidents' : 'No incidents on file'}
+                        </div>
+                        {!showArchived && (
+                          <div className="text-[9px] text-rmpg-600 font-mono mt-1">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-700 text-rmpg-300">N</kbd> or click New Incident to create one.</div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider">
+                          No incidents match your search
+                        </div>
+                        {(searchQuery || uofFilter) && (
+                          <button
+                            type="button"
+                            onClick={() => { setSearchQuery(''); setUofFilter(false); }}
+                            className="text-[9px] text-brand-400 hover:text-brand-300 font-mono mt-1 underline"
+                          >
+                            Clear filters
+                          </button>
+                        )}
+                      </>
+                    )}
                   </td>
                 </tr>
               )}
@@ -1391,7 +1507,7 @@ export default function IncidentsPage() {
           <div className="flex items-center gap-0 px-4 py-2 border-b border-border-default bg-surface-base">
             {labels.map((label, i) => (
               <div key={label} className="flex items-center flex-1">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i <= idx ? 'bg-green-500' : 'bg-rmpg-600'}`} style={i <= idx ? { boxShadow: '0 0 4px #22c55e' } : {}} />
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${i <= idx ? 'bg-green-500' : 'bg-rmpg-600'}`} style={i <= idx ? { boxShadow: '0 0 4px rgb(var(--sev-ok-rgb) / 0.9)' } : {}} />
                 <span className={`text-[8px] font-mono uppercase ml-1 ${i <= idx ? 'text-green-400 font-bold' : 'text-rmpg-500'}`}>{label}</span>
                 {i < labels.length - 1 && <div className={`flex-1 h-px mx-1 ${i < idx ? 'bg-green-700' : 'bg-rmpg-700'}`} />}
               </div>
@@ -1449,7 +1565,7 @@ export default function IncidentsPage() {
             <label className="field-label" style={{ fontSize: '10px', letterSpacing: '0.05em' }}>SOURCE CALL</label>
             <div className="flex items-center gap-3 mt-0.5">
               <button type="button"
-                onClick={() => navigate('/dispatch')}
+                onClick={() => navigate(selectedIncident.call_id ? `/dispatch?call_id=${selectedIncident.call_id}` : '/dispatch')}
                 className="font-mono text-green-400 text-sm hover:text-green-300 hover:underline transition-colors"
               >
                 {inc.call_number}
@@ -1481,7 +1597,7 @@ export default function IncidentsPage() {
               <label className="field-label">Linked Call:</label>
               {selectedIncident.call_number ? (
                 <button type="button"
-                  onClick={() => navigate('/dispatch')}
+                  onClick={() => navigate(selectedIncident.call_id ? `/dispatch?call_id=${selectedIncident.call_id}` : '/dispatch')}
                   className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold text-rmpg-400 bg-surface-sunken/20 border border-border-default/40 hover:bg-surface-sunken/40 transition-colors"
                   title="Go to dispatch"
                 >
@@ -1625,7 +1741,7 @@ export default function IncidentsPage() {
               {inc.process_service_type && (
                 <div>
                   <label className="field-label">Document Type:</label>
-                  <p className="text-xs text-rmpg-200">{(inc.process_service_type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</p>
+                  <p className="text-xs text-rmpg-200">{toDisplayLabel(inc.process_service_type || '')}</p>
                 </div>
               )}
               {inc.process_served_to && (
@@ -1662,7 +1778,7 @@ export default function IncidentsPage() {
                       ? 'bg-red-900/40 text-red-400 border-red-600/40'
                       : 'bg-amber-900/40 text-amber-400 border-amber-600/40'
                   }`}>
-                    {(inc.process_service_result || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                    {toDisplayLabel(inc.process_service_result || '')}
                   </span>
                 </div>
               )}
@@ -1744,7 +1860,7 @@ export default function IncidentsPage() {
                     {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
                       <IconButton
                         onClick={() => handleUnlinkPerson(lp.person_id)}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
+                        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                         title="Unlink person"
                         aria-label="Unlink person"
                       >
@@ -1795,7 +1911,7 @@ export default function IncidentsPage() {
                   {(isAdmin || isGodMode || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
                     <IconButton
                       onClick={() => handleUnlinkVehicle(lv.vehicle_id)}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
+                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                       title="Unlink vehicle"
                       aria-label="Unlink vehicle"
                     >
@@ -1830,7 +1946,7 @@ export default function IncidentsPage() {
                 <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? '#ef4444' : offense.offense_level === 'misdemeanor' ? '#f59e0b' : 'var(--rmpg-500)' }}>
+                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? 'var(--sev-critical)' : offense.offense_level === 'misdemeanor' ? 'var(--sev-warn)' : 'var(--rmpg-500)' }}>
                         {offense.offense_code}
                       </span>
                       <span className="text-xs text-rmpg-100 font-medium truncate">{offense.description}</span>
@@ -1849,10 +1965,25 @@ export default function IncidentsPage() {
                     </div>
                   </div>
                   {(isAdmin || isGodMode) && (
-                    <IconButton onClick={async () => {
-                      if (!confirm('Remove this offense?')) return;
-                      try { await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' }); } catch { return; }
-                      fetchIncidentDetail(selectedIncident.id);
+                    <IconButton onClick={() => {
+                      // Audit caught (2026-06-21): bare "Remove this offense?"
+                      // was ambiguous on incidents with multiple offenses.
+                      // 2026-06-22 (SW v1032): native confirm → ConfirmDialog
+                      // (same op-feedback flow as Cases SW v1028).
+                      const label = [offense.offense_code, offense.description].filter(Boolean).join(' — ') || `offense #${offense.id}`;
+                      setRemovalConfirm({
+                        title: 'Remove Offense',
+                        message: `Remove ${label}?`,
+                        detail: label,
+                        run: async () => {
+                          try {
+                            await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' });
+                            fetchIncidentDetail(selectedIncident.id);
+                          } catch (err: any) {
+                            addToast(err?.message || 'Failed to remove offense', 'error');
+                          }
+                        },
+                      });
                     }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove offense"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
                 </div>
@@ -1895,10 +2026,22 @@ export default function IncidentsPage() {
                   {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {safeTimeStr(officer.departed_at, '')}</span>}
                   {officer.action_taken && <span className="text-[9px] text-rmpg-400 truncate max-w-[120px]" title={officer.action_taken}>{officer.action_taken}</span>}
                   {(isAdmin || isGodMode) && (
-                    <IconButton onClick={async () => {
-                      if (!confirm('Remove this officer?')) return;
-                      try { await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' }); } catch { return; }
-                      fetchIncidentDetail(selectedIncident.id);
+                    <IconButton onClick={() => {
+                      const officerName = officer.full_name || officer.officer_name || `officer #${officer.id}`;
+                      const role = officer.role ? ` (${officer.role})` : '';
+                      setRemovalConfirm({
+                        title: 'Remove Officer',
+                        message: `Remove ${officerName}${role} from this incident?`,
+                        detail: `${officerName}${role}`,
+                        run: async () => {
+                          try {
+                            await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' });
+                            fetchIncidentDetail(selectedIncident.id);
+                          } catch (err: any) {
+                            addToast(err?.message || 'Failed to remove officer', 'error');
+                          }
+                        },
+                      });
                     }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove officer"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
                 </div>
@@ -1926,11 +2069,38 @@ export default function IncidentsPage() {
           {detailLinks.length > 0 ? (
             <div className="space-y-1">
               {detailLinks.map((link: any) => {
-                const typeColors: Record<string, string> = { incident: '#888888', call: '#22c55e', case: '#a855f7', warrant: '#ef4444', citation: '#f59e0b', arrest: '#ec4899' };
+                // Categorical entity palette — 6 visually-distinct hues. The
+                // four with a semantic match route through CSS variables
+                // (foreground + matching alpha tint for bg/border); arrest
+                // keeps a raw hot-pink to stay distinct from warrant red
+                // (same categorical-palette carve-out as Connections graph
+                // PR #1605 / SW v1029 — chart-code 16-entity palette stays
+                // hex because --sev-* can't differentiate that many types).
+                // Two parallel maps because the original `color + '20'` hex-
+                // opacity trick doesn't work on `var(--…)` references — we
+                // need to drive alpha tints from the *-rgb companion tokens.
+                const typeColors: Record<string, string> = {
+                  incident: 'var(--spm-text-muted)',
+                  call: 'var(--sev-ok)',
+                  case: 'var(--sev-special-soft)',
+                  warrant: 'var(--sev-critical)',
+                  citation: 'var(--sev-warn)',
+                  arrest: 'var(--pink-400, #ec4899)',
+                };
+                const typeColorRgb: Record<string, string> = {
+                  incident: 'var(--spm-text-muted-rgb)',
+                  call: 'var(--sev-ok-rgb)',
+                  case: 'var(--sev-special-rgb)',
+                  warrant: 'var(--sev-critical-rgb)',
+                  citation: 'var(--sev-warn-rgb)',
+                  arrest: 'var(--pink-400-rgb, 236 72 153)',
+                };
+                const fg = typeColors[link.linked_type] || 'var(--rmpg-500)';
+                const rgb = typeColorRgb[link.linked_type] || 'var(--rmpg-500-rgb)';
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (
                   <div key={link.id} className="flex items-center gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
-                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: typeColors[link.linked_type] || 'var(--rmpg-500)', background: (typeColors[link.linked_type] || 'var(--rmpg-500)') + '20', border: `1px solid ${typeColors[link.linked_type] || 'var(--rmpg-500)'}40` }}>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase" style={{ color: fg, background: `rgb(${rgb} / 0.12)`, border: `1px solid rgb(${rgb} / 0.25)` }}>
                       {typeLabels[link.linked_type] || link.linked_type}
                     </span>
                     {link.detail ? (
@@ -1944,10 +2114,21 @@ export default function IncidentsPage() {
                     {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{link.detail.status}</span>}
                     {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{link.link_reason}</span>}
                     {(isAdmin || isGodMode) && (
-                      <IconButton onClick={async () => {
-                        if (!confirm('Remove this link?')) return;
-                        try { await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' }); } catch { return; }
-                        fetchIncidentDetail(selectedIncident.id);
+                      <IconButton onClick={() => {
+                        const linkLabel = [link.linked_type, link.detail?.incident_number || link.detail?.call_number || link.detail?.case_number || `#${link.linked_id}`].filter(Boolean).join(' ');
+                        setRemovalConfirm({
+                          title: 'Remove Cross-Reference',
+                          message: `Remove cross-reference to ${linkLabel || 'this record'}?`,
+                          detail: linkLabel,
+                          run: async () => {
+                            try {
+                              await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' });
+                              fetchIncidentDetail(selectedIncident.id);
+                            } catch (err: any) {
+                              addToast(err?.message || 'Failed to remove cross-reference', 'error');
+                            }
+                          },
+                        });
                       }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove link"><Trash2 className="w-3 h-3" /></IconButton>
                     )}
                   </div>
@@ -2187,7 +2368,7 @@ export default function IncidentsPage() {
       {/* Sticky Action Bar */}
       <div
         className="flex-shrink-0 px-4 py-2.5 border-t border-rmpg-600 flex items-center gap-2"
-        style={{ background: 'linear-gradient(180deg, #141414 0%, #0c0c0c 100%)' }}
+        style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
       >
         {!isEditing ? (
           <>
@@ -2207,7 +2388,7 @@ export default function IncidentsPage() {
                 </button>
               </>
             )}
-            {(isAdmin || selectedIncident.status === 'draft') && (
+            {(canSupervise || selectedIncident.status === 'draft') && (
               <button type="button"
                 onClick={() => setDeleteTarget(selectedIncident)}
                 className="toolbar-btn toolbar-btn-danger"
@@ -2288,14 +2469,102 @@ export default function IncidentsPage() {
   // Set document title
   useEffect(() => { document.title = 'Incident Reports \u2014 RMPG Flex'; }, []);
 
-  // Keyboard shortcut: Escape to close modals
+  // \u2500\u2500 /incidents?incident_id=<id> deep-link auto-select \u2500\u2500
+  // 12th consecutive page-pass for the cross-page deep-link contract
+  // (Patrol/FI/MDT/Cases/etc.). Falls through to /incidents/:id when the
+  // row isn't in the first 100k pulled by fetchIncidents (defensive \u2014 the
+  // list query already caps at limit=100000 so this is mostly a safety
+  // net for archived rows or future server-side pagination).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const pendingIncidentIdRef = useRef<string | null>(searchParams.get('incident_id'));
   useEffect(() => {
+    const target = pendingIncidentIdRef.current;
+    if (!target || loading) return;
+    pendingIncidentIdRef.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const hit = incidents.find((i) => String(i.id) === String(target));
+        if (hit) {
+          if (!cancelled) { setSelectedIncident(hit); setIsEditing(false); }
+        } else {
+          const detail = await apiFetch<any>(`/incidents/${target}`);
+          if (cancelled) return;
+          const row = detail?.data ?? detail;
+          if (row && row.id != null) {
+            setSelectedIncident(mapDbIncident(row));
+            setIsEditing(false);
+          } else {
+            addToast(`Incident ${target} not found`, 'warning');
+          }
+        }
+      } catch {
+        if (!cancelled) addToast(`Failed to load incident ${target}`, 'error');
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('incident_id');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incidents, loading]);
+
+  // Keyboard shortcuts. Escape uses smallest-open-first cascade so a
+  // confirm dialog inside the page doesn't compete with the form modal
+  // \u2014 pressing Esc closes only the topmost open modal, not all of them.
+  // `N` opens a new incident from anywhere on the page (mirrors
+  // Dispatch / Field Interviews / MDT for operator muscle memory) but
+  // is suppressed while typing into an input / textarea / contenteditable
+  // so it doesn't fire mid-narrative.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowFormModal(false); }
+      if (e.key === 'Escape') {
+        // Order: confirm/transient dialogs first, then entry modals, then
+        // the main form. ConfirmDialog has its own internal Esc handler
+        // for the removal flow but the React-rendered raw-overlay modals
+        // (custody, offense, officer, link) don't, so we close them here.
+        if (removalConfirm) { setRemovalConfirm(null); return; }
+        if (deleteTarget) { setDeleteTarget(null); return; }
+        if (custodyTransfer) { setCustodyTransfer(null); return; }
+        if (showReturnModal) { setShowReturnModal(false); return; }
+        if (showAddLinkModal) { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); return; }
+        if (showAddOfficerModal) { setShowAddOfficerModal(false); setAddOfficerPickerId(null); return; }
+        if (showAddOffenseModal) { setShowAddOffenseModal(false); return; }
+        if (showSupplementModal) { setShowSupplementModal(false); return; }
+        if (showEvidenceModal) { setShowEvidenceModal(false); return; }
+        if (showLinkVehicleModal) { setShowLinkVehicleModal(false); return; }
+        if (showLinkPersonModal) { setShowLinkPersonModal(false); return; }
+        if (showFormModal) { setShowFormModal(false); return; }
+        return;
+      }
+      if (isTypingInField(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'n' || e.key === 'N') {
+        // Don't shadow the new-incident button if a modal is already open
+        // \u2014 Esc dismisses first.
+        if (showFormModal || showReturnModal || deleteTarget || removalConfirm) return;
+        e.preventDefault();
+        setEditingIncident(undefined);
+        setFormDefaultType('');
+        setShowFormModal(true);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [
+    removalConfirm, deleteTarget, custodyTransfer, showReturnModal,
+    showAddLinkModal, showAddOfficerModal, showAddOffenseModal,
+    showSupplementModal, showEvidenceModal, showLinkVehicleModal,
+    showLinkPersonModal, showFormModal,
+  ]);
 
   return (
     <div className="flex h-full flex-col">
@@ -2335,6 +2604,93 @@ export default function IncidentsPage() {
         confirmVariant="danger"
         isLoading={isDeleting}
       />
+
+      {/* Removal Confirmation Dialog — single themed dialog drives all
+          five in-detail removal flows (unlink person/vehicle, remove
+          offense/officer/cross-reference). Replaces 5 native dialogs
+          that the v1020-era audit catalogued (3 confirm() + 2 window.
+          confirm — see SW v1032 notes). */}
+      <ConfirmDialog
+        isOpen={!!removalConfirm}
+        onClose={() => removalSubmitting ? undefined : setRemovalConfirm(null)}
+        onConfirm={runRemovalConfirm}
+        title={removalConfirm?.title ?? ''}
+        message={removalConfirm?.message ?? ''}
+        details={removalConfirm?.detail ? <span className="font-mono">{removalConfirm.detail}</span> : undefined}
+        confirmLabel="Remove"
+        confirmVariant="danger"
+        isLoading={removalSubmitting}
+      />
+
+      {/* Return Incident Modal — replaces window.prompt('Return
+          comments…') with a proper textarea + cancel/confirm. Mirrors
+          the Cases-page pattern (PR #1604 / SW v1028). */}
+      {showReturnModal && (
+        <div
+          className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !isSubmitting && setShowReturnModal(false)}
+        >
+          <div
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[420px] max-w-[95vw]"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider flex items-center gap-2">
+                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                Return Incident
+              </h3>
+              <IconButton onClick={() => setShowReturnModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close return incident">
+                <X className="w-4 h-4" />
+              </IconButton>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-300">
+                {selectedIncident?.incident_number ? (
+                  <>Return <span className="font-mono text-rmpg-100">{selectedIncident.incident_number}</span> to the submitting officer. Reviewer comments are stored on the incident.</>
+                ) : (
+                  'Return this incident to the submitting officer. Reviewer comments are stored on the incident.'
+                )}
+              </p>
+              <div>
+                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
+                  Return Comments (optional)
+                </label>
+                <RichTextArea
+                  value={returnComments}
+                  onChange={(e) => setReturnComments(e.target.value)}
+                  rows={4}
+                  placeholder="Explain what additional work is needed (missing fields, narrative clarity, supporting evidence…)"
+                  className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-rmpg-100 placeholder-rmpg-500 outline-none resize-none"
+                  style={{ borderRadius: 2 }}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-4 py-2.5 border-t border-rmpg-600">
+              <button
+                type="button"
+                onClick={() => setShowReturnModal(false)}
+                className="toolbar-btn"
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitReturn}
+                disabled={isSubmitting}
+                className="toolbar-btn toolbar-btn-danger flex items-center gap-1"
+              >
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <RotateCcw className="w-3 h-3" />}
+                Return Incident
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Link Person Modal */}
       {selectedIncident && (
@@ -2431,7 +2787,7 @@ export default function IncidentsPage() {
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
+                <label htmlFor="ff-incidentspage-1" className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
                 <select id="ff-incidentspage-1"
                   value={custodyAction}
                   onChange={(e) => setCustodyAction(e.target.value)}
@@ -2448,7 +2804,7 @@ export default function IncidentsPage() {
               </div>
               {custodyTransfer.currentLocation && (
                 <div>
-                  <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
+                  <label htmlFor="ff-incidentspage-2" className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
                   <input id="ff-incidentspage-2"
                     value={custodyTransfer.currentLocation}
                     readOnly
@@ -2458,7 +2814,7 @@ export default function IncidentsPage() {
                 </div>
               )}
               <div>
-                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
+                <label htmlFor="ff-incidentspage-3" className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
                 <input id="ff-incidentspage-3"
                   value={custodyToLocation}
                   onChange={(e) => setCustodyToLocation(e.target.value)}
@@ -2554,7 +2910,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Officer Modal ═══ */}
       {showAddOfficerModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddOfficerModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[450px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -2581,7 +2937,7 @@ export default function IncidentsPage() {
 
               try {
                 const result = await apiFetch<any>(`/incidents/${selectedIncident.id}/officers`, { method: 'POST', body: JSON.stringify(data) });
-                setShowAddOfficerModal(false);
+                { setShowAddOfficerModal(false); setAddOfficerPickerId(null); };
                 addToast(result?.updated_existing ? 'Officer details updated on incident' : 'Officer added to incident', 'success');
                 fetchIncidentDetail(selectedIncident.id);
               } catch (err: any) {
@@ -2591,26 +2947,21 @@ export default function IncidentsPage() {
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Responding Officer</h3>
-              <IconButton onClick={() => setShowAddOfficerModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Officer *</label>
-                <select name="officer_select_id" className="input-dark w-full text-xs">
-                  <option value="">
-                    {incidentOfficerOptionsLoading
-                      ? 'Loading officers...'
-                      : incidentOfficerOptions.length > 0
-                        ? 'Select officer...'
-                        : 'No officers available'}
-                  </option>
-                  {incidentOfficerOptions.map((officer) => (
-                    <option key={officer.id} value={officer.id}>
-                      {formatIncidentOfficerOptionLabel(officer)}{isIncidentOfficerLinked(detailOfficers, officer.id) ? ' — already on incident' : ''}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[9px] text-rmpg-500 mt-0.5">Enter officer user ID if dropdown is empty. Selecting an officer already on the incident updates their role, timing, or notes.</p>
-                <input name="manual_officer_id" type="number" className="input-dark w-full text-xs mt-1" placeholder="Officer User ID" />
+                <OfficerPicker
+                  value={addOfficerPickerId}
+                  onChange={(id) => setAddOfficerPickerId(id)}
+                  placeholder="Search officer by name, badge, rank, unit…"
+                />
+                {/* Hidden inputs kept so the existing FormData submission keeps
+                    working unchanged — the FormData path reads officer_select_id
+                    OR manual_officer_id and prefers whichever is non-empty. */}
+                <input type="hidden" name="officer_select_id" value={addOfficerPickerId ?? ''} />
+                <input type="hidden" name="manual_officer_id" value="" />
+                <p className="text-[9px] text-rmpg-500 mt-0.5">Selecting an officer already on the incident updates their role, timing, or notes.</p>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Role</label>
                 <select name="role" className="input-dark w-full text-xs">
@@ -2631,7 +2982,7 @@ export default function IncidentsPage() {
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><RichTextArea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button type="button" onClick={() => setShowAddOfficerModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }} className="toolbar-btn">Cancel</button>
               <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Plus className="w-3 h-3" /> Add Officer</button>
             </div>
           </form>
@@ -2640,7 +2991,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Cross-Reference Link Modal ═══ */}
       {showAddLinkModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddLinkModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -2652,18 +3003,23 @@ export default function IncidentsPage() {
               fd.forEach((v, k) => { if (v) data[k] = v; });
               try {
                 await apiFetch(`/incidents/${selectedIncident.id}/links`, { method: 'POST', body: JSON.stringify(data) });
-                setShowAddLinkModal(false);
+                { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); };
                 fetchIncidentDetail(selectedIncident.id);
               } catch { /* error */ }
             }}
           >
             <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Link Record</h3>
-              <IconButton onClick={() => setShowAddLinkModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record Type *</label>
-                <select name="linked_type" required className="input-dark w-full text-xs">
+                <select
+                  required
+                  value={addLinkType}
+                  onChange={(e) => { setAddLinkType(e.target.value as LinkableRecordType | ''); setAddLinkId(null); }}
+                  className="input-dark w-full text-xs"
+                >
                   <option value="">Select type...</option>
                   <option value="incident">Incident Report</option>
                   <option value="call">Call for Service</option>
@@ -2672,16 +3028,25 @@ export default function IncidentsPage() {
                   <option value="citation">Citation</option>
                   <option value="arrest">Arrest Record</option>
                 </select>
+                {/* Hidden form-field so the existing FormData submit picks up
+                    the picker-driven type without rewriting the submit path. */}
+                <input type="hidden" name="linked_type" value={addLinkType} />
               </div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record ID *</label>
-                <input name="linked_id" type="number" required className="input-dark w-full text-xs" placeholder="Enter the record ID number" />
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Record *</label>
+                <RecordPicker
+                  type={addLinkType}
+                  value={addLinkId}
+                  onChange={(id) => setAddLinkId(id)}
+                  required
+                />
+                <input type="hidden" name="linked_id" value={addLinkId ?? ''} />
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Link Reason</label>
                 <input name="link_reason" className="input-dark w-full text-xs" placeholder="e.g., Related incident, follow-up, same suspect" />
               </div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
-              <button type="button" onClick={() => setShowAddLinkModal(false)} className="toolbar-btn">Cancel</button>
+              <button type="button" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }} className="toolbar-btn">Cancel</button>
               <button type="submit" className="toolbar-btn toolbar-btn-primary flex items-center gap-1"><Link className="w-3 h-3" /> Link Record</button>
             </div>
           </form>

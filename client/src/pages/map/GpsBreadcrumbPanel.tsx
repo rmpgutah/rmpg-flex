@@ -341,12 +341,12 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             )}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[9px] text-rmpg-400 block mb-0.5">From</label>
+                <label htmlFor="ff-gpsbreadcrumbpanel-1" className="text-[9px] text-rmpg-400 block mb-0.5">From</label>
                 <input id="ff-gpsbreadcrumbpanel-1" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100" />
                 <input id="ff-gpsbreadcrumbpanel-2" type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 mt-1" />
               </div>
               <div>
-                <label className="text-[9px] text-rmpg-400 block mb-0.5">To</label>
+                <label htmlFor="ff-gpsbreadcrumbpanel-3" className="text-[9px] text-rmpg-400 block mb-0.5">To</label>
                 <input id="ff-gpsbreadcrumbpanel-3" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100" />
                 <input id="ff-gpsbreadcrumbpanel-4" type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 mt-1" />
               </div>

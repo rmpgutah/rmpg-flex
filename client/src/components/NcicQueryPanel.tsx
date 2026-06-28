@@ -4,8 +4,8 @@
 // local database. Black background, green monospace text.
 // ============================================================
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { X, Terminal, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { X, Terminal, Loader2, Download, Trash2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -37,9 +37,13 @@ import {
 } from '../utils/ncicFormatter';
 import { lookupAnyCode, decode, type CodeHit } from '../constants/ncicCodes';
 import { playTone } from '../utils/dispatchTones';
+import { displayTimeZone } from '../utils/timeZoneMode';
 
 // ── Quick-query buttons shown on welcome screen ──────────────
-const QUICK_QUERIES = [
+// Quick-query buttons rendered above the input. Clicking populates the input
+// with the verb + a trailing space so the operator just types the term.
+// Exported for unit testing.
+export const QUICK_QUERIES = [
   { label: 'XREF', prefix: 'QX ', desc: 'Cross-Reference (ALL)' },
   { label: 'PERSON', prefix: 'QH ', desc: 'Person / History' },
   { label: 'VEHICLE', prefix: 'QV ', desc: 'Vehicle / Plate' },
@@ -50,11 +54,47 @@ const QUICK_QUERIES = [
   { label: 'ARREST', prefix: 'QR ', desc: 'Arrest Records' },
 ] as const;
 
+// Welcome banner — same ASCII-box art for both embedded and overlay modes.
+// Lifted to a single constant (previously the 18-line block was duplicated
+// verbatim at both render sites, doubling theme-cleanup cost).
+const WELCOME_BANNER = `╔══════════════════════════════════════════╗
+║     NCIC / NLETS QUERY TERMINAL          ║
+║     RMPG FLEX DISPATCH CAD               ║
+╠══════════════════════════════════════════╣
+║  COMMANDS:                               ║
+║  QX <name>     Cross-Reference (ALL)     ║
+║  QH <name>     Query Person / History    ║
+║  QV <plate>    Query Vehicle             ║
+║  QW <name>     Query Warrants            ║
+║  QT <phone>    Query Phone Number        ║
+║  QD <name/DL#> Query Driver's License    ║
+║  QA <address>  Query Address / Premise   ║
+║  QO <name>     Query OFAC Watchlist      ║
+║  QR <name>     Query Arrest Records      ║
+║  QS <name>     Query Skip Tracker        ║
+║  QB <name>     Query Background Check    ║
+║  QC <name>     Query Utah Courts (web)   ║
+║  QZ <code/term> Code Translation         ║
+║                                          ║
+║  HISTORY:  ↑ / ↓  navigate prior queries ║
+╚══════════════════════════════════════════╝`;
+
+/** History size cap — typical shift sees < 100 queries; 30 is plenty for the
+ *  "I mistyped a plate, let me fix it" use case while bounding the array. */
+const NCIC_HISTORY_CAP = 30;
+
+export interface NcicQueryPanelHandle {
+  focusInput: () => void;
+  clearSession: () => void;
+  exportSession: () => void;
+}
+
 interface NcicQueryPanelProps {
   isOpen: boolean;
   onClose: () => void;
   initialQuery?: { type: 'person' | 'vehicle' | 'warrant' | 'xref' | 'phone' | 'address' | 'dl' | 'ofac'; query: string } | null;
   embedded?: boolean;
+  canManage?: boolean;
 }
 
 interface QueryEntry {
@@ -130,13 +170,47 @@ function formatCodeDecode(term: string, hits: CodeHit[]): string {
   return [...hdr, '', ...body, '', `  SUMMARY: ${hits.length} CODE(S) FOUND`, '─'.repeat(60), '*** END OF RECORD ***'].join('\n');
 }
 
-export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded }: NcicQueryPanelProps) {
+const NcicQueryPanel = forwardRef<NcicQueryPanelHandle, NcicQueryPanelProps>(function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded, canManage }, ref) {
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<QueryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const queryIdCounterRef = useRef(0);
+
+  // In-memory query history — drives ↑/↓ arrow-key recall like a shell
+  // terminal. `historyIdx` is the cursor: -1 means "live input" (typing new),
+  // 0 = most recent prior query, history.length-1 = oldest kept. Bounded at
+  // NCIC_HISTORY_CAP so a long shift can't grow this list unbounded.
+  const historyRef = useRef<string[]>([]);
+  const historyIdxRef = useRef<number>(-1);
+  const draftRef = useRef<string>('');
+
+  // Export + clear session handlers — exposed via imperative ref for parent shortcuts
+  const clearSession = useCallback(() => { setEntries([]); }, []);
+  const exportSession = useCallback(() => {
+    if (entries.length === 0) return;
+    const lines: string[] = [
+      'RMPG FLEX — NCIC/NLETS TERMINAL SESSION EXPORT',
+      `EXPORTED: ${new Date().toLocaleString('en-US', { timeZone: displayTimeZone() ?? undefined, hour12: false })}`,
+      '═'.repeat(70),
+      '',
+    ];
+    for (const e of entries) {
+      lines.push(`[${e.timestamp}] > ${e.command}`);
+      lines.push(e.response);
+      lines.push('');
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ncic-session-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [entries]);
+
+  useImperativeHandle(ref, () => ({ focusInput: () => inputRef.current?.focus(), clearSession, exportSession }), [clearSession, exportSession]);
 
   // ── Right-click context menu (per result entry) ──
   const { openMenu } = useContextMenu();
@@ -178,9 +252,22 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 
     if (!queryText) return;
 
+    // Push to history (dedupe a back-to-back repeat — re-running the SAME
+    // command shouldn't add two entries). Reset the cursor after every new
+    // submission so ↑ always starts from the most recent.
+    const trimmed = command.trim();
+    if (trimmed && historyRef.current[0] !== trimmed) {
+      historyRef.current.unshift(trimmed);
+      if (historyRef.current.length > NCIC_HISTORY_CAP) {
+        historyRef.current.length = NCIC_HISTORY_CAP;
+      }
+    }
+    historyIdxRef.current = -1;
+    draftRef.current = '';
+
     // Input validation: enforce length limits
     if (queryText.length > 200) {
-      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: displayTimeZone() });
       setEntries(prev => [...prev, {
         id: ++queryIdCounterRef.current, timestamp: ts, command,
         response: 'ERROR: QUERY TOO LONG — MAXIMUM 200 CHARACTERS', hasHit: false,
@@ -190,7 +277,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
     }
 
     setLoading(true);
-    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: displayTimeZone() });
 
     try {
       let response = '';
@@ -825,11 +912,67 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
     if (e.key === 'Enter') {
       e.preventDefault();
       handleSubmit();
+      return;
     }
     if (e.key === 'Escape') {
       onClose();
+      return;
     }
-  }, [handleSubmit, onClose]);
+    // ↑/↓ — terminal-style command-history recall. -1 is "live draft"; 0 is
+    // most recent prior. Stepping past the oldest entry stays at the oldest;
+    // stepping past -1 returns to whatever was typed before history began.
+    if (e.key === 'ArrowUp') {
+      if (historyRef.current.length === 0) return;
+      e.preventDefault();
+      if (historyIdxRef.current === -1) draftRef.current = input;
+      const next = Math.min(historyRef.current.length - 1, historyIdxRef.current + 1);
+      historyIdxRef.current = next;
+      setInput(historyRef.current[next]);
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      if (historyIdxRef.current === -1) return;
+      e.preventDefault();
+      const next = historyIdxRef.current - 1;
+      historyIdxRef.current = next;
+      setInput(next === -1 ? draftRef.current : historyRef.current[next]);
+      return;
+    }
+  }, [handleSubmit, onClose, input]);
+
+  // Clicking a QUICK_QUERIES button populates the verb prefix and focuses
+  // the input so the operator just types the search term. Reset history
+  // cursor so a subsequent ↑ doesn't yank them out of the prefix.
+  const insertQuickPrefix = useCallback((prefix: string) => {
+    setInput(prefix);
+    historyIdxRef.current = -1;
+    draftRef.current = '';
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
+
+  // Shared quick-button row + welcome banner — rendered identically by both
+  // embedded and overlay modes. Extracted so the markup (and its theme
+  // tokens) live in exactly one place.
+  const QuickButtons = (
+    <div className="ncic-quick-row" role="toolbar" aria-label="Quick NCIC queries">
+      {QUICK_QUERIES.map(({ label, prefix, desc }) => (
+        <button
+          key={label}
+          type="button"
+          className="ncic-quick-btn"
+          onClick={() => insertQuickPrefix(prefix)}
+          title={`${prefix.trim()} — ${desc}`}
+          disabled={loading}
+        >
+          <span className="ncic-quick-verb">{prefix.trim()}</span>
+          <span className="ncic-quick-label">{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+  const WelcomeBlock = (
+    <div className="ncic-welcome"><pre>{WELCOME_BANNER}</pre></div>
+  );
 
   if (!isOpen && !embedded) return null;
 
@@ -839,29 +982,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
       <div className="ncic-embedded flex flex-col h-full">
         {/* Terminal output area */}
         <div className="ncic-output flex-1" ref={scrollRef}>
-          {entries.length === 0 && !loading && (
-            <div className="ncic-welcome">
-              <pre>{`╔══════════════════════════════════════════╗
-║     NCIC / NLETS QUERY TERMINAL          ║
-║     RMPG FLEX DISPATCH CAD               ║
-╠══════════════════════════════════════════╣
-║  COMMANDS:                               ║
-║  QX <name>     Cross-Reference (ALL)     ║
-║  QH <name>     Query Person / History    ║
-║  QV <plate>    Query Vehicle             ║
-║  QW <name>     Query Warrants            ║
-║  QT <phone>    Query Phone Number        ║
-║  QD <name/DL#> Query Driver's License    ║
-║  QA <address>  Query Address / Premise   ║
-║  QO <name>     Query OFAC Watchlist      ║
-║  QR <name>     Query Arrest Records      ║
-║  QS <name>     Query Skip Tracker        ║
-║  QB <name>     Query Background Check    ║
-║  QC <name>     Query Utah Courts (web)   ║
-║  QZ <code/term> Code Translation         ║
-╚══════════════════════════════════════════╝`}</pre>
-            </div>
-          )}
+          {entries.length === 0 && !loading && WelcomeBlock}
           {entries.map(entry => (
             <div key={entry.id} className="ncic-entry" onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}>
               <div className="ncic-entry-cmd">
@@ -878,6 +999,32 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
               <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
               <span className="animate-pulse">SEARCHING...</span>
             </div>
+          )}
+        </div>
+        {QuickButtons}
+        {/* Action bar — Export always visible; Clear gated to admin/manager */}
+        <div className="flex items-center gap-1 px-2 py-1 border-t border-rmpg-800">
+          <button
+            type="button"
+            onClick={exportSession}
+            disabled={entries.length === 0}
+            title="Export session as TXT"
+            className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-brand-400 hover:text-brand-300 border border-rmpg-700 hover:border-brand-500 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download size={10} />
+            <span>EXPORT</span>
+          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={clearSession}
+              disabled={entries.length === 0}
+              title="Clear session (admin/manager only)"
+              className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-red-400 hover:text-red-300 border border-rmpg-700 hover:border-red-800 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 size={10} />
+              <span>CLEAR</span>
+            </button>
           )}
         </div>
         {/* Input bar */}
@@ -907,11 +1054,11 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         {/* Header */}
         <div className="ncic-header">
           <div className="flex items-center gap-2">
-            <Terminal style={{ width: 14, height: 14, color: '#d4a017' }} />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>
+            <Terminal style={{ width: 14, height: 14, color: 'var(--brand-gold)' }} />
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--brand-gold)', letterSpacing: '0.1em' }}>
               NCIC / NLETS Terminal
             </span>
-            <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: 'rgba(212,160,23,0.1)', color: '#d4a017', border: '1px solid rgba(212,160,23,0.2)' }}>SECURE</span>
+            <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.1)', color: 'var(--brand-gold)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.2)' }}>SECURE</span>
           </div>
           <button type="button" onClick={onClose} className="ncic-close-btn" aria-label="Close terminal" title="Close terminal">
             <X style={{ width: 14, height: 14 }} />
@@ -920,29 +1067,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 
         {/* Terminal output area */}
         <div className="ncic-output" ref={scrollRef}>
-          {entries.length === 0 && !loading && (
-            <div className="ncic-welcome">
-              <pre>{`╔══════════════════════════════════════════╗
-║     NCIC / NLETS QUERY TERMINAL          ║
-║     RMPG FLEX DISPATCH CAD               ║
-╠══════════════════════════════════════════╣
-║  COMMANDS:                               ║
-║  QX <name>     Cross-Reference (ALL)     ║
-║  QH <name>     Query Person / History    ║
-║  QV <plate>    Query Vehicle             ║
-║  QW <name>     Query Warrants            ║
-║  QT <phone>    Query Phone Number        ║
-║  QD <name/DL#> Query Driver's License    ║
-║  QA <address>  Query Address / Premise   ║
-║  QO <name>     Query OFAC Watchlist      ║
-║  QR <name>     Query Arrest Records      ║
-║  QS <name>     Query Skip Tracker        ║
-║  QB <name>     Query Background Check    ║
-║  QC <name>     Query Utah Courts (web)   ║
-║  QZ <code/term> Code Translation         ║
-╚══════════════════════════════════════════╝`}</pre>
-            </div>
-          )}
+          {entries.length === 0 && !loading && WelcomeBlock}
 
           {entries.map(entry => (
             <div key={entry.id} className="ncic-entry" onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}>
@@ -964,6 +1089,32 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           )}
         </div>
 
+        {QuickButtons}
+        {/* Action bar — Export always visible; Clear gated to admin/manager */}
+        <div className="flex items-center gap-1 px-2 py-1 border-t border-rmpg-800">
+          <button
+            type="button"
+            onClick={exportSession}
+            disabled={entries.length === 0}
+            title="Export session as TXT"
+            className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-brand-400 hover:text-brand-300 border border-rmpg-700 hover:border-brand-500 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download size={10} />
+            <span>EXPORT</span>
+          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={clearSession}
+              disabled={entries.length === 0}
+              title="Clear session (admin/manager only)"
+              className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-red-400 hover:text-red-300 border border-rmpg-700 hover:border-red-800 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 size={10} />
+              <span>CLEAR</span>
+            </button>
+          )}
+        </div>
         {/* Input bar */}
         <div className="ncic-input-row">
           <span className="ncic-prompt">&gt;</span>
@@ -984,4 +1135,6 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
       </div>
     </div>
   );
-}
+});
+
+export default NcicQueryPanel;

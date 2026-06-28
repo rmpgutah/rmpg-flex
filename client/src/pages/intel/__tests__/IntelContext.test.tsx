@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { IntelProvider, useIntelContext } from '../IntelContext';
 
 function Probe() {
@@ -17,6 +17,8 @@ function Probe() {
 }
 
 describe('IntelContext', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* ignore */ } });
+
   it('selecting an entity sets it and forces dossier mode + expands panel', () => {
     render(<IntelProvider><Probe /></IntelProvider>);
     expect(screen.getByTestId('sel').textContent).toBe('none');
@@ -32,5 +34,13 @@ describe('IntelContext', () => {
     const before = screen.getByTestId('collapsed').textContent;
     fireEvent.click(screen.getByText('toggle'));
     expect(screen.getByTestId('collapsed').textContent).not.toBe(before);
+  });
+
+  // v1047 — no AuthProvider wrapper → falls back to the legacy global
+  // key. This guards against a regression where IntelProvider would
+  // throw when used outside an AuthProvider (the original try/catch
+  // around useAuth was a rules-of-hooks violation).
+  it('renders without an AuthProvider (per-user key falls back to global)', () => {
+    expect(() => render(<IntelProvider><Probe /></IntelProvider>)).not.toThrow();
   });
 });

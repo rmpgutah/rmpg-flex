@@ -586,7 +586,7 @@ export default function FleetCostFormModal({
 
           {/* ── Notes (shared) ───────────────────────────────── */}
           <div>
-            <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
+            <label htmlFor="ff-fleetcostformmodal-32" className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
             <textarea id="ff-fleetcostformmodal-32" className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
               onChange={(e) => set('notes', e.target.value)} maxLength={2000} />
           </div>

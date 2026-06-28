@@ -12,6 +12,7 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from './ToastProvider';
 import { toDisplayLabel } from '../utils/formatters';
+import ConfirmDialog from './ConfirmDialog';
 
 // ── Types ──────────────────────────────────────────
 
@@ -123,6 +124,8 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CriminalRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchRecords = useCallback(async () => {
     try {
@@ -151,8 +154,13 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
       setEditingId(null);
       setForm({ ...EMPTY_FORM });
       await fetchRecords();
-    } catch (err) {
+    } catch (err: any) {
+      // Audit caught (2026-06-21): this was bare console.error with no toast,
+      // so on auth-expiry / D1 schema drift / validation rejection the
+      // operator hit Save several times wondering why nothing happened.
+      // Mirror the handleDelete pattern below.
       console.error('Save criminal history failed:', err);
+      addToast(err?.message || 'Failed to save criminal history', 'error');
     } finally {
       setSaving(false);
     }
@@ -178,13 +186,18 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
     setShowForm(true);
   };
 
-  const handleDelete = async (id: number) => {
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/records/criminal-history/${id}`, { method: 'DELETE' });
+      await apiFetch(`/records/criminal-history/${deleteTarget.id}`, { method: 'DELETE' });
+      setDeleteTarget(null);
       await fetchRecords();
     } catch (err: any) {
       console.error('Delete criminal history failed:', err);
       addToast(err?.message || 'Failed to delete criminal history', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -255,7 +268,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Record Type</label>
+                  <label htmlFor="ff-criminalhistorysection-0" className="text-[9px] text-rmpg-400 uppercase font-bold">Record Type</label>
                   <select id="ff-criminalhistorysection-0"
                     value={form.record_type}
                     onChange={e => setForm(prev => ({ ...prev, record_type: e.target.value }))}
@@ -265,7 +278,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   </select>
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Level</label>
+                  <label htmlFor="ff-criminalhistorysection-1" className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Level</label>
                   <select id="ff-criminalhistorysection-1"
                     value={form.offense_level}
                     onChange={e => setForm(prev => ({ ...prev, offense_level: e.target.value }))}
@@ -275,7 +288,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   </select>
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Date</label>
+                  <label htmlFor="ff-criminalhistorysection-2" className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Date</label>
                   <input id="ff-criminalhistorysection-2"
                     type="date"
                     value={form.offense_date}
@@ -286,7 +299,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               </div>
 
               <div>
-                <label className="text-[9px] text-rmpg-400 uppercase font-bold">Offense / Charge *</label>
+                <label htmlFor="ff-criminalhistorysection-3" className="text-[9px] text-rmpg-400 uppercase font-bold">Offense / Charge *</label>
                 <input id="ff-criminalhistorysection-3"
                   type="text"
                   value={form.offense}
@@ -298,7 +311,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Statute / Code</label>
+                  <label htmlFor="ff-criminalhistorysection-4" className="text-[9px] text-rmpg-400 uppercase font-bold">Statute / Code</label>
                   <input id="ff-criminalhistorysection-4"
                     type="text"
                     value={form.statute}
@@ -308,7 +321,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Case Number</label>
+                  <label htmlFor="ff-criminalhistorysection-5" className="text-[9px] text-rmpg-400 uppercase font-bold">Case Number</label>
                   <input id="ff-criminalhistorysection-5"
                     type="text"
                     value={form.case_number}
@@ -317,7 +330,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Agency</label>
+                  <label htmlFor="ff-criminalhistorysection-6" className="text-[9px] text-rmpg-400 uppercase font-bold">Agency</label>
                   <input id="ff-criminalhistorysection-6"
                     type="text"
                     value={form.agency}
@@ -330,7 +343,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Jurisdiction</label>
+                  <label htmlFor="ff-criminalhistorysection-7" className="text-[9px] text-rmpg-400 uppercase font-bold">Jurisdiction</label>
                   <input id="ff-criminalhistorysection-7"
                     type="text"
                     value={form.jurisdiction}
@@ -340,7 +353,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition</label>
+                  <label htmlFor="ff-criminalhistorysection-8" className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition</label>
                   <input id="ff-criminalhistorysection-8"
                     type="text"
                     value={form.disposition}
@@ -350,7 +363,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition Date</label>
+                  <label htmlFor="ff-criminalhistorysection-9" className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition Date</label>
                   <input id="ff-criminalhistorysection-9"
                     type="date"
                     value={form.disposition_date}
@@ -362,7 +375,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Sentence</label>
+                  <label htmlFor="ff-criminalhistorysection-10" className="text-[9px] text-rmpg-400 uppercase font-bold">Sentence</label>
                   <input id="ff-criminalhistorysection-10"
                     type="text"
                     value={form.sentence}
@@ -372,7 +385,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                   />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase font-bold">Source</label>
+                  <label htmlFor="ff-criminalhistorysection-11" className="text-[9px] text-rmpg-400 uppercase font-bold">Source</label>
                   <input id="ff-criminalhistorysection-11"
                     type="text"
                     value={form.source}
@@ -437,7 +450,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                         RECORD_TYPE_CLASSES[rec.record_type] || RECORD_TYPE_CLASSES.other
                       }`}
                     >
-                      {rec.record_type.replace(/_/g, ' ')}
+                      {toDisplayLabel(rec.record_type)}
                     </span>
                     {rec.offense_level && (
                       <span
@@ -453,7 +466,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                     <button type="button" onClick={() => handleEdit(rec)} className="p-0.5 text-rmpg-400 hover:text-brand-400" title="Edit">
                       <Pencil className="w-3 h-3" />
                     </button>
-                    <button type="button" onClick={() => handleDelete(rec.id)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Delete">
+                    <button type="button" onClick={() => setDeleteTarget(rec)} className="p-0.5 text-rmpg-400 hover:text-red-400" title="Delete record">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
@@ -469,7 +482,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                         <span>
                           <span className="text-rmpg-500">Disp:</span>{' '}
                           <span className={rec.disposition.toLowerCase().includes('guilty') || rec.disposition.toLowerCase().includes('convicted') ? 'text-red-400 font-semibold' : rec.disposition.toLowerCase().includes('dismiss') ? 'text-green-400' : ''}>
-                            {(rec.disposition || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                            {toDisplayLabel(rec.disposition || '')}
                           </span>
                           {rec.disposition_date && <span className="text-rmpg-500 ml-1">({formatDate(rec.disposition_date)})</span>}
                         </span>
@@ -486,6 +499,22 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Criminal Record"
+        message="Permanently delete this criminal history record? This cannot be undone."
+        details={deleteTarget ? (
+          <span className="font-mono text-[10px] text-rmpg-200">
+            {deleteTarget.offense} ({deleteTarget.record_type})
+          </span>
+        ) : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }

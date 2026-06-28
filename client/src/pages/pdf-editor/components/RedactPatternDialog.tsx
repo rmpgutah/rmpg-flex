@@ -72,7 +72,7 @@ export default function RedactPatternDialog({ open, onClose, onRun, scanning }: 
           ))}
         </div>
 
-        <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-0.5">Custom regex (optional)</label>
+        <label htmlFor="ff-redact-custom" className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-0.5">Custom regex (optional)</label>
         <input id="ff-redact-custom" value={custom} onChange={e => setCustom(e.target.value)} placeholder="e.g. \bCASE-\d{6}\b" className={inputCls} />
 
         {error && <div className="text-[10px] text-red-300 mt-2">{error}</div>}

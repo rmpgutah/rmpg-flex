@@ -14,6 +14,7 @@ import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMe
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 import { useToast } from '../../../components/ToastProvider';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -130,6 +131,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   // ─── Forms ────────────────────────────────────────────────
   const [showPeriodForm, setShowPeriodForm] = useState(false);
   const [showRateForm, setShowRateForm] = useState(false);
+  const [confirmDeletePeriodId, setConfirmDeletePeriodId] = useState<number | null>(null);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
   const [editingEntry, setEditingEntry] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
 
@@ -278,14 +281,21 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     } catch { addToast('Failed to create pay period', 'error'); }
   };
 
-  const handleDeletePeriod = async (id: number) => {
-    if (!confirm('Delete this pay period and all its entries?')) return;
+  const handleDeletePeriod = (id: number) => {
+    setConfirmDeletePeriodId(id);
+  };
+
+  const doDeletePeriod = async () => {
+    if (confirmDeletePeriodId === null) return;
+    setConfirmDeleteLoading(true);
     try {
-      await apiFetch(`/hr/payroll/periods/${id}`, { method: 'DELETE' });
+      await apiFetch(`/hr/payroll/periods/${confirmDeletePeriodId}`, { method: 'DELETE' });
       addToast('Pay period deleted', 'success');
-      if (selectedPeriod?.id === id) setSelectedPeriod(null);
+      if (selectedPeriod?.id === confirmDeletePeriodId) setSelectedPeriod(null);
+      setConfirmDeletePeriodId(null);
       fetchPeriods();
     } catch (e: any) { addToast(e.message || 'Failed to delete', 'error'); }
+    finally { setConfirmDeleteLoading(false); }
   };
 
   const handleClosePeriod = async (id: number) => {
@@ -526,7 +536,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             </h3>
             <div className="flex-1" />
             {isManager && (
-              <button type="button" onClick={() => setShowPeriodForm(!showPeriodForm)}
+              <button type="button" data-hr-new-btn onClick={() => setShowPeriodForm(!showPeriodForm)}
                 className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-green-400 bg-green-900/20 hover:bg-green-900/40 border border-green-700/40 rounded-sm transition-colors">
                 <Plus size={12} /> New Period
               </button>
@@ -543,22 +553,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <h4 className="text-xs font-semibold text-rmpg-100">Create Pay Period</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
+                  <label htmlFor="ff-payrolltab-0" className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
                   <input id="ff-payrolltab-0" value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" placeholder="e.g. March 1-15" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
+                  <label htmlFor="ff-payrolltab-1" className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
                   <input id="ff-payrolltab-1" type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
+                  <label htmlFor="ff-payrolltab-2" className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
                   <input id="ff-payrolltab-2" type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
+                  <label htmlFor="ff-payrolltab-3" className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
                   <input id="ff-payrolltab-3" type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
@@ -600,7 +610,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{
                           backgroundColor: (STATUS_COLORS[period.status] || 'var(--rmpg-500)') + '20',
                           color: STATUS_COLORS[period.status] || 'var(--rmpg-500)'
-                        }}>{(period.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                        }}>{toDisplayLabel(period.status)}</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
                         {formatDate(period.start_date)} — {formatDate(period.end_date)} • Pay: {formatDate(period.pay_date)}
@@ -657,7 +667,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <h4 className="text-xs font-semibold text-rmpg-100">Set Pay Rate</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
+                  <label htmlFor="ff-payrolltab-4" className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
                   <select id="ff-payrolltab-4" value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100">
                     <option value="">Select employee...</option>
@@ -665,7 +675,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
+                  <label htmlFor="ff-payrolltab-5" className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
                   <select id="ff-payrolltab-5" value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100">
                     <option value="hourly">Hourly</option>
@@ -674,22 +684,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
+                  <label htmlFor="ff-payrolltab-6" className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
                   <input id="ff-payrolltab-6" type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" placeholder="25.00" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
+                  <label htmlFor="ff-payrolltab-7" className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
                   <input id="ff-payrolltab-7" type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
+                  <label htmlFor="ff-payrolltab-8" className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
                   <input id="ff-payrolltab-8" type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
+                  <label htmlFor="ff-payrolltab-9" className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
                   <input id="ff-payrolltab-9" type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100" />
                 </div>
@@ -836,7 +846,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                           <span className="px-1.5 py-0.5 text-[9px] rounded-full font-medium" style={{
                             backgroundColor: (STATUS_COLORS[entry.status] || 'var(--rmpg-500)') + '20',
                             color: STATUS_COLORS[entry.status] || 'var(--rmpg-500)'
-                          }}>{(entry.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                          }}>{toDisplayLabel(entry.status)}</span>
                         </td>
                         <td className="px-2 py-2 text-center">
                           {isManager && entry.status !== 'approved' && (
@@ -902,15 +912,15 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <div className="text-xs font-bold text-rmpg-100 uppercase">New OT Request</div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
+                  <label htmlFor="ff-payrolltab-12" className="text-[9px] text-rmpg-400 uppercase">Date *</label>
                   <input id="ff-payrolltab-12" type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase">Hours *</label>
+                  <label htmlFor="ff-payrolltab-13" className="text-[9px] text-rmpg-400 uppercase">Hours *</label>
                   <input id="ff-payrolltab-13" type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 </div>
                 <div>
-                  <label className="text-[9px] text-rmpg-400 uppercase">Reason</label>
+                  <label htmlFor="ff-payrolltab-14" className="text-[9px] text-rmpg-400 uppercase">Reason</label>
                   <input id="ff-payrolltab-14" value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none" />
                 </div>
               </div>
@@ -951,7 +961,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                           ot.status === 'approved' ? 'bg-green-900/50 text-green-400' :
                           ot.status === 'denied' ? 'bg-red-900/50 text-red-400' :
                           'bg-amber-900/50 text-amber-400'
-                        }`}>{(ot.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                        }`}>{toDisplayLabel(ot.status)}</span>
                       </td>
                       {isManager && (
                         <td className="px-2 py-1.5">
@@ -974,6 +984,18 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
           )}
         </div>
       )}
+
+      {/* Delete period confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeletePeriodId !== null}
+        onClose={() => setConfirmDeletePeriodId(null)}
+        onConfirm={doDeletePeriod}
+        title="Delete Pay Period"
+        message="Delete this pay period and all its entries? This cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={confirmDeleteLoading}
+      />
 
       {/* ═══════════════════════════════════════════════════════ */}
       {/* Leave Balances */}

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard, Radio, Map, FileText, Database, Users, MessageSquare,
   BarChart3, Settings, AlertTriangle, Monitor, Terminal, Search, Car,
@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { POPOUT_PAGES, openPageWindow } from '../utils/windowManager';
+import PanelTitleBar from '../components/PanelTitleBar';
 
 interface NavFunction {
   path: string;
@@ -68,7 +69,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { path: '/records', label: 'Records (RMS)', icon: Database, description: 'Master records for persons, vehicles, addresses, and property with compound search' },
       { path: '/field-interviews', label: 'Field Interviews', icon: ClipboardList, description: 'Field interview cards (FI/contact cards) with person and vehicle associations' },
       { path: '/criminal-history', label: 'Criminal History', icon: Search, description: 'Criminal history records and background check results' },
-      { path: '/dl-search', label: 'DL Search', icon: CreditCard, description: 'Driver\'s license lookup and verification across multiple states' },
+      { path: '/dl-search', label: 'DL Search', icon: CreditCard, description: "Driver's license lookup and verification across multiple states" },
       { path: '/microbilt', label: 'MicroBilt', icon: Search, description: 'MicroBilt skip tracing and background data services' },
       { path: '/evidence', label: 'Evidence / Property', icon: Package, description: 'Evidence and property management with chain-of-custody tracking' },
       { path: '/forensic-lab', label: 'Forensic Lab', icon: Microscope, description: 'Forensic analysis tracking, exhibit management, and lab workflow' },
@@ -246,18 +247,32 @@ function pushRecent(path: string) {
 
 export default function ModuleDirectoryPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
+
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const [activeCategory, setActiveCategory] = useState(NAV_CATEGORIES[0].id);
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [badges, setBadges] = useState<Record<string, number>>({});
+  const [badgesLoading, setBadgesLoading] = useState(true);
 
   const showFavorites = favorites.size > 0 && !searchQuery.trim();
+
+  // Deep-link: ?module=<categoryId> — select the category on mount and strip param
+  useEffect(() => {
+    const moduleParam = searchParams.get('module');
+    if (!moduleParam) return;
+    const matched = NAV_CATEGORIES.find(c => c.id === moduleParam);
+    if (matched) setActiveCategory(matched.id);
+    setSearchParams({}, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const visibleCategories = useMemo(() => {
     return NAV_CATEGORIES.map(cat => ({
@@ -328,12 +343,28 @@ export default function ModuleDirectoryPage() {
     openPageWindow(path);
   }, []);
 
+  // Global keydown: N focuses search; Esc clears search; F-keys navigate shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (
       e.target instanceof HTMLInputElement ||
       e.target instanceof HTMLTextAreaElement ||
       e.target instanceof HTMLSelectElement
     ) return;
+
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      if (searchQuery) {
+        setSearchQuery('');
+        setActiveCategory(NAV_CATEGORIES[0].id);
+      }
+      return;
+    }
+
+    if (e.key === 'n' || e.key === 'N') {
+      e.preventDefault();
+      searchRef.current?.focus();
+      return;
+    }
 
     const match = e.key.match(/^F(\d+)$/);
     if (!match) return;
@@ -345,13 +376,14 @@ export default function ModuleDirectoryPage() {
 
     e.preventDefault();
     handleNavigate(shortcutItems[idx].path);
-  }, [allFunctions, handleNavigate]);
+  }, [allFunctions, handleNavigate, searchQuery]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  // Track navigation via history patches
   useEffect(() => {
     const originalPushState = history.pushState;
     const originalReplaceState = history.replaceState;
@@ -378,13 +410,14 @@ export default function ModuleDirectoryPage() {
 
   useEffect(() => {
     async function fetchBadges() {
+      setBadgesLoading(true);
       const results: Record<string, number> = {};
       try {
-        const stats = await apiFetch<any>('/dispatch/aggregates');
+        const stats = await apiFetch<{ calls?: { active?: number } }>('/dispatch/aggregates');
         if (stats?.calls?.active) results.activeCalls = stats.calls.active;
       } catch { /* silent */ }
       try {
-        const bolos = await apiFetch<any>('/comms/bolos/active');
+        const bolos = await apiFetch<unknown[]>('/comms/bolos/active');
         if (Array.isArray(bolos)) results.activeBOLOs = bolos.length;
       } catch { /* silent */ }
       try {
@@ -392,20 +425,28 @@ export default function ModuleDirectoryPage() {
         if (email?.count) results.unreadEmail = email.count;
       } catch { /* silent */ }
       try {
-        const warrants = await apiFetch<any>('/dispatch/stats');
+        const warrants = await apiFetch<{ active_warrants?: number }>('/dispatch/stats');
         if (warrants?.active_warrants) results.activeWarrants = warrants.active_warrants;
       } catch { /* silent */ }
       try {
-        const dashboard = await apiFetch<any>('/stats/dashboard');
+        const dashboard = await apiFetch<{ open_cases?: number; pending_serve?: number }>('/stats/dashboard');
         if (dashboard?.open_cases) results.openCases = dashboard.open_cases;
         if (dashboard?.pending_serve) results.pendingServe = dashboard.pending_serve;
       } catch { /* silent */ }
       setBadges(results);
+      setBadgesLoading(false);
     }
     fetchBadges();
     const interval = setInterval(fetchBadges, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  const hasSearchResults = !searchQuery.trim() || allFunctions.length > 0;
+
+  // Keep recent state in sync after navigation tracking patches history
+  useEffect(() => {
+    setRecent(loadRecent());
+  }, [activeCategory]);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -433,12 +474,12 @@ export default function ModuleDirectoryPage() {
             onClick={() => setActiveCategory('_favorites')}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${activeCategory !== '_favorites' ? 'hover:bg-surface-raised' : ''}`}
             style={{
-              background: activeCategory === '_favorites' ? 'rgba(212,160,23,0.12)' : 'transparent',
-              color: activeCategory === '_favorites' ? '#d4a017' : '#888888',
-              borderLeft: activeCategory === '_favorites' ? '3px solid #d4a017' : '3px solid transparent',
+              background: activeCategory === '_favorites' ? 'rgba(var(--brand-400-rgb),0.12)' : 'transparent',
+              color: activeCategory === '_favorites' ? 'rgb(var(--brand-400-rgb))' : 'rgb(var(--rmpg-500-rgb))',
+              borderLeft: activeCategory === '_favorites' ? '3px solid rgb(var(--brand-400-rgb))' : '3px solid transparent',
             }}
           >
-            <Star style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_favorites' ? '#d4a017' : 'var(--rmpg-500)' }} />
+            <Star style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_favorites' ? 'rgb(var(--brand-400-rgb))' : 'var(--rmpg-500)' }} />
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-medium block truncate">Favorites</span>
               <span className="text-[8px] text-rmpg-600 font-mono">{favorites.size} saved</span>
@@ -452,12 +493,12 @@ export default function ModuleDirectoryPage() {
             onClick={() => setActiveCategory('_recent')}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${activeCategory !== '_recent' ? 'hover:bg-surface-raised' : ''}`}
             style={{
-              background: activeCategory === '_recent' ? 'rgba(136,136,136,0.12)' : 'transparent',
-              color: activeCategory === '_recent' ? '#ffffff' : '#888888',
-              borderLeft: activeCategory === '_recent' ? '3px solid #888888' : '3px solid transparent',
+              background: activeCategory === '_recent' ? 'rgba(var(--rmpg-500-rgb),0.12)' : 'transparent',
+              color: activeCategory === '_recent' ? 'var(--text-primary)' : 'rgb(var(--rmpg-500-rgb))',
+              borderLeft: activeCategory === '_recent' ? '3px solid var(--border-default)' : '3px solid transparent',
             }}
           >
-            <Clock style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_recent' ? '#aaaaaa' : 'var(--rmpg-500)' }} />
+            <Clock style={{ width: 14, height: 14, flexShrink: 0, color: activeCategory === '_recent' ? 'var(--rmpg-400)' : 'var(--rmpg-500)' }} />
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-medium block truncate">Recent</span>
               <span className="text-[8px] text-rmpg-600 font-mono">{recentFunctions.length} modules</span>
@@ -477,12 +518,12 @@ export default function ModuleDirectoryPage() {
               onClick={() => setActiveCategory(cat.id)}
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${!active ? 'hover:bg-surface-raised' : ''}`}
               style={{
-                background: active ? 'rgba(136,136,136,0.12)' : 'transparent',
-                color: active ? '#ffffff' : '#888888',
-                borderLeft: active ? '3px solid #888888' : '3px solid transparent',
+                background: active ? 'rgba(var(--rmpg-500-rgb),0.12)' : 'transparent',
+                color: active ? 'var(--text-primary)' : 'rgb(var(--rmpg-500-rgb))',
+                borderLeft: active ? '3px solid var(--border-default)' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? '#aaaaaa' : 'var(--rmpg-500)' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--rmpg-400)' : 'var(--rmpg-500)' }} />
               <div className="flex-1 min-w-0">
                 <span className="text-[11px] font-medium block truncate">{cat.label}</span>
                 <span className="text-[8px] text-rmpg-600 font-mono">{cat.functions.length} functions</span>
@@ -493,12 +534,13 @@ export default function ModuleDirectoryPage() {
       </nav>
 
       {/* Content Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto" style={{ background:"var(--surface-sunken)" }}>
+      <div className="flex-1 min-h-0 overflow-y-auto" style={{ background: 'var(--surface-sunken)' }}>
         <div className="p-4 max-w-5xl mx-auto space-y-4">
           <div className="flex items-center gap-2">
             <div className="relative flex-1" style={{ maxWidth: 400 }}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-500" />
               <input
+                ref={searchRef}
                 type="text"
                 value={searchQuery}
                 onChange={e => {
@@ -507,7 +549,18 @@ export default function ModuleDirectoryPage() {
                     setActiveCategory(visibleCategories[0].id);
                   }
                 }}
-                placeholder="Search functions by name, path, or description..."
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    if (searchQuery) {
+                      setSearchQuery('');
+                      setActiveCategory(NAV_CATEGORIES[0].id);
+                    } else {
+                      searchRef.current?.blur();
+                    }
+                  }
+                }}
+                placeholder="Search modules by name, path, or description… (N to focus, Esc to clear)"
                 className="w-full pl-9 pr-3 py-2 text-[11px] bg-surface-sunken border border-rmpg-700 text-rmpg-100 placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500 transition-colors"
                 autoFocus
               />
@@ -522,12 +575,39 @@ export default function ModuleDirectoryPage() {
             </button>
           </div>
 
+          {/* Badge loading indicator */}
+          {badgesLoading && (
+            <p className="text-[8px] text-rmpg-600 font-mono text-right pr-1 select-none">Loading live counts&#8230;</p>
+          )}
+
+          {/* No-results empty state */}
+          {searchQuery.trim() && !hasSearchResults && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Search className="w-8 h-8 text-rmpg-600 mb-3" />
+              <p className="text-[11px] font-semibold text-rmpg-400">No modules matching &#8220;{searchQuery}&#8221;</p>
+              <p className="text-[9px] text-rmpg-600 mt-1">Try a different keyword or browse by category.</p>
+              <button
+                type="button"
+                onClick={() => { setSearchQuery(''); setActiveCategory(NAV_CATEGORIES[0].id); }}
+                className="mt-3 px-3 py-1.5 text-[10px] text-rmpg-400 border border-rmpg-700 hover:bg-surface-raised transition-colors"
+              >
+                Clear search
+              </button>
+            </div>
+          )}
+
           {showFavorites && (activeCategory === '_favorites' || searchQuery.trim()) && (
             <div>
               <PanelTitleBar title={`Favorites (${favoriteFunctions.length})`} icon={Star} />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {favoriteFunctions.map((fn) => renderFunctionCard(fn))}
-              </div>
+              {favoriteFunctions.length === 0 ? (
+                <div className="flex items-center justify-center py-8 text-[10px] text-rmpg-600">
+                  No favorited modules &#8212; click the star on any module card.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {favoriteFunctions.map((fn) => renderFunctionCard(fn))}
+                </div>
+              )}
             </div>
           )}
 
@@ -540,7 +620,7 @@ export default function ModuleDirectoryPage() {
             </div>
           )}
 
-          {visibleCategories.map((cat) => (
+          {hasSearchResults && visibleCategories.map((cat) => (
             <div key={cat.id}>
               <PanelTitleBar
                 title={`${cat.label} (${cat.functions.length})`}
@@ -589,21 +669,6 @@ export default function ModuleDirectoryPage() {
     </div>
   );
 
-  function PanelTitleBar({ title, icon: Icon }: { title: string; icon: React.ElementType }) {
-    return (
-      <div
-        className="flex items-center gap-2 px-3 py-1.5 mb-2 select-none"
-        style={{
-          background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
-          borderBottom: '1px solid var(--border-subtle)',
-        }}
-      >
-        {Icon && <Icon className="w-3.5 h-3.5 text-rmpg-400" aria-hidden="true" />}
-        <span className="text-[10px] font-bold uppercase tracking-wider text-rmpg-300">{title}</span>
-      </div>
-    );
-  }
-
   function renderFunctionCard(fn: NavFunction) {
     const Icon = fn.icon;
     const isFavorite = favorites.has(fn.path);
@@ -630,7 +695,7 @@ export default function ModuleDirectoryPage() {
             style={{
               width: 32,
               height: 32,
-              background: 'rgba(136,136,136,0.08)',
+              background: 'rgba(var(--rmpg-500-rgb),0.08)',
               border: '1px solid var(--border-subtle)',
               position: 'relative',
             }}
@@ -638,13 +703,12 @@ export default function ModuleDirectoryPage() {
             <Icon className="w-4 h-4 text-rmpg-300 group-hover:text-brand-400 transition-colors" />
             {badgeValue !== undefined && badgeValue > 0 && (
               <span
-                className="absolute -top-1.5 -right-1.5 flex items-center justify-center font-bold"
+                className="absolute -top-1.5 -right-1.5 flex items-center justify-center font-bold bg-red-600 text-white"
                 style={{
                   minWidth: 14, height: 14, padding: '0 3px',
                   fontSize: 8, lineHeight: 1,
-                  background: '#dc2626', color: '#fff',
                   borderRadius: 7, border: '1px solid var(--surface-overlay)',
-                  boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
+                  boxShadow: '0 0 6px rgba(220,38,38,0.5)',
                 }}
               >
                 {badgeValue > 99 ? '99+' : badgeValue}
@@ -660,7 +724,7 @@ export default function ModuleDirectoryPage() {
               {fn.shortcut && (
                 <span
                   className="text-[8px] font-mono px-1 py-0.5 flex-shrink-0"
-                  style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)', color: 'var(--rmpg-500)' }}
+                  style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--rmpg-500)' }}
                 >
                   {fn.shortcut}
                 </span>
@@ -679,7 +743,7 @@ export default function ModuleDirectoryPage() {
         </button>
 
         <div
-          className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
         >
           {canPopOut && (
             <button
@@ -696,11 +760,11 @@ export default function ModuleDirectoryPage() {
             type="button"
             onClick={(e) => toggleFavorite(fn.path, e)}
             className="p-1 transition-colors"
-            style={{ color: isFavorite ? '#d4a017' : '#444' }}
+            style={{ color: isFavorite ? 'rgb(var(--brand-400-rgb))' : 'var(--rmpg-700)' }}
             title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
             aria-label={isFavorite ? `Remove ${fn.label} from favorites` : `Add ${fn.label} to favorites`}
           >
-            <Star className="w-3 h-3" fill={isFavorite ? '#d4a017' : 'none'} />
+            <Star className="w-3 h-3" fill={isFavorite ? 'rgb(var(--brand-400-rgb))' : 'none'} />
           </button>
         </div>
       </div>

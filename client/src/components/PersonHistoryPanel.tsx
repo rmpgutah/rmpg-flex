@@ -107,13 +107,13 @@ function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
-function formatRole(role: string): string {
-  return (role || '').replace(/_/g, ' ').toUpperCase();
-}
-
-function formatType(type: string): string {
-  return (type || '').replace(/_/g, ' ');
-}
+// Local helpers were a half-fix: formatType dropped underscores but kept the
+// raw lowercase (e.g. `pso_client_request` → `pso client request`), and
+// formatRole jammed everything to ALL CAPS without acronym awareness.
+// toDisplayLabel from formatters.ts handles both — Title Case for normal
+// words, ALL CAPS for known acronyms (PSO, NCIC, BOLO, …), so
+// `pso_client_request` → `PSO Client Request`. CSS `uppercase` on badges
+// still works on a Title Cased input, so role badges remain visually upper.
 
 const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
   felony: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -378,7 +378,7 @@ export default function PersonHistoryPanel({
                       CITATION_STATUS_CLASSES[c.status] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                     }`}
                   >
-                    {c.status.replace(/_/g, ' ')}
+                    {toDisplayLabel(c.status)}
                   </span>
                   <span
                     className={`inline-flex items-center px-1 py-0.5 text-[9px] uppercase font-bold border panel-beveled ${
@@ -443,9 +443,9 @@ export default function PersonHistoryPanel({
                 >
                   <span className="text-rmpg-100 font-mono font-bold">{inc.incident_number || `I-${inc.id}`}</span>
                   <span className="px-1 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold">
-                    {formatRole(inc.role)}
+                    {toDisplayLabel(inc.role)}
                   </span>
-                  <span className="text-rmpg-300">{formatType(inc.incident_type)}</span>
+                  <span className="text-rmpg-300">{toDisplayLabel(inc.incident_type)}</span>
                   <StatusBadge status={inc.status} type="incident_status" size="sm" />
                   <span className="text-rmpg-400 ml-auto text-[10px]">{formatDate(inc.created_at)}</span>
                 </div>
@@ -482,7 +482,7 @@ export default function PersonHistoryPanel({
                   className="flex items-center gap-2 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700 flex-wrap"
                 >
                   <span className="text-rmpg-100 font-mono font-bold">{c.call_number || `C-${c.id}`}</span>
-                  <span className="text-rmpg-300">{formatType(c.incident_type)}</span>
+                  <span className="text-rmpg-300">{toDisplayLabel(c.incident_type)}</span>
                   {c.priority && <StatusBadge status={c.priority} type="priority" size="sm" />}
                   <StatusBadge status={c.status} type="call_status" size="sm" />
                   {c.location && (

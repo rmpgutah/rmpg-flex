@@ -180,7 +180,7 @@ export default function AIBehaviorPanel() {
 
             {/* Rate Limit */}
             <div className="space-y-1">
-              <label className="text-xs text-rmpg-300">Rate Limit (req/min)</label>
+              <label htmlFor="ff-aibehaviorpanel-0" className="text-xs text-rmpg-300">Rate Limit (req/min)</label>
               <input id="ff-aibehaviorpanel-0"
                 type="number" min={1} max={100}
                 value={config.rateLimit}
@@ -192,7 +192,7 @@ export default function AIBehaviorPanel() {
 
             {/* Max Concurrent */}
             <div className="space-y-1">
-              <label className="text-xs text-rmpg-300">Max Concurrent Requests</label>
+              <label htmlFor="ff-aibehaviorpanel-1" className="text-xs text-rmpg-300">Max Concurrent Requests</label>
               <input id="ff-aibehaviorpanel-1"
                 type="number" min={1} max={10}
                 value={config.maxConcurrent}
@@ -204,7 +204,7 @@ export default function AIBehaviorPanel() {
 
             {/* Request Timeout */}
             <div className="space-y-1">
-              <label className="text-xs text-rmpg-300">Request Timeout (seconds)</label>
+              <label htmlFor="ff-aibehaviorpanel-2" className="text-xs text-rmpg-300">Request Timeout (seconds)</label>
               <input id="ff-aibehaviorpanel-2"
                 type="number" min={10} max={300}
                 value={config.requestTimeout}
@@ -235,7 +235,7 @@ export default function AIBehaviorPanel() {
 
               {config.autoRetry && (
                 <div className="space-y-1 pl-4 border-l-2 border-rmpg-700">
-                  <label className="text-xs text-rmpg-300">Retry Count</label>
+                  <label htmlFor="ff-aibehaviorpanel-3" className="text-xs text-rmpg-300">Retry Count</label>
                   <input id="ff-aibehaviorpanel-3"
                     type="number" min={1} max={5}
                     value={config.retryCount}

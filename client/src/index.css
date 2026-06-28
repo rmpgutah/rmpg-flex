@@ -2980,6 +2980,52 @@ body.fx-noise::after {
   letter-spacing: 0.1em;
 }
 
+/* Quick-query button row — sits just above the input. Compact, terminal-
+   styled buttons that populate the input field with a verb prefix so the
+   operator only has to type the search term. The verb is shown in a bright
+   monospace pill; the descriptive label is the muted secondary text. */
+.ncic-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 0;
+  background: #080808;
+  border-top: 2px solid #222222;
+}
+
+.ncic-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid rgb(var(--brand-gold-rgb) / 0.25);
+  color: rgb(var(--brand-gold-rgb) / 0.9);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 120ms, border-color 120ms;
+}
+.ncic-quick-btn:hover:not(:disabled) {
+  background: rgb(var(--brand-gold-rgb) / 0.12);
+  border-color: rgb(var(--brand-gold-rgb) / 0.55);
+}
+.ncic-quick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ncic-quick-verb {
+  font-weight: 700;
+  color: var(--brand-gold);
+}
+.ncic-quick-label {
+  color: rgb(var(--brand-gold-rgb) / 0.7);
+}
+
 .ncic-input-row {
   display: flex;
   align-items: center;
@@ -3120,12 +3166,12 @@ body.fx-noise::after {
 
   /* --- Page Setup --- */
   @page {
-    margin: 0.4in 0.5in;
-    size: letter;
+    margin: 0.25in 0.3in;
+    size: letter portrait;
   }
 
   @page :first {
-    margin-top: 0.3in;
+    margin-top: 0.2in;
   }
 
   /* --- Global Reset: Dark → White --- */
@@ -3887,6 +3933,7 @@ body.fx-noise::after {
 
 .timer-bar-fill {
   height: 100%;
+  width: 0;
   transition: width 1s linear, background 0.3s ease;
   border-radius: 0 1px 1px 0;
 }
@@ -10225,4 +10272,16 @@ td.sparkline-cell {
   .group-hover\:visible {
     visibility: visible !important;
   }
+}
+
+/* Evidence barcode stripe on evidence-number chip — replaces inline
+   rgba(255,255,255,0.06) with a CSS-variable-backed utility class. */
+.evidence-barcode-stripe {
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 2px,
+    rgb(var(--rmpg-100-rgb) / 0.06) 2px,
+    rgb(var(--rmpg-100-rgb) / 0.06) 4px
+  );
 }
