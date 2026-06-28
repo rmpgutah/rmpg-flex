@@ -413,19 +413,47 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     );
   }
 
+  const priorityColor = MINI_PRIORITY_COLORS[(call as any)?.priority] || '#888888';
+
   return (
     <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid var(--border-subtle)' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
         pointerEvents: 'none',
       }}>
-        <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider px-1 py-0.5"
-          style={{ background: 'rgba(0,0,0,0.7)', pointerEvents: 'auto' }}>
-          <MapPin style={{ width: 8, height: 8, display: 'inline', marginRight: 3 }} />
-          Mini-Map
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, pointerEvents: 'auto' }}>
+          {/* Title badge with priority accent */}
+          <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5"
+            style={{
+              background: 'rgba(0,0,0,0.8)',
+              backdropFilter: 'blur(4px)',
+              borderLeft: `2px solid ${priorityColor}`,
+              color: '#aaaaaa',
+              fontFamily: "'JetBrains Mono', monospace",
+              display: 'flex', alignItems: 'center', gap: 3,
+            }}>
+            <MapPin style={{ width: 8, height: 8, color: priorityColor }} />
+            Mini-Map
+            {(call as any)?.priority && (
+              <span style={{ fontSize: 7, color: priorityColor, fontWeight: 900 }}>{(call as any).priority}</span>
+            )}
+          </span>
+          {/* Unit count badge */}
+          {assignedUnits.length > 0 && (
+            <span className="text-[7px] font-bold px-1.5 py-0.5"
+              style={{
+                background: 'rgba(0,0,0,0.8)',
+                backdropFilter: 'blur(4px)',
+                color: '#666666',
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+              {assignedWithGpsCount}/{assignedUnits.length} UNITS
+              {assignedWithGpsCount > 0 && <span style={{ color: '#22c55e', marginLeft: 3 }}>●</span>}
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
@@ -448,12 +476,37 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         </div>
       </div>
 
-      {/* Route ETA badge (bottom-left) */}
+      {/* Compass indicator (top-right, below buttons) */}
+      {loaded && mapHeading !== 0 && (
+        <div style={{
+          position: 'absolute', top: 36, right: 4, zIndex: 10,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            width: 24, height: 24, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.8)',
+            border: '1px solid #2b2b2b',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)',
+          }}>
+            <svg width="16" height="16" viewBox="0 0 16 16"
+              style={{ transform: `rotate(${-mapHeading}deg)`, transition: 'transform 0.3s ease' }}>
+              <polygon points="8,2 6.5,9 8,7.5 9.5,9" fill="#d4a017" />
+              <polygon points="8,14 6.5,7 8,8.5 9.5,7" fill="#555555" />
+              <text x="8" y="1.5" textAnchor="middle" fill="#d4a017" fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
+            </svg>
+          </div>
+        </div>
+      )}
+
+      {/* Route ETA badge (bottom-left) — enhanced */}
       {activeRoute && (
         <div style={{
           position: 'absolute', bottom: 4, left: 4, zIndex: 10,
-          background: 'rgba(0,0,0,0.9)', border: '1px solid #88888850',
-          padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+          background: 'rgba(0,0,0,0.92)', border: '1px solid #88888830',
+          backdropFilter: 'blur(4px)',
+          padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 6,
+          borderLeft: '2px solid #22c55e',
         }}>
           <span style={{ fontSize: 8, color: 'var(--rmpg-400)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
@@ -506,10 +559,18 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         </div>
       )}
 
-      {/* Map container */}
-      <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
+      {/* Map container with tactical grid overlay */}
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          backgroundImage:
+            'repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(212,160,23,0.04) 39px, rgba(212,160,23,0.04) 40px),' +
+            'repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(212,160,23,0.04) 39px, rgba(212,160,23,0.04) 40px)',
+        }} />
+      </div>
 
-      {/* Loading overlay */}
+      {/* Loading overlay — tactical radar sweep */}
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -537,21 +598,38 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         </div>
       )}
 
-      {/* Tile stall badge */}
+      {/* Tile stall badge with signal indicator */}
       {loaded && tilesStalled && (
         <div style={{
-          position: 'absolute', bottom: activeRoute ? 28 : 4, right: 4, zIndex: 10,
+          position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
           pointerEvents: 'none',
         }}>
           <div style={{
             background: 'rgba(0,0,0,0.85)', border: `1px solid ${STATUS_COLORS.caution}40`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+            borderRadius: 2,
           }}>
             <RefreshCw style={{ width: 8, height: 8, color: STATUS_COLORS.caution }} className="animate-spin" />
             <span style={{ fontSize: 8, color: STATUS_COLORS.caution, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               OFFLINE
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Connected indicator (green dot when tiles loaded and not stalled) */}
+      {loaded && !tilesStalled && (
+        <div style={{
+          position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
+          pointerEvents: 'none',
+          display: 'flex', alignItems: 'center', gap: 3,
+          background: 'rgba(0,0,0,0.7)', padding: '2px 5px', borderRadius: 2,
+        }}>
+          <div style={{
+            width: 5, height: 5, borderRadius: '50%',
+            background: '#22c55e', boxShadow: '0 0 4px rgba(34,197,94,0.5)',
+          }} />
+          <Wifi style={{ width: 7, height: 7, color: '#22c55e60' }} />
         </div>
       )}
     </div>

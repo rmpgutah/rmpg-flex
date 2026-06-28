@@ -567,6 +567,9 @@ export default function MapPage() {
   const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
   const [assignNotes, setAssignNotes] = useState('');
 
+  // Cursor coordinates — shows lat/lng on hover (desktop only)
+  const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null);
+
   // District enrichment data for beat map coloring
   const [beatDistrictMap, setBeatDistrictMap] = useState<Map<string, Map<string, BeatDistrictEntry>> | undefined>(undefined);
   const [districtSections, setDistrictSections] = useState<{ id: string; name: string }[]>([]);
@@ -5861,27 +5864,62 @@ export default function MapPage() {
               padding: '4px 8px',
             }}
           >
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               {(Object.entries(UNIT_STATUS_COLORS) as [UnitStatus, string][])
                 .filter(([k]) => k !== 'off_duty')
-                .map(([status, color]) => (
-                  <div key={status} className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 5px ${color}80` }} />
-                    <span className={`text-[8px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`}>
-                      {UNIT_STATUS_LABELS[status as UnitStatus]}
-                    </span>
+                .map(([status, color]) => {
+                  const count = unitsByStatus[status as string] || 0;
+                  return (
+                    <div key={status} className="flex items-center gap-1 group cursor-default" title={`${UNIT_STATUS_LABELS[status as UnitStatus]}: ${count} units`}>
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0 transition-transform group-hover:scale-125" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}80, inset 0 1px 0 rgba(255,255,255,0.3)` }} />
+                      <span className={`text-[8px] font-mono font-bold transition-colors ${isLightMapStyle(mapStyle) ? 'text-gray-600 group-hover:text-gray-900' : 'text-rmpg-300 group-hover:text-white'}`}>
+                        {UNIT_STATUS_LABELS[status as UnitStatus]}
+                      </span>
+                      {count > 0 && (
+                        <span className="text-[7px] font-mono font-black px-1 rounded-sm" style={{ background: color + '20', color }}>
+                          {count}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              <div className={`w-px h-4 ${isLightMapStyle(mapStyle) ? 'bg-gray-300' : 'bg-rmpg-600'}`} />
+              {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
+                const pCount = callsByPriority[p] || 0;
+                return (
+                  <div key={p} className="flex items-center gap-0.5 group cursor-default" title={`${p}: ${pCount} calls`}>
+                    <div className="w-2 h-2 rounded-sm shrink-0 transition-transform group-hover:scale-125" style={{ backgroundColor: PRIORITY_COLORS[p], boxShadow: `0 0 4px ${PRIORITY_COLORS[p]}60` }} />
+                    <span className={`text-[7px] font-mono font-bold transition-colors ${isLightMapStyle(mapStyle) ? 'text-gray-500 group-hover:text-gray-800' : 'text-rmpg-400 group-hover:text-white'}`}>{p}</span>
+                    {pCount > 0 && (
+                      <span className="text-[6px] font-mono font-black" style={{ color: PRIORITY_COLORS[p] }}>
+                        {pCount}
+                      </span>
+                    )}
                   </div>
-                ))}
-              <div className={`w-px h-3 ${isLightMapStyle(mapStyle) ? 'bg-gray-300' : 'bg-rmpg-600'}`} />
-              {(['P1', 'P2', 'P3', 'P4'] as const).map(p => (
-                <div key={p} className="flex items-center gap-0.5">
-                  <div className="w-1.5 h-1.5 rounded-sm shrink-0" style={{ backgroundColor: PRIORITY_COLORS[p] }} />
-                  <span className={`text-[7px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-500' : 'text-rmpg-400'}`}>{p}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>}
+
+        {/* ── Compass Rose - Bottom Left above legend (desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[1000]" style={{ bottom: 36, left: 8 }}>
+            <MapCompassRose mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* ── Scale Bar - Bottom Right above sidebar (desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[1000]" style={{ bottom: 28, right: sidebarOpen ? 'calc(clamp(220px, 20vw, 300px) + 8px)' : 44 }}>
+            <MapScaleBar mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* ── Coordinate Readout - Bottom center (desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <MapCoordinateReadout mapInstance={mapInstanceRef.current} />
+        )}
 
         {/* ── Stats Bar - Top Left (after layers panel, desktop only) ── */}
         {!isMobile && <div

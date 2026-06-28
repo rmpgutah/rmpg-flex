@@ -3984,6 +3984,7 @@ function migrateSchema(): void {
   addCol('fleet_fuel_logs', 'distance', 'REAL');
   addCol('fleet_fuel_logs', 'efficiency', 'REAL');
   addCol('fleet_fuel_logs', 'source', "TEXT DEFAULT 'manual'");
+  addCol('fleet_fuel_logs', 'partial_fill', 'INTEGER DEFAULT 0');
 
   // ── FLEET — maintenance labor cost tracking ──────────────
   addCol('fleet_maintenance', 'labor_cost', 'REAL');
@@ -6020,6 +6021,13 @@ function migrateSchema(): void {
   addCol('warrant_scraper_config', 'avg_parse_count', 'REAL');
   addCol('warrant_scraper_config', 'p95_latency_ms', 'INTEGER');
   addCol('warrant_scraper_config', 'jitter_seed', 'INTEGER');
+  // Warrant poller repair — new columns for circuit recovery + drift detection
+  addCol('warrant_scraper_config', 'recovery_at', 'TEXT');
+  addCol('warrant_scraper_config', 'min_expected_count', 'INTEGER');
+  addCol('warrant_scraper_config', 'last_parsed_count', 'INTEGER');
+  // display_name column — referenced by scraper routes and multiStateWarrantScraper.
+  // Previously only `source_name` existed; routes using `display_name` threw SQLITE_ERROR.
+  addCol('warrant_scraper_config', 'display_name', 'TEXT');
 
   // Warrant scraper enhancement — Phase 1 runs metrics table
   try {
@@ -6316,6 +6324,12 @@ function migrateSchema(): void {
     s.run('wy_albany_warrants', 'WY', 'Albany', 'https://www.co.albany.wy.us/sheriff/most-wanted', 'Albany County SO', 'html', 720, 1);
     s.run('wy_fremont_warrants', 'WY', 'Fremont', 'https://www.fremontcountywy.org/sheriff/most-wanted', 'Fremont County SO', 'html', 720, 1);
   }
+
+  // Backfill display_name from source_name for seed rows and old rows that
+  // pre-date the display_name column (added above via addCol).
+  try {
+    db.prepare(`UPDATE warrant_scraper_config SET display_name = source_name WHERE display_name IS NULL AND source_name IS NOT NULL`).run();
+  } catch { /* ignore on very old schemas where source_name doesn't exist yet */ }
 
   // Audit 2026-04-24: REMOVED the blind bulk re-enable of every disabled
   // source. That UPDATE was undoing per-source auto-disable decisions made
