@@ -32,3 +32,6 @@ registerV2Schema('field_interview_blank', fieldInterviewBlankSchema);
 
 import { citationSchema } from './citation';
 registerV2Schema('citation', citationSchema);
+
+import { tripLogSchema } from './tripLog';
+registerV2Schema('trip_log', tripLogSchema);

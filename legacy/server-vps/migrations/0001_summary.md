@@ -1,0 +1,797 @@
+# D1 Schema Sync Summary
+
+- Total CREATE TABLE statements: 168
+- Total addCol calls: 559
+- D1 has 0 tables
+- Missing tables: 168
+- Missing columns: 558
+
+## Missing Tables
+- `users`
+- `user_preferences`
+- `clients`
+- `properties`
+- `calls_for_service`
+- `gps_breadcrumbs`
+- `units`
+- `incidents`
+- `persons`
+- `vehicles_records`
+- `bolos`
+- `messages`
+- `evidence`
+- `schedules`
+- `time_entries`
+- `activity_log`
+- `credentials`
+- `patrol_checkpoints`
+- `patrol_scans`
+- `sessions`
+- `login_attempts`
+- `attachments`
+- `system_config`
+- `ofac_sdn_entries`
+- `ofac_sdn_aliases`
+- `ofac_sdn_addresses`
+- `ofac_sdn_ids`
+- `ofac_sync_log`
+- `microbilt_searches`
+- `dl_records`
+- `dl_addresses`
+- `warrants`
+- `notifications`
+- `call_templates`
+- `supplemental_reports`
+- `fleet_vehicles`
+- `fleet_maintenance`
+- `fleet_fuel_logs`
+- `fleet_inspections`
+- `fleet_assignments`
+- `fleet_personnel_notes`
+- `incident_persons`
+- `incident_vehicles`
+- `incident_offenses`
+- `incident_officers`
+- `incident_links`
+- `training_records`
+- `training_requirements`
+- `deployments`
+- `officer_equipment`
+- `body_cameras`
+- `bodycam_videos`
+- `radio_transcripts`
+- `dash_cameras`
+- `dashcam_videos`
+- `cpgps_vehicles`
+- `cpgps_trips`
+- `cpgps_locations`
+- `cpgps_alerts`
+- `cpgps_sync_log`
+- `offline_pin_secrets`
+- `company_documents`
+- `ai_dev_chat`
+- `ai_activity_log`
+- `ai_prompt_templates`
+- `ai_model_presets`
+- `geofences`
+- `arrest_records`
+- `arrest_cross_links`
+- `serve_queue`
+- `serve_attempts`
+- `serve_routes`
+- `serve_skip_traces`
+- `panic_alerts`
+- `notifications_v2`
+- `record_links`
+- `utah_statutes`
+- `entity_statutes`
+- `citations`
+- `invoices`
+- `invoice_line_items`
+- `payments`
+- `client_persons`
+- `criminal_history`
+- `field_interviews`
+- `trespass_orders`
+- `cases`
+- `case_notes`
+- `case_person_links`
+- `case_incident_links`
+- `case_evidence_links`
+- `connection_investigations`
+- `code_violations`
+- `vehicle_tows`
+- `court_events`
+- `daily_activity_reports`
+- `offender_alerts`
+- `speed_violations`
+- `speed_zones`
+- `dispatch_areas`
+- `dispatch_sectors`
+- `dispatch_zones`
+- `dispatch_beats`
+- `dispatch_codes`
+- `premise_alerts`
+- `citation_violations`
+- `forensic_cases`
+- `forensic_exhibits`
+- `forensic_analyses`
+- `forensic_activity_log`
+- `email_templates`
+- `email_logs`
+- `email_preferences`
+- `email_cache`
+- `email_rules`
+- `email_rule_matches`
+- `email_folders`
+- `email_links`
+- `user_graph_tokens`
+- `scheduled_emails`
+- `config_change_history`
+- `record_locks`
+- `broadcast_templates`
+- `system_announcements`
+- `hr_documents`
+- `hr_handbook_acknowledgments`
+- `hr_grievances`
+- `hr_workers_comp`
+- `hr_exit_interviews`
+- `hr_salary_history`
+- `hr_benefits`
+- `hr_pips`
+- `hr_attendance`
+- `fleet_tires`
+- `fleet_damage_reports`
+- `fleet_recalls`
+- `fleet_fuel_cards`
+- `patrol_tour_verifications`
+- `crm_leads`
+- `crm_lead_activity`
+- `leave_requests`
+- `disciplinary_records`
+- `pdf_artifacts`
+- `person_associates`
+- `evidence_temperature_logs`
+- `patrol_breaks`
+- `fleet_pretrip_checklists`
+- `fleet_vehicle_swaps`
+- `call_visit_history`
+- `call_persons`
+- `warrant_watch_runs`
+- `warrant_watch_log`
+- `utah_warrants`
+- `scraped_warrants`
+- `warrant_scraper_config`
+- `owntracks_device_map`
+- `warrant_scraper_runs`
+- `cpgps_dashcam_events`
+- `cpgps_officer_mappings`
+- `forensic_case_links`
+- `forensic_hash_results`
+- `skiptracer_dossiers`
+- `iped_imports`
+- `forensic_hash_sets`
+- `forensic_hash_entries`
+- `integration_health_log`
+- `time_entry_edits`
+- `citation_payments`
+
+## Missing Columns by Table
+### users (44 columns)
+- `first_name` TEXT
+- `last_name` TEXT
+- `middle_name` TEXT
+- `date_of_birth` TEXT
+- `ssn_last4` TEXT
+- `address` TEXT
+- `city` TEXT
+- `state` TEXT
+- `zip` TEXT
+- `emergency_contact_name` TEXT
+- `emergency_contact_phone` TEXT
+- `emergency_contact_relationship` TEXT
+- `hire_date` TEXT
+- `termination_date` TEXT
+- `rank` TEXT
+- `department` TEXT
+- `shift_preference` TEXT
+- `dl_number` TEXT
+- `dl_state` TEXT
+- `dl_expiry` TEXT
+- `blood_type` TEXT
+- `allergies` TEXT
+- `uniform_size` TEXT
+- `employee_id` TEXT
+- `certifications` TEXT
+- `notes` TEXT
+- `profile_image` TEXT
+- `last_password_change` TEXT
+- `login_count` INTEGER DEFAULT 0
+- `last_login_at` TEXT
+- `must_change_password` INTEGER DEFAULT 0
+- `totp_secret_enc` TEXT
+- `totp_enabled` INTEGER DEFAULT 0
+- `totp_backup_codes` TEXT
+- `totp_pending_secret` TEXT
+- `totp_exempt` INTEGER DEFAULT 0
+- `password_history` TEXT
+- `password_changed_at` TEXT
+- `digital_signature` TEXT
+- `voice_rate` REAL DEFAULT 1.0
+- `voice_pitch` REAL DEFAULT 0
+- `voice_brain_enabled` INTEGER DEFAULT 0
+- `photo` TEXT
+- `active_case_count` INTEGER DEFAULT 0
+### clients (31 columns)
+- `billing_email` TEXT
+- `billing_address` TEXT
+- `contract_type` TEXT
+- `contract_value` REAL
+- `payment_terms` TEXT
+- `auto_renew` INTEGER DEFAULT 0
+- `updated_at` TEXT
+- `client_code` TEXT
+- `industry` TEXT
+- `website` TEXT
+- `tax_id` TEXT
+- `payment_method` TEXT
+- `billing_cycle` TEXT
+- `billing_day` INTEGER
+- `discount_percent` REAL DEFAULT 0
+- `late_fee_percent` REAL DEFAULT 0
+- `total_invoiced` REAL DEFAULT 0
+- `total_paid` REAL DEFAULT 0
+- `outstanding_balance` REAL DEFAULT 0
+- `incident_count` INTEGER DEFAULT 0
+- `last_incident_date` TEXT
+- `account_manager` TEXT
+- `priority_client` INTEGER DEFAULT 0
+- `client_since` TEXT
+- `rate_per_hour` REAL
+- `rate_per_incident` REAL
+- `rate_per_cfs` REAL
+- `email_verified` INTEGER DEFAULT 0
+- `verification_token` TEXT
+- `avatar` TEXT
+- `last_active_at` TEXT
+### properties (20 columns)
+- `city` TEXT
+- `state` TEXT
+- `zip` TEXT
+- `access_instructions` TEXT
+- `is_active` INTEGER NOT NULL DEFAULT 1
+- `updated_at` TEXT
+- `notes` TEXT
+- `business_type` TEXT
+- `structure_type` TEXT
+- `occupancy_status` TEXT
+- `year_built` TEXT
+- `square_footage` TEXT
+- `number_of_stories` TEXT
+- `security_features` TEXT
+- `key_holder_name` TEXT
+- `key_holder_phone` TEXT
+- `key_holder_relationship` TEXT
+- `owner_name` TEXT
+- `owner_phone` TEXT
+- `last_inspection_date` TEXT
+### calls_for_service (54 columns)
+- `caller_address` TEXT
+- `zone_beat` TEXT
+- `sector_id` TEXT
+- `zone_id` TEXT
+- `beat_id` TEXT
+- `cross_street` TEXT
+- `location_building` TEXT
+- `location_floor` TEXT
+- `location_room` TEXT
+- `weapons_involved` TEXT
+- `injuries_reported` INTEGER DEFAULT 0
+- `num_subjects` INTEGER
+- `subject_description` TEXT
+- `vehicle_description` TEXT
+- `direction_of_travel` TEXT
+- `archived_at` TEXT
+- `responding_officer` TEXT
+- `secondary_type` TEXT
+- `contact_method` TEXT
+- `scene_safety` TEXT
+- `weather_conditions` TEXT
+- `lighting_conditions` TEXT
+- `num_victims` INTEGER
+- `alcohol_involved` INTEGER DEFAULT 0
+- `drugs_involved` INTEGER DEFAULT 0
+- `domestic_violence` INTEGER DEFAULT 0
+- `supervisor_notified` INTEGER DEFAULT 0
+- `le_notified` INTEGER DEFAULT 0
+- `le_agency` TEXT
+- `le_case_number` TEXT
+- `damage_estimate` REAL
+- `damage_description` TEXT
+- `action_taken` TEXT
+- `updated_at` TEXT
+- `received_at` TEXT
+- `previous_status` TEXT
+- `client_id` INTEGER
+- `starting_mileage` REAL
+- `ending_mileage` REAL
+- `case_id` INTEGER
+- `case_number` TEXT
+- `dispatch_code` TEXT
+- `section_name` TEXT
+- `sector_name` TEXT
+- `zone_name` TEXT
+- `beat_name` TEXT
+- `beat_descriptor` TEXT
+- `contract_id` TEXT
+- `priority_score` INTEGER DEFAULT 0
+- `response_time_seconds` REAL
+- `status_changed_at` TEXT
+- `onscene_duration_seconds` REAL
+- `overdue_notified` TEXT
+- `received_at` TEXT
+### gps_breadcrumbs (2 columns)
+- `road_name` TEXT
+- `nearest_intersection` TEXT
+### units (4 columns)
+- `assigned_beat` TEXT
+- `mileage` REAL
+- `gps_source` TEXT
+- `gps_updated_at` TEXT
+### incidents (51 columns)
+- `occurred_date` TEXT
+- `occurred_time` TEXT
+- `end_date` TEXT
+- `end_time` TEXT
+- `weather_conditions` TEXT
+- `lighting_conditions` TEXT
+- `injuries` INTEGER DEFAULT 0
+- `injury_description` TEXT
+- `damage_estimate` REAL
+- `damage_description` TEXT
+- `weapons_involved` TEXT
+- `alcohol_involved` INTEGER DEFAULT 0
+- `drugs_involved` INTEGER DEFAULT 0
+- `domestic_violence` INTEGER DEFAULT 0
+- `review_notes` TEXT
+- `disposition` TEXT
+- `zone_beat` TEXT
+- `section_id` TEXT
+- `sector_id` TEXT
+- `zone_id` TEXT
+- `beat_id` TEXT
+- `responding_le_agency` TEXT
+- `le_case_number` TEXT
+- `road_conditions` TEXT
+- `traffic_control` TEXT
+- `vehicle_1_info` TEXT
+- `vehicle_2_info` TEXT
+- `diagram_notes` TEXT
+- `patient_status` TEXT
+- `ems_transport` TEXT
+- `patient_vitals` TEXT
+- `treatment_rendered` TEXT
+- `trespass_warning_issued` INTEGER DEFAULT 0
+- `trespass_effective_date` TEXT
+- `trespass_expiry_date` TEXT
+- `property_boundaries` TEXT
+- `force_type` TEXT
+- `force_justification` TEXT
+- `subject_injuries` TEXT
+- `officer_injuries` TEXT
+- `de_escalation_attempts` TEXT
+- `statute_id` INTEGER
+- `statute_citation` TEXT
+- `citation_fine` REAL
+- `client_id` INTEGER
+- `contract_id` TEXT
+- `approved_at` TEXT
+- `assigned_detective_id` INTEGER
+- `weather_conditions` TEXT
+- `weather_temperature` REAL
+- `weather_recorded_at` TEXT
+### persons (76 columns)
+- `middle_name` TEXT
+- `alias_nickname` TEXT
+- `ssn_last4` TEXT
+- `dl_number` TEXT
+- `dl_state` TEXT
+- `dl_expiry` TEXT
+- `dl_class` TEXT
+- `employer` TEXT
+- `occupation` TEXT
+- `emergency_contact_name` TEXT
+- `emergency_contact_phone` TEXT
+- `city` TEXT
+- `state` TEXT
+- `zip` TEXT
+- `build` TEXT
+- `complexion` TEXT
+- `clothing_description` TEXT
+- `gang_affiliation` TEXT
+- `is_sex_offender` INTEGER DEFAULT 0
+- `is_veteran` INTEGER DEFAULT 0
+- `language` TEXT
+- `updated_at` TEXT
+- `place_of_birth` TEXT
+- `citizenship` TEXT
+- `marital_status` TEXT
+- `hair_length` TEXT
+- `hair_style` TEXT
+- `facial_hair` TEXT
+- `glasses` TEXT
+- `shoe_size` TEXT
+- `blood_type` TEXT
+- `phone_secondary` TEXT
+- `social_media` TEXT
+- `probation_parole` TEXT
+- `probation_parole_officer` TEXT
+- `known_associates` TEXT
+- `emergency_contact_relationship` TEXT
+- `caution_flags` TEXT
+- `ssn_full` TEXT
+- `id_image_url` TEXT
+- `id_type` TEXT
+- `id_number` TEXT
+- `id_state` TEXT
+- `id_expiry` TEXT
+- `height_feet` INTEGER
+- `height_inches` INTEGER
+- `watchlist_match` TEXT DEFAULT NULL
+- `watchlist_checked_at` TEXT DEFAULT NULL
+- `aliases` TEXT
+- `photo` TEXT
+- `ncic_number` TEXT
+- `sor_number` TEXT
+- `fbi_number` TEXT
+- `state_id_number` TEXT
+- `passport_number` TEXT
+- `passport_country` TEXT
+- `immigration_status` TEXT
+- `disability_flags` TEXT
+- `mental_health_flags` TEXT
+- `substance_abuse` TEXT
+- `medication_notes` TEXT
+- `education_level` TEXT
+- `military_branch` TEXT
+- `military_status` TEXT
+- `tribal_affiliation` TEXT
+- `identifying_marks_location` TEXT
+- `tattoo_description` TEXT
+- `scar_description` TEXT
+- `piercing_description` TEXT
+- `distinguishing_features` TEXT
+- `email_secondary` TEXT
+- `date_last_seen` TEXT
+- `location_last_seen` TEXT
+- `alias_dob` TEXT
+- `home_phone` TEXT
+- `work_phone` TEXT
+### vehicles_records (59 columns)
+- `body_style` TEXT
+- `doors` INTEGER
+- `secondary_color` TEXT
+- `insurance_company` TEXT
+- `insurance_policy` TEXT
+- `registration_expiry` TEXT
+- `damage_description` TEXT
+- `distinguishing_features` TEXT
+- `updated_at` TEXT
+- `trim` TEXT
+- `engine_type` TEXT
+- `fuel_type` TEXT
+- `transmission` TEXT
+- `drive_type` TEXT
+- `tow_status` TEXT
+- `tow_company` TEXT
+- `tow_date` TEXT
+- `plate_type` TEXT
+- `commercial_vehicle` INTEGER DEFAULT 0
+- `hazmat` INTEGER DEFAULT 0
+- `odometer` TEXT
+- `owner_address` TEXT
+- `owner_phone` TEXT
+- `lien_holder` TEXT
+- `stolen_status` TEXT
+- `stolen_date` TEXT
+- `recovery_date` TEXT
+- `registration_expiry` TEXT
+- `insurance_company` TEXT
+- `insurance_policy` TEXT
+- `insurance_status` TEXT
+- `insurance_expiry` TEXT
+- `insurance_verified_at` TEXT
+- `insurance_verified_by` INTEGER
+- `is_stolen` INTEGER DEFAULT 0
+- `tow_status` TEXT
+- `tow_company` TEXT
+- `tow_lot_location` TEXT
+- `tow_date` TEXT
+- `tow_release_date` TEXT
+- `tow_release_to` TEXT
+- `tow_reason` TEXT
+- `registration_state` TEXT
+- `owner_name` TEXT
+- `owner_dl_number` TEXT
+- `owner_dob` TEXT
+- `primary_driver_name` TEXT
+- `registered_owner` TEXT
+- `exterior_condition` TEXT
+- `interior_condition` TEXT
+- `title_status` TEXT
+- `window_tint` TEXT
+- `modifications` TEXT
+- `equipment_notes` TEXT
+- `vehicle_use` TEXT
+- `ncic_entry_number` TEXT
+- `estimated_value` REAL
+- `tow_location` TEXT
+- `insurance_expiry` TEXT
+### bolos (2 columns)
+- `auto_expire_hours` INTEGER
+- `expired_at` TEXT
+### messages (16 columns)
+- `subject` TEXT
+- `parent_id` INTEGER
+- `thread_id` INTEGER
+- `case_id` INTEGER
+- `thread_id` TEXT
+- `file_url` TEXT
+- `edited_at` TEXT
+- `subject` TEXT
+- `scheduled_at` TEXT
+- `attachment_url` TEXT
+- `attachment_name` TEXT
+- `is_template` INTEGER DEFAULT 0
+- `template_name` TEXT
+- `is_draft` INTEGER DEFAULT 0
+- `draft_updated_at` TEXT
+- `delivered_at` TEXT
+### evidence (29 columns)
+- `evidence_number` TEXT
+- `location_found` TEXT
+- `condition` TEXT
+- `quantity` INTEGER DEFAULT 1
+- `release_authorized_by` TEXT
+- `released_to` TEXT
+- `release_date` TEXT
+- `collected_date` TEXT
+- `packaging_type` TEXT
+- `dimensions` TEXT
+- `weight` TEXT
+- `photo_taken` INTEGER DEFAULT 0
+- `lab_submitted` INTEGER DEFAULT 0
+- `lab_case_number` TEXT
+- `lab_name` TEXT
+- `disposal_method` TEXT
+- `disposal_date` TEXT
+- `disposal_authorized_by` TEXT
+- `serial_number` TEXT
+- `brand` TEXT
+- `model` TEXT
+- `estimated_value` REAL
+- `category` TEXT
+- `notes` TEXT
+- `updated_at` TEXT
+- `retention_until` TEXT
+- `disposition` TEXT
+- `storage_temperature` REAL
+- `is_biological` INTEGER DEFAULT 0
+### time_entries (6 columns)
+- `break_start` TEXT
+- `break_minutes` REAL NOT NULL DEFAULT 0
+- `notes` TEXT
+- `edit_reason` TEXT
+- `edited_by` INTEGER
+- `edited_at` TEXT
+### credentials (1 columns)
+- `issuing_authority` TEXT
+### patrol_checkpoints (3 columns)
+- `assigned_officer_id` INTEGER
+- `location_description` TEXT
+- `special_instructions` TEXT
+### patrol_scans (1 columns)
+- `weather_json` TEXT
+### ofac_sdn_addresses (2 columns)
+- `add_num` INTEGER
+- `add_remarks` TEXT
+### ofac_sdn_ids (1 columns)
+- `remarks` TEXT
+### warrants (5 columns)
+- `statute_id` INTEGER
+- `statute_citation` TEXT
+- `external_warrant_id` TEXT
+- `external_source_key` TEXT
+- `auto_created` INTEGER DEFAULT 0
+### fleet_vehicles (5 columns)
+- `total_maintenance_cost` REAL DEFAULT 0
+- `total_fuel_cost` REAL DEFAULT 0
+- `total_trips` INTEGER DEFAULT 0
+- `avg_mpg` REAL
+- `next_service_mileage` INTEGER
+### fleet_maintenance (2 columns)
+- `labor_cost` REAL
+- `service_tasks` TEXT
+### fleet_fuel_logs (2 columns)
+- `distance` REAL
+- `efficiency` REAL
+### training_records (2 columns)
+- `training_type` TEXT
+- `expiration_date` TEXT
+### training_requirements (2 columns)
+- `required_for_role` TEXT
+- `is_active` INTEGER DEFAULT 1
+### radio_transcripts (3 columns)
+- `audio_file` TEXT
+- `file_size` INTEGER
+- `linked_call_id` INTEGER
+### dashcam_videos (1 columns)
+- `incident_id` INTEGER
+### cpgps_vehicles (1 columns)
+- `unit_number` TEXT
+### cpgps_trips (1 columns)
+- `start_time` TEXT
+### cpgps_locations (1 columns)
+- `timestamp` TEXT
+### serve_queue (2 columns)
+- `recipient_person_id` INTEGER
+- `property_id` INTEGER
+### utah_statutes (2 columns)
+- `citation_fine` REAL
+- `statute_code` TEXT
+### citations (40 columns)
+- `section_id` TEXT
+- `sector_id` TEXT
+- `zone_id` TEXT
+- `beat_id` TEXT
+- `zone_beat` TEXT
+- `latitude` REAL
+- `longitude` REAL
+- `vehicle_vin` TEXT
+- `vehicle_year` TEXT
+- `vehicle_make` TEXT
+- `vehicle_model` TEXT
+- `vehicle_color` TEXT
+- `vehicle_id` INTEGER
+- `speed_recorded` INTEGER
+- `speed_limit` INTEGER
+- `radar_type` TEXT
+- `bac_level` REAL
+- `bond_amount` REAL
+- `bond_type` TEXT
+- `is_warning` INTEGER DEFAULT 0
+- `is_equipment_violation` INTEGER DEFAULT 0
+- `weather_conditions` TEXT
+- `road_conditions` TEXT
+- `accident_related` INTEGER DEFAULT 0
+- `dui_related` INTEGER DEFAULT 0
+- `school_zone` INTEGER DEFAULT 0
+- `construction_zone` INTEGER DEFAULT 0
+- `commercial_vehicle` INTEGER DEFAULT 0
+- `hazmat` INTEGER DEFAULT 0
+- `voided_reason` TEXT
+- `voided_by` INTEGER
+- `voided_at` TEXT
+- `court_time` TEXT
+- `court_room` TEXT
+- `appearance_required` INTEGER DEFAULT 0
+- `plea` TEXT
+- `verdict` TEXT
+- `sentence` TEXT
+- `disposition_date` TEXT
+- `case_id` INTEGER
+### field_interviews (7 columns)
+- `date` TEXT
+- `gang_affiliation` TEXT
+- `section_id` INTEGER
+- `zone_id` INTEGER
+- `beat_id` INTEGER
+- `zone_beat` TEXT
+- `updated_at` TEXT
+### trespass_orders (1 columns)
+- `subject_photo_url` TEXT
+### cases (2 columns)
+- `deadline` TEXT
+- `sla_hours` INTEGER
+### court_events (8 columns)
+- `continuance_count` INTEGER DEFAULT 0
+- `defendant_dob` TEXT
+- `bail_amount` REAL
+- `bond_status` TEXT
+- `surety_info` TEXT
+- `judge_notes` TEXT
+- `prosecutor_phone` TEXT
+- `prosecutor_email` TEXT
+### offender_alerts (4 columns)
+- `alert_latitude` REAL
+- `alert_longitude` REAL
+- `alert_address` TEXT
+- `alert_enabled` INTEGER DEFAULT 1
+### dispatch_sectors (2 columns)
+- `county_nbr` TEXT
+- `fips_code` TEXT
+### dispatch_zones (1 columns)
+- `ugrc_code` TEXT
+### dispatch_beats (2 columns)
+- `district_letter` TEXT
+- `beat_number` INTEGER
+### forensic_cases (4 columns)
+- `linked_incident_id` INTEGER
+- `lab_number` TEXT
+- `lead_examiner_id` INTEGER
+- `linked_case_id` INTEGER
+### forensic_exhibits (14 columns)
+- `condition_on_receipt` TEXT
+- `packaging_type` TEXT
+- `packaging_sealed` INTEGER DEFAULT 0
+- `collected_by` TEXT
+- `collected_date` TEXT
+- `collected_location` TEXT
+- `received_from` TEXT
+- `storage_location` TEXT
+- `storage_requirements` TEXT
+- `is_hazardous` INTEGER DEFAULT 0
+- `is_biohazard` INTEGER DEFAULT 0
+- `current_custodian` TEXT
+- `current_custodian_id` INTEGER
+- `examination_requested` TEXT
+### email_logs (1 columns)
+- `to_email` TEXT
+### email_cache (1 columns)
+- `owner_user_id` INTEGER
+### email_rules (1 columns)
+- `owner_user_id` INTEGER
+### email_folders (1 columns)
+- `owner_user_id` INTEGER
+### email_links (1 columns)
+- `auto_linked` INTEGER DEFAULT 0
+### scheduled_emails (1 columns)
+- `owner_user_id` INTEGER
+### record_locks (1 columns)
+- `user_id` INTEGER
+### hr_documents (2 columns)
+- `officer_id` INTEGER
+- `document_type` TEXT
+### hr_grievances (1 columns)
+- `officer_id` INTEGER
+### hr_workers_comp (1 columns)
+- `injury_date` TEXT
+### hr_attendance (1 columns)
+- `attendance_date` TEXT
+### fleet_damage_reports (1 columns)
+- `reported_at` TEXT
+### person_associates (1 columns)
+- `associated_person_id` INTEGER
+### patrol_breaks (1 columns)
+- `start_time` TEXT
+### warrant_watch_runs (1 columns)
+- `created_at` TEXT
+### warrant_watch_log (1 columns)
+- `run_id` INTEGER
+### scraped_warrants (12 columns)
+- `middle_name` TEXT
+- `age` INTEGER
+- `gender` TEXT
+- `race` TEXT
+- `city` TEXT
+- `state` TEXT
+- `photo_url` TEXT
+- `detail_url` TEXT
+- `first_seen_at` TEXT
+- `last_seen_at` TEXT
+- `cleared_at` TEXT
+- `dob_verified` INTEGER DEFAULT 0
+### warrant_scraper_config (13 columns)
+- `source_name` TEXT
+- `last_run_at` TEXT
+- `last_error` TEXT
+- `source_type` TEXT
+- `priority` INTEGER DEFAULT 3
+- `content_hash` TEXT
+- `content_hash_updated_at` TEXT
+- `etag` TEXT
+- `last_modified` TEXT
+- `last_success_at` TEXT
+- `avg_parse_count` REAL
+- `p95_latency_ms` INTEGER
+- `jitter_seed` INTEGER

@@ -145,13 +145,13 @@ export default function PdfPreviewModal({
       aria-modal="true"
       aria-label={`${title} — ${targetLabel} preview`}
     >
-      <div className="w-full max-w-5xl h-[90vh] bg-[#0a0a0a] border border-[#2e2e2e] flex flex-col">
+      <div className="w-full max-w-5xl h-[90vh] bg-surface-sunken border border-rmpg-700 flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between bg-gradient-to-r from-[#1a1a1a] to-[#242424] border-b border-[#2e2e2e] px-4 py-2">
+        <div className="flex items-center justify-between bg-gradient-to-r from-[#1a1a1a] to-[#242424] border-b border-rmpg-700 px-4 py-2">
           <div className="flex items-center gap-2 text-[#d4a017]">
             <TargetIcon className="w-4 h-4" aria-hidden="true" />
             <span className="text-xs font-semibold uppercase tracking-wider">
-              {title} <span className="text-gray-400">— {targetLabel}</span>
+              {title} <span className="text-rmpg-400">— {targetLabel}</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -161,7 +161,7 @@ export default function PdfPreviewModal({
               disabled={!blobUrl}
               aria-label="Download PDF"
               title="Download PDF"
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-[#141414] hover:bg-[#1a1a1a] border border-[#2e2e2e] text-[#d4a017] transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-surface-base hover:bg-surface-raised border border-rmpg-700 text-[#d4a017] transition-colors disabled:opacity-50"
             >
               <Download className="w-3.5 h-3.5" aria-hidden="true" />
               Download
@@ -182,7 +182,7 @@ export default function PdfPreviewModal({
               onClick={onClose}
               aria-label="Close preview"
               title="Close (Esc)"
-              className="inline-flex items-center justify-center w-7 h-7 bg-[#141414] hover:bg-[#2a0a0a] border border-[#2e2e2e] hover:border-red-700 text-gray-400 hover:text-red-400 transition-colors"
+              className="inline-flex items-center justify-center w-7 h-7 bg-surface-base hover:bg-[#2a0a0a] border border-rmpg-700 hover:border-red-700 text-rmpg-400 hover:text-red-400 transition-colors"
             >
               <X className="w-4 h-4" aria-hidden="true" />
             </button>
@@ -190,15 +190,15 @@ export default function PdfPreviewModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 bg-[#050505] overflow-hidden">
+        <div className="flex-1 bg-surface-overlay overflow-hidden">
           {error ? (
             <div className="h-full flex flex-col items-center justify-center gap-2 text-red-400">
               <AlertTriangle className="w-8 h-8" />
               <div className="text-sm font-semibold">PDF generation failed</div>
-              <div className="text-xs text-gray-400 max-w-md text-center">{error}</div>
+              <div className="text-xs text-rmpg-400 max-w-md text-center">{error}</div>
             </div>
           ) : !blobUrl ? (
-            <div className="h-full flex flex-col items-center justify-center gap-2 text-gray-400">
+            <div className="h-full flex flex-col items-center justify-center gap-2 text-rmpg-400">
               <Loader2 className="w-8 h-8 animate-spin text-[#d4a017]" />
               <div className="text-xs uppercase tracking-wider">Generating {targetLabel} preview...</div>
             </div>
