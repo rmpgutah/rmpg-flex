@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { MapPinned } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
-import { useFormDirty } from '../../../hooks/useFormDirty';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 import RichTextArea from '../../../components/RichTextArea';
 export interface DeploymentFormData {
@@ -42,17 +42,27 @@ const EMPTY: DeploymentFormData = {
 export default function DeploymentFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, properties, initialData, mode = 'create',
 }: Props) {
-  const [form, setForm] = useState<DeploymentFormData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<DeploymentFormData>({
+    storageKey: 'rmpg_personnel_deployment_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
       const initial = { ...EMPTY, ...initialData };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen) {
       setForm(EMPTY);
-      snapshot(EMPTY);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
@@ -74,33 +84,35 @@ export default function DeploymentFormModal({
       submitLabel={mode === 'edit' ? 'Update' : 'Create Deployment'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Assignment */}
       <div className="panel-inset p-3 space-y-3">
         <div>
-          <label className="field-label">Officer <span className="text-red-400">*</span></label>
-          <select required value={form.officer_id} onChange={e => set('officer_id', e.target.value)} className="select-dark" disabled={mode === 'edit'}>
+          <label htmlFor="ff-deploymentformmodal-0" className="field-label">Officer <span className="text-red-400">*</span></label>
+          <select id="ff-deploymentformmodal-0" required value={form.officer_id} onChange={e => set('officer_id', e.target.value)} className="select-dark" disabled={mode === 'edit'}>
             <option value="">Select officer...</option>
             {officers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="field-label">Property <span className="text-red-400">*</span></label>
-          <select required value={form.property_id} onChange={e => set('property_id', e.target.value)} className="select-dark">
+          <label htmlFor="ff-deploymentformmodal-1" className="field-label">Property <span className="text-red-400">*</span></label>
+          <select id="ff-deploymentformmodal-1" required value={form.property_id} onChange={e => set('property_id', e.target.value)} className="select-dark">
             <option value="">Select property...</option>
             {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Position</label>
-            <select value={form.position} onChange={e => set('position', e.target.value)} className="select-dark">
+            <label htmlFor="ff-deploymentformmodal-2" className="field-label">Position</label>
+            <select id="ff-deploymentformmodal-2" value={form.position} onChange={e => set('position', e.target.value)} className="select-dark">
               {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Status</label>
-            <select value={form.status} onChange={e => set('status', e.target.value)} className="select-dark">
+            <label htmlFor="ff-deploymentformmodal-3" className="field-label">Status</label>
+            <select id="ff-deploymentformmodal-3" value={form.status} onChange={e => set('status', e.target.value)} className="select-dark">
               {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
@@ -115,16 +127,16 @@ export default function DeploymentFormModal({
       <div className="panel-inset p-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <label className="field-label">Start Date <span className="text-red-400">*</span></label>
-            <input type="date" required value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input-dark min-h-[36px]" />
+            <label htmlFor="ff-deploymentformmodal-4" className="field-label">Start Date <span className="text-red-400">*</span></label>
+            <input id="ff-deploymentformmodal-4" type="date" required value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">End Date</label>
-            <input type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} className="input-dark min-h-[36px]" />
+            <label htmlFor="ff-deploymentformmodal-5" className="field-label">End Date</label>
+            <input id="ff-deploymentformmodal-5" type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Hours / Week</label>
-            <input type="number" min="0" max="168" value={form.hours_per_week} onChange={e => set('hours_per_week', e.target.value)} placeholder="40" className="input-dark min-h-[36px]" />
+            <label htmlFor="ff-deploymentformmodal-6" className="field-label">Hours / Week</label>
+            <input id="ff-deploymentformmodal-6" type="number" min="0" max="168" value={form.hours_per_week} onChange={e => set('hours_per_week', e.target.value)} placeholder="40" className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>

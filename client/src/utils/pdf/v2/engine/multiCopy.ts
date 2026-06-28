@@ -5,10 +5,12 @@ import { drawDefaultHeader } from './header';
 import { drawDefaultFooter } from './footer';
 import { makeRenderContext, drawSectionHeader, closeSection } from './context';
 import { renderSectionFields } from './renderer';
+import { renderFixedLayoutSection } from './fixedLayout';
 import type { RenderOptions } from './renderer';
-import type { FormSchema, SchemaSection, RenderCallback } from './types';
+import type { FormSchema, SchemaSection, FixedLayoutSection, RenderCallback } from './types';
 import type { CitationCopyVariant } from '../forms/citationInstructions';
 import { TYPOGRAPHY, RULE_WEIGHTS } from './style';
+import { registerArialFont } from '../../fonts/registerArial';
 
 const OUTER_MARGIN = 10;
 // 4mm gap from header bottom rule to first section header — enough that
@@ -36,6 +38,7 @@ export async function renderMultiCopyPdfV2<T>(
   options?: RenderOptions,
 ): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+  if (!options?.coreFontsOnly) registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
 
   copies.forEach((copy, i) => {
     if (i > 0) doc.addPage();
@@ -114,15 +117,26 @@ function renderLeftPanel<T>(
   const prims = new Primitives(doc, layout);
 
   for (const section of schema.sections) {
-    if (typeof section === 'function') {
-      const ctx = makeRenderContext(doc, layout, prims, data);
-      (section as RenderCallback<T>)(ctx, data);
-    } else {
-      const s = section as SchemaSection<T>;
-      if (s.visibleIf && !s.visibleIf(data)) continue;
-      drawSectionHeader(doc, layout, s.title);
-      renderSectionFields(prims, layout, s, data);
-      closeSection(layout);
+    // Isolate each section: a single bad section (e.g. a throwing custom
+    // render callback) degrades to a skipped block instead of aborting the
+    // entire multi-copy document.
+    try {
+      if (typeof section === 'function') {
+        const ctx = makeRenderContext(doc, layout, prims, data);
+        (section as RenderCallback<T>)(ctx, data);
+      } else if ((section as FixedLayoutSection<T>).kind === 'fixed-layout') {
+        const fixed = section as FixedLayoutSection<T>;
+        if (fixed.visibleIf && !fixed.visibleIf(data)) continue;
+        renderFixedLayoutSection(doc, layout, fixed, data);
+      } else {
+        const s = section as SchemaSection<T>;
+        if (s.visibleIf && !s.visibleIf(data)) continue;
+        drawSectionHeader(doc, layout, s.title);
+        renderSectionFields(prims, layout, s, data);
+        closeSection(layout);
+      }
+    } catch (err) {
+      console.error('[pdf/v2] section render failed (skipped):', err);
     }
   }
 }

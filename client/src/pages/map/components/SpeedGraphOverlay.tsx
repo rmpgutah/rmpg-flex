@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Gauge } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface SpeedGraphOverlayProps {
   unitId: number;
@@ -124,7 +125,7 @@ export default function SpeedGraphOverlay({
         borderRadius: 2,
         padding: 0,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-        color: '#cccccc',
+        color: 'var(--rmpg-300)',
         fontSize: 11,
         userSelect: 'none',
       }}
@@ -148,7 +149,7 @@ export default function SpeedGraphOverlay({
           <span style={{ color: currentColor, fontWeight: 700, fontSize: 18, lineHeight: 1 }}>
             {Math.round(currentSpeed)}
           </span>
-          <span style={{ color: '#666666', fontSize: 9, marginRight: 6 }}>mph</span>
+          <span style={{ color: 'var(--rmpg-500)', fontSize: 9, marginRight: 6 }}>mph</span>
           <button
             onClick={onClose}
             style={{
@@ -292,7 +293,7 @@ export default function SpeedGraphOverlay({
 /** Format ISO timestamp to HH:MM local time */
 function formatTime(isoStr: string): string {
   try {
-    const d = new Date(isoStr);
+    const d = parseTimestamp(isoStr);
     if (isNaN(d.getTime())) return '--:--';
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   } catch {
