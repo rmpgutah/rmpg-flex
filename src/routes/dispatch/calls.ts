@@ -139,14 +139,10 @@ calls.get('/', requireRole(...READ_ROLES), async (c) => {
 
     // Narrow projection — see LIST_VIEW_COLUMNS comment for the D1 100-col
     // result-set cap. SELECT c.* + JOIN columns 500s; this stays under ~60.
-    // cfe.pinned + cfe.held_at are TWO explicit columns off the ext table —
-    // safe under the result-set cap (the cap problem is SELECT c.*, not a few
-    // joined cols). Sorted pinned-first so a dispatcher's pinned calls stay on
-    // top across refreshes (PATCH /:id/pin writes cfe.pinned).
-    //   NOTE: a parallel PR added the `cfe.held_at` join with alias `cfe`
-    //   while #728 had added pinning with alias `cfse`; the squash kept
-    //   `cfse` in the ORDER BY but only the `cfe` join, 500ing the queue.
-    //   Both now use the single `cfe` alias.
+    // c.pinned lives on calls_for_service (migration 0003); reading from
+    // cfe.pinned (calls_for_service_ext) is fragile because that column was
+    // added via a direct D1 patch (not a migration) and may not survive a
+    // D1 restore / fork. Reference the definitely-present column.
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
