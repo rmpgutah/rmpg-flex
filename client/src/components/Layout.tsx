@@ -208,6 +208,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/body-cameras': 'Body Cameras',
   '/dash-cameras': 'Dash Cameras',
   '/microbilt': 'MicroBilt',
+  '/navigation': 'Module Navigation',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -361,6 +362,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
+  { path: '/navigation', icon: Navigation2, label: 'Nav Index', group: 'system' },
 ];
 
 // Paths that client_viewer role is NOT allowed to see
