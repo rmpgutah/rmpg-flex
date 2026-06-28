@@ -1151,25 +1151,6 @@ export default function ServePage() {
     const addr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
-    const currentFolder = deriveServeFolder(job);
-
-    // "Move to…" submenu — available statuses excluding the current folder.
-    const MOVE_OPTIONS: Array<{ status: string; label: string; adminOnly?: boolean }> = [
-      { status: 'in_progress', label: 'In Progress' },
-      { status: 'pending',     label: 'Queue (Pending)' },
-      { status: 'served',      label: 'Served',       adminOnly: true },
-      { status: 'failed',      label: 'Non-Service',  adminOnly: true },
-      { status: 'cancelled',   label: 'Archive' },
-    ];
-    const folderForStatus = (s: string) =>
-      s === 'in_progress' ? 'in_progress' : s === 'pending' ? 'pending' : s === 'served' ? 'served' : s === 'failed' ? 'failed' : 'archived';
-    const moveSubmenu: ContextMenuItem[] = MOVE_OPTIONS
-      .filter(opt => folderForStatus(opt.status) !== currentFolder && (!opt.adminOnly || canManage))
-      .map(opt => ({
-        label: opt.label,
-        onClick: () => handleMoveToFolder(job, opt.status),
-      }));
-
     return [
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
       ...(canManage ? [m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> })] : []),
@@ -1320,58 +1301,29 @@ export default function ServePage() {
         {/* ── Queue Tab ───────────────────────────────────────────── */}
         {activeTab === 'Queue' && (
           <div className="h-full flex flex-col">
-            {/* Toolbar */}
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 overflow-x-auto tab-scroll">
-              {/* Search */}
-              <div className="relative flex-1 min-w-0 max-w-[220px]">
-                <SearchIcon size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search recipient, case #..."
-                  className="w-full pl-6 pr-2 py-1 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-200 placeholder:text-rmpg-600 focus:outline-none focus:border-rmpg-500"
-                />
-              </div>
-              {/* Count summary */}
-              <div className="hidden sm:flex items-center gap-2 text-[10px] text-rmpg-500 flex-shrink-0">
-                {(jobsByFolder.in_progress.length + jobsByFolder.pending.length) > 0 && (
-                  <span className="text-amber-400 font-mono">{jobsByFolder.in_progress.length + jobsByFolder.pending.length} active</span>
-                )}
-                {jobsByFolder.served.length > 0 && (
-                  <span className="text-green-400 font-mono">{jobsByFolder.served.length} served</span>
-                )}
-                {jobsByFolder.failed.length > 0 && (
-                  <span className="text-red-400 font-mono">{jobsByFolder.failed.length} non-svc</span>
-                )}
-              </div>
-              {/* View mode toggle */}
-              <div className="flex items-center border border-rmpg-700 rounded-[2px] overflow-hidden flex-shrink-0">
-                <button type="button" title="Folder view"
-                  aria-pressed={viewMode === 'folders'}
-                  onClick={() => { setViewMode('folders'); localStorage.setItem('rmpg_serve_view_mode', 'folders'); }}
-                  className={`px-2 py-1 text-[10px] transition-colors ${viewMode === 'folders' ? 'bg-rmpg-500/30 text-rmpg-200' : 'text-rmpg-500 hover:text-rmpg-300'}`}
-                ><FolderOpen size={11} /></button>
-                <button type="button" title="List view"
-                  aria-pressed={viewMode === 'list'}
-                  onClick={() => { setViewMode('list'); localStorage.setItem('rmpg_serve_view_mode', 'list'); }}
-                  className={`px-2 py-1 text-[10px] transition-colors ${viewMode === 'list' ? 'bg-rmpg-500/30 text-rmpg-200' : 'text-rmpg-500 hover:text-rmpg-300'}`}
-                ><Layers size={11} /></button>
-              </div>
-              {/* Collapse All / Expand All (folder mode only) */}
-              {viewMode === 'folders' && (
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button type="button" onClick={() => setAllFoldersOpen(true)}
-                    className="px-2 py-1 text-[10px] text-rmpg-500 hover:text-rmpg-300 border border-rmpg-700 rounded-[2px] transition-colors">
-                    Expand
-                  </button>
-                  <button type="button" onClick={() => setAllFoldersOpen(false)}
-                    className="px-2 py-1 text-[10px] text-rmpg-500 hover:text-rmpg-300 border border-rmpg-700 rounded-[2px] transition-colors">
-                    Collapse
-                  </button>
-                </div>
-              )}
-              {/* Priority sort */}
+            {/* Filter buttons */}
+            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-rmpg-700 overflow-x-auto tab-scroll">
+              {STATUS_FILTERS.map(f => (
+                <button type="button"
+                  key={f.value}
+                  role="button"
+                  aria-pressed={statusFilter === f.value}
+                  onClick={() => setStatusFilter(f.value)}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-[2px] border transition-all duration-150 whitespace-nowrap focus:outline-none focus:ring-1 focus:ring-rmpg-500/50 ${
+                    statusFilter === f.value
+                      ? 'text-rmpg-100 bg-rmpg-500 border-rmpg-500 shadow-[0_0_6px_rgba(212,160,23,0.3)]'
+                      : 'text-rmpg-400 bg-transparent border-rmpg-600 hover:border-rmpg-400 hover:text-rmpg-200'
+                  }`}
+                >
+                  {f.label}
+                  {f.value !== 'all' && (
+                    <span className="ml-1 text-[10px] tabular-nums font-mono text-rmpg-500">
+                      {jobs.filter(j => j.status === f.value).length}
+                    </span>
+                  )}
+                </button>
+              ))}
+              {/* Feature 1: Priority Sort Toggle */}
               <button type="button"
                 role="button"
                 aria-pressed={sortByUrgency}
