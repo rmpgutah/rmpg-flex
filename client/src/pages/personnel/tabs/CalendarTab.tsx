@@ -83,10 +83,10 @@ export default function CalendarTab() {
   return (
     <div className="p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2"><Calendar className="w-4 h-4" /> Schedule Calendar</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2"><Calendar className="w-4 h-4" /> Schedule Calendar</h2>
         <div className="flex items-center gap-2">
           <IconButton aria-label="Previous month" onClick={prevMonth} className="toolbar-btn p-1"><ChevronLeft className="w-3.5 h-3.5" /></IconButton>
-          <span className="text-xs text-white font-bold w-36 text-center">{MONTHS[month - 1]} {year}</span>
+          <span className="text-xs text-rmpg-100 font-bold w-36 text-center">{MONTHS[month - 1]} {year}</span>
           <IconButton aria-label="Next month" onClick={nextMonth} className="toolbar-btn p-1"><ChevronRight className="w-3.5 h-3.5" /></IconButton>
         </div>
       </div>
@@ -109,7 +109,7 @@ export default function CalendarTab() {
                 const dayShifts = day ? shiftsByDate[String(day)] || [] : [];
                 return (
                   <div key={di} className={`min-h-[60px] p-1 border-r border-rmpg-800 last:border-r-0 ${
-                    day ? 'bg-surface-sunken' : 'bg-[#0d0d0d]'
+                    day ? 'bg-surface-sunken' : 'bg-surface-deep'
                   } ${isToday(day || 0) ? 'ring-1 ring-inset ring-brand-500' : ''}`}>
                     {day && (
                       <>
@@ -137,8 +137,8 @@ export default function CalendarTab() {
 
       {/* Shift count summary */}
       <div className="flex items-center gap-4 text-[10px] text-rmpg-400">
-        <span>Total shifts this month: <strong className="text-white">{shifts.length}</strong></span>
-        <span>Unique officers: <strong className="text-white">{new Set(shifts.map(s => s.officer_id)).size}</strong></span>
+        <span>Total shifts this month: <strong className="text-rmpg-100">{shifts.length}</strong></span>
+        <span>Unique officers: <strong className="text-rmpg-100">{new Set(shifts.map(s => s.officer_id)).size}</strong></span>
       </div>
     </div>
   );

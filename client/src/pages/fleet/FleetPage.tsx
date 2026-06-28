@@ -491,10 +491,14 @@ export default function FleetPage() {
         description: maintForm.description.trim(),
         mileage_at_service: maintForm.mileage_at_service ? parseInt(maintForm.mileage_at_service, 10) : null,
         cost: maintForm.cost ? parseFloat(maintForm.cost) : null,
+        labor_cost: maintForm.labor_cost ? parseFloat(maintForm.labor_cost) : null,
         vendor: maintForm.vendor.trim() || null,
         performed_by: maintForm.performed_by.trim() || null,
         performed_at: maintForm.performed_at || nowLocalISO(),
         next_due_date: maintForm.next_due_date || null,
+        next_due_mileage: maintForm.next_due_mileage ? parseInt(maintForm.next_due_mileage, 10) : null,
+        service_tasks: maintForm.service_tasks.trim() || null,
+        notes: maintForm.notes.trim() || null,
       };
       if (modal === 'edit_maintenance' && editingMaintenanceId) {
         await apiFetch(`/fleet/maintenance/${editingMaintenanceId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -549,13 +553,13 @@ export default function FleetPage() {
   };
 
   const handleSaveInspection = async () => {
-    if (!inspectionForm.inspector_name.trim()) { addToast('Inspector name is required', 'warning'); return; }
+    if (!(inspectionForm.inspector_name || '').trim()) { addToast('Inspector name is required', 'warning'); return; }
     if (selectedId == null) return;
     setSaving(true);
     try {
       const payload = {
         inspection_type: inspectionForm.inspection_type,
-        inspector_name: inspectionForm.inspector_name.trim(),
+        inspector_name: (inspectionForm.inspector_name || '').trim(),
         inspection_date: inspectionForm.inspection_date,
         overall_result: inspectionForm.overall_result,
         mileage: inspectionForm.mileage ? parseInt(inspectionForm.mileage, 10) : null,
@@ -1009,23 +1013,37 @@ export default function FleetPage() {
       description: record.description || '',
       mileage_at_service: record.mileage_at_service != null ? String(record.mileage_at_service) : '',
       cost: record.cost != null ? String(record.cost) : '',
+      labor_cost: (record as any).labor_cost != null ? String((record as any).labor_cost) : '',
       vendor: record.vendor || '',
       performed_by: record.performed_by || '',
       performed_at: toDatetimeLocal(record.performed_at),
       next_due_date: record.next_due_date ? toDatetimeLocal(record.next_due_date) : '',
+      next_due_mileage: (record as any).next_due_mileage != null ? String((record as any).next_due_mileage) : '',
+      service_tasks: (record as any).service_tasks || '',
+      notes: (record as any).notes || '',
     });
     setEditingMaintenanceId(record.id);
     setModal('edit_maintenance');
   };
 
   const openEditInspection = (inspection: FleetInspection) => {
+    // Defensive: mobile/field-app inspections may have a null inspector and a
+    // simplified checklist shape ({item,result,note}) — normalize both so the
+    // form never renders against null (was a page-crashing TypeError).
+    const rawItems = Array.isArray(inspection.items) ? inspection.items : [];
+    const items = rawItems.map((i: any) => ({
+      category: i.category ?? 'FIELD',
+      item: i.item ?? i.label ?? '',
+      status: i.status ?? (i.result === 'fail' ? 'fail' : 'pass'),
+      notes: i.notes ?? i.note ?? '',
+    }));
     setInspectionForm({
-      inspection_type: inspection.inspection_type,
-      inspector_name: inspection.inspector_name,
+      inspection_type: inspection.inspection_type ?? 'pre_trip',
+      inspector_name: inspection.inspector_name ?? '',
       inspection_date: toDatetimeLocal(inspection.inspection_date),
       mileage: inspection.mileage != null ? String(inspection.mileage) : '',
-      overall_result: inspection.overall_result,
-      items: inspection.items.map(i => ({ ...i })),
+      overall_result: inspection.overall_result ?? 'pass',
+      items,
       notes: inspection.notes || '',
     });
     setEditingInspectionId(inspection.id);
@@ -1131,7 +1149,7 @@ export default function FleetPage() {
           <span className="toolbar-separator" />
           <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 mr-3">
             <Car className="w-3 h-3" />
-            <span>Total: <strong className="text-white">{vehicles.length}</strong></span>
+            <span>Total: <strong className="text-rmpg-100">{vehicles.length}</strong></span>
             <span className="text-rmpg-600">|</span>
             <span>Assigned: <strong className="text-amber-400">{assignedVehicles}</strong></span>
           </div>
@@ -1217,9 +1235,9 @@ export default function FleetPage() {
               <span className="font-bold" style={{ color: needsService > 0 ? '#f59e0b' : '#22c55e' }}>{needsService}</span>
             </div>
             <div className="flex items-center gap-1.5" title="Monthly Costs (Maintenance + Fuel)">
-              <DollarSign className="w-3.5 h-3.5 text-gray-400" />
+              <DollarSign className="w-3.5 h-3.5 text-rmpg-400" />
               <span className="text-rmpg-400">Costs:</span>
-              <span className="font-bold text-gray-400">
+              <span className="font-bold text-rmpg-400">
                 {fleetAnalytics?.fleet_summary ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
               </span>
             </div>
@@ -1328,12 +1346,12 @@ export default function FleetPage() {
                       <Car className="w-4 h-4" style={{ color: statusColor }} />
                       {hasAlert && (
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
-                          <span className="text-[6px] text-white font-bold">!</span>
+                          <span className="text-[6px] text-rmpg-100 font-bold">!</span>
                         </div>
                       )}
                       {!hasAlert && hasWarning && (
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center">
-                          <span className="text-[6px] text-white font-bold">!</span>
+                          <span className="text-[6px] text-rmpg-100 font-bold">!</span>
                         </div>
                       )}
                     </div>
@@ -1477,7 +1495,7 @@ export default function FleetPage() {
           ) : (
             <>
             {isMobile && (
-              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
+              <button type="button" onClick={() => { setSelectedId(null); setDetail(null); }} className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
                 ◀ Back to Vehicles
               </button>
             )}
@@ -1659,8 +1677,8 @@ export default function FleetPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 p-2" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-w-[95vw] max-h-[90vh] md:max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
-              <h3 className="text-sm font-bold text-white">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
-              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-white text-lg">&times;</button>
+              <h3 className="text-sm font-bold text-rmpg-100">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
+              <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-rmpg-100 text-lg">&times;</button>
             </div>
             <div className="p-3 flex-1 overflow-auto space-y-2">
               {[
@@ -1707,17 +1725,17 @@ export default function FleetPage() {
       {costPerMile && (
         <div className="fixed bottom-16 right-4 left-4 md:left-auto z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-auto md:w-[300px] shadow-xl">
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-bold text-white">Cost Analysis: {costPerMile.vehicle_number}</h4>
-            <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>
+            <h4 className="text-sm font-bold text-rmpg-100">Cost Analysis: {costPerMile.vehicle_number}</h4>
+            <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-rmpg-100">&times;</button>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
               <div className="text-rmpg-400">Fuel Cost</div>
-              <div className="text-white font-mono">${costPerMile.total_fuel_cost?.toFixed(2)}</div>
+              <div className="text-rmpg-100 font-mono">${costPerMile.total_fuel_cost?.toFixed(2)}</div>
             </div>
             <div>
               <div className="text-rmpg-400">Maint Cost</div>
-              <div className="text-white font-mono">${costPerMile.total_maintenance_cost?.toFixed(2)}</div>
+              <div className="text-rmpg-100 font-mono">${costPerMile.total_maintenance_cost?.toFixed(2)}</div>
             </div>
             <div>
               <div className="text-rmpg-400">Total Cost</div>

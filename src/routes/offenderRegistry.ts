@@ -21,9 +21,37 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 
 const offenderRegistry = new Hono<Env>();
+
+// ── Runtime column-ensure ───────────────────────────────────
+// Migration 0122 adds tier/registration_status/last_verification/
+// next_verification_due, but per CLAUDE.md migrations routinely fail to
+// reach live D1 silently. Ensure them at runtime (once per isolate) so the
+// compliance workflow works even if the migration never landed.
+let _complianceColsEnsured = false;
+async function ensureComplianceColumns(db: ReturnType<typeof getDb>): Promise<void> {
+  if (_complianceColsEnsured) return;
+  for (const [col, type] of [
+    ['tier', 'INTEGER'], ['registration_status', 'TEXT'],
+    ['last_verification', 'TEXT'], ['next_verification_due', 'TEXT'],
+  ] as const) {
+    if (!(await columnExists(db, 'offender_alerts', col))) {
+      try { await execute(db, `ALTER TABLE offender_alerts ADD COLUMN ${col} ${type}`); }
+      catch { /* concurrent add or already exists */ }
+    }
+  }
+  _complianceColsEnsured = true;
+}
+
+// Verification cadence by tier (matches the SexOffenderRegistryPage labels:
+// tier 3 = 90-day, tier 2 = 180-day, tier 1/other = 365-day).
+function cadenceDays(tier: number | null | undefined): number {
+  if (tier === 3) return 90;
+  if (tier === 2) return 180;
+  return 365;
+}
 
 const ALERT_SELECT = `
   SELECT a.*,
@@ -31,6 +59,7 @@ const ALERT_SELECT = `
          a.alert_longitude AS location_lng,
          a.alert_address   AS location_address,
          TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS person_name,
+         p.first_name, p.last_name, p.middle_name,
          p.dob, p.is_sex_offender, p.gang_affiliation
   FROM offender_alerts a
   LEFT JOIN persons p ON p.id = a.person_id`;
@@ -132,6 +161,125 @@ offenderRegistry.put('/:id/clear', async (c) => {
   } catch (err) {
     console.error('PUT /offender-registry/:id/clear error:', err);
     return c.json({ error: 'Failed to clear alert', code: 'CLEAR_ERROR' }, 500);
+  }
+});
+
+// ── PUT /:id/verify — log a compliance verification ─────────
+// Body: { status: 'compliant' | 'non_compliant' }. Stamps last_verification
+// = now and computes next_verification_due from the record's tier cadence.
+// Also writes the existing compliance columns so /stats + risk-score stay
+// consistent. Returns { data: { last_verification, next_verification_due } }.
+offenderRegistry.put('/:id/verify', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureComplianceColumns(db);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as { status?: string };
+    const status = b.status === 'non_compliant' ? 'non_compliant' : 'compliant';
+
+    const alert = await queryFirst<{ tier: number | null }>(
+      db, 'SELECT tier FROM offender_alerts WHERE id = ?', id,
+    );
+    if (!alert) return c.json({ error: 'Alert not found', code: 'NOT_FOUND' }, 404);
+
+    const days = cadenceDays(alert.tier);
+    await execute(
+      db,
+      `UPDATE offender_alerts
+          SET registration_status = ?,
+              last_compliance_result = ?,
+              last_compliance_check = datetime('now'),
+              last_verification = datetime('now'),
+              next_verification_due = date('now', '+' || ? || ' days'),
+              updated_at = datetime('now')
+        WHERE id = ?`,
+      status, status, days, id,
+    );
+    const row = await queryFirst<{ last_verification: string; next_verification_due: string }>(
+      db, 'SELECT last_verification, next_verification_due FROM offender_alerts WHERE id = ?', id,
+    );
+    return c.json({ data: { last_verification: row?.last_verification, next_verification_due: row?.next_verification_due } });
+  } catch (err) {
+    console.error('PUT /offender-registry/:id/verify error:', err);
+    return c.json({ error: 'Verification failed', code: 'VERIFY_ERROR' }, 500);
+  }
+});
+
+// ── PUT /:id — link a person or edit the alert-supported fields ──
+// Two callers: link-person sends { person_id }; edit sends the full form.
+// Only persists columns that exist on offender_alerts — the rich biographical
+// SOR fields (employer/school/physical descriptors) belong to a dedicated
+// sex_offenders registry table that does not exist yet, so they are ignored
+// here rather than silently mis-stored. person_id arrives as a string.
+const EDITABLE_COLS = new Set([
+  'person_id', 'alert_type', 'severity', 'status', 'description',
+  'expiration_date', 'notes', 'tier', 'registration_status',
+]);
+offenderRegistry.put('/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await ensureComplianceColumns(db);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    for (const [k, v] of Object.entries(b)) {
+      if (!EDITABLE_COLS.has(k)) continue;
+      if (k === 'person_id') {
+        const pid = Number(v);
+        sets.push('person_id = ?');
+        params.push(Number.isFinite(pid) && pid > 0 ? pid : null);
+      } else if (k === 'tier') {
+        const t = Number(v);
+        sets.push('tier = ?');
+        params.push(Number.isFinite(t) ? t : null);
+      } else {
+        sets.push(`${k} = ?`);
+        params.push(v === '' ? null : v);
+      }
+    }
+    if (!sets.length) return c.json({ error: 'No editable fields provided', code: 'NO_FIELDS' }, 400);
+    sets.push("updated_at = datetime('now')");
+    const result = await execute(
+      db, `UPDATE offender_alerts SET ${sets.join(', ')} WHERE id = ?`, ...params, id,
+    );
+    if (result.meta.changes === 0) return c.json({ error: 'Alert not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('PUT /offender-registry/:id error:', err);
+    return c.json({ error: 'Failed to update alert', code: 'UPDATE_ERROR' }, 500);
+  }
+});
+
+// ── POST /reconcile-flags — sync persons.is_sex_offender ────
+// Keeps the two stores consistent: a person with an ACTIVE, unexpired
+// sex_offender alert should also carry persons.is_sex_offender so the
+// DL-scan deep sweep and the persons-flag screening branch fire on them.
+// One-way + idempotent: only sets the flag on, never clears it (a cleared
+// alert shouldn't silently un-flag a person who may be flagged elsewhere).
+offenderRegistry.post('/reconcile-flags', async (c) => {
+  try {
+    const user = c.get('user') as { id: number; role: string } | undefined;
+    if (!user || !['admin', 'manager', 'supervisor'].includes(user.role)) {
+      return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+    }
+    const db = getDb(c.env);
+    const result = await execute(db, `
+      UPDATE persons SET is_sex_offender = 1, updated_at = datetime('now')
+      WHERE COALESCE(is_sex_offender, 0) <> 1
+        AND id IN (
+          SELECT person_id FROM offender_alerts
+          WHERE alert_type = 'sex_offender' AND status = 'active'
+            AND (expiration_date IS NULL OR expiration_date = '' OR expiration_date >= date('now'))
+            AND person_id IS NOT NULL
+        )`);
+    return c.json({ success: true, flagged: result.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('POST /offender-registry/reconcile-flags error:', err);
+    return c.json({ error: 'Failed to reconcile flags', code: 'RECONCILE_ERROR' }, 500);
   }
 });
 

@@ -21,7 +21,11 @@
 
 import { Hono } from 'hono';
 import { authMiddleware, requireRole } from '../middleware/auth';
-import { getDb, queryFirst, query, execute } from '../utils/db';
+import { getDb, queryFirst, query, execute, columnExists } from '../utils/db';
+import {
+  parseAddrList, mapAttachments, buildSendPayload,
+  type SendAttachment, type SendInput,
+} from '../utils/emailSend';
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
 import type { Bindings, Variables } from '../types';
 
@@ -551,7 +555,9 @@ email.get('/messages', async (c) => {
   params.set('$orderby', 'receivedDateTime desc');
   params.set('$top', String(perPage));
   if (skip > 0) params.set('$skip', String(skip));
-  if (search) params.set('$search', `"${search.replace(/"/g, '\\"')}"`);
+  // Escape backslash FIRST, then quotes, before embedding in the OData $search
+  // quoted string (otherwise a value with `\` could break out of the literal).
+  if (search) params.set('$search', `"${search.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
   try {
     const res = await graphFetch(
       c.env,
@@ -751,107 +757,81 @@ email.delete('/messages/:id', async (c) => {
 });
 
 // ─── Send / reply / forward (Graph — replaces SMTP) ──────────────
-// Accepts BOTH "a@x.com, b@y.com" and ["a@x.com","b@y.com"] — the compose
-// UI sends arrays for /schedule and strings elsewhere.
-function parseAddrList(raw: string | string[] | undefined): Array<{ emailAddress: { address: string } }> {
-  const parts = Array.isArray(raw) ? raw : (raw || '').split(/[,;]/);
-  return parts
-    .map((s) => String(s).trim())
-    .filter((s) => s && /@/.test(s))
-    .map((address) => ({ emailAddress: { address } }));
+// parseAddrList / mapAttachments / buildSendPayload + SendAttachment / SendInput
+// now live in ../utils/emailSend (shared with the PDF-from-context handler).
+
+// Runtime reconcile for the 0118 record-link columns (deploy migration step is
+// continue-on-error; this guarantees the columns exist before we write them).
+let _outboxRecordColsEnsured = false;
+async function ensureOutboxRecordColumns(db: D1Database): Promise<boolean> {
+  if (_outboxRecordColsEnsured) return true;
+  try {
+    if (!(await columnExists(db, 'email_outbox', 'record_type'))) {
+      try { await execute(db, 'ALTER TABLE email_outbox ADD COLUMN record_type TEXT'); } catch { /* already exists */ }
+      try { await execute(db, 'ALTER TABLE email_outbox ADD COLUMN record_id INTEGER'); } catch { /* already exists */ }
+    }
+    _outboxRecordColsEnsured = await columnExists(db, 'email_outbox', 'record_type');
+  } catch {
+    // email_outbox table not yet created; stay false so the next call retries
+  }
+  return _outboxRecordColsEnsured;
 }
 
-interface SendAttachment { name?: string; contentType?: string; contentBytes?: string }
+// Shared send core: enqueue to the durable outbox, attempt a synchronous Graph
+// send, and on failure leave the row pending for the cron drain to retry.
+// Used by both POST /send and the PDF-from-context handler.
+// NOTE: opts.recordType AND opts.recordId must BOTH be non-null to link the
+// send to a record — supplying only one silently omits the link.
+export async function enqueueAndSend(
+  env: Bindings,
+  ownerUserId: number,
+  payload: unknown,
+  opts: { recordType?: string | null; recordId?: number | null } = {},
+): Promise<{ outboxId: number; status: 'sent' | 'queued'; error?: string }> {
+  const json = JSON.stringify(payload);
+  const wantLink = opts.recordType != null && opts.recordId != null;
+  const hasRecordCols = wantLink ? await ensureOutboxRecordColumns(env.DB) : false;
 
-// Graph fileAttachment payloads from the compose UI's base64 list.
-function mapAttachments(atts: SendAttachment[] | undefined): Array<Record<string, unknown>> {
-  return (atts || [])
-    .filter((a) => a && a.contentBytes)
-    .slice(0, 20)
-    .map((a) => ({
-      '@odata.type': '#microsoft.graph.fileAttachment',
-      name: (a.name || 'attachment').slice(0, 255),
-      contentType: a.contentType || 'application/octet-stream',
-      contentBytes: a.contentBytes,
-    }));
+  const queued = hasRecordCols
+    ? await execute(env.DB,
+        "INSERT INTO email_outbox (owner_user_id, payload, status, record_type, record_id) VALUES (?, ?, 'pending', ?, ?)",
+        ownerUserId, json, opts.recordType, opts.recordId)
+    : await execute(env.DB,
+        "INSERT INTO email_outbox (owner_user_id, payload, status) VALUES (?, ?, 'pending')",
+        ownerUserId, json);
+  const outboxId = queued.meta.last_row_id as number;
+
+  try {
+    const res = await graphFetch(env, '/me/sendMail', { method: 'POST', body: json });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
+      await execute(env.DB,
+        "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
+        err, outboxId);
+      return { outboxId, status: 'queued', error: err };
+    }
+    await execute(env.DB,
+      "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now','localtime') WHERE id = ?",
+      outboxId);
+    return { outboxId, status: 'sent' };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await execute(env.DB,
+      "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
+      msg, outboxId);
+    return { outboxId, status: 'queued', error: msg };
+  }
 }
 
 email.post('/send', async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json().catch(() => ({})) as {
-    to?: string | string[]; cc?: string | string[]; bcc?: string | string[];
-    subject?: string; body?: string; isHtml?: boolean;
-    attachments?: SendAttachment[]; importance?: string;
-    requestReadReceipt?: boolean; requestDeliveryReceipt?: boolean;
-    replyTo?: string | string[];
-  };
-  const toRecipients = parseAddrList(body.to);
-  if (!toRecipients.length) return c.json({ error: 'At least one recipient required' }, 400);
-
-  const attachments = mapAttachments(body.attachments);
-  const importance = ['low', 'normal', 'high'].includes(body.importance || '') ? body.importance : 'normal';
-  const replyToList = parseAddrList(body.replyTo);
-  const payload = {
-    message: {
-      subject: body.subject || '(no subject)',
-      body: {
-        contentType: body.isHtml === false ? 'Text' : 'HTML',
-        content: body.body || '',
-      },
-      toRecipients,
-      ccRecipients: parseAddrList(body.cc),
-      bccRecipients: parseAddrList(body.bcc),
-      ...(attachments.length ? { attachments } : {}),
-      importance,
-      isReadReceiptRequested: !!body.requestReadReceipt,
-      isDeliveryReceiptRequested: !!body.requestDeliveryReceipt,
-      ...(replyToList.length ? { replyTo: replyToList } : {}),
-    },
-    saveToSentItems: true,
-  };
-
-  // Durable outbox: enqueue first, then attempt synchronous send. If the
-  // sync send succeeds we mark sent in the same response; if it fails the
-  // cron drains it later. Either way the operator's "send" click is
-  // never lost to a transient Graph hiccup.
-  const queued = await execute(
-    c.env.DB,
-    "INSERT INTO email_outbox (owner_user_id, payload, status) VALUES (?, ?, 'pending')",
-    userId, JSON.stringify(payload),
-  );
-  const outboxId = queued.meta.last_row_id as number;
-
-  try {
-    const res = await graphFetch(c.env, '/me/sendMail', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
-      await execute(
-        c.env.DB,
-        "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
-        err, outboxId,
-      );
-      // 202 — queued for retry, not a hard failure
-      return c.json({ success: false, queued: true, outboxId, error: err }, 202);
-    }
-    await execute(
-      c.env.DB,
-      "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now','localtime') WHERE id = ?",
-      outboxId,
-    );
-    return c.json({ success: true, outboxId });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Failed';
-    await execute(
-      c.env.DB,
-      "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
-      msg, outboxId,
-    );
-    return c.json({ success: false, queued: true, outboxId, error: msg }, 202);
-  }
+  const body = await c.req.json().catch(() => ({})) as SendInput;
+  if (!parseAddrList(body.to).length) return c.json({ error: 'At least one recipient required' }, 400);
+  const payload = buildSendPayload(body);
+  const r = await enqueueAndSend(c.env, userId, payload);
+  if (r.status === 'sent') return c.json({ success: true, outboxId: r.outboxId });
+  return c.json({ success: false, queued: true, outboxId: r.outboxId, error: r.error }, 202);
 });
 
 // Outbox introspection for the EmailPage compose UI ("3 messages queued for retry")
@@ -863,6 +843,109 @@ email.get('/outbox', async (c) => {
     userId,
   );
   return c.json({ outbox: rows });
+});
+
+// Outbound PDFs/emails sent FROM a given record (case/incident/warrant/evidence).
+// Reads the durable outbox by the 0118 record-link columns and parses each
+// payload to a clean surface shape. Distinct from /links/by-entity, which lists
+// INBOUND emails (email_links, keyed by Graph message-id).
+email.get('/by-record', async (c) => {
+  const recordType = c.req.query('recordType');
+  const recordId = c.req.query('recordId');
+  if (!recordType || !recordId) return c.json({ items: [] });
+  if (!(await columnExists(c.env.DB, 'email_outbox', 'record_type'))) return c.json({ items: [] });
+
+  const rows = await query<{
+    id: number; owner_user_id: number; payload: string; status: string;
+    created_at: string; sent_at: string | null; last_error: string | null;
+    full_name: string | null; username: string | null;
+  }>(c.env.DB,
+    `SELECT o.id, o.owner_user_id, o.payload, o.status, o.created_at, o.sent_at, o.last_error,
+            u.full_name, u.username
+       FROM email_outbox o
+       LEFT JOIN users u ON u.id = o.owner_user_id
+      WHERE o.record_type = ? AND o.record_id = ?
+      ORDER BY o.id DESC LIMIT 100`,
+    recordType, Number(recordId));
+
+  const items = rows.map((r) => {
+    let to: string[] = []; let subject = ''; let attachmentName: string | null = null;
+    try {
+      const p = JSON.parse(r.payload) as {
+        message?: {
+          subject?: string;
+          toRecipients?: Array<{ emailAddress?: { address?: string } }>;
+          attachments?: Array<{ name?: string }>;
+        };
+      };
+      to = (p.message?.toRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      subject = p.message?.subject || '';
+      attachmentName = p.message?.attachments?.[0]?.name || null;
+    } catch { /* leave defaults */ }
+    return {
+      outboxId: r.id, status: r.status, createdAt: r.created_at, sentAt: r.sent_at,
+      error: r.last_error, sentByUserId: r.owner_user_id,
+      sentBy: r.full_name || r.username || `user #${r.owner_user_id}`,
+      to, subject, attachmentName,
+    };
+  });
+  return c.json({ items });
+});
+
+// Outbound-email audit log for AdminPage (AdminEmailAuditTab).
+// Derived from the durable email_outbox (the only place every send is
+// recorded) JOINed to users — email_audit_log exists in schema but is
+// never written, so reading it would always be empty. Returns a BARE
+// ARRAY of AuditRow, role-gated to admin/manager/supervisor.
+// Optional ?status=sent|failed filter.
+email.get('/audit', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  const statusFilter = c.req.query('status'); // 'sent' | 'failed' | undefined
+  let where = '';
+  if (statusFilter === 'sent') where = "WHERE o.status = 'sent'";
+  else if (statusFilter === 'failed') where = "WHERE o.status != 'sent'";
+
+  const rows = await query<{
+    id: number; owner_user_id: number; payload: string; status: string;
+    created_at: string; sent_at: string | null; last_error: string | null;
+    username: string | null;
+  }>(c.env.DB,
+    `SELECT o.id, o.owner_user_id, o.payload, o.status, o.created_at, o.sent_at, o.last_error,
+            u.username
+       FROM email_outbox o
+       LEFT JOIN users u ON u.id = o.owner_user_id
+       ${where}
+      ORDER BY o.id DESC LIMIT 200`,
+  ).catch(() => [] as any[]); // table may not exist yet on a fresh DB
+
+  const audit = rows.map((r) => {
+    let to: string[] = []; let cc: string[] = []; let subject = '';
+    try {
+      const p = JSON.parse(r.payload) as {
+        message?: {
+          subject?: string;
+          toRecipients?: Array<{ emailAddress?: { address?: string } }>;
+          ccRecipients?: Array<{ emailAddress?: { address?: string } }>;
+        };
+      };
+      to = (p.message?.toRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      cc = (p.message?.ccRecipients || []).map((x) => x.emailAddress?.address || '').filter(Boolean);
+      subject = p.message?.subject || '';
+    } catch { /* leave defaults */ }
+    return {
+      id: r.id,
+      sent_by: r.owner_user_id,
+      sent_by_username: r.username,
+      to_addresses: JSON.stringify(to),
+      cc_addresses: cc.length ? JSON.stringify(cc) : null,
+      subject,
+      template_id: null,
+      graph_message_id: null,
+      status: (r.status === 'sent' ? 'sent' : 'failed') as 'sent' | 'failed',
+      error: r.last_error,
+      sent_at: r.sent_at || r.created_at,
+    };
+  });
+  return c.json(audit);
 });
 
 // Cron-drained: pop up-to-N pending rows whose next_attempt_at has
@@ -1008,7 +1091,21 @@ interface RuleRow {
   actions: string;
 }
 
+// Power-user rules may opt into raw-regex matching (cond.regex === true), which
+// compiles a user-authored pattern and runs it against email text. A regex built
+// from user input is a ReDoS / regex-injection vector (CWE-1333 / CWE-730): a
+// crafted pattern such as (a+)+$ run over attacker-influenced subject/sender text
+// can pin the Worker isolate's CPU. We bound BOTH sides of the match — the
+// pattern length and the haystack length — which keeps worst-case backtracking
+// well below a denial-of-service. Patterns over the cap are rejected (the rule
+// simply doesn't match) rather than compiled. Mirrors the original
+// emailRuleEngine limits that were dropped when this path was ported to the
+// Worker.
+const MAX_RULE_REGEX_LEN = 256;
+const MAX_RULE_INPUT_LEN = 1024;
+
 function safeRe(src: string): RegExp | null {
+  if (src.length > MAX_RULE_REGEX_LEN) return null;
   try { return new RegExp(src, 'i'); } catch { return null; }
 }
 
@@ -1019,13 +1116,13 @@ function matchRule(cond: RuleConditions, m: {
     const f = (m.from_address || '').toLowerCase();
     if (cond.regex) {
       const re = safeRe(cond.from);
-      if (!re || !re.test(m.from_address || '')) return false;
+      if (!re || !re.test((m.from_address || '').slice(0, MAX_RULE_INPUT_LEN))) return false;
     } else if (!f.includes(cond.from.toLowerCase())) return false;
   }
   if (cond.subject) {
     if (cond.regex) {
       const re = safeRe(cond.subject);
-      if (!re || !re.test(m.subject || '')) return false;
+      if (!re || !re.test((m.subject || '').slice(0, MAX_RULE_INPUT_LEN))) return false;
     } else {
       const s = (m.subject || '').toLowerCase();
       if (!s.includes(cond.subject.toLowerCase())) return false;

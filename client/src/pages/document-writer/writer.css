@@ -67,6 +67,11 @@
 .writer-content .ProseMirror table {
   border-collapse: collapse;
   width: 100%;
+  /* Fixed layout divides the page width evenly across columns instead of
+   * letting content set it. Without this, an unbreakable run (notably the
+   * signature block's underscore "line") forces a column wider than the page
+   * and the whole table overflows the right margin in print/PDF. */
+  table-layout: fixed;
   margin: 0.5em 0;
 }
 .writer-content .ProseMirror td,
@@ -80,6 +85,10 @@
   padding: var(--rmpg-cell-py, 4px) var(--rmpg-cell-px, 8px);
   height: var(--rmpg-row-h, auto);
   vertical-align: top;
+  /* NOTE: deliberately NOT `overflow: hidden` here — it would clip the
+   * column-resize drag handle (Table is configured resizable). On-screen,
+   * table-layout:fixed alone keeps the table within the page; the underscore
+   * line is clipped to its cell only in print (see @media print below). */
 }
 .writer-content .ProseMirror th { background: rgba(128, 128, 128, 0.16); font-weight: 700; }
 .writer-content .ProseMirror img { max-width: 100%; height: auto; }
@@ -317,6 +326,12 @@
   .doc-section-break::after { display: none; }
   /* Writing measure is a drafting aid only — full width in print. */
   .writer-content .ProseMirror > * { max-width: none !important; }
+  /* Clip an unbreakable run (the signature underscore "line") to its column so
+   * a multi-column signature row can't push the table past the page margin.
+   * Print has no resize handles, so clipping is safe here (unlike on screen).
+   * Pairs with table-layout:fixed on the table rule above. */
+  .writer-content .ProseMirror td,
+  .writer-content .ProseMirror th { overflow: hidden; }
   /* Redaction bars must print solid black (force background printing). */
   .doc-redacted {
     background: #000 !important;

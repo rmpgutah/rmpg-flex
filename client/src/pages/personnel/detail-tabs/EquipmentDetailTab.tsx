@@ -3,11 +3,13 @@
 // ============================================================
 
 import { useState, useCallback } from 'react';
-import { Package, Plus, Edit2, Trash2, Loader2, Box, LogIn, LogOut, Clock } from 'lucide-react';
+import { Package, Plus, Edit2, Trash2, Loader2, Box, LogIn, LogOut, Clock, FileText } from 'lucide-react';
 import type { OfficerEquipment } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
 import { safeDateTimeStr, parseTimestamp } from '../../../utils/dateUtils';
+import { openEquipmentCustodyPdf, type CheckoutLogEntry } from '../../../utils/equipmentCustodyPdf';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   equipment: OfficerEquipment[];
@@ -15,6 +17,9 @@ interface Props {
   onEdit: (eq: OfficerEquipment) => void;
   onDelete: (eqId: string) => void;
   loading: boolean;
+  /** Prepared-by attribution for the custody PDF. Optional — when
+   *  absent the PDF still renders with empty signature lines. */
+  preparedBy?: string;
 }
 
 export default function EquipmentDetailTab({
@@ -23,10 +28,31 @@ export default function EquipmentDetailTab({
   onEdit,
   onDelete,
   loading,
+  preparedBy,
 }: Props) {
   const [checkoutLogs, setCheckoutLogs] = useState<Record<string, any[]>>({});
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = useState<string | null>(null);
+
+  const handleOpenPdf = async (eq: OfficerEquipment) => {
+    setPdfBusy(eq.id);
+    try {
+      let log: CheckoutLogEntry[] | undefined = checkoutLogs[eq.id] as CheckoutLogEntry[] | undefined;
+      if (!log) {
+        try {
+          const fetched = await apiFetch<any[]>(`/personnel/equipment/${eq.id}/checkout-log`);
+          log = Array.isArray(fetched) ? fetched as CheckoutLogEntry[] : [];
+          setCheckoutLogs((prev) => ({ ...prev, [eq.id]: log as any[] }));
+        } catch {
+          log = [];
+        }
+      }
+      openEquipmentCustodyPdf({ item: eq, checkoutLog: log, preparedBy });
+    } finally {
+      setPdfBusy(null);
+    }
+  };
 
   const fetchCheckoutLog = useCallback(async (equipId: string) => {
     try {
@@ -77,7 +103,7 @@ export default function EquipmentDetailTab({
   const topBorderColor = (status: string) => {
     switch (status) {
       case 'issued': return 'border-t-2 border-t-green-500';
-      case 'maintenance': return 'border-t-2 border-t-gray-500';
+      case 'maintenance': return 'border-t-2 border-t-rmpg-500';
       case 'lost': return 'border-t-2 border-t-red-500';
       case 'damaged': return 'border-t-2 border-t-amber-500';
       default: return 'border-t-2 border-t-rmpg-600';
@@ -100,7 +126,7 @@ export default function EquipmentDetailTab({
   };
 
   const typeLabel = (type: string) =>
-    type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    toDisplayLabel(type);
 
   const statusLabel = (status: string) =>
     status.replace(/_/g, ' ').toUpperCase();
@@ -156,6 +182,15 @@ export default function EquipmentDetailTab({
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
+                  <button type="button"
+                    onClick={() => handleOpenPdf(eq)}
+                    disabled={pdfBusy === eq.id}
+                    className="toolbar-btn p-1 disabled:opacity-50"
+                    title="Open custody PDF (court-ready)"
+                    aria-label="Open custody PDF"
+                  >
+                    {pdfBusy === eq.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                  </button>
                   <button type="button"
                     onClick={() => onEdit(eq)}
                     className="toolbar-btn p-1"
@@ -224,7 +259,7 @@ export default function EquipmentDetailTab({
               <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
                 {eq.status === 'issued' ? (
                   <button type="button" onClick={() => handleCheckin(eq.id)} disabled={checkingOut === eq.id}
-                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-gray-900/30 text-gray-300 border border-gray-700/40 hover:bg-gray-900/50">
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-sunken/30 text-rmpg-300 border border-border-default/40 hover:bg-surface-sunken/50">
                     <LogIn className="w-3 h-3" /> {checkingOut === eq.id ? '...' : 'Check In'}
                   </button>
                 ) : (
@@ -252,7 +287,7 @@ export default function EquipmentDetailTab({
                   ) : (
                     (checkoutLogs[eq.id] || []).map((log: any) => (
                       <div key={log.id} className="flex items-center gap-2 text-[10px] px-2 py-1 bg-surface-sunken border border-rmpg-700/30">
-                        <span className={log.action === 'checkout' ? 'text-green-400' : 'text-gray-400'}>
+                        <span className={log.action === 'checkout' ? 'text-green-400' : 'text-rmpg-400'}>
                           {log.action === 'checkout' ? 'OUT' : 'IN'}
                         </span>
                         <span className="text-rmpg-400">{safeDateTimeStr(log.created_at)}</span>

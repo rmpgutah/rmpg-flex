@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { fireRule, type NotificationRuleRow } from './notificationEngine';
+import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } from '../utils/anthropic';
+import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from '../utils/openai';
 
 const admin = new Hono<Env>();
 
@@ -124,6 +126,174 @@ admin.get('/config', async (c) => {
     result.dispositions = merged;
     return c.json(result);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// ============================================================
+// /admin/config-items — grouped Record<category, ConfigItem[]>
+// ============================================================
+// AdminSystemTab.tsx fetches the FULL editable system_config row
+// set grouped by category (incident_types, dispositions, priority_config,
+// call_sources, unit_types, zones_beats, evidence_types, security_config,
+// branding, system_settings). The legacy /admin/config GET above returns
+// a FLAT key/value map for DispatchPage / IncidentsPage consumers, which
+// the admin tab can't use to edit individual rows (no ids, no category
+// grouping). This sibling endpoint preserves backwards compat: the flat
+// route stays untouched; the admin tab calls THIS one and gets the row
+// shape it needs for inline Add / Edit / Delete against POST /admin/config,
+// PUT /admin/config/:id, DELETE /admin/config/:id below.
+admin.get('/config-items', async (c) => {
+  const actor = c.get('user') as { role: string } | undefined;
+  if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{
+      id: number; config_key: string; config_value: string;
+      category: string; sort_order: number; is_active: number;
+      created_at: string; updated_at: string;
+    }>(db,
+      `SELECT id, config_key, config_value, category, sort_order, is_active, created_at, updated_at
+       FROM system_config
+       WHERE is_active = 1
+       ORDER BY category, sort_order, config_key`);
+    const grouped: Record<string, typeof rows> = {};
+    for (const row of rows) {
+      const cat = row.category || 'general';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(row);
+    }
+    return c.json(grouped);
+  } catch (err) {
+    return c.json({ error: 'Failed to fetch config items', detail: (err as Error).message }, 500);
+  }
+});
+
+// ============================================================
+// POST /admin/config — insert a system_config row
+// ============================================================
+// Body: { config_key, config_value, category?, sort_order? }
+// Returns the inserted row including its new auto-incremented id, so the
+// client can cache the id for subsequent PUT/DELETE without a roundtrip.
+// admin + manager only. Rejects duplicate (config_key, config_value) with
+// 409 — the live D1 unique index enforces this and we surface the conflict
+// honestly instead of letting it leak as a generic 500.
+admin.post('/config', async (c) => {
+  const guard = requireRole(c, 'admin', 'manager');
+  if (guard) return c.json({ error: guard }, 403);
+  try {
+    const body = await c.req.json().catch(() => ({} as any));
+    const { config_key, config_value, category, sort_order } = body ?? {};
+    if (typeof config_key !== 'string' || !config_key.trim()) {
+      return c.json({ error: 'config_key (non-empty string) is required' }, 400);
+    }
+    if (typeof config_value !== 'string') {
+      return c.json({ error: 'config_value (string) is required' }, 400);
+    }
+    const cat = typeof category === 'string' && category.trim() ? category.trim() : 'general';
+    const sort = Number.isFinite(sort_order) ? Number(sort_order) : 0;
+    const db = getDb(c.env);
+    const result = await execute(db,
+      `INSERT INTO system_config (config_key, config_value, category, sort_order)
+       VALUES (?, ?, ?, ?)`,
+      config_key.trim(), config_value, cat, sort);
+    const id = Number(result.meta.last_row_id);
+    const row = await queryFirst<{
+      id: number; config_key: string; config_value: string;
+      category: string; sort_order: number; is_active: number;
+      created_at: string; updated_at: string;
+    }>(db,
+      `SELECT id, config_key, config_value, category, sort_order, is_active, created_at, updated_at
+       FROM system_config WHERE id = ?`, id);
+    return c.json(row);
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    // Live D1 has UNIQUE(config_key, config_value); surface duplicates clearly.
+    if (/UNIQUE constraint failed/i.test(msg)) {
+      return c.json({ error: 'A row with this config_key + config_value already exists', code: 'DUPLICATE' }, 409);
+    }
+    return c.json({ error: 'Failed to insert config', detail: msg }, 500);
+  }
+});
+
+// ============================================================
+// PUT /admin/config/:id — update config_value by id
+// ============================================================
+// Body: { config_value: string, category?: string, sort_order?: number,
+//         is_active?: 0|1 }. The client only sends config_value today;
+// the other fields are accepted for future use without breaking existing
+// callers. Bounces missing/non-numeric id with 400 — that was the cause
+// of `PUT /api/admin/config/undefined` 404 spam in prod when the client
+// cached an `undefined` id from a previous 404'd POST.
+admin.put('/config/:id', async (c) => {
+  const guard = requireRole(c, 'admin', 'manager');
+  if (guard) return c.json({ error: guard }, 403);
+  const idStr = c.req.param('id');
+  const id = parseInt(idStr, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return c.json({ error: `Invalid id "${idStr}"`, code: 'INVALID_ID' }, 400);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({} as any));
+    const { config_value, category, sort_order, is_active } = body ?? {};
+    if (typeof config_value !== 'string') {
+      return c.json({ error: 'config_value (string) is required' }, 400);
+    }
+    const db = getDb(c.env);
+    const sets: string[] = ['config_value = ?'];
+    const args: unknown[] = [config_value];
+    if (typeof category === 'string' && category.trim()) { sets.push('category = ?'); args.push(category.trim()); }
+    if (Number.isFinite(sort_order)) { sets.push('sort_order = ?'); args.push(Number(sort_order)); }
+    if (is_active === 0 || is_active === 1) { sets.push('is_active = ?'); args.push(is_active); }
+    sets.push("updated_at = datetime('now','localtime')");
+    args.push(id);
+    const result = await execute(db,
+      `UPDATE system_config SET ${sets.join(', ')} WHERE id = ?`, ...args);
+    if ((result.meta.changes ?? 0) === 0) {
+      return c.json({ error: `No config row with id ${id}` }, 404);
+    }
+    const row = await queryFirst<{
+      id: number; config_key: string; config_value: string;
+      category: string; sort_order: number; is_active: number;
+      created_at: string; updated_at: string;
+    }>(db,
+      `SELECT id, config_key, config_value, category, sort_order, is_active, created_at, updated_at
+       FROM system_config WHERE id = ?`, id);
+    return c.json(row);
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    if (/UNIQUE constraint failed/i.test(msg)) {
+      return c.json({ error: 'Update would produce a duplicate config_key + config_value', code: 'DUPLICATE' }, 409);
+    }
+    return c.json({ error: 'Failed to update config', detail: msg }, 500);
+  }
+});
+
+// ============================================================
+// DELETE /admin/config/:id — hard delete by id (admin only)
+// ============================================================
+// Hard delete matches the AdminSystemTab UX: clicking the trash icon
+// next to an incident type / disposition / etc. should remove the row.
+// Soft-delete via is_active=0 is available via PUT if a future flow
+// needs it (also filtered out by GET /admin/config-items above).
+admin.delete('/config/:id', async (c) => {
+  const guard = requireRole(c, 'admin');
+  if (guard) return c.json({ error: guard }, 403);
+  const idStr = c.req.param('id');
+  const id = parseInt(idStr, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return c.json({ error: `Invalid id "${idStr}"`, code: 'INVALID_ID' }, 400);
+  }
+  try {
+    const db = getDb(c.env);
+    const result = await execute(db, 'DELETE FROM system_config WHERE id = ?', id);
+    if ((result.meta.changes ?? 0) === 0) {
+      return c.json({ error: `No config row with id ${id}` }, 404);
+    }
+    return c.json({ success: true, id });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete config', detail: (err as Error).message }, 500);
+  }
 });
 
 // GET /admin/call-templates
@@ -691,7 +861,7 @@ const ALLOWED_THIRD_PARTY_KEYS = new Set<string>([
   'mapbox_api_key', 'mapbox_access_token', 'mapbox_username', 'mapbox_style_url',
   'ncic_api_key', 'utah_dps_api_key', 'utah_courts_api_key', 'fbi_wanted_api_key',
   'dea_api_key', 'usms_api_key', 'atf_api_key', 'interpol_api_key',
-  'nsopw_api_key', 'ofac_api_key',
+  'nsopw_api_key', 'ofac_api_key', 'screening_ofac_csl_api_key',
   'openweathermap_api_key', 'nominatim_api_key', 'opencage_api_key',
   'ipinfo_api_key', 'virustotal_api_key', 'abuseipdb_api_key', 'shodan_api_key',
   'have_i_been_pwned_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',
@@ -803,6 +973,48 @@ admin.delete('/third-party-keys', async (c) => {
     console.error('[Admin] Third-party key clear failed:', err);
     return c.json({ error: 'Failed to clear key' }, 500);
   }
+});
+
+// POST /api/admin/third-party-keys/:key/test — live connectivity probe for keys
+// we know how to test. Currently anthropic_api_key and openai_api_key — both
+// send a minimal Chat-like ping and classify the result so an admin can tell
+// "configured + funded + reachable" apart from "configured but broken" (the
+// "Configured" badge only proves a value exists; AI consumers silently fall
+// back through the callAi chain when an upstream tier is unhealthy).
+// Always returns 200; read body.ok.
+admin.post('/third-party-keys/:key/test', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  const key = c.req.param('key');
+  if (!ALLOWED_THIRD_PARTY_KEYS.has(key)) return c.json({ error: 'Unknown key' }, 400);
+
+  if (key === 'anthropic_api_key') {
+    const apiKey = await getAnthropicKey(c.env);
+    if (!apiKey) return c.json({ ok: false, testable: true, message: 'Key not configured' });
+    try {
+      const model = await getClaudeModel(c.env);
+      const text = await callClaude(apiKey, { text: 'Reply with the single word: ok', maxTokens: 8, model });
+      return c.json({ ok: true, testable: true, model, message: `OK — ${model} responded`, sample: text.trim().slice(0, 40) });
+    } catch (e: any) {
+      const { status, hint } = diagnoseAnthropicError(String(e?.message || e));
+      return c.json({ ok: false, testable: true, status, message: hint });
+    }
+  }
+
+  if (key === 'openai_api_key') {
+    const apiKey = await getOpenAiKey(c.env);
+    if (!apiKey) return c.json({ ok: false, testable: true, message: 'Key not configured' });
+    try {
+      const model = await getOpenAiModel(c.env);
+      const text = await callOpenAi(apiKey, { text: 'Reply with the single word: ok', maxTokens: 8, model });
+      return c.json({ ok: true, testable: true, model, message: `OK — ${model} responded`, sample: text.trim().slice(0, 40) });
+    } catch (e: any) {
+      const { status, hint } = diagnoseOpenAiError(String(e?.message || e));
+      return c.json({ ok: false, testable: true, status, message: hint });
+    }
+  }
+
+  return c.json({ ok: false, testable: false, message: 'No live test available for this key yet' });
 });
 
 // ============================================================
@@ -975,6 +1187,53 @@ admin.post('/purge/sessions', async (c) => {
   }
 });
 
+// ── God-mode bulk call operations (AdminGodModeTab) ────────
+// These two endpoints back buttons in client/src/pages/admin/AdminGodModeTab.tsx
+// that previously POSTed to unmounted paths (404 → dead buttons).
+
+// POST /admin/calls/bulk-reassign — reassign a set of calls to one officer.
+admin.post('/calls/bulk-reassign', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  try {
+    const db = getDb(c.env);
+    const { call_ids, target_officer_id } = await c.req.json<{ call_ids?: number[]; target_officer_id?: number }>();
+    const ids = (call_ids ?? []).map(Number).filter((n) => Number.isFinite(n));
+    const officerId = Number(target_officer_id);
+    if (!ids.length || !Number.isFinite(officerId)) return c.json({ error: 'call_ids and target_officer_id are required' }, 400);
+    const officer = await queryFirst<{ full_name: string | null; username: string }>(db, 'SELECT full_name, username FROM users WHERE id = ?', officerId);
+    if (!officer) return c.json({ error: 'Target officer not found' }, 404);
+    const placeholders = ids.map(() => '?').join(',');
+    const r = await execute(db,
+      `UPDATE calls_for_service SET reporting_officer_id = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
+      officerId, ...ids);
+    return c.json({ updated: r.meta.changes ?? 0, target: officer.full_name || officer.username });
+  } catch (err) {
+    console.error('POST /admin/calls/bulk-reassign failed:', err);
+    return c.json({ error: 'Bulk reassign failed' }, 500);
+  }
+});
+
+// POST /admin/calls/force-close-all — close every open call with a disposition.
+admin.post('/calls/force-close-all', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  try {
+    const db = getDb(c.env);
+    const { disposition } = await c.req.json<{ disposition?: string }>();
+    const disp = String(disposition ?? 'Closed by Admin').slice(0, 200);
+    const r = await execute(db,
+      `UPDATE calls_for_service
+          SET status = 'closed', closed_at = datetime('now'), disposition = ?, updated_at = datetime('now')
+        WHERE status NOT IN ('cleared','closed','cancelled','archived')`,
+      disp);
+    return c.json({ closed: r.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('POST /admin/calls/force-close-all failed:', err);
+    return c.json({ error: 'Force close failed' }, 500);
+  }
+});
+
 // ── Read-only SQL query (admin diagnostic tool) ────────────
 admin.post('/query', async (c) => {
   const user = c.get('user') as { role: string } | undefined;
@@ -1081,29 +1340,67 @@ admin.put('/system-settings', async (c) => {
 });
 
 // ── Map config ─────────────────────────────────────────────
+// Rich map defaults — ported from legacy/server-vps/src/routes/adminMapConfig.ts.
+// The client's AdminMapSettingsTab + useMapConfig hook expect this full key set
+// (layer styling, clustering, GPS, markers, controls). Stored under config_key
+// 'map_settings' (category 'map_settings') — the key the live data + legacy use.
+// The previous handlers read/wrote 'map_config', a key with no live data, so the
+// admin map tab always loaded the 3-key default and ignored the saved settings.
+const MAP_DEFAULT_SETTINGS: Record<string, unknown> = {
+  default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12,
+  min_zoom: 1, max_zoom: 22, default_style: 'dark',
+  enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'],
+  show_attribution: false, rotation_enabled: false,
+  max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null,
+  custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14,
+  default_pitch: 0, default_bearing: 0, min_pitch: 0, max_pitch: 85,
+  scroll_zoom: true, box_zoom: true, drag_rotate: true, drag_pan: true,
+  double_click_zoom: true, touch_zoom_rotate: true, cooperative_gestures: false,
+  show_compass: true, show_zoom_controls: true, keyboard_enabled: true,
+  language: '', render_world_copies: true, fade_duration: 300, click_tolerance: 3,
+  local_ideograph_font_family: '', cross_source_collisions: true,
+  default_visible_layers: ['county', 'beat'],
+  layer_beat_fill: '#22c55e', layer_beat_fill_opacity: 0.2, layer_beat_stroke: '#22c55e',
+  layer_beat_stroke_opacity: 0.6, layer_beat_stroke_weight: 1.2, layer_beat_min_zoom: 10,
+  layer_county_fill: '#141414', layer_county_fill_opacity: 0.15, layer_county_stroke: '#444444',
+  layer_county_stroke_opacity: 0.5, layer_county_stroke_weight: 1.5, layer_county_min_zoom: 8,
+  layer_municipality_fill: '#a855f7', layer_municipality_fill_opacity: 0.06, layer_municipality_stroke: '#a855f7',
+  layer_municipality_stroke_opacity: 0.35, layer_municipality_stroke_weight: 1, layer_municipality_min_zoom: 9,
+  layer_highway_stroke: '#ef4444', layer_highway_stroke_opacity: 0.6, layer_highway_stroke_weight: 3,
+  layer_state_boundary_stroke: '#ffffff', layer_state_boundary_stroke_opacity: 0.3, layer_state_boundary_stroke_weight: 2,
+  layer_place_fill: '#22c55e', layer_place_fill_opacity: 0.7, layer_place_stroke: '#22c55e',
+  layer_place_stroke_opacity: 0.9, layer_place_stroke_weight: 1, layer_place_min_zoom: 10,
+  gps_batch_interval_ms: 5000, gps_max_accuracy_meters: 100, gps_max_speed_ms: 80, gps_high_accuracy: true,
+  screenshot_width: 1280, screenshot_height: 720, screenshot_style: 'dark',
+  unit_marker_pulse: true, call_marker_pulse: true, marker_font_size: 9,
+};
+
 admin.get('/map-config', async (c) => {
   try {
     const db = getDb(c.env);
     const row = await queryFirst<{ config_value: string }>(db,
-      `SELECT config_value FROM system_config WHERE config_key = 'map_config'`);
-    return c.json(row ? JSON.parse(row.config_value) : { center: [-111.891, 40.7608], zoom: 11, style: 'dark' });
-  } catch { return c.json({ center: [-111.891, 40.7608], zoom: 11, style: 'dark' }); }
+      `SELECT config_value FROM system_config WHERE config_key = 'map_settings' AND category = 'map_settings' AND is_active = 1 LIMIT 1`);
+    let stored: Record<string, unknown> = {};
+    if (row?.config_value) { try { stored = JSON.parse(row.config_value); } catch { stored = {}; } }
+    return c.json({ ...MAP_DEFAULT_SETTINGS, ...stored });
+  } catch { return c.json({ ...MAP_DEFAULT_SETTINGS }); }
 });
 
 admin.put('/map-config', async (c) => {
   const user = c.get('user') as { role: string } | undefined;
   if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
   try {
-    const body = await c.req.json();
+    const body = await c.req.json<Record<string, unknown>>();
+    const merged = { ...MAP_DEFAULT_SETTINGS, ...body };
     const db = getDb(c.env);
-    // Same composite-unique-index trap as system-settings above: DELETE+INSERT,
+    // Composite-unique-index trap (same as system-settings above): DELETE+INSERT,
     // never ON CONFLICT(config_key).
-    await execute(db, `DELETE FROM system_config WHERE config_key = 'map_config'`);
+    await execute(db, `DELETE FROM system_config WHERE config_key = 'map_settings' AND category = 'map_settings'`);
     await execute(db,
-      `INSERT INTO system_config (config_key, config_value, updated_at)
-       VALUES ('map_config', ?, datetime('now'))`,
-      JSON.stringify(body));
-    return c.json({ success: true });
+      `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at)
+       VALUES ('map_settings', ?, 'map_settings', 0, 1, datetime('now'), datetime('now'))`,
+      JSON.stringify(merged));
+    return c.json(merged);
   } catch (err: any) { return c.json({ error: 'Failed' }, 500); }
 });
 
@@ -1156,10 +1453,12 @@ admin.post('/system/lockdown', async (c) => {
   const { enabled, reason }: { enabled: boolean; reason?: string } = await c.req.json().catch(() => ({ enabled: false }));
   try {
     const db = getDb(c.env);
+    // Same composite-unique-index trap as system-settings above: live UNIQUE
+    // is (config_key, config_value), so ON CONFLICT(config_key) throws.
+    await execute(db, `DELETE FROM system_config WHERE config_key = 'system_lockdown'`);
     await execute(db,
       `INSERT INTO system_config (config_key, config_value, updated_at)
-       VALUES ('system_lockdown', ?, datetime('now'))
-       ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+       VALUES ('system_lockdown', ?, datetime('now'))`,
       JSON.stringify({ enabled, reason: reason || null, at: new Date().toISOString() }));
     return c.json({ success: true, lockdown: enabled });
   } catch { return c.json({ error: 'Failed' }, 500); }

@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Scale, Car, X, BookOpen } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 
 export interface StatuteResult {
   id: number;
@@ -79,15 +80,14 @@ const OFFENSE_COLORS: Record<string, string> = {
   class_a_misdemeanor: 'bg-amber-900/40 text-amber-300 border-amber-700/40',
   class_b_misdemeanor: 'bg-amber-900/30 text-amber-400 border-amber-700/30',
   class_c_misdemeanor: 'bg-yellow-900/30 text-yellow-400 border-yellow-700/30',
-  infraction: 'bg-gray-900/30 text-gray-400 border-gray-700/30',
+  infraction: 'bg-surface-sunken/30 text-rmpg-400 border-border-default/30',
   enhancement: 'bg-purple-900/30 text-purple-400 border-purple-700/30',
 };
 
+// Delegates to the shared toDisplayLabel helper for acronym-aware Title Case
+// (e.g. dui_enhancement → "DUI Enhancement", not "Dui Enhancement").
 function formatOffenseLevel(level: string | null): string {
-  if (!level) return '';
-  return level
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return toDisplayLabel(level || '');
 }
 
 export default function StatuteLookup({
@@ -209,7 +209,7 @@ export default function StatuteLookup({
         <div className="absolute z-50 top-full left-0 right-0 border-x border-t border-rmpg-600 bg-surface-base">
           {/* State filter row */}
           {showStateFilter && !stateFilter && (
-            <div className="flex border-b border-rmpg-700/50 overflow-x-auto">
+            <div className="flex border-b border-rmpg-700/50 overflow-x-auto tab-scroll">
               {STATE_CODES.map((st) => (
                 <button
                   key={st}
@@ -289,7 +289,7 @@ export default function StatuteLookup({
                         )}
                         <span className="text-xs font-mono text-brand-400 font-bold">{s.citation}</span>
                         {s.category === 'vehicle' ? (
-                          <Car className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                          <Car className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
                         ) : (
                           <Scale className="w-3 h-3 text-red-400 flex-shrink-0" />
                         )}

@@ -14,7 +14,8 @@ import type { Editor } from '@tiptap/react';
 import type { DocAction } from './docActions2';
 
 const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;'); // escape quotes too — output is used inside HTML attributes
 const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 
 function insert(editor: Editor, html: string) {

@@ -16,6 +16,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetFuelBudgetSummary } from '../../../types';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 
 interface Args {
   summary: FleetFuelBudgetSummary;
@@ -29,6 +30,7 @@ export function generateFleetBudgetVariancePdf({ summary, scopeLabel }: Args): v
   }
 
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 54;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();

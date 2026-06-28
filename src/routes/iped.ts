@@ -284,6 +284,24 @@ iped.get('/hash-sets/:id', async (c) => {
   }
 });
 
+// GET /download/info — Pointer to IPED's official installer downloads.
+// AdminIPEDTab fetches this on mount; without it the request 404'd into
+// the console. We don't host IPED binaries (~1.2 GB); we point operators
+// at the upstream GitHub releases page. Returning a static shape keeps
+// the response Worker-cheap and avoids GitHub API rate limits.
+//
+// If we ever decide to mirror binaries to R2 we can swap `available: true`
+// + populate `bundles` from a config row, and the client UI lights up.
+iped.get('/download/info', async (c) => {
+  return c.json({
+    available: false,
+    bundles: {},
+    downloadUrl: 'https://github.com/sepinf-inc/IPED/releases/latest',
+    githubUrl:   'https://github.com/sepinf-inc/IPED',
+    notes: 'IPED installers are distributed via GitHub Releases; RMPG does not host the binaries.',
+  });
+});
+
 // GET /downloads — IPED import history. Name retained for client
 // compatibility (the legacy endpoint is `/api/iped/downloads`); the
 // underlying table is `iped_imports` since each row represents data

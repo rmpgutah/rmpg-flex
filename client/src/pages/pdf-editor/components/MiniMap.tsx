@@ -79,15 +79,15 @@ export default function MiniMap({ pdfBytes, pages, pageOrder, activePage, onJump
   }, [activePage]);
 
   return (
-    <div className="fixed bottom-4 right-4 z-30 bg-[#0d0d0d] border border-[#222] rounded-[2px] shadow-lg">
-      <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#222] cursor-default">
+    <div className="fixed bottom-4 right-4 z-30 bg-surface-base border border-border-default rounded-[2px] shadow-lg">
+      <div className="flex items-center gap-1.5 px-2 py-1 border-b border-border-default cursor-default">
         <MapIcon className="w-3 h-3 text-[#d4a017]" />
         <span className="text-[10px] uppercase tracking-wider text-rmpg-300 font-semibold">Page navigator</span>
         <span className="text-[10px] text-rmpg-500">{activePage} / {pageOrder.length}</span>
         <button type="button" onClick={() => setCollapsed(c => !c)}
-          className="ml-auto text-[10px] text-rmpg-400 hover:text-white px-1"
+          className="ml-auto text-[10px] text-rmpg-400 hover:text-rmpg-100 px-1"
           title={collapsed ? 'Expand' : 'Collapse'}>{collapsed ? '▴' : '▾'}</button>
-        <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-white p-0.5"
+        <button type="button" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-0.5"
           aria-label="Close mini-map"><X className="w-3 h-3" /></button>
       </div>
       {!collapsed && (
@@ -103,12 +103,12 @@ export default function MiniMap({ pdfBytes, pages, pageOrder, activePage, onJump
                 data-mini-page={visualPageNumber}
                 onClick={() => onJumpTo(idx)}
                 title={`Jump to page ${visualPageNumber}`}
-                className={`block w-[${THUMB_WIDTH}px] mx-auto p-0.5 rounded-sm border ${active ? 'border-[#d4a017]' : 'border-[#222] hover:border-[#444]'}`}
+                className={`block w-[${THUMB_WIDTH}px] mx-auto p-0.5 rounded-sm border ${active ? 'border-[#d4a017]' : 'border-border-default hover:border-rmpg-600'}`}
                 style={{ width: THUMB_WIDTH }}
               >
                 <div className="bg-white aspect-[3/4] flex items-center justify-center overflow-hidden">
                   {original === 0 ? (
-                    <span className="text-[8px] text-gray-400">Blank</span>
+                    <span className="text-[8px] text-rmpg-400">Blank</span>
                   ) : (
                     <canvas
                       ref={(el) => { if (el) refs.current.set(idx, el); else refs.current.delete(idx); }}
