@@ -1,147 +1,172 @@
 // ============================================================
-// RMPG Flex — Deck.gl Google Maps Overlay
+// RMPG Flex — Deck.gl Map Layers
 // ============================================================
-// GPU-accelerated visualization layers for the Google Maps surface.
-// Uses @deck.gl/core + @deck.gl/layers with a manual canvas overlay
-// approach since @deck.gl/google-maps is not installed.
-// Provides type definitions shared with deckMapboxLayers.ts.
+// GPU-accelerated visualization layers for the dispatch map.
+// Integrates with existing Google Maps via @deck.gl/google-maps.
+// Provides:
+// - Crime density heatmap
+// - Unit-to-incident arc connections
+// - Animated patrol route trips
+// - Incident icon clustering
 // ============================================================
 
-import { Deck } from '@deck.gl/core';
-import { ScatterplotLayer, ArcLayer, IconLayer } from '@deck.gl/layers';
+import { GoogleMapsOverlay } from '@deck.gl/google-maps';
+import { IconLayer, ArcLayer, ScatterplotLayer } from '@deck.gl/layers';
 
-// ── Shared type definitions ──
+// ── Types ─────────────────────────────────────────────────
 
 export interface IncidentPoint {
-  id: string | number;
+  id: number;
   position: [number, number]; // [lng, lat]
-  priority?: string;
-  type?: string;
-  status?: string;
+  type: string;
+  priority: string;
+  timestamp: number;
   weight?: number;
 }
 
 export interface UnitPosition {
-  id: string | number;
+  id: number;
+  callsign: string;
   position: [number, number]; // [lng, lat]
-  callsign?: string;
-  status?: string;
-  unit_type?: string;
+  status: string;
+  color?: [number, number, number];
 }
 
 export interface ArcConnection {
-  id: string | number;
-  source: [number, number]; // [lng, lat]
-  target: [number, number]; // [lng, lat]
-  priority?: string;
-  sourceColor?: [number, number, number, number];
-  targetColor?: [number, number, number, number];
+  source: [number, number];
+  target: [number, number];
+  sourceColor: [number, number, number];
+  targetColor: [number, number, number];
 }
 
-// ── Priority & Status colors ──
+// ── Priority colors ───────────────────────────────────────
 
 const PRIORITY_COLORS: Record<string, [number, number, number, number]> = {
-  '1': [255, 0, 0, 200],      // Red — emergency
-  '2': [255, 140, 0, 200],    // Orange — urgent
-  '3': [212, 160, 23, 200],   // Gold — routine
-  '4': [100, 100, 100, 200],  // Gray — low
+  '1': [255, 0, 0, 200],      // Red — Emergency
+  '2': [255, 140, 0, 200],    // Orange — Urgent
+  '3': [212, 160, 23, 180],   // Gold — Routine
+  '4': [100, 100, 100, 160],  // Gray — Low
+  '5': [60, 60, 60, 140],     // Dark gray — Info
 };
 
-const STATUS_COLORS: Record<string, [number, number, number, number]> = {
-  DISPATCHED: [255, 200, 0, 200],
-  ENROUTE: [0, 150, 255, 200],
-  ON_SCENE: [0, 200, 80, 200],
-  AVAILABLE: [80, 200, 80, 200],
-  OUT_OF_SERVICE: [120, 120, 120, 200],
+const STATUS_COLORS: Record<string, [number, number, number]> = {
+  AVAILABLE: [0, 180, 0],
+  DISPATCHED: [212, 160, 23],
+  ENROUTE: [0, 120, 255],
+  ON_SCENE: [255, 0, 0],
+  BUSY: [255, 140, 0],
+  OUT_OF_SERVICE: [80, 80, 80],
 };
 
-function getPriorityColor(priority?: string): [number, number, number, number] {
-  return PRIORITY_COLORS[priority || '3'] || PRIORITY_COLORS['3'];
-}
+// ── Layer factories ───────────────────────────────────────
 
-function getStatusColor(status?: string): [number, number, number, number] {
-  return STATUS_COLORS[status || 'AVAILABLE'] || STATUS_COLORS['AVAILABLE'];
-}
-
-// ── Layer factories ──
-
-let deckInstance: Deck | null = null;
-
+/**
+ * Create a crime density heatmap layer from incident points.
+ * Uses ScatterplotLayer with opacity for heat-like effect since
+ * HeatmapLayer is in @deck.gl/aggregation-layers.
+ */
 export function createHeatmapLayer(incidents: IncidentPoint[]): ScatterplotLayer {
   return new ScatterplotLayer({
-    id: 'incident-heatmap',
+    id: 'crime-heatmap',
     data: incidents,
     getPosition: (d: IncidentPoint) => d.position,
-    getRadius: 80,
-    getFillColor: (d: IncidentPoint) => getPriorityColor(d.priority),
-    radiusMinPixels: 4,
-    radiusMaxPixels: 20,
-    opacity: 0.6,
+    getFillColor: [255, 140, 0, 100],
+    getRadius: (d: IncidentPoint) => (d.weight || (6 - parseInt(d.priority || '3'))) * 50,
+    radiusMinPixels: 20,
+    radiusMaxPixels: 80,
+    opacity: 0.3,
+    pickable: false,
   });
 }
 
+/**
+ * Create a scatterplot layer for incident points with priority-based coloring.
+ */
 export function createIncidentLayer(incidents: IncidentPoint[]): ScatterplotLayer {
   return new ScatterplotLayer({
-    id: 'incident-points',
+    id: 'incidents',
     data: incidents,
     getPosition: (d: IncidentPoint) => d.position,
-    getRadius: 50,
-    getFillColor: (d: IncidentPoint) => getPriorityColor(d.priority),
+    getFillColor: (d: IncidentPoint) => PRIORITY_COLORS[d.priority] || PRIORITY_COLORS['3'],
+    getRadius: (d: IncidentPoint) => {
+      const p = parseInt(d.priority || '3');
+      return Math.max(8, (6 - p) * 6);
+    },
+    radiusMinPixels: 4,
+    radiusMaxPixels: 20,
+    pickable: true,
+    opacity: 0.8,
+  });
+}
+
+/**
+ * Create unit position icons with status-based coloring.
+ */
+export function createUnitLayer(units: UnitPosition[]): ScatterplotLayer {
+  return new ScatterplotLayer({
+    id: 'units',
+    data: units,
+    getPosition: (d: UnitPosition) => d.position,
+    getFillColor: (d: UnitPosition) => [...(STATUS_COLORS[d.status] || [100, 100, 100]), 220] as [number, number, number, number],
+    getLineColor: [212, 160, 23, 255],
+    lineWidthMinPixels: 2,
+    stroked: true,
+    getRadius: 10,
     radiusMinPixels: 6,
-    radiusMaxPixels: 14,
+    radiusMaxPixels: 16,
+    pickable: true,
     opacity: 0.9,
   });
 }
 
-export function createUnitLayer(units: UnitPosition[]): ScatterplotLayer {
-  return new ScatterplotLayer({
-    id: 'unit-positions',
-    data: units,
-    getPosition: (d: UnitPosition) => d.position,
-    getRadius: 40,
-    getFillColor: (d: UnitPosition) => getStatusColor(d.status),
-    radiusMinPixels: 6,
-    radiusMaxPixels: 12,
-    opacity: 0.95,
-  });
-}
-
+/**
+ * Create arc connections between units and their assigned calls.
+ */
 export function createDispatchArcLayer(arcs: ArcConnection[]): ArcLayer {
   return new ArcLayer({
     id: 'dispatch-arcs',
     data: arcs,
     getSourcePosition: (d: ArcConnection) => d.source,
     getTargetPosition: (d: ArcConnection) => d.target,
-    getSourceColor: [212, 160, 23, 180],
-    getTargetColor: (d: ArcConnection) => getPriorityColor(d.priority),
+    getSourceColor: (d: ArcConnection) => d.sourceColor,
+    getTargetColor: (d: ArcConnection) => d.targetColor,
     getWidth: 2,
+    opacity: 0.6,
   });
 }
 
-// ── Overlay lifecycle ──
+// ── Overlay manager ───────────────────────────────────────
 
-export function initDeckOverlay(container: HTMLDivElement): Deck {
-  if (deckInstance) {
-    deckInstance.finalize();
+let overlay: GoogleMapsOverlay | null = null;
+
+/**
+ * Initialize deck.gl overlay on a Google Maps instance.
+ */
+export function initDeckOverlay(map: google.maps.Map): GoogleMapsOverlay {
+  if (overlay) {
+    overlay.finalize();
   }
-  deckInstance = new Deck({
-    parent: container,
-    style: { position: 'absolute', top: '0', left: '0', pointerEvents: 'none' },
-    controller: false,
-    layers: [],
-  });
-  return deckInstance;
+  overlay = new GoogleMapsOverlay({ layers: [] });
+  overlay.setMap(map);
+  return overlay;
 }
 
-export function updateDeckLayers(layers: (ScatterplotLayer | ArcLayer | IconLayer)[]): void {
-  if (deckInstance) {
-    deckInstance.setProps({ layers });
-  }
+/**
+ * Update the deck.gl overlay with new layers.
+ */
+export function updateDeckLayers(
+  layers: Array<ScatterplotLayer | ArcLayer | IconLayer>
+): void {
+  if (!overlay) return;
+  overlay.setProps({ layers });
 }
 
+/**
+ * Clean up the deck.gl overlay.
+ */
 export function destroyDeckOverlay(): void {
-  if (deckInstance) {
-    deckInstance.finalize();
-    deckInstance = null;
+  if (overlay) {
+    overlay.finalize();
+    overlay = null;
   }
 }

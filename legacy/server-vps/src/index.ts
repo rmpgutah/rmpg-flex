@@ -154,7 +154,6 @@ import jailRoutes from './routes/jail';
 import fireRmsRoutes from './routes/fireRms';
 import custodyLogRoutes from './routes/custodyLog';
 import accreditationRoutes from './routes/accreditations';
-import useOfForceRoutes from './routes/useOfForce';
 import { getSchedulerStatus, runJobNow } from './utils/scheduler';
 
 const app = express();
@@ -514,7 +513,6 @@ app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
 app.use('/api/pdf-tools', pdfToolsRoutes);
 app.use('/api/geocode', geocodeRoutes);
-app.use('/api/mapbox', mapboxRoutes);
 app.use('/api/intel-bulletins', intelBulletinsRoutes);
 app.use('/api/shift-briefings', shiftBriefingsRoutes);
 app.use('/api/docs', apiDocsRoutes);        // OpenAPI/Swagger interactive docs
@@ -532,7 +530,6 @@ app.use('/api/jail', jailRoutes);
 app.use('/api/fire-rms', fireRmsRoutes);
 app.use('/api/custody-log', custodyLogRoutes);
 app.use('/api/accreditations', accreditationRoutes);
-app.use('/api/use-of-force', useOfForceRoutes);
 
 // ─── Scheduler status endpoint (admin) ────────────────────
 app.get('/api/admin/scheduler', authenticateToken, (_req, res) => {
@@ -724,20 +721,8 @@ try {
   initWebSocket(primaryServer);
   logger.info('WebSocket server initialized');
 
-  // Set up enhanced graceful shutdown for all servers, including DB cleanup
-  setupGracefulShutdown([primaryServer], {
-    onShutdown: async () => {
-      try {
-        const db = getDb();
-        if (db) {
-          db.close();
-          logger.info('database connection closed');
-        }
-      } catch (e: any) {
-        logger.warn({ err: e }, 'shutdown DB cleanup error');
-      }
-    },
-  });
+  // Set up enhanced graceful shutdown for all servers
+  setupGracefulShutdown([primaryServer]);
 
   // Run startup configuration checks
   runStartupChecks().then(({ passed, results }) => {
@@ -899,6 +884,19 @@ try {
       startTraccarPoller();
     } catch (err: any) {
       logger.warn({ err, scheduler: 'traccar-poller' }, 'failed to start scheduler');
+    }
+
+    // Nightly warrant scraper maintenance
+    try {
+      // First run 6h after boot (lets scheduler settle)
+      const nightlyInitial = setTimeout(() => runScraperNightly(), 6 * 60 * 60_000);
+      if (nightlyInitial.unref) nightlyInitial.unref();
+
+      // Then every 24h
+      const nightlyInterval = setInterval(() => runScraperNightly(), 24 * 60 * 60_000);
+      if (nightlyInterval.unref) nightlyInterval.unref();
+    } catch (err: any) {
+      console.warn('[Scraper Nightly] Failed to schedule:', err?.message || err);
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s

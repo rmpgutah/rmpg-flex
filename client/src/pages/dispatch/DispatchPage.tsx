@@ -1917,7 +1917,7 @@ export default function DispatchPage() {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT',
-        body: JSON.stringify({ [field]: value || null }),
+        body: JSON.stringify({ [field]: payloadValue }),
       });
       // DEFENSIVE: only adopt the server response if it's actually a full
       // call row. Some backends return an error/"no changes" body for a
