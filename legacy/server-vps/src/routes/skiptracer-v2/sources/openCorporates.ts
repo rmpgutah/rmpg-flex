@@ -6,7 +6,7 @@
 // No auth required for basic searches.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, BusinessRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, BusinessRecord } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const API_BASE = 'https://api.opencorporates.com/v0.4/officers/search';
@@ -14,7 +14,7 @@ const API_BASE = 'https://api.opencorporates.com/v0.4/officers/search';
 export default class OpenCorporatesSource extends BaseDataSource {
   readonly name = 'opencorporates';
   readonly displayName = 'OpenCorporates Business Records';
-  readonly category: SourceCategory = 'business';
+  readonly category: SkipTracerSourceCategory = 'business';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 5;

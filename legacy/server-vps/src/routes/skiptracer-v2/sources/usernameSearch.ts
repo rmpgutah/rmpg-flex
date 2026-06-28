@@ -5,7 +5,7 @@
 // by testing profile URLs with HEAD requests. Free OSINT source.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, SocialProfile } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, SocialProfile } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 // ============================================================
@@ -40,7 +40,7 @@ const PLATFORMS: PlatformDef[] = [
 export default class UsernameSearchSource extends BaseDataSource {
   readonly name = 'username_search';
   readonly displayName = 'Social Username Search';
-  readonly category: SourceCategory = 'osint';
+  readonly category: SkipTracerSourceCategory = 'osint';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 30;

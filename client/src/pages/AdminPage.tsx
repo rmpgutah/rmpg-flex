@@ -54,6 +54,8 @@ import AdminHealthTab from './admin/AdminHealthTab';
 import AdminAnnouncementsTab from './admin/AdminAnnouncementsTab';
 import AdminDepartmentsTab from './admin/AdminDepartmentsTab';
 import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
+import AdminAlertSoundsTab from './admin/AdminAlertSoundsTab';
+import AdminGpsHealthTab from './admin/AdminGpsHealthTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
 import AdminSessionsTab from './admin/AdminSessionsTab';
 import AdminTrainingTab from './admin/AdminTrainingTab';
@@ -1094,6 +1096,22 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'alert_sounds' && (
+          <AdminAlertSoundsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'gps_health' && (
+          <AdminGpsHealthTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
         {activeTab === 'servemanager' && (
           <AdminServeManagerTab
             LoadingSpinner={LoadingSpinner}
@@ -1245,6 +1263,14 @@ export default function AdminPage() {
             auditLog={auditLog}
             loadingAudit={loadingAudit}
             LoadingSpinner={LoadingSpinner}
+          />
+        )}
+
+        {activeTab === 'court_lookups' && (
+          <AdminCourtLookupsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
           />
         )}
       </div>

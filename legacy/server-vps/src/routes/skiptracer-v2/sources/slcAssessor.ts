@@ -6,7 +6,7 @@
 // the county site structure changes.
 
 import { BaseDataSource } from './base';
-import { SearchQuery, SourceCategory, SourceResult, PropertyRecord } from '../types';
+import { SearchQuery, SkipTracerSourceCategory, SourceResult, PropertyRecord } from '../types';
 import { localNow } from '../../../utils/timeUtils';
 
 const ASSESSOR_BASE = 'https://slco.org/assessor/new/valuationsearch.cfm';
@@ -15,7 +15,7 @@ const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement Skip Trace)';
 export default class SlcAssessorSource extends BaseDataSource {
   readonly name = 'slc_assessor';
   readonly displayName = 'SLC County Property Records';
-  readonly category: SourceCategory = 'property';
+  readonly category: SkipTracerSourceCategory = 'property';
   readonly costPerLookup = 0;
 
   protected maxRequestsPerMinute = 5;

@@ -11,6 +11,7 @@ import FeatureRunID
 
 @MainActor
 public struct OfficerShell: View {
+    // Static array kept for ShellTabsTests
     public static let tabs: [TabSpec] = [
         TabSpec(id: "home",    title: "Home",    systemImage: "house.fill",            milestone: "M1"),
         TabSpec(id: "cfs",     title: "CFS",     systemImage: "list.bullet.rectangle", milestone: "M1"),
@@ -161,6 +162,7 @@ struct ScanHubView: View {
     }
 }
 
+// TabSpec kept for tests
 public struct TabSpec: Identifiable, Equatable, Sendable {
     public let id: String
     public let title: String
