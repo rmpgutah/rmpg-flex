@@ -16,9 +16,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
  */
 export function formatMilitary(isoString: string | undefined | null): string {
   if (!isoString) return '-';
-  // Force local-time parse for date-only strings
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(isoString) ? `${isoString}T00:00:00` : isoString;
-  const d = new Date(normalized);
+  const d = parseTimestamp(isoString);
   if (isNaN(d.getTime())) return isoString; // fallback for unparseable strings
   const yyyy = d.getFullYear();
   const MM = String(d.getMonth() + 1).padStart(2, '0');
@@ -36,8 +34,7 @@ export function formatMilitaryDate(isoString: string | undefined | null): string
   if (!isoString) return '-';
   // Date-only strings can be returned directly — avoids UTC timezone shift
   if (/^\d{4}-\d{2}-\d{2}$/.test(isoString)) return isoString;
-  const normalized = isoString.replace(' ', 'T'); // SQLite space → T
-  const d = new Date(normalized);
+  const d = parseTimestamp(isoString);
   if (isNaN(d.getTime())) return isoString;
   const yyyy = d.getFullYear();
   const MM = String(d.getMonth() + 1).padStart(2, '0');
@@ -95,4 +92,42 @@ export function expiryProgress(dateStr: string | undefined | null, totalDays = 3
   const days = daysUntilExpiry(dateStr);
   if (days === null || days <= 0) return 0;
   return Math.min(100, Math.round((days / totalDays) * 100));
+}
+
+/**
+ * Coerce ANY value into a finite number safe for `.toFixed()`.
+ *
+ * Why this exists: every recurring "Cannot read properties of undefined
+ * (reading 'toFixed')" crash in the Fleet module traces back to a value that
+ * passed a truthiness/`?? 0` guard but was not actually a number. Two ways
+ * that happens here:
+ *   1. False guards — `obj ? obj.x.toFixed() : …` checks the *parent*, not the
+ *      number, so a present row with a null metric still calls `.toFixed`.
+ *   2. Sentinel strings — live D1 text columns return "None"/"N/A"/"0" as
+ *      *strings* (see the `project-sentinel-none-strings` note). A truthy
+ *      string slips past `||`/`??`/`?` and then `"None".toFixed` throws.
+ *
+ * `toNum` is the single chokepoint: numbers pass through only if finite,
+ * numeric strings ("12.5") are parsed so real values still render, and
+ * everything else (sentinels, null, undefined, objects, NaN) falls back.
+ */
+export function toNum(value: unknown, fallback = 0): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+  if (typeof value === 'string') {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
+/**
+ * Format a possibly-non-numeric value with fixed decimals, never throwing.
+ * Returns `dash` for null/undefined/sentinel/empty so tables show "—"
+ * instead of a fabricated "0.00". Use this for *display*; use `toNum` when
+ * you need the number itself (math, color thresholds).
+ */
+export function fmtFixed(value: unknown, digits = 1, dash = '—'): string {
+  if (value == null || value === '') return dash;
+  if (typeof value === 'string' && !Number.isFinite(parseFloat(value))) return dash;
+  return toNum(value).toFixed(digits);
 }

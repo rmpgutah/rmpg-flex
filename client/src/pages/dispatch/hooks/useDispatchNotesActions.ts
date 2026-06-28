@@ -20,10 +20,11 @@
 //   editingTimelineId, editTimelineText (timeline inline-edit)
 //   broadcastNoteText, isBroadcasting (broadcast composer)
 //
-// NOT moved (stays in DispatchPage): renderFormattedText (pure render
-// helper, no state) and wrapNoteSelection (touches a noteTextareaRef
-// owned by DispatchPage). Those access newNote/setNewNote via the
-// hook return like any other JSX consumer.
+// NOT moved (stays in DispatchPage): wrapNoteSelection (touches a
+// noteTextareaRef owned by DispatchPage); it accesses newNote/setNewNote
+// via the hook return like any other JSX consumer. (renderFormattedText was
+// lifted out to utils/renderFormatted.tsx and is now the shared block-aware
+// renderer used by both the note list and the document subsystem.)
 
 import { useCallback, useState } from 'react';
 import type { CallForService, CallNote } from '../../../types';
@@ -72,17 +73,13 @@ export function useDispatchNotesActions(args: UseDispatchNotesActionsArgs) {
       return;
     }
     try {
-      const existingNotes = Array.isArray(selectedCall.notes) ? selectedCall.notes : [];
-      const note: CallNote = {
-        id: `n-${Date.now()}`,
-        author: 'Dispatch',
-        text: trimmedNote,
-        timestamp: new Date().toISOString(),
-      };
-      const allNotes = [...existingNotes, note];
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
+      // Append server-side (POST /:id/notes) instead of PUTting the whole notes
+      // blob — a client-side read-modify-write dropped a note when two dispatchers
+      // edited the same call within each other's think-time. The server re-reads
+      // current notes immediately before writing.
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ text: trimmedNote, author: 'Dispatch' }),
       });
       const updatedCall = mapDbCall(result);
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
@@ -133,17 +130,11 @@ export function useDispatchNotesActions(args: UseDispatchNotesActionsArgs) {
     const call = calls.find((c) => c.id === callId);
     if (!call) return;
     try {
-      const existingNotes = Array.isArray(call.notes) ? call.notes : [];
-      const note = {
-        id: `qn-${Date.now()}`,
-        author: 'Dispatch',
-        text: noteText,
-        timestamp: new Date().toISOString(),
-      };
-      const allNotes = [...existingNotes, note];
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
+      // Server-side append (see handleAddNote) — avoids the concurrent-edit
+      // note-loss race of the old whole-blob PUT.
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ text: noteText.trim(), author: 'Dispatch' }),
       });
       const updatedCall = mapDbCall(result);
       setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));

@@ -4,6 +4,8 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface RiskPoint {
   latitude: number;
@@ -98,8 +100,8 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
     return () => {
       if (!map) return;
       try {
-        [CIRCLE_LAYER_ID, LABEL_LAYER_ID].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
-        if (map.getSource(CIRCLE_SOURCE_ID)) map.removeSource(CIRCLE_SOURCE_ID);
+        [CIRCLE_LAYER_ID, LABEL_LAYER_ID].forEach((id) => { safeRemoveLayer(map, id); });
+        safeRemoveSource(map, CIRCLE_SOURCE_ID);
       } catch { /* ignore */ }
     };
   }, [map]);
@@ -107,8 +109,8 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
   const clearFromMap = useCallback(() => {
     if (!map) return;
     visibleRef.current = false;
-    try { if (map.getLayer(LABEL_LAYER_ID)) map.removeLayer(LABEL_LAYER_ID); } catch { /* */ }
-    try { if (map.getLayer(CIRCLE_LAYER_ID)) map.removeLayer(CIRCLE_LAYER_ID); } catch { /* */ }
+    safeRemoveLayer(map, LABEL_LAYER_ID);
+    safeRemoveLayer(map, CIRCLE_LAYER_ID);
   }, [map]);
 
   const renderOnMap = useCallback((safetyZones: SafetyZone[], m: mapboxgl.Map) => {
@@ -194,7 +196,7 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
       const points = Array.isArray(data) ? data : [];
       const clustered = clusterRiskPoints(points);
       setZones(clustered);
-      if (map.loaded()) renderOnMap(clustered, map);
+      whenStyleReady(map, () => { renderOnMap(clustered, map); });
     } catch (err) {
       console.warn('[useMapboxSafetyZones] fetch failed:', err);
     } finally {

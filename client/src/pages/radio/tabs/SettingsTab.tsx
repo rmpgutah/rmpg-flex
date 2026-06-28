@@ -4,9 +4,16 @@
 // dispatch console shouldn't override their phone's preference).
 import { useEffect, useState } from 'react';
 import { Settings as SettingsIcon } from 'lucide-react';
-import { ls, playBeep } from '../helpers';
+import { ls, playBeep, isInQuietHours } from '../helpers';
 import { THEMES, type Theme, NOTIF_SOUNDS } from '../constants';
 import { SectionHeader, SettingRow, SettingCheckbox, ToolbarBtn } from '../components';
+import { useAuth } from '../../../context/AuthContext';
+import AdminRadioSettings from '../../admin/AdminRadioSettings';
+
+// Roles allowed to edit ORG-WIDE radio settings (mirrors the PUT
+// /api/radio/settings guard: admin/manager/supervisor). Everyone else sees
+// only their per-device preferences below.
+const ORG_SETTINGS_ROLES = ['admin', 'manager', 'supervisor'];
 
 interface Props {
   theme: Theme;
@@ -15,27 +22,10 @@ interface Props {
   onFontScale: (f: 'sm' | 'md' | 'lg') => void;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Quiet hours — TODO(user-contribution): see the prompt below.
-//
-// `isInQuietHours(startHHMM, endHHMM, now)` should return true when
-// `now` falls within the quiet-hours window. The tricky bit: the
-// window can wrap midnight (e.g. start="22:00", end="06:00") in
-// which case the naive `now >= start && now <= end` returns false
-// at 23:00 — the bug we want to avoid.
-//
-// Inputs: startHHMM/endHHMM are "HH:MM" strings; now is a Date.
-// Return true if quiet, false if not. Empty/invalid window → false.
-// ─────────────────────────────────────────────────────────────
-export function isInQuietHours(startHHMM: string, endHHMM: string, now: Date = new Date()): boolean {
-  // TODO: implement. Replace this placeholder with your version.
-  // Hint: convert all three to minutes-since-midnight, then handle
-  // the wrap case (start > end) as a single OR check.
-  void startHHMM; void endHHMM; void now;
-  return false;
-}
-
 export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: Props) {
+  const { user } = useAuth();
+  const canManageOrg = !!user && ORG_SETTINGS_ROLES.includes(user.role);
+
   const [notifEnabled, setNotifEnabled] = useState(() => ls.get('radio_notif_enabled') !== 'false');
   const [soundEnabled, setSoundEnabled] = useState(() => ls.get('radio_sound_enabled') !== 'false');
   const [notifSound, setNotifSound] = useState(() => ls.get('radio_notif_sound') || 'chime');
@@ -105,7 +95,7 @@ export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: 
           <SettingCheckbox label="Sound on new transmission" checked={soundEnabled} onChange={setSoundEnabled} />
           <SettingRow label="Notification sound">
             <div className="flex items-center gap-2">
-              <select value={notifSound} onChange={(e) => setNotifSound(e.target.value)}
+              <select id="ff-settingstab-0" value={notifSound} onChange={(e) => setNotifSound(e.target.value)}
                 aria-label="Notification sound"
                 className="bg-transparent text-[10px] font-mono outline-none cursor-pointer"
                 style={{ color: 'var(--rt-text)', border: '1px solid var(--rt-border)', padding: '2px 6px' }}>
@@ -123,13 +113,13 @@ export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: 
             During quiet hours, sounds are suppressed but transmissions still appear in the log.
           </p>
           <SettingRow label="Start">
-            <input type="time" value={quietStart} onChange={(e) => setQuietStart(e.target.value)}
+            <input id="ff-settingstab-1" type="time" value={quietStart} onChange={(e) => setQuietStart(e.target.value)}
               aria-label="Quiet hours start"
               className="bg-transparent text-[10px] font-mono outline-none"
               style={{ color: 'var(--rt-text)', border: '1px solid var(--rt-border)', padding: '2px 6px' }} />
           </SettingRow>
           <SettingRow label="End">
-            <input type="time" value={quietEnd} onChange={(e) => setQuietEnd(e.target.value)}
+            <input id="ff-settingstab-2" type="time" value={quietEnd} onChange={(e) => setQuietEnd(e.target.value)}
               aria-label="Quiet hours end"
               className="bg-transparent text-[10px] font-mono outline-none"
               style={{ color: 'var(--rt-text)', border: '1px solid var(--rt-border)', padding: '2px 6px' }} />
@@ -140,6 +130,25 @@ export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: 
             </div>
           )}
         </section>
+
+        {/* ── Organization-wide radio settings (admin/manager/supervisor) ──
+            The AI dispatcher, recording, and audio controls apply to EVERY
+            operator and the server-side dispatcher. Surfaced here so a
+            supervisor can tune dispatch from the radio console without leaving
+            for the Admin area. Reuses the same panel as Admin → Radio →
+            Settings (one source of truth, server-persisted via
+            /api/radio/settings). Hidden entirely for non-privileged roles. */}
+        {canManageOrg && (
+          <section className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: 'var(--rt-border)' }}>
+            <h3 className="text-[9px] font-mono tracking-[0.3em]" style={{ color: 'var(--rt-muted)' }}>
+              ORGANIZATION · APPLIES TO ALL OPERATORS
+            </h3>
+            <p className="text-[10px]" style={{ color: 'var(--rt-muted)' }}>
+              AI dispatcher, recording, and audio — changes take effect on the next transmission.
+            </p>
+            <AdminRadioSettings />
+          </section>
+        )}
       </div>
     </div>
   );

@@ -10,7 +10,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
-import { broadcastAll } from '../ws';
 
 const businessVehicles = new Hono<Env>();
 
@@ -88,9 +87,6 @@ businessVehicles.post('/', async (c) => {
       business_id, vehicle_id,
     );
 
-    broadcastAll('business_update', {
-      action: 'business_vehicles_updated', business_id,
-    });
 
     return c.json(row, 201);
   } catch (err) {
@@ -114,9 +110,6 @@ businessVehicles.delete('/:linkId', async (c) => {
     if (!before) return c.json({ error: 'Link not found' }, 404);
 
     await execute(db, 'DELETE FROM business_vehicles WHERE id = ?', linkId);
-    broadcastAll('business_update', {
-      action: 'business_vehicles_updated', business_id: before.business_id,
-    });
     return c.json({ success: true });
   } catch (err) {
     return c.json({

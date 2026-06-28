@@ -20,3 +20,10 @@ service = "rmpg-flex-api"
 [[services]]
 binding = "LEGACY"
 service = "rmpg-flex"
+
+# Workers Logs — required for the cutover inventory (Phase 0 of
+# docs/superpowers/plans/2026-06-12-worker-cutover.md). Captures the
+# [legacy-fallthrough] lines for the route-migration batches.
+[observability]
+enabled = true
+head_sampling_rate = 1

@@ -6,6 +6,9 @@
 // ============================================================
 
 import { parseTimestamp } from './dateUtils';
+import { cleanAddressText } from './addressClean';
+import { toDisplayLabel } from './formatters';
+import { DISPOSITION_DESCRIPTION_BY_CODE } from '../constants/dispositionCodes';
 
 // ── Call Status Labels ────────────────────────────────
 export const CALL_STATUS_LABELS: Record<string, string> = {
@@ -223,30 +226,31 @@ export const CASE_TYPE_LABELS: Record<string, string> = {
 };
 
 // ── Disposition Code Labels ───────────────────────────
+// Derives from the single source of truth (constants/dispositionCodes) so the
+// short-code chart and its descriptions never drift. Legacy codes (kept below)
+// remain mapped so dispositions already stored on historical calls still
+// humanize. New chart codes win on any key overlap. Values are description-only
+// (humanizeDisposition prepends/handles the code where needed).
 export const DISPOSITION_LABELS: Record<string, string> = {
-  'PS/05': 'PS/05 — Personal Service Completed',
-  'PS/06': 'PS/06 — Sub-Service Completed',
-  'NS/01': 'NS/01 — Not Served — Unable to Locate',
-  'NS/02': 'NS/02 — Not Served — Bad Address',
-  'NS/03': 'NS/03 — Not Served — Evading Service',
-  'NS/04': 'NS/04 — Not Served — Other',
-  'ADV': 'ADV — Advised / Information Given',
-  'ARR': 'ARR — Arrest Made',
-  'CIT': 'CIT — Citation Issued',
-  'GOA': 'GOA — Gone on Arrival',
-  'UTL': 'UTL — Unable to Locate',
-  'RPT': 'RPT — Report Taken',
-  'REF': 'REF — Referred to Other Agency',
-  'UNF': 'UNF — Unfounded',
-  'WAR': 'WAR — Warrant Issued',
-  'CLR': 'CLR — Cleared',
-  'CSL': 'CSL — Civil Standby',
-  'TPW': 'TPW — Trespass Warning Issued',
-  'FIA': 'FIA — Field Interview / Advisory',
-  'AST': 'AST — Assist Other Agency',
-  'MED': 'MED — Medical Transport / Aid',
-  'CAN': 'CAN — Cancelled',
-  'DUP': 'DUP — Duplicate Call',
+  // ── Legacy / historical codes (pre short-code chart) ──
+  'PS/05': 'Personal Service Completed',
+  'PS/06': 'Sub-Service Completed',
+  'NS/01': 'Not Served — Unable to Locate',
+  'NS/02': 'Not Served — Bad Address',
+  'NS/03': 'Not Served — Evading Service',
+  'NS/04': 'Not Served — Other',
+  'ADV': 'Advised / Information Given',
+  'RPT': 'Report Taken',
+  'WAR': 'Warrant Issued',
+  'CLR': 'Cleared',
+  'CSL': 'Civil Standby',
+  'TPW': 'Trespass Warning Issued',
+  'FIA': 'Field Interview / Advisory',
+  'MED': 'Medical Transport / Aid',
+  'CAN': 'Cancelled',
+  'DUP': 'Duplicate Call',
+  // ── Current short-code chart (canonical) ──
+  ...DISPOSITION_DESCRIPTION_BY_CODE,
 };
 
 // ── Solvability Factor Labels ─────────────────────────
@@ -285,13 +289,13 @@ export function humanizeStatus(status: string | null | undefined, type?: 'call' 
     unit: UNIT_STATUS_LABELS,
   };
   const map = type ? maps[type] : { ...CALL_STATUS_LABELS, ...INCIDENT_STATUS_LABELS, ...UNIT_STATUS_LABELS };
-  return map[status] || status.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return map[status] || toDisplayLabel(status);
 }
 
 /** Convert an incident type code to a readable label */
 export function humanizeType(type: string | null | undefined): string {
   if (!type) return '\u2014';
-  return INCIDENT_TYPE_LABELS[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return INCIDENT_TYPE_LABELS[type] || toDisplayLabel(type);
 }
 
 /** Convert a priority code to a descriptive label */
@@ -322,7 +326,7 @@ export function humanizeRace(race: string | null | undefined): string {
 /** Convert a case type code to a readable label */
 export function humanizeCaseType(caseType: string | null | undefined): string {
   if (!caseType) return '\u2014';
-  return CASE_TYPE_LABELS[caseType] || caseType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return CASE_TYPE_LABELS[caseType] || toDisplayLabel(caseType);
 }
 
 /** Translate a disposition code to its full description */
@@ -331,9 +335,20 @@ export function humanizeDisposition(code: string | null | undefined): string {
   return DISPOSITION_LABELS[code] || code;
 }
 
+/**
+ * Police-format disposition: "CODE \u2014 Description" (e.g. "RTF \u2014 Report Taken"),
+ * the standard CAD presentation. Falls back to the bare code when no label is
+ * known (avoiding a "RTF \u2014 RTF" echo), and an em-dash for empty input.
+ */
+export function formatDispositionCode(code: string | null | undefined): string {
+  if (!code) return '\u2014';
+  const label = DISPOSITION_LABELS[code];
+  return label && label !== code ? `${code} \u2014 ${label}` : code;
+}
+
 /** Translate a solvability factor key to its description */
 export function humanizeSolvabilityFactor(key: string): string {
-  return SOLVABILITY_FACTOR_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return SOLVABILITY_FACTOR_LABELS[key] || toDisplayLabel(key);
 }
 
 /** Get a human-readable description for a person flag */
@@ -427,6 +442,10 @@ const ADDRESS_UPPER_TOKENS = new Set([
 /** Title-case street names while keeping state abbrevs, directionals, and USA uppercase */
 export function formatAddressDisplay(address: string | null | undefined): string {
   if (!address) return '\u2014';
+  // Strip trailing junk (unbalanced ")", dangling commas) from dirty stored
+  // data before title-casing, so the panel never shows "\u2026UNITED STATES)".
+  address = cleanAddressText(address);
+  if (!address) return '\u2014';
   // Split on whitespace and commas, preserving delimiters
   return address.split(/(\s+|,)/).map(token => {
     const trimmed = token.trim();
@@ -453,11 +472,11 @@ export function formatAddressDisplay(address: string | null | undefined): string
 /** Simple title case: "hello world" -> "Hello World" */
 export function titleCase(str: string | null | undefined): string {
   if (!str) return '\u2014';
-  return str.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return toDisplayLabel(str);
 }
 
 /** Remove underscores from any string and title-case it \u2014 use as last-resort formatter */
 export function cleanDisplay(val: string | null | undefined): string {
   if (!val) return '\u2014';
-  return val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return toDisplayLabel(val);
 }

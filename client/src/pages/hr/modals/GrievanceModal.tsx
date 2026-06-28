@@ -135,7 +135,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
     }
   };
 
-  const inputClass = 'w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none';
+  const inputClass = 'w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 focus:border-brand-500 focus:outline-none';
   const labelClass = 'block text-xs text-rmpg-400 mb-1';
 
   return (
@@ -147,11 +147,11 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
         <div className="px-4 py-2 border-b border-rmpg-700 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileWarning className="w-4 h-4 text-orange-400" />
-            <h3 className="text-sm font-semibold text-white">
+            <h3 className="text-sm font-semibold text-rmpg-100">
               {grievance?.id ? 'Edit Grievance' : 'File Grievance'}
             </h3>
           </div>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close">
+          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -176,8 +176,8 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
           )}
 
           <div>
-            <label className={labelClass}>Against (Optional)</label>
-            <select value={form.against_user_id} onChange={e => setForm(f => ({ ...f, against_user_id: e.target.value }))} className={inputClass}>
+            <label htmlFor="ff-grievancemodal-0" className={labelClass}>Against (Optional)</label>
+            <select id="ff-grievancemodal-0" value={form.against_user_id} onChange={e => setForm(f => ({ ...f, against_user_id: e.target.value }))} className={inputClass}>
               <option value="">Not specified</option>
               {users.map(u => (
                 <option key={u.id} value={u.id}>
@@ -189,16 +189,16 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Type *</label>
-              <select value={form.grievance_type} onChange={e => setForm(f => ({ ...f, grievance_type: e.target.value }))} className={inputClass}>
+              <label htmlFor="ff-grievancemodal-1" className={labelClass}>Type *</label>
+              <select id="ff-grievancemodal-1" value={form.grievance_type} onChange={e => setForm(f => ({ ...f, grievance_type: e.target.value }))} className={inputClass}>
                 {GRIEVANCE_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className={labelClass}>Priority *</label>
-              <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className={inputClass}>
+              <label htmlFor="ff-grievancemodal-2" className={labelClass}>Priority *</label>
+              <select id="ff-grievancemodal-2" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className={inputClass}>
                 {PRIORITY_LEVELS.map(p => (
                   <option key={p.value} value={p.value}>{p.label}</option>
                 ))}
@@ -207,8 +207,8 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
           </div>
 
           <div>
-            <label className={labelClass}>Subject *</label>
-            <input
+            <label htmlFor="ff-grievancemodal-3" className={labelClass}>Subject *</label>
+            <input id="ff-grievancemodal-3"
               type="text"
               value={form.subject}
               onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
@@ -220,8 +220,8 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
           </div>
 
           <div>
-            <label className={labelClass}>Description *</label>
-            <textarea
+            <label htmlFor="ff-grievancemodal-4" className={labelClass}>Description *</label>
+            <textarea id="ff-grievancemodal-4"
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               className={`${inputClass} h-28 resize-none`}
@@ -234,13 +234,13 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
 
         {/* Footer */}
         <div className="px-4 py-2 border-t border-rmpg-700 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-100">
             Cancel
           </button>
           <button type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="px-3 py-1.5 text-xs bg-brand-500 text-white rounded-sm hover:bg-brand-600 disabled:opacity-50"
+            className="px-3 py-1.5 text-xs bg-brand-500 text-rmpg-100 rounded-sm hover:bg-brand-600 disabled:opacity-50"
           >
             {saving ? 'Submitting...' : grievance?.id ? 'Update Grievance' : 'File Grievance'}
           </button>
