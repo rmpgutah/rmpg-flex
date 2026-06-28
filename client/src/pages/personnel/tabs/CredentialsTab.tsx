@@ -2,13 +2,16 @@
 // RMPG Flex — Personnel: Credentials Tab (All Credentials)
 // ============================================================
 
-import React, { useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   Award, AlertTriangle, CheckCircle, Plus, Edit3, Trash2, ShieldAlert,
 } from 'lucide-react';
 import type { Credential } from '../../../types';
 import { CREDENTIAL_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Props {
   credentials: Credential[];
@@ -29,7 +32,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
 
   function formatDate(dateStr?: string): string {
     if (!dateStr) return '-';
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function statusLabel(status: string): string {
@@ -64,18 +67,32 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
     { label: 'Expired', value: stats.expired, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
   ];
 
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildRowMenu = (cred: Credential): ContextMenuItem[] => [
+    m.action('Edit credential', () => onEditCredential(cred), { icon: <Edit3 size={12} /> }),
+    m.separator(),
+    m.copy('Copy credential #', cred.credential_number),
+    m.copy('Copy officer', cred.officer_name),
+    m.copyId(cred.id),
+    m.separator(),
+    m.action('Delete credential', () => onDeleteCredential(cred.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   // Set document title
   useEffect(() => { document.title = 'Personnel - Credentials \u2014 RMPG Flex'; }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Award className="w-4 h-4 text-brand-400" />
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Credentials</h2>
+          <span className="text-[11px] font-mono text-rmpg-500">({credentials.length})</span>
         </div>
-        <button type="button" onClick={onAddCredential} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button type="button" onClick={onAddCredential} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Add Credential
         </button>
@@ -117,17 +134,17 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
       {(() => {
         const now = Date.now();
         const withExpiry = credentials.filter(c => c.expiry_date);
-        const expired = withExpiry.filter(c => new Date(c.expiry_date!).getTime() < now);
-        const in30 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d >= now && d <= now + 30*86400000; });
-        const in60 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d > now + 30*86400000 && d <= now + 60*86400000; });
-        const in90 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d > now + 60*86400000 && d <= now + 90*86400000; });
+        const expired = withExpiry.filter(c => parseTimestamp(c.expiry_date!).getTime() < now);
+        const in30 = withExpiry.filter(c => { const d = parseTimestamp(c.expiry_date!).getTime(); return d >= now && d <= now + 30*86400000; });
+        const in60 = withExpiry.filter(c => { const d = parseTimestamp(c.expiry_date!).getTime(); return d > now + 30*86400000 && d <= now + 60*86400000; });
+        const in90 = withExpiry.filter(c => { const d = parseTimestamp(c.expiry_date!).getTime(); return d > now + 60*86400000 && d <= now + 90*86400000; });
         if (expired.length === 0 && in30.length === 0 && in60.length === 0 && in90.length === 0) return null;
         return (
           <div className="panel-beveled p-3 bg-surface-base border-l-2 border-l-amber-500">
             <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
               <ShieldAlert className="w-3 h-3 text-amber-400" /> Expiration Timeline
             </h3>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="text-center p-1.5 bg-red-900/20 rounded border border-red-800/30">
                 <div className="text-sm font-bold font-mono text-red-400">{expired.length}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">Expired</div>
@@ -140,8 +157,8 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
                 <div className="text-sm font-bold font-mono text-amber-400">{in60.length}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">60 Days</div>
               </div>
-              <div className="text-center p-1.5 bg-gray-900/10 rounded border border-gray-800/20">
-                <div className="text-sm font-bold font-mono text-gray-400">{in90.length}</div>
+              <div className="text-center p-1.5 bg-surface-sunken/10 rounded border border-border-subtle/20">
+                <div className="text-sm font-bold font-mono text-rmpg-400">{in90.length}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">90 Days</div>
               </div>
             </div>
@@ -180,6 +197,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
                 <tr
                   key={cred.id}
                   className={cred.status === 'expired' ? 'bg-red-900/10' : ''}
+                  onContextMenu={(e) => openMenu(e, buildRowMenu(cred))}
                 >
                   <td>
                     <span className="text-xs text-rmpg-200">{cred.officer_name}</span>

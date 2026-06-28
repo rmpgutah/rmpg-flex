@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Users } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { UserRole } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
+import RichTextArea from './RichTextArea';
 export interface UserFormData {
   // Account
   username: string;
@@ -22,6 +23,7 @@ export interface UserFormData {
   email: string;
   phone: string;
   address: string;
+  address_2: string;
   city: string;
   state: string;
   zip: string;
@@ -74,6 +76,7 @@ interface UserFormModalProps {
     termination_date?: string;
     shift_preference?: string;
     address?: string;
+    address_2?: string;
     city?: string;
     state?: string;
     zip?: string;
@@ -115,7 +118,7 @@ const UNIFORM_SIZES = ['', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
 const EMPTY_FORM: UserFormData = {
   username: '', password: '', full_name: '', role: 'officer', status: 'active',
   first_name: '', last_name: '', middle_name: '', date_of_birth: '',
-  email: '', phone: '', address: '', city: '', state: '', zip: '',
+  email: '', phone: '', address: '', address_2: '', city: '', state: '', zip: '',
   badge_number: '', department: '', rank: '', employee_id: '',
   hire_date: '', termination_date: '', shift_preference: '',
   emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relationship: '',
@@ -144,8 +147,19 @@ export default function UserFormModal({
   isSubmitting,
   editingUser,
 }: UserFormModalProps) {
-  const [form, setForm] = useState<UserFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    signalSaved,
+    snapshot,
+  } = useFormDraft<UserFormData>({
+    storageKey: 'rmpg_user_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<SectionId>('account');
 
   useEffect(() => {
@@ -165,6 +179,7 @@ export default function UserFormModal({
           email: editingUser.email || '',
           phone: editingUser.phone || '',
           address: editingUser.address || '',
+          address_2: (editingUser as any).address_2 || '',
           city: editingUser.city || '',
           state: editingUser.state || '',
           zip: editingUser.zip || '',
@@ -189,10 +204,10 @@ export default function UserFormModal({
           profile_image: editingUser.profile_image || '',
         };
         setForm(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         setForm(EMPTY_FORM);
-        snapshot(EMPTY_FORM);
+        snapshot();
       }
     }
   // Depend on editingUser?.id (not object reference) to prevent LiveSync
@@ -204,11 +219,12 @@ export default function UserFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit(form);
   };
 
   const isEdit = !!editingUser;
-  const inputCls = 'w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500';
+  const inputCls = 'w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500';
   const labelCls = 'block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1';
 
   return (
@@ -222,6 +238,8 @@ export default function UserFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Section Tabs */}
       <div className="flex flex-wrap gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
@@ -233,7 +251,7 @@ export default function UserFormModal({
             className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -246,22 +264,22 @@ export default function UserFormModal({
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Username <span className="text-red-400">*</span></label>
-              <input type="text" required value={form.username} onChange={e => set('username', e.target.value)} placeholder="e.g. jsmith" className={inputCls} />
+              <label htmlFor="ff-userformmodal-0" className={labelCls}>Username <span className="text-red-400">*</span></label>
+              <input id="ff-userformmodal-0" type="text" required value={form.username} onChange={e => set('username', e.target.value)} placeholder="e.g. jsmith" className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Password <span className="text-red-400">*</span></label>
-              <input type="password" autoComplete="new-password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className={inputCls} />
+              <label htmlFor="ff-userformmodal-1" className={labelCls}>Password <span className="text-red-400">*</span></label>
+              <input id="ff-userformmodal-1" type="password" autoComplete="new-password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className={inputCls} />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Full Name <span className="text-red-400">*</span></label>
-              <input type="text" required value={form.full_name} onChange={e => set('full_name', e.target.value)} placeholder="Display name" className={inputCls} />
+              <label htmlFor="ff-userformmodal-2" className={labelCls}>Full Name <span className="text-red-400">*</span></label>
+              <input id="ff-userformmodal-2" type="text" required value={form.full_name} onChange={e => set('full_name', e.target.value)} placeholder="Display name" className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Role <span className="text-red-400">*</span></label>
-              <select required value={form.role} onChange={e => set('role', e.target.value)} className={inputCls}>
+              <label htmlFor="ff-userformmodal-3" className={labelCls}>Role <span className="text-red-400">*</span></label>
+              <select id="ff-userformmodal-3" required value={form.role} onChange={e => set('role', e.target.value)} className={inputCls}>
                 {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
@@ -274,35 +292,35 @@ export default function UserFormModal({
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className={labelCls}>First Name <span className="text-red-400">*</span></label>
-              <input type="text" required value={form.first_name} onChange={e => set('first_name', e.target.value)} className={inputCls} />
+              <label htmlFor="ff-userformmodal-4" className={labelCls}>First Name <span className="text-red-400">*</span></label>
+              <input id="ff-userformmodal-4" type="text" required value={form.first_name} onChange={e => set('first_name', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Last Name <span className="text-red-400">*</span></label>
-              <input type="text" required value={form.last_name} onChange={e => set('last_name', e.target.value)} className={inputCls} />
+              <label htmlFor="ff-userformmodal-5" className={labelCls}>Last Name <span className="text-red-400">*</span></label>
+              <input id="ff-userformmodal-5" type="text" required value={form.last_name} onChange={e => set('last_name', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Middle Name</label>
-              <input type="text" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} className={inputCls} />
+              <label htmlFor="ff-userformmodal-6" className={labelCls}>Middle Name</label>
+              <input id="ff-userformmodal-6" type="text" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} className={inputCls} />
             </div>
           </div>
           <div className={`grid ${isEdit ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
             <div>
-              <label className={labelCls}>Date of Birth</label>
-              <input type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} className={inputCls} />
+              <label htmlFor="ff-userformmodal-7" className={labelCls}>Date of Birth</label>
+              <input id="ff-userformmodal-7" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} className={inputCls} />
             </div>
             {isEdit && (
               <div>
-                <label className={labelCls}>Role</label>
-                <select value={form.role} onChange={e => set('role', e.target.value)} className={inputCls}>
+                <label htmlFor="ff-userformmodal-8" className={labelCls}>Role</label>
+                <select id="ff-userformmodal-8" value={form.role} onChange={e => set('role', e.target.value)} className={inputCls}>
                   {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
             )}
             {isEdit && (
               <div>
-                <label className={labelCls}>Account Status</label>
-                <select value={form.status} onChange={e => set('status', e.target.value)} className={inputCls}>
+                <label htmlFor="ff-userformmodal-9" className={labelCls}>Account Status</label>
+                <select id="ff-userformmodal-9" value={form.status} onChange={e => set('status', e.target.value)} className={inputCls}>
                   {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </div>
@@ -317,8 +335,8 @@ export default function UserFormModal({
               )}
             </div>
             <div className="flex-1">
-              <label className={labelCls}>Profile Image URL</label>
-              <input type="text" value={form.profile_image} onChange={e => set('profile_image', e.target.value)} placeholder="https://... or /uploads/..." className={inputCls} />
+              <label htmlFor="ff-userformmodal-10" className={labelCls}>Profile Image URL</label>
+              <input id="ff-userformmodal-10" type="text" value={form.profile_image} onChange={e => set('profile_image', e.target.value)} placeholder="https://... or /uploads/..." className={inputCls} />
             </div>
           </div>
         </div>
@@ -329,40 +347,40 @@ export default function UserFormModal({
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className={labelCls}>Badge Number</label>
-              <input type="text" value={form.badge_number} onChange={e => set('badge_number', e.target.value)} placeholder="O-101" pattern="[A-Za-z0-9\-]{1,10}" className={inputCls} />
+              <label htmlFor="ff-userformmodal-11" className={labelCls}>Badge Number</label>
+              <input id="ff-userformmodal-11" type="text" value={form.badge_number} onChange={e => set('badge_number', e.target.value)} placeholder="O-101" pattern="[A-Za-z0-9\-]{1,10}" className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Rank</label>
-              <select value={form.rank} onChange={e => set('rank', e.target.value)} className={inputCls}>
+              <label htmlFor="ff-userformmodal-12" className={labelCls}>Rank</label>
+              <select id="ff-userformmodal-12" value={form.rank} onChange={e => set('rank', e.target.value)} className={inputCls}>
                 {RANKS.map(r => <option key={r} value={r}>{r || '-- None --'}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelCls}>Employee ID</label>
-              <input type="text" value={form.employee_id} onChange={e => set('employee_id', e.target.value)} placeholder="EMP-001" className={inputCls} />
+              <label htmlFor="ff-userformmodal-13" className={labelCls}>Employee ID</label>
+              <input id="ff-userformmodal-13" type="text" value={form.employee_id} onChange={e => set('employee_id', e.target.value)} placeholder="EMP-001" className={inputCls} />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className={labelCls}>Department</label>
-              <input type="text" value={form.department} onChange={e => set('department', e.target.value)} placeholder="Patrol, Dispatch, etc." className={inputCls} />
+              <label htmlFor="ff-userformmodal-14" className={labelCls}>Department</label>
+              <input id="ff-userformmodal-14" type="text" value={form.department} onChange={e => set('department', e.target.value)} placeholder="Patrol, Dispatch, etc." className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Hire Date</label>
-              <input type="date" value={form.hire_date} onChange={e => set('hire_date', e.target.value)} className={inputCls} />
+              <label htmlFor="ff-userformmodal-15" className={labelCls}>Hire Date</label>
+              <input id="ff-userformmodal-15" type="date" value={form.hire_date} onChange={e => set('hire_date', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Shift Preference</label>
-              <select value={form.shift_preference} onChange={e => set('shift_preference', e.target.value)} className={inputCls}>
+              <label htmlFor="ff-userformmodal-16" className={labelCls}>Shift Preference</label>
+              <select id="ff-userformmodal-16" value={form.shift_preference} onChange={e => set('shift_preference', e.target.value)} className={inputCls}>
                 {SHIFTS.map(s => <option key={s} value={s}>{s ? s.charAt(0).toUpperCase() + s.slice(1) : '-- None --'}</option>)}
               </select>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Termination Date</label>
-              <input type="date" value={form.termination_date} onChange={e => set('termination_date', e.target.value)} className={inputCls} />
+              <label htmlFor="ff-userformmodal-17" className={labelCls}>Termination Date</label>
+              <input id="ff-userformmodal-17" type="date" value={form.termination_date} onChange={e => set('termination_date', e.target.value)} className={inputCls} />
             </div>
           </div>
         </div>
@@ -373,22 +391,25 @@ export default function UserFormModal({
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Email</label>
-              <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@rmpgsecurity.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" className={inputCls} />
+              <label htmlFor="ff-userformmodal-18" className={labelCls}>Email</label>
+              <input id="ff-userformmodal-18" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@rmpgsecurity.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Phone</label>
-              <input type="tel" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" className={inputCls} />
+              <label htmlFor="ff-userformmodal-19" className={labelCls}>Phone</label>
+              <input id="ff-userformmodal-19" type="tel" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" className={inputCls} />
             </div>
           </div>
-          <div>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+           <div className="sm:col-span-3">
             <label className={labelCls}>Address</label>
             <AddressAutocomplete
               className={inputCls}
               placeholder="123 Main St"
               value={form.address}
               onChange={(val) => set('address', val)}
+              fillWith="street"
               onSelect={(addr: ParsedAddress) => {
+                // Street line only — city/state/zip live in their own fields.
                 setForm((prev) => ({
                   ...prev,
                   address: addr.street || addr.formatted,
@@ -398,21 +419,65 @@ export default function UserFormModal({
                 }));
               }}
             />
+           </div>
+           <div>
+            <label htmlFor="ff-userformmodal-addr2" className={labelCls}>Apt / Unit</label>
+            <input id="ff-userformmodal-addr2" type="text" value={form.address_2} onChange={e => set('address_2', e.target.value)} placeholder="Apt 4B" className={inputCls} />
+           </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className={labelCls}>City</label>
-              <input type="text" value={form.city} onChange={e => set('city', e.target.value)} placeholder="Salt Lake City" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>State</label>
-              <input type="text" value={form.state} onChange={e => set('state', e.target.value)} maxLength={2} placeholder="UT" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Zip Code</label>
-              <input type="text" value={form.zip} onChange={e => set('zip', e.target.value)} maxLength={10} placeholder="84101" pattern="\d{5}(-\d{4})?" className={inputCls} />
-            </div>
-          </div>
+           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+             <div>
+               <label className={labelCls}>City</label>
+               <AddressAutocomplete
+                 className={inputCls}
+                 placeholder="Salt Lake City"
+                 value={form.city}
+                 onChange={(val) => set('city', val)}
+                 name="city"
+                 types="place"
+                 fillWith="text"
+                 onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                   ...prev,
+                   city: addr.text || prev.city,
+                   state: addr.state || prev.state,
+                 }))}
+               />
+             </div>
+             <div>
+               <label className={labelCls}>State</label>
+               <AddressAutocomplete
+                 className={inputCls}
+                 placeholder="UT"
+                 value={form.state}
+                 onChange={(val) => set('state', val)}
+                 name="state"
+                 types="region"
+                 fillWith="text"
+                 onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                   ...prev,
+                   state: addr.state || addr.text || prev.state,
+                 }))}
+               />
+             </div>
+             <div>
+               <label className={labelCls}>Zip Code</label>
+               <AddressAutocomplete
+                 className={inputCls}
+                 placeholder="84101"
+                 value={form.zip}
+                 onChange={(val) => set('zip', val)}
+                 name="zip"
+                 types="postcode"
+                 fillWith="text"
+                 onSelect={(addr: ParsedAddress) => setForm((prev) => ({
+                   ...prev,
+                   zip: addr.text || addr.zip || prev.zip,
+                   city: prev.city || addr.city,
+                   state: prev.state || addr.state,
+                 }))}
+               />
+             </div>
+           </div>
         </div>
       )}
 
@@ -421,17 +486,17 @@ export default function UserFormModal({
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Contact Name</label>
-              <input type="text" value={form.emergency_contact_name} onChange={e => set('emergency_contact_name', e.target.value)} className={inputCls} />
+              <label htmlFor="ff-userformmodal-20" className={labelCls}>Contact Name</label>
+              <input id="ff-userformmodal-20" type="text" value={form.emergency_contact_name} onChange={e => set('emergency_contact_name', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Contact Phone</label>
-              <input type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" className={inputCls} />
+              <label htmlFor="ff-userformmodal-21" className={labelCls}>Contact Phone</label>
+              <input id="ff-userformmodal-21" type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" className={inputCls} />
             </div>
           </div>
           <div>
-            <label className={labelCls}>Relationship</label>
-            <input type="text" value={form.emergency_contact_relationship} onChange={e => set('emergency_contact_relationship', e.target.value)} placeholder="Spouse, Parent, etc." className={inputCls} />
+            <label htmlFor="ff-userformmodal-22" className={labelCls}>Relationship</label>
+            <input id="ff-userformmodal-22" type="text" value={form.emergency_contact_relationship} onChange={e => set('emergency_contact_relationship', e.target.value)} placeholder="Spouse, Parent, etc." className={inputCls} />
           </div>
         </div>
       )}
@@ -441,20 +506,20 @@ export default function UserFormModal({
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className={labelCls}>Blood Type</label>
-              <select value={form.blood_type} onChange={e => set('blood_type', e.target.value)} className={inputCls}>
+              <label htmlFor="ff-userformmodal-23" className={labelCls}>Blood Type</label>
+              <select id="ff-userformmodal-23" value={form.blood_type} onChange={e => set('blood_type', e.target.value)} className={inputCls}>
                 {BLOOD_TYPES.map(b => <option key={b} value={b}>{b || '-- Unknown --'}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelCls}>Uniform Size</label>
-              <select value={form.uniform_size} onChange={e => set('uniform_size', e.target.value)} className={inputCls}>
+              <label htmlFor="ff-userformmodal-24" className={labelCls}>Uniform Size</label>
+              <select id="ff-userformmodal-24" value={form.uniform_size} onChange={e => set('uniform_size', e.target.value)} className={inputCls}>
                 {UNIFORM_SIZES.map(s => <option key={s} value={s}>{s || '-- None --'}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelCls}>Allergies</label>
-              <input type="text" value={form.allergies} onChange={e => set('allergies', e.target.value)} placeholder="None known" className={inputCls} />
+              <label htmlFor="ff-userformmodal-25" className={labelCls}>Allergies</label>
+              <input id="ff-userformmodal-25" type="text" value={form.allergies} onChange={e => set('allergies', e.target.value)} placeholder="None known" className={inputCls} />
             </div>
           </div>
         </div>
@@ -465,16 +530,16 @@ export default function UserFormModal({
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className={labelCls}>DL Number</label>
-              <input type="text" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} className={inputCls} />
+              <label htmlFor="ff-userformmodal-26" className={labelCls}>DL Number</label>
+              <input id="ff-userformmodal-26" type="text" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>DL State</label>
-              <input type="text" value={form.dl_state} onChange={e => set('dl_state', e.target.value)} maxLength={2} placeholder="UT" className={inputCls} />
+              <label htmlFor="ff-userformmodal-27" className={labelCls}>DL State</label>
+              <input id="ff-userformmodal-27" type="text" value={form.dl_state} onChange={e => set('dl_state', e.target.value)} maxLength={2} placeholder="UT" className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>DL Expiry</label>
-              <input type="date" value={form.dl_expiry} onChange={e => set('dl_expiry', e.target.value)} className={inputCls} />
+              <label htmlFor="ff-userformmodal-28" className={labelCls}>DL Expiry</label>
+              <input id="ff-userformmodal-28" type="date" value={form.dl_expiry} onChange={e => set('dl_expiry', e.target.value)} className={inputCls} />
             </div>
           </div>
         </div>
@@ -484,17 +549,17 @@ export default function UserFormModal({
       {activeSection === 'credentials' && (
         <div className="space-y-4">
           <div>
-            <label className={labelCls}>Password {!isEdit && <span className="text-red-400">*</span>}</label>
-            <input type="password" autoComplete="new-password" value={form.password} onChange={e => set('password', e.target.value)} required={!isEdit} placeholder={isEdit ? '(leave blank to keep)' : 'Enter password'} className={inputCls} />
+            <label htmlFor="ff-userformmodal-29" className={labelCls}>Password {!isEdit && <span className="text-red-400">*</span>}</label>
+            <input id="ff-userformmodal-29" type="password" autoComplete="new-password" value={form.password} onChange={e => set('password', e.target.value)} required={!isEdit} placeholder={isEdit ? '(leave blank to keep)' : 'Enter password'} className={inputCls} />
           </div>
           <div>
-            <label className={labelCls}>Certifications</label>
-            <input type="text" value={form.certifications} onChange={e => set('certifications', e.target.value)} placeholder="CPR, First Aid, Guard Card (comma-separated)" className={inputCls} />
+            <label htmlFor="ff-userformmodal-30" className={labelCls}>Certifications</label>
+            <input id="ff-userformmodal-30" type="text" value={form.certifications} onChange={e => set('certifications', e.target.value)} placeholder="CPR, First Aid, Guard Card (comma-separated)" className={inputCls} />
             <p className="text-[9px] text-rmpg-500 mt-1">Enter certifications separated by commas</p>
           </div>
           <div>
             <label className={labelCls}>Notes</label>
-            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={4} placeholder="Additional notes..." maxLength={5000} className={`${inputCls} resize-none`} />
+            <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={4} placeholder="Additional notes..." maxLength={5000} className={`${inputCls} resize-none`} />
             <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </div>

@@ -18,6 +18,11 @@ contextBridge.exposeInMainWorld('electron', {
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
 
+  // Crash-safe printing — renders the page to PDF in Chromium and opens
+  // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
+  // segfaults the app on macOS 26 (see main.js 'print:to-pdf').
+  printToPdf: () => ipcRenderer.invoke('print:to-pdf'),
+
   // Notifications (native OS notifications)
   showNotification: (title, body) => {
     new Notification(title, { body });
@@ -27,6 +32,30 @@ contextBridge.exposeInMainWorld('electron', {
   // IP-based geolocation via Google's Geolocation API when
   // navigator.geolocation fails (common on desktop without GPS)
   getIpLocation: () => ipcRenderer.invoke('geo:ip-locate'),
+
+  // ─── Power management (keep navigation alive off-screen) ───
+  // While a trip is active the renderer holds a wake lock so the machine
+  // doesn't suspend mid-patrol (display may still sleep). Released on trip end.
+  keepAwake: () => ipcRenderer.invoke('power:keep-awake'),
+  allowSleep: () => ipcRenderer.invoke('power:allow-sleep'),
+
+  // ─── Internal GPS (Panasonic Toughbook) ────────────
+  // Reads raw NMEA from the Toughbook's internal u-blox module
+  // via serial port. Used instead of navigator.geolocation when
+  // running on Toughbook + Windows.
+  detectInternalGps: () => ipcRenderer.invoke('geo:internal-gps-detect'),
+  startInternalGps: (opts) => ipcRenderer.invoke('geo:internal-gps-start', opts || {}),
+  stopInternalGps: () => ipcRenderer.invoke('geo:internal-gps-stop'),
+  onInternalGpsUpdate: (callback) => {
+    const handler = (_e, pos) => callback(pos);
+    ipcRenderer.on('geo:internal-gps-update', handler);
+    return () => ipcRenderer.removeListener('geo:internal-gps-update', handler);
+  },
+  onInternalGpsError: (callback) => {
+    const handler = (_e, err) => callback(err);
+    ipcRenderer.on('geo:internal-gps-error', handler);
+    return () => ipcRenderer.removeListener('geo:internal-gps-error', handler);
+  },
 
   // ─── Auto-Update API ────────────────────────────────
   // Listen for update status events from the main process
@@ -39,6 +68,59 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Trigger a manual update check
   checkForUpdates: () => ipcRenderer.send('updater:check'),
+
+  // Force-clear all Chromium caches (HTTP, service workers, cachestorage,
+  // appcache, filesystem) and reload the renderer. Called by the web app's
+  // WebUpdateBanner when a new service worker version is detected, since
+  // the SW skipWaiting+reload alone doesn't clear Electron's HTTP cache.
+  forceRefresh: () => ipcRenderer.invoke('app:force-refresh'),
+
+  // ─── Recon Connect ─────────────────────────────────
+  // Spawn the locally-installed Recon Connect toolkit in a new terminal window.
+  // Returns { ok: boolean, error?: string } — never throws.
+  launchReconConnect: () => ipcRenderer.invoke('recon:launch'),
+
+  // Run the platform-appropriate install flow in a visible terminal window.
+  // Returns { ok: boolean, error?: string }.
+  installReconConnect: () => ipcRenderer.invoke('recon:install'),
+
+  // Quick existence check — returns { installed: boolean, path?: string }.
+  checkReconConnect: () => ipcRenderer.invoke('recon:check'),
+
+  // ─── In-app terminal (xterm.js bridge) ──────────────
+  // Spawn a Recon Connect process and stream stdio through IPC events.
+  reconSpawn: (opts) => ipcRenderer.invoke('recon:term-spawn', opts),
+  reconInput: (sessionId, data) => ipcRenderer.send('recon:term-input', { sessionId, data }),
+  reconResize: (sessionId, cols, rows) => ipcRenderer.send('recon:term-resize', { sessionId, cols, rows }),
+  reconKill: (sessionId) => ipcRenderer.invoke('recon:term-kill', { sessionId }),
+
+  // ─── Native tool runner (Wireless pilot) ───────────
+  reconToolSpawn: (toolId, args) => ipcRenderer.invoke('recon:tool-spawn', { toolId, args }),
+  reconToolKill: (sessionId) => ipcRenderer.invoke('recon:tool-kill', { sessionId }),
+  reconToolInstall: (pkg) => ipcRenderer.invoke('recon:tool-install', { pkg }),
+  reconCatalogRun: (opts) => ipcRenderer.invoke('recon:catalog-run', opts),
+  reconCheckBinary: (binary) => ipcRenderer.invoke('recon:check-binary', { binary }),
+  reconCatalogTerminal: (opts) => ipcRenderer.invoke('recon:catalog-terminal', opts),
+  onReconToolData: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.kind, payload.data);
+    ipcRenderer.on('recon:tool-data', handler);
+    return () => ipcRenderer.removeListener('recon:tool-data', handler);
+  },
+  onReconToolExit: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.code);
+    ipcRenderer.on('recon:tool-exit', handler);
+    return () => ipcRenderer.removeListener('recon:tool-exit', handler);
+  },
+  onReconData: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.data);
+    ipcRenderer.on('recon:term-data', handler);
+    return () => ipcRenderer.removeListener('recon:term-data', handler);
+  },
+  onReconExit: (callback) => {
+    const handler = (_e, payload) => callback(payload.sessionId, payload.code);
+    ipcRenderer.on('recon:term-exit', handler);
+    return () => ipcRenderer.removeListener('recon:term-exit', handler);
+  },
 
   // Install a downloaded update (restarts the app)
   installUpdate: () => ipcRenderer.send('updater:install'),

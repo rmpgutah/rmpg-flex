@@ -4,8 +4,8 @@
 // Used in DispatchPage and MdtPage via WebSocket events
 // ============================================================
 
-import React from 'react';
 import { AlertTriangle, X, ExternalLink } from 'lucide-react';
+import { formatEnumValue } from '../utils/formatters';
 
 export interface WarrantAlert {
   id: string;
@@ -22,7 +22,7 @@ const SEVERITY_STYLES: Record<string, string> = {
   felony: 'bg-red-950 border-red-700 text-red-200',
   misdemeanor: 'bg-amber-950 border-amber-700 text-amber-200',
   bench: 'bg-orange-950 border-orange-700 text-orange-200',
-  civil: 'bg-gray-950 border-gray-700 text-gray-200',
+  civil: 'bg-surface-overlay border-border-default text-rmpg-200',
 };
 
 interface Props {
@@ -44,7 +44,7 @@ export default function WarrantAlertBanner({ alerts, onDismiss, onViewCall }: Pr
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 animate-pulse" />
           <div className="flex-1 min-w-0">
             <div className="font-bold font-mono text-xs uppercase tracking-wider">
-              ⚠ WARRANT HIT {alert.severity ? `— ${alert.severity.toUpperCase()}` : ''}
+              ⚠ WARRANT HIT {alert.severity ? `— ${formatEnumValue(alert.severity)}` : ''}
             </div>
             <div className="font-semibold truncate">{alert.personName}</div>
             {alert.charge && <div className="text-xs opacity-75 truncate">{alert.charge}</div>}

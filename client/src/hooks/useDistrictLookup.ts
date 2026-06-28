@@ -8,25 +8,44 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { apiFetch } from './useApi';
 
 export interface DistrictInfo {
-  section_id: string;
+  sector_id: string;
   zone_id: string;
   beat_id: string;
   dispatch_code?: string;
-  section_name?: string;
+  sector_code?: string;
+  sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
+  area_code?: string;
+  area_name?: string;
 }
 
 export interface DistrictOption {
-  section_id: string;
+  sector_id: string;
+  // Spillman sector code (e.g. "SL1") — the police-format label for the sector.
+  // Distinct from sector_id, which is the numeric dispatch_sectors.id row key.
+  sector_code: string;
   zone_id: string;
   beat_id: string;
   dispatch_code: string;
-  section_name: string;
+  sector_name: string;
   zone_name: string;
   beat_name: string;
   beat_descriptor: string;
+  area_code: string;
+  area_name: string;
+}
+
+/**
+ * Normalize a sector_id for map lookups. Call rows can carry the id as a
+ * SQLite REAL ("28.0" / 28.0) while district rows key it as an integer string
+ * ("28") — without this every float-form id misses the lookup and the UI falls
+ * back to printing the raw "28.0".
+ */
+export function normalizeSectorId(v: string | number): string {
+  const s = String(v);
+  return /^\d+(\.0+)?$/.test(s) ? String(parseInt(s, 10)) : s;
 }
 
 /**
@@ -42,8 +61,17 @@ export function useDistrictOptions() {
     setLoading(true);
     setError(null);
     let cancelled = false;
-    apiFetch<DistrictOption[]>('/dispatch/districts')
-      .then((data) => { if (!cancelled && data) setDistricts(data); })
+    apiFetch<DistrictOption[]>('/dispatch/geography/districts')
+      // Normalize sector_id to a string at ingest. The API returns it as a
+      // numeric dispatch_sectors.id, but DistrictOption types it as string and
+      // consumers mix number/string — the mismatch caused real crashes (map
+      // #807, dispatch panel). Coercing here once makes every derived map/list
+      // string-keyed; the comparison helpers below also coerce their inputs, so
+      // a consumer may pass either type. (zone_id/beat_id are already strings.)
+      .then((data) => {
+        if (cancelled || !data) return;
+        setDistricts(data.map(d => ({ ...d, sector_id: d.sector_id == null ? d.sector_id : String(d.sector_id) })));
+      })
       .catch((err) => { console.warn('[useDistrictOptions] Failed to load districts:', err); if (!cancelled) setError('Failed to load districts'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -52,16 +80,17 @@ export function useDistrictOptions() {
   useEffect(() => { return loadDistricts(); }, [loadDistricts]);
 
   // Unique sections for top-level dropdown
-  const sections = useMemo(() => Array.from(new Set(districts.map(d => d.section_id))).sort(), [districts]);
+  const sections = useMemo(() => Array.from(new Set(districts.map(d => d.sector_id))).sort(), [districts]);
 
   // Global fallbacks (all zones, all beats) — used when no parent is selected
   const zones = useMemo(() => Array.from(new Set(districts.map(d => d.zone_id))).sort(), [districts]);
   const beats = useMemo(() => Array.from(new Set(districts.map(d => d.beat_id))).sort(), [districts]);
 
   // Cascading helpers: zones scoped to section, beats scoped to zone
-  const zonesForSection = useCallback((sectionId: string) => {
+  const zonesForSection = useCallback((sectionId: string | number) => {
     if (!sectionId) return zones;
-    return Array.from(new Set(districts.filter(d => d.section_id === sectionId).map(d => d.zone_id))).sort();
+    const sid = String(sectionId);
+    return Array.from(new Set(districts.filter(d => d.sector_id === sid).map(d => d.zone_id))).sort();
   }, [districts, zones]);
 
   const beatsForZone = useCallback((zoneId: string) => {
@@ -69,12 +98,62 @@ export function useDistrictOptions() {
     return Array.from(new Set(districts.filter(d => d.zone_id === zoneId).map(d => d.beat_id))).sort();
   }, [districts, beats]);
 
+  // Beats scoped to a whole section (across its zones) — used when a Section is
+  // chosen but no Zone yet, so the Beat picker shows a short relevant list
+  // instead of all ~719 beats. Returns [] when no section (forces picking one).
+  const beatsForSection = useCallback((sectionId: string | number) => {
+    if (!sectionId) return [] as string[];
+    const sid = String(sectionId);
+    return Array.from(new Set(districts.filter(d => d.sector_id === sid).map(d => d.beat_id))).sort();
+  }, [districts]);
+
+  // Resolve the full district row for a (section, beat) pair when the zone isn't
+  // known yet — lets the Beat picker backfill zone + dispatch_code on select.
+  const districtForSectionBeat = useCallback(
+    (sectionId: string | number, beatId: string) => {
+      const sid = String(sectionId);
+      return districts.find(d => d.sector_id === sid && d.beat_id === beatId) || null;
+    },
+    [districts],
+  );
+
   // Labels: section/zone are globally unique, but beat labels must be scoped by zone
   const sectionLabels = useMemo(() => {
     const m = new Map<string, string>();
-    for (const d of districts) m.set(d.section_id, d.section_name);
+    for (const d of districts) m.set(d.sector_id, d.sector_name);
     return m;
   }, [districts]);
+
+  // Spillman sector code keyed by the numeric sector_id, so the UI can render
+  // the police-format code ("SL1") wherever it only has the raw sector_id row key.
+  const sectionCodes = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of districts) m.set(d.sector_id, d.sector_code);
+    return m;
+  }, [districts]);
+
+  // Area (the top of the geography hierarchy) keyed by sector_id, since a call
+  // record carries sector_id but no area_id. { code, name } e.g. {SL, Salt Lake}.
+  const sectionAreas = useMemo(() => {
+    const m = new Map<string, { code: string; name: string }>();
+    for (const d of districts) m.set(d.sector_id, { code: d.area_code, name: d.area_name });
+    return m;
+  }, [districts]);
+
+  // Resolve the Spillman sector code from a numeric sector_id; falls back to the
+  // raw id so the field is never blank (but the caller can detect the miss).
+  const getSectionCode = useCallback(
+    (sectorId: string | number | null | undefined) =>
+      sectorId == null ? '' : (sectionCodes.get(normalizeSectorId(sectorId)) || ''),
+    [sectionCodes],
+  );
+
+  // Resolve the Area for a sector_id (number or string), or null when unknown.
+  const getArea = useCallback(
+    (sectorId: string | number | null | undefined) =>
+      sectorId == null ? null : (sectionAreas.get(normalizeSectorId(sectorId)) || null),
+    [sectionAreas],
+  );
 
   const zoneLabels = useMemo(() => {
     const m = new Map<string, string>();
@@ -96,7 +175,7 @@ export function useDistrictOptions() {
     return beatLabels.get(`${zoneId}:${beatId}`) || beatId;
   }, [beatLabels]);
 
-  return { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels, zonesForSection, beatsForZone, getBeatLabel, loading, error, retry: loadDistricts };
+  return { districts, sections, zones, beats, sectionLabels, sectionCodes, sectionAreas, getSectionCode, getArea, zoneLabels, beatLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel, loading, error, retry: loadDistricts };
 }
 
 /**
@@ -115,19 +194,22 @@ export function useDistrictIdentify() {
     setIdentifying(true);
     try {
       const result = await apiFetch<{ found: boolean } & DistrictInfo>(
-        `/dispatch/districts/identify?lat=${lat}&lng=${lng}`,
+        `/dispatch/geography/districts/identify?lat=${lat}&lng=${lng}`,
         { signal: controller.signal }
       );
       if (result && result.found) {
         return {
-          section_id: result.section_id,
+          sector_id: result.sector_id,
           zone_id: result.zone_id,
           beat_id: result.beat_id,
           dispatch_code: result.dispatch_code,
-          section_name: result.section_name,
+          sector_code: result.sector_code,
+          sector_name: result.sector_name,
           zone_name: result.zone_name,
           beat_name: result.beat_name,
           beat_descriptor: result.beat_descriptor,
+          area_code: result.area_code,
+          area_name: result.area_name,
         };
       }
       return null;

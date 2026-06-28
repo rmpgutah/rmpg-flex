@@ -35,12 +35,26 @@ class AppUpdater {
     autoUpdater.allowDowngrade = false;
     autoUpdater.allowPrerelease = false;
 
-    // Point at GitHub Releases for auto-updates
-    // electron-updater will fetch latest.yml / latest-mac.yml from GitHub
+    // Point at the Cloudflare Worker update feed.
+    // The GitHub repo is private — GitHub Releases asset URLs return 404
+    // to unauthenticated requests, and embedding a PAT in the shipped app
+    // would leak access to anyone who decompiles the .asar. The old VPS
+    // host (https://rmpgutah.us/releases/, nginx on /opt/rmpg-releases/)
+    // was DECOMMISSIONED 2026-05-24, so that feed now returns the SPA's
+    // index.html (HTTP 200 text/html) and electron-updater fails to parse
+    // it as YAML — auto-update was silently dead.
+    //
+    // The `rmpg-flex-api` Worker now serves the feed from the
+    // `rmpg-flex-downloads` R2 bucket at /updates/ (see src/routes/
+    // downloads.ts → serveUpdatesYaml + /updates/:filename). It MUST be the
+    // api.rmpgutah.us host: the apex rmpgutah.us is the Pages SPA and does
+    // not carry these routes (it returns index.html, same failure as the
+    // old VPS path). electron-updater's 'generic' provider GETs
+    // <url>/latest.yml (win) / latest-mac.yml (mac) and follows the
+    // path/sha512 it finds — no auth, no third party.
     autoUpdater.setFeedURL({
-      provider: 'github',
-      owner: 'rmpgutah',
-      repo: 'rmpg-flex',
+      provider: 'generic',
+      url: 'https://api.rmpgutah.us/updates/',
     });
 
     // ─── Event handlers ───────────────────────────────
