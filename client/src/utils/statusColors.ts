@@ -16,7 +16,7 @@ export const UNIT_STATUS_HEX: Record<UnitStatus, string> = {
   enroute: '#888888',
   onscene: '#a855f7',
   busy: '#ef4444',
-  off_duty: '#666666',
+  off_duty: 'var(--rmpg-500)',
   out_of_service: '#991b1b',
 };
 
@@ -52,11 +52,16 @@ export const UNIT_STATUS_ABBREV: Record<UnitStatus, string> = {
 
 // ── Call Priority ───────────────────────────────────────────
 
+// Priority palette is a heat scale (urgent→routine): red → amber → bronze →
+// muted gold. P3/P4 intentionally do NOT reuse the unit-status grays
+// (#888888 enroute / #666666 off_duty) — a gray dot was ambiguous between a
+// low-priority call and an en-route/off-duty unit. Keeping them in the warm
+// gold family disambiguates while staying on-theme (zero blue).
 export const PRIORITY_HEX: Record<string, string> = {
   P1: '#dc2626',
   P2: '#f59e0b',
-  P3: '#888888',
-  P4: '#666666',
+  P3: '#b8893a',
+  P4: '#7a6a3f',
 };
 
 export const PRIORITY_CLASSES: Record<CallPriority, string> = {
@@ -77,8 +82,8 @@ export const PRIORITY_LABELS: Record<CallPriority, string> = {
 
 export const CALL_STATUS_CLASSES: Record<CallStatus, string> = {
   pending: 'bg-yellow-900/50 text-yellow-300 border border-yellow-600/60',
-  dispatched: 'bg-gray-900/50 text-gray-300 border border-gray-600/60',
-  enroute: 'bg-gray-900/50 text-gray-300 border border-gray-600/60',
+  dispatched: 'bg-surface-sunken/50 text-rmpg-300 border border-rmpg-600/60',
+  enroute: 'bg-surface-sunken/50 text-rmpg-300 border border-rmpg-600/60',
   onscene: 'bg-red-900/50 text-red-300 border border-red-600/60',
   cleared: 'bg-green-900/50 text-green-300 border border-green-600/60',
   closed: 'bg-rmpg-700/50 text-rmpg-400 border border-rmpg-600/50',

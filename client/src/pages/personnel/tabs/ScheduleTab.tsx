@@ -8,6 +8,8 @@ import type { Schedule } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DAYS, getWeekMonday, formatWeekLabel, dateToYMD } from '../utils/personnelFormatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Props {
   officers: OfficerWithStatus[];
@@ -90,13 +92,25 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
     return hour >= 18 || hour < 6;
   }
 
+  // ── Right-click context menu ──────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildShiftMenu = (s: Schedule): ContextMenuItem[] => [
+    m.copy('Copy officer', s.officer_name),
+    ...(s.property_name ? [m.copy('Copy property', s.property_name)] : []),
+    m.separator(),
+    m.copyId(s.id),
+  ];
+
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Week Navigation */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-brand-400" />
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Schedule</h2>
+          <span className="text-[11px] font-mono text-rmpg-500">({schedules.length})</span>
         </div>
         <div className="panel-beveled p-2 flex items-center gap-1.5">
           <button type="button" onClick={handlePrevWeek} className="toolbar-btn p-1">
@@ -185,6 +199,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
                         return (
                           <div
                             key={s.id}
+                            onContextMenu={(e) => openMenu(e, buildShiftMenu(s))}
                             className={`panel-inset px-1.5 py-1 mb-0.5 border ${
                               night
                                 ? 'bg-purple-900/40 border-purple-700/30'
@@ -213,7 +228,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
       {/* Add Schedule Button */}
       <div className="flex justify-end">
-        <button type="button" onClick={onAddSchedule} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+        <button type="button" onClick={onAddSchedule} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
           Add Schedule
         </button>

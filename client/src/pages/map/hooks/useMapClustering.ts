@@ -15,7 +15,7 @@ const PRIORITY_COLORS: Record<number, string> = {
   1: '#dc2626',
   2: '#f59e0b',
   3: '#888888',
-  4: '#666666',
+  4: 'var(--rmpg-500)',
 };
 
 function getPriorityColor(priority: number): string {

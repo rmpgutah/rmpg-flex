@@ -84,12 +84,12 @@ export default function DashCamHudOverlay({ video, videoRef, isPlaying }: Props)
   const font = { fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace" };
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none z-10" style={font}>
+    <div className="tactical-dark absolute inset-0 pointer-events-none select-none z-10" style={font}>
 
       {/* ── TOP BAR ─────────────────────────────────────── */}
       <div className="absolute top-0 left-0 right-0 bg-black/60 px-3 py-1.5 flex items-center justify-between">
         {/* Left: timestamp */}
-        <span className="text-[11px] text-white font-bold tracking-wide" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <span className="text-[11px] text-rmpg-100 font-bold tracking-wide" style={{ fontVariantNumeric: 'tabular-nums' }}>
           {timestamp}
         </span>
 
@@ -122,7 +122,7 @@ export default function DashCamHudOverlay({ video, videoRef, isPlaying }: Props)
         <div className="flex items-center gap-1">
           {speed != null ? (
             <span className={`text-[11px] font-bold ${
-              speed > 80 ? 'text-red-400' : speed > 60 ? 'text-amber-300' : 'text-white'
+              speed > 80 ? 'text-red-400' : speed > 60 ? 'text-amber-300' : 'text-rmpg-100'
             }`} style={{ fontVariantNumeric: 'tabular-nums' }}>
               {speed} MPH
             </span>

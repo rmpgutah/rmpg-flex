@@ -2,10 +2,10 @@ import { Link } from 'react-router-dom';
 
 export default function MapSnippetCard() {
   return (
-    <section className="bg-[#141414] border border-[#222] p-3">
+    <section className="bg-surface-base border border-border-default p-3">
       <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">MAP</h2>
       <Link to="/map" className="block">
-        <div className="w-full h-[240px] bg-[#050505] border border-[#1a1a1a] relative overflow-hidden">
+        <div className="w-full h-[240px] bg-surface-overlay border border-border-default relative overflow-hidden">
           <img
             src="/maps/utah-slc-z11.png"
             alt="Salt Lake Valley"

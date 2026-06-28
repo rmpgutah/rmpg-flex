@@ -81,9 +81,15 @@ export function rankUnits(
 
   // Calculate distance for each unit
   const withDistance = eligible.map(unit => {
-    const hasGps = !!(unit.latitude && unit.longitude);
+    // Coerce + finite-check: live coords can arrive as sentinel strings
+    // ("None"/"0"/"") — a bare `unit.latitude && unit.longitude` treats "0" as
+    // truthy (→ NaN distance) and can't tell null from a real 0. Reject NaN and
+    // the null-island (0,0) placeholder.
+    const lat = Number(unit.latitude);
+    const lng = Number(unit.longitude);
+    const hasGps = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
     const distance = hasGps
-      ? haversineDistance(callLat, callLng, unit.latitude!, unit.longitude!)
+      ? haversineDistance(callLat, callLng, lat, lng)
       : 999;
     const eta = hasGps ? estimateETA(distance) : -1;
     return { unit, distance, eta, hasGps, rank: 0 };
