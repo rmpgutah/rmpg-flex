@@ -1,0 +1,26 @@
+ALTER TABLE properties ADD COLUMN access_instructions TEXT;
+ALTER TABLE properties ADD COLUMN is_active INTEGER NOT NULL;
+ALTER TABLE properties ADD COLUMN updated_at TEXT;
+ALTER TABLE properties ADD COLUMN notes TEXT;
+ALTER TABLE properties ADD COLUMN business_type TEXT;
+ALTER TABLE properties ADD COLUMN structure_type TEXT;
+ALTER TABLE properties ADD COLUMN occupancy_status TEXT;
+ALTER TABLE properties ADD COLUMN year_built TEXT;
+ALTER TABLE properties ADD COLUMN square_footage TEXT;
+ALTER TABLE properties ADD COLUMN number_of_stories TEXT;
+ALTER TABLE properties ADD COLUMN security_features TEXT;
+ALTER TABLE properties ADD COLUMN key_holder_name TEXT;
+ALTER TABLE properties ADD COLUMN key_holder_phone TEXT;
+ALTER TABLE properties ADD COLUMN key_holder_relationship TEXT;
+ALTER TABLE properties ADD COLUMN owner_name TEXT;
+ALTER TABLE properties ADD COLUMN owner_phone TEXT;
+ALTER TABLE properties ADD COLUMN last_inspection_date TEXT;
+-- Missing columns for calls_for_service (34)
+ALTER TABLE calls_for_service ADD COLUMN caller_address TEXT;
+ALTER TABLE calls_for_service ADD COLUMN zone_beat TEXT;
+ALTER TABLE calls_for_service ADD COLUMN sector_id TEXT;
+ALTER TABLE calls_for_service ADD COLUMN zone_id TEXT;
+ALTER TABLE calls_for_service ADD COLUMN beat_id TEXT;
+ALTER TABLE calls_for_service ADD COLUMN cross_street TEXT;
+ALTER TABLE calls_for_service ADD COLUMN location_building TEXT;
+ALTER TABLE calls_for_service ADD COLUMN location_floor TEXT;

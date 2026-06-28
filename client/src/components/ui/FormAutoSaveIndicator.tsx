@@ -2,7 +2,6 @@
 // Feature 18: Form Auto-Save Indicator
 // Shows "Saving..." / "Saved" / "Error" indicator
 // ═══════════════════════════════════════════════════════════════
-import React from 'react';
 import { Check, Loader2, AlertCircle, Cloud } from 'lucide-react';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';

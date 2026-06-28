@@ -1,54 +1,32 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AlertTriangle, X, MapPin, Mic, MicOff } from 'lucide-react';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
-import { playRadioTone } from '../utils/radioTones';
 import { useToast } from './ToastProvider';
 import { safeTimeStr } from '../utils/dateUtils';
+import { playTone } from '../utils/dispatchTones';
 
-// ─── Panic Alarm — loops the unified panicWarble tone ────────────
-// Plays the Motorola APX emergency warble (960/1500Hz, 3s) in a
-// loop for the specified duration. Uses the unified radioTones
-// system so all emergency sounds are consistent.
+// ─── Panic Alarm — continuous until acknowledged (Spillman) ──────
+// Authentic Spillman Flex: the console alarm sounds CONTINUOUSLY
+// until a dispatcher acknowledges — it never times out on its own.
+// Loops the user-remappable Emergency/Panic tone slot from the
+// unified dispatchTones system (default: APX emergency warble;
+// Settings can map it to the sampled panic_continuous asset).
 // ─────────────────────────────────────────────────────────────────
-function playPanicAlarm(durationMs = 10000): { stop: () => void } {
+function playPanicAlarm(): { stop: () => void } {
   let stopped = false;
-  const handles: Array<{ stop: () => void }> = [];
-
-  // panicWarble is ~3s; loop it to fill the requested duration
-  const loopInterval = 3100; // slightly over 3s to avoid overlap
-  const maxLoops = Math.ceil(durationMs / loopInterval);
-
-  // Play first immediately
-  const first = playRadioTone('panicWarble');
-  if (first) handles.push(first);
-
-  // Schedule subsequent loops
-  const timers: ReturnType<typeof setTimeout>[] = [];
-  for (let i = 1; i < maxLoops && !stopped; i++) {
-    const timer = setTimeout(() => {
-      if (stopped) return;
-      const h = playRadioTone('panicWarble');
-      if (h) handles.push(h);
-    }, i * loopInterval);
-    timers.push(timer);
-  }
-
-  // Auto-stop after duration
-  const autoStop = setTimeout(() => {
-    stopped = true;
-    handles.forEach(h => h.stop());
-  }, durationMs);
-
+  let current: { stop: () => void } | null = playTone('alarm');
+  // 3s cycle covers the longest mappable tone (panic_continuous, 2.4s)
+  // without overlapping copies.
+  const timer = setInterval(() => {
+    if (stopped) return;
+    current?.stop();
+    current = playTone('alarm');
+  }, 3000);
   return {
-    stop: () => {
-      stopped = true;
-      timers.forEach(clearTimeout);
-      clearTimeout(autoStop);
-      handles.forEach(h => h.stop());
-    },
+    stop: () => { if (!stopped) { stopped = true; clearInterval(timer); current?.stop(); } },
   };
 }
 
@@ -105,7 +83,9 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   const volumeUpPressTimesRef = useRef<number[]>([]);
   const volumeUpHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeUpHeldRef = useRef(false);
-  const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Panic id currently shown on this console — guards against AlertHubDO's
+  // 15s redelivery restarting the alarm/voice room for an alert already up.
+  const displayedPanicIdRef = useRef<number | string | null>(null);
   const sendingRef = useRef(false); // synchronous guard — React state is async and races
 
   const triggerHardwarePanic = useCallback(async () => {
@@ -195,8 +175,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       }
     };
 
-    // Only register hardware listeners on Android or Electron
-    if (isAndroid || isElectron) {
+    // Hardware-button panic trigger is **Android-only**. On desktop
+    // (Electron / Windows / Mac) any `AudioVolumeUp` keydown event —
+    // from a laptop volume key, a USB headset volume control, a radio
+    // PTT keycode, an external keypad media key, or even a stuck key —
+    // would race the 3s long-press timer and fire a phantom panic.
+    // Phantom alarms desensitize officers and waste responder time, so
+    // on desktop the panic button MUST be triggered manually only.
+    if (isAndroid) {
       document.addEventListener('keydown', handleKeyDown);
       document.addEventListener('keyup', handleKeyUp);
     }
@@ -210,90 +196,99 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     };
   }, [triggerHardwarePanic]);
 
-  // Listen for incoming panic alerts and status updates
+  // Listen for incoming panic alerts and their lifecycle updates.
+  //
+  // PANIC-1: the server (AlertHubDO via emitAlert) fans EVERY panic lifecycle
+  // event out as a single message type — `panic_alert` — discriminated by an
+  // `action` field (panic_activated / panic_acknowledged / panic_resolved /
+  // panic_cancelled / panic_false_alarm / panic_escalated), mirroring how
+  // dispatch_update carries an action. The old code subscribed to bespoke
+  // top-level types ('panic_resolved', …) that the server NEVER sends, so
+  // alarms never auto-cleared fleet-wide on ack/resolve/cancel. Consolidate
+  // into ONE subscription that branches on msg.action.
   useEffect(() => {
-    const unsub = subscribe('panic_alert', (msg: any) => {
-      const data = msg.data || msg.payload || msg;
-      // Don't show your own panic alert back to yourself
-      if (data.user_id && user?.id && String(data.user_id) === String(user.id)) return;
-      setIncomingAlert(data);
-      // Set the sender's user ID so the "Respond" talk-back button works
-      if (data.user_id) {
-        panicAudio.setSenderUserId?.(data.user_id);
-      }
-      // Play alarm
-      alarmRef.current = playPanicAlarm(8000);
-      // Auto-dismiss after 60 seconds (tracked for cleanup)
-      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-      autoDismissTimerRef.current = setTimeout(() => {
-        setIncomingAlert(null);
-        alarmRef.current?.stop();
-      }, 60000);
-    });
-
-    // Panic acknowledged — update alert display
-    const unsubAck = subscribe('panic_acknowledged', (msg: any) => {
-      const data = msg.data || msg.payload || msg;
-      setIncomingAlert(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          acknowledged_by: data.acknowledged_by || data.user_name,
-          acknowledged_at: data.acknowledged_at || new Date().toISOString(),
-        };
-      });
-      // Stop alarm sound on acknowledge
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-    });
-
-    // Panic resolved — dismiss alert
-    const unsubResolved = subscribe('panic_resolved', (msg: any) => {
+    // Clear local alarm + overlay + voice room. Used by every terminal action.
+    const dismissLocal = () => {
       setIncomingAlert(null);
       alarmRef.current?.stop();
       alarmRef.current = null;
+      panicAudio.stopListening?.();
       setOwnPanicId(null);
       setOwnPanicTime(null);
-      addToast('Panic alert resolved', 'success', 5000);
-    });
-
-    // Panic cancelled — dismiss alert
-    const unsubCancelled = subscribe('panic_cancelled', (_msg: any) => {
-      setIncomingAlert(null);
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-      setOwnPanicId(null);
-      setOwnPanicTime(null);
-    });
-
-    // Panic false alarm — dismiss alert
-    const unsubFalse = subscribe('panic_false_alarm', (_msg: any) => {
-      setIncomingAlert(null);
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-      setOwnPanicId(null);
-      setOwnPanicTime(null);
-      addToast('Panic marked as false alarm', 'info', 5000);
-    });
-
-    // Panic escalated — update escalation level
-    const unsubEscalated = subscribe('panic_escalated', (msg: any) => {
-      const data = msg.data || msg.payload || msg;
-      setIncomingAlert(prev => {
-        if (!prev) return prev;
-        return { ...prev, escalation_level: data.escalation_level };
-      });
-    });
-
-    return () => {
-      unsub();
-      unsubAck();
-      unsubResolved();
-      unsubCancelled();
-      unsubFalse();
-      unsubEscalated();
-      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+      displayedPanicIdRef.current = null;
     };
+
+    const unsub = subscribe('panic_alert', (msg: any) => {
+      // Broadcast frame: { type:'panic_alert', action, panic:{…full row…} }.
+      // Tolerate flatter/legacy shapes too (data/payload wrappers, fields
+      // hoisted to the top level).
+      const env = msg.data || msg.payload || msg;
+      const panic = env.panic || env;                       // the panic_alerts row
+      const action: string = msg.action || env.action || 'panic_activated';
+      const panicId = panic?.id ?? env.panic_id ?? env.id;
+
+      switch (action) {
+        case 'panic_acknowledged':
+          // Ack silences the alarm but keeps the unit emergent — update the
+          // overlay to show who acknowledged, stop the audible alarm.
+          setIncomingAlert(prev => prev ? {
+            ...prev,
+            acknowledged_by: panic?.acknowledged_by || panic?.user_name || env.user_name,
+            acknowledged_at: panic?.acknowledged_at || new Date().toISOString(),
+          } : prev);
+          alarmRef.current?.stop();
+          alarmRef.current = null;
+          break;
+
+        case 'panic_resolved':
+          dismissLocal();
+          addToast('Panic alert resolved', 'success', 5000);
+          break;
+
+        case 'panic_cancelled':
+          dismissLocal();
+          break;
+
+        case 'panic_false_alarm':
+          dismissLocal();
+          addToast('Panic marked as false alarm', 'info', 5000);
+          break;
+
+        case 'panic_escalated':
+          setIncomingAlert(prev => prev ? {
+            ...prev,
+            escalation_level: panic?.escalation_level ?? env.escalation_level,
+          } : prev);
+          break;
+
+        case 'panic_activated':
+        default: {
+          // New alarm. Don't show your own panic back to yourself.
+          const senderId = panic?.user_id ?? panic?.officer_id ?? env.user_id;
+          if (senderId && user?.id && String(senderId) === String(user.id)) return;
+          // AlertHubDO re-delivers an unacked panic every 15s (and replays on
+          // reconnect). The overlay + continuous alarm are already running for
+          // this panic — don't restart the alarm or reset the voice room on a
+          // redelivery of the same id.
+          if (panicId != null && displayedPanicIdRef.current === panicId && alarmRef.current) break;
+          displayedPanicIdRef.current = panicId ?? null;
+          // Normalize to the PanicAlert overlay shape (panic row + panic_id).
+          setIncomingAlert({ ...panic, panic_id: panicId } as PanicAlert);
+          // Set the sender's user ID so the "Respond" talk-back button works.
+          if (senderId) panicAudio.setSenderUserId?.(Number(senderId));
+          // Open the panic voice room to hear the officer's distress audio live.
+          if (panicId != null) panicAudio.listen?.(Number(panicId));
+          // Audible alarm — Spillman: continuous until acknowledged, and the
+          // overlay NEVER auto-dismisses while unacknowledged. An officer
+          // emergency must not silently disappear from a console.
+          alarmRef.current?.stop();
+          alarmRef.current = playPanicAlarm();
+          break;
+        }
+      }
+    });
+
+    return () => unsub();
   }, [subscribe, user?.id, panicAudio, addToast]);
 
   // Server-side acknowledge — sends POST to /dispatch/panic/:id/acknowledge
@@ -346,11 +341,58 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     }
   }, [incomingAlert?.panic_id, addToast]);
 
+  // Code 4 — resolve (supervisor+). Spillman: after acknowledging, the
+  // dispatcher explicitly clears the emergency once the officer is code 4;
+  // this is the normal terminal transition (false-alarm is the exception
+  // path). Clears the alert row + the unit's EMERGENCY overlay fleet-wide.
+  const resolveCode4 = useCallback(async () => {
+    const panicId = incomingAlert?.panic_id;
+    if (!panicId) return;
+    const notes = window.prompt('Code 4 — resolution notes:');
+    if (notes === null) return; // user cancelled prompt
+    try {
+      await apiFetch(`/dispatch/panic/${panicId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ notes: notes || 'Code 4 — emergency resolved' }),
+      });
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+    } catch (err) {
+      console.error('Failed to resolve panic:', err);
+      addToast('Failed to resolve panic', 'error', 5000);
+    }
+  }, [incomingAlert?.panic_id, addToast]);
+
+  // Admin fallback — force-deactivate sweeps ALL panic state server-side
+  // (alert row, unit EMERGENCY overlay, P1 CAD call, AlertHubDO nag), even
+  // when the normal resolve/cancel transitions are stuck or already ran.
+  const forceDeactivate = useCallback(async () => {
+    const panicId = incomingAlert?.panic_id;
+    if (!panicId) return;
+    if (!window.confirm('Force-deactivate this panic? This clears the alert, the unit EMERGENCY state, and the P1 call for ALL consoles.')) return;
+    try {
+      await apiFetch(`/dispatch/panic/${panicId}/deactivate`, {
+        method: 'POST',
+        body: JSON.stringify({ notes: 'Deactivated from panic overlay' }),
+      });
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+      addToast('Panic force-deactivated', 'success', 5000);
+    } catch (err) {
+      console.error('Failed to force-deactivate panic:', err);
+      addToast('Failed to force-deactivate panic', 'error', 5000);
+    }
+  }, [incomingAlert?.panic_id, addToast]);
+
   // Check if current user can cancel (own panic within 30s)
   const canCancel = ownPanicId && ownPanicTime && (Date.now() - ownPanicTime < 30000);
 
   // Check if current user is supervisor+
   const isSupervisor = user?.role && SUPERVISOR_ROLES.includes(user.role);
+  // Admin/manager only — gates the force-deactivate fallback (server enforces too)
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   const handlePanicClick = () => {
     setConfirmVisible(true);
@@ -412,7 +454,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
             <button type="button"
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: '#222222', border: '1px solid #2a2a2a', color: '#888888' }}
+              style={{ background: 'var(--border-subtle)', border: '1px solid var(--border-default)', color: '#888888' }}
             >
               Cancel
             </button>
@@ -441,7 +483,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               <button type="button"
                 onClick={cancelOwnPanic}
                 className="px-2 py-1 text-[9px] font-bold uppercase"
-                style={{ background: '#1a1a1a', border: '1px solid #f59e0b', color: '#f59e0b' }}
+                style={{ background: 'var(--surface-raised)', border: '1px solid #f59e0b', color: '#f59e0b' }}
                 title="Cancel your panic alert"
               >
                 CANCEL
@@ -453,7 +495,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
       {/* Incoming Panic Alert Overlay */}
       {incomingAlert && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center panic-overlay">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center panic-overlay" role="alertdialog" aria-modal="true" aria-label="Incoming panic alert">
           <div className="absolute inset-0 bg-black/70 animate-emergency-blink" style={{ animationDuration: '0.5s' }} />
           <div
             className="relative max-w-md w-full mx-4 panic-alert-card"
@@ -468,7 +510,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               style={{ background: 'linear-gradient(180deg, #991b1b, #7f1d1d)' }}
             >
               <AlertTriangle className="animate-emergency-blink" style={{ width: 20, height: 20, color: '#ffffff' }} />
-              <span className="text-sm font-bold uppercase tracking-widest text-white">
+              <span className="text-sm font-bold uppercase tracking-widest text-rmpg-100">
                 Emergency Panic Alert
               </span>
               <button type="button"
@@ -480,7 +522,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
             </div>
 
             {/* Body */}
-            <div className="p-4 space-y-3" style={{ background: '#050505', borderTop: '2px solid #ff0000' }}>
+            <div className="p-4 space-y-3" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid #ff0000' }}>
               <div className="text-center">
                 <div className="text-lg font-bold text-red-400 animate-emergency-blink">
                   {incomingAlert.user_name}
@@ -494,7 +536,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
               {/* Auto-created dispatch card info */}
               {incomingAlert.call_number && (
-                <div className="text-center p-2" style={{ background: '#050505', border: '1px solid #dc2626' }}>
+                <div className="text-center p-2" style={{ background: 'var(--surface-overlay)', border: '1px solid #dc2626' }}>
                   <div className="flex items-center justify-center gap-2 mb-1">
                     <span
                       className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider animate-emergency-blink"
@@ -502,7 +544,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                     >
                       P1
                     </span>
-                    <span className="text-xs font-bold text-white font-mono">
+                    <span className="text-xs font-bold text-rmpg-100 font-mono">
                       {incomingAlert.call_number}
                     </span>
                     <span
@@ -519,14 +561,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-white p-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
+                <div className="text-xs text-center text-rmpg-100 p-2" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-default)' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
+                <div className="text-center text-[10px] font-mono text-rmpg-100 p-1.5" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-default)' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>
@@ -534,13 +576,13 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
               {/* Raw GPS coordinates */}
               {(incomingAlert.latitude != null && incomingAlert.longitude != null) && (
-                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#666666' }}>
+                <div className="flex items-center justify-center gap-1 text-[10px] font-mono text-rmpg-500">
                   <MapPin style={{ width: 10, height: 10 }} />
                   {incomingAlert.latitude.toFixed(5)}, {incomingAlert.longitude.toFixed(5)}
                 </div>
               )}
 
-              <div className="text-center text-[10px] font-mono" style={{ color: '#383838' }}>
+              <div className="text-center text-[10px] font-mono" style={{ color: 'var(--rmpg-500)' }}>
                 {safeTimeStr(incomingAlert.triggered_at)}
               </div>
 
@@ -612,14 +654,35 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                     ACKNOWLEDGE
                   </button>
                 </div>
+                {/* Code 4 / resolve — supervisor+ only (Spillman: dispatcher
+                    clears the emergency when the officer is code 4) */}
+                {isSupervisor && incomingAlert.panic_id && (
+                  <button type="button"
+                    onClick={resolveCode4}
+                    className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
+                    style={{ background: 'var(--surface-raised)', border: '1px solid #2d4a1a', color: '#5a9e3a' }}
+                  >
+                    Code 4 — Resolve
+                  </button>
+                )}
                 {/* False alarm — supervisor+ only */}
                 {isSupervisor && incomingAlert.panic_id && (
                   <button type="button"
                     onClick={markFalseAlarm}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
-                    style={{ background: '#1a1a1a', border: '1px solid #444', color: '#888' }}
+                    style={{ background: 'var(--surface-raised)', border: '1px solid #444', color: '#888' }}
                   >
                     Mark False Alarm
+                  </button>
+                )}
+                {/* Admin fallback — force-deactivate from any state */}
+                {isAdmin && incomingAlert.panic_id && (
+                  <button type="button"
+                    onClick={forceDeactivate}
+                    className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
+                    style={{ background: 'var(--surface-raised)', border: '1px solid #5a1a1a', color: '#c0392b' }}
+                  >
+                    Force Deactivate (Admin)
                   </button>
                 )}
               </div>

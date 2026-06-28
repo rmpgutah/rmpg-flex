@@ -5,12 +5,13 @@
 // Displays prominent warning banners for officer safety.
 // ============================================================
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Shield, FileWarning, User, Scale, Ban, MapPin } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
 import { announceScreeningAlerts } from '../utils/voiceAlerts';
 import { safeDateStr } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface ScreeningPerson {
   person: {
@@ -174,7 +175,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
             {/* 76: Person name with monospace styling for consistent readout */}
           <div className="flex items-center gap-1.5">
               <User style={{ width: 10, height: 10, color: item.warrants.length > 0 ? '#ef4444' : '#f59e0b' }} aria-hidden="true" />
-              <span className="text-[11px] font-bold text-white font-mono tracking-tight">
+              <span className="text-[11px] font-bold text-rmpg-100 font-mono tracking-tight">
                 {item.person.last_name}, {item.person.first_name}
               </span>
               {item.person.dob && (
@@ -234,7 +235,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
                   <span className="font-bold">Criminal History:</span>
                   {item.criminalHistory.slice(0, 3).map((ch) => (
                     <div key={ch.id} className="ml-4 text-rmpg-300">
-                      {ch.charge} {ch.disposition && `— ${ch.disposition.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}`}
+                      {ch.charge} {ch.disposition && `— ${toDisplayLabel(ch.disposition)}`}
                     </div>
                   ))}
                   {item.criminalHistory.length > 3 && (
@@ -252,7 +253,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
         <div key={w.id} className="safety-warrant-direct">
           <Scale style={{ width: 10, height: 10, color: '#ef4444' }} />
           <span className="text-[10px] text-red-400 font-bold uppercase">{w.offense_level} WARRANT</span>
-          <span className="text-[10px] text-white">
+          <span className="text-[10px] text-rmpg-100">
             {w.subject_last_name}, {w.subject_first_name}
           </span>
           <span className="text-[10px] text-rmpg-300">{w.charge_description}</span>

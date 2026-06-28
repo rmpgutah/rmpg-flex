@@ -5,6 +5,28 @@
 // These do NOT validate — use validate.ts for input checking.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
+/**
+ * Normalize a snake_case / lowercase enum value for display.
+ *
+ * `pso_client_request` → `PSO CLIENT REQUEST`
+ * `in_progress`        → `IN PROGRESS`
+ * `Christopher Zamora` → `Christopher Zamora` (free text passes through)
+ *
+ * Heuristic: a value is enum-like if it's a single token of lowercase
+ * letters/digits/underscores, OR if it contains an underscore. Names,
+ * addresses, and free-form text pass through untouched so we don't
+ * accidentally uppercase data the user typed in mixed case.
+ */
+export function formatEnumValue(s: string | null | undefined): string {
+  if (s == null) return '';
+  const trimmed = String(s).trim();
+  if (!trimmed) return '';
+  const isEnumLike = /^[a-z][a-z0-9_]*$/.test(trimmed) || /_/.test(trimmed);
+  return isEnumLike ? trimmed.replace(/_/g, ' ').toUpperCase() : trimmed;
+}
+
 /**
  * Format a US phone number: (801) 555-1234
  * Strips non-digits, handles 10 or 11 digit numbers.
@@ -65,6 +87,18 @@ export function formatCurrency(
   });
   const sign = amount < 0 ? '-' : options?.showSign && amount > 0 ? '+' : '';
   return `${sign}$${formatted}`;
+}
+
+/**
+ * Format a cost compactly for dense tables: `$4.2k` at/above $1,000,
+ * `$840` below. Null/undefined/NaN render as `$0`. Use this instead of
+ * hand-rolling `amount >= 1000 ? `${(amount/1000).toFixed(1)}k` : amount.toFixed(0)`
+ * — that pattern crashes on undefined and was guarded inconsistently across the
+ * fleet tables.
+ */
+export function formatCostAbbrev(amount: number | null | undefined): string {
+  const n = amount == null || isNaN(amount) ? 0 : amount;
+  return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
 }
 
 /**
@@ -171,7 +205,7 @@ export function formatAddress(
  */
 export function formatDOBWithAge(dob: string | null | undefined): string {
   if (!dob) return '';
-  const d = new Date(dob + 'T00:00:00');
+  const d = parseTimestamp(dob);
   if (isNaN(d.getTime())) return dob;
   const formatted = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   const today = new Date();
@@ -192,35 +226,133 @@ export function truncate(str: string, maxLength: number): string {
 }
 
 /**
- * Convert a string to title case: "hello world" → "Hello World"
+ * Convert a string to title case: "hello world" → "Hello World".
+ * Acronym-aware ("pso" → "PSO") and preserves inner caps for names
+ * ("McDonald" stays "McDonald").
  */
 export function toTitleCase(str: string): string {
   if (!str) return '';
-  return str.replace(/\b\w/g, (c) => c.toUpperCase());
+  return str.replace(/\b[A-Za-z0-9]+\b/g, (word) =>
+    ACRONYMS.has(word.toLowerCase())
+      ? word.toUpperCase()
+      : word.charAt(0).toUpperCase() + word.slice(1),
+  );
 }
 
-/** Common law-enforcement / system acronyms that should remain ALL-CAPS */
-const ACRONYMS = new Set([
-  'pso', 'cfs', 'dv', 'ems', 'leo', 'ncic', 'bolo', 'atl', 'mdt',
-  'sla', 'id', 'dui', 'dwi', 'hoa', 'llc', 'eta', 'rmpg', 'gps',
-  'ip', 'pdf', 'api', 'url', 'vpn', 'opr', 'le', 'sop',
+/**
+ * Common law-enforcement / system acronyms that must render ALL-CAPS in
+ * visual labels (never "Pso") and be SPELLED OUT letter-by-letter when
+ * spoken aloud ("P. S. O.", not the word "Pso"). This is the single source
+ * of truth — extend it here and every acronym-aware formatter below picks
+ * it up, so labels stay proper for current AND future enum values.
+ *
+ * DEPRECATED for speech: use normalizeForSpeech() from speechNormalizer.ts
+ * for TTS output. This set remains for visual display labels only.
+ */
+export const ACRONYMS = new Set([
+  // Communications / systems
+  'pso', 'cfs', 'cad', 'rms', 'mdt', 'mds', 'gps', 'rmpg',
+  // Domestic / personal categories
+  'dv', 'dl', 'dob', 'ssn', 'dlv',
+  // Emergency response
+  'ems', 'leo', 'swat', 'k9', 'sro', 'qrf', 'eta',
+  // Records / intel
+  'ncic', 'bolo', 'atl', 'fbi', 'doc', 'udc', 'sor', 'nsopw',
+  // Driving-related
+  'dui', 'dwi', 'cdl', 'dmv', 'vin', 'mva', 'dlc',
+  // Service / process
+  'sla', 'sop', 'opr', 'le', 'id', 'loc',
+  // Property / corporate
+  'hoa', 'llc', 'hud',
+  // Tech / network
+  'ip', 'pdf', 'api', 'url', 'vpn', 'alpr', 'json', 'html', 'csv', 'ui', 'ux', 'sdk',
+  // Legal / enforcement
+  'leo', 'ua', 'uof', 'oat', 'oatc', 'ia', 'ippa', 'ncic',
+  // Court / legal
+  'doc', 'dc', 'pd', 'da',
+  // Medical
+  'ems', 'md', 'rn',
+  // Military
+  'idf', 'mp', 'mos',
+  // Geography / time
+  'ut', 'slc', 'mt', 'utc', 'mtn',
+  // Other law enforcement specific
+  'cpr', 'atv', 'utv', 'vin',
+  // Financial
+  'atm', 'pos',
+  // Investigation
+  'mis', 'ped', 'vcl', 'unsub',
+  // Common multi-word compound labels (specific to this app)
+  'microbilt',
+  'forecaws',
+  'utahlex',
+  'openpyxl',
 ]);
 
 /**
- * Convert snake_case or kebab-case to a display label:
- * "pso_client_request" → "PSO Client Request"
- * "active_warrant"     → "Active Warrant"
- * Automatically uppercases known acronyms (PSO, CFS, DV, etc.)
+ * Title-case ONE word, keeping a known acronym ALL-CAPS. The shared atom
+ * behind every label formatter — this is what prevents "PSO" from ever
+ * degrading to the weak lowercase "Pso".
  */
-export function toDisplayLabel(str: string): string {
+export function titleCaseWord(word: string): string {
+  if (!word) return word;
+  return ACRONYMS.has(word.toLowerCase())
+    ? word.toUpperCase()
+    : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
+
+/**
+ * Convert snake_case, kebab-case, or camelCase to a display label:
+ * "pso_client_request"     → "PSO Client Request"
+ * "active_warrant"         → "Active Warrant"
+ * "in_progress"            → "In Progress"
+ * "client_viewer"          → "Client Viewer"
+ * "citizen_portal_enabled" → "Citizen Portal Enabled"
+ * "underReview"            → "Under Review"
+ * "offense_level"          → "Offense Level"
+ * "served"                 → "Served"
+ * "sub_service"            → "Sub Service"
+ * "dl_status"              → "DL Status"
+ * Automatically uppercases known acronyms (PSO, CFS, DV, DL, etc.)
+ * Normalizes whitespace: trims and collapses multiple spaces.
+ */
+export function toDisplayLabel(str: string | null | undefined): string {
+  if (!str) return '';
+  const s = String(str).trim();
+  if (!s) return '';
+  // Insert space before uppercase letters in camelCase (except first char)
+  const withSpaces = s.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  return withSpaces
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b[A-Za-z0-9]+/g, titleCaseWord)
+    .trim();
+}
+
+/**
+ * Spoken form of a label for TTS / voice announcements: known acronyms are
+ * spelled out so the voice says the LETTERS, not a mangled word.
+ * "pso_client_request" → "P. S. O. Client Request"
+ * "dv_in_progress"     → "D. V. In Progress"
+ * Use this anywhere a label is handed to speech synthesis.
+ *
+ * DEPRECATED for TTS: normalizeForSpeech() from speechNormalizer.ts now
+ * handles all speech normalization centrally. This function is retained
+ * for voiceAlerts.ts backward compatibility but the edgeTTS speak() path
+ * will apply a second pass of normalization via normalizeForSpeech()
+ * which is harmless (idempotent for already-expanded text).
+ */
+export function toSpokenLabel(str: string): string {
   if (!str) return '';
   return str
     .replace(/[_-]/g, ' ')
-    .replace(/\b\w+/g, (word) =>
+    .replace(/\b[A-Za-z0-9]+\b/g, (word) =>
       ACRONYMS.has(word.toLowerCase())
-        ? word.toUpperCase()
-        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    );
+        ? word.toUpperCase().split('').join('. ') + '.'
+        : titleCaseWord(word)
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -262,7 +394,7 @@ export function formatLabel(value: string | null | undefined): string {
   if (!value) return '';
   return value
     .split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .map(titleCaseWord)
     .join(' ');
 }
 

@@ -15,8 +15,26 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(OrganicMapsPlugin.class);
         super.onCreate(savedInstanceState);
         requestLocationPermissions();
+        // If permissions were granted on a previous launch, start the foreground
+        // service immediately. If still pending, the service starts from
+        // onRequestPermissionsResult once fine-location is granted.
+        if (hasFineLocation()) {
+            LocationForegroundService.start(this);
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        LocationForegroundService.stop(this);
+        super.onDestroy();
+    }
+
+    private boolean hasFineLocation() {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     /**
@@ -49,6 +67,9 @@ public class MainActivity extends BridgeActivity {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 // Fine location granted — now request background location
                 requestBackgroundLocationIfNeeded();
+                // Anchor the GPS subsystem so background updates flow when the
+                // app is minimized or the screen is off.
+                LocationForegroundService.start(this);
             }
         }
     }
