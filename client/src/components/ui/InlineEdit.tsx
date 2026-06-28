@@ -83,7 +83,7 @@ export default function InlineEdit({
   return (
     <div className={`flex items-center gap-1 ${className}`}>
       {type === 'select' && options ? (
-        <select
+        <select id="ff-inlineedit-0"
           ref={inputRef as React.Ref<HTMLSelectElement>}
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
@@ -97,7 +97,7 @@ export default function InlineEdit({
           ))}
         </select>
       ) : (
-        <input
+        <input id="ff-inlineedit-1"
           ref={inputRef as React.Ref<HTMLInputElement>}
           type={type}
           value={editValue}

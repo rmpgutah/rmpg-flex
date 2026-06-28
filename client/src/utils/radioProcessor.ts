@@ -142,6 +142,14 @@ const INTENSITY_SCALE: Record<HazeIntensity, number> = { clean: 0, light: 0.5, s
 // (the original near-silent P25 bed), so the default is a perfect no-op.
 const NOISE_LEVEL_MAX = 0.027;
 
+// Voice flux — a barely-perceptible pitch drift applied to spoken playback so
+// the voice has organic life instead of a dead-flat synthetic read (a real
+// receiver/voice never holds a perfectly constant pitch). Implemented as a slow
+// LFO on the source's detune (cents). Kept tiny on purpose: enough to remove
+// machine uniformity, not enough to sound warbly. Tune FLUX_CENTS to taste.
+const FLUX_CENTS = 7;   // ±7 cents ≈ 0.4% — sub-semitone, gentle
+const FLUX_HZ = 0.27;   // slow drift, ~one cycle per ~3.7s
+
 let hazeConfig: RadioHazeConfig = { enabled: true, intensity: 'standard', noiseLevel: 0.15 };
 
 /** Set the org haze config (called once from the radio console on load). */
@@ -305,6 +313,7 @@ function getRadioContext(): AudioContext {
 export class RadioHazePlayer {
   private source: AudioBufferSourceNode | null = null;
   private noise: AudioBufferSourceNode | null = null;
+  private flux: OscillatorNode | null = null;
   private endCb: (() => void) | null = null;
 
   /** Fetch and play an audio URL (e.g. /api/radio/transmissions/:id/audio). */
@@ -349,6 +358,23 @@ export class RadioHazePlayer {
       });
     }
 
+    // Voice flux — drive the source's detune with a slow, tiny LFO so the
+    // pitch drifts organically instead of holding dead-flat. Only when the haze
+    // chain is on (so "clean" mode stays a pure passthrough) and the browser
+    // exposes the detune AudioParam (modern Chromium — the Toughbook target).
+    if (cfg.enabled && 'detune' in src) {
+      try {
+        const lfo = ctx.createOscillator();
+        const depth = ctx.createGain();
+        lfo.frequency.value = FLUX_HZ;
+        depth.gain.value = FLUX_CENTS;
+        lfo.connect(depth).connect((src as unknown as { detune: AudioParam }).detune);
+        lfo.start(now);
+        lfo.stop(now + lead + dur + 0.1);
+        this.flux = lfo;
+      } catch { /* detune unsupported / node error — skip flux, voice still plays */ }
+    }
+
     src.onended = () => {
       const cb = this.endCb;
       this.cleanup();
@@ -364,10 +390,11 @@ export class RadioHazePlayer {
   }
 
   private cleanup(): void {
-    for (const node of [this.source, this.noise]) {
+    for (const node of [this.source, this.noise, this.flux]) {
       if (node) { try { node.onended = null; node.stop(); } catch { /* already stopped */ } }
     }
     this.source = null;
     this.noise = null;
+    this.flux = null;
   }
 }

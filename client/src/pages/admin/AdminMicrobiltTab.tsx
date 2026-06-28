@@ -5,6 +5,8 @@ import {
   Shield, Search, Users, Landmark, FileSearch, Building2, CreditCard,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -117,11 +119,11 @@ function BackgroundCheckUsagePanel() {
       </div>
       <div className="grid grid-cols-5 gap-2">
         {[
-          { label: 'Total Searches', value: usage.totalSearches },
-          { label: 'Total Hits', value: usage.totalHits },
-          { label: 'Hit Rate', value: `${usage.hitRate}%` },
-          { label: 'Unique Subjects', value: usage.uniqueSubjects },
-          { label: 'Last 30 Days', value: usage.last30Days },
+          { label: 'Total Searches', value: usage.totalSearches ?? 0 },
+          { label: 'Total Hits', value: usage.totalHits ?? 0 },
+          { label: 'Hit Rate', value: `${usage.hitRate ?? 0}%` },
+          { label: 'Unique Subjects', value: usage.uniqueSubjects ?? 0 },
+          { label: 'Last 30 Days', value: usage.last30Days ?? 0 },
         ].map(stat => (
           <div key={stat.label} className="bg-surface-sunken p-2 rounded-sm text-center">
             <div className="text-sm font-bold text-rmpg-100">{stat.value}</div>
@@ -261,6 +263,25 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
   // Set document title — MUST be before any early returns (React hooks rules)
   useEffect(() => { document.title = 'Admin - MicroBilt \u2014 RMPG Flex'; }, []);
 
+  // \u2500\u2500 Right-click context menu (product catalog rows) \u2500\u2500
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildProductMenu = (product: { id: string; name: string; desc: string; credentialed?: boolean }): ContextMenuItem[] => {
+    const enabled = status?.enabled_products?.includes(product.id) || false;
+    return [
+      ...(status?.configured
+        ? [m.action(enabled ? 'Disable product' : 'Enable product', () => handleToggleProduct(product.id), {
+            icon: enabled ? <ToggleLeft size={12} /> : <ToggleRight size={12} />,
+          })]
+        : []),
+      m.separator(),
+      m.copy('Copy product name', product.name),
+      m.copyId(product.id, 'Copy product ID'),
+      m.openExternal('Open Developer Portal', 'https://developer.microbilt.com/apis'),
+    ];
+  };
+
   const filteredCatalog = productSearch
     ? PRODUCT_CATALOG.map(cat => ({
         ...cat,
@@ -303,6 +324,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
       </div>
 
       {/* ═══ Section 1: Credentials ═══ */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
@@ -338,8 +360,8 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Client ID */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Client ID</label>
-          <input
+          <label htmlFor="ff-adminmicrobilttab-0" className="text-[10px] text-rmpg-400">Client ID</label>
+          <input id="ff-adminmicrobilttab-0"
             type="text"
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
@@ -350,9 +372,9 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Client Secret */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Client Secret</label>
+          <label htmlFor="ff-adminmicrobilttab-1" className="text-[10px] text-rmpg-400">Client Secret</label>
           <div className="relative">
-            <input
+            <input id="ff-adminmicrobilttab-1"
               type={showSecret ? 'text' : 'password'}
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
@@ -370,8 +392,8 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
         {/* Subscriber ID (optional) */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Subscriber ID <span className="text-rmpg-600">(optional)</span></label>
-          <input
+          <label htmlFor="ff-adminmicrobilttab-2" className="text-[10px] text-rmpg-400">Subscriber ID <span className="text-rmpg-600">(optional)</span></label>
+          <input id="ff-adminmicrobilttab-2"
             type="text"
             value={subscriberId}
             onChange={(e) => setSubscriberId(e.target.value)}
@@ -385,7 +407,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           <button type="button"
             onClick={handleSaveCredentials}
             disabled={saving || !clientId.trim() || !clientSecret.trim()}
-            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Credentials
@@ -426,6 +448,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           </div>
         )}
       </div>
+      </form>
 
       {/* ═══ Section 2: API Products Catalog ═══ */}
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
@@ -439,7 +462,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           </div>
           <div className="relative">
             <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-            <input
+            <input id="ff-adminmicrobilttab-3"
               type="text"
               value={productSearch}
               onChange={(e) => setProductSearch(e.target.value)}
@@ -472,6 +495,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                     return (
                       <div
                         key={product.id}
+                        onContextMenu={(e) => openMenu(e, buildProductMenu(product))}
                         className="flex items-center gap-2 px-2 py-1.5 rounded-sm transition-colors hover:bg-rmpg-800/30"
                         style={{
                           background: enabled ? 'rgba(136, 136, 136, 0.06)' : undefined,

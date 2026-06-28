@@ -9,16 +9,19 @@
 // ============================================================
 
 import React from 'react';
+import type { LucideIcon } from 'lucide-react';
 import RecordAvatar from './RecordAvatar';
-import { recordPosture, BADGE_TONES, type BadgeTone } from './recordVisuals';
+import { recordPosture, recordCornerBadge, BADGE_TONES, type BadgeTone } from './recordVisuals';
 
 interface RecordHeroProps {
   /** Subject / record name (Person, plate, business, address…). */
   name: string;
   /** Secondary identity line — DOB/age/sex, VIN, client, etc. */
   subtitle?: React.ReactNode;
-  /** Photo / ID image; falls back to initials tile. */
+  /** Photo / ID image; falls back to the type glyph tile. */
   photoUrl?: string | null;
+  /** Glyph for the no-photo tile (person / vehicle / building / …). */
+  icon?: LucideIcon;
   /**
    * Raw flag strings — drives the overall posture (threat bar + ring +
    * label). Splat in optional synthetic flags freely; nullish entries are
@@ -38,12 +41,14 @@ function RecordHero({
   name,
   subtitle,
   photoUrl,
+  icon,
   flags = [],
   tone,
   children,
 }: RecordHeroProps) {
   const posture = recordPosture(flags);
   const hasFlags = flags.some(Boolean);
+  const cornerBadge = recordCornerBadge(flags);
 
   // Posture wins when the record has flags; otherwise fall back to the
   // caller's record-type tone, then a quiet gray.
@@ -68,22 +73,22 @@ function RecordHero({
         <RecordAvatar
           name={name}
           photoUrl={photoUrl}
-          tone={hasFlags ? posture.tone : tone}
-          pulse={posture.pulse}
+          icon={icon}
+          cornerBadge={cornerBadge}
           size={52}
         />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-sm font-bold text-white truncate tracking-wide uppercase">
+            <h2 className="text-sm font-bold text-rmpg-100 truncate tracking-wide uppercase">
               {name}
             </h2>
             <span
               className={`text-[8px] font-bold uppercase tracking-widest px-1.5 py-[2px] rounded-[2px] leading-none whitespace-nowrap ${posture.pulse ? 'animate-led-pulse' : ''}`}
               style={{
-                color: isClear ? '#8a8a8a' : t.text,
+                color: isClear ? 'var(--rmpg-400)' : t.text,
                 background: isClear ? 'rgba(255,255,255,0.04)' : t.bg,
-                border: `1px solid ${isClear ? '#2b2b2b' : t.border}`,
+                border: `1px solid ${isClear ? 'var(--border-default)' : t.border}`,
               }}
               title={`Record posture: ${posture.label}`}
             >
