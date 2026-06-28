@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Building2, MapPin, Shield, Key, Wrench, FileWarning, FileText } from 'lucide-react';
 import FormModal from './FormModal';
 import FormSection from './records/FormSection';
@@ -7,6 +7,9 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import type { Property } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
+import { apiFetch } from '../hooks/useApi';
+import { useAssessorLookup } from '../hooks/useAssessorLookup';
+import { AssessorSuggestionPanel } from './AssessorSuggestionPanel';
 
 import RichTextArea from './RichTextArea';
 import { ALARM_SYSTEM_OPTIONS } from '../constants/lawEnforcementEnums';
@@ -23,6 +26,7 @@ interface PropertyFormModalProps {
 export interface PropertyFormData {
   name: string;
   address: string;
+  address_2: string;
   city: string;
   state: string;
   zip: string;
@@ -72,6 +76,7 @@ export interface PropertyFormData {
 const EMPTY_FORM: PropertyFormData = {
   name: '',
   address: '',
+  address_2: '',
   city: '',
   state: 'UT',
   zip: '',
@@ -152,6 +157,7 @@ export default function PropertyFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<PropertyFormData>({
     storageKey: 'rmpg_property_form',
@@ -159,12 +165,47 @@ export default function PropertyFormModal({
     isActive: isOpen,
   });
 
+  // ── Salt Lake County Assessor on-blur lookup ──
+  // The Apply button is only meaningful when we have an existing record id to
+  // PATCH against — new unsaved records show a hint instead.
+  const assessor = useAssessorLookup();
+  const recordId = editingProperty?.id;
+  const recordSaved = !!recordId;
+  const [skippedCount, setSkippedCount] = useState(0);
+  const skippedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current); }, []);
+
+  const onApplyAssessor = useCallback(async (parcelNumber: string) => {
+    if (!recordId) return;
+    try {
+      const res = await apiFetch<{ ok: boolean; patch: Record<string, unknown>; skipped: string[]; parcel_record_id: number | null }>(
+        '/assessor/apply',
+        {
+          method: 'POST',
+          body: JSON.stringify({ record_type: 'property', record_id: recordId, parcel_number: parcelNumber }),
+        },
+      );
+      // Merge the server's never-clobber patch into the local form state.
+      setForm(prev => ({ ...prev, ...(res.patch as Record<string, string>) }));
+      const skipped = Array.isArray(res.skipped) ? res.skipped.length : 0;
+      setSkippedCount(skipped);
+      if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current);
+      if (skipped > 0) {
+        skippedTimerRef.current = setTimeout(() => setSkippedCount(0), 5000);
+      }
+      assessor.dismiss();
+    } catch (err) {
+      console.error('Assessor apply failed', err);
+    }
+  }, [recordId, assessor, setForm]);
+
   useEffect(() => {
     if (isOpen) {
       if (editingProperty) {
         const initial: PropertyFormData = {
           name: editingProperty.name || '',
           address: editingProperty.address || '',
+          address_2: (editingProperty as any).address_2 || '',
           city: editingProperty.city || '',
           state: editingProperty.state || 'UT',
           zip: editingProperty.zip || '',
@@ -229,6 +270,7 @@ export default function PropertyFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit(form);
   };
 
@@ -268,7 +310,7 @@ export default function PropertyFormModal({
               onChange={handleChange}
             />
           </FormField>
-          <FormField label="Address" required className="sm:col-span-3">
+          <FormField label="Address" required className="sm:col-span-2">
             <AddressAutocomplete
               name="address"
               required
@@ -276,17 +318,54 @@ export default function PropertyFormModal({
               placeholder="Street address"
               value={form.address}
               onChange={(val) => setForm((prev) => ({ ...prev, address: val }))}
+              fillWith="street"
               onSelect={(addr: ParsedAddress) => {
+                // Street line only — city/state/zip have their own fields.
+                const street = addr.street || addr.formatted;
                 setForm((prev) => ({
                   ...prev,
-                  address: addr.formatted || addr.street,
+                  address: street,
                   city: addr.city || prev.city,
                   state: addr.state || prev.state,
                   zip: addr.zip || prev.zip,
                   latitude: (addr.latitude as any) ?? prev.latitude,
                   longitude: (addr.longitude as any) ?? prev.longitude,
                 }));
+                // Trigger Assessor lookup on the picked street so the suggestion
+                // panel below the input populates immediately.
+                assessor.lookup(street);
               }}
+              onResolveTyped={(v) => { assessor.lookup(v); }}
+            />
+            <AssessorSuggestionPanel
+              parcels={assessor.parcels}
+              cached={assessor.cached}
+              loading={assessor.loading}
+              error={assessor.error}
+              code={assessor.code}
+              source={assessor.source}
+              degraded={assessor.degraded}
+              manualUrl={assessor.manualUrl}
+              onApply={onApplyAssessor}
+              onDismiss={assessor.dismiss}
+              onRetry={assessor.retry}
+              onRefresh={assessor.refresh}
+            />
+            {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
+              <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>
+            )}
+            {skippedCount > 0 && (
+              <div className="text-xs text-rmpg-400 mt-1">{skippedCount} field(s) skipped (already filled)</div>
+            )}
+          </FormField>
+          <FormField label="Suite / Unit">
+            <input
+              name="address_2"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="Ste 200, Bldg C..."
+              value={form.address_2}
+              onChange={handleChange}
             />
           </FormField>
           <FormField label="City">

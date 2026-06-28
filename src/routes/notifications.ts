@@ -30,7 +30,7 @@ alerts.get('/templates', async (c) => {
     if (q('channel')) { conditions.push('channel IN (?, ?)'); params.push(q('channel'), 'all'); }
     if (q('category')) { conditions.push('category = ?'); params.push(q('category')); }
     const where = `WHERE ${conditions.join(' AND ')}`;
-    const rows = await query<Record<string, unknown>>(db, `SELECT * FROM notification_templates ${where} ORDER BY created_at DESC`);
+    const rows = await query<Record<string, unknown>>(db, `SELECT * FROM notification_templates ${where} ORDER BY created_at DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
     return c.json({ error: 'Failed to list templates' }, 500);

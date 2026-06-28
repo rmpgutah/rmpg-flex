@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
+import OfficerPicker from '../components/OfficerPicker';
 
 export interface AffairsFormData {
   complainant_name: string; complainant_contact: string;
@@ -25,7 +26,7 @@ const EMPTY_FORM: AffairsFormData = {
 };
 
 export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: AffairsFormModalProps) {
-  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<AffairsFormData>({
+  const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<AffairsFormData>({
     storageKey: 'rmpg_affairs_form', defaultValue: EMPTY_FORM, isActive: isOpen,
   });
 
@@ -51,7 +52,7 @@ export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitti
   };
 
   return (
-    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); onSubmit(form); }}
+    <FormModal isOpen={isOpen} onClose={onClose} onSubmit={(e) => { e.preventDefault(); signalSaved(); onSubmit(form); }}
       title={editingRecord ? 'Edit Complaint' : 'New Complaint'} icon={ShieldAlert}
       submitLabel={editingRecord ? 'Update' : 'Create'} isSubmitting={isSubmitting}
       isDirty={isDirty} draftRestored={wasRestored} onDiscardDraft={clearDraft}
@@ -70,8 +71,14 @@ export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitti
               {['excessive_force','discourtesy','dishonesty','policy_violation','criminal','other'].map(t=>
                 <option key={t} value={t}>{t.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</option>)}
             </select></div>
-          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer ID</label>
-            <input name="subject_officer_id" type="number" className="input-dark mt-1" value={form.subject_officer_id} onChange={handleChange} /></div>
+          <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject Officer</label>
+            <div className="mt-1">
+              <OfficerPicker
+                value={form.subject_officer_id ? Number(form.subject_officer_id) : null}
+                onChange={(id) => setForm(prev => ({ ...prev, subject_officer_id: id ? String(id) : '' }))}
+                placeholder="Search officer by name, badge…"
+              />
+            </div></div>
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Status</label>
             <select name="status" className="select-dark mt-1" value={form.status} onChange={handleChange}>
               {['received','assigned','under_investigation','sustained','not_sustained','exonerated','unfounded','closed'].map(s=>

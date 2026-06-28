@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useWebSocket } from '../../../context/WebSocketContext';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 type PanicStatus = 'active' | 'acknowledged' | 'resolved';
 
@@ -59,8 +60,8 @@ export function useMapPanicZone(
     if (fadeIntervalRef.current) { clearInterval(fadeIntervalRef.current); fadeIntervalRef.current = null; }
     if (map) {
       [innerSourceId, outerSourceId].forEach(id => {
-        if (map.getLayer(`${id}-circle`)) map.removeLayer(`${id}-circle`);
-        if (map.getSource(id)) map.removeSource(id);
+        safeRemoveLayer(map, `${id}-circle`);
+        safeRemoveSource(map, id);
       });
     }
   }, [map]);
@@ -75,12 +76,12 @@ export function useMapPanicZone(
     const mapInstance = map;
     if (!mapInstance) return;
 
-    if (mapInstance.getLayer(`${innerSourceId}-circle`)) {
+    if (hasLayer(mapInstance, `${innerSourceId}-circle`)) {
       mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-color', colors.innerFill);
       mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-opacity', colors.innerFillOpacity);
       mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-color', colors.innerStroke);
     }
-    if (mapInstance.getLayer(`${outerSourceId}-circle`)) {
+    if (hasLayer(mapInstance, `${outerSourceId}-circle`)) {
       mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-color', colors.outerFill);
       mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-opacity', colors.outerFillOpacity);
       mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-stroke-color', colors.outerStroke);
@@ -89,7 +90,7 @@ export function useMapPanicZone(
     if (status !== 'active' && pulseTimerRef.current) {
       clearInterval(pulseTimerRef.current);
       pulseTimerRef.current = null;
-      if (mapInstance.getLayer(`${innerSourceId}-circle`)) {
+      if (hasLayer(mapInstance, `${innerSourceId}-circle`)) {
         mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-opacity', 1.0);
       }
     }
@@ -103,11 +104,11 @@ export function useMapPanicZone(
           setActivePanic(null);
           return;
         }
-        if (mapInstance.getLayer(`${innerSourceId}-circle`)) {
+        if (hasLayer(mapInstance, `${innerSourceId}-circle`)) {
           mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-opacity', opacity);
           mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-opacity', opacity * 0.12);
         }
-        if (mapInstance.getLayer(`${outerSourceId}-circle`)) {
+        if (hasLayer(mapInstance, `${outerSourceId}-circle`)) {
           mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-stroke-opacity', opacity * 0.6);
           mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-opacity', opacity * 0.06);
         }
@@ -166,7 +167,7 @@ export function useMapPanicZone(
         let pulseHigh = true;
         pulseTimerRef.current = setInterval(() => {
           pulseHigh = !pulseHigh;
-          if (map.getLayer(`${innerSourceId}-circle`)) {
+          if (hasLayer(map, `${innerSourceId}-circle`)) {
             map.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-opacity', pulseHigh ? 1.0 : 0.3);
           }
         }, 500);

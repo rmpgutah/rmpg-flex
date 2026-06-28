@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import { toDisplayLabel } from '../../utils/formatters';
 import type { PipelineSummary, PipelineStage } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────
@@ -63,7 +64,7 @@ const STAGE_COLORS: Record<PipelineStage, string> = {
   negotiation: '#f97316',
   won: '#22c55e',
   lost: '#ef4444',
-  dismissed: '#666666',
+  dismissed: 'var(--rmpg-500)',
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -77,10 +78,6 @@ const SOURCE_LABELS: Record<string, string> = {
 function formatCurrency(val: number | null | undefined): string {
   if (!val) return '$0';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-}
-
-function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ════════════════════════════════════════════════════════
@@ -178,7 +175,7 @@ export default function ReportsTab() {
             icon={Target}
             label="Leads This Month"
             value={String(metrics?.leads_this_month || 0)}
-            color="text-gray-400"
+            color="text-rmpg-400"
           />
           <MetricCard
             icon={FileText}
@@ -250,7 +247,7 @@ export default function ReportsTab() {
                 <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: STAGE_COLORS[ps.stage] }} />
                 <div>
                   <div className="text-[10px] text-rmpg-400">{toDisplayLabel(ps.stage)}</div>
-                  <div className="text-xs text-white font-mono">{ps.count} <span className="text-rmpg-500">({formatCurrency(ps.total_value)})</span></div>
+                  <div className="text-xs text-rmpg-100 font-mono">{ps.count} <span className="text-rmpg-500">({formatCurrency(ps.total_value)})</span></div>
                 </div>
               </div>
             ))}
@@ -266,7 +263,7 @@ export default function ReportsTab() {
           <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-3 flex items-center gap-1">
             <Target className="w-3.5 h-3.5" /> Lead Source ROI
           </div>
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full">
             <thead>
               <tr className="border-b border-rmpg-700">
                 <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left">Source</th>
@@ -279,8 +276,8 @@ export default function ReportsTab() {
             </thead>
             <tbody>
               {leadSourceROI.map(row => (
-                <tr key={row.source} className="border-b border-rmpg-700/30 hover:bg-[#181818]">
-                  <td className="px-2 py-1.5 text-xs text-white">{SOURCE_LABELS[row.source] || toDisplayLabel(row.source)}</td>
+                <tr key={row.source} className="border-b border-rmpg-700/30 hover:bg-surface-raised">
+                  <td className="px-2 py-1.5 text-xs text-rmpg-100">{SOURCE_LABELS[row.source] || toDisplayLabel(row.source)}</td>
                   <td className="px-2 py-1.5 text-xs text-rmpg-300 text-right font-mono">{row.total}</td>
                   <td className="px-2 py-1.5 text-xs text-green-400 text-right font-mono">{row.won}</td>
                   <td className="px-2 py-1.5 text-xs text-red-400 text-right font-mono">{row.lost}</td>
@@ -296,7 +293,7 @@ export default function ReportsTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 

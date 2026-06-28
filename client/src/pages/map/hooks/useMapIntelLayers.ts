@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 export type IntelLayer = 'warrants' | 'trespass' | 'offenders' | 'bolos';
 
@@ -114,12 +115,12 @@ export function useMapIntelLayers(
   const clearLayer = useCallback((layer: IntelLayer) => {
     if (!map) return;
     const srcId = `intel-${layer}`;
-    if (map.getLayer(srcId)) map.removeLayer(srcId);
-    if (map.getSource(srcId)) map.removeSource(srcId);
+    safeRemoveLayer(map, srcId);
+    safeRemoveSource(map, srcId);
     if (layer === 'offenders') {
       const circId = `intel-${layer}-circles`;
-      if (map.getLayer(circId)) map.removeLayer(circId);
-      if (map.getSource(circId)) map.removeSource(circId);
+      safeRemoveLayer(map, circId);
+      safeRemoveSource(map, circId);
     }
   }, [map]);
 

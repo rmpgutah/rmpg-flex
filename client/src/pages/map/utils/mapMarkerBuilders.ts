@@ -124,7 +124,7 @@ export function buildDirectionArrow(
 
 // ── HTML Marker Content Builders ──────────────────────────────
 
-export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gpsSource?: string, heading?: number | null, speed?: number | null): HTMLElement {
+export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gpsSource?: string, heading?: number | null, speed?: number | null, onFoot?: boolean): HTMLElement {
   const color = UNIT_STATUS_COLORS[status];
   const label = UNIT_STATUS_LABELS[status];
 
@@ -181,6 +181,17 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
   srcBadge.textContent = _gpsSource === 'clearpathgps' ? 'C' : '';
   tag.appendChild(srcBadge);
 
+  // On-foot indicator — gold FOOT mini-badge (same pattern as the
+  // ClearPathGPS 'C' badge). Heading arrow stays: direction is still
+  // meaningful while walking.
+  if (onFoot) {
+    const footBadge = document.createElement('span');
+    footBadge.setAttribute('data-unit-foot', '');
+    footBadge.style.cssText = 'position:absolute;top:-12px;left:-2px;font-size:6px;font-weight:900;font-family:monospace;color:#d4a017;text-shadow:0 0 4px #d4a01780;letter-spacing:0.5px;';
+    footBadge.textContent = 'FOOT';
+    tag.appendChild(footBadge);
+  }
+
   const caret = document.createElement('div');
   caret.style.cssText =
     `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};transition:border-color 0.2s ease;`;
@@ -200,7 +211,7 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
   // every call looked identical). Priority is now carried by the pulse + the
   // corner pip, leaving the main badge free to encode TYPE via color + glyph.
   const color = getIncidentCategoryColor(incidentType);
-  const priColor = PRIORITY_COLORS[priority] || '#666666';
+  const priColor = PRIORITY_COLORS[priority] || 'var(--rmpg-500)';
   const { category } = getIncidentCategory(incidentType);
   const glyph = getIncidentCategoryGlyph(incidentType);
 
@@ -240,7 +251,7 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
   if (createdAt) {
     const ageMin = Math.floor((Date.now() - parseTimestamp(createdAt).getTime()) / 60000);
     if (ageMin >= 0) {
-      const ageColor = ageMin < 5 ? '#9ca3af' : ageMin < 15 ? '#fbbf24' : ageMin < 30 ? '#f97316' : '#ef4444';
+      const ageColor = ageMin < 5 ? 'var(--rmpg-400)' : ageMin < 15 ? '#fbbf24' : ageMin < 30 ? '#f97316' : '#ef4444';
       const agePip = document.createElement('div');
       agePip.style.cssText =
         `position:absolute;bottom:-5px;right:-5px;padding:0 2px;height:11px;border-radius:2px;` +
@@ -393,13 +404,13 @@ export function buildHistoricalCallMarkerContent(priority: string, incidentType:
 
 export function buildIncidentReportMarkerContent(status: string): HTMLElement {
   const statusColors: Record<string, string> = {
-    draft: '#666666',
+    draft: 'var(--rmpg-500)',
     submitted: '#888888',
     under_review: '#f59e0b',
     approved: '#22c55e',
     returned: '#ef4444',
   };
-  const color = statusColors[status] || '#666666';
+  const color = statusColors[status] || 'var(--rmpg-500)';
 
   const wrapper = document.createElement('div');
   wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));transition:transform 0.2s ease;transform:scale(var(--mz,1));';

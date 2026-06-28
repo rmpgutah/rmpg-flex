@@ -1,17 +1,26 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle, Activity, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
+import OnFootBadge from './OnFootBadge';
+import OnFootActivityModal from './OnFootActivityModal';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useUnitLocations } from '../hooks/useUnitLocations';
+import { useActiveTripsLive } from '../hooks/useActiveTripsLive';
+import { tripLabel, tripMiles, tripDurationMin, type Trip } from '../hooks/useTrips';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Spillman EMERGENCY overlay: an officer with an active panic. Truthy for
 // either the numeric (1) or boolean (true) shape the API may serialize.
 function isEmergency(unit: Unit): boolean {
   const e = unit.emergency_active;
   return e === 1 || e === true;
+}
+
+function isOnFoot(unit: Unit): boolean {
+  return unit.on_foot === 1 || unit.on_foot === true;
 }
 
 // Feature 2: GPS stale indicator thresholds
@@ -41,6 +50,28 @@ function statusDwell(unit: Unit): { mins: number; color: string } | null {
   const t = STATUS_DWELL_THRESHOLDS[unit.status];
   const color = t ? (mins >= t.red ? '#ef4444' : mins >= t.amber ? '#f59e0b' : '#888888') : '#888888';
   return { mins, color };
+}
+
+// Live "current trip" badge for the Assignment column. Driven by the live
+// trip map (poll-seeded, socket-kept). call_response → brand gold; patrol →
+// neutral gray; no active trip → nothing. Format: "▶ RESPONSE 24-0613 · 2.1 mi · 4m".
+function TripBadge({ trip }: { trip: Trip }) {
+  const isResponse = trip.trip_type === 'call_response';
+  const color = isResponse ? '#d4a017' : '#888888';
+  const miles = tripMiles(trip);
+  const mins = tripDurationMin(trip);
+  const parts: string[] = [tripLabel(trip)];
+  if (Number.isFinite(miles)) parts.push(`${miles.toFixed(1)} mi`);
+  if (mins != null) parts.push(`${mins}m`);
+  return (
+    <span
+      className="inline-flex items-center text-[9px] font-mono font-bold tabular-nums truncate max-w-[180px]"
+      style={{ color }}
+      title={`Active trip — ${parts.join(' · ')}`}
+    >
+      &#9654;&nbsp;{parts.join(' · ')}
+    </span>
+  );
 }
 
 interface UnitStatusBoardProps {
@@ -83,14 +114,19 @@ export default React.memo(function UnitStatusBoard({
   // Live street address + cross street resolved from each unit's GPS, so the
   // board always shows where a unit physically is — not just coordinates.
   const unitLocations = useUnitLocations(units);
+  // Live current-trip-by-unit map (poll-seeded + 'trip_update' socket). Drives
+  // the per-row trip badge in the Assignment column.
+  const { getTrip } = useActiveTripsLive();
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
 
+  const [footUnit, setFootUnit] = useState<Unit | null>(null);
+
   // All unit statuses, for the "Set status" submenu. Mirrors the UnitStatus union.
   const STATUSES: UnitStatus[] = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
-  const prettyStatus = (s: UnitStatus) => s.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+  const prettyStatus = (s: UnitStatus) => toDisplayLabel(s);
 
   const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
     ...(onStatusChange
@@ -160,17 +196,19 @@ export default React.memo(function UnitStatusBoard({
             onClick={() => onUnitClick?.(unit)}
             onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}
             className={`flex items-center gap-2 p-1.5 panel-beveled cursor-pointer hover:bg-surface-raised transition-colors ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
-            style={{ background: '#0a0a0a' }}
+            style={{ background:"var(--surface-sunken)" }}
           >
             {/* 33: aria-hidden on decorative LED dot */}
             <span className={STATUS_LED_CLASSES[unit.status]} aria-hidden="true" />
             <div className="min-w-0">
-              <div className="text-xs font-bold text-white font-mono truncate">{unit.call_sign}</div>
+              <div className="text-xs font-bold text-rmpg-100 font-mono truncate">{unit.call_sign}</div>
+              {isOnFoot(unit) && <OnFootBadge since={unit.on_foot_since} onClick={() => setFootUnit(unit)} />}
               {/* 34: Italic unassigned label in compact mode */}
               <div className={`text-[10px] truncate ${unit.officer_name ? 'text-rmpg-300' : 'text-rmpg-500 italic'}`}>{unit.officer_name || 'Unassigned'}</div>
             </div>
           </div>
         ))}
+        {footUnit && <OnFootActivityModal unit={footUnit} onClose={() => setFootUnit(null)} />}
       </div>
     );
   }
@@ -179,7 +217,7 @@ export default React.memo(function UnitStatusBoard({
 
   return (
     <div className="overflow-auto scrollbar-dark">
-      <table className="table-dark" aria-label="Unit status board">
+      <div className="overflow-x-auto"><table className="table-dark" aria-label="Unit status board">
         <thead>
           <tr>
             <th>Unit</th>
@@ -206,18 +244,19 @@ export default React.memo(function UnitStatusBoard({
               <td>
                 <div className="flex items-center gap-2">
                   <span className={STATUS_LED_CLASSES[unit.status] || 'led-dot led-off'} />
-                  <span className="font-bold text-white font-mono">{unit.call_sign}</span>
+                  <span className="font-bold text-rmpg-100 font-mono">{unit.call_sign}</span>
                   {/* Spillman EMERGENCY overlay — flashing red badge, floats this
                       row to the top of the board (see sort above). */}
                   {isEmergency(unit) && (
                     <span
-                      className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-black uppercase tracking-wider text-white animate-emergency-blink"
+                      className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-black uppercase tracking-wider text-rmpg-100 animate-emergency-blink"
                       style={{ background: '#dc2626', letterSpacing: '1px' }}
                       title="EMERGENCY — active panic activation"
                     >
                       <AlertTriangle className="w-2.5 h-2.5" /> EMER
                     </span>
                   )}
+                  {isOnFoot(unit) && <OnFootBadge since={unit.on_foot_since} onClick={() => setFootUnit(unit)} />}
                   {/* Feature 2: GPS stale indicator */}
                   {(() => {
                     const gpsStatus = getGpsStaleStatus(unit);
@@ -247,7 +286,15 @@ export default React.memo(function UnitStatusBoard({
                 </div>
               </td>
               <td className="text-rmpg-300 text-xs font-mono">
-                {unit.current_call_number || <span className="text-rmpg-500 italic text-[10px]">Unassigned</span>}
+                <div className="flex flex-col gap-0.5">
+                  <span>
+                    {unit.current_call_number || <span className="text-rmpg-500 italic text-[10px]">Unassigned</span>}
+                  </span>
+                  {(() => {
+                    const trip = getTrip(unit.id);
+                    return trip ? <TripBadge trip={trip} /> : null;
+                  })()}
+                </div>
               </td>
               <td>
                 {(() => {
@@ -272,7 +319,7 @@ export default React.memo(function UnitStatusBoard({
                         </span>
                         {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
                           const mins = Math.floor((Date.now() - parseTimestamp(unit.gps_updated_at).getTime()) / 60000);
-                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#666666';
+                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : 'var(--rmpg-500)';
                           return <span className="text-[8px] font-mono ml-1 flex-shrink-0" style={{ color }} title="GPS age">{mins}m</span>;
                         })()}
                       </div>
@@ -355,7 +402,8 @@ export default React.memo(function UnitStatusBoard({
             </tr>
           )}
         </tbody>
-      </table>
+      </table></div>
+      {footUnit && <OnFootActivityModal unit={footUnit} onClose={() => setFootUnit(null)} />}
     </div>
   );
 });

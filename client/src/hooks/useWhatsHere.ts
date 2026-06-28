@@ -22,6 +22,7 @@ import { toDisplayLabel } from '../utils/formatters';
 import { classifyPtType, type PropertyType } from '../pages/map/utils/landTypes';
 import { getAerialThumbUrl, getStreetPerspectiveUrl, findStreetImage, findNearestRoadBearing, warmImageryToken, compassCardinal, distanceAndBearing, type StreetImage } from '../utils/locationImagery';
 import type { StreetViewTarget } from '../pages/map/components/StreetViewLightbox';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 /** Live device position the popup uses for the nav-to-point readout. */
 export interface WhatsHereGps { latitude: number | null; longitude: number | null; speed: number | null; }
@@ -112,6 +113,15 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
   // In-flight street-image (Mapillary) request — aborted when a newer click
   // supersedes it so we don't leave stale network requests running.
   const streetAbortRef = useRef<AbortController | null>(null);
+  // REGRESSION-GUARD: prevent post-unmount popup rendering. Async handlers
+  // (apiFetch/Promise.allSettled) read popup/map refs that are stale after
+  // teardown; mountedRef=false in cleanup ensures no .then handler renders
+  // after the hook unmounts.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Warm the polygon datasets + imagery token the first time the tool is on.
   useEffect(() => {
@@ -183,7 +193,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
       // rendered at this zoom — exactly when the operator wants structure detail.
       let ptType: PropertyType | null = null;
       try {
-        if (map.getLayer(ADDRESS_POINT_LAYER)) {
+        if (hasLayer(map, ADDRESS_POINT_LAYER)) {
           const box: [mapboxgl.PointLike, mapboxgl.PointLike] = [
             [e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6],
           ];
@@ -331,6 +341,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
         findStreetImage(lng, lat, 120, ctrl.signal),
         findNearestRoadBearing(lng, lat, 90, ctrl.signal),
       ]).then(([addrRes, premRes, streetRes, roadRes]) => {
+        if (!mountedRef.current) return; // hook unmounted before responses resolved
         if (myId !== seqRef.current) return; // a newer click superseded this
         const nearest = addrRes.status === 'fulfilled' ? (addrRes.value?.results?.[0] ?? null) : null;
         const premise = premRes.status === 'fulfilled' ? premRes.value : null;
