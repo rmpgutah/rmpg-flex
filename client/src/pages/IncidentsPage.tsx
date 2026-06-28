@@ -1847,7 +1847,7 @@ export default function IncidentsPage() {
 
         {/* Persons Involved */}
         <CollapsibleSection
-          title="Persons Involved"
+          title="Individuals Involved"
           icon={UserPlus}
           count={detailPersons.length}
           defaultOpen
@@ -2318,7 +2318,7 @@ export default function IncidentsPage() {
                           <span className="text-xs text-rmpg-100 font-mono font-bold">{sup.report_number || 'N/A'}</span>
                           {(sup.report_type || sup.type) && (
                             <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[9px] uppercase font-bold border border-brand-600/40">
-                              {(sup.report_type || sup.type || '').replace(/_/g, ' ')}
+                              {(sup.report_type || sup.type || '').replace(/_/g, ' ').toUpperCase()}
                             </span>
                           )}
                           {sup.status && (

@@ -145,7 +145,7 @@ export function buildUnitInfoWindow(
 ): string {
   const id = nextId();
   const statusColor = UNIT_STATUS_HEX[unit.status] || C_TEXT_MUTED;
-  const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status.replace(/_/g, ' ');
+  const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status.replace(/_/g, ' ').toUpperCase();
   const gpsSource = unit.gps_source || 'unknown';
 
   // GPS accuracy indicator color
@@ -204,7 +204,7 @@ export function buildUnitInfoWindow(
         ${dataRow('Call #', assignedCall.call_number, C_NEUTRAL)}
         ${dataRow('Type', formatIncidentType(assignedCall.incident_type), pColor)}
         ${dataRow('Location', assignedCall.location_address, C_TEXT_DIM)}
-        ${dataRow('Status', assignedCall.status.replace(/_/g, ' '), C_TEXT_DIM)}
+        ${dataRow('Status', assignedCall.status.replace(/_/g, ' ').toUpperCase(), C_TEXT_DIM)}
         ${assignedCall.property_name ? dataRow('Property', assignedCall.property_name, C_GOLD) : ''}
       </div>
       ${hasRoute ? `<div style="margin-top:8px;text-align:center;">${routeButton(unit.call_sign, assignedCall.call_number, unit.latitude!, unit.longitude!, assignedCall.latitude!, assignedCall.longitude!, 'Route to Call')}</div>` : ''}
@@ -284,7 +284,7 @@ export function buildCallInfoWindow(
       ${dataRow('Call #', call.call_number, C_NEUTRAL)}
       ${dataRow('Location', call.location_address, C_TEXT)}
       ${call.property_name ? dataRow('Property', call.property_name, C_GOLD) : ''}
-      ${dataRow('Status', call.status.replace(/_/g, ' '), C_TEXT_DIM)}
+      ${dataRow('Status', call.status.replace(/_/g, ' ').toUpperCase(), C_TEXT_DIM)}
       ${call.source ? dataRow('Source', call.source, C_TEXT_DIM) : ''}
       ${call.disposition ? dataRow('Disposition', call.disposition, C_TEXT_DIM) : ''}
     </div>
@@ -472,7 +472,7 @@ export function buildPropertyInfoWindow(
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid ${C_BORDER}20;">
           <div style="overflow:hidden;flex:1;">
             <span style="color:#a0a0a0;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
-            <span style="color:${C_TEXT_MUTED};font-size:8px;margin-left:4px;">${escapeHtml((c.incident_type || '').replace(/_/g, ' '))}</span>
+            <span style="color:${C_TEXT_MUTED};font-size:8px;margin-left:4px;">${escapeHtml((c.incident_type || '').replace(/_/g, ' ').toUpperCase())}</span>
           </div>
           <div style="text-align:right;flex-shrink:0;margin-left:6px;">
             <span style="color:${statusColor};font-size:8px;font-weight:600;">${escapeHtml(c.status || '')}</span>
@@ -500,11 +500,11 @@ export function buildPropertyInfoWindow(
   if (linkedPersons.length > 0) {
     contactsTab += `
       <div style="${details.client_contact ? `margin-top:6px;padding-top:4px;border-top:1px solid ${C_BORDER};` : ''}">
-        ${sectionHeader(`Linked Persons (${linkedPersons.length})`, '#e879f9')}
+        ${sectionHeader(`Linked Individuals (${linkedPersons.length})`, '#e879f9')}
         ${linkedPersons.slice(0, 8).map(p => {
           const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || 'var(--rmpg-500)';
           const name = `${p.first_name} ${p.last_name}`;
-          const rel = (p.relationship || '').replace(/_/g, ' ');
+          const rel = (p.relationship || '').replace(/_/g, ' ').toUpperCase();
           let flagsArr: string[] = [];
           try { flagsArr = JSON.parse(p.flags || '[]'); } catch { /* ignore */ }
           const hasWarning = flagsArr.includes('trespass') || flagsArr.includes('violent') || flagsArr.includes('armed') || p.relationship === 'trespass_warning' || p.relationship === 'banned';

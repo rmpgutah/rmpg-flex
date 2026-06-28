@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "filepath=\"$(echo \"$CLAUDE_TOOL_INPUT\" | grep -oE '\"file_path\":\\s*\"[^\"]+\"' | head -1 | sed 's/.*\"file_path\":\\s*\"//;s/\"$//')\"; echo \"$filepath\" | grep -qE 'server/(data|certs|uploads)/|\\.env$' && echo 'BLOCKED: Cannot edit production-only files (server/data, server/certs, server/.env, server/uploads)' && exit 1 || exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

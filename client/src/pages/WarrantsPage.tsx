@@ -1830,7 +1830,7 @@ export default function WarrantsPage() {
                 <div className="text-2xl font-bold font-mono tabular-nums text-rmpg-100">
                   {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : (dashStats?.personsFlagged ?? 0)}
                 </div>
-                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Persons Flagged</div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Individuals Flagged</div>
               </div>
               <div className={`panel-inset p-3 rounded-sm text-center ${dashStats && dashStats.sourcesOnline < dashStats.sourcesTotal ? 'bg-red-900/10 border border-red-900/30' : 'bg-surface-sunken'}`}>
                 <div className={`text-2xl font-bold font-mono tabular-nums ${dashStats && dashStats.sourcesOnline >= dashStats.sourcesTotal ? 'text-green-400' : dashStats ? 'text-amber-400' : 'text-rmpg-100'}`}>

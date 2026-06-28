@@ -1880,7 +1880,7 @@ export default function DispatchPage() {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT',
-        body: JSON.stringify({ [field]: value || null }),
+        body: JSON.stringify({ [field]: payloadValue }),
       });
       // DEFENSIVE: only adopt the server response if it's actually a full
       // call row. Some backends return an error/"no changes" body for a
@@ -4737,7 +4737,7 @@ export default function DispatchPage() {
                                 key={unitIdStr}
                                 className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold font-mono rounded-sm transition-all duration-150 hover:brightness-110"
                                 style={{ background: `${statusColor}12`, color: statusColor, border: `1px solid ${statusColor}40`, boxShadow: `0 0 4px ${statusColor}10` }}
-                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${(unitObj.status || '').replace(/_/g, ' ')})` : displayName}
+                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${(unitObj.status || '').replace(/_/g, ' ').toUpperCase()})` : displayName}
                               >
                                 <span className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, background: statusColor, boxShadow: `0 0 3px ${statusColor}80` }} />
                                 {displayName}
@@ -5021,7 +5021,7 @@ export default function DispatchPage() {
                         {/* ── Linked Persons ── */}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <label className="text-[9px] text-brand-gold-500">Linked Persons</label>
+                            <label className="text-[9px] text-brand-gold-500">Linked Individuals</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
                               {linkOptions.person_role.map((o) => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -5857,7 +5857,7 @@ export default function DispatchPage() {
                                   {(visit.status || '').toUpperCase()}
                                 </span>
                                 {visit.disposition && (
-                                  <span className="text-[9px] text-rmpg-300">{(visit.disposition || '').replace(/_/g, ' ')}</span>
+                                  <span className="text-[9px] text-rmpg-300">{(visit.disposition || '').replace(/_/g, ' ').toUpperCase()}</span>
                                 )}
                               </div>
                               {unitsList.length > 0 && (
@@ -6261,7 +6261,7 @@ export default function DispatchPage() {
                   const updated = { ...selectedCall, [flag]: 1 };
                   setSelectedCall(updated);
                   setCalls(prev => prev.map(c => c.id === callId ? updated : c));
-                  addToast(`Flag "${flag.replace(/_/g, ' ')}" accepted`, 'success');
+                  addToast(`Flag "${flag.replace(/_/g, ' ').toUpperCase()}" accepted`, 'success');
                 } catch { addToast(`Failed to set flag`, 'error'); }
               }}
               onDismiss={() => setShowAiSidebar(false)}
@@ -6863,7 +6863,7 @@ export default function DispatchPage() {
                 // Voice announce ETA — announce unit status as proxy (GPS ETA would need server)
                 const unit = units.find(u => u.call_sign === action.callSign);
                 if (unit) {
-                  const statusLabel = unit.status === 'enroute' ? 'en route' : unit.status.replace(/_/g, ' ');
+                  const statusLabel = unit.status === 'enroute' ? 'en route' : unit.status.replace(/_/g, ' ').toUpperCase();
                   announceCallUpdate('', `Unit ${unit.call_sign} is currently ${statusLabel}`);
                 }
                 break;
@@ -6916,9 +6916,9 @@ export default function DispatchPage() {
                 if (unit && unit.current_call_id) {
                   const call = calls.find(c => c.id === String(unit.current_call_id));
                   const loc = call?.location || 'unknown location';
-                  announceCallUpdate('', `Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ')}.`);
+                  announceCallUpdate('', `Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ').toUpperCase()}.`);
                 } else if (unit) {
-                  announceCallUpdate('', `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')}. No active call assigned.`);
+                  announceCallUpdate('', `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ').toUpperCase()}. No active call assigned.`);
                 }
                 break;
               }
@@ -6984,7 +6984,7 @@ export default function DispatchPage() {
                 if (pending.length === 0) {
                   announceCallUpdate('', 'No pending calls.');
                 } else {
-                  const details = pending.slice(0, 5).map(c => `${c.call_number}, ${c.incident_type?.replace(/_/g, ' ') || 'unknown'}`).join('. ');
+                  const details = pending.slice(0, 5).map(c => `${c.call_number}, ${c.incident_type?.replace(/_/g, ' ').toUpperCase() || 'unknown'}`).join('. ');
                   announceCallUpdate('', `${pending.length} pending calls. ${details}.`);
                 }
                 break;
