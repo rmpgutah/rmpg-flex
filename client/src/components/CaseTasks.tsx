@@ -138,12 +138,12 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
           <input
             value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
             placeholder="Task title (e.g. Canvass for witnesses)" aria-label="Task title"
-            className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
+            className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none"
           />
           <textarea
             value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
             placeholder="Details (optional)" aria-label="Task details" rows={2}
-            className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
+            className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100 outline-none"
           />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <select value={form.priority} onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))} aria-label="Priority"
@@ -183,7 +183,7 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
               <div key={t.id} className={`panel-beveled p-2 flex items-start gap-2 ${dimmed ? 'opacity-60' : ''}`}>
                 <span className="mt-0.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: PRIORITY_COLOR[t.priority] || '#888' }} title={`${t.priority} priority`} />
                 <div className="flex-1 min-w-0">
-                  <div className={`text-[11px] font-bold ${dimmed ? 'line-through text-rmpg-400' : 'text-white'}`}>{t.title}</div>
+                  <div className={`text-[11px] font-bold ${dimmed ? 'line-through text-rmpg-400' : 'text-rmpg-100'}`}>{t.title}</div>
                   {t.description && <div className="text-[9px] text-rmpg-400 mt-0.5">{t.description}</div>}
                   <div className="flex items-center gap-2 mt-1 flex-wrap text-[9px] text-rmpg-500">
                     <StatusPill status={t.status} />
@@ -206,7 +206,7 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
                   {t.status !== 'done' ? (
                     <IconButton onClick={() => setStatus(t, 'done')} className="text-green-400 hover:text-green-300" aria-label="Mark done"><Check style={{ width: 12, height: 12 }} /></IconButton>
                   ) : (
-                    <IconButton onClick={() => setStatus(t, 'open')} className="text-rmpg-400 hover:text-white" aria-label="Reopen"><RotateCcw style={{ width: 12, height: 12 }} /></IconButton>
+                    <IconButton onClick={() => setStatus(t, 'open')} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Reopen"><RotateCcw style={{ width: 12, height: 12 }} /></IconButton>
                   )}
                   <IconButton onClick={() => remove(t)} className="text-red-400 hover:text-red-300" aria-label="Delete task"><Trash2 style={{ width: 12, height: 12 }} /></IconButton>
                 </div>
@@ -255,7 +255,7 @@ export function CaseMyTasksView({ onOpenCase }: { onOpenCase: (caseId: number) =
           </button>
         ))}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-3 space-y-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-3 space-y-1.5">
         {loading ? (
           <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading tasks...</div>
         ) : tasks.length === 0 ? (
@@ -267,7 +267,7 @@ export function CaseMyTasksView({ onOpenCase }: { onOpenCase: (caseId: number) =
               <div key={t.id} className="panel-beveled p-2 flex items-start gap-2">
                 <span className="mt-0.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: PRIORITY_COLOR[t.priority] || '#888' }} title={`${t.priority} priority`} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-bold text-white">{t.title}</div>
+                  <div className="text-[11px] font-bold text-rmpg-100">{t.title}</div>
                   <button type="button" onClick={() => onOpenCase(t.case_id)} className="text-[9px] text-brand-400 hover:text-brand-300 flex items-center gap-0.5 mt-0.5">
                     <ExternalLink style={{ width: 9, height: 9 }} /> {t.case_number || `Case #${t.case_id}`}{t.case_title ? ` — ${t.case_title}` : ''}
                   </button>

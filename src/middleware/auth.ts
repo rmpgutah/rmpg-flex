@@ -30,7 +30,13 @@ export interface JwtPayload {
 // flag weren't enough in prod). Matched by suffix so it holds regardless of the
 // router's mount prefix.
 function isPublicAuthBypass(pathname: string): boolean {
-  return pathname === '/api/email/oauth/callback' || pathname.endsWith('/oauth/callback');
+  // /api/fleetio/webhook — Fleet.io POSTs here without a JWT; the route
+  // itself verifies the inbound 'Authorization' header equals
+  // FLEETIO_WEBHOOK_SECRET (Fleet.io's authz model — PR 4c rewrite)
+  // before queueing the inbound event (see src/routes/fleetioWebhook.ts).
+  return pathname === '/api/email/oauth/callback'
+    || pathname.endsWith('/oauth/callback')
+    || pathname === '/api/fleetio/webhook';
 }
 
 // Media endpoints that browser tags fetch without headers. Auth for these
@@ -38,7 +44,8 @@ function isPublicAuthBypass(pathname: string): boolean {
 function isMediaPath(pathname: string): boolean {
   return pathname.includes('/uploads/')
     || pathname.includes('/field-photos/file/')
-    || pathname.includes('/alpr/image/')      // ALPR capture thumbnails (<img> can't send a header)
+    || pathname.includes('/alpr/image/')
+    || pathname.includes('/full-drive/clip/')  // dashcam clip streaming (<video> can't send header)
     || pathname.endsWith('/stream')
     || pathname.endsWith('/audio');
 }

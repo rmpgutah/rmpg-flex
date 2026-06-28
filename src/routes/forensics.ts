@@ -185,8 +185,53 @@ forensics.get('/', async (c) => {
   }
 });
 
-// GET /:id — single case (must come AFTER /stats since both are
-// at the route root — Hono matches static before parametric)
+// ── Static-literal single-segment routes that MUST be registered BEFORE /:id ──
+// Hono's SmartRouter falls back to the order-sensitive TrieRouter on the
+// static-vs-param overlap, so /:id (single-segment) would otherwise shadow
+// these with id='turnaround-times' / id='analysis-templates' and the
+// parseInt(id, 10) guard inside /:id would return 400 INVALID_ID. Same trap
+// is documented in src/routes/properties.ts:43-45. The originally-placed
+// blocks for these two handlers (formerly ~lines 817 + 855) have been
+// deleted below to avoid duplicate registration.
+forensics.get('/turnaround-times', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      // forensic_cases has no `completed_at` (that column lives on forensic_analyses);
+      // the completion column on this table is `completed_date`.
+      `SELECT case_type,
+              COUNT(*) AS total,
+              ROUND(AVG(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)), 1) AS avg_days,
+              MIN(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)) AS min_days,
+              MAX(CAST((julianday(COALESCE(completed_date, datetime('now'))) - julianday(created_at)) AS REAL)) AS max_days
+       FROM forensic_cases WHERE archived_at IS NULL
+       GROUP BY case_type ORDER BY avg_days DESC`);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+forensics.get('/analysis-templates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT * FROM forensic_analysis_templates WHERE active = 1 ORDER BY case_type, name');
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+// GET /:id — single case. MUST come AFTER every single-segment static literal
+// above (/stats, /turnaround-times, /analysis-templates) since Hono's
+// TrieRouter resolves overlapping static vs param routes in registration order.
+//
+// Chain-of-custody view-event emit: forensic case files are court-record
+// material — defense counsel routinely asks "who opened this file, when?"
+// during discovery. Every successful read writes a `case_viewed` row to
+// forensic_activity_log so the timeline tab + court PDF carry a complete
+// access record. Mirrors the Body Cameras "case opened" emit pattern that
+// shipped in PR #1619. Failure to log is non-fatal — the case still
+// returns — but the gap is observable via `console.error` in worker logs.
+// Polls (Cache-Control: no-cache from useLiveSync) are skipped so live-
+// sync chatter doesn't fill the activity log with junk rows.
 forensics.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
@@ -201,6 +246,25 @@ forensics.get('/:id', async (c) => {
       id,
     );
     if (!row) return c.json({ error: 'Forensics case not found', code: 'NOT_FOUND' }, 404);
+
+    // Best-effort chain-of-custody view event. Skips when the page is
+    // polling via useLiveSync (Cache-Control: no-cache header); a real
+    // operator open emits at most one row per case-load.
+    try {
+      const userId = c.get('userId') as number | undefined;
+      if (userId) {
+        const cacheControl = c.req.header('cache-control') || '';
+        if (!cacheControl.includes('no-cache')) {
+          const viewer = await queryFirst<{ full_name: string }>(
+            db, 'SELECT full_name FROM users WHERE id = ?', userId,
+          );
+          await logActivity(db, id, 'case_viewed', null, userId, viewer?.full_name ?? '');
+        }
+      }
+    } catch (err) {
+      console.error('[forensics] view-event emit failed:', err);
+    }
+
     return c.json({ data: row });
   } catch (err) {
     return c.json({ error: 'Failed to get forensics case', code: 'GET_ERROR' }, 500);
@@ -813,28 +877,17 @@ forensics.get('/export/csv', async (c) => {
 });
 
 // ── QC / reporting / planning endpoints (ForensicLabPage reads these) ──
-
-forensics.get('/turnaround-times', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT case_type,
-              COUNT(*) AS total,
-              ROUND(AVG(CAST((julianday(COALESCE(completed_at, datetime('now'))) - julianday(created_at)) AS REAL)), 1) AS avg_days,
-              MIN(CAST((julianday(COALESCE(completed_at, datetime('now'))) - julianday(created_at)) AS REAL)) AS min_days,
-              MAX(CAST((julianday(COALESCE(completed_at, datetime('now'))) - julianday(created_at)) AS REAL)) AS max_days
-       FROM forensic_cases WHERE archived_at IS NULL
-       GROUP BY case_type ORDER BY avg_days DESC`);
-    return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
-});
+// NOTE: /turnaround-times and /analysis-templates were originally here, but
+// the single-segment static literals were being shadowed by the /:id handler
+// registered earlier in the file. They have been moved to just before /:id —
+// see the comment block above the relocated handlers near line 188.
 
 forensics.get('/metrics/backlog', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
       `SELECT case_type, priority, COUNT(*) AS count
-       FROM forensic_cases WHERE status NOT IN ('completed','cancelled') AND archived_at IS NULL
+       FROM forensic_cases WHERE status NOT IN ('released','cancelled') AND archived_at IS NULL
        GROUP BY case_type, priority ORDER BY priority, case_type`);
     return c.json({ data: rows });
   } catch { return c.json({ data: [] }); }
@@ -850,14 +903,7 @@ forensics.get('/:id/qc-history', async (c) => {
   } catch { return c.json({ data: [] }); }
 });
 
-forensics.get('/analysis-templates', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db,
-      'SELECT * FROM forensic_analysis_templates WHERE active = 1 ORDER BY case_type, name');
-    return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
-});
+// /analysis-templates relocated to before /:id (see comment block near line 188).
 
 forensics.post('/:id/qc-check', async (c) => {
   try {
@@ -880,8 +926,8 @@ forensics.get('/queue/priority', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM forensic_cases
-       WHERE status NOT IN ('completed','cancelled') AND archived_at IS NULL
-       ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at
+       WHERE status NOT IN ('released','cancelled') AND archived_at IS NULL
+       ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'rush' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, created_at
        LIMIT 50`);
     return c.json({ data: rows });
   } catch { return c.json({ data: [] }); }
@@ -900,7 +946,7 @@ forensics.get('/capacity/planning', async (c) => {
   try {
     const db = getDb(c.env);
     const active = await queryFirst<{ count: number }>(db,
-      "SELECT COUNT(*) AS count FROM forensic_cases WHERE status NOT IN ('completed','cancelled') AND archived_at IS NULL");
+      "SELECT COUNT(*) AS count FROM forensic_cases WHERE status NOT IN ('released','cancelled') AND archived_at IS NULL");
     const avgPerWeek = await queryFirst<{ avg: number }>(db,
       `SELECT ROUND(COUNT(*) / MAX(1, (julianday('now') - julianday(MIN(created_at))) / 7.0), 1) AS avg
        FROM forensic_cases WHERE created_at >= datetime('now', '-90 days')`);

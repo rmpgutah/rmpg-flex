@@ -30,7 +30,7 @@ struct CfsActionsView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(Theme.neutral)
                         TextField("Search \(CfsActionLibrary.all.count) call actions…", text: $search)
-                            .font(.system(size: 13)).autocorrectionDisabled().textInputAutocapitalization(.never)
+                            .font(Theme.Typography.body).autocorrectionDisabled().textInputAutocapitalization(.never)
                     }
                     .padding(8).background(Theme.raised).clipShape(RoundedRectangle(cornerRadius: Theme.radius))
 
@@ -43,7 +43,7 @@ struct CfsActionsView: View {
                                       alignment: .leading, spacing: 6) {
                                 ForEach(actions) { a in
                                     Button { tap(a) } label: {
-                                        Text(a.label).font(.system(size: 11, weight: .semibold))
+                                        Text(a.label).font(Theme.Typography.caption).fontWeight(.semibold)
                                             .multilineTextAlignment(.center)
                                             .frame(maxWidth: .infinity).padding(.vertical, 9).padding(.horizontal, 5)
                                             .background(background(a)).foregroundStyle(.white)
@@ -76,7 +76,7 @@ struct CfsActionsView: View {
     private func background(_ a: CfsAction) -> Color {
         switch a.category {
         case "Hazards": return Theme.red.opacity(0.85)
-        case "Notify", "Resources": return Color(hex: 0x2a2417)   // warm tint
+        case "Notify", "Resources": return Theme.raised   // steel panel
         default: return Theme.raised
         }
     }

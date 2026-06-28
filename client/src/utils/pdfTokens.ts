@@ -16,7 +16,8 @@ export const COLOR = {
   TEXT_PRIMARY:    [0, 0, 0]        as const,  // Courier field values
   TEXT_SECONDARY:  [84, 84, 84]     as const,  // Helvetica labels (#545454 — neutralized 2026-05-30: the value had silently drifted to blue-slate [74,85,104], violating the zero-blue rule + contradicting this very comment)
   TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
-  TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
+  TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds — PRIMARY headers/titles
+  TEXT_SUBHEAD_INVERTED: [184, 184, 184] as const,  // #b8b8b8 light-medium grey — SUB-HEADINGS on dark header bars (descriptor/subtitle/labels); legible against BG_SECTION_HDR while staying clearly secondary to the white title
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
   // Borders — clean, professional lines
@@ -49,8 +50,8 @@ export const COLOR = {
   // the headers stay strong/dark but are true gray. Zebra + tint backgrounds
   // also de-blued ([242,242,246]→[243,243,243], [248,248,252]→[249,249,249]).
   BG_ZEBRA:        [243, 243, 243]  as const,  // Even-row table shading
-  BG_SECTION_HDR: [0, 0, 0]       as const,  // Section header fill — solid black (Spillman convention, 2026-05-30)
-  BG_TABLE_HDR:    [0, 0, 0]       as const,  // Table column header — solid black band (Spillman convention, 2026-05-30)
+  BG_SECTION_HDR: [51, 51, 51]    as const,  // #333 dark grey — section/hero header bars. Softened from solid black 2026-06-16 (white titles stay legible; sub-headings use TEXT_SUBHEAD_INVERTED)
+  BG_TABLE_HDR:    [51, 51, 51]    as const,  // #333 dark grey — table column-header band. Matched to BG_SECTION_HDR 2026-06-16 for a uniform dark-grey header treatment
   BG_SECTION_TINT: [255, 255, 255]  as const,  // Pure white — no background tint (removed 2026-05-30)
   BG_TABLE_HDR_LIGHT: [224, 224, 224] as const, // Nested table header (light gray)
   TEXT_TABLE_HDR_LIGHT: [54, 54, 54]  as const,  // Dark gray text on light hdr

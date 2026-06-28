@@ -48,6 +48,8 @@ import {
   ALPR_ACCEPT_CONFIDENCE,
   type AlprVehicle,
 } from '../roboflowAlpr';
+import { trustScore } from '../plateTrust';
+import { readPlateCloudflare, type CloudflarePlateResult } from '../cloudflarePlate';
 
 type DB = D1Database;
 
@@ -114,6 +116,29 @@ async function upsertVehicleByPlate(db: DB, v: AlprVehicle): Promise<number | nu
   } catch (err) { console.error('[flexcam-alpr] vehicle upsert failed:', (err as Error)?.message); return null; }
 }
 
+/** Map the free Workers-AI plate read onto the AlprVehicle shape persistVehicle
+ *  consumes. Pure (exported for tests). */
+export function cloudflarePlateToVehicle(r: CloudflarePlateResult): AlprVehicle {
+  return {
+    plate: r.plate, state: r.state, make: r.make, model: r.model, color: r.color, year: r.year,
+    vehicleType: r.bodyStyle, plateType: r.plateType, confidence: r.confidence,
+    condition: r.condition, damageObserved: r.damageSummary ? true : null, damageSummary: r.damageSummary,
+    damageAreas: [], aftermarket: null,
+    confidences: r.confidence != null ? { plate: r.confidence } : {},
+  };
+}
+
+/** Derive honest trust for one footage read. A footage chunk yields a single
+ *  Roboflow read per vehicle, so trustScore hard-caps it below the accept gate
+ *  (no corroboration). Never gate/store the raw model self-report. */
+export function deriveFootageTrust(
+  plate: string | null,
+  modelPct: number | null | undefined,
+): { trustScore: number; accepted: boolean } {
+  const t = trustScore({ reads: plate ? [plate] : [], modelPct: modelPct ?? undefined });
+  return { trustScore: t.trustScore, accepted: !!plate && t.trustScore >= ALPR_ACCEPT_CONFIDENCE }; // 0.85 gate baked in
+}
+
 /** Persist one detected vehicle the same way the event path does: screen
  *  (always — officer safety), upsert the master record on an accepted (≥0.85)
  *  read, and always log a sighting. Best-effort per step. */
@@ -122,7 +147,7 @@ async function persistVehicle(
 ): Promise<void> {
   const plate = v.plate;
   if (!plate) return;
-  const accepted = (v.confidence ?? 0) >= ALPR_ACCEPT_CONFIDENCE;
+  const { trustScore: derivedTrust, accepted } = deriveFootageTrust(plate, v.confidence);
 
   // Upsert the authoritative record only on an accepted read (same gate as the
   // on-scene scanner); a held read still logs a sighting + screens.
@@ -137,7 +162,7 @@ async function persistVehicle(
        VALUES (?, ?, ?, ?, NULL, NULL, ?, 0, ?)`,
       plate, v.state, vehicleId, locationText,
       `FlexCam footage ${deviceId ?? ''}`.trim() + (accepted ? '' : ' (unconfirmed <0.85)'),
-      v.confidence);
+      derivedTrust);
   } catch (err) { console.error('[flexcam-alpr] sighting insert failed:', (err as Error)?.message); }
 
   // Always screen (officer safety) — critical hits raise a notification.
@@ -223,4 +248,22 @@ export async function alprFootageChunk(
   for (const v of vehicles) {
     await persistVehicle(db, v, deviceId, locationText);
   }
+}
+
+/** Free Workers-AI ALPR on a still image (e.g. a segment thumbnail). Reads the
+ *  most prominent plate, maps it, and persists via the SAME path as the Roboflow
+ *  flow (screen → upsert → sighting → hit) — so footage plates land in the intel
+ *  log at zero Roboflow credit cost. Best-effort; never throws. No-op when the AI
+ *  binding is absent, the still is empty, or no plate is read. */
+export async function alprFootageStillCloudflare(
+  env: Bindings, db: DB, _chunkId: number, stillBytes: Uint8Array, deviceId: string | null,
+): Promise<void> {
+  if (!(env as { AI?: unknown }).AI || !stillBytes.length) return;
+  let result: CloudflarePlateResult | null = null;
+  try { result = await readPlateCloudflare(env as unknown as { AI: Ai }, stillBytes, 'image/jpeg'); }
+  catch (e) { console.error('[flexcam-alpr] workers-ai read failed:', (e as Error)?.message); return; }
+  if (!result?.plate) return;
+  await ensureSightingColumns(db);
+  const locationText = `FlexCam ${deviceId ?? ''}`.trim() || 'FlexCam footage';
+  await persistVehicle(db, cloudflarePlateToVehicle(result), deviceId, locationText);
 }

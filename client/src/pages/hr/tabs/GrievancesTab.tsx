@@ -8,6 +8,7 @@ import { useMenuActions } from '../../../utils/contextMenuActions';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
@@ -31,10 +32,10 @@ interface Grievance {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  filed: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  filed: 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50',
   under_review: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   investigation: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
-  mediation: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
+  mediation: 'bg-surface-sunken/50 text-rmpg-400 border border-border-default/50',
   resolved: 'bg-green-900/50 text-green-400 border border-green-700/50',
   dismissed: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700',
   appealed: 'bg-red-900/50 text-red-400 border border-red-700/50',
@@ -42,7 +43,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: 'text-rmpg-400',
-  normal: 'text-gray-400',
+  normal: 'text-rmpg-400',
   high: 'text-amber-400',
   urgent: 'text-red-400',
 };
@@ -63,6 +64,8 @@ export default function GrievancesTab() {
   const [submitting, setSubmitting] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDismissId, setConfirmDismissId] = useState<number | null>(null);
+  const [confirmDismissLoading, setConfirmDismissLoading] = useState(false);
   const {
     form,
     setForm,
@@ -134,11 +137,23 @@ export default function GrievancesTab() {
   };
 
   const updateStatus = async (id: number, status: string) => {
-    if (status === 'dismissed' && !window.confirm('Dismiss this grievance? This action cannot be undone.')) return;
+    if (status === 'dismissed') { setConfirmDismissId(id); return; }
     try {
       await apiFetch(`/hr/grievances/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
       addToast('Status updated', 'success'); load();
     } catch { addToast('Failed to update status', 'error'); }
+  };
+
+  const doDismiss = async () => {
+    if (confirmDismissId === null) return;
+    setConfirmDismissLoading(true);
+    try {
+      await apiFetch(`/hr/grievances/${confirmDismissId}`, { method: 'PUT', body: JSON.stringify({ status: 'dismissed' }) });
+      addToast('Grievance dismissed', 'success');
+      setConfirmDismissId(null);
+      load();
+    } catch { addToast('Failed to dismiss grievance', 'error'); }
+    finally { setConfirmDismissLoading(false); }
   };
 
   // Client-side search filter
@@ -154,12 +169,12 @@ export default function GrievancesTab() {
       <FloatingSaveBar
         visible={showForm && isDirty}
         onSave={handleSubmit}
-        onCancel={() => { if (isDirty && !window.confirm('Discard unsaved changes?')) return; setShowForm(false); clearDraft(); }}
+        onCancel={() => { setShowForm(false); clearDraft(); }}
         isSaving={submitting}
         saveLabel="Submit Grievance"
       />
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2"><AlertOctagon className="w-4 h-4" /> Grievances</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2"><AlertOctagon className="w-4 h-4" /> Grievances</h2>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
@@ -169,7 +184,7 @@ export default function GrievancesTab() {
             <option value="all">All Statuses</option>
             {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
-          <button type="button" onClick={() => { setShowForm(!showForm); if (!showForm) snapshot(); }} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
+          <button type="button" data-hr-new-btn onClick={() => { setShowForm(!showForm); if (!showForm) snapshot(); }} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
         </div>
       </div>
 
@@ -177,7 +192,7 @@ export default function GrievancesTab() {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Type</label>
+              <label htmlFor="ff-grievancestab-2" className="field-label">Type</label>
               <select id="ff-grievancestab-2" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="input-field w-full text-xs">
                 <option value="general">General</option>
                 <option value="workplace">Workplace</option>
@@ -188,7 +203,7 @@ export default function GrievancesTab() {
               </select>
             </div>
             <div>
-              <label className="field-label">Priority</label>
+              <label htmlFor="ff-grievancestab-3" className="field-label">Priority</label>
               <select id="ff-grievancestab-3" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className="input-field w-full text-xs">
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
@@ -198,7 +213,7 @@ export default function GrievancesTab() {
             </div>
           </div>
           <div>
-            <label className="field-label">Subject *</label>
+            <label htmlFor="ff-grievancestab-4" className="field-label">Subject *</label>
             <input id="ff-grievancestab-4" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="input-field w-full text-xs" placeholder="Brief subject line" maxLength={200} required autoComplete="off" onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} />
           </div>
           <div>
@@ -232,7 +247,7 @@ export default function GrievancesTab() {
                     <span className="text-[10px] text-rmpg-400 uppercase">{g.type}</span>
                     <span className={`text-[10px] font-medium ${PRIORITY_COLORS[g.priority] || 'text-rmpg-500'}`}>{g.priority}</span>
                   </div>
-                  <h3 className="text-xs font-bold text-white truncate max-w-md">{g.subject}</h3>
+                  <h3 className="text-xs font-bold text-rmpg-100 truncate max-w-md">{g.subject}</h3>
                   <p className="text-[10px] text-rmpg-300 mt-1 line-clamp-2">{g.description}</p>
                   <div className="flex items-center gap-3 mt-2 text-[10px] text-rmpg-400">
                     <span>Filed by: {g.officer_name}</span>
@@ -254,6 +269,17 @@ export default function GrievancesTab() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDismissId !== null}
+        onClose={() => setConfirmDismissId(null)}
+        onConfirm={doDismiss}
+        title="Dismiss Grievance"
+        message="Dismiss this grievance? This action cannot be undone."
+        confirmLabel="Dismiss"
+        confirmVariant="warning"
+        isLoading={confirmDismissLoading}
+      />
     </div>
   );
 }

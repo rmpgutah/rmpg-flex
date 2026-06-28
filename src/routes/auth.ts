@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Env } from '../types';
 import { sign, verify as verifyJwt } from 'hono/jwt';
 import { compareSync, hashSync } from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
@@ -6,6 +7,7 @@ import { getDb, queryFirst, query, execute } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { signResource, type SignedResourceParams } from '../utils/signedAccess';
+import { recordAudit } from '../utils/auditLog';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -20,7 +22,7 @@ import {
   generateBackupCodes, hashBackupCode,
 } from '../utils/totp';
 
-const auth = new Hono<{ Bindings: { DB: D1Database; KV: KVNamespace; JWT_SECRET: string }; Variables: { user: { id: number; username: string; role: string; full_name: string }; userId: number } }>();
+const auth = new Hono<Env>();
 
 // ── Session + token contract (MUST match the legacy `rmpg-flex` Worker) ──────
 // login/refresh fall through the proxy to legacy in normal operation; this
@@ -1124,10 +1126,7 @@ async function verifyTotpSetup(c: any) {
             totp_backup_codes = ? WHERE id = ?`,
     enc, JSON.stringify(hashes), userId);
   try {
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'totp_enabled', 'user', ?, 'Two-factor authentication enabled', datetime('now'))`,
-      userId, userId);
+    await recordAudit(c, { action: 'totp_enabled', entityType: 'user', entityId: userId, details: 'Two-factor authentication enabled', actorId: userId });
   } catch { /* non-fatal */ }
   return c.json({ success: true, backupCodes: codes });
 }
@@ -1153,10 +1152,7 @@ auth.post('/totp/disable', authMiddleware, async (c) => {
               totp_pending_secret = NULL, totp_backup_codes = NULL WHERE id = ?`,
       userId);
     try {
-      await execute(db,
-        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-         VALUES (?, 'totp_disabled', 'user', ?, 'Two-factor authentication disabled', datetime('now'))`,
-        userId, userId);
+      await recordAudit(c, { action: 'totp_disabled', entityType: 'user', entityId: userId, details: 'Two-factor authentication disabled', actorId: userId });
     } catch { /* non-fatal */ }
     return c.json({ success: true });
   } catch (err) {

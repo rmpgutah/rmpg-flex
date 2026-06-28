@@ -17,9 +17,9 @@ function PortalChrome() {
     aiOnline: false, // flips true in the AI Analyst plan once a provider is detected
   };
   return (
-    <div className="flex h-[calc(100vh-var(--app-header-h,72px))] min-h-[480px] bg-black">
+    <div className="flex h-[calc(100vh-var(--app-header-h,72px))] min-h-[480px] bg-surface-base">
       <IntelRail counts={counts} />
-      <main className="flex-1 overflow-y-auto min-w-0">
+      <main className="flex-1 min-h-0 overflow-y-auto min-w-0">
         <Outlet />
       </main>
       <IntelContextPanel />

@@ -103,7 +103,7 @@ export default function NoteComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, apply, wrap, onSubmit]);
 
-  const btn = 'w-6 h-5 flex items-center justify-center text-[10px] text-[#9ca3af] hover:text-white hover:bg-[#88888830] border border-[#2b2b2b] rounded-sm transition-all duration-100 active:bg-[#88888850]';
+  const btn = 'w-6 h-5 flex items-center justify-center text-[10px] text-rmpg-400 hover:text-rmpg-100 hover:bg-[#88888830] border border-rmpg-700 rounded-sm transition-all duration-100 active:bg-[#88888850]';
 
   return (
     <div>
@@ -112,10 +112,10 @@ export default function NoteComposer({
         <button type="button" title="Italic (Ctrl+I)" className={`${btn} italic font-semibold`} onClick={() => wrap('*')}>I</button>
         <button type="button" title="Underline (Ctrl+U)" className={`${btn} underline`} onClick={() => wrap('__')}>U</button>
         <button type="button" title="Strikeout (Ctrl+Shift+S)" className={`${btn} line-through`} onClick={() => wrap('~~')}>S</button>
-        <span className="w-px h-3 bg-[#2b2b2b] mx-0.5" />
+        <span className="w-px h-3 bg-rmpg-700 mx-0.5" />
         <button type="button" title="Bullet list" className={btn} onClick={() => prefixLine('- ')}>&bull;</button>
         <button type="button" title="Numbered list" className={btn} onClick={() => prefixLine('1. ')}>1.</button>
-        <span className="text-[8px] text-[#545454] ml-2 font-mono select-none">Tab to indent · Shift+Enter to submit</span>
+        <span className="text-[8px] text-rmpg-500 ml-2 font-mono select-none">Tab to indent · Shift+Enter to submit</span>
       </div>
       <textarea
         ref={ref}

@@ -88,12 +88,23 @@ statutes.get('/search', async (c) => {
     const level = c.req.query('level');
     const type = c.req.query('type'); // 'statute' | 'rule'
     const state = c.req.query('state');
+    const idParam = c.req.query('id');
     const limit = Math.min(parseInt(c.req.query('limit') || '20', 10) || 20, 50);
 
     if (!utahOnly(state)) return c.json({ data: [] });
 
     const where: string[] = ['is_active = 1'];
     const binds: unknown[] = [];
+    // Lookup by internal id — used by the law-book deep-link
+    // (/law-book?statute_id=…) to resolve a stable id back to its row when
+    // the caller doesn't have the citation. Short-circuits everything else.
+    if (idParam) {
+      const idNum = parseInt(idParam, 10);
+      if (Number.isFinite(idNum)) {
+        where.push('id = ?');
+        binds.push(idNum);
+      }
+    }
     if (q.length >= 2) {
       where.push('(citation LIKE ? OR short_title LIKE ? OR description LIKE ?)');
       binds.push(`${q}%`, `%${q}%`, `%${q}%`);

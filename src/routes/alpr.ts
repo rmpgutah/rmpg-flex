@@ -33,9 +33,13 @@ import {
   type AlprVehicle,
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
+import { notConfigured } from '../utils/notConfigured';
 import { trustScore } from '../utils/plateTrust';
 import { verifyEdgeSignature } from '../utils/edgeHmac';
 import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
+import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
+import { emitAnalytics, alprReadEvent } from '../utils/analytics';
+import { recordAudit } from '../utils/auditLog';
 
 const alpr = new Hono<Env>();
 
@@ -533,6 +537,8 @@ alpr.post('/capture', operational, async (c) => {
     } catch (err: any) { console.error('[alpr] field_photos insert failed:', err?.message); }
   }
 
+  const fieldPhotoLinked = !attachToCall || fieldPhotoId != null;
+
   // ── Read the plate on Cloudflare Workers AI (free — no Roboflow credits) ──
   // One vision call returns plate + state + make/model/color + confidence, so the
   // old two-stage fast→enrich collapses into a single read. The photo is already
@@ -580,6 +586,18 @@ alpr.post('/capture', operational, async (c) => {
     captureRowId, read, callId, incidentId, lat, lng, locationText, userId, imageKey,
   });
 
+  // Fan each finalized read out to the analytics lakehouse (best-effort; no-op
+  // until the ANALYTICS pipeline is provisioned). D1 above is the source of truth.
+  if (fin.vehicles.length) {
+    const occurredAt = new Date().toISOString();
+    emitAnalytics(c, c.env.ANALYTICS, fin.vehicles.map((v) =>
+      alprReadEvent(
+        { captureRowId, callId, incidentId, lat, lng, locationText, userId, source: 'field' },
+        v, occurredAt,
+      ),
+    ));
+  }
+
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
   // Honest status: reflect finalize's real outcome instead of hardcoding success.
   const finalized = fin.status === 'done';
@@ -589,6 +607,12 @@ alpr.post('/capture', operational, async (c) => {
   return c.json({
     success: finalized,
     status: fin.status,
+    image_stored: imageStored,
+    field_photo_linked: fieldPhotoLinked,
+    warnings: [
+      ...(imageStored ? [] : ['Image upload failed — capture saved without a stored photo.']),
+      ...(fieldPhotoLinked ? [] : ['Photo could not be attached to the call gallery.']),
+    ],
     id: captureRowId,
     call_id: callId,
     incident_id: incidentId,
@@ -746,6 +770,7 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
   // original read's attributes belonged to the wrong plate — drop them; the new
   // plate's attributes will be re-enriched on its next clean scan.
   let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+  let persisted = true;
   if (plate) {
     try {
       const screen = await screenVehicle(db, { plate });
@@ -780,15 +805,23 @@ alpr.post('/capture/:id/accept', operational, async (c) => {
         corrected ? null : (row.damage_observed ?? null),
         corrected ? null : (row.damage_summary ?? null),
         corrected ? null : (row.plate_confidence ?? null));
-    } catch (err: any) { console.error('[alpr] accept relink failed:', err?.message); }
+    } catch (err: any) {
+      console.error('[alpr] accept relink failed:', err?.message);
+      persisted = false;
+    }
   }
 
   await execute(db,
-    `UPDATE alpr_captures SET accepted=1, review_status='confirmed', plate=COALESCE(?, plate),
+    `UPDATE alpr_captures SET accepted=1, review_status=?, plate=COALESCE(?, plate),
        reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
-    corrected, userId, id);
+    confirmReviewStatus(persisted), corrected, userId, id);
+  if (!persisted) {
+    try {
+      await recordAudit(c, { action: 'ALPR_ACCEPT_UNLINKED', entityType: 'alpr_capture', entityId: id, details: 'authoritative write failed', actorId: userId });
+    } catch { /* best-effort */ }
+  }
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
-  return c.json({ success: true, hits, ...shapeCapture(updated) });
+  return c.json({ success: true, hits, ...(persisted ? {} : { warning: confirmWarning(false) }), ...shapeCapture(updated) });
 });
 
 // ── Review queue: reject a held capture (kept for audit) ─────
@@ -832,7 +865,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
   if (errors.length) return c.json({ error: errors[0].message, errors }, 400);
 
   // Re-editing an already-decided row is an audited "change function".
-  const wasDecided = row.review_status === 'confirmed' || row.review_status === 'rejected';
+  const wasDecided = row.review_status === 'confirmed' || row.review_status === 'confirmed_unlinked' || row.review_status === 'rejected';
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
   if (wasDecided && !reason) {
     return c.json({ error: 'A reason is required to change an already-reviewed capture.' }, 400);
@@ -850,6 +883,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
   const plate: string | null = (values.plate ?? row.plate) ?? null;
 
   let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+  let verifyWarning: string | undefined;
 
   if (action === 'reject') {
     await execute(db,
@@ -860,6 +894,7 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
     // (edited) attributes. A human-supplied attribute is trusted; on a plate
     // change with NO replacement attribute we drop the stale OCR value (it
     // belonged to the misread plate) — mirrors the original /accept rule.
+    let persisted = true;
     try {
       const keep = (col: string, key: keyof typeof values) =>
         key in values ? (values as any)[key] : (plateChanged ? null : (row[col] ?? null));
@@ -877,10 +912,14 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
         aftermarket: null, confidences: {},
       };
       hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (verified)');
-    } catch (err: any) { console.error('[alpr] verify relink failed:', err?.message); }
+    } catch (err: any) {
+      console.error('[alpr] verify relink failed:', err?.message);
+      persisted = false;
+    }
     await execute(db,
-      `UPDATE alpr_captures SET accepted=1, review_status='confirmed', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
-      userId, id);
+      `UPDATE alpr_captures SET accepted=1, review_status=?, reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+      confirmReviewStatus(persisted), userId, id);
+    if (!persisted) verifyWarning = confirmWarning(false);
   } else if (action === 'save') {
     await execute(db, `UPDATE alpr_captures SET reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`, userId, id);
   }
@@ -890,14 +929,11 @@ alpr.post('/capture/:id/verify', operational, async (c) => {
   try {
     const diff = describeEdit(row, values);
     const detail = [`${action}`, reason, diff].filter(Boolean).join(' — ');
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'ALPR_VERIFY', 'alpr_capture', ?, ?, datetime('now'))`,
-      userId, id, detail.slice(0, 500));
+    await recordAudit(c, { action: 'ALPR_VERIFY', entityType: 'alpr_capture', entityId: id, details: detail.slice(0, 500), actorId: userId });
   } catch (auditErr: any) { console.warn('[alpr] audit_log insert failed:', auditErr?.message); }
 
   const updated = await queryFirst<any>(db, 'SELECT * FROM alpr_captures WHERE id = ?', id);
-  return c.json({ success: true, hits, ...shapeCapture(updated) });
+  return c.json({ success: true, hits, ...(verifyWarning ? { warning: verifyWarning } : {}), ...shapeCapture(updated) });
 });
 
 // ── Bulk confirm/reject the review queue ─────────────────────
@@ -936,12 +972,19 @@ alpr.post('/captures/bulk', operational, async (c) => {
           condition: row.condition ?? null, damageObserved: null,
           damageSummary: row.damage_summary ?? null, damageAreas: [], aftermarket: null, confidences: {},
         };
-        const hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (bulk verified)');
+        let persisted = true;
+        let hits: Array<{ kind: string; severity: string; detail: string }> = [];
+        try {
+          hits = await persistConfirmedVehicle(db, row, v, userId, 'ALPR (bulk verified)');
+        } catch (persistErr: any) {
+          console.error('[alpr] bulk persist failed:', id, persistErr?.message);
+          persisted = false;
+        }
         for (const h of hits.filter((x) => x.severity === 'critical')) allHits.push({ ...h, plate: row.plate });
         await execute(db,
-          `UPDATE alpr_captures SET accepted=1, review_status='confirmed', reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
-          userId, id);
-        results.push({ id, ok: true, status: 'confirmed' });
+          `UPDATE alpr_captures SET accepted=1, review_status=?, reviewed_by=?, reviewed_at=datetime('now') WHERE id=?`,
+          confirmReviewStatus(persisted), userId, id);
+        results.push({ id, ok: persisted, status: confirmReviewStatus(persisted) });
       } else {
         results.push({ id, ok: false, status: 'no_plate' });
       }
@@ -953,10 +996,7 @@ alpr.post('/captures/bulk', operational, async (c) => {
   // One audit row for the batch.
   try {
     const okCount = results.filter((r) => r.ok).length;
-    await execute(db,
-      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-       VALUES (?, 'ALPR_BULK_VERIFY', 'alpr_capture', 0, ?, datetime('now'))`,
-      userId, `${action} ${okCount}/${ids.length}`.slice(0, 500));
+    await recordAudit(c, { action: 'ALPR_BULK_VERIFY', entityType: 'alpr_capture', entityId: 0, details: `${action} ${okCount}/${ids.length}`.slice(0, 500), actorId: userId });
   } catch { /* best-effort */ }
   return c.json({ success: true, action, results, hits: allHits });
 });
@@ -1037,7 +1077,7 @@ alpr.get('/vehicle/:plate/dossier', operational, async (c) => {
 // then routed through the same trust path as every other source (source_type='edge_lora').
 alpr.post('/edge', async (c) => {
   const secret = c.env.ALPR_EDGE_SECRET;
-  if (!secret) return c.json({ error: 'edge ingest not configured' }, 503);
+  if (!secret) return notConfigured(c, 'alpr_edge_secret_unset', { error: 'edge ingest not configured' });
   const ts = Number(c.req.header('X-Edge-Timestamp'));
   const sig = c.req.header('X-Edge-Signature') ?? '';
   const body = await c.req.text();
@@ -1088,7 +1128,7 @@ alpr.post('/edge', async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
       canonical, rec.state ?? null, screen.vehicleId,
       rec.location_text ?? null, num(rec.lat), num(rec.lng), note,
-      typeof rec.plate_confidence === 'number' ? rec.plate_confidence : null);
+      trust.trustScore);
     sightingId = Number(sres.meta.last_row_id);
   } catch (err: any) { console.error('[alpr] edge sighting failed:', err?.message); }
 
@@ -1103,6 +1143,23 @@ alpr.post('/edge', async (c) => {
       trust.consensusRatio, trust.trustScore, trust.basis, 'edge_lora', 0);
     photoRowId = r.meta.last_row_id as number;
   }
+  // Fan the edge read out to the analytics lakehouse (best-effort; no-op until
+  // the ANALYTICS pipeline is provisioned). Edge reads are unattended → userId null.
+  emitAnalytics(c, c.env.ANALYTICS, [alprReadEvent(
+    {
+      captureRowId: null, callId: null, incidentId: null,
+      lat: num(rec.lat), lng: num(rec.lng), locationText: rec.location_text ?? null,
+      userId: null, source: 'edge',
+    },
+    {
+      plate: rec.plate ?? null, canonical_plate: canonical, state: rec.state ?? null,
+      make: rec.make ?? null, model: rec.model ?? null, year: rec.year ?? null,
+      color: rec.color ?? null, vehicle_type: rec.type ?? null,
+      trust_score: trust.trustScore, vehicle_record_id: screen.vehicleId ?? null, hits,
+    },
+    new Date().toISOString(),
+  )]);
+
   return c.json({ success: true, canonical_plate: canonical, trust_score: trust.trustScore,
                   trust_basis: trust.basis, photo_row_id: photoRowId,
                   sighting_id: sightingId, hits,

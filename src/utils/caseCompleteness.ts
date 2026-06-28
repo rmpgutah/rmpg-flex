@@ -10,6 +10,7 @@ export interface CompletenessSignals {
   solvability_score?: number | null;
   persons?: number;
   evidence?: number;
+  attachments?: number;
   vehicles?: number;
   incidents?: number;
   calls?: number;
@@ -57,7 +58,8 @@ const INVESTIGATIVE = new Set([
 ]);
 
 const INVESTIGATIVE_EXTRA: ChecklistDef[] = [
-  { key: 'evidence', label: 'Evidence logged', required: true, test: (s) => has(s.evidence) },
+  // Evidence OR attached files (photos, reports, PDFs) satisfy the evidence check.
+  { key: 'evidence', label: 'Evidence logged', required: true, test: (s) => has(s.evidence) || has(s.attachments) },
   { key: 'suspect', label: 'Suspect identified', required: false, test: (s) => !!s.suspect_identified },
   { key: 'solvability', label: 'Solvability assessed', required: false, test: (s) => (s.solvability_score ?? 0) > 0 },
 ];

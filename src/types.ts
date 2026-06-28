@@ -2,6 +2,7 @@
 // time the import is elided, so containers/pdfToolsContainer.ts → types.ts
 // stays one-way at runtime.
 import type { PdfToolsContainer } from './containers/pdfToolsContainer';
+import type { AnalyticsPipeline } from './utils/analytics';
 
 export type Bindings = {
   DB: D1Database;
@@ -34,6 +35,10 @@ export type Bindings = {
   // pipeline (expand → search → extract → verify → synthesize) + scheduled
   // monitors. See src/durable-objects/DeepResearchDO.ts.
   DEEP_RESEARCH: DurableObjectNamespace;
+  // PersonIntelDO namespace — one instance per dossier (idFromName(`pi-${id}`));
+  // alarm-driven multi-phase intelligence pipeline. See
+  // src/durable-objects/PersonIntelDO.ts.
+  PERSON_INTEL_DO: DurableObjectNamespace;
   // VoiceHubDO namespace — one instance per radio channel / panic
   // incident; the single shared hub that relays + records live voice.
   // See src/durable-objects/VoiceHubDO.ts.
@@ -43,6 +48,11 @@ export type Bindings = {
   // officer-safety broadcasts (panic) + forced-ack. See
   // src/durable-objects/AlertHubDO.ts + src/utils/alertHub.ts.
   ALERT_HUB: DurableObjectNamespace;
+  // FlexCamRemuxDO namespace — one instance per footage_request_id
+  // (idFromName('rmx-' + id)) for lazy MP4 → fMP4 remux. Triggered
+  // by POST /api/flexcam/render/:id for format='mp4'. Free-plan
+  // compatible (new_sqlite_classes; see wrangler.toml).
+  FLEXCAM_REMUX: DurableObjectNamespace;
   // PDF Tools sidecar — Cloudflare Container holding qpdf + pdftotext
   // + ocrmypdf. Worker proxies to it via getContainer(env.PDF_TOOLS,
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows
@@ -57,43 +67,12 @@ export type Bindings = {
   // adapter trained on training/data (see training/README.md). Unset → stock
   // 70B, so the fine-tune is a safe, reversible opt-in via wrangler var/secret.
   SERVE_INTAKE_LORA?: string;
-  // Roboflow API key for the "ALPR Vehicle Details Capture" serverless
-  // workflow (src/routes/alpr.ts → src/utils/roboflowAlpr.ts). Set via
-  // `wrangler secret put ROBOFLOW_API_KEY`; unset → /api/alpr returns 503.
-  // Never hard-coded; read only from c.env.
-  ROBOFLOW_API_KEY?: string;
-  // Optional override of the Roboflow serverless base origin
-  // (default https://serverless.roboflow.com). For self-hosted inference.
-  ROBOFLOW_API_URL?: string;
-  // Optional override of the lean plate-only fast-scan workflow slug
-  // (default 'rmpg-flex-plate-fast'). See src/utils/roboflowPlateFast.ts.
-  ROBOFLOW_FAST_WORKFLOW_ID?: string;
-  // Firecrawl API key — powers the iCrimeWatch SOR scrape (DataDome bypass via
-  // stealth proxy) AND /api/deep-research (Worker-safe v1 REST search+scrape,
-  // src/utils/firecrawl.ts). Set via `wrangler secret put FIRECRAWL_API_KEY`
-  // (local dev: .dev.vars); unset → those routes return 503. Read only from c.env.
-  FIRECRAWL_API_KEY?: string;
-  // Optional override of the Firecrawl base origin (default https://api.firecrawl.dev).
-  FIRECRAWL_API_URL?: string;
-  // AES-GCM-256 key (base64, 32 bytes) encrypting the ClearPath client_secret at
-  // rest in system_config. Set via `wrangler secret put CPG_ENC_KEY`; unset →
-  // ClearPath credential save/use returns a clear 503. See src/utils/cpgCrypto.ts.
-  CPG_ENC_KEY?: string;
-  // ClearPath connection: a long-lived refresh token (from a logged-in session)
-  // exchanged server-side for short access tokens. Optional ops override of the
-  // admin-tab values; when set, takes precedence over system_config. Set via
-  // `wrangler secret put CPG_REFRESH_TOKEN` (+ optional CPG_USER_ID).
-  // See src/utils/clearpathGps.ts (getApiConfig).
-  CPG_REFRESH_TOKEN?: string;
-  CPG_USER_ID?: string;
-  // HMAC-SHA256 shared secret for edge device (Jetson vision-LoRA) ingest.
-  // Set via `wrangler secret put ALPR_EDGE_SECRET`; unset → /api/alpr/edge returns 503.
-  ALPR_EDGE_SECRET?: string;
 };
 
 export type Variables = {
   user: { id: number; username: string; role: string; full_name: string };
   userId: number;
+  traceId?: string;
 };
 
 export type Env = { Bindings: Bindings; Variables: Variables };

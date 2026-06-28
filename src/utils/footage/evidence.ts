@@ -26,10 +26,21 @@ export interface CourtManifest {
   gaps: number[];
   case_refs: Array<{ entity_type: string; entity_id: number }>;
   custody: Array<{ action: string; actor_name: string | null; reason: string | null; created_at: string }>;
+  // Additive enrichment: present only when the lazy MP4 remux has produced a
+  // single-file artifact. Older callers that ignore these stay correct.
+  merged_sha256?: string | null;
+  merged_url?: string;
 }
 
 interface BuildArgs {
-  request: { id: number; evidence_number: string | null; classification: string; preserved_reason: string | null; from_ts: number; to_ts: number };
+  request: {
+    id: number; evidence_number: string | null; classification: string;
+    preserved_reason: string | null; from_ts: number; to_ts: number;
+    // Optional merged-remux state (added in Task 17); absent on legacy callers.
+    merged_status?: string | null;
+    merged_r2_key?: string | null;
+    merged_sha256?: string | null;
+  };
   chunks: Array<{ seq: number; from_ts: number; to_ts: number; bytes: number; sha256: string | null; status: string }>;
   links: Array<{ entity_type: string; entity_id: number }>;
   custody: Array<{ action: string; actor_name: string | null; reason: string | null; created_at: string }>;
@@ -38,7 +49,7 @@ interface BuildArgs {
 /** Build the canonical court manifest (stable field order → deterministic hash). */
 export function buildCourtManifest(a: BuildArgs): CourtManifest {
   const sorted = [...a.chunks].sort((x, y) => x.seq - y.seq);
-  return {
+  const manifest: CourtManifest = {
     evidence_number: a.request.evidence_number,
     request_id: a.request.id,
     classification: a.request.classification,
@@ -49,6 +60,14 @@ export function buildCourtManifest(a: BuildArgs): CourtManifest {
     case_refs: a.links.map((l) => ({ entity_type: l.entity_type, entity_id: l.entity_id })),
     custody: a.custody.map((e) => ({ action: e.action, actor_name: e.actor_name, reason: e.reason, created_at: e.created_at })),
   };
+  // Additive enrichment: when the lazy MP4→fMP4 remux has produced a
+  // single-file artifact, attach its hash + retrieval URL to the manifest.
+  // Skipped when not ready — manifests stay backward-compatible.
+  if (a.request.merged_status === 'ready' && a.request.merged_r2_key) {
+    manifest.merged_sha256 = a.request.merged_sha256 ?? null;
+    manifest.merged_url = `/api/flexcam/footage/${a.request.id}/continuous`;
+  }
+  return manifest;
 }
 
 /** SHA-256 hex of the canonical manifest JSON (lowercase, 64 chars). */

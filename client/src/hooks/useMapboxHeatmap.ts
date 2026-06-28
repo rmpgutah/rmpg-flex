@@ -6,6 +6,7 @@ import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { isValidLngLat } from '../utils/mapMarkers';
 
 interface HeatmapPoint {
   latitude: number;
@@ -79,6 +80,12 @@ export function useMapboxHeatmap(map: mapboxgl.Map | null) {
 
   useEffect(() => {
     return () => {
+      // Reset the layer-tracking flag whether or not we still have a map ref:
+      // a WebGL context-loss rebuild swaps in a new map, which fires THIS
+      // cleanup against the OLD one. Without the reset, the next fetchHeatmap
+      // sees layerRef.current === true, skips ensureLayer, and the new map
+      // renders the GeoJSON source but never the heatmap layer over it.
+      layerRef.current = false;
       if (!map) return;
       try {
         safeRemoveLayer(map, HEATMAP_LAYER_ID);
@@ -130,17 +137,22 @@ export function useMapboxHeatmap(map: mapboxgl.Map | null) {
       setTotal(totalPts);
 
       whenStyleReady(map, () => {
-        const features: GeoJSON.Feature[] = pts.map((p) => ({
-          type: 'Feature',
-          properties: {
-            count: p.count,
-            weight: Math.log(1 + p.count) * (mode === 'risk' && p.risk_weight ? ((p.risk_weight || 0) / Math.max(1, p.count)) * p.count : p.count),
-            incident_types: p.incident_types,
-            p1_count: p.p1_count || 0,
-            weapons_count: p.weapons_count || 0,
-          },
-          geometry: { type: 'Point', coordinates: [p.longitude, p.latitude] },
-        }));
+        // Reject (0,0) / NaN / out-of-globe before they reach Mapbox — the
+        // backend filter has the same guard but a future cache or a stale
+        // proxy shouldn't be able to leak ghost points onto the heatmap.
+        const features: GeoJSON.Feature[] = pts
+          .filter((p) => isValidLngLat(p.longitude, p.latitude))
+          .map((p) => ({
+            type: 'Feature',
+            properties: {
+              count: p.count,
+              weight: Math.log(1 + p.count) * (mode === 'risk' && p.risk_weight ? ((p.risk_weight || 0) / Math.max(1, p.count)) * p.count : p.count),
+              incident_types: p.incident_types,
+              p1_count: p.p1_count || 0,
+              weapons_count: p.weapons_count || 0,
+            },
+            geometry: { type: 'Point', coordinates: [p.longitude, p.latitude] },
+          }));
 
         const src = getSourceSafe<mapboxgl.GeoJSONSource>(map, SOURCE_ID);
         if (src) {

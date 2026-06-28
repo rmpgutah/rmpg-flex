@@ -19,10 +19,25 @@ struct FieldOpsView: View {
     @State private var showEndSheet = false
     @State private var gpsPushedAt: Date?
     @State private var lastAlertedCallId: Int?
+    @State private var showPreTrip = false
+
+    private var assignedVehicle: [String: Any]? { duty["vehicle"] as? [String: Any] }
+    private var assignedVehicleId: Int? { assignedVehicle?["id"] as? Int }
+    private var assignedVehicleLabel: String {
+        guard let v = assignedVehicle else { return "Assigned vehicle" }
+        let num = v["vehicle_number"] as? String ?? "#\(v["id"] as? Int ?? 0)"
+        let mk = [v["make"] as? String, v["model"] as? String].compactMap { $0 }.joined(separator: " ")
+        return mk.isEmpty ? num : "\(num) — \(mk)"
+    }
+    private var currentEntryId: Int? { (duty["time_entry"] as? [String: Any])?["id"] as? Int }
 
     private var onShift: Bool { duty["on_shift"] as? Bool ?? false }
     private var unit: [String: Any]? { duty["unit"] as? [String: Any] }
     private var unitStatus: String { unit?["status"] as? String ?? "—" }
+
+    private var spokenAlertsEnabled: Bool {
+        UserDefaults.standard.object(forKey: "spokenAlertsEnabled") as? Bool ?? true
+    }
 
     private let statuses: [(String, String)] = [
         ("available", "10-8 AVAILABLE"), ("enroute", "EN ROUTE"),
@@ -33,9 +48,8 @@ struct FieldOpsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 10) {
-                    HStack(spacing: 6) { OfflineStatusPill(); Spacer(); MDTStatusPill() }
+                    HStack(spacing: 6) { OfflineStatusPill(); GPSStatusPill(); Spacer(); MDTStatusPill() }
                     dutyCard
-                    if onShift { statusCard }
                     NavigationLink {
                         CallsQueueView()
                     } label: {
@@ -91,7 +105,6 @@ struct FieldOpsView: View {
                         .themeCard()
                     }
                     if let myCall { callCard(myCall) }
-                    panicButton
                     Button { Task { await sendLocationToMDT() } } label: {
                         Label("SEND LOCATION TO MDT", systemImage: "car.fill")
                             .font(.system(size: 11, weight: .semibold)).frame(maxWidth: .infinity)
@@ -105,6 +118,14 @@ struct FieldOpsView: View {
                 .padding(12)
             }
             .background(Theme.base)
+            .safeAreaInset(edge: .bottom) {
+                ResponderActionBar(
+                    currentStatus: unitStatus,
+                    statuses: statuses,
+                    showStatus: onShift,
+                    onSelectStatus: { value in Task { await setStatus(value) } },
+                    onPanic: { confirmPanic = true })
+            }
             .navigationTitle("FIELD OPS")
             .navigationBarTitleDisplayMode(.inline)
             .task {
@@ -130,6 +151,14 @@ struct FieldOpsView: View {
                     Task { await refresh() }
                 }
                 .presentationBackground(Theme.base)
+            }
+            .sheet(isPresented: $showPreTrip) {
+                if let vid = assignedVehicleId {
+                    PreTripInspectionSheet(vehicleId: vid, vehicleLabel: assignedVehicleLabel) { msg in
+                        status = msg
+                    }
+                    .presentationBackground(Theme.base)
+                }
             }
             .alert("SEND PANIC ALARM?", isPresented: $confirmPanic) {
                 Button("SEND PANIC", role: .destructive) { Task { await panic() } }
@@ -165,24 +194,6 @@ struct FieldOpsView: View {
         }
         .padding(10).background(Theme.raised.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-    }
-
-    private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("UNIT STATUS: \(unitStatus.uppercased())")
-                .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.neutral)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                ForEach(statuses, id: \.0) { value, label in
-                    Button(label) { Task { await setStatus(value) } }
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(unitStatus == value ? Theme.gold : Theme.raised)
-                        .foregroundStyle(unitStatus == value ? .black : .white)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        .disabled(busyAction)
-                }
-            }
-        }
     }
 
     // Hazard flags carried on the call row (SQLite booleans = 1). Surfaced as
@@ -280,16 +291,6 @@ struct FieldOpsView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
     }
 
-    private var panicButton: some View {
-        Button { confirmPanic = true } label: {
-            Text("⚠ PANIC")
-                .font(.system(size: 16, weight: .heavy))
-                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(Theme.red).foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-        }
-    }
-
     // ── Networking ──────────────────────────────────────────
 
     private func client() async -> RMPGAPIClient? {
@@ -341,9 +342,15 @@ struct FieldOpsView: View {
                 if callId != lastAlertedCallId, let call = myCall {
                     let p1 = ((call["priority"] as? String)?.contains("1") ?? false)
                         || ((call["priority"] as? Int) == 1)
-                    if p1 || !hazards(call).isEmpty {
+                    let hasHazards = !hazards(call).isEmpty
+                    if p1 || hasHazards {
                         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
                         Haptics.warning()
+                    }
+                    if spokenAlertsEnabled, onShift,
+                       SpokenAlert.shouldSpeak(callId: callId, isP1: p1,
+                                               hasHazards: hasHazards, lastSpokenId: lastAlertedCallId) {
+                        SpeechAnnouncer.shared.speak(SpokenAlert.phrase(for: call))
                     }
                     lastAlertedCallId = callId
                 }
@@ -352,6 +359,25 @@ struct FieldOpsView: View {
                 lastAlertedCallId = nil
             }
         }
+        await maybePromptPreTrip()
+    }
+
+    // Auto-present the pre-trip ONCE per shift: on duty, a vehicle assigned, and
+    // no pre-trip logged today for it. Remembered per time-entry in UserDefaults
+    // so the 15s poll doesn't re-prompt after the officer defers or completes it.
+    @MainActor
+    private func maybePromptPreTrip() async {
+        guard onShift, let vid = assignedVehicleId, let entryId = currentEntryId, !showPreTrip else { return }
+        let key = "preTripPrompted.\(entryId)"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        guard let c = await ShiftNet.client() else { return }
+        let rows = (try? await c.requestJSON("GET", "api/fleet/\(vid)/inspections") as? [[String: Any]]) ?? []
+        if PreTripStatus.hasPreTrip(in: rows, onDay: PreTripStatus.today()) {
+            UserDefaults.standard.set(true, forKey: key)   // already done today — don't nag
+            return
+        }
+        UserDefaults.standard.set(true, forKey: key)
+        showPreTrip = true
     }
 
     @MainActor

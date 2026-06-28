@@ -14,12 +14,12 @@ export default function AppearanceDialog({
 }) {
   const set = <K extends keyof EditorAppearance>(k: K, v: EditorAppearance[K]) => onChange({ ...value, [k]: v });
   const lbl = 'text-[10px] text-rmpg-400 uppercase tracking-wide mb-1 block';
-  const sel = 'w-full bg-[#141414] border border-[#222] text-rmpg-100 text-[12px] rounded-[2px] px-2 py-1.5 focus:outline-none focus:border-[#d4a017]/50';
+  const sel = 'w-full bg-surface-base border border-border-default text-rmpg-100 text-[12px] rounded-[2px] px-2 py-1.5 focus:outline-none focus:border-[#d4a017]/50';
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm bg-[#0a0a0a] border border-[#2e2e2e] rounded-[2px] shadow-2xl shadow-black/70" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-3 py-2 border-b border-[#1a1a1a]">
+      <div className="w-full max-w-sm bg-surface-sunken border border-rmpg-700 rounded-[2px] shadow-2xl shadow-black/70" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
           <span className="flex items-center gap-1.5 text-[12px] font-semibold text-rmpg-100 uppercase tracking-wide">
             <Sliders className="w-3.5 h-3.5 text-[#d4a017]" /> Editor Appearance
           </span>
@@ -66,7 +66,7 @@ export default function AppearanceDialog({
           </div>
         </div>
 
-        <div className="px-3 py-2 border-t border-[#1a1a1a] flex items-center justify-between">
+        <div className="px-3 py-2 border-t border-border-default flex items-center justify-between">
           <button type="button" onClick={() => onChange({ ...DEFAULT_APPEARANCE })}
             className="text-[10px] text-rmpg-400 hover:text-rmpg-100 flex items-center gap-1">
             <RotateCcw className="w-3 h-3" /> Reset to defaults

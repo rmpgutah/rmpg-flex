@@ -271,7 +271,7 @@ export default function FileAttachments({
 
   return (
     <div className="space-y-2">
-      <label className="text-[10px] text-rmpg-400 uppercase font-semibold flex items-center gap-1">
+      <label htmlFor="ff-fileattachments-0" className="text-[10px] text-rmpg-400 uppercase font-semibold flex items-center gap-1">
         <Paperclip className="w-3 h-3" />
         Attachments ({attachments.length})
       </label>
@@ -396,7 +396,7 @@ export default function FileAttachments({
                   </div>
                   {/* Overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
-                    <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ZoomIn className="w-5 h-5 text-rmpg-100 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity" />
                   </div>
                   {/* Image name */}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1">
@@ -406,7 +406,7 @@ export default function FileAttachments({
                   {!readOnly && (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: att.file_id, name: att.original_name }); }}
-                      className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-red-900/80 text-rmpg-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                      className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-red-900/80 text-rmpg-300 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                       title="Delete"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -437,7 +437,7 @@ export default function FileAttachments({
                         {' '}&middot; {formatDate(att.created_at)}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                       {att.mime_type === 'application/pdf' && (
                         <button type="button"
                           onClick={() => openPreview(att)}
@@ -508,7 +508,7 @@ export default function FileAttachments({
                 </a>
                 <button type="button"
                   onClick={() => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); setPdfBlobUrl(null); setPreviewAttachment(null); }}
-                  className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
+                  className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-200 hover:text-rmpg-100 transition-colors"
                   style={{ touchAction: 'manipulation' }}
                   aria-label="Close"
                 >
@@ -525,7 +525,7 @@ export default function FileAttachments({
                 />
               ) : (
                 <div className="w-[800px] h-[600px] bg-white flex items-center justify-center">
-                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  <Loader2 className="w-8 h-8 animate-spin text-rmpg-400" />
                 </div>
               )
             ) : (

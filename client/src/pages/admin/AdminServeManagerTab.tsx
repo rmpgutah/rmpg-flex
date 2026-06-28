@@ -256,6 +256,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       </div>
 
       {/* ═══ Section 1: API Key Management ═══ */}
+      <form onSubmit={(e) => e.preventDefault()} autoComplete="off">
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center gap-2 text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">
           <Key className="w-3.5 h-3.5" />
@@ -281,7 +282,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           <button type="button"
             onClick={handleSaveKey}
             disabled={savingKey || !apiKey.trim()}
-            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
           >
             {savingKey ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save
@@ -322,6 +323,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+      </form>
 
       {/* ═══ Section 2: Sync Controls ═══ */}
       {status?.configured && (
@@ -414,7 +416,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
               <button type="button"
                 onClick={handlePollerPollNow}
                 disabled={pollerPolling}
-                className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+                className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
               >
                 {pollerPolling ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3 h-3" />}
                 Poll Now
@@ -620,7 +622,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                       key={job.id}
                       onClick={() => handleViewJob(job.id)}
                       onContextMenu={(e) => openMenu(e, buildJobMenu(job))}
-                      className="border-b border-rmpg-800 hover:bg-[#181818]/60 cursor-pointer transition-all duration-100"
+                      className="border-b border-rmpg-800 hover:bg-surface-raised/60 cursor-pointer transition-all duration-100"
                     >
                       <td className="py-1 pr-2 font-mono text-brand-400">{job.sm_job_number}</td>
                       <td className="py-1 pr-2 text-rmpg-200 max-w-[120px] truncate">{job.recipient_name || '—'}</td>

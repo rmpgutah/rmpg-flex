@@ -23,6 +23,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { recordAudit } from '../utils/auditLog';
 
 const fieldPhotos = new Hono<Env>();
 
@@ -158,10 +159,7 @@ fieldPhotos.delete('/:id', async (c) => {
   if (!row) return c.json({ error: 'Not found' }, 404);
   await c.env.UPLOADS.delete(row.r2_key);
   await execute(db, 'DELETE FROM field_photos WHERE id = ?', id);
-  await execute(db,
-    `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-     VALUES (?, 'FIELD_PHOTO_DELETE', 'field_photo', ?, ?, datetime('now'))`,
-    user.id, id, `Deleted field photo ${row.r2_key} (officer ${row.officer_id})`);
+  await recordAudit(c, { action: 'FIELD_PHOTO_DELETE', entityType: 'field_photo', entityId: id, details: `Deleted field photo ${row.r2_key} (officer ${row.officer_id})`, actorId: user.id });
   return c.json({ success: true });
 });
 

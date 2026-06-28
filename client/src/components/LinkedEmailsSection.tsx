@@ -105,7 +105,7 @@ export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail,
               <Mail className="w-3.5 h-3.5 text-brand-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-white font-medium truncate flex-1">
+                  <span className="text-xs text-rmpg-100 font-medium min-w-0 truncate flex-1">
                     {l.subject || '(no subject)'}
                   </span>
                   {l.source === 'autolinker' && (
@@ -114,13 +114,13 @@ export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail,
                     </span>
                   )}
                   {l.link_type && l.source !== 'autolinker' && (
-                    <span className="text-[8px] uppercase font-bold px-1 py-0.5 bg-[#141414] text-rmpg-300 border border-rmpg-700 rounded-sm">
+                    <span className="text-[8px] uppercase font-bold px-1 py-0.5 bg-surface-base text-rmpg-300 border border-rmpg-700 rounded-sm">
                       {l.link_type}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-rmpg-400 mt-0.5">
-                  <span className="truncate flex-1">
+                  <span className="min-w-0 truncate flex-1">
                     {l.from_name || l.from_address || 'Unknown sender'}
                     {l.from_name && l.from_address && (
                       <span className="text-rmpg-600"> &lt;{l.from_address}&gt;</span>

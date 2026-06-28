@@ -336,7 +336,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
                 {/* Row 2 — Secondary context */}
                 <div className="flex items-center h-5 divide-x divide-[#2b2b2b] border-t border-[#2b2b2b]/50">
                   {/* Vehicle */}
-                  <div className="flex-1 px-2 font-mono text-[9px] text-white/40 tracking-wider truncate">
+                  <div className="min-w-0 flex-1 px-2 font-mono text-[9px] text-white/40 tracking-wider truncate">
                     VEH #{video.vehicle_number || '--'} {vehDesc}
                   </div>
                   {/* Altitude */}
@@ -344,7 +344,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
                     ALT: {liveTelemetry?.altitude != null ? formatAlt(liveTelemetry.altitude) : '--'}
                   </div>
                   {/* Address */}
-                  <div className="flex-1 px-2 font-mono text-[9px] text-white/40 truncate">
+                  <div className="min-w-0 flex-1 px-2 font-mono text-[9px] text-white/40 truncate">
                     {displayAddress ? displayAddress.toUpperCase() : '--'}
                   </div>
                   {/* GPS status LED */}

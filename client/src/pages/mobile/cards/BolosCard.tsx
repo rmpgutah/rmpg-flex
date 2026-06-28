@@ -152,16 +152,16 @@ export default function BolosCard() {
 
   if (loading) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
-        <div className="h-[180px] animate-pulse bg-[#1a1a1a] border border-[#222]" />
+        <div className="h-[180px] animate-pulse bg-surface-raised border border-border-default" />
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="bg-[#141414] border border-[#222] p-3">
+      <section className="bg-surface-base border border-border-default p-3">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
         <div className="flex items-center justify-between gap-2">
           <span className="text-amber-400 text-xs">{error}</span>
@@ -178,11 +178,11 @@ export default function BolosCard() {
   }
 
   return (
-    <section className="bg-[#141414] border border-[#222] p-3">
+    <section className="bg-surface-base border border-border-default p-3">
       <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
 
       {feed.length === 0 ? (
-        <p className="text-gray-500 text-xs italic">No active BOLOs or alerts.</p>
+        <p className="text-rmpg-500 text-xs italic">No active BOLOs or alerts.</p>
       ) : (
         <ul className="space-y-1">
           {feed.map((item) => {
@@ -208,13 +208,13 @@ export default function BolosCard() {
                   >
                     <span className="flex items-center gap-2">
                       <span className="bg-red-900/40 text-red-300 text-[9px] font-bold tracking-widest px-1.5 py-0.5">BOLO</span>
-                      <span className="text-white text-xs truncate">{title}</span>
+                      <span className="text-rmpg-100 text-xs truncate">{title}</span>
                     </span>
                     {subtitle ? (
-                      <span className="text-gray-500 text-[11px] truncate">{subtitle}</span>
+                      <span className="text-rmpg-500 text-[11px] truncate">{subtitle}</span>
                     ) : null}
                     {isExpanded && fullText ? (
-                      <span className="mt-1 text-gray-300 text-[11px] whitespace-pre-wrap">{fullText}</span>
+                      <span className="mt-1 text-rmpg-300 text-[11px] whitespace-pre-wrap">{fullText}</span>
                     ) : null}
                   </button>
                 </li>
@@ -235,13 +235,13 @@ export default function BolosCard() {
                 >
                   <span className="flex items-center gap-2">
                     <span className="bg-amber-900/40 text-amber-300 text-[9px] font-bold tracking-widest px-1.5 py-0.5">ALERT</span>
-                    <span className="text-white text-xs truncate">{title}</span>
+                    <span className="text-rmpg-100 text-xs truncate">{title}</span>
                   </span>
                   {subtitle ? (
-                    <span className="text-gray-500 text-[11px] truncate">{subtitle}</span>
+                    <span className="text-rmpg-500 text-[11px] truncate">{subtitle}</span>
                   ) : null}
                   {isExpanded && fullText ? (
-                    <span className="mt-1 text-gray-300 text-[11px] whitespace-pre-wrap">{fullText}</span>
+                    <span className="mt-1 text-rmpg-300 text-[11px] whitespace-pre-wrap">{fullText}</span>
                   ) : null}
                 </button>
               </li>

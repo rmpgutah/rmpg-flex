@@ -202,7 +202,7 @@ export function insertBandedTable(editor: Editor, rows = 4, cols = 3): void {
   const headerCells = Array.from({ length: cols }, (_, i) =>
     `<th style="background:#d4a017;color:#000;padding:6px;border:1px solid #222;">Col ${i + 1}</th>`).join('');
   const bodyRows = Array.from({ length: rows }, (_, r) => {
-    const bg = r % 2 ? '#0a0a0a' : '#141414';
+    const bg = r % 2 ? '#0a0a0a' : 'var(--surface-base)';
     const cells = Array.from({ length: cols }, () =>
       `<td style="background:${bg};padding:6px;border:1px solid #222;">&nbsp;</td>`).join('');
     return `<tr>${cells}</tr>`;

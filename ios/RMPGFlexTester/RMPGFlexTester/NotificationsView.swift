@@ -18,7 +18,7 @@ struct NotificationsView: View {
                 if loading {
                     ProgressView().tint(Theme.gold).padding(.top, 30)
                 } else if items.isEmpty {
-                    Text("No notifications.").font(.system(size: 12)).foregroundStyle(Theme.neutral).padding(.top, 24)
+                    EmptyState(icon: "bell.slash", title: "No notifications")
                 } else {
                     ForEach(items.indices, id: \.self) { i in row(items[i]) }
                 }
@@ -65,8 +65,8 @@ struct NotificationsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Text(title)
-                            .font(.system(size: 13, weight: read ? .regular : .semibold))
-                            .foregroundStyle(read ? Color(hex: 0xbbbbbb) : .white)
+                            .font(Theme.Typography.headline).fontWeight(read ? .regular : .semibold)
+                            .foregroundStyle(read ? Theme.textSecondary : .white)
                         Spacer()
                         if !priority.isEmpty && priority != "normal" && priority != "low" {
                             Text(priority.uppercased())

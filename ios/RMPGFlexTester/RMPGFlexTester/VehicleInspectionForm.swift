@@ -18,7 +18,7 @@ struct VehicleInspectionForm: View {
                 Text(oos ? "OUT OF SERVICE — critical defect"
                      : defectCount > 0 ? "\(defectCount) defect\(defectCount > 1 ? "s" : "") noted"
                      : "All items pass")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(Theme.Typography.caption).fontWeight(.semibold)
                 Spacer()
             }
         }
@@ -38,7 +38,7 @@ private struct InspectionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
-                Text(line.label).font(.system(size: 13)).foregroundStyle(.white)
+                Text(line.label).font(Theme.Typography.body).foregroundStyle(.white)
                 if line.critical {
                     Image(systemName: "exclamationmark.shield.fill").font(.system(size: 10)).foregroundStyle(Theme.orange)
                 }

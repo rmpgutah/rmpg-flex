@@ -79,15 +79,15 @@ enum CategoryStyle {
     static func color(_ category: String) -> Color {
         switch category {
         case "FAVORITES": return Theme.gold
-        case "RECENTLY USED": return Color(hex: 0x6a8caf)
-        case "SELF-INITIATED": return Color(hex: 0x4a9c6a)
-        case "LOOKUPS": return Color(hex: 0x6a8caf)
+        case "RECENTLY USED": return Theme.blue
+        case "SELF-INITIATED": return Theme.green
+        case "LOOKUPS": return Theme.blue
         case "UNIT STATUS": return Theme.gold
-        case "CLEAR CALL": return Color(hex: 0x9c6a4a)
-        case "TIMERS & UTILITIES": return Color(hex: 0x8a6aaf)
-        case "FIELD CALC": return Color(hex: 0x4a9c9c)
+        case "CLEAR CALL": return Theme.orange
+        case "TIMERS & UTILITIES": return Color(hex: 0xa855f7)
+        case "FIELD CALC": return Color(hex: 0x2dd4bf)
         case "MEDICAL & RESCUE": return Theme.red
-        case "LEGAL REFERENCE": return Color(hex: 0xaf8a4a)
+        case "LEGAL REFERENCE": return Theme.gold
         case "CODES & REFERENCE": return Theme.neutral
         default: return Theme.neutral
         }

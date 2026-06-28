@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { runIcrimewatchScan } from '../utils/sorSources/icrimewatch';
+import { notConfigured } from '../utils/notConfigured';
 
 const sorSources = new Hono<Env>();
 const SCAN_ROLES = ['admin', 'manager', 'supervisor'] as const;
@@ -11,7 +12,7 @@ const READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] a
 // POST /api/sor-sources/icrimewatch/scan?mode=incremental|full  (fire-and-forget)
 sorSources.post('/icrimewatch/scan', requireRole(...SCAN_ROLES), async (c) => {
   if (!c.env.FIRECRAWL_API_KEY) {
-    return c.json({ success: false, error: 'FIRECRAWL_API_KEY not configured', code: 'NO_KEY' }, 503);
+    return notConfigured(c, 'firecrawl_api_key_unset', { success: false, error: 'FIRECRAWL_API_KEY not configured', code: 'NO_KEY' });
   }
   const mode = (c.req.query('mode') === 'full' ? 'full' : 'incremental') as 'full' | 'incremental';
   c.executionCtx.waitUntil(

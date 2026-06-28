@@ -1,8 +1,10 @@
 # RMPG Flex — Claude Code Project Memory
 
 > **This file describes the Cloudflare Workers stack only** (live as of 2026-05-24).
-> The retired Hostinger VPS architecture (`/opt/rmpg-flex`, rsync deploys, systemd,
-> Express, better-sqlite3) is dead. Its source has been moved to
+> The Hostinger VPS architecture (`/opt/rmpg-flex`, rsync deploys, systemd,
+> Express, better-sqlite3) is **dead and the host is decommissioned** (shut down
+> 2026-06-15 — there is no longer a server at `194.113.64.90` to ssh/rsync/systemctl
+> against). Its source has been moved to
 > [`legacy/server-vps/`](legacy/README.md) and is not built, tested, or deployed.
 > See [`LEGACY.md`](LEGACY.md) for a quick live-vs-dead map of every top-level
 > directory before assuming anything about the codebase.
@@ -58,8 +60,10 @@ scripts/            Codegen + one-off ops scripts (D1 schema sync, geography see
 edge/               Python edge runner for Flex Dashcam AI (independent of Worker)
 
 legacy/             ⚠️  RETIRED VPS-era code (read-only, do not import) — see LEGACY.md
-desktop/            Electron wrapper — undecided whether to keep in CF era
-deploy/             VPS deploy scripts — likely dead, retained until confirmed
+desktop/            Electron wrapper — kept (in active use)
+                    NOTE: deploy/ (VPS-era deploy scripts) was DELETED in cleanup PR 2.
+                    If a comment or doc still references bash deploy/deploy.sh —
+                    that's the canonical "do not use" recipe; it never lived in CF era.
 ```
 
 ## Deploy
@@ -95,7 +99,7 @@ curl -sf https://api.rmpgutah.us/api/health   # expect {"status":"ok",...}
 #    e.g. `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` (expect ~180).
 ```
 
-**Service worker cache**: bump `CACHE_NAME` in `client/public/sw.js` on every client change so users don't get stale chunks. Incident 2026-05-24: SW v321 lived in prod for weeks while source moved to v563 because the old `deploy.yml` only ran the Worker step. The new pipeline deploys both — but the SW bump is still required for cache invalidation.
+**Service worker cache**: `CACHE_NAME` in `client/public/sw.js` is the literal placeholder `'rmpg-flex-BUILD'`. The `stamp-sw-version` Vite plugin in [`client/vite.config.ts`](client/vite.config.ts) replaces it with `'rmpg-flex-<git-short-sha>'` in `dist/sw.js` during `closeBundle()` on every production build, so every commit gets a unique cache name automatically. **Do not edit `CACHE_NAME` by hand** — manual bumps are no-ops and were a chronic merge-conflict source (the whole reason this auto-stamp exists). If you want to document what shipped, add a one-line `// vNNN:` changelog comment under the most recent one in `sw.js`; those are pure documentation and don't influence cache invalidation. Historical: incident 2026-05-24 (SW v321 lived in prod for weeks while source moved to v563) was the original reason for manual bumps before the auto-stamp refactor.
 
 **Manual / local invocations**:
 ```bash
@@ -112,7 +116,13 @@ npm run migrate:prod      # apply migrations to remote D1
 2. Write idempotent DDL — `CREATE TABLE IF NOT EXISTS`. D1 does **not** support `IF NOT EXISTS` on `ADD COLUMN`, so either accept the failure on re-apply or wrap the `ALTER` in a check via the Worker boot reconciler.
 3. Test locally: `npm run migrate:local`.
 4. Merge to main — `deploy.yml` applies it to remote D1 (and continues on error, as documented above).
-5. **⚠️ Migrations routinely fail to reach live D1 silently** (deploy step is `continue-on-error`; migration tracking historically targeted the abandoned DB). After merging, ALSO apply the DDL directly to live `rmpg-flex` (`785de7ae-…`) via the Cloudflare D1 API and verify with `pragma_table_info('<table>')`. A runtime "no such column/table" error is almost always a migration that never landed — check `pragma_table_info` before debugging route code. (Full drift sweep 2026-06-10: `0093_schema_drift_sweep.sql` reconciled all drift to date.)
+5. **⚠️ Migrations routinely fail to reach live D1 silently** (deploy step is `continue-on-error`; migration tracking historically targeted the abandoned DB). After merging, apply the DDL **AND** mark it tracked in one shot via [`scripts/apply-migration.sh`](scripts/apply-migration.sh):
+
+   ```bash
+   scripts/apply-migration.sh 0147_my_new_migration.sql
+   ```
+
+   The helper runs `wrangler d1 execute --remote --file` then `INSERT OR IGNORE INTO d1_migrations`. Skipping the tracker insert is what caused the 19-row drift sweep on 2026-06-22 — wrangler then retries those files forever, hiding any real failure under swallowed "duplicate column name" noise. Verify the change landed with `pragma_table_info('<table>')`. A runtime "no such column/table" error is almost always a migration that never landed.
 6. **All `db.prepare(...).first() / .all() / .run()` are async** on D1 — always `await`.
 
 ## Security
@@ -172,7 +182,70 @@ and wires the result into the intel plate log.
   `output_structure` is the authoritative shape; run it via the serverless REST endpoint with a key if a
   literal sample is needed.)
 
+### Fleet.io (commercial fleet management SaaS)
+
+Bidirectional sync between RMPG's in-house fleet system and Fleet.io. RMPG remains
+the operational entry surface (dispatch/MDT/patrol); Fleet.io is the downstream
+discipline layer for PM reminders, parts, vendor invoicing, and reports. Outbound
+goes live in PR 1 (this PR — seed only); bidirectional real-time + webhooks land in
+PR 4. Full spec: [`docs/superpowers/specs/2026-06-21-fleetio-integration-design.md`](docs/superpowers/specs/2026-06-21-fleetio-integration-design.md).
+
+- **Adapter**: [`src/utils/fleetio/client.ts`](src/utils/fleetio/client.ts) — Worker-safe REST client
+  for Fleet.io API v1 (`https://secure.fleetio.com/api/v1`). Dual-header auth
+  (`Authorization: Token <key>` + `Account-Token: <token>`). Typed errors
+  (`FleetioConfigError | FleetioTimeoutError | FleetioHttpError | FleetioRateLimitError`).
+  Retry/backoff/timeout. Unit-tested in [`tests/fleetioClient.test.ts`](tests/fleetioClient.test.ts).
+- **Route**: [`src/routes/fleetio.ts`](src/routes/fleetio.ts) at `/api/fleetio` (auth: required).
+  `GET /test-connection` (any user), `GET /sync-status` (admin), `POST /seed` (admin —
+  pushes every `fleet_vehicles` row that lacks a `fleetio_links` entry).
+- **Bookkeeping schema**: migration `0133_fleetio_sync_tables.sql` — `fleetio_links`
+  (RMPG↔Fleet.io id mapping), `fleetio_events` (in/outbound event queue with
+  idempotency key), `fleetio_conflicts` (field-level disagreements; PR 4),
+  `fleetio_sync_state` (cursor positions per resource).
+- **Config**: secrets `FLEETIO_API_KEY` + `FLEETIO_ACCOUNT_TOKEN` (+ `FLEETIO_WEBHOOK_SECRET`
+  in PR 4) via `npx wrangler secret put`. Var `FLEETIO_API_BASE` in `wrangler.toml`
+  `[vars]`. Unset → `/api/fleetio/*` returns 503 `{ code: 'not_configured' }`.
+- **Cron**: `*/30 * * * *` reconciliation (stub in PR 1; real handler in PR 4).
+- **🔴 After merge**: apply `0133_fleetio_sync_tables.sql` DIRECTLY to live D1
+  `785de7ae` and verify via `pragma_table_info` (deploy is `continue-on-error`).
+  Set the two secrets, then hit `POST /api/fleetio/seed` once.
+
 ## Code Patterns
+
+### Logging & observability (2026-06-24: structured JSON logger)
+
+**Use `src/utils/logger.ts` instead of raw `console.log/error`** for all new code. The structured logger (`log.info / log.warn / log.error`) writes JSON lines with service name, log level, trace ID, and machine-parseable context. Each line is a single `JSON.stringify` call — compatible with Workers Logs, `wrangler tail --format json`, and external log sinks.
+
+```ts
+import { log } from '../utils/logger';
+log.info('User logged in', { userId: 123 });
+log.error('DB query failed', { sql }, err);  // err is formatted as {name, message, stack}
+```
+
+**Trace IDs** are auto-generated per-request via `traceMiddleware()` (replaces `logger()` from `hono/logger`). Every response gets `X-Trace-Id` header. Access from any middleware/handler via `c.get('traceId')`.
+
+```ts
+app.use('*', traceMiddleware());      // sets traceId on c.var + X-Trace-Id header
+app.use('*', requestLogMiddleware()); // logs every request as JSON
+```
+
+**Error persistence** (`error_log` table, migration 0156): unhandled route errors are automatically persisted via `logErrorToDb()` in the global `onError` handler. The table stores severity, category, message, JSON details, trace ID, user ID, source route, and status code. Fire-and-forget via `waitUntil` — never blocks the response.
+
+```ts
+logErrorToDb(c.env.DB, {
+  severity: 'error',
+  category: 'route',
+  message: err.message,
+  details: { route, userId },
+  traceId,
+  source: route,
+  statusCode: 500,
+}, c.executionCtx);
+```
+
+**Health check** (`GET /api/health`) probes D1, KV, R2 (`MAP_DATA`, `UPLOADS`, `DOWNLOADS`), and all 6 Durable Object namespaces. Returns latency per service. Status is `'ok'` when all connected; `'degraded'` when any service is unreachable (still HTTP 200 — health probes don't fail the site).
+
+**Log migration plan**: Convert existing `console.log/error` calls incrementally. High-priority targets: route handlers, cron sweepers, and integration clients (Fleet.io, Roboflow, ClearPath). Legacy `console.*` calls co-exist — the structured logger is additive, not a removal gate.
 
 ### Worker route (Hono)
 ```ts
@@ -260,7 +333,7 @@ There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/
 3. **D1 queries are async** — `await db.prepare(...).first()`. Forgetting `await` returns a Promise that JSON-serialises to `{}`, which the client then logs as "empty response."
 4. **`deploy.yml` step `Apply D1 migrations` has `continue-on-error: true`** — the Worker reconciles missing columns at boot, but you cannot rely on the deploy log alone to tell you a migration succeeded. After deploying, query the table directly via `wrangler d1 execute rmpg-flex --remote --command 'SELECT name FROM sqlite_master ...'` to confirm.
 5. **D1 has dirty schema in prod** — earlier migrations partially applied during the rehoming. New migrations must be idempotent. See [`migrations/README.md`](migrations/README.md).
-6. **Service worker cache** — bump `CACHE_NAME` in `client/public/sw.js` on every client change. Without a bump, users keep serving the old hash-named bundles from cache for up to 24 h.
+6. **Service worker cache** — `CACHE_NAME` in `client/public/sw.js` auto-stamps from the git short SHA via the `stamp-sw-version` plugin in [`client/vite.config.ts`](client/vite.config.ts) on every production build. Do NOT edit `CACHE_NAME` manually — it's a literal placeholder `'rmpg-flex-BUILD'` in source and a hand bump is a merge-conflict magnet (this auto-stamp refactor exists for that reason). Add a one-line changelog comment under the most recent `// vNNN:` entry if you want to document what shipped, but the cache name itself is handled for you.
 7. **Mapbox token** — `client/src/utils/mapboxApiKey.ts` reads `VITE_MAPBOX_ACCESS_TOKEN` at build time. The error string in that file still says "Add MAPBOX_ACCESS_TOKEN to server/.env" — that's stale (no `.env` on Workers); the token must be embedded into the Vite build via `client/.env` or Cloudflare Pages env vars.
 8. **Cloudflare Pages != Worker** — the React app on Pages (`rmpgutah.us`) is a separate deployment from the Worker on `api.rmpgutah.us`. Both deploy together via `deploy.yml`, but each can fail independently. Check Pages logs in the Cloudflare dashboard if the SPA shell breaks while the API is healthy (or vice versa).
 9. **WebSocket route** (`src/routes/ws.ts`) uses Workers' `webSocketPair()` — the auth/upgrade dance differs subtly from Node `ws`. JWT is verified once at upgrade time; subsequent messages on that socket are trusted.
@@ -279,8 +352,45 @@ If you encounter any of these in code comments, docs, or older messages, **do no
 - `better-sqlite3`, `initDatabase()` from `server/src/models/database.ts`
 - `addCol(...)` migrations in `database.ts` — D1 uses files in `migrations/` instead
 - nginx config tweaks (`/etc/nginx/sites-enabled/rmpgutah.us`, `mime.types`, `brotli.conf`) — Cloudflare handles all edge TLS / compression / caching
-- `CACHE_NAME` bump on the **VPS** — only the local `client/public/sw.js` matters
+- Manual `CACHE_NAME` bump in `client/public/sw.js` (VPS-era or otherwise) — the value is now auto-stamped from the git short SHA by the `stamp-sw-version` Vite plugin; source stays as the literal placeholder `'rmpg-flex-BUILD'`
 - TOTP / WebAuthn / Evidence-chain Ed25519 setup — those features were VPS-only and have not been ported to the Worker yet
 - Husky `pre-push` instructions about running 461 server tests — that gate was removed when `/server/` was quarantined
 
 When in doubt: `grep` for the actual file under `/src/` or `/client/src/`. The deployed code is always the source of truth, never a comment.
+
+## Session Log
+
+### 2026-06-24 — Phases 1–5: migration overhaul, observability, tests, analytics pipeline, display label standardization
+
+**Phase 1: Migration System Overhaul**
+- Drift detection script (`scripts/check-migration-drift.sh`) — portable (no `grep -P`)
+- `migrations/README.md` updated with high-water 0155, next-free 0156, 20 duplicate-prefix entries
+- `.github/workflows/deploy.yml`: schema drift check + post-deploy health verify
+
+**Phase 2: Structured Observability**
+- `src/utils/logger.ts`: JSON structured logger (`log.info/warn/error`), `generateTraceId`, `traceMiddleware`/`requestLogMiddleware`, `logErrorToDb`
+- `src/routes/health.ts`: multi-service health probe (D1, KV, R2, 6 DO namespaces) — returns HTTP 200 even in degraded state
+- `migrations/0156_error_log.sql`: `error_log` table + 3 indexes
+- `src/index.ts`: traceMiddleware → requestLogMiddleware → secureHeaders → cors → onError wiring
+- `src/types.ts`: `traceId?: string` in `Variables`
+- CLAUDE.md: Observability section added under Code Patterns
+
+**Phase 3: Worker Integration Tests (14 passing)**
+- `test-workers/health.test.ts`: 6 Miniflare tests for multi-service health probe (`npx vitest run --config vitest.workers.config.mts`)
+- `test-workers/auth.test.ts`: 6 Miniflare tests for auth middleware + RBAC
+- `tests/logger.test.ts`: 12 Node tests for structured JSON logger
+- `tests/errorLog.test.ts`: 6 Node tests for D1 error persistence
+- Bug fixes discovered during testing: `src/index.ts` ExecutionContext type mismatch, `src/routes/serve.ts:580` param fallback, `test-workers/auth.test.ts` import/assertion fixes
+
+**Phase 4: Analytics Pipeline Activation Path**
+- `scripts/setup-analytics-pipeline.sh`: one-click Pipelines + R2 catalog setup
+
+**Phase 5: Display Label Standardization**
+- Removed 5 local duplicate `toDisplayLabel` functions (CrmPage, ReportsTab, ProposalsTab, LeadsTab, InvoicesPage)
+- Replaced 77 inline `.replace(/_/g, ' ').replace(/\b\w/g, ...)` patterns across ~45 files with `toDisplayLabel()` from `client/src/utils/formatters.ts`
+- Expanded `ACRONYMS` set from ~25 to ~80 entries
+- Fixed imports in StatusBadge, EvidenceTab, BusinessTab, DocumentsTab, BenefitsTab, DashCameraTab, ServeJobCard, IpedPage, DispatchPage, FleetAnalyticsTab, and others
+
+**Verification**: Worker typecheck (`tsc --noEmit` + `tsc -p tsconfig.test.json`) ✅; Node tests (18) ✅; Miniflare worker tests (14) ✅; client build (`vite build`) ✅ 21.34s; client typecheck (12 pre-existing errors, 0 from changes); client tests (9 pre-existing failures in 4 files: equipmentCustodyPdf/prettyAction, MdtPage/button label, PlateLogPage/missing ToastProvider)
+
+**Infrastructure**: Node.js v24.18.0 installed; `npx` via full path due to PowerShell execution policy blocking `.ps1` scripts; `workerd`/`esbuild`/`sharp` postinstall scripts skipped (allowScripts policy)

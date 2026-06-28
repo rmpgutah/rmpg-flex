@@ -46,7 +46,7 @@ export default function SpillmanStatusGrid<T extends Record<string, any>>(
         <span className="spm-status-grid-title">{title}</span>
         {badge && <span className="spm-status-grid-badge">{badge}</span>}
       </div>
-      <table className="spm-status-grid-table">
+      <div className="overflow-x-auto"><table className="spm-status-grid-table">
         <thead>
           <tr>
             {columns.map((c) => (
@@ -88,7 +88,7 @@ export default function SpillmanStatusGrid<T extends Record<string, any>>(
             );
           })}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

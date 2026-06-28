@@ -56,7 +56,7 @@ struct WorkflowHubView: View {
     private func tile(_ def: WorkflowDefinition) -> some View {
         VStack(spacing: 6) {
             Image(systemName: def.icon).font(.system(size: 24)).foregroundStyle(Theme.gold)
-            Text(def.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+            Text(def.title).font(Theme.Typography.caption).fontWeight(.semibold).foregroundStyle(.white)
                 .multilineTextAlignment(.center)
         }.frame(maxWidth: .infinity).padding(.vertical, 14).themeCard()
     }
