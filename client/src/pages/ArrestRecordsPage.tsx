@@ -207,6 +207,20 @@ const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 // ── Component ─────────────────────────────────────────────
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function ArrestRecordsPage() {
   // ── State ───────────────────────────────────────────────
   // Note: live cross-device sync is owned by useLiveSync('arrests', …) below,
@@ -236,6 +250,9 @@ export default function ArrestRecordsPage() {
   const [recordsPage, setRecordsPage] = useState(1);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ArrestRecord | null>(null);
+
+  // Warrant linkage
+  const [warrantCounts, setWarrantCounts] = useState<Record<number, number>>({});
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -831,6 +848,11 @@ export default function ArrestRecordsPage() {
                       <span className="text-[10px] font-bold text-rmpg-100 truncate">{rec.full_name}</span>
                       {rec.entry_source === 'manual' && (
                         <span className="text-[7px] px-1 py-px bg-brand-900/40 text-brand-400 font-bold uppercase rounded-sm">M</span>
+                      )}
+                      {rec.person_id && warrantCounts[rec.person_id] > 0 && (
+                        <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold ml-0.5 shrink-0" title={`${warrantCounts[rec.person_id]} active warrant(s)`}>
+                          {warrantCounts[rec.person_id]} WARRANT{warrantCounts[rec.person_id] > 1 ? 'S' : ''}
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 text-[8px] text-rmpg-500">

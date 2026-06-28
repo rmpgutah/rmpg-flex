@@ -19,7 +19,7 @@
 //  - 400ms throttle for burst mutations (multi-save loops)
 // ============================================================
 import { getLocalAudioMode } from './audioMode';
-import { playSoundAsset } from './soundAssets';
+import { playSoundAsset, startSoundAsset } from './soundAssets';
 
 export type ActionChimeKind = 'submit' | 'update' | 'delete';
 
@@ -76,4 +76,32 @@ export function chimeForApiSuccess(method: string | undefined, url: string): voi
   if (!kind) return;
   if (BACKGROUND_PATHS.test(url)) return;
   playActionChime(kind);
+}
+
+// NACK throttled separately from the ACKs — a failure must still sound
+// even if a success chimed an instant earlier.
+let lastNack = 0;
+
+/**
+ * Spillman console NACK — the error bonk when a transaction is REJECTED.
+ * Called from the apiFetch / useApi failure paths for operator-initiated
+ * mutations only: GETs stay silent (a failed poll isn't an operator
+ * action), background machine traffic stays silent, and 401s stay silent
+ * (the transparent token-refresh dance isn't a rejection).
+ */
+export function nackForApiFailure(method: string | undefined, url: string, status?: number): void {
+  try {
+    const kind = chimeKindForMethod(method);
+    if (!kind) return;
+    if (BACKGROUND_PATHS.test(url)) return;
+    if (status === 401) return;
+    if (!actionChimesEnabled() || getLocalAudioMode() !== 'audible') return;
+    const now = Date.now();
+    if (now - lastNack < THROTTLE_MS) return;
+    lastNack = now;
+    // error.wav = the sampled console NACK bonk (gain matches the ACKs).
+    startSoundAsset('error', 0.22);
+  } catch {
+    // Audio is a nicety — never let it break error handling
+  }
 }
