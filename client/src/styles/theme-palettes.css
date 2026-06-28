@@ -1,0 +1,266 @@
+/* ============================================================
+   Spillman day/night palettes — single source of palette truth.
+   NIGHT (dark steel-blue) is the default (:root + html.theme-dark).
+   DAY (light grey) is html.theme-light. The rmpg/brand/blue scales
+   INVERT between themes (a dark-surface shade at night becomes a
+   light surface in day). Channels are "R G B" for Tailwind's
+   rgb(var(--x) / <alpha-value>) opacity support.
+   theme-legacy-black restores the pre-refactor pure-black palette.
+   ============================================================ */
+
+/* ---- NIGHT (default) ---- */
+:root,
+html.theme-dark,
+.tactical-dark {
+  --surface-base: #0d1722;  --surface-base-rgb: 13 23 34;
+  --surface-raised: #15212e; --surface-raised-rgb: 21 33 46;
+  --surface-sunken: #0a1018; --surface-sunken-rgb: 10 16 24;
+  --surface-overlay: #060b10; --surface-overlay-rgb: 6 11 16;
+  --surface-deep: #060b10;   --surface-deep-rgb: 6 11 16;
+  --border-default: #2a3a4d; --border-subtle: #1e2b3a; --border-strong: #3a4f66; --border-panel: #243a52;
+  --text-primary: #e6edf5; --text-secondary: #c3d0de; --text-muted: #8fa3b8;
+  --brand-gold: #d4a017; --brand-blue: #5a85b8;
+  /* Record-icon tile — steel-blue accent for no-photo glyph tiles (persons/vehicles/properties/business).
+     Replaces the old per-list "black box + dull initials" look with one legible, on-system blue. */
+  --record-tile-bg: #17304a; --record-tile-border: #34618f; --record-tile-fg: #7db4ec;
+  --record-tile-bg-muted: #15212e; --record-tile-border-muted: #2a3a4d; --record-tile-fg-muted: #6b7d92;
+
+  /* StatsCard accent glow colors — semantic status hues are CONSTANT across
+     themes (a "success green" stays green in day + night); the default/"blue"
+     accent is the neutral muted-text token so it inverts with the theme. */
+  --stat-accent-default: var(--spm-text-muted);
+  --stat-accent-red: #dc2626;
+  --stat-accent-red-bright: #ef4444;
+  --stat-accent-green: #22c55e;
+  --stat-accent-amber: #f59e0b;
+  --stat-accent-amber-bright: #fbbf24;
+  --stat-accent-purple: #a855f7;
+  /* Priority neutrals: P3 routine uses --spm-text-muted; P4 scheduled is a
+     dimmer step so the two read distinctly (esp. as adjacent pie slices). */
+  --pri-scheduled: #5c6672;
+
+  /* ── Semantic severity palette (THEMED — bright on dark night, darker on
+     light day; see day/legacy blocks). Map status/severity hues onto these by
+     MEANING, not exact shade. `-soft` = a lighter companion for pale text /
+     secondary accents. Reusable across all operational pages (Dispatch, etc.). */
+  --sev-critical: #ef4444; --sev-critical-soft: #fca5a5;  /* red    */
+  --sev-high: #f97316;                                     /* orange */
+  --sev-warn: #f59e0b; --sev-warn-soft: #fbbf24;           /* amber  */
+  --sev-caution: #facc15;                                  /* yellow */
+  --sev-ok: #22c55e; --sev-ok-soft: #86efac;               /* green  */
+  --sev-info: #60a5fa;                                     /* blue   */
+  --sev-special: #c084fc; --sev-special-soft: #a855f7;     /* purple */
+  /* RGB triples for the severity tokens — needed by components that opacity-
+     blend a sev color into a panel background (e.g. `rgb(var(--sev-critical-rgb) / 0.1)`)
+     without rebuilding the whole tint via color-mix(). Use the matching `-rgb`
+     when you literally need rgba()-style alpha — prefer the color-mix pattern
+     above when blending against a known surface. Mirrored in DAY + LEGACY blocks. */
+  --sev-critical-rgb: 239 68 68; --sev-high-rgb: 249 115 22;
+  --sev-warn-rgb: 245 158 11;    --sev-caution-rgb: 250 204 21;
+  --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
+  --sev-special-rgb: 192 132 252;
+  --brand-gold-rgb: 212 160 23;
+
+  --rmpg-50-rgb: 237 241 246; --rmpg-100-rgb: 214 221 230; --rmpg-200-rgb: 184 195 208;
+  --rmpg-300-rgb: 150 165 184; --rmpg-400-rgb: 122 140 162; --rmpg-500-rgb: 92 110 132;
+  --rmpg-600-rgb: 60 80 102;  --rmpg-700-rgb: 30 43 58;    --rmpg-800-rgb: 21 33 46;
+  --rmpg-900-rgb: 13 23 34;   --rmpg-950-rgb: 6 11 16;
+  --brand-50-rgb: 242 244 247; --brand-100-rgb: 221 226 232; --brand-200-rgb: 191 199 209;
+  --brand-300-rgb: 158 169 183; --brand-400-rgb: 127 140 158; --brand-500-rgb: 102 116 134;
+  --brand-600-rgb: 76 90 108;  --brand-700-rgb: 52 66 82;    --brand-800-rgb: 31 43 56;
+  --brand-900-rgb: 14 22 32;
+  --blue-50-rgb: 241 244 247; --blue-100-rgb: 217 223 230; --blue-200-rgb: 189 199 209;
+  --blue-300-rgb: 161 173 187; --blue-400-rgb: 122 140 162; --blue-500-rgb: 92 110 132;
+  --blue-600-rgb: 60 80 102;  --blue-700-rgb: 30 43 58;     --blue-800-rgb: 21 33 46;
+  --blue-900-rgb: 13 23 34;
+  --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
+  --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+
+  /* Records chrome tokens — NIGHT (dark steel-blue) */
+  --spm-chrome: #15212e; --spm-form: #0d1722; --spm-field: #101a26;
+  --spm-border: #2a3a4d; --spm-field-border: #2a3a4d; --spm-accent: #5a85b8;
+  --spm-select: #316ac5; --spm-text: #e6edf5; --spm-text-muted: #8fa3b8;
+  --spm-text-rgb: 230 237 245; --spm-text-muted-rgb: 143 163 184;
+  --spm-group-head: linear-gradient(#1d2d3f, #16222f);
+  --spm-toolbar: linear-gradient(#1d2d3f, #16222f);
+  --spm-toolbar-hover: linear-gradient(#24344a, #1a2736);
+  --spm-toolbar-active: linear-gradient(#14202e, #0e1822);
+  --spm-toolbar-primary: linear-gradient(#2e4a66, #1e3450);
+
+  /* App chrome tokens — NIGHT (dark steel-blue) */
+  --toolbar-gradient-start: #15212e; --toolbar-gradient-end: #1d2d3f;
+  --grid-header-bg: #0a1018; --grid-row-alt: #111c28;
+  --field-label-color: #d4a017;
+  --surface-panel: #15212e; --surface-panel-alt: #101a26; --surface-hover: #1a2736;
+  --info-text: #c3d0de; --info-bg: rgba(90, 133, 184, 0.12); --info-border: rgba(90, 133, 184, 0.24);
+  --desktop-shell-start: #0d1722; --desktop-shell-end: #15212e;
+  --desktop-shell-raised-start: #15212e; --desktop-shell-raised-end: #1d2d3f;
+  --desktop-shell-border: #2a3a4d; --desktop-shell-accent: #5a85b8;
+  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
+  --desktop-shell-subtle-text: #8fa3b8; --desktop-shell-icon: #8fa3b8;
+}
+
+/* ---- DAY (light grey Spillman; scale INVERTED) ---- */
+html.theme-light {
+  --surface-base: #ece9dd;  --surface-base-rgb: 236 233 221;
+  --surface-raised: #ffffff; --surface-raised-rgb: 255 255 255;
+  --surface-sunken: #d6d3c8; --surface-sunken-rgb: 214 211 200;
+  --surface-overlay: #ffffff; --surface-overlay-rgb: 255 255 255;
+  --surface-deep: #c9c5b8;   --surface-deep-rgb: 201 197 184;
+  --border-default: #9a958a; --border-subtle: #c3cdd8; --border-strong: #6f7b8a; --border-panel: #9a958a;
+  --text-primary: #1a1a1a; --text-secondary: #33312b; --text-muted: #555555;
+  --brand-gold: #936c0a; --brand-blue: #2e4a66;
+  /* Record-icon tile — day (light-grey) steel-blue on white surfaces. */
+  --record-tile-bg: #dceaf7; --record-tile-border: #5b86b6; --record-tile-fg: #2c659f;
+  --record-tile-bg-muted: #e7e4d9; --record-tile-border-muted: #9a958a; --record-tile-fg-muted: #6f7b8a;
+
+  /* rmpg — DAY: small idx = dark text (monotonic, all legible on light), large idx = light surfaces */
+  --rmpg-50-rgb: 26 26 26;   --rmpg-100-rgb: 40 40 40;   --rmpg-200-rgb: 55 55 55;
+  --rmpg-300-rgb: 70 70 70;  --rmpg-400-rgb: 85 85 85;   --rmpg-500-rgb: 100 100 100;
+  --rmpg-600-rgb: 150 146 136; --rmpg-700-rgb: 214 211 200; --rmpg-800-rgb: 236 233 221;
+  --rmpg-900-rgb: 247 249 251; --rmpg-950-rgb: 255 255 255;
+  --brand-50-rgb: 26 26 26;  --brand-100-rgb: 40 40 40;  --brand-200-rgb: 55 55 55;
+  --brand-300-rgb: 70 70 70; --brand-400-rgb: 85 85 85;  --brand-500-rgb: 100 100 100;
+  --brand-600-rgb: 150 146 136; --brand-700-rgb: 214 211 200; --brand-800-rgb: 236 233 221;
+  --brand-900-rgb: 247 249 251;
+  /* blue token renders NEUTRAL (mirrors rmpg) — the steel accent lives in --brand-blue / --spm-* */
+  --blue-50-rgb: 26 26 26;   --blue-100-rgb: 40 40 40;   --blue-200-rgb: 55 55 55;
+  --blue-300-rgb: 70 70 70;  --blue-400-rgb: 85 85 85;   --blue-500-rgb: 100 100 100;
+  --blue-600-rgb: 150 146 136; --blue-700-rgb: 214 211 200; --blue-800-rgb: 236 233 221;
+  --blue-900-rgb: 247 249 251;
+  /* gold — DAY: distinct darkening steps for hierarchy, all legible on light */
+  --brand-gold-300-rgb: 176 130 30; --brand-gold-400-rgb: 160 116 18; --brand-gold-500-rgb: 147 108 10;
+  --brand-gold-600-rgb: 120 88 8;   --brand-gold-700-rgb: 100 73 7;
+
+  /* Records chrome tokens — DAY (current light Spillman look) */
+  --spm-chrome: #d6d3c8; --spm-form: #ece9dd; --spm-field: #f7f9fb;
+  --spm-border: #9a958a; --spm-field-border: #c3cdd8; --spm-accent: #2e4a66;
+  --spm-select: #316ac5; --spm-text: #1a1a1a; --spm-text-muted: #555555;
+  --spm-text-rgb: 26 26 26; --spm-text-muted-rgb: 85 85 85;
+  /* Severity palette — DAY: darker so it reads on the light-grey surface. */
+  --sev-critical: #b91c1c; --sev-critical-soft: #dc2626;
+  --sev-high: #c2410c;
+  --sev-warn: #b45309; --sev-warn-soft: #d97706;
+  --sev-caution: #a16207;
+  --sev-ok: #15803d; --sev-ok-soft: #16a34a;
+  --sev-info: #2563eb;
+  --sev-special: #7c3aed; --sev-special-soft: #9333ea;
+  --sev-critical-rgb: 185 28 28; --sev-high-rgb: 194 65 12;
+  --sev-warn-rgb: 180 83 9;      --sev-caution-rgb: 161 98 7;
+  --sev-ok-rgb: 21 128 61;       --sev-info-rgb: 37 99 235;
+  --sev-special-rgb: 124 58 237;
+  --brand-gold-rgb: 147 108 10;
+  --spm-group-head: linear-gradient(#eef3f9, #cfdcec);
+  --spm-toolbar: linear-gradient(#ffffff, #e8e6da);
+  --spm-toolbar-hover: linear-gradient(#ffffff, #dad7c9);
+  --spm-toolbar-active: linear-gradient(#c8c5b8, #dedad0);
+  --spm-toolbar-primary: linear-gradient(#dfe8f6, #b9d2ee);
+
+  /* App chrome tokens — DAY (light grey Spillman) */
+  --toolbar-gradient-start: #ffffff; --toolbar-gradient-end: #e8e6da;
+  --grid-header-bg: #d6d3c8; --grid-row-alt: #f6f5ef;
+  --field-label-color: #936c0a;
+  --surface-panel: #ece9dd; --surface-panel-alt: #f9f7f1; --surface-hover: #e0ddd4;
+  --info-text: #2e4a66; --info-bg: rgba(46, 74, 102, 0.10); --info-border: rgba(46, 74, 102, 0.22);
+  --desktop-shell-start: #d6d3c8; --desktop-shell-end: #c9c5b8;
+  --desktop-shell-raised-start: #ece9dd; --desktop-shell-raised-end: #d6d3c8;
+  --desktop-shell-border: #9a958a; --desktop-shell-accent: #2e4a66;
+  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.15);
+  --desktop-shell-subtle-text: #555555; --desktop-shell-icon: #555555;
+}
+
+/* ---- LEGACY BLACK (kill-switch; pure-black pre-refactor) ---- */
+html.theme-legacy-black {
+  --surface-base: #000000; --surface-base-rgb: 0 0 0;
+  --surface-raised: #0b0b0b; --surface-raised-rgb: 11 11 11;
+  --surface-sunken: #000000; --surface-sunken-rgb: 0 0 0;
+  --surface-overlay: #030303; --surface-overlay-rgb: 3 3 3;
+  --surface-deep: #000000; --surface-deep-rgb: 0 0 0;
+  --border-default: #232323; --border-subtle: #121212; --border-strong: #3a3a3a; --border-panel: #262626;
+  --text-primary: #f2f2f2; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
+  --brand-blue: #9a9a9a; --brand-gold: #d4a017;
+  /* Record-icon tile — legacy pure-black keeps a restrained dark steel-blue accent. */
+  --record-tile-bg: #14202c; --record-tile-border: #2f5070; --record-tile-fg: #6f9fce;
+  --record-tile-bg-muted: #141414; --record-tile-border-muted: #2d2d2d; --record-tile-fg-muted: #8a8a8a;
+  --rmpg-50-rgb: 237 237 237; --rmpg-100-rgb: 214 214 214; --rmpg-200-rgb: 184 184 184;
+  --rmpg-300-rgb: 150 150 150; --rmpg-400-rgb: 117 117 117; --rmpg-500-rgb: 90 90 90;
+  --rmpg-600-rgb: 67 67 67; --rmpg-700-rgb: 45 45 45; --rmpg-800-rgb: 27 27 27;
+  --rmpg-900-rgb: 13 13 13; --rmpg-950-rgb: 3 3 3;
+  --brand-50-rgb: 242 242 242; --brand-100-rgb: 221 221 221; --brand-200-rgb: 191 191 191;
+  --brand-300-rgb: 158 158 158; --brand-400-rgb: 127 127 127; --brand-500-rgb: 102 102 102;
+  --brand-600-rgb: 76 76 76; --brand-700-rgb: 52 52 52; --brand-800-rgb: 31 31 31; --brand-900-rgb: 14 14 14;
+  --blue-50-rgb: 241 241 241; --blue-100-rgb: 217 217 217; --blue-200-rgb: 189 189 189;
+  /* blue-400 intentionally lighter than 300 — mirrors original tailwind.config anomaly for exact legacy restore */
+  --blue-300-rgb: 161 161 161; --blue-400-rgb: 200 200 200; --blue-500-rgb: 154 154 154;
+  --blue-600-rgb: 115 115 115; --blue-700-rgb: 79 79 79; --blue-800-rgb: 46 46 46; --blue-900-rgb: 20 20 20;
+  --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
+  --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+
+  /* Records chrome tokens — LEGACY BLACK (dark neutrals) */
+  --spm-chrome: #0b0b0b; --spm-form: #000000; --spm-field: #0d0d0d;
+  --spm-border: #232323; --spm-field-border: #232323; --spm-accent: #9a9a9a;
+  --spm-select: #316ac5; --spm-text: #f2f2f2; --spm-text-muted: #8a8a8a;
+  --spm-text-rgb: 242 242 242; --spm-text-muted-rgb: 138 138 138;
+  /* Severity palette — LEGACY black: bright like night (dark background). */
+  --sev-critical: #ef4444; --sev-critical-soft: #fca5a5;
+  --sev-high: #f97316;
+  --sev-warn: #f59e0b; --sev-warn-soft: #fbbf24;
+  --sev-caution: #facc15;
+  --sev-ok: #22c55e; --sev-ok-soft: #86efac;
+  --sev-info: #60a5fa;
+  --sev-special: #c084fc; --sev-special-soft: #a855f7;
+  --sev-critical-rgb: 239 68 68; --sev-high-rgb: 249 115 22;
+  --sev-warn-rgb: 245 158 11;    --sev-caution-rgb: 250 204 21;
+  --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
+  --sev-special-rgb: 192 132 252;
+  --brand-gold-rgb: 212 160 23;
+  --spm-group-head: linear-gradient(#141414, #0b0b0b);
+  --spm-toolbar: linear-gradient(#1a1a1a, #0b0b0b);
+  --spm-toolbar-hover: linear-gradient(#222222, #141414);
+  --spm-toolbar-active: linear-gradient(#0b0b0b, #000000);
+  --spm-toolbar-primary: linear-gradient(#2a2a2a, #141414);
+
+  /* App chrome tokens — LEGACY BLACK (original pure-black) */
+  --toolbar-gradient-start: #0b0b0b; --toolbar-gradient-end: #101010;
+  --grid-header-bg: #050505; --grid-row-alt: #0d0d0d;
+  --field-label-color: #d4a017;
+  --surface-panel: #101010; --surface-panel-alt: #0c0c0c; --surface-hover: #161616;
+  --info-text: #d0d0d0; --info-bg: rgba(150, 150, 150, 0.12); --info-border: rgba(150, 150, 150, 0.24);
+  --desktop-shell-start: #000000; --desktop-shell-end: #0e0e0e;
+  --desktop-shell-raised-start: #050505; --desktop-shell-raised-end: #111111;
+  --desktop-shell-border: #202020; --desktop-shell-accent: #7d7d7d;
+  --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
+  --desktop-shell-subtle-text: #b7b7b7; --desktop-shell-icon: #8c8c8c;
+}
+
+/* ---- TACTICAL DARK (force-dark scope; always NIGHT regardless of html.theme-*) ---- */
+/* Apply as a className to live-map wrappers, HUD overlays, and the MDT view so         */
+/* operators are never blinded by a bright UI at night. The Mapbox GL canvas itself is  */
+/* unaffected — only the app-chrome inside/around the canvas inherits these vars.        */
+/* The night palette vars are provided by the shared `:root, html.theme-dark, .tactical-dark` */
+/* selector above — no duplication needed here. color-scheme must be set directly (not  */
+/* as a custom property) so native controls/scrollbars in the subtree render dark even   */
+/* when the page root is html.theme-light.                                               */
+.tactical-dark { color-scheme: dark; }
+
+/* ── Spillman CAD fixed palette (theme-invariant) ──────────────────
+   Call priority colors are fixed by Spillman spec and the unit-status
+   colors live only on the dark CAD console, so they do NOT invert with
+   day/night. Defined globally here; consumed by spillman-kit.css and the
+   spillmanColors helper. */
+:root {
+  --spm-pri-1: #e24b4a;  /* red       */
+  --spm-pri-2: #ef9f27;  /* orange    */
+  --spm-pri-3: #e6c020;  /* yellow    */
+  --spm-pri-4: #97c459;  /* light grn */
+  --spm-pri-5: #2e9e54;  /* med green */
+  --spm-pri-6: #85b7eb;  /* light blu */
+  --spm-pri-7: #378add;  /* med blue  */
+  --spm-pri-8: #1f5fa5;  /* dark blue */
+  --spm-pri-9: #9b7fe0;  /* purple    */
+
+  --spm-stat-avail: #1d9e55;  /* available  */
+  --spm-stat-enrt:  #ef9f27;  /* en route   */
+  --spm-stat-busy:  #e24b4a;  /* busy / OOS */
+  --spm-stat-xbsy:  #85b7eb;  /* extra busy */
+}

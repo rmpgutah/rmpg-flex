@@ -54,7 +54,7 @@ export default function WirelessAttacksPage() {
   if (!user?.role || !ALLOWED_ROLES.includes(user.role as UserRole)) {
     return (
       <div className="p-6">
-        <div className="bg-[#141414] border border-[#2e2e2e] p-4 text-[#888] text-xs">ACCESS RESTRICTED</div>
+        <div className="bg-surface-base border border-rmpg-700 p-4 text-[#888] text-xs">ACCESS RESTRICTED</div>
       </div>
     );
   }
@@ -64,7 +64,7 @@ export default function WirelessAttacksPage() {
       <div className="flex items-center gap-3">
         <button
           onClick={() => navigate('/recon-connect')}
-          className="px-3 py-1.5 bg-[#1a1a1a] border border-[#2e2e2e] text-[#888] text-xs hover:bg-[#242424] flex items-center gap-1.5"
+          className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#888] text-xs hover:bg-surface-raised flex items-center gap-1.5"
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Recon Connect
         </button>
@@ -72,9 +72,9 @@ export default function WirelessAttacksPage() {
 
       <PanelTitleBar title="WIRELESS ATTACKS — NATIVE TOOLS" icon={Wifi} />
 
-      <div className="bg-[#141414] border border-[#222] p-3 flex items-start gap-3">
+      <div className="bg-surface-base border border-border-default p-3 flex items-start gap-3">
         <ShieldAlert className="w-4 h-4 text-[#d4a017] shrink-0 mt-0.5" />
-        <div className="text-[11px] text-[#bbb] leading-relaxed">
+        <div className="text-[11px] text-rmpg-300 leading-relaxed">
           <span className="text-[#d4a017] font-semibold">AUTHORIZED USE ONLY</span> — Wireless reconnaissance
           is legal on networks you own or have explicit written authorization to test. Scanning or
           attacking third-party networks without consent violates federal and state law.
@@ -82,7 +82,7 @@ export default function WirelessAttacksPage() {
       </div>
 
       {!isElectron && (
-        <div className="bg-[#141414] border border-[#2e2e2e] text-[#d4a017] text-[11px] p-3">
+        <div className="bg-surface-base border border-rmpg-700 text-[#d4a017] text-[11px] p-3">
           These tools execute on the local workstation — open Flex in the desktop app to use them.
         </div>
       )}

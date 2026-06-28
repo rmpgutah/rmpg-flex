@@ -14,6 +14,7 @@
 
 import jsPDF from 'jspdf';
 import { svgElementToPngDataUrl } from './graphToPng';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 export interface GraphPdfMetadata {
   investigationName?: string;
@@ -36,6 +37,7 @@ export async function exportGraphToPdf(
   meta: GraphPdfMetadata = {}
 ): Promise<Blob> {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 36;
