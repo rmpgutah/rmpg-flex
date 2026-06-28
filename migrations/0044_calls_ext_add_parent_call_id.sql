@@ -1,0 +1,26 @@
+-- 0044_calls_ext_add_parent_call_id.sql
+-- =====================================================================
+-- Re-dispatch ("return visit") chain linkage.
+--
+-- parent_call_id: NULL = a root call; an integer = the id of the ROOT call
+-- this attempt belongs to (the chain is flat — every child points at the
+-- root, matching the legacy rmpg-flex behavior). Used to reconstruct the
+-- PSO/process-service re-dispatch chain (GET /dispatch/calls/:id attaches
+-- visit_history; POST /:id/redispatch returns the full chain).
+--
+-- WHY ON EXT, NOT calls_for_service:
+--   calls_for_service is at the D1 hard cap of 100 columns per table, so
+--   ADD COLUMN there is impossible (it would be column 101). The legacy
+--   rmpg-flex Worker still INSERTs calls_for_service.parent_call_id, which
+--   no longer exists on live D1 — that is the SQLITE_ERROR that 500s
+--   POST /calls/:id/redispatch. The rewrite reads/writes parent_call_id on
+--   calls_for_service_ext (1:1 overflow, FK id -> calls_for_service(id)
+--   ON DELETE CASCADE) instead, so a deleted child call drops its linkage
+--   automatically.
+--
+-- Plain ADD COLUMN: no DROP, no FK rebuild, transaction-safe on D1 (see the
+-- 0040/0041 note). D1 does not support IF NOT EXISTS on ADD COLUMN; this
+-- migration applies exactly once (tracked by name in d1_migrations).
+-- =====================================================================
+
+ALTER TABLE calls_for_service_ext ADD COLUMN parent_call_id INTEGER;

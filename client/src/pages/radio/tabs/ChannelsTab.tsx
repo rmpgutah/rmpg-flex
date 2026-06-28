@@ -1,11 +1,23 @@
 // ChannelsTab — browse / favorite / mute / create / edit / archive.
 // Selecting a channel jumps back to LiveTab via onSelectChannel.
+//
+// CRUD (create / archive) is gated client-side to admin/manager/supervisor
+// to match `requireRole('admin','manager','supervisor')` in
+// src/routes/radio.ts. Without this gate, line officers saw NEW + archive
+// controls that always returned 403 server-side. Favorite / mute / select
+// remain unrestricted (they're per-user UI state, not channel config).
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Star, VolumeX, Archive, ChevronRight, Radio } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../components/ToastProvider';
 import { ls } from '../helpers';
 import { SectionHeader, MiniToggle, ToolbarBtn } from '../components';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel } from '../types';
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 interface Props {
   selectedChannelId: number | null;
@@ -13,6 +25,11 @@ interface Props {
 }
 
 export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Props) {
+  const { user } = useAuth();
+  const { addToast } = useToast();
+  const canManage = MANAGE_ROLES.has(user?.role || '');
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [channels, setChannels] = useState<RadioChannel[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => ls.getSet('radio_favorites'));
   const [muted, setMuted] = useState<Set<string>>(() => ls.getSet('radio_muted_channels'));
@@ -52,7 +69,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
       await apiFetch('/radio/channels', { method: 'POST', body: JSON.stringify({ name, description: newDesc.trim() || null }) });
       setNewName(''); setNewDesc(''); setCreating(false);
       load();
-    } catch (err) { console.error('[radio] create channel', err); }
+    } catch (err: any) { console.error('[radio] create channel', err); addToast(err?.message || 'Failed to create channel', 'error'); }
   };
 
   const archive = async (id: number) => {
@@ -60,7 +77,24 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
     try {
       await apiFetch(`/radio/channels/${id}`, { method: 'DELETE' });
       load();
-    } catch (err) { console.error('[radio] archive', err); }
+    } catch (err: any) { console.error('[radio] archive', err); addToast(err?.message || 'Failed to archive channel', 'error'); }
+  };
+
+  const buildChannelMenu = (c: RadioChannel): ContextMenuItem[] => {
+    const isFav = favorites.has(String(c.id));
+    const isMuted = muted.has(String(c.id));
+    const isArchived = c.archived_at != null;
+    return [
+      m.action('Open channel', () => onSelectChannel(c.id), { icon: <Radio size={12} /> }),
+      m.action(isFav ? 'Unfavorite' : 'Favorite', () => toggleFav(c.id), { icon: <Star size={12} /> }),
+      m.action(isMuted ? 'Unmute' : 'Mute', () => toggleMute(c.id), { icon: <VolumeX size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', c.name),
+      m.copyId(c.id),
+      ...(!isArchived && canManage
+        ? [m.separator(), m.action('Archive', () => archive(c.id), { icon: <Archive size={12} />, danger: true })]
+        : []),
+    ];
   };
 
   return (
@@ -73,24 +107,26 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
             <ToolbarBtn onClick={() => setIncludeArchived((v) => !v)} active={includeArchived}>
               <Archive className="w-3 h-3" /> ARCHIVED
             </ToolbarBtn>
-            <ToolbarBtn onClick={() => setCreating((v) => !v)} active={creating}>
-              <Plus className="w-3 h-3" /> NEW
-            </ToolbarBtn>
+            {canManage && (
+              <ToolbarBtn onClick={() => setCreating((v) => !v)} active={creating}>
+                <Plus className="w-3 h-3" /> NEW
+              </ToolbarBtn>
+            )}
           </div>
         }
       />
 
-      {creating && (
+      {creating && canManage && (
         <div className="px-3 py-2 flex flex-col gap-2"
           style={{ background: 'var(--rt-panel)', borderBottom: '1px solid var(--rt-border)' }}>
-          <input
+          <input id="ff-channelstab-0"
             type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
             placeholder="Channel name (e.g. Tac-2)"
             aria-label="New channel name"
             className="bg-transparent text-[11px] font-mono outline-none px-2 py-1"
             style={{ color: 'var(--rt-text)', border: '1px solid var(--rt-border)' }}
           />
-          <input
+          <input id="ff-channelstab-1"
             type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)}
             placeholder="Description (optional)"
             aria-label="New channel description"
@@ -113,6 +149,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
             const isArchived = c.archived_at != null;
             return (
               <li key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30"
+                onContextMenu={(e) => openMenu(e, buildChannelMenu(c))}
                 style={{ background: isSelected ? 'rgba(212,160,23,0.10)' : 'transparent', opacity: isArchived ? 0.5 : 1 }}>
                 <MiniToggle onClick={() => toggleFav(c.id)} active={isFav} title="Favorite">
                   <Star className="w-3 h-3" />
@@ -126,7 +163,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
                   {c.description && <span style={{ color: 'var(--rt-muted)' }}>— {c.description}</span>}
                 </button>
                 <span className="tabular-nums" style={{ color: 'var(--rt-muted)' }}>{c.tx_count} tx</span>
-                {!isArchived && (
+                {!isArchived && canManage && (
                   <button type="button" onClick={() => archive(c.id)} title="Archive channel"
                     aria-label={`Archive ${c.name}`}
                     className="opacity-60 hover:opacity-100"

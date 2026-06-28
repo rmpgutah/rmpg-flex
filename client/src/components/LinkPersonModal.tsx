@@ -3,7 +3,7 @@ import { UserPlus, Search, Loader2, AlertTriangle, PlusCircle } from 'lucide-rea
 import FormModal from './FormModal';
 import PersonFormModal, { type PersonFormData } from './PersonFormModal';
 import { apiFetch } from '../hooks/useApi';
-import type { PersonRole } from '../types';
+import { useLinkOptions } from '../hooks/useLinkOptions';
 
 import RichTextArea from './RichTextArea';
 interface LinkPersonModalProps {
@@ -28,21 +28,13 @@ interface WarrantCheckResult {
   warrants: { id: number; warrant_number: string; warrant_type: string; charge_description?: string }[];
 }
 
-const PERSON_ROLES: { value: PersonRole; label: string }[] = [
-  { value: 'suspect', label: 'Suspect' },
-  { value: 'victim', label: 'Victim' },
-  { value: 'witness', label: 'Witness' },
-  { value: 'reporting_party', label: 'Reporting Party' },
-  { value: 'involved', label: 'Involved' },
-  { value: 'other', label: 'Other' },
-];
-
 export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked }: LinkPersonModalProps) {
+  const { options } = useLinkOptions();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PersonResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState<PersonResult | null>(null);
-  const [role, setRole] = useState<PersonRole>('involved');
+  const [role, setRole] = useState<string>('involved');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -176,10 +168,10 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
       {/* Search */}
       <div>
-        <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Search Person</label>
+        <label htmlFor="ff-linkpersonmodal-0" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Search Person</label>
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
-          <input
+          <input id="ff-linkpersonmodal-0"
             type="text"
             className="input-dark pl-8"
             placeholder="Search by name, phone, email..."
@@ -203,7 +195,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
                   className="w-full text-left px-3 py-2 hover:bg-rmpg-800 transition-colors"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-white font-medium">
+                    <span className="text-sm text-rmpg-100 font-medium">
                       {person.last_name}, {person.first_name}
                     </span>
                     {flags.length > 0 && (
@@ -248,7 +240,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       {selectedPerson && (
         <div className="px-3 py-2 bg-brand-900/20 border border-brand-700/40 flex items-center justify-between">
           <div>
-            <span className="text-sm text-white font-medium">
+            <span className="text-sm text-rmpg-100 font-medium">
               {selectedPerson.last_name}, {selectedPerson.first_name}
             </span>
             <div className="flex gap-3 text-[11px] text-rmpg-400 mt-0.5">
@@ -259,7 +251,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
           <button
             type="button"
             onClick={() => { setSelectedPerson(null); setSearchQuery(''); setWarrantWarning(null); }}
-            className="text-xs text-rmpg-300 hover:text-white"
+            className="text-xs text-rmpg-300 hover:text-rmpg-100"
           >
             Change
           </button>
@@ -292,9 +284,9 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
       {/* Role */}
       <div>
-        <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
-        <select className="select-dark" value={role} onChange={(e) => setRole(e.target.value as PersonRole)}>
-          {PERSON_ROLES.map((r) => (
+        <label htmlFor="ff-linkpersonmodal-1" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
+        <select id="ff-linkpersonmodal-1" className="select-dark" value={role} onChange={(e) => setRole(e.target.value)}>
+          {options.person_role.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>
           ))}
         </select>

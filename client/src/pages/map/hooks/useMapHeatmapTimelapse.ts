@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface TimelapseSlice {
   start: string;
@@ -91,17 +92,19 @@ export function useMapHeatmapTimelapse(
 
     if (features.length === 0) return;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': mode === 'risk' ? RISK_GRADIENT[RISK_GRADIENT.length - 1] : ALL_GRADIENT[ALL_GRADIENT.length - 1],
-        'circle-radius': ['interpolate', ['linear'], ['get', 'weight'], 1, 10, 5, 20, 10, 30, 20, 40],
-        'circle-opacity': 0.7,
-        'circle-stroke-width': 0,
-      },
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': mode === 'risk' ? RISK_GRADIENT[RISK_GRADIENT.length - 1] : ALL_GRADIENT[ALL_GRADIENT.length - 1],
+          'circle-radius': ['interpolate', ['linear'], ['get', 'weight'], 1, 10, 5, 20, 10, 30, 20, 40],
+          'circle-opacity': 0.7,
+          'circle-stroke-width': 0,
+        },
+      });
     });
   }, [map, mode]);
 

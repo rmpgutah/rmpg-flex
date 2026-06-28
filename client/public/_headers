@@ -1,15 +1,29 @@
 # Cloudflare Pages _headers
 # https://developers.cloudflare.com/pages/configuration/headers/
 #
-# CRITICAL: A header CSP overrides the index.html <meta http-equiv> CSP.
-# Previously this header was set in the Pages dashboard custom-headers
-# UI without `https://api.rmpgutah.us` in connect-src, which blocked
-# every cross-origin API call from the SPA to the Worker subdomain
-# (warrants, refresh, etc.). Defining the CSP here makes the source of
-# truth code-controlled instead of dashboard-controlled.
+# NOTE: Content-Security-Policy is deliberately NOT set here.
+# The CSP lives in the <meta> tag in client/index.html and in
+# functions/_middleware.ts (for the response header). Per Cloudflare's
+# header ordering (Application → _headers → Cloudflare Dashboard), the
+# Dashboard CSP would overwrite this header if set here, making it
+# ineffective. The <meta> tag CSP is immune to header-level overwriting
+# and is the authoritative policy.
+#
+# If CSP-connected requests to api.rmpgutah.us are blocked in the
+# browser console, the Cloudflare Dashboard (Pages project settings →
+# Custom Headers) has a Content-Security-Policy header set that does
+# NOT include api.rmpgutah.us. It must be removed manually — code cannot
+# override Dashboard-level response headers (they are applied last).
+
+# The service worker must never be cached by the Cloudflare edge or the
+# browser HTTP cache. Without this, the zone's default Browser Cache TTL
+# (4 h) lets individual colos serve stale sw.js bytes after a deploy,
+# which makes the SW updater see alternating versions and reload-loop
+# (observed 2026-06-11; mitigated client-side in WebUpdateBanner.tsx).
+/sw.js
+  Cache-Control: no-store, max-age=0
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io https://static.cloudflareinsights.com; frame-src 'self' blob: https://*.arcgis.com; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   Permissions-Policy: camera=(self), microphone=(self), geolocation=(self), payment=()
   X-Frame-Options: SAMEORIGIN

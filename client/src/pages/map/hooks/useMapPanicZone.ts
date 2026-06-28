@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 type PanicStatus = 'active' | 'acknowledged' | 'resolved';
 
@@ -58,8 +60,8 @@ export function useMapPanicZone(
     if (fadeIntervalRef.current) { clearInterval(fadeIntervalRef.current); fadeIntervalRef.current = null; }
     if (map) {
       [innerSourceId, outerSourceId].forEach(id => {
-        if (map.getLayer(`${id}-circle`)) map.removeLayer(`${id}-circle`);
-        if (map.getSource(id)) map.removeSource(id);
+        safeRemoveLayer(map, `${id}-circle`);
+        safeRemoveSource(map, id);
       });
     }
   }, [map]);
@@ -74,12 +76,12 @@ export function useMapPanicZone(
     const mapInstance = map;
     if (!mapInstance) return;
 
-    if (mapInstance.getLayer(`${innerSourceId}-circle`)) {
+    if (hasLayer(mapInstance, `${innerSourceId}-circle`)) {
       mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-color', colors.innerFill);
       mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-opacity', colors.innerFillOpacity);
       mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-color', colors.innerStroke);
     }
-    if (mapInstance.getLayer(`${outerSourceId}-circle`)) {
+    if (hasLayer(mapInstance, `${outerSourceId}-circle`)) {
       mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-color', colors.outerFill);
       mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-opacity', colors.outerFillOpacity);
       mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-stroke-color', colors.outerStroke);
@@ -88,7 +90,7 @@ export function useMapPanicZone(
     if (status !== 'active' && pulseTimerRef.current) {
       clearInterval(pulseTimerRef.current);
       pulseTimerRef.current = null;
-      if (mapInstance.getLayer(`${innerSourceId}-circle`)) {
+      if (hasLayer(mapInstance, `${innerSourceId}-circle`)) {
         mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-opacity', 1.0);
       }
     }
@@ -102,11 +104,11 @@ export function useMapPanicZone(
           setActivePanic(null);
           return;
         }
-        if (mapInstance.getLayer(`${innerSourceId}-circle`)) {
+        if (hasLayer(mapInstance, `${innerSourceId}-circle`)) {
           mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-opacity', opacity);
           mapInstance.setPaintProperty(`${innerSourceId}-circle`, 'circle-opacity', opacity * 0.12);
         }
-        if (mapInstance.getLayer(`${outerSourceId}-circle`)) {
+        if (hasLayer(mapInstance, `${outerSourceId}-circle`)) {
           mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-stroke-opacity', opacity * 0.6);
           mapInstance.setPaintProperty(`${outerSourceId}-circle`, 'circle-opacity', opacity * 0.06);
         }
@@ -130,47 +132,49 @@ export function useMapPanicZone(
     const innerData = { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: center }, properties: {} };
     const outerData = { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: center }, properties: {} };
 
-    map.addSource(innerSourceId, { type: 'geojson', data: innerData });
-    map.addLayer({
-      id: `${innerSourceId}-circle`,
-      type: 'circle',
-      source: innerSourceId,
-      paint: {
-        'circle-color': colors.innerFill,
-        'circle-radius': 200,
-        'circle-opacity': colors.innerFillOpacity,
-        'circle-stroke-color': colors.innerStroke,
-        'circle-stroke-width': 3,
-        'circle-stroke-opacity': 1.0,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(innerSourceId, { type: 'geojson', data: innerData });
+      map.addLayer({
+        id: `${innerSourceId}-circle`,
+        type: 'circle',
+        source: innerSourceId,
+        paint: {
+          'circle-color': colors.innerFill,
+          'circle-radius': 200,
+          'circle-opacity': colors.innerFillOpacity,
+          'circle-stroke-color': colors.innerStroke,
+          'circle-stroke-width': 3,
+          'circle-stroke-opacity': 1.0,
+        },
+      });
 
-    map.addSource(outerSourceId, { type: 'geojson', data: outerData });
-    map.addLayer({
-      id: `${outerSourceId}-circle`,
-      type: 'circle',
-      source: outerSourceId,
-      paint: {
-        'circle-color': colors.outerFill,
-        'circle-radius': 400,
-        'circle-opacity': colors.outerFillOpacity,
-        'circle-stroke-color': colors.outerStroke,
-        'circle-stroke-width': 2,
-        'circle-stroke-opacity': 0.6,
-      },
+      map.addSource(outerSourceId, { type: 'geojson', data: outerData });
+      map.addLayer({
+        id: `${outerSourceId}-circle`,
+        type: 'circle',
+        source: outerSourceId,
+        paint: {
+          'circle-color': colors.outerFill,
+          'circle-radius': 400,
+          'circle-opacity': colors.outerFillOpacity,
+          'circle-stroke-color': colors.outerStroke,
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': 0.6,
+        },
+      });
+
+      if (status === 'active') {
+        let pulseHigh = true;
+        pulseTimerRef.current = setInterval(() => {
+          pulseHigh = !pulseHigh;
+          if (hasLayer(map, `${innerSourceId}-circle`)) {
+            map.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-opacity', pulseHigh ? 1.0 : 0.3);
+          }
+        }, 500);
+      }
     });
 
     map.flyTo({ center, zoom: 15 });
-
-    if (status === 'active') {
-      let pulseHigh = true;
-      pulseTimerRef.current = setInterval(() => {
-        pulseHigh = !pulseHigh;
-        if (map.getLayer(`${innerSourceId}-circle`)) {
-          map.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-opacity', pulseHigh ? 1.0 : 0.3);
-        }
-      }, 500);
-    }
   }, [map, clearOverlays]);
 
   useEffect(() => {
@@ -179,23 +183,52 @@ export function useMapPanicZone(
       return;
     }
 
-    const unsubAlert = subscribe('panic_alert', (message) => {
-      const data = (message.data || message.payload) as any;
-      if (!data) return;
+    // The worker emits the ENTIRE panic lifecycle as ONE message type,
+    // 'panic_alert', discriminated by msg.action (panic_activated /
+    // panic_acknowledged / panic_resolved / panic_cancelled / panic_false_alarm)
+    // — the same contract PanicButton consumes. The old code subscribed to
+    // discrete 'panic_acknowledged'/'panic_resolved'/'panic_cancelled'/
+    // 'panic_false_alarm' TYPES the worker NEVER emits, so the map panic zone was
+    // drawn on activation but NEVER cleared/updated when the panic was
+    // resolved/cancelled (a stuck officer-safety overlay). It also read
+    // message.data/payload + data.latitude, but the frame is flat with the row
+    // under .panic — so the zone could fail to draw at all. Fix: one 'panic_alert'
+    // subscription that reads the row like PanicButton and branches on action.
+    const unsub = subscribe('panic_alert', (msg: any) => {
+      const env = (msg.data || msg.payload || msg) as any;
+      const panic = env.panic || env;                       // the panic_alerts row
+      const action: string = msg.action || env.action || 'panic_activated';
 
-      const lat = Number(data.latitude);
-      const lng = Number(data.longitude);
+      if (action === 'panic_cancelled' || action === 'panic_false_alarm') {
+        clearOverlays();
+        setActivePanic(null);
+        return;
+      }
+      if (action === 'panic_acknowledged') {
+        setActivePanic(prev => prev ? { ...prev, status: 'acknowledged' } : prev);
+        updateCircleStatus('acknowledged');
+        return;
+      }
+      if (action === 'panic_resolved') {
+        setActivePanic(prev => prev ? { ...prev, status: 'resolved' } : prev);
+        updateCircleStatus('resolved');
+        return;
+      }
+
+      // panic_activated (or any unrecognized action): draw/refresh the zone.
+      const lat = Number(panic.latitude ?? env.latitude);
+      const lng = Number(panic.longitude ?? env.longitude);
       if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return;
 
       const panicData: PanicData = {
-        callSign: data.unit_call_sign || data.badge_number || 'Unknown',
+        callSign: panic.unit_call_sign || panic.call_sign || panic.badge_number || env.unit_call_sign || 'Unknown',
         lat,
         lng,
-        timestamp: data.triggered_at || new Date().toISOString(),
-        userName: data.user_name,
-        callNumber: data.call_number,
-        locationAddress: data.location_address,
-        panicId: data.panic_id,
+        timestamp: panic.triggered_at || panic.created_at || env.triggered_at || new Date().toISOString(),
+        userName: panic.user_name ?? env.user_name,
+        callNumber: panic.call_number ?? env.call_number,
+        locationAddress: panic.location_address ?? env.location_address,
+        panicId: panic.id ?? env.panic_id ?? env.id,
         status: 'active',
       };
 
@@ -205,32 +238,8 @@ export function useMapPanicZone(
       }
     });
 
-    const unsubAck = subscribe('panic_acknowledged', () => {
-      setActivePanic(prev => prev ? { ...prev, status: 'acknowledged' } : prev);
-      updateCircleStatus('acknowledged');
-    });
-
-    const unsubResolved = subscribe('panic_resolved', () => {
-      setActivePanic(prev => prev ? { ...prev, status: 'resolved' } : prev);
-      updateCircleStatus('resolved');
-    });
-
-    const unsubCancelled = subscribe('panic_cancelled', () => {
-      clearOverlays();
-      setActivePanic(null);
-    });
-
-    const unsubFalse = subscribe('panic_false_alarm', () => {
-      clearOverlays();
-      setActivePanic(null);
-    });
-
     return () => {
-      unsubAlert();
-      unsubAck();
-      unsubResolved();
-      unsubCancelled();
-      unsubFalse();
+      unsub();
     };
   }, [enabled, subscribe, map, drawPanicZone, clearOverlays, updateCircleStatus]);
 

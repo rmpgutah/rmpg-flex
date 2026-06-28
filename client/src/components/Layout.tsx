@@ -1,4 +1,5 @@
-import React, { useEffect, useCallback, useState, useRef } from 'react';
+import React, { useEffect, useCallback, useState, useRef, useMemo } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -16,8 +17,11 @@ import {
   ScrollText,
   Search,
   Car,
+  ClipboardPen,
+  Mic,
   AlertTriangle,
   FileWarning,
+  Scale,
   Video,
   ClipboardList,
   ShieldBan,
@@ -48,11 +52,49 @@ import {
   Mail,
   GraduationCap,
   Microscope,
+  Building2,
+  ShieldAlert,
+  Megaphone,
+  CheckCircle,
+  DollarSign,
+  Share2,
+  // Spillman module-bar: distinct per-module glyphs (no more duplicate Shields)
+  Siren,
+  LifeBuoy,
+  Fingerprint,
+  ScanSearch,
+  FileSignature,
+  Webcam,
+  PieChart,
+  LayoutTemplate,
+  Boxes,
+  HeartHandshake,
+  ListTodo,
+  AlertOctagon,
+  UsersRound,
+  Pill,
+  Crosshair,
+  HeartPulse,
+  HandHeart,
+  BellRing,
+  Award,
+  UserPlus,
+  Navigation2,
+  Sun,
+  Moon,
+  MapPin,
+  BookOpen,
+  UserCheck,
+  Globe,
+  HelpCircle,
+  Route,
+  List,
 } from 'lucide-react';
-import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import PttController from './PttController';
+import { initSettingsSync } from '../utils/settingsSync';
 import { useWebSocket } from '../context/WebSocketContext';
-import { apiFetch, OfflineUnauthorizedError, authedImageUrl } from '../hooks/useApi';
+import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
@@ -61,12 +103,12 @@ import MenuBar from './MenuBar';
 // Sidebar removed — navigation moved to top icon toolbar
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
+import AnnouncementBanner from './AnnouncementBanner';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
-import OfflineStatusBar from './OfflineStatusBar';
-import PinEntryModal from './PinEntryModal';
+import CommandPalette from './CommandPalette';
 import ForcePasswordChangeModal from './ForcePasswordChangeModal';
 import Force2FASetupModal from './Force2FASetupModal';
 import MobileHeader from './mobile/MobileHeader';
@@ -79,7 +121,7 @@ import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
-import { applyThemePreference } from '../utils/theme';
+import { applyThemePreference, writeThemeOverride } from '../utils/theme';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -95,9 +137,11 @@ const PAGE_TITLES: Record<string, string> = {
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
   '/citations': 'Citations',
+  '/law-book': 'Law Book',
   '/field-interviews': 'Field Interviews',
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
+  '/mobile': 'Mobile',
   '/ncic': 'NCIC Terminal',
   '/dl-search': 'DL Search',
   '/shift-plans': 'Shift Plans',
@@ -110,10 +154,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/code-enforcement': 'Code Enforcement',
   '/court': 'Court Tracker',
   '/dar': 'Daily Activity Reports',
-  '/offender-registry': 'Offender Registry',
-  '/sex-offender-registry': 'Sex Offender Registry',
+  // NSOPW is the canonical SOR surface; old paths redirect (see App.tsx).
+  '/nsopw': 'Sex Offender Registry',
   '/reports': 'Reports',
-  '/forensics': 'Connection Analysis',
   '/forensic-lab': 'Forensic Lab',
   '/audit': 'Audit Log',
   '/crm': 'Overwatch',
@@ -134,6 +177,36 @@ const PAGE_TITLES: Record<string, string> = {
   '/iped': 'IPED Forensics',
   '/national-warrant-search': 'National Warrant Search',
   '/downloads': 'Downloads',
+  '/geography': 'Dispatch Geography',
+  '/connections': 'Connections',
+  '/intel': 'Intel Search',
+  '/intel/plate-log': 'Plate Log',
+  '/intel/quick-capture': 'Quick Capture',
+  '/intel/jail': 'Jail Records',
+  '/intel/record': 'Interaction Recorder',
+  '/skip-tracer': 'Skip Tracer',
+  '/arrest-records': 'Arrest Records',
+  '/serve-intake': 'Service Intake',
+  '/web-research': 'Web Research',
+  '/settings': 'Settings',
+  '/navigation': 'Navigation & Route Planning',
+  '/jail': 'Jail Management',
+  '/affairs': 'Internal Affairs',
+  '/assets': 'Asset Management',
+  '/community': 'Community Relations',
+  '/tasks': 'Task Management',
+  '/alerts': 'Alert Center',
+  '/training-mgmt': 'Training Admin',
+  '/qa': 'Quality Assurance',
+  '/billing': 'Billing',
+  '/court-records': 'Court Records',
+  '/documents': 'Documents',
+  '/dashcam-ai': 'Dashcam AI Console',
+  '/risk': 'Risk Management',
+  '/interagency': 'Interagency',
+  '/body-cameras': 'Body Cameras',
+  '/dash-cameras': 'Dash Cameras',
+  '/microbilt': 'MicroBilt',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -151,31 +224,69 @@ interface NavItem {
 }
 
 const TOOLBAR_NAV: NavItem[] = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops', shortcut: 'F1' },
-  { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops', shortcut: 'F2' },
-  { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3' },
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops', shortcut: 'F1', children: [
+    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/command-center', icon: Crosshair, label: 'Command Center' },
+    { path: '/security-dashboard', icon: Shield, label: 'Security Dashboard' },
+    { path: '/help', icon: HelpCircle, label: 'Help & About' },
+  ]},
+  { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops', shortcut: 'F2', children: [
+    { path: '/dispatch', icon: Radio, label: 'Dispatch Board' },
+    { path: '/mdt', icon: Monitor, label: 'MDT Terminal' },
+    { path: '/geography', icon: MapPin, label: 'Geography / Zones' },
+    { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
+    { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
+  ]},
+  { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3', children: [
+    { path: '/map', icon: Map, label: 'Live Map' },
+    { path: '/navigation', icon: Route, label: 'Navigation & Route Planning' },
+    { path: '/geo-data-viewer', icon: MapPin, label: 'Geo Data Viewer' },
+    { path: '/command-center', icon: Crosshair, label: 'Command Center' },
+  ]},
   { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
-  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5' },
+  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5', children: [
+    { path: '/ncic', icon: Terminal, label: 'NCIC Terminal' },
+    { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
+    { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
+    { path: '/colorado-doc', icon: UserCheck, label: 'Colorado DOC Search' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
+  ]},
   { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
-    { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/criminal-history', icon: Fingerprint, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
-    { path: '/microbilt', icon: Search, label: 'MicroBilt' },
+    { path: '/microbilt', icon: ScanSearch, label: 'MicroBilt' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
-    { path: '/forensics', icon: Network, label: 'Connections' },
+    { path: '/connections', icon: Network, label: 'Connections' },
+    { path: '/intel', icon: ScanSearch, label: 'Intel Search' },
+    { path: '/intel/plate-log', icon: Car, label: 'Plate Log' },
+    { path: '/intel/quick-capture', icon: ClipboardPen, label: 'Quick Capture' },
+    { path: '/intel/jail', icon: Building2, label: 'Jail Records' },
+    { path: '/intel/record', icon: Mic, label: 'Recorder' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
+    { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
+    { path: '/web-research', icon: Globe, label: 'Web Research' },
+    { path: '/documents', icon: FileText, label: 'Documents' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
+  { path: '/warrants', icon: Siren, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
     { path: '/citations', icon: FileWarning, label: 'Citations' },
+    { path: '/law-book', icon: Scale, label: 'Law Book' },
     { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-    { path: '/serve', icon: Briefcase, label: 'Process Server' },
+    { path: '/court-records', icon: Gavel, label: 'Court Records' },
+    { path: '/nsopw', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/serve', icon: FileSignature, label: 'Process Server' },
+    { path: '/serve-intake', icon: FileText, label: 'Serve Intake' },
+    { path: '/use-of-force', icon: Shield, label: 'Use of Force' },
+    { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
+    { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -183,25 +294,70 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
-    { path: '/dashcams', icon: Camera, label: 'Dashcam System' },
+    { path: '/dashcams', icon: Webcam, label: 'Dashcam System' },
+    { path: '/dashcam-ai', icon: Camera, label: 'Dashcam AI Console' },
+    { path: '/training', icon: GraduationCap, label: 'Training' },
+    { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
     { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/email', icon: Mail, label: 'Email' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
+    { path: '/notifications', icon: Megaphone, label: 'Alert Center' },
+    { path: '/alerts', icon: AlertTriangle, label: 'Notifications' },
   ]},
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
-    { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
-    { path: '/reports/custom', icon: Database, label: 'Report Builder' },
+    { path: '/statute-analytics', icon: PieChart, label: 'Statute Analytics' },
+    { path: '/reports/custom', icon: LayoutTemplate, label: 'Report Builder' },
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/connections', icon: Network, label: 'Connections' },
+    { path: '/intel', icon: ScanSearch, label: 'Intel Search' },
+    { path: '/invoices', icon: DollarSign, label: 'Invoices' },
   ]},
-  { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
-  { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
-  { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
+  { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis', children: [
+    { path: '/crm', icon: Briefcase, label: 'Overwatch' },
+    { path: '/community', icon: Users, label: 'Community' },
+  ]},
+  { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis', children: [
+    { path: '/training', icon: GraduationCap, label: 'Training' },
+    { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
+    { path: '/training-mgmt', icon: ClipboardCheck, label: 'Training Admin' },
+  ]},
+  { path: '/connections', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true, children: [
+    { path: '/connections', icon: Network, label: 'Connection Analysis' },
+    { path: '/intel', icon: ScanSearch, label: 'Intel Search' },
+    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/iped', icon: Microscope, label: 'IPED Forensics' },
+  ]},
+  { path: '/jail', icon: Building2, label: 'Jail/IA', group: 'support', children: [
+    { path: '/jail', icon: Building2, label: 'Jail Management' },
+    { path: '/affairs', icon: ShieldAlert, label: 'Internal Affairs' },
+    { path: '/assets', icon: Boxes, label: 'Asset Management' },
+  ]},
+  { path: '/billing', icon: LifeBuoy, label: 'Services', group: 'support', children: [
+    { path: '/billing', icon: DollarSign, label: 'Billing' },
+    { path: '/community', icon: HeartHandshake, label: 'Community' },
+    { path: '/tasks', icon: ListTodo, label: 'Task Management' },
+    { path: '/alerts', icon: Megaphone, label: 'Notifications' },
+    { path: '/qa', icon: CheckCircle, label: 'QA' },
+    { path: '/risk', icon: AlertOctagon, label: 'Risk Management' },
+    { path: '/interagency', icon: Share2, label: 'Interagency' },
+    { path: '/gang-intel', icon: UsersRound, label: 'Gang Intel' },
+    { path: '/narcotics', icon: Pill, label: 'Narcotics' },
+    { path: '/special-ops', icon: Crosshair, label: 'Special Ops' },
+    { path: '/crisis-response', icon: HeartPulse, label: 'Crisis Response' },
+    { path: '/victim-services', icon: HandHeart, label: 'Victim Services' },
+    { path: '/alarms', icon: BellRing, label: 'Alarm Management' },
+    { path: '/accreditation', icon: Award, label: 'Accreditation' },
+    { path: '/recruitment', icon: UserPlus, label: 'Recruitment' },
+    { path: '/invoices', icon: DollarSign, label: 'Invoices' },
+    { path: '/command-center', icon: Crosshair, label: 'Command Center' },
+  ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
 ];
@@ -219,7 +375,19 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 ]);
 
 export default function Layout() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, signOut, refreshUser } = useAuth();
+  // `logout` is still exported for forced flows (password change). The
+  // user-facing Sign Out button uses `signOut`, which gates on shift state.
+  void logout;
+  const handleSignOutClick = useCallback(async () => {
+    setProfileDropdownOpen(false);
+    const result = await signOut();
+    if (!result.ok) {
+      // Shift gate blocked sign-out. Surface via alert() so the operator
+      // can't miss it; the End Shift flow lives on the ShiftCard.
+      try { window.alert(result.message); } catch { /* noop */ }
+    }
+  }, [signOut]);
   const { isConnected, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
@@ -287,21 +455,6 @@ export default function Layout() {
     }
   }, [navigate]);
 
-  // ── Offline PIN Modal (global catch for OfflineUnauthorizedError) ──
-  const [offlinePinModalOpen, setOfflinePinModalOpen] = useState(false);
-
-  useEffect(() => {
-    // Listen for unhandled OfflineUnauthorizedError rejections
-    const handler = (event: PromiseRejectionEvent) => {
-      if (event.reason instanceof OfflineUnauthorizedError) {
-        event.preventDefault(); // suppress console error
-        setOfflinePinModalOpen(true);
-      }
-    };
-    window.addEventListener('unhandledrejection', handler);
-    return () => window.removeEventListener('unhandledrejection', handler);
-  }, []);
-
   // ── Mandatory Name Setup ──────────────────────────────────
   // If user has no first_name or last_name, force a one-time setup prompt.
   // The prompt cannot be dismissed until both fields are filled.
@@ -359,7 +512,7 @@ export default function Layout() {
     const changedAt = user.passwordChangedAt || user.last_password_change;
     if (!changedAt) return;
     const EXPIRY_DAYS = 90; // 90-day password policy
-    const changed = new Date(changedAt).getTime();
+    const changed = parseTimestamp(changedAt).getTime();
     const expiresAt = changed + EXPIRY_DAYS * 86400000;
     const daysLeft = Math.ceil((expiresAt - Date.now()) / 86400000);
     if (daysLeft <= 7 && daysLeft > 0) {
@@ -376,31 +529,11 @@ export default function Layout() {
   // handled by AuthContext and show messages on the login page.
   const showSessionWarning = false;
 
-  // ── Feature 24: Auto-logout on idle ──
-  const lastActivityRef = useRef(Date.now());
-  const [showIdleDialog, setShowIdleDialog] = useState(false);
-  const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes of no activity
-  const IDLE_WARNING_MS = 55 * 60 * 1000; // Warn at 55 minutes
-
-  useEffect(() => {
-    const resetActivity = () => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); };
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach(ev => window.addEventListener(ev, resetActivity));
-
-    const checkIdle = setInterval(() => {
-      const idle = Date.now() - lastActivityRef.current;
-      if (idle >= IDLE_TIMEOUT_MS) {
-        logout();
-      } else if (idle >= IDLE_WARNING_MS) {
-        setShowIdleDialog(true);
-      }
-    }, 30000); // check every 30s
-
-    return () => {
-      events.forEach(ev => window.removeEventListener(ev, resetActivity));
-      clearInterval(checkIdle);
-    };
-  }, [logout]);
+  // ── Feature 24: Auto-logout on idle — REMOVED per operator request ──
+  // The idle backstop that signed a workstation out after 12h of zero
+  // user presence + zero network traffic has been removed. Sessions now
+  // persist until the user explicitly signs out (access tokens still
+  // auto-refresh via AuthContext, so the session simply stays alive).
 
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
@@ -421,6 +554,11 @@ export default function Layout() {
 
   // Toolbar nav dropdowns
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  // Position of the open toolbar dropdown (viewport coords, so position:fixed
+  // escapes the toolbar's overflow-x-auto containing block). Recomputed on
+  // scroll/resize so the panel follows the triggering button.
+  const toolbarBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [dropdownRect, setDropdownRect] = useState<{ left: number; top: number; width: number } | null>(null);
   // Close dropdown on route change
   useEffect(() => { setOpenDropdown(null); }, [location.pathname]);
 
@@ -433,6 +571,29 @@ export default function Layout() {
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, [openDropdown]);
+
+  // Keep the open dropdown glued to its triggering button as the user scrolls
+  // the toolbar (overflow-x-auto) or resizes the window. Without this, the
+  // fixed-position panel would stay parked at the original viewport coords
+  // while the button slides out from under it.
+  useEffect(() => {
+    if (!openDropdown) { setDropdownRect(null); return; }
+    const update = () => {
+      const btn = toolbarBtnRefs.current[openDropdown];
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      setDropdownRect({ left: r.left, top: r.bottom, width: r.width });
+    };
+    update();
+    window.addEventListener('resize', update);
+    // capture:true so we hear the toolbar's own scroll (overflow-x-auto),
+    // not just window scroll.
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
   }, [openDropdown]);
 
   // ── F-key page switching ────────────────────────────────────
@@ -488,9 +649,9 @@ export default function Layout() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
 
   // ── Command Palette (Ctrl+K / Cmd+K) ─────────────────────
+  // State lives here so the global Cmd+K handler can toggle it; the palette
+  // UI + search/nav logic is the self-contained <CommandPalette> component.
   const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState('');
-  const paletteInputRef = useRef<HTMLInputElement>(null);
 
   // ── Unsaved Changes Warning ─────────────────────────────
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -514,7 +675,6 @@ export default function Layout() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         setShowCommandPalette(prev => !prev);
-        setPaletteQuery('');
         return;
       }
       if (e.key === 'Escape' && showCommandPalette) {
@@ -550,32 +710,49 @@ export default function Layout() {
     return () => { delete (window as any).__rmpgSetUnsavedChanges; };
   }, []);
 
+  // Settings sync — pull this user's saved prefs (+ org defaults) once on
+  // login, then debounce-push local changes so they follow the user across
+  // devices. Lives here so it runs for the whole authenticated session.
+  useEffect(() => {
+    if (!user) return;
+    return initSettingsSync();
+  }, [user]);
+
   // Clear unsaved changes on navigation
   useEffect(() => {
     setHasUnsavedChanges(false);
   }, [location.pathname]);
 
   // Command palette search results
-  const paletteResults = paletteQuery.trim().length > 0
-    ? TOOLBAR_NAV.flatMap(item => {
-        const items: { path: string; label: string; icon: React.ElementType }[] = [];
-        if (item.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
-          items.push({ path: item.path, label: item.label, icon: item.icon });
+  // Flattened, role-filtered navigation targets (parents + children) for the
+  // command palette. Mirrors the toolbar's role gating so the palette never
+  // surfaces a page the user can't open. De-duped by path.
+  const paletteNavTargets = useMemo(() => {
+    const seen = new Set<string>();
+    const targets: { path: string; label: string; icon: React.ElementType }[] = [];
+    const allow = (path: string, adminOnly?: boolean) => {
+      if (adminOnly && !isAdmin) return false;
+      if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(path)) return false;
+      return true;
+    };
+    for (const item of TOOLBAR_NAV) {
+      if (allow(item.path, item.adminOnly) && !seen.has(item.path)) {
+        seen.add(item.path);
+        targets.push({ path: item.path, label: item.label, icon: item.icon });
+      }
+      item.children?.forEach((child) => {
+        if (allow(child.path, child.adminOnly) && !seen.has(child.path)) {
+          seen.add(child.path);
+          targets.push({ path: child.path, label: child.label, icon: child.icon });
         }
-        if (item.children) {
-          item.children.forEach(child => {
-            if (child.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
-              items.push({ path: child.path, label: child.label, icon: child.icon });
-            }
-          });
-        }
-        return items;
-      }).slice(0, 10)
-    : [];
+      });
+    }
+    return targets;
+  }, [isAdmin, isClientViewer]);
 
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(1024); // iPad portrait + small landscape get the touch shell (lg breakpoint)
 
   // Close mobile menu on route change
   useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
@@ -676,28 +853,29 @@ export default function Layout() {
       }
     });
 
-    // Active call: listen for unit status changes to track assigned call
-    const unsubUnitStatus = subscribe('units:status', (msg: any) => {
+    // Active call: track the call number assigned to THIS unit. The live Worker
+    // broadcasts call lifecycle events under 'dispatch_update' (the old
+    // 'units:status' / 'calls:updated' channels are never emitted, so the mobile
+    // active-call bar never updated). The call payload is the raw call row, whose
+    // assigned units live in the comma-joined `unit_call_signs` field.
+    const unsubMobileActive = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
-      // Check if this status update is for our unit
-      if (data.call_sign === gps.unitCallSign) {
-        setMobileActiveCallNumber(data.active_call_number || null);
-      }
-    });
-    // Also listen for call updates
-    const unsubCallUpdate = subscribe('calls:updated', (msg: any) => {
-      const data = msg.data || msg;
-      // If a call has our unit assigned, track it
-      if (data.assigned_unit === gps.unitCallSign && data.status !== 'closed') {
-        setMobileActiveCallNumber(data.call_number || null);
+      const action = data.action;
+      if (!gps.unitCallSign) return;
+      if ((action === 'call_status_changed' || action === 'call_updated' || action === 'call_created') && data.call) {
+        const assigned = String(data.call.unit_call_signs || '')
+          .split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (assigned.includes(gps.unitCallSign)) {
+          const done = ['cleared', 'closed', 'cancelled', 'archived'].includes(data.call.status);
+          setMobileActiveCallNumber(done ? null : (data.call.call_number || null));
+        }
       }
     });
 
     return () => {
       unsubRadioState();
       unsubRadioLeave();
-      unsubUnitStatus();
-      unsubCallUpdate();
+      unsubMobileActive();
     };
   }, [subscribe, user?.id, gps.unitCallSign]);
 
@@ -727,12 +905,9 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col text-white overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
+    <div className="flex flex-col text-rmpg-100 overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
-
-      {/* Offline Status Bar (shows when offline or syncing — Electron and browser) */}
-      <OfflineStatusBar />
 
       {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
       <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
@@ -751,8 +926,8 @@ export default function Layout() {
           <div
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
-              background: '#0a0a0a',
-              border: '1px solid #2b2b2b',
+              background: 'var(--surface-raised)',
+              border: '1px solid var(--border-default)',
               borderTop: '3px solid #888888',
               boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
               WebkitAppRegion: 'no-drag',
@@ -760,7 +935,7 @@ export default function Layout() {
           >
             <div className="text-center space-y-1">
               <Shield className="w-8 h-8 text-brand-400 mx-auto mb-2" />
-              <div className="text-lg font-bold text-white">Operator Identification Required</div>
+              <div className="text-lg font-bold text-rmpg-100">Operator Identification Required</div>
               <div className="text-xs text-rmpg-400">
                 Enter your name to continue. This will appear in the OPR system and all reports.
               </div>
@@ -768,8 +943,8 @@ export default function Layout() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="field-label">First Name <span className="text-red-500">*</span></label>
-                <input
+                <label htmlFor="ff-layout-0" className="field-label">First Name <span className="text-red-500">*</span></label>
+                <input id="ff-layout-0"
                   type="text"
                   value={setupFirstName}
                   onChange={e => setSetupFirstName(e.target.value)}
@@ -779,8 +954,8 @@ export default function Layout() {
                 />
               </div>
               <div>
-                <label className="field-label">Last Name <span className="text-red-500">*</span></label>
-                <input
+                <label htmlFor="ff-layout-1" className="field-label">Last Name <span className="text-red-500">*</span></label>
+                <input id="ff-layout-1"
                   type="text"
                   value={setupLastName}
                   onChange={e => setSetupLastName(e.target.value)}
@@ -799,7 +974,7 @@ export default function Layout() {
             <button type="button"
               onClick={handleNameSetupSave}
               disabled={setupSaving || !setupFirstName.trim() || !setupLastName.trim()}
-              className="btn-primary w-full justify-center transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+              className="btn-primary w-full justify-center transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
             >
               {setupSaving ? 'Saving...' : 'Continue'}
             </button>
@@ -876,11 +1051,11 @@ export default function Layout() {
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
+            <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
               <RmpgLogo height={44} />
               {/* 2: Tighter line-height on app name for compact branding */}
               <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
-                <span className="text-[14px] font-bold tracking-wider text-white leading-none">RMPG</span>
+                <span className="text-[14px] font-bold tracking-wider text-rmpg-100 leading-none">RMPG</span>
                 <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: 'var(--desktop-shell-subtle-text)' }}>FLEX</span>
               </div>
             </div>
@@ -895,7 +1070,7 @@ export default function Layout() {
               {POPOUT_PAGES[location.pathname] && (
                 <button type="button"
                   onClick={() => openPageWindow(location.pathname)}
-                  className="toolbar-btn ml-1 transition-colors duration-150 hover:text-brand-400 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97]"
+                  className="toolbar-btn ml-1 transition-colors duration-150 hover:text-brand-400 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none active:scale-[0.97]"
                   title="Open in new window"
                   aria-label="Open current page in new window"
                   style={{ padding: '2px 4px' }}
@@ -913,19 +1088,19 @@ export default function Layout() {
               {/* 4: Active Calls indicator with count highlight on non-zero */}
               <button type="button"
                 onClick={() => navigate('/dispatch')}
-                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                 aria-label={`Active calls: ${activeCallCount}. Click to open dispatch.`}
               >
                 <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-rmpg-500'} />
                 <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
-                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-white'}`}>{activeCallCount}</span>
+                <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-rmpg-100'}`}>{activeCallCount}</span>
               </button>
 
               {/* 5: BOLO Indicator with improved glow effect */}
               {activeBOLOs > 0 && (
                 <button type="button"
                   onClick={() => navigate('/communications')}
-                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                   style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b', boxShadow: '0 0 8px rgba(220, 38, 38, 0.2)' }}
                   aria-label={`${activeBOLOs} active BOLOs. Click to open communications.`}
                 >
@@ -939,10 +1114,10 @@ export default function Layout() {
               {/* GPS */}
               <div
                 className="flex items-center gap-1 px-1.5 py-0.5 panel-inset"
-                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#050505' }}
-                title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || 'no unit'}` : 'GPS acquiring...'}
+                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : 'var(--surface-overlay)' }}
+                title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || (gps.hasTakeHome ? 'Take-Home Vehicle' : 'no unit')}` : 'GPS acquiring...'}
               >
-                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#666666', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
+                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : 'var(--rmpg-500)', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
                 {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}
               </div>
 
@@ -984,9 +1159,11 @@ export default function Layout() {
                 onClick={() => {
                   const html = document.documentElement;
                   const isLight = html.classList.contains('theme-light');
-                  applyThemePreference(isLight ? 'dark' : 'light');
-                  // Persist via API
-                  try { apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }); } catch {}
+                  const next = isLight ? 'dark' : 'light';
+                  writeThemeOverride({ theme: next, active: true });
+                  applyThemePreference(next, { persist: false });
+                  // Persist via API (best-effort mirror)
+                  apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: next }) }).catch(() => {});
                 }}
                 className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97]"
                 title="Toggle Light/Dark Theme"
@@ -1001,8 +1178,8 @@ export default function Layout() {
 
               {/* Search */}
               <button type="button"
-                onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-                className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                onClick={() => setShowCommandPalette(true)}
+                className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                 title="Search (Ctrl+K)"
                 aria-label="Global search"
                 style={{ padding: '2px 6px' }}
@@ -1012,19 +1189,19 @@ export default function Layout() {
             </div>
 
             {/* Separator */}
-            <div className="hidden lg:block w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="hidden lg:block w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* PANIC Button */}
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#2e2e2e' }} />
+            <div className="w-px h-7" style={{ background: 'var(--border-default)' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
               <button type="button"
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                className={`flex items-center gap-2 px-2 py-1 transition-all duration-150 border focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97] ${
+                className={`flex items-center gap-2 px-2 py-1 transition-all duration-150 border focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none active:scale-[0.97] ${
                   profileDropdownOpen
                     ? 'bg-rmpg-700 border-rmpg-600'
                     : 'bg-transparent border-transparent hover:bg-rmpg-800 hover:border-rmpg-700'
@@ -1040,7 +1217,7 @@ export default function Layout() {
                     src={authedImageUrl(user.profile_image)}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover transition-shadow duration-150"
-                    style={{ border: '2px solid #4d4d4d', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
+                    style={{ border: '2px solid var(--border-strong)', borderRadius: '50%', boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none' }}
                   />
                 ) : (
                   <div
@@ -1048,7 +1225,7 @@ export default function Layout() {
                     style={{
                       background: 'linear-gradient(135deg, #333333, #888888)',
                       color: '#fff',
-                      border: '2px solid #aaaaaa',
+                      border: '2px solid var(--rmpg-400)',
                       borderRadius: '50%',
                       boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none',
                     }}
@@ -1061,7 +1238,7 @@ export default function Layout() {
                   style={{
                     width: 10,
                     height: 10,
-                    color: '#666666',
+                    color: 'var(--rmpg-500)',
                     transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
                     transition: 'transform 0.15s',
                   }}
@@ -1077,8 +1254,8 @@ export default function Layout() {
                   style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)' }}
                 >
                   {/* User info header */}
-                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(13, 21, 32, 0.5)' }}>
-                    <div className="text-xs font-bold text-white">
+                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'var(--surface-sunken)' }}>
+                    <div className="text-xs font-bold text-rmpg-100">
                       {user?.first_name} {user?.last_name}
                     </div>
                     <div className="text-[9px] font-mono text-rmpg-500 mt-0.5">
@@ -1097,20 +1274,20 @@ export default function Layout() {
                   </div>
 
                   {/* Menu items */}
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('profile')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={() => openProfileModal('profile')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><User style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Edit Profile</span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('password')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={() => openProfileModal('password')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><Lock style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Change Password</span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => openProfileModal('sessions')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={() => openProfileModal('sessions')} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><Shield style={{ width: 12, height: 12 }} /></span>
                     <span className="menu-item-label">Active Sessions</span>
                   </button>
                   {isAdmin && (
-                    <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                    <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                       <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
                       <span className="menu-item-label">System Settings</span>
                     </button>
@@ -1119,7 +1296,7 @@ export default function Layout() {
                   <div className="menu-separator" />
 
                   {/* 9: Sign Out button with red hover bg for destructive emphasis */}
-                  <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={handleSignOutClick} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
                     <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
                     <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
                   </button>
@@ -1154,7 +1331,7 @@ export default function Layout() {
       {/* TOOLBAR ROW 1 — Menu Bar (Spillman Flex style) HIDDEN ON MOBILE */}
       {/* ============================================================ */}
         <div
-          className="hidden md:flex items-center justify-between px-2"
+          className="hidden lg:flex items-center justify-between px-2"
           style={{
             height: '22px',
             background: 'linear-gradient(180deg, var(--desktop-shell-raised-start) 0%, var(--desktop-shell-start) 100%)',
@@ -1168,13 +1345,13 @@ export default function Layout() {
           isConnected={isConnected}
           onlineCount={presence.count}
           onLogout={logout}
-          onSearch={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-          onShowShortcuts={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}
+          onSearch={() => setShowCommandPalette(true)}
+          onShowShortcuts={() => setShowShortcutHelp(true)}
           onRefreshData={fetchHeaderStats}
         />
 
         {/* 19: Operator info with distinct badge highlight */}
-        <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400">
+        <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 flex-shrink-0 whitespace-nowrap ml-4">
           <span>
             OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-rmpg-500">|</span> <span className="text-brand-400">{toDisplayLabel(user?.role || '---').toUpperCase()}</span>
           </span>
@@ -1186,7 +1363,7 @@ export default function Layout() {
       {/* Square buttons: icon above label, F-key badge, dropdown for children */}
       {/* ============================================================ */}
       <div
-        className="hidden md:flex items-center gap-0 px-1 select-none"
+        className="hidden lg:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark tab-scroll"
         role="toolbar"
         aria-label="Module navigation"
         style={{
@@ -1202,7 +1379,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavBack}
           disabled={!canGoBack}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Back (Alt+←)"
           aria-label="Navigate back"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
@@ -1213,7 +1390,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavForward}
           disabled={!canGoForward}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Forward (Alt+→)"
           aria-label="Navigate forward"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
@@ -1222,7 +1399,7 @@ export default function Layout() {
         </button>
         <div
           className="self-stretch mx-0.5"
-          style={{ width: 1, background: '#222222', margin: '6px 2px' }}
+          style={{ width: 1, background: 'var(--border-subtle)', margin: '6px 2px' }}
         />
 
         {(() => {
@@ -1254,12 +1431,12 @@ export default function Layout() {
                       window.open(url, '_blank', 'noopener,noreferrer');
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
-                    className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                    className="toolbar-nav-btn"
                     title={`Open ${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     aria-label={`Open ${item.label} in new window`}
                     style={{ height: 44, padding: '2px 6px' }}
                   >
-                    <Icon style={{ width: 16, height: 16, color: '#666666', marginBottom: 1 }} />
+                    <Icon style={{ width: 16, height: 16, color: 'currentColor', marginBottom: 1 }} />
                     <span className="font-medium leading-none" style={{ fontSize: 9, letterSpacing: '0.02em' }}>{item.label}</span>
                   </button>
                 </React.Fragment>
@@ -1271,11 +1448,12 @@ export default function Layout() {
                 {showSep && (
                   <div
                     className="self-stretch mx-0.5"
-                    style={{ width: 1, background: '#222222', margin: '6px 2px' }}
+                    style={{ width: 1, background: 'var(--border-subtle)', margin: '6px 2px' }}
                   />
                 )}
                 <div className="relative">
                   <button
+                    ref={el => { toolbarBtnRefs.current[item.path] = el; }}
                     type="button"
                     onClick={() => {
                       if (hasChildren) {
@@ -1289,29 +1467,11 @@ export default function Layout() {
                         }
                       }
                     }}
-                    className="flex flex-col items-center justify-center transition-all duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97]"
+                    className={`toolbar-nav-btn flex-col items-center justify-center ${isActive || isDropdownOpen ? 'active' : ''}`}
                     style={{
-                      width: 52,
+                      minWidth: 52,
                       height: 42,
-                      padding: '2px 4px',
-                      background: isActive
-                        ? 'linear-gradient(180deg, rgba(42,42,42,0.75) 0%, rgba(30,30,30,0.75) 100%)'
-                        : isDropdownOpen
-                          ? 'rgba(255,255,255,0.05)'
-                          : 'transparent',
-                      borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
-                      color: isActive ? '#ffffff' : '#888888',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'transparent';
-                      }
+                      padding: '2px 7px',
                     }}
                     title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     aria-label={`${item.label}${hasChildren ? ' menu' : ''}`}
@@ -1322,7 +1482,9 @@ export default function Layout() {
                       style={{
                         width: 16,
                         height: 16,
-                        color: isActive ? '#999999' : '#666666',
+                        // Inherit the button's currentColor so active (gold) + hover
+                        // states drive the glyph automatically — see .toolbar-nav-btn CSS.
+                        color: 'currentColor',
                         marginBottom: 1,
                       }}
                     />
@@ -1335,7 +1497,7 @@ export default function Layout() {
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
                           background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #141414',
+                          borderRadius: 2, border: '1px solid var(--border-subtle)',
                           boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
                       >
@@ -1355,7 +1517,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? '#999999' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                         }}
                       >
                         {item.shortcut}
@@ -1369,7 +1531,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : 'var(--rmpg-600)',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1378,18 +1540,23 @@ export default function Layout() {
                   </button>
 
                   {/* Dropdown menu for items with children */}
-                  {/* 10: Toolbar dropdown with stronger shadow + left-edge align fix */}
-                  {hasChildren && isDropdownOpen && (
+                  {/* 10: Toolbar dropdown — position:fixed with viewport coords
+                      captured from the button ref. The toolbar's overflow-x-auto
+                      makes it a containing block (per CSS spec, non-visible X
+                      overflow implicitly sets Y to auto too), which would clip
+                      an absolutely-positioned panel. Fixed positioning escapes
+                      that and lets the panel paint below the toolbar. */}
+                  {hasChildren && isDropdownOpen && dropdownRect && (
                     <div
-                      className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
+                      className="menu-dropdown fixed z-50 animate-dropdown-appear"
+                      data-nav-dropdown
                       role="menu"
                       aria-label={`${item.label} submenu`}
                       style={{
-                        minWidth: 210,
-                        background: '#141414',
-                        border: '1px solid #2a2a2a',
+                        left: dropdownRect.left,
+                        top: dropdownRect.top,
+                        minWidth: Math.max(210, dropdownRect.width),
                         borderTop: '2px solid #888888',
-                        boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3)',
                       }}
                     >
                       {item.children!.filter(child => {
@@ -1411,27 +1578,15 @@ export default function Layout() {
                                 navigate(child.path);
                               }
                             }}
-                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors duration-150 hover:bg-white/[0.06] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
+                            className={`menu-item w-full ${childActive ? 'active' : ''}`}
                             role="menuitem"
                             style={{
-                              color: childActive ? '#ffffff' : '#aaaaaa',
-                              background: childActive ? 'rgba(42,42,42,0.60)' : 'transparent',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(42,42,42,0.70) 0%, rgba(30,30,30,0.55) 100%)';
-                                (e.currentTarget as HTMLElement).style.color = '#ffffff';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'transparent';
-                                (e.currentTarget as HTMLElement).style.color = '#aaaaaa';
-                              }
+                              color: childActive ? '#ffffff' : undefined,
+                              background: childActive ? 'rgba(42,42,42,0.60)' : undefined,
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#aaaaaa' : '#666666', flexShrink: 0 }} />
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--rmpg-400)' : 'var(--rmpg-500)', flexShrink: 0 }} />
                             <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );
@@ -1461,7 +1616,40 @@ export default function Layout() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
-        <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
+        <main
+          id="main-content"
+          className="spm-page flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
+          key={location.pathname}
+          style={{ background: 'var(--surface-sunken)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
+          // Persist scroll per-path so SW-update reloads (and any other full
+          // page reload) put the operator back where they were instead of
+          // snapping to the top — the 2026-06-11 "can't scroll" reload loop
+          // made every page feel scroll-locked because each reload reset it.
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            try { sessionStorage.setItem(`rmpg_scroll:${location.pathname}`, String(el.scrollTop)); } catch { /* full */ }
+          }}
+          ref={(el) => {
+            if (!el) return;
+            try {
+              const saved = sessionStorage.getItem(`rmpg_scroll:${location.pathname}`);
+              if (saved && el.scrollTop === 0) {
+                const target = parseInt(saved, 10);
+                // Restore after the page's first content paint — content
+                // loads async, so retry briefly until it's tall enough.
+                let attempts = 0;
+                const tryRestore = () => {
+                  if (el.scrollHeight - el.clientHeight >= target) { el.scrollTop = target; return; }
+                  if (++attempts < 20) setTimeout(tryRestore, 250);
+                };
+                tryRestore();
+              }
+            } catch { /* private mode */ }
+          }}
+        >
+          {/* Officer-facing admin broadcasts (Admin → Announcements) */}
+          <AnnouncementBanner />
+
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
             <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">
@@ -1484,6 +1672,10 @@ export default function Layout() {
           </ErrorBoundary>
         </main>
       </div>
+
+      {/* Global Push-To-Talk — works on every page; every transmission is
+          relayed to the channel and recorded to Radio → Recordings. */}
+      <PttController />
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (
@@ -1517,45 +1709,20 @@ export default function Layout() {
         initialTab={profileModalTab}
       />
 
-      {/* Offline PIN Entry Modal — triggered globally when an offline write needs authorization */}
-      <PinEntryModal
-        isOpen={offlinePinModalOpen}
-        onClose={() => setOfflinePinModalOpen(false)}
-      />
-
       {/* Force Password Change Modal — blocks UI until password changed */}
       <ForcePasswordChangeModal />
 
       {/* Force 2FA Setup Modal — blocks UI until 2FA is enabled */}
       <Force2FASetupModal />
 
-      {/* Feature 24: Auto-logout idle warning dialog */}
-      {showIdleDialog && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Idle timeout warning">
-          {/* 13: Idle dialog with stronger visual hierarchy */}
-          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-6 w-[350px] text-center animate-dropdown-appear" style={{ borderTop: '3px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
-            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h3 className="text-white font-bold text-base mb-2">Are you still there?</h3>
-            <p className="text-sm text-rmpg-300 mb-4">You will be logged out in 5 minutes due to inactivity.</p>
-            <button type="button"
-              onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
-              className="px-4 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 rounded-sm transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
-              autoFocus
-            >
-              I'm still here
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Keyboard Shortcut Help Modal */}
       {showShortcutHelp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
           {/* 14: Keyboard shortcuts modal with blue top accent */}
-          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
-              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-white transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
+          <div className="bg-surface-base border border-border-default rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default bg-surface-overlay">
+              <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
+              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-rmpg-100 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
               <div className="space-y-1.5">
@@ -1563,11 +1730,11 @@ export default function Layout() {
                 {TOOLBAR_NAV.filter(i => i.shortcut).map(item => (
                   <div key={item.shortcut} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{item.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{item.shortcut}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-surface-overlay border border-border-default text-brand-400 rounded-sm">{item.shortcut}</kbd>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-[#2b2b2b] pt-3 space-y-1.5">
+              <div className="border-t border-border-default pt-3 space-y-1.5">
                 <div className="text-[10px] text-rmpg-400 font-bold uppercase tracking-wider mb-2">Global</div>
                 {[
                   { label: 'Command Palette', keys: navigator.platform.includes('Mac') ? 'Cmd+K' : 'Ctrl+K' },
@@ -1579,7 +1746,7 @@ export default function Layout() {
                 ].map(s => (
                   <div key={s.label} className="flex items-center justify-between py-1">
                     <span className="text-xs text-rmpg-200">{s.label}</span>
-                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-brand-400 rounded-sm">{s.keys}</kbd>
+                    <kbd className="px-2 py-0.5 text-[10px] font-mono bg-surface-overlay border border-border-default text-brand-400 rounded-sm">{s.keys}</kbd>
                   </div>
                 ))}
               </div>
@@ -1588,56 +1755,12 @@ export default function Layout() {
         </div>
       )}
 
-      {/* Command Palette */}
-      {showCommandPalette && (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette" onClick={() => setShowCommandPalette(false)}>
-          {/* 15: Command palette with top accent and deeper shadow */}
-          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
-              <Search className="w-4 h-4 text-brand-400 flex-shrink-0" />
-              <input
-                ref={paletteInputRef}
-                autoFocus
-                value={paletteQuery}
-                onChange={e => setPaletteQuery(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && paletteResults.length > 0) {
-                    navigate(paletteResults[0].path);
-                    setShowCommandPalette(false);
-                  }
-                  if (e.key === 'Escape') setShowCommandPalette(false);
-                }}
-                placeholder="Search pages, modules..."
-                className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 focus:outline-none"
-              />
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-rmpg-500 rounded-sm">ESC</kbd>
-            </div>
-            <div className="max-h-80 overflow-y-auto scrollbar-dark">
-              {paletteQuery.trim() === '' ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">Type to search pages and modules<span className="text-rmpg-600 ml-1">-- start typing</span></div>
-              ) : paletteResults.length === 0 ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">No results found</div>
-              ) : (
-                paletteResults.map((result, idx) => {
-                  const Icon = result.icon;
-                  return (
-                    <button type="button"
-                      key={`${result.path}-${idx}`}
-                      onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#2b2b2b]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
-                    >
-                      {/* 17: Command palette results with matched text style */}
-                      <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />
-                      <span className="text-sm text-white font-medium">{result.label}</span>
-                      <span className="text-[10px] text-rmpg-500 ml-auto font-mono">{result.path}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Command Palette (Cmd/Ctrl+K) — nav + live record search + NCIC quick-run */}
+      <CommandPalette
+        open={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        navTargets={paletteNavTargets}
+      />
 
 
     </div>

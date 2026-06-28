@@ -1,0 +1,11 @@
+-- 0060_fleet_fuel_mpg.sql
+-- Manual MPG column on fleet_fuel_log. The app normally derives MPG from
+-- odometer spans between full-tank fills; this column lets an authoritative
+-- MPG be stored per fill (e.g. backfilled from the PS-206 log / typed by an
+-- operator) and DISPLAYED even when no odometer chain is available.
+-- computeFuelAnalytics() in src/routes/fleet.ts prefers this stored value over
+-- the odometer-derived estimate and feeds it into avg/best/worst aggregates.
+-- Applied directly to live D1 (785de7ae) 2026-06-01 + backfilled for PS-D19.
+-- Idempotent note: D1 has no "ADD COLUMN IF NOT EXISTS"; re-applying errors
+-- harmlessly (the deploy migration step is continue-on-error).
+ALTER TABLE fleet_fuel_log ADD COLUMN mpg REAL;

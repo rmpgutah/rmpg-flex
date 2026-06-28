@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface SafetyZone {
   latitude: number;
@@ -94,37 +96,38 @@ export function useMapSafetyZones(
 
     if (features.length === 0) return;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
-        'circle-radius': ['case', ['get', 'isHigh'], 20, 15],
-        'circle-opacity': [
-          'interpolate', ['linear'], ['get', 'total_flagged'],
-          0, 0.06,
-          20, 0.21,
-        ],
-        'circle-stroke-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
-        'circle-stroke-width': ['case', ['get', 'isHigh'], 3, 2],
-        'circle-stroke-opacity': [
-          'interpolate', ['linear'], ['get', 'total_flagged'],
-          0, 0.3,
-          20, 0.7,
-        ],
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
+          'circle-radius': ['case', ['get', 'isHigh'], 20, 15],
+          'circle-opacity': [
+            'interpolate', ['linear'], ['get', 'total_flagged'],
+            0, 0.06,
+            20, 0.21,
+          ],
+          'circle-stroke-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
+          'circle-stroke-width': ['case', ['get', 'isHigh'], 3, 2],
+          'circle-stroke-opacity': [
+            'interpolate', ['linear'], ['get', 'total_flagged'],
+            0, 0.3,
+            20, 0.7,
+          ],
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
+      map.on('click', sourceId, (e) => {
       const feature = e.features?.[0];
       if (!feature || !feature.properties) return;
       const p = feature.properties;
       const isHigh = p.isHigh as boolean;
       const color = isHigh ? '#dc2626' : '#f59e0b';
       const riskLabel = isHigh ? 'HIGH' : 'MODERATE';
-      const lastDate = p.last_incident ? new Date(p.last_incident as string).toLocaleDateString() : 'Unknown';
+      const lastDate = p.last_incident ? parseTimestamp(p.last_incident as string).toLocaleDateString() : 'Unknown';
 
       const html = `
         <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
@@ -141,6 +144,7 @@ export function useMapSafetyZones(
       if (popupRef.current) {
         popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
       }
+      });
     });
 
     return () => {
