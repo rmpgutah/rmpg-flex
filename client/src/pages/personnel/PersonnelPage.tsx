@@ -28,7 +28,7 @@ import {
 } from './utils/personnelMappers';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import {
-  MAIN_TABS, type MainTab, type DetailTab, type ModalMode,
+  type MainTab, type DetailTab, type ModalMode,
 } from './utils/personnelConstants';
 import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
 import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
