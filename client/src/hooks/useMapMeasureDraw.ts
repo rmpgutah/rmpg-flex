@@ -14,6 +14,7 @@ import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { length as turfLength } from '@turf/length';
 import { area as turfArea } from '@turf/area';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 export type MeasureMode = 'distance' | 'area' | null;
 
@@ -50,17 +51,17 @@ export function useMapMeasureDraw({ map, mode }: Opts) {
   const ensureLayers = useCallback(() => {
     if (!map) return;
     whenStyleReady(map, () => {
-      if (!map.getSource(SRC)) map.addSource(SRC, { type: 'geojson', data: buildData() as any });
-      if (!map.getLayer(L_FILL)) {
+      if (!hasSource(map, SRC)) map.addSource(SRC, { type: 'geojson', data: buildData() as any });
+      if (!hasLayer(map, L_FILL)) {
         map.addLayer({ id: L_FILL, type: 'fill', source: SRC, filter: ['==', ['geometry-type'], 'Polygon'],
           paint: { 'fill-color': '#d4a017', 'fill-opacity': 0.15 } });
       }
-      if (!map.getLayer(L_LINE)) {
+      if (!hasLayer(map, L_LINE)) {
         map.addLayer({ id: L_LINE, type: 'line', source: SRC, filter: ['==', ['geometry-type'], 'LineString'],
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: { 'line-color': '#d4a017', 'line-width': 2.5, 'line-dasharray': [2, 1] } });
       }
-      if (!map.getLayer(L_VERT)) {
+      if (!hasLayer(map, L_VERT)) {
         map.addLayer({ id: L_VERT, type: 'circle', source: SRC, filter: ['==', ['geometry-type'], 'Point'],
           paint: { 'circle-radius': 4, 'circle-color': '#0a0a0a', 'circle-stroke-color': '#d4a017', 'circle-stroke-width': 2 } });
       }
@@ -71,7 +72,7 @@ export function useMapMeasureDraw({ map, mode }: Opts) {
     if (!map) return;
     ensureLayers();
     const data = buildData();
-    const src = map.getSource(SRC) as mapboxgl.GeoJSONSource | undefined;
+    const src = getSourceSafe<mapboxgl.GeoJSONSource>(map, SRC);
     if (src) src.setData(data as any);
     const pts = ptsRef.current;
     let dist = 0;
@@ -133,8 +134,8 @@ export function useMapMeasureDraw({ map, mode }: Opts) {
     if (!map) return;
     return () => {
       try {
-        [L_VERT, L_LINE, L_FILL].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
-        if (map.getSource(SRC)) map.removeSource(SRC);
+        [L_VERT, L_LINE, L_FILL].forEach((id) => { safeRemoveLayer(map, id); });
+        safeRemoveSource(map, SRC);
       } catch { /* style already torn down */ }
     };
   }, [map]);

@@ -2,6 +2,15 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+// Mirror CHECK constraint on crisis_response_incidents.incident_type from
+// migrations/0048_specialized_modules.sql:92. Update both if the migration moves.
+const CRISIS_INCIDENT_TYPES = ['mental_health','suicide_ideation','substance_abuse','domestic','welfare_check','other'] as const;
+type CrisisIncidentType = typeof CRISIS_INCIDENT_TYPES[number];
+const normalizeIncidentType = (v: unknown): CrisisIncidentType | null => {
+  if (v == null || v === '') return 'other';
+  return (CRISIS_INCIDENT_TYPES as readonly string[]).includes(v as string) ? (v as CrisisIncidentType) : null;
+};
+
 const crisis = new Hono<Env>();
 
 crisis.get('/incidents', async (c) => {
@@ -11,13 +20,23 @@ crisis.get('/incidents', async (c) => {
 
 crisis.post('/incidents', async (c) => {
   try { const db = getDb(c.env); const body = await c.req.json();
-    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400); const result = await execute(db, 'INSERT INTO crisis_response_incidents (incident_number, incident_type, location, subject_name, disposition, cit_team_used, resolved_on_scene, diverted, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (body.incident_number || (() => { throw new Error("incident_number required"); })()), body.incident_type || 'other', body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null); return c.json({ success: true, id: result.meta.last_row_id }); }
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
+    const incidentType = normalizeIncidentType(body.incident_type);
+    if (incidentType === null) {
+      return c.json({ error: 'Invalid incident_type', allowed: CRISIS_INCIDENT_TYPES }, 400);
+    }
+    const result = await execute(db, 'INSERT INTO crisis_response_incidents (incident_number, incident_type, location, subject_name, disposition, cit_team_used, resolved_on_scene, diverted, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (body.incident_number || (() => { throw new Error("incident_number required"); })()), incidentType, body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null); return c.json({ success: true, id: result.meta.last_row_id }); }
   catch (err) { return c.json({ error: 'Failed to create crisis incident', detail: (err as Error)?.message }, 500); }
 });
 
 crisis.put('/incidents/:id', async (c) => {
   try { const db = getDb(c.env); const id = c.req.param('id'); const body = await c.req.json();
-    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400); await execute(db, 'UPDATE crisis_response_incidents SET incident_number=?, incident_type=?, location=?, subject_name=?, disposition=?, cit_team_used=?, resolved_on_scene=?, diverted=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?', (body.incident_number || (() => { throw new Error("incident_number required"); })()), body.incident_type || 'other', body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null, id); return c.json({ success: true }); }
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
+    const incidentType = normalizeIncidentType(body.incident_type);
+    if (incidentType === null) {
+      return c.json({ error: 'Invalid incident_type', allowed: CRISIS_INCIDENT_TYPES }, 400);
+    }
+    await execute(db, 'UPDATE crisis_response_incidents SET incident_number=?, incident_type=?, location=?, subject_name=?, disposition=?, cit_team_used=?, resolved_on_scene=?, diverted=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?', (body.incident_number || (() => { throw new Error("incident_number required"); })()), incidentType, body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null, id); return c.json({ success: true }); }
   catch (err) { return c.json({ error: 'Failed to update crisis incident', detail: (err as Error)?.message }, 500); }
 });
 

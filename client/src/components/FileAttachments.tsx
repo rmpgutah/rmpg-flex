@@ -14,11 +14,14 @@ import {
   X,
   Eye,
   ZoomIn,
+  Camera,
 } from 'lucide-react';
 import { apiUploadFilesWithProgress, apiFetchAttachments, apiDeleteAttachment } from '../hooks/useApi';
 import type { UploadProgress } from '../hooks/useApi';
 import UploadProgressBar from './ui/UploadProgressBar';
 import ConfirmDialog from './ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
+import { stampPhoto, getGeoFix, contextLabelForEntity } from '../utils/photoStamp';
 
 interface Attachment {
   id: number;
@@ -39,6 +42,12 @@ interface FileAttachmentsProps {
   entityId: string | number;
   readOnly?: boolean;
   compact?: boolean;
+  /** Override the burned-in photo-context label (else derived from entityType). */
+  photoContext?: string;
+  /** Case/incident number woven into the stamp for evidence photos. */
+  caseNumber?: string;
+  /** Disable the forensic photo stamp for this surface (default: on). */
+  disablePhotoStamp?: boolean;
 }
 
 const TOKEN_KEY = 'rmpg_token';
@@ -113,7 +122,11 @@ export default function FileAttachments({
   entityId,
   readOnly = false,
   compact = false,
+  photoContext,
+  caseNumber,
+  disablePhotoStamp = false,
 }: FileAttachmentsProps) {
+  const { user } = useAuth();
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -121,11 +134,13 @@ export default function FileAttachments({
   const [dragOver, setDragOver] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [totalUploadFiles, setTotalUploadFiles] = useState(0);
   const [currentFileName, setCurrentFileName] = useState<string | undefined>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -144,8 +159,26 @@ export default function FileAttachments({
   }, [fetchFiles]);
 
   const handleUpload = async (files: FileList | File[]) => {
-    const fileArray = Array.from(files);
+    let fileArray = Array.from(files);
     if (fileArray.length === 0) return;
+
+    // ── Forensic photo stamp ──
+    // Burn timestamp + geo + officer + context into every image before
+    // upload, so the metadata is part of the pixels (chain of custody).
+    // Best-effort: a stamp failure (geo denied, decode error) never blocks
+    // the upload — stampPhoto returns the original on any error.
+    if (!disablePhotoStamp && fileArray.some(f => f.type.startsWith('image/'))) {
+      try {
+        const geo = await getGeoFix();
+        const context = photoContext || contextLabelForEntity(entityType, caseNumber);
+        const officerLast = (user?.last_name || user?.full_name?.split(' ').slice(-1)[0] || user?.username || '').trim();
+        fileArray = await Promise.all(fileArray.map(f =>
+          f.type.startsWith('image/')
+            ? stampPhoto(f, { officerLast, badge: user?.badge_number, context, lat: geo?.lat, lon: geo?.lon })
+            : Promise.resolve(f),
+        ));
+      } catch { /* leave files unstamped on any failure */ }
+    }
 
     setUploading(true);
     setError(null);
@@ -209,11 +242,21 @@ export default function FileAttachments({
     }
   };
 
-  const openPreview = (attachment: Attachment) => {
-    if (attachment.mime_type.startsWith('image/') || attachment.mime_type === 'application/pdf') {
+  const openPreview = async (attachment: Attachment) => {
+    if (attachment.mime_type.startsWith('image/')) {
       setPreviewAttachment(attachment);
+    } else if (attachment.mime_type === 'application/pdf') {
+      setPreviewAttachment(attachment);
+      setPdfBlobUrl(null);
+      try {
+        const url = authUrl(`/api/uploads/${attachment.file_id}`, attachment.access_sig, attachment.access_exp);
+        const res = await fetch(url);
+        if (res.ok) {
+          const blob = await res.blob();
+          setPdfBlobUrl(URL.createObjectURL(blob));
+        }
+      } catch { /* iframe will show empty */ }
     } else {
-      // Direct download for non-previewable files
       window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank', 'noopener,noreferrer');
     }
   };
@@ -228,7 +271,7 @@ export default function FileAttachments({
 
   return (
     <div className="space-y-2">
-      <label className="text-[10px] text-rmpg-400 uppercase font-semibold flex items-center gap-1">
+      <label htmlFor="ff-fileattachments-0" className="text-[10px] text-rmpg-400 uppercase font-semibold flex items-center gap-1">
         <Paperclip className="w-3 h-3" />
         Attachments ({attachments.length})
       </label>
@@ -245,6 +288,7 @@ export default function FileAttachments({
 
       {/* Upload Zone */}
       {!readOnly && (
+        <>
         <div
           onDrop={handleDrop}
           onDragOver={handleDragOver}
@@ -282,6 +326,29 @@ export default function FileAttachments({
             </div>
           )}
         </div>
+        {/* Take Photo — phones/tablets only. capture="environment" opens the
+            rear camera directly (the mixed-type accept list above makes some
+            mobile browsers skip the camera option entirely). Reuses the same
+            change handler/upload pipeline. */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileInput}
+          accept="image/*"
+          capture="environment"
+        />
+        {!uploading && (
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            className="md:hidden mt-1.5 w-full flex items-center justify-center gap-2 py-2.5 border border-rmpg-600 text-rmpg-200 text-xs font-bold uppercase tracking-wider hover:border-rmpg-400 active:scale-[0.99]"
+          >
+            <Camera className="w-4 h-4" />
+            Take photo
+          </button>
+        )}
+        </>
       )}
 
       {/* Content */}
@@ -329,7 +396,7 @@ export default function FileAttachments({
                   </div>
                   {/* Overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
-                    <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ZoomIn className="w-5 h-5 text-rmpg-100 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity" />
                   </div>
                   {/* Image name */}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1">
@@ -339,7 +406,7 @@ export default function FileAttachments({
                   {!readOnly && (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: att.file_id, name: att.original_name }); }}
-                      className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-red-900/80 text-rmpg-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                      className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-red-900/80 text-rmpg-300 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                       title="Delete"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -370,7 +437,7 @@ export default function FileAttachments({
                         {' '}&middot; {formatDate(att.created_at)}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                       {att.mime_type === 'application/pdf' && (
                         <button type="button"
                           onClick={() => openPreview(att)}
@@ -423,7 +490,7 @@ export default function FileAttachments({
           aria-modal="true"
           aria-label={`Preview: ${previewAttachment.original_name}`}
           className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-fade-in"
-          onClick={() => setPreviewAttachment(null)}
+          onClick={() => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); setPdfBlobUrl(null); setPreviewAttachment(null); }}
           style={{ touchAction: 'manipulation' }}
         >
           <div className="relative max-w-4xl max-h-full" onClick={(e) => e.stopPropagation()}>
@@ -440,8 +507,8 @@ export default function FileAttachments({
                   <Download className="w-4 h-4" />
                 </a>
                 <button type="button"
-                  onClick={() => setPreviewAttachment(null)}
-                  className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
+                  onClick={() => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); setPdfBlobUrl(null); setPreviewAttachment(null); }}
+                  className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-200 hover:text-rmpg-100 transition-colors"
                   style={{ touchAction: 'manipulation' }}
                   aria-label="Close"
                 >
@@ -450,12 +517,17 @@ export default function FileAttachments({
               </div>
             </div>
             {previewAttachment.mime_type === 'application/pdf' ? (
-              <iframe
-                src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}
-                className="w-[800px] h-[600px] bg-white"
-                title="PDF Preview"
-                sandbox="allow-same-origin"
-              />
+              pdfBlobUrl ? (
+                <iframe
+                  src={pdfBlobUrl}
+                  className="w-[800px] h-[600px] bg-white"
+                  title="PDF Preview"
+                />
+              ) : (
+                <div className="w-[800px] h-[600px] bg-white flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-rmpg-400" />
+                </div>
+              )
             ) : (
               <img
                 src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}

@@ -73,7 +73,7 @@ export default function AnomalyAlertBanner() {
           >
             <Icon style={{ width: 12, height: 12, color: style.icon, flexShrink: 0 }} className={alert.severity === 'critical' ? 'animate-pulse' : ''} />
             <span className="font-bold" style={{ color: style.text }}>{alert.title}</span>
-            <span className="text-rmpg-400 truncate flex-1">{alert.details}</span>
+            <span className="text-rmpg-400 min-w-0 truncate flex-1">{alert.details}</span>
             <span className="text-[9px] text-rmpg-500 flex-shrink-0">{elapsed}m ago</span>
             <button
               onClick={() => handleAcknowledge(alert.id)}

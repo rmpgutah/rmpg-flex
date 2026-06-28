@@ -70,6 +70,11 @@ export function keyCodeLabel(code: string): string {
   if (!code) return 'Unset';
   if (code === 'Backquote') return '` (Backtick)';
   if (code === 'Space') return 'Space';
+  if (code === 'Backspace') return 'Backspace';
+  if (code === 'Enter') return 'Enter';
+  if (code === 'Tab') return 'Tab';
+  if (code === 'Escape') return 'Esc';
+  if (code === 'Delete') return 'Delete';
   if (code.startsWith('Key')) return code.slice(3);        // KeyV → V
   if (code.startsWith('Digit')) return code.slice(5);      // Digit1 → 1
   if (code.startsWith('Arrow')) return code.slice(5) + ' Arrow';

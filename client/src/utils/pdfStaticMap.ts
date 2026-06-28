@@ -16,12 +16,47 @@
 
 import { getCachedMapboxAccessToken } from './mapboxApiKey';
 
+/** One computed egress (exit) route from the target location. */
+export interface EgressRoute {
+  label: string;            // 'A' | 'B' | 'C'
+  distanceM: number;        // driving distance, meters
+  durationS: number;        // driving time, seconds
+  /** Maneuver chain — up to 3 distinct named roads in travel order
+   *  ("COMMERCE DR > 5900 S > STATE ST"), '' if all unnamed. */
+  via: string;
+  compass: string;          // overall direction of travel from target (N/NE/...)
+  end: [number, number];    // [lng, lat] of the route's far end
+  colorHex: string;         // 6-hex line color baked into the raster (no '#')
+}
+
+/** Destination-anchored safety route (real target, not a dispersal probe). */
+export interface PriorityRoute {
+  kind: 'CASEVAC' | 'HWY ACCESS';
+  name: string;             // destination name (hospital / highway), UPPER
+  distanceM: number;
+  durationS: number;
+  via: string;              // maneuver chain, same format as EgressRoute.via
+  compass: string;
+  end: [number, number];
+  colorHex: string;
+}
+
 export interface LocationMapImage {
   dataUrl: string;   // image/jpeg data URL, white-matted (no alpha)
   width: number;     // intrinsic pixel width
   height: number;    // intrinsic pixel height
   lat: number;
   lng: number;
+  /** Drivable exit routes baked into the raster as cased path lines
+   *  (present only when opts.egressRoutes was set and Directions
+   *  succeeded — best-effort, may be absent/empty). */
+  egress?: EgressRoute[];
+  /** Destination-anchored safety routes (CASEVAC to nearest hospital,
+   *  highway access) baked into the raster — best-effort, may be absent. */
+  priorityRoutes?: PriorityRoute[];
+  /** Wide-area overview raster (streets style, ~z13) for the
+   *  picture-in-picture inset. Present only when opts.overviewInset. */
+  insetDataUrl?: string;
 }
 
 export interface LocationMapOptions {
@@ -37,6 +72,11 @@ export interface LocationMapOptions {
   style?: string;
   /** Marker color (6-hex, no '#'). Defaults to RMPG gold. */
   markerColor?: string;
+  /** Compute drivable exit routes (Mapbox Directions, best-effort) and
+   *  bake them into the raster as cased path lines. */
+  egressRoutes?: boolean;
+  /** Also fetch a wide-area overview raster for a PiP inset. */
+  overviewInset?: boolean;
 }
 
 const isFiniteNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
@@ -72,6 +112,340 @@ async function directForwardGeocode(query: string, token: string): Promise<[numb
   return null;
 }
 
+const DIRECTIONS_TIMEOUT_MS = 6000;
+
+/** Google polyline encoding (precision 5) — Mapbox static `path()` overlays
+ *  take encoded polylines, which keeps the URL far under the 8KB cap. */
+function encodePolyline(coords: [number, number][]): string {
+  let out = '';
+  let prevLat = 0;
+  let prevLng = 0;
+  const enc = (v: number) => {
+    let n = v < 0 ? ~(v << 1) : v << 1;
+    let s = '';
+    while (n >= 0x20) {
+      s += String.fromCharCode((0x20 | (n & 0x1f)) + 63);
+      n >>= 5;
+    }
+    return s + String.fromCharCode(n + 63);
+  };
+  for (const [lng, lat] of coords) {
+    const iLat = Math.round(lat * 1e5);
+    const iLng = Math.round(lng * 1e5);
+    out += enc(iLat - prevLat) + enc(iLng - prevLng);
+    prevLat = iLat;
+    prevLng = iLng;
+  }
+  return out;
+}
+
+const COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+function compass8(fromLat: number, fromLng: number, toLat: number, toLng: number): string {
+  const dy = toLat - fromLat;
+  const dx = (toLng - fromLng) * Math.cos((fromLat * Math.PI) / 180);
+  const deg = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+  return COMPASS_8[Math.round(deg / 45) % 8];
+}
+
+/** Per-route line colors baked into the raster — gold / white / orange for
+ *  dispersal egress, red for CASEVAC, green for highway access. No blue
+ *  (theme rule), all chosen to read over satellite ground cover under the
+ *  dark casing stroke. */
+const EGRESS_COLORS = ['d4a017', 'ffffff', 'ff8c00'];
+const CASEVAC_COLOR = 'ff3333';
+const HWY_COLOR = '00d26a';
+
+interface DrivingRoute {
+  coords: [number, number][];
+  distanceM: number;
+  durationS: number;
+  via: string;        // maneuver chain — up to 3 distinct named roads, ' > ' joined
+}
+
+/** One Mapbox Directions (driving) request to a real destination. Returns
+ *  the simplified geometry plus a maneuver chain built from the step names
+ *  (distinct, in travel order, capped at 3) — this is what turns the data
+ *  row from "VIA COMMERCE DRIVE" into an actionable path description. */
+async function fetchDrivingRoute(
+  lng: number,
+  lat: number,
+  destLng: number,
+  destLat: number,
+  token: string,
+): Promise<DrivingRoute | null> {
+  const url =
+    `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+    `${lng},${lat};${destLng},${destLat}` +
+    `?geometries=geojson&overview=simplified&steps=true&access_token=${encodeURIComponent(token)}`;
+  const res = await fetchWithTimeout(url, DIRECTIONS_TIMEOUT_MS);
+  if (!res || !res.ok) return null;
+  const data = await res.json().catch(() => null);
+  const r = data?.routes?.[0];
+  const coords: unknown = r?.geometry?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2 || !isFiniteNum(r?.distance)) return null;
+  const steps: { name?: string }[] = r?.legs?.[0]?.steps ?? [];
+  const chain: string[] = [];
+  for (const s of steps) {
+    const n = (s.name || '').trim().toUpperCase();
+    if (n && chain[chain.length - 1] !== n && !chain.includes(n)) chain.push(n);
+    if (chain.length >= 3) break;
+  }
+  return {
+    coords: coords as [number, number][],
+    distanceM: r.distance as number,
+    durationS: isFiniteNum(r?.duration) ? (r.duration as number) : 0,
+    via: chain.join(' > '),
+  };
+}
+
+/**
+ * Compute up to 3 distinct drivable exit routes away from the target via
+ * Mapbox Directions (driving). Dispersal probes go out at all 8 compass
+ * bearings (~700m) — the driving profile snaps each to the real street
+ * network, so the resulting paths follow actual roads, not synthetic
+ * cardinal lines. Routes that converge onto the same corridor (far ends
+ * within ~150m) are deduped, shortest kept; the survivors are the genuinely
+ * independent ways out. Best-effort: any network/parse failure just drops
+ * that bearing.
+ */
+async function fetchEgressRoutes(
+  lat: number,
+  lng: number,
+  token: string,
+): Promise<{ route: EgressRoute; coords: [number, number][] }[]> {
+  const OFFSET_M = 700;
+  const latRad = (lat * Math.PI) / 180;
+  const dests: [number, number][] = [0, 45, 90, 135, 180, 225, 270, 315].map((bDeg) => {
+    const b = (bDeg * Math.PI) / 180;
+    const dLat = (OFFSET_M * Math.cos(b)) / 111320;
+    const dLng = (OFFSET_M * Math.sin(b)) / (111320 * Math.cos(latRad));
+    return [lng + dLng, lat + dLat];
+  });
+
+  const results = await Promise.all(
+    dests.map(([dl, da]) => fetchDrivingRoute(lng, lat, dl, da, token)),
+  );
+
+  // Dedupe corridors: two routes whose far ends sit within ~150m share an
+  // egress corridor — keep the shorter.
+  const kept: DrivingRoute[] = [];
+  for (const r of results.filter((x): x is DrivingRoute => !!x).sort((a, b) => a.distanceM - b.distanceM)) {
+    const end = r.coords[r.coords.length - 1];
+    const clash = kept.some((k) => {
+      const ke = k.coords[k.coords.length - 1];
+      const dy = (ke[1] - end[1]) * 111320;
+      const dx = (ke[0] - end[0]) * 111320 * Math.cos(latRad);
+      return Math.hypot(dx, dy) < 150;
+    });
+    if (!clash) kept.push(r);
+    if (kept.length >= 3) break;
+  }
+
+  return kept.map((r, i) => ({
+    coords: r.coords,
+    route: {
+      label: String.fromCharCode(65 + i),
+      distanceM: r.distanceM,
+      durationS: r.durationS,
+      via: r.via,
+      compass: compass8(lat, lng, r.coords[r.coords.length - 1][1], r.coords[r.coords.length - 1][0]),
+      end: r.coords[r.coords.length - 1],
+      colorHex: EGRESS_COLORS[i % EGRESS_COLORS.length],
+    },
+  }));
+}
+
+/**
+ * Destination-anchored safety routes — the "real routing" layer:
+ *  - CASEVAC: driving route to the nearest hospital (POI geocode w/
+ *    proximity bias), the medical-evacuation path an operator would run.
+ *  - HWY ACCESS: driving route to the nearest motorway/trunk segment,
+ *    located by tilequery against the streets tileset within 4km.
+ * Both best-effort and independent — either may be absent.
+ */
+async function fetchPriorityRoutes(
+  lat: number,
+  lng: number,
+  token: string,
+): Promise<{ route: PriorityRoute; coords: [number, number][] }[]> {
+  const casevacP = (async () => {
+    const url =
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/hospital.json` +
+      `?proximity=${lng},${lat}&types=poi&limit=1&country=us&access_token=${encodeURIComponent(token)}`;
+    const res = await fetchWithTimeout(url, GEOCODE_TIMEOUT_MS);
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const f = data?.features?.[0];
+    const c = f?.center;
+    if (!f?.text || !Array.isArray(c) || !isFiniteNum(c[0]) || !isFiniteNum(c[1])) return null;
+    const r = await fetchDrivingRoute(lng, lat, c[0], c[1], token);
+    if (!r) return null;
+    return { kind: 'CASEVAC' as const, name: String(f.text).toUpperCase(), colorHex: CASEVAC_COLOR, r };
+  })();
+
+  const hwyP = (async () => {
+    // Streets-v8 road layer carries `class` — motorway/trunk segments are
+    // controlled-access escape corridors. Tilequery returns features sorted
+    // by distance, so the first match is the nearest access point.
+    const url =
+      `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${lng},${lat}.json` +
+      `?radius=4000&layers=road&limit=50&geometry=linestring&access_token=${encodeURIComponent(token)}`;
+    const res = await fetchWithTimeout(url, GEOCODE_TIMEOUT_MS);
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const feats: { properties?: { class?: string; name?: string }; geometry?: { type?: string; coordinates?: unknown } }[] =
+      data?.features ?? [];
+    const hwy = feats.find((f) =>
+      ['motorway', 'motorway_link', 'trunk'].includes(f.properties?.class || ''));
+    if (!hwy) return null;
+    // Tilequery linestring geometry may be a point (snapped) or a line —
+    // take the first coordinate pair either way.
+    const g = hwy.geometry;
+    const pt: unknown = g?.type === 'Point' ? g.coordinates : (g?.coordinates as unknown[])?.[0];
+    if (!Array.isArray(pt) || !isFiniteNum(pt[0]) || !isFiniteNum(pt[1])) return null;
+    const r = await fetchDrivingRoute(lng, lat, pt[0] as number, pt[1] as number, token);
+    if (!r) return null;
+    const name = (hwy.properties?.name || 'HIGHWAY').toUpperCase();
+    return { kind: 'HWY ACCESS' as const, name, colorHex: HWY_COLOR, r };
+  })();
+
+  const found = (await Promise.all([casevacP, hwyP])).filter(
+    (x): x is NonNullable<typeof x> => !!x,
+  );
+  return found.map(({ kind, name, colorHex, r }) => ({
+    coords: r.coords,
+    route: {
+      kind, name, colorHex,
+      distanceM: r.distanceM,
+      durationS: r.durationS,
+      via: r.via,
+      compass: compass8(lat, lng, r.coords[r.coords.length - 1][1], r.coords[r.coords.length - 1][0]),
+      end: r.coords[r.coords.length - 1],
+    },
+  }));
+}
+
+// ── Tactical context (elevation + nearest support facilities) ──────────────
+
+export interface TacticalPoi {
+  kind: string;             // 'MEDICAL' | 'FIRE' | 'LAW ENF'
+  name: string;             // facility name (UPPER)
+  distanceM: number;        // straight-line meters from target
+  compass: string;          // bearing from target (N/NE/...)
+}
+
+/** Plottable hazard / sensitive-occupancy site near the target. */
+export interface TacticalHazard {
+  kind: 'SCHOOL' | 'DAYCARE' | 'FUEL';
+  letter: string;           // map-symbol letter: S / D / F
+  name: string;             // UPPER
+  lat: number;
+  lng: number;
+  distanceM: number;
+  compass: string;
+}
+
+export interface TacticalContext {
+  elevationM?: number;      // ground elevation at target (terrain contour)
+  pois: TacticalPoi[];
+  /** Schools / daycares / fuel within ~700m — sensitive occupancies and
+   *  fire/explosion hazards a planner must clear or stage away from. */
+  hazards: TacticalHazard[];
+}
+
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/**
+ * Best-effort tactical context for the location-analysis block: ground
+ * elevation (Mapbox terrain tilequery) and the nearest hospital / fire
+ * station / police facility (POI geocoding with proximity bias). Same
+ * isolation rules as the static map: cached token only, every call
+ * timeout-bounded, every failure degrades to "absent".
+ */
+export async function fetchTacticalContext(lat: number, lng: number): Promise<TacticalContext | null> {
+  try {
+    const token = getCachedMapboxAccessToken();
+    if (!token) return null;
+
+    const elevP = (async (): Promise<number | undefined> => {
+      const url =
+        `https://api.mapbox.com/v4/mapbox.mapbox-terrain-v2/tilequery/${lng},${lat}.json` +
+        `?layers=contour&limit=1&access_token=${encodeURIComponent(token)}`;
+      const res = await fetchWithTimeout(url, GEOCODE_TIMEOUT_MS);
+      if (!res || !res.ok) return undefined;
+      const data = await res.json().catch(() => null);
+      const ele = data?.features?.[0]?.properties?.ele;
+      return isFiniteNum(ele) ? ele : undefined;
+    })();
+
+    const POI_QUERIES: { kind: string; q: string }[] = [
+      { kind: 'MEDICAL', q: 'hospital' },
+      { kind: 'FIRE', q: 'fire station' },
+      { kind: 'LAW ENF', q: 'police' },
+    ];
+    const poiP = Promise.all(POI_QUERIES.map(async ({ kind, q }): Promise<TacticalPoi | null> => {
+      const url =
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
+        `?proximity=${lng},${lat}&types=poi&limit=1&country=us&access_token=${encodeURIComponent(token)}`;
+      const res = await fetchWithTimeout(url, GEOCODE_TIMEOUT_MS);
+      if (!res || !res.ok) return null;
+      const data = await res.json().catch(() => null);
+      const f = data?.features?.[0];
+      const c = f?.center;
+      if (!f?.text || !Array.isArray(c) || !isFiniteNum(c[0]) || !isFiniteNum(c[1])) return null;
+      return {
+        kind,
+        name: String(f.text).toUpperCase(),
+        distanceM: haversineM(lat, lng, c[1], c[0]),
+        compass: compass8(lat, lng, c[1], c[0]),
+      };
+    }));
+
+    const HAZARD_QUERIES: { kind: TacticalHazard['kind']; letter: string; q: string }[] = [
+      { kind: 'SCHOOL', letter: 'S', q: 'school' },
+      { kind: 'DAYCARE', letter: 'D', q: 'daycare' },
+      { kind: 'FUEL', letter: 'F', q: 'gas station' },
+    ];
+    const HAZARD_RADIUS_M = 700;
+    const hazP = Promise.all(HAZARD_QUERIES.map(async ({ kind, letter, q }): Promise<TacticalHazard[]> => {
+      const url =
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json` +
+        `?proximity=${lng},${lat}&types=poi&limit=3&country=us&access_token=${encodeURIComponent(token)}`;
+      const res = await fetchWithTimeout(url, GEOCODE_TIMEOUT_MS);
+      if (!res || !res.ok) return [];
+      const data = await res.json().catch(() => null);
+      const feats: { text?: string; center?: [number, number] }[] = data?.features ?? [];
+      return feats
+        .filter((f) => f.text && Array.isArray(f.center) && isFiniteNum(f.center[0]) && isFiniteNum(f.center[1]))
+        .map((f) => ({
+          kind, letter,
+          name: String(f.text).toUpperCase(),
+          lat: f.center![1], lng: f.center![0],
+          distanceM: haversineM(lat, lng, f.center![1], f.center![0]),
+          compass: compass8(lat, lng, f.center![1], f.center![0]),
+        }))
+        .filter((h) => h.distanceM <= HAZARD_RADIUS_M);
+    }));
+
+    const [elevationM, pois, hazNested] = await Promise.all([elevP, poiP, hazP]);
+    return {
+      elevationM,
+      pois: pois.filter((p): p is TacticalPoi => !!p),
+      hazards: hazNested.flat().sort((a, b) => a.distanceM - b.distanceM).slice(0, 4),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve a location to a rasterized static-map image, or null if it can't
  * be produced. Never throws, never blocks indefinitely, never touches auth.
@@ -101,9 +475,48 @@ export async function fetchLocationMapImage(opts: LocationMapOptions): Promise<L
     const h = Math.max(120, Math.min(opts.heightPx ?? 440, 1280));
     const zoom = opts.zoom ?? 15;
     const style = opts.style ?? 'mapbox/streets-v12';
+    // Egress overlays: each route is a cased line (dark 5px under, white
+    // 2.5px over) so it reads over any satellite ground cover. Computed
+    // before the static request so the paths bake into the raster.
+    let egressInfo: EgressRoute[] | undefined;
+    let priorityInfo: PriorityRoute[] | undefined;
+    let pathOverlays = '';
+    if (opts.egressRoutes) {
+      const [found, priority] = await Promise.all([
+        fetchEgressRoutes(lat, lng, token),
+        fetchPriorityRoutes(lat, lng, token),
+      ]);
+      const overlays: string[] = [];
+      if (found.length) {
+        egressInfo = found.map((f) => f.route);
+        for (const f of found) {
+          const enc = encodeURIComponent(encodePolyline(f.coords));
+          overlays.push(`path-5+0a0a0a-0.9(${enc}),path-2.5+${f.route.colorHex}-1(${enc})`);
+        }
+      }
+      if (priority.length) {
+        priorityInfo = priority.map((p) => p.route);
+        for (const p of priority) {
+          // Priority routes can run miles off-frame; clip the baked geometry
+          // to ~the visible frame plus margin so the polyline stays compact
+          // (URL cap) — the data row carries the full distance either way.
+          const latRad2 = (lat * Math.PI) / 180;
+          const clipped = p.coords.filter(([clng, clat]) => {
+            const dy = (clat - lat) * 111320;
+            const dx = (clng - lng) * 111320 * Math.cos(latRad2);
+            return Math.hypot(dx, dy) < 1800;
+          });
+          if (clipped.length < 2) continue;
+          const enc = encodeURIComponent(encodePolyline(clipped));
+          overlays.push(`path-5+0a0a0a-0.9(${enc}),path-2.5+${p.route.colorHex}-1(${enc})`);
+        }
+      }
+      if (overlays.length) pathOverlays = overlays.join(',') + ',';
+    }
+
     const marker = `pin-l+${opts.markerColor ?? 'd4a017'}(${lng},${lat})`;
     const url =
-      `https://api.mapbox.com/styles/v1/${style}/static/${marker}/` +
+      `https://api.mapbox.com/styles/v1/${style}/static/${pathOverlays}${marker}/` +
       `${lng},${lat},${zoom},0/${w}x${h}@2x` +
       `?access_token=${encodeURIComponent(token)}&attribution=true&logo=true`;
 
@@ -136,7 +549,41 @@ export async function fetchLocationMapImage(opts: LocationMapOptions): Promise<L
       reader.readAsDataURL(outBlob);
     });
 
-    return { dataUrl, width: outW, height: outH, lat, lng };
+    // Wide-area overview inset (PiP) — separate small streets-style render
+    // at z13 so arterials/highways context frames the close-up. Best-effort.
+    let insetDataUrl: string | undefined;
+    if (opts.overviewInset) {
+      const insetUrl =
+        `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/` +
+        `pin-s+d4a017(${lng},${lat})/${lng},${lat},13,0/300x200@2x` +
+        `?access_token=${encodeURIComponent(token)}&attribution=false&logo=false`;
+      const insetRes = await fetchWithTimeout(insetUrl, STATIC_TIMEOUT_MS);
+      if (insetRes && insetRes.ok) {
+        const insetBlob = await insetRes.blob();
+        if (insetBlob.type.startsWith('image/')) {
+          try {
+            const ibmp = await createImageBitmap(insetBlob);
+            const icv = new OffscreenCanvas(ibmp.width, ibmp.height);
+            const ictx = icv.getContext('2d');
+            if (ictx) {
+              ictx.fillStyle = '#ffffff';
+              ictx.fillRect(0, 0, ibmp.width, ibmp.height);
+              ictx.drawImage(ibmp, 0, 0);
+              const ib = await icv.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+              const ir = new FileReader();
+              insetDataUrl = await new Promise<string>((resolve, reject) => {
+                ir.onload = () => resolve(ir.result as string);
+                ir.onerror = reject;
+                ir.readAsDataURL(ib);
+              });
+            }
+            ibmp.close();
+          } catch { /* inset is optional — skip on any decode failure */ }
+        }
+      }
+    }
+
+    return { dataUrl, width: outW, height: outH, lat, lng, egress: egressInfo, priorityRoutes: priorityInfo, insetDataUrl };
   } catch {
     return null;
   }

@@ -8,6 +8,8 @@ import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { formatDateTime } from '../../utils/dateUtils';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // System Announcements Management Tab
@@ -44,7 +46,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  info: 'text-gray-400 bg-gray-950/30 border-gray-800/40',
+  info: 'text-rmpg-400 bg-surface-overlay/30 border-border-subtle/40',
   warning: 'text-amber-400 bg-amber-950/30 border-amber-800/40',
   maintenance: 'text-orange-400 bg-orange-950/30 border-orange-800/40',
   update: 'text-green-400 bg-green-950/30 border-green-800/40',
@@ -161,6 +163,20 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildAnnouncementMenu = (a: Announcement): ContextMenuItem[] => [
+    m.action('Edit announcement', () => openEdit(a), { icon: <Edit2 size={12} /> }),
+    m.action(a.is_active ? 'Deactivate' : 'Activate', () => toggleActive(a), { icon: a.is_active ? <EyeOff size={12} /> : <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy title', a.title),
+    m.copyId(a.id),
+    m.separator(),
+    m.action('Delete announcement', () => setDeleteId(a.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   const filtered = announcements.filter((a) =>
     !search || a.title.toLowerCase().includes(search.toLowerCase()) || a.body.toLowerCase().includes(search.toLowerCase())
   );
@@ -212,7 +228,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>
-          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Create new announcement">
+          <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Create new announcement">
             <Plus className="w-3 h-3" aria-hidden="true" />
             New Announcement
           </button>
@@ -236,6 +252,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
           return (
             <div
               key={a.id}
+              onContextMenu={(e) => openMenu(e, buildAnnouncementMenu(a))}
               className={`panel-beveled bg-surface-base p-3 border-l-[3px] ${a.is_active ? 'border-l-brand-500' : 'border-l-rmpg-700 opacity-60'}`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -280,17 +297,17 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit announcement' : 'New announcement'}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto scrollbar-dark" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#242424] sticky top-0 bg-surface-base z-10">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default sticky top-0 bg-surface-base z-10">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Announcement' : 'New Announcement'}
               </h3>
-              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog">
+              <button type="button" onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Title</label>
+                <label htmlFor="ff-adminannouncementstab-1" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Title</label>
                 <input id="ff-adminannouncementstab-1"
                   type="text"
                   value={form.title}
@@ -310,7 +327,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Type</label>
+                  <label htmlFor="ff-adminannouncementstab-2" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Type</label>
                   <select id="ff-adminannouncementstab-2"
                     value={form.type}
                     onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as any }))}
@@ -324,7 +341,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Priority</label>
+                  <label htmlFor="ff-adminannouncementstab-3" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Priority</label>
                   <select id="ff-adminannouncementstab-3"
                     value={form.priority}
                     onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as any }))}
@@ -338,7 +355,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Starts At</label>
+                  <label htmlFor="ff-adminannouncementstab-4" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Starts At</label>
                   <input id="ff-adminannouncementstab-4"
                     type="datetime-local"
                     value={form.starts_at}
@@ -347,7 +364,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Expires At</label>
+                  <label htmlFor="ff-adminannouncementstab-5" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Expires At</label>
                   <input id="ff-adminannouncementstab-5"
                     type="datetime-local"
                     value={form.expires_at}
@@ -379,7 +396,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
               <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
-              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1">
                 {submitting && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
                 {editing ? 'Update' : 'Create'}
               </button>

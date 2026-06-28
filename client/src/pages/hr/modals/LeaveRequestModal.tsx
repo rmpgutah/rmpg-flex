@@ -117,7 +117,7 @@ export default function LeaveRequestModal({
   };
 
   const inputClass =
-    'w-full bg-surface-sunken border border-rmpg-700 text-white text-xs px-3 py-2 rounded-sm focus:outline-none focus:border-brand-500 transition-colors';
+    'w-full bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-3 py-2 rounded-sm focus:outline-none focus:border-brand-500 transition-colors';
   const labelClass = 'block text-xs font-medium text-rmpg-300 mb-1';
 
   return (
@@ -136,7 +136,7 @@ export default function LeaveRequestModal({
     >
       {/* Leave Type */}
       <div>
-        <label className={labelClass}>Leave Type</label>
+        <label htmlFor="ff-leaverequestmodal-0" className={labelClass}>Leave Type</label>
         <select id="ff-leaverequestmodal-0"
           value={form.type}
           onChange={e => setForm(f => ({ ...f, type: e.target.value as LeaveType }))}
@@ -151,7 +151,7 @@ export default function LeaveRequestModal({
       {/* Dates */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelClass}>Start Date</label>
+          <label htmlFor="ff-leaverequestmodal-1" className={labelClass}>Start Date</label>
           <input id="ff-leaverequestmodal-1"
             type="date"
             value={form.start_date}
@@ -161,7 +161,7 @@ export default function LeaveRequestModal({
           />
         </div>
         <div>
-          <label className={labelClass}>End Date</label>
+          <label htmlFor="ff-leaverequestmodal-2" className={labelClass}>End Date</label>
           <input id="ff-leaverequestmodal-2"
             type="date"
             value={form.end_date}
@@ -175,7 +175,7 @@ export default function LeaveRequestModal({
 
       {/* Hours */}
       <div>
-        <label className={labelClass}>Hours Requested</label>
+        <label htmlFor="ff-leaverequestmodal-3" className={labelClass}>Hours Requested</label>
         <input id="ff-leaverequestmodal-3"
           type="number"
           value={form.hours_requested}
@@ -205,7 +205,7 @@ export default function LeaveRequestModal({
 
       {/* Reason */}
       <div>
-        <label className={labelClass}>Reason</label>
+        <label htmlFor="ff-leaverequestmodal-4" className={labelClass}>Reason</label>
         <textarea id="ff-leaverequestmodal-4"
           value={form.reason}
           onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
