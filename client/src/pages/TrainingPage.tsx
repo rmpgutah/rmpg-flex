@@ -67,6 +67,20 @@ interface Officer {
 }
 
 // ── Main Component ─────────────────────────────────────────
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function TrainingPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
@@ -796,7 +810,7 @@ function DashboardTab({ records, requirements, officers }: {
               return (
                 <div key={cat.category} className="flex items-center gap-3">
                   <span className={`w-24 text-[10px] font-bold uppercase border px-1.5 py-0.5 ${CATEGORY_COLORS[cat.category]}`}>
-                    {cat.category.replace(/_/g, ' ')}
+                    {cat.category.replace(/_/g, ' ').toUpperCase()}
                   </span>
                   <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
                     <div
@@ -871,7 +885,7 @@ function DashboardTab({ records, requirements, officers }: {
                   <span className="text-rmpg-500">—</span>
                   <span className="text-rmpg-300">{r.course_name}</span>
                   <span className={`ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 ${STATUS_COLORS[r.status].bg} ${STATUS_COLORS[r.status].text} border ${STATUS_COLORS[r.status].border}`}>
-                    {String(r.status).replace(/_/g, ' ')}
+                    {String(r.status).replace(/_/g, ' ').toUpperCase()}
                   </span>
                 </div>
               ))}
@@ -1163,7 +1177,7 @@ function RecordsTab({
         >
           <option value="all">All Categories</option>
           {CATEGORIES.map(c => (
-            <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
+            <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>
           ))}
         </select>
         <select id="ff-trainingpage-8"
@@ -1231,7 +1245,7 @@ function RecordsTab({
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">
                     <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase border ${CATEGORY_COLORS[record.category] || CATEGORY_COLORS.other}`}>
-                      {record.category.replace(/_/g, ' ')}
+                      {record.category.replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="py-1.5 px-2 text-rmpg-400">{record.provider || '—'}</td>
@@ -1336,7 +1350,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                     <h3 className="text-sm font-bold text-rmpg-100">{req.course_name}</h3>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase border ${CATEGORY_COLORS[req.category] || CATEGORY_COLORS.other}`}>
-                        {req.category.replace(/_/g, ' ')}
+                        {req.category.replace(/_/g, ' ').toUpperCase()}
                       </span>
                       {req.is_mandatory && (
                         <span className="text-[8px] font-bold uppercase bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5">
@@ -1364,7 +1378,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                 <div className="grid grid-cols-3 gap-2 text-[10px] text-rmpg-400 mb-2">
                   <div>
                     <span className="text-rmpg-500">Roles: </span>
-                    <span className="text-rmpg-300">{(Array.isArray(req.required_for_roles) ? req.required_for_roles : (() => { try { return JSON.parse(req.required_for_roles || '[]'); } catch { return []; } })()).map((r: string) => r.replace(/_/g, ' ')).join(', ') || '—'}</span>
+                    <span className="text-rmpg-300">{(Array.isArray(req.required_for_roles) ? req.required_for_roles : (() => { try { return JSON.parse(req.required_for_roles || '[]'); } catch { return []; } })()).map((r: string) => r.replace(/_/g, ' ').toUpperCase()).join(', ') || '—'}</span>
                   </div>
                   <div>
                     <span className="text-rmpg-500">Min Hours: </span>
@@ -1546,7 +1560,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase ${s.bg} ${s.text} border ${s.border}`}>
       <Icon className="w-2.5 h-2.5" />
-      {status.replace(/_/g, ' ')}
+      {status.replace(/_/g, ' ').toUpperCase()}
     </span>
   );
 }
@@ -1678,7 +1692,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
-                  <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
+                  <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>
                 ))}
               </select>
             </div>
@@ -1868,7 +1882,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                 className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
-                  <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
+                  <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>
                 ))}
               </select>
             </div>
@@ -1899,7 +1913,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                     form.required_for_roles.includes(role) ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
                   }`}
                 >
-                  {role.replace(/_/g, ' ')}
+                  {role.replace(/_/g, ' ').toUpperCase()}
                 </button>
               ))}
             </div>

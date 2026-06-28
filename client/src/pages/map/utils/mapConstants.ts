@@ -56,10 +56,11 @@ export interface MapProperty {
 // ── Constants ────────────────────────────────────────────────
 
 // Map style options
-export type MapStyleId = 'dark' | 'satellite' | 'hybrid' | 'streets' | 'terrain' | 'night_nav';
+export type MapStyleId = 'dark' | 'standard' | 'satellite' | 'hybrid' | 'streets' | 'terrain' | 'night_nav';
 
 export const MAP_STYLE_LABELS: Record<MapStyleId, string> = {
   dark: 'Dark',
+  standard: 'Standard',
   satellite: 'Satellite',
   hybrid: 'Hybrid',
   streets: 'Streets',
@@ -69,6 +70,7 @@ export const MAP_STYLE_LABELS: Record<MapStyleId, string> = {
 
 export const MAP_STYLE_DESCRIPTIONS: Record<MapStyleId, string> = {
   dark: 'Low-light tactical',
+  standard: 'Mapbox Standard 3D',
   satellite: 'Aerial imagery',
   hybrid: 'Satellite + labels',
   streets: 'Standard roads',
@@ -136,6 +138,7 @@ export function getIncidentCategory(type: string): { symbol: string; category: s
 
 export const MAP_STYLE_ICONS: Record<MapStyleId, string> = {
   dark: '\u{1F319}',        // crescent moon
+  standard: '\u{1F30F}',    // globe with meridians
   satellite: '\u{1F6F0}',   // satellite
   hybrid: '\u{1F30D}',      // globe
   streets: '\u{1F6E3}',     // motorway
