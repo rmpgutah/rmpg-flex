@@ -12,6 +12,7 @@
 import React, { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { BADGE_TONES, type BadgeTone } from './records/recordVisuals';
+import { sectionAnchorId } from '../utils/sectionAnchor';
 
 interface CollapsibleSectionProps {
   title: string;
@@ -27,7 +28,7 @@ interface CollapsibleSectionProps {
 
 const GOLD = '#d4a017';
 
-export default function CollapsibleSection({
+function CollapsibleSection({
   title,
   icon: Icon,
   count,
@@ -47,8 +48,9 @@ export default function CollapsibleSection({
 
   return (
     <div
-      className={`relative border border-[#2b2b2b] overflow-hidden ${className}`}
-      style={{ background: '#050505' }}
+      data-section-anchor={sectionAnchorId(title)}
+      className={`collapsible-section relative border border-rmpg-700 overflow-hidden ${className}`}
+      style={{ background: 'var(--surface-overlay)' }}
     >
       {/* Left severity rail — subtle gold by default, hot color when accented. */}
       <div
@@ -61,10 +63,10 @@ export default function CollapsibleSection({
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
         aria-label={`${title} section${count !== undefined ? ` (${count})` : ''}`}
-        className="w-full flex items-center justify-between px-2.5 py-1.5 hover:brightness-125 transition-all"
+        className="collapsible-section-header w-full flex items-center justify-between px-2.5 py-1.5 hover:brightness-125 transition-all"
         style={{
-          background: 'linear-gradient(180deg, #2b2b2b 0%, #1f1f1f 100%)',
-          borderBottom: isOpen ? '1px solid #0c0c0c' : 'none',
+          background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-panel-alt) 100%)',
+          borderBottom: isOpen ? '1px solid var(--border-subtle)' : 'none',
         }}
       >
         <div className="flex items-center gap-2 min-w-0">
@@ -92,7 +94,7 @@ export default function CollapsibleSection({
               style={
                 count > 0
                   ? { color: '#0a0a0a', background: accentColor }
-                  : { color: '#666', background: 'rgba(255,255,255,0.04)', border: '1px solid #222' }
+                  : { color: 'var(--rmpg-500)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-subtle)' }
               }
             >
               {count}
@@ -117,7 +119,7 @@ export default function CollapsibleSection({
         <div className="overflow-hidden min-h-0">
           <div
             className={`pb-3 px-2.5 pt-2 transition-opacity duration-200 ${isOpen ? 'opacity-100' : 'opacity-0'}`}
-            style={{ background: '#050505' }}
+            style={{ background: 'var(--surface-overlay)' }}
             aria-hidden={!isOpen}
           >
             {children}
@@ -127,3 +129,5 @@ export default function CollapsibleSection({
     </div>
   );
 }
+
+export default React.memo(CollapsibleSection);

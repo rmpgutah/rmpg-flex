@@ -125,7 +125,7 @@ export default function SpeedGraphOverlay({
         borderRadius: 2,
         padding: 0,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-        color: '#cccccc',
+        color: 'var(--rmpg-300)',
         fontSize: 11,
         userSelect: 'none',
       }}
@@ -149,7 +149,7 @@ export default function SpeedGraphOverlay({
           <span style={{ color: currentColor, fontWeight: 700, fontSize: 18, lineHeight: 1 }}>
             {Math.round(currentSpeed)}
           </span>
-          <span style={{ color: '#666666', fontSize: 9, marginRight: 6 }}>mph</span>
+          <span style={{ color: 'var(--rmpg-500)', fontSize: 9, marginRight: 6 }}>mph</span>
           <button
             onClick={onClose}
             style={{
