@@ -117,7 +117,8 @@ export default function DashcamPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  // Esc cascade — Esc closes the detail panel.
+  // N shortcut — triggers refresh.
+  // Esc cascade — closes detail panel first, then deactivate confirm.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && selectedDevice) {
