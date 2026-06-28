@@ -1144,7 +1144,7 @@ router.post('/:caseId/links', (req: Request, res: Response) => {
       return;
     }
     const result = db.prepare(`
-      INSERT INTO forensic_case_links (forensic_case_id, linked_type, linked_id, relationship)
+      INSERT INTO forensic_case_links (case_id, linked_type, linked_id, linked_label)
       VALUES (?, ?, ?, ?)
     `).run(req.params.caseId, linked_type, linked_id, linked_label || null);
     res.status(201).json({ id: result.lastInsertRowid });

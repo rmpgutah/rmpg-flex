@@ -3,7 +3,7 @@
 // field interview with GPS, screens everything, and shows hit banners.
 // Links straight to the new/updated dossier.
 //
-// Page 196 frontend audit (SW v1219):
+// Page 56 of the full-app frontend audit (SW v1074):
 //   • ?call_id= / ?incident_id= deep-link — when launched from a
 //     dispatch call or incident, the resulting FI is stamped with
 //     that linkage so it surfaces on the call/incident timeline.
@@ -11,21 +11,12 @@
 //     login-style "flash banner" params that get stripped on mount),
 //     because logging multiple contacts on the same call is the
 //     dominant on-scene pattern.
-//   • ?plate= deep-link — pre-fills the plate field; stripped on
-//     mount via useRef guard (only once, so the operator can edit).
-//   • ConfirmDialog — gates the "discard" action when the form has
-//     unsaved typed content (Esc with content open → confirm before
-//     clearing, same pattern as Citations / DL-Search / etc.).
 //   • Esc smart-cascade — Esc closes whichever layer is open, closest
-//     first (discard confirm → result → typed-but-unsaved form), each
-//     branch with e.stopPropagation() so one Esc never blasts multiple
-//     layers.
+//     first (PDF preview → result → busy abort gate → typed-but-unsaved
+//     form), so a single press never blasts past a state the operator
+//     actually wanted to keep.
 //   • N shortcut — clears the form and focuses first name, matching
 //     the N=New convention across Citations / Warrants / FI / etc.
-//     Suppressed when the discard-confirm dialog is open.
-//   • Role gates — canCapture (officer|dispatcher|supervisor|manager|
-//     admin) gates the CAPTURE + CHECK button + N shortcut;
-//     canPrint (admin|manager|supervisor) gates Print FI.
 //   • Print FI — court-ready PDF for the just-written FI via the
 //     existing field_interview generator (hydrates from
 //     /field-interviews/:id so officer name / badge / fi_number /
@@ -37,8 +28,8 @@
 //   • GPS visibility — shows the actual lat/lng + accuracy that will
 //     be stamped on the FI, with a manual "re-acquire" button when
 //     the first fix is stale or wrong (mid-drive on-foot pattern).
-//   • Theme tokens throughout — no hardcoded hex.
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+//   • Theme tokens throughout — no hardcoded #d4a017 / #888888 hex.
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ClipboardPen, MapPin, AlertTriangle, ArrowRight, Eye, EyeOff,
@@ -47,9 +38,7 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import PrintRecordButton from '../components/PrintRecordButton';
-import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
-import { useAuth } from '../context/AuthContext';
 
 interface ScreenHit { kind: string; severity: 'critical' | 'warning'; detail: string }
 interface CaptureResult {
@@ -88,23 +77,7 @@ const EMPTY_FORM = {
 export default function QuickCapturePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { addToast } = useToast();
-  const { user } = useAuth();
   const firstNameRef = useRef<HTMLInputElement>(null);
-  // Guard so ?plate= pre-fill only fires once on mount, not on re-renders.
-  const plateDeepLinkApplied = useRef(false);
-
-  // ── Role gates ──
-  // canCapture: any operational role may file an FI (officer through admin).
-  // canPrint: supervisor-and-up (plus admin/manager) may print court-ready PDFs.
-  const role = (user as any)?.role as string | undefined;
-  const canCapture = useMemo(() =>
-    ['officer', 'dispatcher', 'supervisor', 'manager', 'admin'].includes(role ?? ''),
-    [role],
-  );
-  const canPrint = useMemo(() =>
-    ['supervisor', 'manager', 'admin'].includes(role ?? ''),
-    [role],
-  );
 
   // ── Linked-context (call/incident) ──
   // These persist across multiple captures on the same scene — see the
@@ -124,27 +97,8 @@ export default function QuickCapturePage() {
   const [result, setResult] = useState<CaptureResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [revealDob, setRevealDob] = useState(false);
-  // ConfirmDialog state — shown when the operator hits Esc or "clear"
-  // while there is typed-but-unsaved content.
-  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
-
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  // ── ?plate= deep-link — pre-fill plate field on first mount only ──
-  // Stripped from the URL after applying so the operator can edit
-  // without the URL clobbering their change on a re-render.
-  useEffect(() => {
-    if (plateDeepLinkApplied.current) return;
-    plateDeepLinkApplied.current = true;
-    const platePre = searchParams.get('plate');
-    if (!platePre) return;
-    setForm((f) => ({ ...f, plate: platePre.toUpperCase() }));
-    const next = new URLSearchParams(searchParams);
-    next.delete('plate');
-    setSearchParams(next, { replace: true });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const acquireGps = useCallback(() => {
     if (!navigator.geolocation) { addToast('Geolocation not available on this device', 'warning'); return; }
@@ -172,7 +126,7 @@ export default function QuickCapturePage() {
   // bonus, not a blocker). Manual location field always works.
   useEffect(() => { acquireGps(); }, [acquireGps]);
 
-  const canSubmit = canCapture && (!!form.last_name.trim() || !!form.plate.trim()) && !busy;
+  const canSubmit = (!!form.last_name.trim() || !!form.plate.trim()) && !busy;
 
   const submit = useCallback(async () => {
     if (!canSubmit) return;
@@ -215,35 +169,20 @@ export default function QuickCapturePage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // Closest-first cascade. Each branch calls e.stopPropagation()
-        // + returns so one Esc doesn't blast multiple layers.
-        if (discardConfirmOpen) {
-          e.stopPropagation();
-          setDiscardConfirmOpen(false);
-          return;
-        }
+        // Closest-first cascade. Each branch returns so one Esc doesn't
+        // blast multiple layers.
         if (busy) return; // network in flight — let it finish
-        if (result) {
-          e.stopPropagation();
-          setResult(null);
-          return;
-        }
-        // If there's typed-but-unsaved text, open the confirm dialog
-        // rather than silently clearing — the operator may have
-        // accidentally hit Esc. ConfirmDialog Esc then clears.
+        if (result) { setResult(null); return; }
+        // If there's typed-but-unsaved text, clear it (gives the operator
+        // a one-keystroke "start over"); otherwise let global Esc handlers
+        // (Layout's drawer, etc.) take it.
         const anyTyped = Object.values(form).some((v) => v.trim().length > 0);
-        if (anyTyped) {
-          e.stopPropagation();
-          setDiscardConfirmOpen(true);
-          return;
-        }
+        if (anyTyped) { setForm(EMPTY_FORM); return; }
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
-      // N shortcut — suppressed while confirm is open (can't start a
-      // new capture while a discard-confirm is waiting for answer).
-      if ((e.key === 'n' || e.key === 'N') && !discardConfirmOpen && canCapture) {
+      if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         setResult(null);
         setForm(EMPTY_FORM);
@@ -252,7 +191,7 @@ export default function QuickCapturePage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [busy, result, form, discardConfirmOpen, canCapture]);
+  }, [busy, result, form]);
 
   // FI hydrated from server for the PDF (officer name, badge, fi_number,
   // resolved person — all server-side things the local form doesn't have).
@@ -298,14 +237,6 @@ export default function QuickCapturePage() {
         </div>
       )}
 
-      {/* Role gate — non-operational roles (e.g. client_viewer) see a
-          notice instead of a broken submit. */}
-      {!canCapture && (
-        <div className="border border-border-default text-rmpg-400 text-[11px] px-3 py-2">
-          Your role does not have permission to file field contacts.
-        </div>
-      )}
-
       {result?.hits.filter((h) => h.severity === 'critical').map((h) => (
         <div
           key={h.detail}
@@ -334,12 +265,10 @@ export default function QuickCapturePage() {
             </Link>
           )}
           {/* Print FI — court-ready PDF using the existing field_interview
-              generator. Gated to canPrint (admin|manager|supervisor) since
-              court packages require supervisor-level sign-off. We hydrate
-              the FI from the server before handing it to the PDF (officer
-              name / badge / canonical fi_number live there, not on the
-              local form). */}
-          {result.fi_id && canPrint && (
+              generator. We hydrate the FI from the server before handing
+              it to the PDF (officer name / badge / canonical fi_number
+              live there, not on the local form). */}
+          {result.fi_id && (
             fiForPdf
               ? <PrintRecordButton recordType="field_interview" recordData={fiForPdf} identifier={fiForPdf.fi_number || `FI-${result.fi_id}`} label="Print FI" />
               : (
@@ -372,9 +301,8 @@ export default function QuickCapturePage() {
           onChange={set('first_name')}
           placeholder="First name"
           className={inputCls}
-          disabled={!canCapture}
         />
-        <input value={form.last_name} onChange={set('last_name')} placeholder="Last name" className={inputCls} disabled={!canCapture} />
+        <input value={form.last_name} onChange={set('last_name')} placeholder="Last name" className={inputCls} />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="relative">
@@ -388,7 +316,6 @@ export default function QuickCapturePage() {
             // and screen recorders from grabbing the literal DOB string.
             autoComplete="off"
             spellCheck={false}
-            disabled={!canCapture}
           />
           {form.dob && (
             <button
@@ -406,7 +333,6 @@ export default function QuickCapturePage() {
           onChange={(e) => setForm((f) => ({ ...f, plate: e.target.value.toUpperCase() }))}
           placeholder="Plate"
           className={`${inputCls} uppercase`}
-          disabled={!canCapture}
         />
       </div>
       <div className="flex items-center gap-2">
@@ -416,7 +342,6 @@ export default function QuickCapturePage() {
           onChange={set('location')}
           placeholder={coords ? `GPS captured (±${Math.round(coords.accuracy)}m) — add detail` : 'Location'}
           className={inputCls}
-          disabled={!canCapture}
         />
         <button
           type="button"
@@ -435,7 +360,6 @@ export default function QuickCapturePage() {
         placeholder="Narrative / observations"
         rows={3}
         className={inputCls}
-        disabled={!canCapture}
       />
       <button
         onClick={submit}
@@ -446,30 +370,9 @@ export default function QuickCapturePage() {
       </button>
       <div className="text-[9px] text-rmpg-500 leading-snug">
         Creates/updates the person and vehicle records, files an FI, and runs a records check — all in one step.
-        {canCapture && (
-          <>
-            {' '}Shortcuts: <kbd className="px-1 border border-border-default">N</kbd> new ·{' '}
-            <kbd className="px-1 border border-border-default">Esc</kbd> clear.
-          </>
-        )}
+        {' '}Shortcuts: <kbd className="px-1 border border-border-default">N</kbd> new ·{' '}
+        <kbd className="px-1 border border-border-default">Esc</kbd> clear.
       </div>
-
-      {/* Discard confirm — shown when operator hits Esc or fires a "clear"
-          action while the form has unsaved typed content. */}
-      <ConfirmDialog
-        isOpen={discardConfirmOpen}
-        onClose={() => setDiscardConfirmOpen(false)}
-        onConfirm={() => {
-          setDiscardConfirmOpen(false);
-          setForm(EMPTY_FORM);
-          setRevealDob(false);
-        }}
-        title="Discard capture?"
-        message="Clear all typed fields and start a new capture?"
-        confirmLabel="Discard"
-        cancelLabel="Keep"
-        confirmVariant="warning"
-      />
     </div>
   );
 }

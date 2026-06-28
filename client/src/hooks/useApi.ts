@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { uploadWithProgress } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 import { refreshAccessToken } from '../utils/tokenRefresh';
-import { chimeForApiSuccess } from '../utils/actionChimes';
+import { chimeForApiSuccess, nackForApiFailure } from '../utils/actionChimes';
 
 // ─── Request Timeout ─────────────────────────────────────────
 // Default 60s — generous for flaky cellular but bounded so officers
@@ -235,6 +235,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           const message = errData.error || errData.message || `Request failed with status ${res.status}`;
+          nackForApiFailure(method, url, res.status);
           throw new Error(message);
         }
 
@@ -368,6 +369,7 @@ export async function apiFetch<T>(
       const retryRes = await fetchWithRetry(url, { ...fetchInit, headers });
       if (!retryRes.ok) {
         const errData = await retryRes.json().catch(() => ({}));
+        nackForApiFailure(method, url, retryRes.status);
         throw new Error(errData.error || errData.message || `Request failed with status ${retryRes.status}`);
       }
       chimeForApiSuccess(method, url);
@@ -396,6 +398,7 @@ export async function apiFetch<T>(
     error.status = res.status;
     error.payload = errData;
     error.code = errData.code;
+    nackForApiFailure(method, url, res.status);
     throw error;
   }
 
@@ -538,6 +541,47 @@ export async function apiUploadFiles(
     }
   }
   throw lastErr ?? new Error('Upload failed');
+}
+
+// Upload files with per-file progress tracking via XHR
+export async function apiUploadFilesWithProgress(
+  files: File[],
+  entityType?: string,
+  entityId?: string | number,
+  onProgress?: (progress: UploadProgress, fileIndex: number, totalFiles: number) => void,
+): Promise<any[]> {
+  // If no progress callback, fall back to the simpler fetch-based upload
+  if (!onProgress) {
+    return apiUploadFiles(files, entityType, entityId);
+  }
+
+  const token = localStorage.getItem('rmpg_token') || '';
+  const results: any[] = [];
+
+  // Upload files one at a time so progress tracks per-file
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const formData = new FormData();
+    formData.append('files', file);
+    if (entityType) formData.append('entity_type', entityType);
+    if (entityId) formData.append('entity_id', String(entityId));
+
+    const result = await uploadWithProgress(
+      '/api/uploads',
+      formData,
+      token,
+      (progress) => onProgress(progress, i, files.length),
+    );
+
+    // Server returns an array of uploaded file records
+    if (Array.isArray(result)) {
+      results.push(...result);
+    } else {
+      results.push(result);
+    }
+  }
+
+  return results;
 }
 
 // Upload files with per-file progress tracking via XHR
