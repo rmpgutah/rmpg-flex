@@ -1,11 +1,12 @@
 // ============================================================
-// Map Info Window Builder — Tabbed HTML info windows
+// Map Info Window Builder — Tabbed HTML for Mapbox Popups
 // ============================================================
-// Returns raw HTML strings for google.maps.InfoWindow.setContent().
+// Returns raw HTML strings for mapboxgl.Popup().setHTML(html).
 // Uses CSS-only tabs (radio button :checked trick, no JS needed).
 // ============================================================
 
 import { escapeHtml } from '../../../utils/sanitize';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { UNIT_STATUS_HEX, UNIT_STATUS_LABELS, PRIORITY_HEX } from '../../../utils/statusColors';
 import type { MapUnit, ActiveCall, MapProperty } from './mapConstants';
@@ -19,13 +20,14 @@ function nextId(): string { return `iw${++_iwCounter}`; }
 const FONT_MONO = "'Courier New','JetBrains Mono',monospace";
 const FONT_SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 const C_BASE = '#0a0a0a';
-const C_SUNKEN = '#050505';
-const C_RAISED = '#141414';
-const C_BORDER = '#222222';
-const C_TEXT = '#e0e0e0';
+const C_SUNKEN = 'var(--surface-overlay)';
+const C_RAISED = 'var(--surface-base)';
+const C_BORDER = 'var(--border-subtle)';
+const C_TEXT = 'var(--text-secondary)';
 const C_TEXT_DIM = '#999999';
-const C_TEXT_MUTED = '#666666';
-const C_BLUE = '#aaaaaa';
+const C_TEXT_MUTED = 'var(--rmpg-500)';
+// Neutral light-gray for popup accents/links (NOT blue — Spillman has zero blue).
+const C_NEUTRAL = '#aaaaaa';
 const C_BRAND = '#888888';
 const C_GOLD = '#d4a017';
 const C_RED = '#f87171';
@@ -47,7 +49,7 @@ function tabStyles(id: string): string {
       #${id} input[type=radio]:nth-of-type(1):checked ~ .iw-tabs .iw-tab-label:nth-of-type(1),
       #${id} input[type=radio]:nth-of-type(2):checked ~ .iw-tabs .iw-tab-label:nth-of-type(2),
       #${id} input[type=radio]:nth-of-type(3):checked ~ .iw-tabs .iw-tab-label:nth-of-type(3),
-      #${id} input[type=radio]:nth-of-type(4):checked ~ .iw-tabs .iw-tab-label:nth-of-type(4){color:${C_BLUE};border-bottom-color:${C_BLUE};transform:translateY(0);box-shadow:0 1px 0 ${C_BLUE}40}
+      #${id} input[type=radio]:nth-of-type(4):checked ~ .iw-tabs .iw-tab-label:nth-of-type(4){color:${C_NEUTRAL};border-bottom-color:${C_NEUTRAL};transform:translateY(0);box-shadow:0 1px 0 ${C_NEUTRAL}40}
       #${id} input[type=radio]:nth-of-type(1):checked ~ .iw-panel:nth-of-type(1),
       #${id} input[type=radio]:nth-of-type(2):checked ~ .iw-panel:nth-of-type(2),
       #${id} input[type=radio]:nth-of-type(3):checked ~ .iw-panel:nth-of-type(3),
@@ -69,15 +71,27 @@ function routeButton(unitCallSign: string, callNumber: string, uLat: number, uLn
   return `<button data-route-unit="${escapeHtml(unitCallSign)}" data-route-call="${escapeHtml(callNumber)}"
     data-route-ulat="${uLat}" data-route-ulng="${uLng}"
     data-route-clat="${cLat}" data-route-clng="${cLng}"
-    style="padding:2px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;transition:background 0.15s ease,border-color 0.15s ease;">
+    style="padding:2px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_NEUTRAL};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;transition:background 0.15s ease,border-color 0.15s ease;">
     &#9654; ${escapeHtml(label || 'ROUTE')}
   </button>`;
 }
 
 function findClosestButton(callId: string): string {
   return `<button data-find-closest="${escapeHtml(callId)}"
-    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_BLUE};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;box-shadow:0 2px 8px rgba(136,136,136,0.3);">
+    style="display:block;width:100%;margin-top:8px;padding:4px 8px;background:${C_BRAND}40;border:1px solid ${C_BRAND}80;color:${C_NEUTRAL};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;box-shadow:0 2px 8px rgba(136,136,136,0.3);">
     &#9737; FIND CLOSEST UNIT
+  </button>`;
+}
+
+// "Add this call as a stop in the optimized multi-call patrol route." Gold-
+// accented to match the planned-route line. Handled by a delegated click in
+// MapPage that pushes onto the route queue.
+function queueStopButton(call: CallInfoData): string {
+  return `<button data-queue-call="${escapeHtml(call.call_number)}"
+    data-queue-lat="${call.latitude}" data-queue-lng="${call.longitude}"
+    data-queue-label="${escapeHtml(formatIncidentType(call.incident_type))}"
+    style="display:block;width:100%;margin-top:6px;padding:4px 8px;background:${C_GOLD}1f;border:1px solid ${C_GOLD}80;color:${C_GOLD};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;">
+    &#43; ADD TO PATROL ROUTE
   </button>`;
 }
 
@@ -104,7 +118,7 @@ function divider(): string {
 function formatTimestamp(ts: string | null | undefined): string {
   if (!ts) return '--';
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   } catch { return '--'; }
 }
@@ -112,7 +126,7 @@ function formatTimestamp(ts: string | null | undefined): string {
 function formatDateTime(ts: string | null | undefined): string {
   if (!ts) return '--';
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
            d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   } catch { return '--'; }
@@ -148,12 +162,12 @@ export function buildUnitInfoWindow(
   let timeOnScene = '';
   let timeSinceDispatch = '';
   if (unit.onscene_at) {
-    const ms = Date.now() - new Date(unit.onscene_at).getTime();
+    const ms = Date.now() - parseTimestamp(unit.onscene_at).getTime();
     const mins = Math.floor(ms / 60000);
     timeOnScene = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
   }
   if (unit.dispatched_at && !unit.onscene_at) {
-    const ms = Date.now() - new Date(unit.dispatched_at).getTime();
+    const ms = Date.now() - parseTimestamp(unit.dispatched_at).getTime();
     const mins = Math.floor(ms / 60000);
     timeSinceDispatch = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
   }
@@ -187,7 +201,7 @@ export function buildUnitInfoWindow(
     assignmentTab = `
       <div style="margin-bottom:8px;">${badge(assignedCall.priority, pColor + '25', pColor)}</div>
       <div style="padding:4px 6px;background:${C_BASE};border-radius:2px;border:1px solid ${C_BORDER}20;">
-        ${dataRow('Call #', assignedCall.call_number, C_BLUE)}
+        ${dataRow('Call #', assignedCall.call_number, C_NEUTRAL)}
         ${dataRow('Type', formatIncidentType(assignedCall.incident_type), pColor)}
         ${dataRow('Location', assignedCall.location_address, C_TEXT_DIM)}
         ${dataRow('Status', assignedCall.status.replace(/_/g, ' ').toUpperCase(), C_TEXT_DIM)}
@@ -208,7 +222,7 @@ export function buildUnitInfoWindow(
     </div>
     ${unit.call_number ? `
       <div style="padding:4px 0;font-size:9px;color:${C_TEXT_DIM};border-left:3px solid ${C_BORDER}30;padding-left:8px;">
-        Assigned to <span style="color:${C_BLUE};font-weight:700;">${escapeHtml(unit.call_number)}</span>
+        Assigned to <span style="color:${C_NEUTRAL};font-weight:700;">${escapeHtml(unit.call_number)}</span>
         ${unit.current_call_type ? `<span style="color:${C_TEXT_MUTED};"> &mdash; ${escapeHtml(formatIncidentType(unit.current_call_type))}</span>` : ''}
       </div>
     ` : ''}
@@ -267,7 +281,7 @@ export function buildCallInfoWindow(
       <span style="font-size:10px;color:${pColor};font-weight:800;font-family:${FONT_MONO};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
     </div>
     <div style="padding:4px 6px;background:${C_BASE};border-radius:2px;border:1px solid ${C_BORDER}20;">
-      ${dataRow('Call #', call.call_number, C_BLUE)}
+      ${dataRow('Call #', call.call_number, C_NEUTRAL)}
       ${dataRow('Location', call.location_address, C_TEXT)}
       ${call.property_name ? dataRow('Property', call.property_name, C_GOLD) : ''}
       ${dataRow('Status', call.status.replace(/_/g, ' ').toUpperCase(), C_TEXT_DIM)}
@@ -275,6 +289,7 @@ export function buildCallInfoWindow(
       ${call.disposition ? dataRow('Disposition', call.disposition, C_TEXT_DIM) : ''}
     </div>
     ${call.latitude != null && call.longitude != null ? findClosestButton(String(call.id)) : ''}
+    ${call.latitude != null && call.longitude != null ? queueStopButton(call) : ''}
   `;
 
   // Units tab
@@ -392,8 +407,8 @@ export function buildPropertyInfoWindow(
     // Loading / fallback state with shimmer animation
     return `
       <style>@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}</style>
-      <div style="min-width:200px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:12px;border:1px solid ${C_BLUE}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
-        <div style="font-weight:900;font-size:13px;color:${C_BLUE};margin-bottom:4px;">${escapeHtml(prop.name)}</div>
+      <div style="min-width:200px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:12px;border:1px solid ${C_NEUTRAL}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+        <div style="font-weight:900;font-size:13px;color:${C_NEUTRAL};margin-bottom:4px;">${escapeHtml(prop.name)}</div>
         <div style="font-size:10px;color:${C_TEXT_DIM};margin-bottom:6px;">Loading details...</div>
         <div style="height:4px;border-radius:2px;background:linear-gradient(90deg, ${C_SUNKEN}, ${C_RAISED}, ${C_SUNKEN});background-size:200% 100%;animation:shimmer 1.5s infinite;"></div>
       </div>
@@ -403,7 +418,7 @@ export function buildPropertyInfoWindow(
   const RELATIONSHIP_COLORS: Record<string, string> = {
     employee: '#22c55e', contact: '#aaaaaa', tenant: '#a78bfa', owner: '#4ade80',
     manager: '#d4a017', subject: '#f59e0b', trespass_warning: '#ef4444',
-    banned: '#ef4444', frequent_visitor: '#999999', associated: '#666666',
+    banned: '#ef4444', frequent_visitor: '#999999', associated: 'var(--rmpg-500)',
   };
 
   const recentCalls = details.recentCalls || [];
@@ -453,7 +468,7 @@ export function buildPropertyInfoWindow(
       ${sectionHeader(`Call History (${recentCalls.length})`)}
       ${recentCalls.slice(0, 5).map(c => {
         const isActive = c.status === 'dispatched' || c.status === 'en_route' || c.status === 'on_scene';
-        const statusColor = (c.status === 'cleared' || c.status === 'closed') ? C_GREEN : c.status === 'pending' ? C_AMBER : isActive ? '#cccccc' : C_BLUE;
+        const statusColor = (c.status === 'cleared' || c.status === 'closed') ? C_GREEN : c.status === 'pending' ? C_AMBER : isActive ? '#cccccc' : C_NEUTRAL;
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid ${C_BORDER}20;">
           <div style="overflow:hidden;flex:1;">
             <span style="color:#a0a0a0;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
@@ -487,7 +502,7 @@ export function buildPropertyInfoWindow(
       <div style="${details.client_contact ? `margin-top:6px;padding-top:4px;border-top:1px solid ${C_BORDER};` : ''}">
         ${sectionHeader(`Linked Individuals (${linkedPersons.length})`, '#e879f9')}
         ${linkedPersons.slice(0, 8).map(p => {
-          const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || '#666666';
+          const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || 'var(--rmpg-500)';
           const name = `${p.first_name} ${p.last_name}`;
           const rel = (p.relationship || '').replace(/_/g, ' ').toUpperCase();
           let flagsArr: string[] = [];
@@ -522,9 +537,9 @@ export function buildPropertyInfoWindow(
 
   return `
     ${tabStyles(id)}
-    <div id="${id}" style="width:400px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${C_BLUE}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
-      <div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ${C_BORDER};background:linear-gradient(to right, ${C_BLUE}08, transparent);">
-        <div style="font-weight:900;font-size:13px;color:${C_BLUE};margin-bottom:2px;">${escapeHtml(prop.name)}</div>
+    <div id="${id}" style="width:400px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${C_NEUTRAL}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+      <div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid ${C_BORDER};background:linear-gradient(to right, ${C_NEUTRAL}08, transparent);">
+        <div style="font-weight:900;font-size:13px;color:${C_NEUTRAL};margin-bottom:2px;">${escapeHtml(prop.name)}</div>
         ${prop.client_name ? `<div style="font-size:9px;color:${C_GOLD};font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
       </div>
       ${divider()}
@@ -548,8 +563,8 @@ export function buildPropertyInfoWindow(
 export function buildPropertyFallbackWindow(prop: MapProperty): string {
   return `
     <style>@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}</style>
-    <div style="min-width:160px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${C_BLUE}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
-      <div style="font-weight:900;font-size:13px;color:${C_BLUE};margin-bottom:4px;">${escapeHtml(prop.name)}</div>
+    <div style="min-width:160px;font-family:${FONT_MONO};background:${C_SUNKEN};color:${C_TEXT};padding:10px;border:1px solid ${C_NEUTRAL}50;border-radius:2px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+      <div style="font-weight:900;font-size:13px;color:${C_NEUTRAL};margin-bottom:4px;">${escapeHtml(prop.name)}</div>
       <div style="font-size:10px;color:${C_TEXT_DIM};">${escapeHtml(prop.address)}</div>
       ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:${C_GOLD};font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
       <div style="margin-top:6px;height:4px;border-radius:2px;background:linear-gradient(90deg, ${C_SUNKEN}, ${C_RAISED}, ${C_SUNKEN});background-size:200% 100%;animation:shimmer 1.5s infinite;"></div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { Shield, Key, Monitor, Clock, Bell, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { SecurityStatus } from '../../types';
@@ -34,8 +35,8 @@ export default function SecurityStatusCard() {
 
   if (loading) {
     return (
-      <div className="panel-beveled p-4 flex items-center justify-center" style={{ background: '#0a0a0a' }}>
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#666666' }} />
+      <div className="panel-beveled p-4 flex items-center justify-center" style={{ background:"var(--surface-sunken)" }}>
+        <RefreshCw className="w-4 h-4 animate-spin text-rmpg-500" />
       </div>
     );
   }
@@ -94,7 +95,7 @@ export default function SecurityStatusCard() {
   const score = computeScore(status);
 
   return (
-    <div className="panel-beveled" style={{ background: '#0a0a0a' }}>
+    <div className="panel-beveled" style={{ background:"var(--surface-sunken)" }}>
       {/* Header */}
       <div className="panel-title-bar flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -126,11 +127,11 @@ export default function SecurityStatusCard() {
       )}
 
       {/* Status items */}
-      <div className="divide-y" style={{ borderColor: '#222222' }}>
+      <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
         {items.map(item => (
           <div key={item.label} className="flex items-center gap-3 px-3 py-2">
             <span className={ledClass(item.led)} />
-            <div className="flex-shrink-0" style={{ color: '#666666' }}>
+            <div className="flex-shrink-0 text-rmpg-500">
               {item.icon}
             </div>
             <div className="flex-1 min-w-0">
@@ -139,7 +140,7 @@ export default function SecurityStatusCard() {
               </span>
             </div>
             <div className="text-right flex-shrink-0">
-              <span className="text-[11px] font-mono" style={{ color: '#e0e0e0' }}>
+              <span className="text-[11px] font-mono text-rmpg-300">
                 {item.value}
               </span>
               {item.detail && (
@@ -154,9 +155,9 @@ export default function SecurityStatusCard() {
       {status.passwordChangedAt && (
         <div
           className="px-3 py-1.5 text-[9px] font-mono"
-          style={{ borderTop: '1px solid #2b2b2b', color: '#555555' }}
+          style={{ borderTop: '1px solid var(--border-default)', color: 'var(--rmpg-500)' }}
         >
-          Password last changed: {status.passwordChangedAt ? new Date(status.passwordChangedAt).toLocaleDateString() : 'N/A'}
+          Password last changed: {status.passwordChangedAt ? parseTimestamp(status.passwordChangedAt).toLocaleDateString() : 'N/A'}
         </div>
       )}
     </div>
@@ -164,7 +165,7 @@ export default function SecurityStatusCard() {
 }
 
 function formatExpiry(dateStr: string): string {
-  const d = new Date(dateStr);
+  const d = parseTimestamp(dateStr);
   const diff = d.getTime() - Date.now();
   const days = Math.ceil(diff / 86400000);
   if (days <= 0) return 'now';

@@ -9,7 +9,8 @@
 // announcing if DispatchPage also triggers the same alert.
 // ============================================================
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
 import {
   announceNewCall,
@@ -34,6 +35,7 @@ import {
   composePursuitNarrative,
 } from '../utils/narrativeComposer';
 import type { AlertBannerItem } from '../components/DispatchAlertBanner';
+import { getLocalAudioMode, vibrateForSeverity } from '../utils/audioMode';
 
 /**
  * Normalize DB column names to voice system field names.
@@ -90,15 +92,29 @@ export function useDispatchVoiceAlerts(options?: {
   voiceAlert?: (narrative: string, severity: 'minor' | 'moderate' | 'major') => void;
 }): void {
   const { subscribe } = useWebSocket();
+  const { user } = useAuth();
   const onAlert = options?.onAlert;
   const voiceAlert = options?.voiceAlert;
+  // Current user id, kept in a ref so targeted-alert filters read the latest
+  // value without re-running the (large) subscription effect on every auth tick.
+  const selfIdRef = useRef<string | number | null | undefined>(user?.id);
+  selfIdRef.current = user?.id;
+  // Panic ids already alarmed this session — AlertHubDO re-broadcasts unacked
+  // panics every 15s; each frame must not stack another banner/announcement.
+  const seenPanicIdsRef = useRef<Set<number | string>>(new Set());
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
 
-    // Route TTS through voice channel when active, otherwise direct
+    // Route TTS through voice channel when active, otherwise direct.
+    // DI-5: gate on per-unit audio_mode. 'silent' suppresses all TTS
+    // entirely (visual banner still fires via onAlert). 'vibrate' fires
+    // the Web Vibration API and skips TTS. 'audible' is the default.
     type AlertSeverity = 'minor' | 'moderate' | 'major';
     const speak = (text: string, severity: AlertSeverity) => {
+      const mode = getLocalAudioMode();
+      if (mode === 'silent') return;
+      if (mode === 'vibrate') { vibrateForSeverity(severity); return; }
       if (voiceAlert) {
         voiceAlert(text, severity);
       } else {
@@ -184,10 +200,31 @@ export function useDispatchVoiceAlerts(options?: {
     unsubs.push(
       subscribe('panic_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        const officerName = data.user_name || data.userName || data.officerName || 'Unknown officer';
+        // Server frames are { action, panic: {...} } — AlertHubDO re-broadcasts
+        // an unacked panic every 15s and replays on reconnect, and ALSO emits
+        // ack/resolve/cancel transitions on this same channel. Only the initial
+        // activation should alarm here, and only once per panic id — otherwise
+        // the banner stack grows one "PANIC" per re-broadcast (and per ack).
+        const action = data.action || msg.action;
+        // Escalation re-alerts the fleet (Spillman: an unanswered emergency
+        // gets louder) — everything else terminal/ack stays silent here.
+        if (action === 'panic_escalated') {
+          const level = data.panic?.escalation_level ?? data.escalation_level;
+          speak(`Panic alert escalated${level ? `, level ${level}` : ''}. Still unacknowledged.`, 'major');
+          onAlert?.({ id: nextAlertId(), severity: 'major', title: 'PANIC ESCALATED', message: `Level ${level ?? '?'} — unacknowledged`, timestamp: Date.now() });
+          return;
+        }
+        if (action && action !== 'panic_activated') return;
+        const panic = data.panic || data;
+        const panicId = panic?.id ?? panic?.panic_id ?? data.panic_id;
+        if (panicId != null) {
+          if (seenPanicIdsRef.current.has(panicId)) return;
+          seenPanicIdsRef.current.add(panicId);
+        }
+        const officerName = panic.user_name || panic.userName || panic.officerName || data.user_name || 'Unknown officer';
         if (isEdgeTTSEnabled()) {
-          const loc = data.location || data.gps_address || '';
-          const cs = data.call_sign || data.unit || '';
+          const loc = panic.location_address || panic.location || panic.gps_address || '';
+          const cs = panic.call_sign || panic.unit || '';
           speak(composePanicNarrative(officerName, loc, cs), 'major');
         } else {
           announcePanicAlert(officerName);
@@ -214,6 +251,25 @@ export function useDispatchVoiceAlerts(options?: {
           announceBolo(boloTitle, data.priority);
         }
         onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'BOLO', message: boloTitle, timestamp: Date.now() });
+      })
+    );
+
+    // ── Officer on foot overdue (safety sweep) ──
+    unsubs.push(
+      subscribe('officer_on_foot_overdue', (msg) => {
+        const data = ((msg as any).data || msg) as any;
+        const cs = data.call_sign || 'Unit';
+        const mins = data.minutes ?? 5;
+        if (isEdgeTTSEnabled()) {
+          speak(`${cs} has been on foot for over ${mins} minutes. Check officer status.`, 'moderate');
+        }
+        onAlert?.({
+          id: nextAlertId(),
+          severity: 'moderate',
+          title: 'OFFICER ON FOOT',
+          message: `${cs} on foot over ${mins} min${data.officer_name ? ` — ${data.officer_name}` : ''}`,
+          timestamp: Date.now(),
+        });
       })
     );
 
@@ -284,6 +340,9 @@ export function useDispatchVoiceAlerts(options?: {
     unsubs.push(
       subscribe('welfare_check', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
+        // Targeted prompt — AlertHubDO broadcasts to all consoles, so only
+        // speak it on the intended officer's device (fail-open if no target).
+        if (data.target_user_id != null && String(data.target_user_id) !== String(selfIdRef.current)) return;
         const text = data.message || 'Status check. Are you code 4?';
         if (voiceAlert) {
           voiceAlert(text, 'moderate');
@@ -291,6 +350,32 @@ export function useDispatchVoiceAlerts(options?: {
           announceWithSeverity(text, 'moderate');
         }
         onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'WELFARE CHECK', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Officer MDT note: subject/vehicle added to YOUR call (caution-flag aware) ──
+    // Targeted to the assigned officer via target_user_id; the server (callLinks)
+    // emits this when a person/vehicle is linked, with a caution-flag-aware `short`.
+    unsubs.push(
+      subscribe('call_status_for_officer', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        if (data.target_user_id != null && String(data.target_user_id) !== String(selfIdRef.current)) return;
+        const text = String(data.short || 'Call updated.');
+        const severity: AlertSeverity = /caution|warrant|armed|weapon|gang|violent/i.test(text) ? 'major' : 'minor';
+        if (voiceAlert) { voiceAlert(text, severity); } else { announceWithSeverity(text, severity); }
+        onAlert?.({ id: nextAlertId(), severity, title: 'CALL UPDATE', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Property hazard on the assigned officer's call (officer safety) ──
+    unsubs.push(
+      subscribe('dispatch_alert', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        if (data.target_user_id != null && String(data.target_user_id) !== String(selfIdRef.current)) return;
+        const w = Array.isArray(data.warnings) ? data.warnings[0] : null;
+        const text = String(data.message || w?.label || 'Officer safety alert on this call.');
+        if (voiceAlert) { voiceAlert(text, 'major'); } else { announceWithSeverity(text, 'major'); }
+        onAlert?.({ id: nextAlertId(), severity: 'major', title: 'OFFICER SAFETY', message: text, timestamp: Date.now() });
       })
     );
 
@@ -439,6 +524,31 @@ export function useDispatchVoiceAlerts(options?: {
         } else if (status === 'failed' || status === 'unable') {
           speak(`Service attempt failed for ${subject}. ${data.reason || ''}`, 'minor');
         }
+      })
+    );
+
+    // ── Serve attempt pre-event reminder ──────────────────────
+    // Fires when the random pre-event window (30 min–6 h before the
+    // attempt window opens) arrives. Shows a dispatch banner + voice.
+    unsubs.push(
+      subscribe('serve_attempt_reminder' as any, (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const name = data.recipientName || 'recipient';
+        const addr = data.recipientAddress || '';
+        const mins: number = data.minutesBefore ?? 0;
+        const timeUntil = mins < 60
+          ? `${mins} minutes`
+          : `${Math.round(mins / 60)} hour${Math.round(mins / 60) > 1 ? 's' : ''}`;
+        const windowStr = data.windowStart && data.windowEnd ? ` (${data.windowStart}–${data.windowEnd})` : '';
+        const text = `Serve attempt reminder: ${name}${addr ? ` at ${addr}` : ''}. Window opens in approximately ${timeUntil}${windowStr}.`;
+        speak(text, 'moderate');
+        onAlert?.({
+          id: `serve-remind-${data.queueId}-${data.attemptNumber ?? 0}-${Date.now()}`,
+          severity: data.priority === 'urgent' || data.priority === 'rush' ? 'moderate' : 'minor',
+          title: 'SERVE WINDOW',
+          message: data.message || text,
+          timestamp: Date.now(),
+        });
       })
     );
 
