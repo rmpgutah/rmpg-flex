@@ -145,6 +145,17 @@ async function pushAll() {
 
               // Update local record with server-assigned ID if applicable
               if (result.server_id && item.local_id && item.table_name) {
+                // Validate table_name against allowed tables to prevent SQL injection
+                const ALLOWED_SYNC_TABLES = new Set([
+                  'calls_for_service', 'incidents', 'units', 'persons', 'vehicles_records',
+                  'time_entries', 'citations', 'warrants', 'field_interviews', 'trespass_orders',
+                  'evidence', 'patrol_logs', 'fleet_vehicles', 'fleet_maintenance',
+                  'fleet_fuel_logs', 'fleet_inspections', 'serve_queue', 'serve_attempts',
+                ]);
+                if (!ALLOWED_SYNC_TABLES.has(item.table_name)) {
+                  console.warn(`[SYNC] Rejected sync for unknown table: ${item.table_name}`);
+                  continue;
+                }
                 try {
                   const db = getLocalDb();
                   db.prepare(`UPDATE ${item.table_name} SET server_id = ?, is_dirty = 0 WHERE local_id = ?`)

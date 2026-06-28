@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Settings,
   Users,
@@ -10,25 +11,30 @@ import {
   XCircle,
   Activity,
   Megaphone,
-  Archive,
   Network,
   Zap,
   Link2,
   Shield,
   GraduationCap,
-  Radio,
-  WifiOff,
   DatabaseZap,
-  Lock,
-  Palette,
+  CreditCard,
   Navigation,
   Fingerprint,
   Search,
   Mail,
+  Plug,
+  ClipboardList,
+  Brain,
+  Map,
+  Radio,
+  Cloud,
+  RefreshCw,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -38,47 +44,62 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import type { User, Client, UserRole } from '../types';
 
 // Tab components
+import AdminSettingsTab from './admin/AdminSettingsTab';
 import AdminUsersTab from './admin/AdminUsersTab';
+import AdminWalletIdTab from './admin/AdminWalletIdTab';
 import AdminClientsTab from './admin/AdminClientsTab';
 import AdminSystemTab from './admin/AdminSystemTab';
 import AdminAuditTab from './admin/AdminAuditTab';
 import AdminHealthTab from './admin/AdminHealthTab';
 import AdminAnnouncementsTab from './admin/AdminAnnouncementsTab';
-import AdminRetentionTab from './admin/AdminRetentionTab';
 import AdminDepartmentsTab from './admin/AdminDepartmentsTab';
 import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
+import AdminAlertSoundsTab from './admin/AdminAlertSoundsTab';
+import AdminGpsHealthTab from './admin/AdminGpsHealthTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
 import AdminSessionsTab from './admin/AdminSessionsTab';
 import AdminTrainingTab from './admin/AdminTrainingTab';
-import AdminRadioTab from './admin/AdminRadioTab';
-import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
+import AdminPersonIntelTab from './admin/AdminPersonIntelTab';
+import AdminCloudflareTab from './admin/AdminCloudflareTab';
+import { AdminFleetV2HealthTab } from './admin/AdminFleetV2HealthTab';
+import AdminFleetioHealthTab from './admin/AdminFleetioHealthTab';
+import AdminInspectionTemplatesTab from './admin/AdminInspectionTemplatesTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
+import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
-import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
-import AdminSecurityTab from './admin/AdminSecurityTab';
-import AdminBrandingTab from './admin/AdminBrandingTab';
+import AdminSkipTracerV2Tab from './admin/AdminSkipTracerV2Tab';
 import AdminEmailTab from './admin/AdminEmailTab';
+import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
+import AdminAISettingsTab from './admin/AdminAISettingsTab';
+import AdminGodModeTab from './admin/AdminGodModeTab';
+import AdminMapSettingsTab from './admin/AdminMapSettingsTab';
+import AdminRadioTab from './admin/AdminRadioTab';
+import AdminReanalysisTab from './admin/AdminReanalysisTab';
+import AdminDevSettingsTab from './admin/AdminDevSettingsTab';
+import { Book } from 'lucide-react';
+import { AdminVmrsBrowser } from './admin/AdminVmrsBrowser';
+import LinkageOptionsEditor from '../components/LinkageOptionsEditor';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
 // ============================================================
 
 const LoadingSpinner: React.FC = () => (
-  <div className="flex items-center justify-center py-20">
+  <div className="flex flex-col items-center justify-center py-20 gap-3" role="status" aria-label="Loading content">
     <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
-    <span className="ml-2 text-sm text-rmpg-300">Loading...</span>
+    <span className="text-xs text-rmpg-400 tracking-wide uppercase">Loading...</span>
   </div>
 );
 
 function ErrorBanner({ error, setError }: { error: string | null; setError: (e: string | null) => void }) {
   if (!error) return null;
   return (
-    <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs">
-      <AlertCircle className="w-4 h-4 shrink-0" />
-      {error}
-      <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+    <div role="alert" className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 bg-red-900/30 border border-red-700/50 text-red-400 text-xs animate-fade-in">
+      <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+      <span className="flex-1">{error}</span>
+      <button type="button" onClick={() => setError(null)} className="ml-auto p-0.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 transition-colors" aria-label="Dismiss error">
         <XCircle className="w-3.5 h-3.5" />
       </button>
     </div>
@@ -224,7 +245,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleet_v2_health' | 'fleetio_health' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -234,15 +255,29 @@ const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
 export default function AdminPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
+  const { user } = useAuth();
   // Ref to suppress LiveSync refresh while a client inline edit is pending save
   const clientEditPendingRef = useRef(false);
 
+  // ── URL deep-link contract ──
+  // /admin?tab=<id> selects a section (round-trip: tab clicks update the URL
+  // so a copy-paste lands the recipient back on the same tab).
+  // /admin?user_id=<id> auto-selects a user on the Users tab once the roster
+  // hydrates; /admin?client_id=<id> the same on the Clients tab. /admin?setting_key=
+  // is forwarded as-is to the settings tab (it owns its own scroll behavior).
+  // All non-tab params are stripped after consumption so a hard refresh
+  // doesn't re-trigger the lookup, but ?tab= stays so the operator's tab
+  // selection is bookmarkable.
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'skiptracer', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleet_v2_health', 'fleetio_health', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
-      // URL ?tab= param takes priority (used by Help → Training link)
-      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      // URL ?tab= param takes priority (used by Help → Training link, and
+      // by external deep-links that point at a specific admin section).
+      const urlTab = searchParams.get('tab');
       if (urlTab && VALID_TABS.includes(urlTab)) return urlTab as TabId;
       const saved = localStorage.getItem(LS_ADMIN_TAB);
       if (saved && VALID_TABS.includes(saved)) return saved as TabId;
@@ -252,7 +287,23 @@ export default function AdminPage() {
   const setActiveTab = useCallback((tab: TabId) => {
     setActiveTabState(tab);
     try { localStorage.setItem(LS_ADMIN_TAB, tab); } catch { /* ignore */ }
-  }, []);
+    // Round-trip the tab into the URL so a copy-paste recipient lands on the
+    // same section. We do this in setActiveTab (not a useEffect on activeTab)
+    // so the back-button history is one entry per real navigation, not one
+    // per render. `replace: true` avoids polluting history when an operator
+    // clicks through several tabs in a row.
+    try {
+      const next = new URLSearchParams(searchParams);
+      if (next.get('tab') !== tab) {
+        next.set('tab', tab);
+        setSearchParams(next, { replace: true });
+      }
+    } catch { /* ignore */ }
+  }, [searchParams, setSearchParams]);
+
+  // Deep-link refs — consumed once the roster/clients hydrate, then stripped.
+  const pendingUserIdRef = useRef<string | null>(searchParams.get('user_id'));
+  const pendingClientIdRef = useRef<string | null>(searchParams.get('client_id'));
 
   // --- Data states ---
   const [users, setUsers] = useState<(User & { last_login_display?: string })[]>([]);
@@ -322,6 +373,7 @@ export default function AdminPage() {
     } else {
       setUserActivity([]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUser?.id]);
 
   const fetchClients = useCallback(async (options?: { silent?: boolean }) => {
@@ -363,7 +415,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (activeTab === 'users') fetchUsers();
     else if (activeTab === 'clients') fetchClients();
-    else if (activeTab === 'system') { if (users.length === 0) fetchUsers(); }
+    else if (activeTab === 'system') { if (users.length === 0 && !loadingUsers) fetchUsers(); }
     else if (activeTab === 'audit') fetchAuditLog();
   }, [activeTab, fetchUsers, fetchClients, fetchAuditLog]);
 
@@ -392,7 +444,6 @@ export default function AdminPage() {
         last_name: data.last_name,
         middle_name: data.middle_name,
         email: data.email,
-        role: data.role,
         badge_number: data.badge_number,
         phone: data.phone,
         department: data.department,
@@ -402,6 +453,7 @@ export default function AdminPage() {
         termination_date: data.termination_date,
         shift_preference: data.shift_preference,
         address: data.address,
+        address_2: data.address_2,
         city: data.city,
         state: data.state,
         zip: data.zip,
@@ -421,22 +473,42 @@ export default function AdminPage() {
       };
 
       if (editingUser) {
-        if (data.password) {
-          body.password = data.password;
-        }
-        if (data.status) {
-          body.status = data.status;
-        }
+        // Role/status/password each have a dedicated endpoint so they
+        // can be audited individually. The general PUT silently drops
+        // them, so we fan out the writes here when the admin changed
+        // those specific fields.
         const updated = await apiFetch(`/personnel/${editingUser.id}`, {
           method: 'PUT',
           body: JSON.stringify(body),
         });
-        if (selectedUser && selectedUser.id === editingUser.id) {
-          setSelectedUser(prev => prev ? { ...prev, ...(updated as any) } : prev);
+        if (data.role && data.role !== editingUser.role) {
+          await apiFetch(`/personnel/${editingUser.id}/role`, {
+            method: 'POST',
+            body: JSON.stringify({ role: data.role }),
+          });
+        }
+        // mapPersonnelToUser strips `status` and stores it as `raw_status`, so
+        // editingUser.status is always undefined — compare against raw_status to
+        // avoid firing a redundant status POST (+ spurious audit) on every save.
+        if (data.status && data.status !== (editingUser as any).raw_status) {
+          await apiFetch(`/personnel/${editingUser.id}/status`, {
+            method: 'POST',
+            body: JSON.stringify({ status: data.status }),
+          });
+        }
+        if (data.password) {
+          await apiFetch(`/personnel/${editingUser.id}/reset-password`, {
+            method: 'POST',
+            body: JSON.stringify({ new_password: data.password }),
+          });
+        }
+        if (selectedUser && selectedUser.id === editingUser.id && updated) {
+          setSelectedUser(prev => prev ? { ...prev, ...(updated as Record<string, any>) } : prev);
         }
       } else {
         body.username = data.username;
         body.password = data.password;
+        body.role = data.role;
         await apiFetch('/personnel', {
           method: 'POST',
           body: JSON.stringify(body),
@@ -485,17 +557,17 @@ export default function AdminPage() {
     }
   };
 
-  const handleStatusChange = async (userId: string, newStatus: string) => {
+  const handleStatusChange = useCallback(async (userId: string, newStatus: string) => {
     try {
-      await apiFetch(`/personnel/${userId}`, {
-        method: 'PUT',
+      await apiFetch(`/personnel/${userId}/status`, {
+        method: 'POST',
         body: JSON.stringify({ status: newStatus }),
       });
       await fetchUsers({ silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update user status');
     }
-  };
+  }, [fetchUsers]);
 
   // ============================================================
   // Client CRUD handlers
@@ -620,18 +692,28 @@ export default function AdminPage() {
         { id: 'users', label: 'Users', icon: Users },
         { id: 'clients', label: 'Clients', icon: Building2 },
         { id: 'departments', label: 'Departments', icon: Network },
+        { id: 'wallet_ids', label: 'Officer IDs', icon: CreditCard },
         { id: 'sessions', label: 'Sessions', icon: Shield },
-        { id: 'security', label: 'Security Policy', icon: Lock },
+        // 'security' (Security Policy) consolidated into System Config → Security Policy sub-tab (2026-06-02)
       ],
     },
     {
       category: 'System',
       tabs: [
         { id: 'system', label: 'System Config', icon: Cog },
+        { id: 'settings', label: 'Console Settings', icon: Settings },
+        { id: 'map_settings', label: 'Map Settings', icon: Map },
+        { id: 'linkage', label: 'Linkage Options', icon: Link2 },
         { id: 'health', label: 'System Health', icon: Activity },
-        { id: 'branding', label: 'Branding & Reports', icon: Palette },
-        { id: 'retention', label: 'Data Retention', icon: Archive },
-        { id: 'offline', label: 'Offline Mode', icon: WifiOff },
+        { id: 'reanalysis', label: 'Reanalysis', icon: RefreshCw },
+        // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
+        // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
+      ],
+    },
+    {
+      category: 'AI & Intelligence',
+      tabs: [
+        { id: 'ai_settings', label: 'AI Command Center', icon: Brain },
       ],
     },
     {
@@ -639,18 +721,27 @@ export default function AdminPage() {
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
         { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
-        { id: 'radio', label: 'Radio Config', icon: Radio },
+        { id: 'radio', label: 'Radio Channels', icon: Radio },
       ],
     },
     {
       category: 'Integrations',
       tabs: [
+        // Reordered 2026-05-24: operator complaint that warrant-polling
+        // status was undiscoverable. Surfaced at top of Integrations and
+        // renamed from "Warrant Scrapers" (engineer-speak) to
+        // "Warrant Polling Status" (the term operators actually search for).
+        { id: 'warrant_scrapers', label: 'Warrant Polling Status', icon: Shield },
+        { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
+        // 'skiptracer' (v1) retired in favor of Skip Tracer V2 (2026-06-02)
+        { id: 'skiptracer_v2', label: 'Skip Tracer', icon: Search },
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
+        { id: 'person_intel', label: 'Person Intel', icon: Search },
+        { id: 'cloudflare', label: 'Cloudflare', icon: Cloud },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
-        { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
-        { id: 'skiptracer', label: 'Skip Tracer', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
+        { id: 'integrations', label: 'API Integrations', icon: Plug },
         { id: 'training', label: 'Training', icon: GraduationCap },
       ],
     },
@@ -658,6 +749,23 @@ export default function AdminPage() {
       category: 'Compliance',
       tabs: [
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
+        { id: 'iped', label: 'IPED', icon: ClipboardList },
+        { id: 'fleet_v2_health', label: 'Fleet V2 Health', icon: Activity },
+        { id: 'fleetio_health', label: 'Fleet.io Health', icon: Activity },
+        { id: 'inspection_templates', label: 'Inspection Templates', icon: ClipboardList },
+        { id: 'vmrs_browser', label: 'VMRS Browser', icon: Book },
+      ],
+    },
+    {
+      category: 'God Mode',
+      tabs: [
+        { id: 'godmode', label: 'God Mode', icon: Shield },
+      ],
+    },
+    {
+      category: 'Developer',
+      tabs: [
+        { id: 'dev', label: 'Dev ⚙', icon: Cog },
       ],
     },
   ];
@@ -667,17 +775,129 @@ export default function AdminPage() {
   // Render
   // ============================================================
 
+  // Set document title
+  useEffect(() => { document.title = 'Administration \u2014 RMPG Flex'; }, []);
+
+  // \u2500\u2500 /admin?user_id=<id> deep-link auto-select \u2500\u2500
+  // Once the personnel roster hydrates, find the target by id, flip to the
+  // Users tab, and select it. Strip the param so a refresh doesn't re-pin.
+  useEffect(() => {
+    const target = pendingUserIdRef.current;
+    if (!target) return;
+    if (loadingUsers) return;
+    const hit = users.find(u => String(u.id) === String(target));
+    if (hit) {
+      pendingUserIdRef.current = null;
+      setActiveTab('users');
+      setSelectedUser(hit);
+      const next = new URLSearchParams(searchParams);
+      next.delete('user_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    // Wait for hydration before deciding it's missing.
+    if (users.length === 0) return;
+    pendingUserIdRef.current = null;
+    addToast(`User ${target} not found`, 'warning');
+    const next = new URLSearchParams(searchParams);
+    next.delete('user_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users, loadingUsers]);
+
+  // \u2500\u2500 /admin?client_id=<id> deep-link auto-select \u2500\u2500
+  useEffect(() => {
+    const target = pendingClientIdRef.current;
+    if (!target) return;
+    if (loadingClients) return;
+    const hit = clients.find(c => String(c.id) === String(target));
+    if (hit) {
+      pendingClientIdRef.current = null;
+      setActiveTab('clients');
+      setSelectedClient(hit);
+      const next = new URLSearchParams(searchParams);
+      next.delete('client_id');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (clients.length === 0) return;
+    pendingClientIdRef.current = null;
+    addToast(`Client ${target} not found`, 'warning');
+    const next = new URLSearchParams(searchParams);
+    next.delete('client_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients, loadingClients]);
+
+  // \u2500\u2500 If the deep-link is for Clients but the tab opened to Users, force
+  // a clients fetch so the auto-select effect can resolve. \u2500\u2500
+  useEffect(() => {
+    if (pendingClientIdRef.current && clients.length === 0 && !loadingClients) {
+      fetchClients();
+    }
+    if (pendingUserIdRef.current && users.length === 0 && !loadingUsers) {
+      fetchUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // \u2500\u2500 Keyboard: Esc smart-cascade + N \u2192 New User / New Client \u2500\u2500
+  // Esc closes the smallest-open thing first so a delete confirm raised on
+  // top of an edit modal doesn't dismiss both at once. Order: delete
+  // confirms \u2192 primary modals \u2192 selected detail pane. The old handler only
+  // closed the user modal, leaving every other dialog captive to its own
+  // close button.
+  // N opens "Add User" on the Users tab or "Add Client" on the Clients tab;
+  // typing-suppressed so an admin filling out a search box doesn't trigger
+  // the shortcut mid-type.
+  useEffect(() => {
+    const isTypingTarget = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (userDeleteConfirmOpen) { setUserDeleteConfirmOpen(false); setDeletingUser(null); return; }
+        if (deleteConfirmOpen) { setDeleteConfirmOpen(false); setDeletingClient(null); return; }
+        if (userModalOpen) { setUserModalOpen(false); setEditingUser(null); return; }
+        if (clientModalOpen) { setClientModalOpen(false); setEditingClient(null); return; }
+        if (selectedUser) { setSelectedUser(null); return; }
+        if (selectedClient) { setSelectedClient(null); return; }
+        return;
+      }
+      if ((e.key === 'n' || e.key === 'N')
+          && !e.ctrlKey && !e.metaKey && !e.altKey
+          && !isTypingTarget(e.target)) {
+        // Suppress when any modal already owns the page.
+        if (userModalOpen || clientModalOpen || deleteConfirmOpen || userDeleteConfirmOpen) return;
+        if (activeTab === 'users') {
+          e.preventDefault();
+          openAddUser();
+        } else if (activeTab === 'clients') {
+          e.preventDefault();
+          openAddClient();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [
+    userDeleteConfirmOpen, deleteConfirmOpen, userModalOpen, clientModalOpen,
+    selectedUser, selectedClient, activeTab,
+  ]);
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--surface-base), rgb(var(--rmpg-500-rgb)) 30%, rgb(var(--rmpg-500-rgb)) 70%, var(--surface-base))' }} aria-hidden="true" />
             <RmpgLogo height={64} />
-            <div className="flex-1">
-              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>System Administration</h1>
-              <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)', letterSpacing: '0.12em' }}>System Administration</h1>
+              <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-500">Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -692,24 +912,29 @@ export default function AdminPage() {
       {/* Mobile: horizontal scroll tabs */}
       {isMobile && (
         <div
-          className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5"
-          style={{ background: '#0d1520', borderBottom: '1px solid #162236' }}
+          className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5 scrollbar-dark tab-scroll"
+          style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
+          role="tablist"
+          aria-label="Admin sections"
         >
           {tabGroups.flatMap(g => g.tabs).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
-              <button
+              <button type="button"
                 key={tab.id}
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => setActiveTab(tab.id)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-all duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                 style={{
-                  color: isActive ? '#ffffff' : '#8a9aaa',
-                  background: isActive ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(26,90,158,0.4)' : '1px solid transparent',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                  background: isActive ? 'rgba(var(--rmpg-500-rgb), 0.15)' : 'transparent',
+                  border: isActive ? '1px solid rgba(var(--rmpg-500-rgb), 0.4)' : '1px solid transparent',
+                  borderBottom: isActive ? '2px solid rgb(var(--rmpg-500-rgb))' : '2px solid transparent',
                 }}
               >
-                <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
+                <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} aria-hidden="true" />
                 {tab.label}
               </button>
             );
@@ -721,19 +946,21 @@ export default function AdminPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Desktop Sidebar */}
         {!isMobile && (
-          <div
-            className="flex-shrink-0 overflow-y-auto py-2"
+          <nav
+            className="flex-shrink-0 overflow-y-auto py-2 scrollbar-dark"
             style={{
               width: 200,
-              background: '#0d1520',
-              borderRight: '1px solid #162236',
+              background: 'var(--surface-overlay)',
+              borderRight: '1px solid var(--border-subtle)',
             }}
+            aria-label="Admin navigation"
+            role="tablist"
           >
-            {tabGroups.map((group) => (
-              <div key={group.category} className="mb-1">
+            {tabGroups.map((group, gi) => (
+              <div key={group.category} className={gi > 0 ? 'mt-2' : ''}>
                 <div
-                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.15em]"
-                  style={{ color: '#5a6e80' }}
+                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-border-subtle/60 mb-0.5 text-rmpg-500"
+                  aria-hidden="true"
                 >
                   {group.category}
                 </div>
@@ -741,28 +968,33 @@ export default function AdminPage() {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
                   return (
-                    <button
+                    <button type="button"
                       key={tab.id}
+                      role="tab"
+                      aria-selected={isActive}
+                      id={`admin-tab-${tab.id}`}
+                      aria-controls={`admin-tabpanel-${tab.id}`}
                       onClick={() => setActiveTab(tab.id)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-[5px] text-left text-[11px] transition-all duration-150 hover:bg-rmpg-500/[0.08] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
                       style={{
-                        color: isActive ? '#ffffff' : '#8a9aaa',
-                        background: isActive ? 'rgba(26, 90, 158, 0.12)' : 'transparent',
-                        borderLeft: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
+                        color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                        background: isActive ? 'rgba(var(--rmpg-500-rgb), 0.14)' : undefined,
+                        borderLeft: isActive ? '2px solid rgb(var(--rmpg-500-rgb))' : '2px solid transparent',
+                        fontWeight: isActive ? 600 : 400,
                       }}
                     >
-                      <Icon style={{ width: 13, height: 13 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
-                      {tab.label}
+                      <Icon style={{ width: 13, height: 13 }} className={`transition-colors duration-150 shrink-0 ${isActive ? 'text-brand-400' : 'text-rmpg-600'}`} aria-hidden="true" />
+                      <span className={`truncate${tab.id === 'dev' ? ' text-red-400' : ''}`}>{tab.label}</span>
                     </button>
                   );
                 })}
               </div>
             ))}
-          </div>
+          </nav>
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`}>
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
@@ -801,12 +1033,24 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'settings' && (
+          <AdminSettingsTab LoadingSpinner={LoadingSpinner} />
+        )}
+
         {activeTab === 'system' && (
           <AdminSystemTab
             users={users}
+            LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
+          />
+        )}
+
+        {activeTab === 'map_settings' && (
+          <AdminMapSettingsTab
             LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
           />
         )}
 
@@ -818,16 +1062,16 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'announcements' && (
-          <AdminAnnouncementsTab
+        {activeTab === 'reanalysis' && (
+          <AdminReanalysisTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
           />
         )}
 
-        {activeTab === 'retention' && (
-          <AdminRetentionTab
+        {activeTab === 'announcements' && (
+          <AdminAnnouncementsTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
@@ -852,6 +1096,22 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'alert_sounds' && (
+          <AdminAlertSoundsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'gps_health' && (
+          <AdminGpsHealthTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
         {activeTab === 'servemanager' && (
           <AdminServeManagerTab
             LoadingSpinner={LoadingSpinner}
@@ -866,6 +1126,38 @@ export default function AdminPage() {
             error={error}
             setError={setError}
           />
+        )}
+
+        {activeTab === 'person_intel' && (
+          <AdminPersonIntelTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'cloudflare' && (
+          <AdminCloudflareTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'fleet_v2_health' && (
+          <AdminFleetV2HealthTab />
+        )}
+
+        {activeTab === 'fleetio_health' && (
+          <AdminFleetioHealthTab />
+        )}
+
+        {activeTab === 'inspection_templates' && (
+          <AdminInspectionTemplatesTab />
+        )}
+
+        {activeTab === 'vmrs_browser' && (
+          <AdminVmrsBrowser />
         )}
 
         {activeTab === 'clearpathgps' && (
@@ -884,6 +1176,14 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'warrant_scrapers' && (
+          <AdminWarrantScrapersTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
         {activeTab === 'iped' && (
           <AdminIPEDTab
             LoadingSpinner={LoadingSpinner}
@@ -892,12 +1192,16 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'skiptracer' && (
-          <AdminSkipTracerTab
+        {activeTab === 'skiptracer_v2' && (
+          <AdminSkipTracerV2Tab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
           />
+        )}
+
+        {activeTab === 'wallet_ids' && (
+          <AdminWalletIdTab LoadingSpinner={LoadingSpinner} />
         )}
 
         {activeTab === 'sessions' && (
@@ -916,62 +1220,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'radio' && (
-          <AdminRadioTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'offline' && (
-          <AdminOfflineTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'security' && (
-          <AdminSecurityTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'clearpathgps' && (
-          <AdminClearPathGpsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'arrests' && (
-          <AdminArrestsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'skiptracer' && (
-          <AdminSkipTracerTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'branding' && (
-          <AdminBrandingTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'email' && (
           <AdminEmailTab
             LoadingSpinner={LoadingSpinner}
@@ -980,11 +1228,49 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'integrations' && (
+          <AdminIntegrationsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'ai_settings' && (
+          <AdminAISettingsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'godmode' && (
+          <AdminGodModeTab />
+        )}
+
+        {activeTab === 'dev' && (
+          <AdminDevSettingsTab role={user?.role ?? 'officer'} />
+        )}
+
+        {activeTab === 'radio' && (
+          <AdminRadioTab />
+        )}
+
+        {activeTab === 'linkage' && <LinkageOptionsEditor />}
+
         {activeTab === 'audit' && (
           <AdminAuditTab
             auditLog={auditLog}
             loadingAudit={loadingAudit}
             LoadingSpinner={LoadingSpinner}
+          />
+        )}
+
+        {activeTab === 'court_lookups' && (
+          <AdminCourtLookupsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
           />
         )}
       </div>

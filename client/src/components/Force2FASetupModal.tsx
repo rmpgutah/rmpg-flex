@@ -32,11 +32,17 @@ export default function Force2FASetupModal() {
     setError('');
     try {
       const data = await apiFetch<any>('/auth/totp/setup', { method: 'POST' });
-      setQrDataUrl(data.qrCodeDataUrl);
+      let qr = data.qrCodeDataUrl as string | null;
+      if (!qr && data.otpauthUrl) {
+        // Worker returns otpauthUrl; render the QR locally (qrcode pkg).
+        const QRCode = (await import('qrcode')).default;
+        qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
+      }
+      setQrDataUrl(qr || '');
       setBackupCodes(data.backupCodes || []);
       setStep('qr');
     } catch (err: any) {
-      setError(err.message || 'Failed to start 2FA setup');
+      setError(err?.message || 'Failed to start 2FA setup');
     } finally {
       setBusy(false);
     }
@@ -46,13 +52,14 @@ export default function Force2FASetupModal() {
     setBusy(true);
     setError('');
     try {
-      await apiFetch<any>('/auth/totp/verify-setup', {
+      const verifyRes = await apiFetch<any>('/auth/totp/verify-setup', {
         method: 'POST',
         body: JSON.stringify({ code }),
       });
+      if (Array.isArray((verifyRes as any)?.backupCodes)) setBackupCodes((verifyRes as any).backupCodes);
       setStep('backups');
     } catch (err: any) {
-      setError(err.message || 'Invalid verification code');
+      setError(err?.message || 'Invalid verification code');
       setSetupCode('');
     } finally {
       setBusy(false);
@@ -82,24 +89,27 @@ export default function Force2FASetupModal() {
   return (
     <div
       className="fixed inset-0 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Two-factor setup required"
       style={{ background: 'rgba(0,0,0,0.90)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"
         style={{
-          background: '#141e2b',
-          border: '1px solid #1e3048',
-          borderTop: '3px solid #1a5a9e',
+          background: 'var(--surface-overlay)',
+          border: '1px solid var(--border-default)',
+          borderTop: '3px solid #888888',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
-            <ShieldCheck style={{ width: 20, height: 20, color: '#1a5a9e' }} />
-            <div className="text-lg font-bold text-white">Two-Factor Authentication Required</div>
+            <ShieldCheck style={{ width: 20, height: 20, color: '#888888' }} />
+            <div className="text-lg font-bold text-rmpg-100">Two-Factor Authentication Required</div>
           </div>
-          <div className="text-xs text-gray-400 max-w-sm mx-auto">
+          <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
             Your role requires two-factor authentication via Google Authenticator (or compatible app).
             You must enable 2FA before you can use the system.
           </div>
@@ -118,18 +128,18 @@ export default function Force2FASetupModal() {
           <div className="space-y-4">
             <div
               className="p-3 text-[10px] space-y-2"
-              style={{ background: '#0d1520', border: '1px solid #162236', color: '#8a9aaa' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', color: '#888888' }}
             >
-              <div className="font-bold text-[9px] uppercase tracking-wider mb-2" style={{ color: '#e0e0e0' }}>
+              <div className="font-bold text-[9px] uppercase tracking-wider mb-2 text-rmpg-300">
                 What You'll Need
               </div>
-              <div>1. Install <strong className="text-white">Google Authenticator</strong> on your phone (iOS or Android)</div>
+              <div>1. Install <strong className="text-rmpg-100">Google Authenticator</strong> on your phone (iOS or Android)</div>
               <div>2. Scan a QR code with the app</div>
               <div>3. Enter the 6-digit code from the app to verify</div>
               <div>4. Save your backup recovery codes</div>
             </div>
 
-            <button
+            <button type="button"
               onClick={handleStartSetup}
               disabled={busy}
               className="btn-primary w-full justify-center"
@@ -138,12 +148,12 @@ export default function Force2FASetupModal() {
               {busy ? 'Setting up...' : 'Begin 2FA Setup'}
             </button>
 
-            <button
+            <button type="button"
               onClick={handleDefer}
               className="w-full flex items-center justify-center gap-2 py-2 text-[10px] uppercase tracking-wider font-bold transition-colors"
-              style={{ color: '#5a6e80', background: 'transparent', border: 'none' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#8a9aaa')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#5a6e80')}
+              style={{ color: 'var(--rmpg-500)', background: 'transparent', border: 'none' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#888888')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--rmpg-500)')}
             >
               <Clock style={{ width: 12, height: 12 }} />
               Set Up Later
@@ -154,10 +164,10 @@ export default function Force2FASetupModal() {
         {/* ── QR Code + Verify ─────────────────────────── */}
         {step === 'qr' && (
           <div className="space-y-4">
-            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
               Step 1: Scan QR Code
             </div>
-            <p className="text-[10px]" style={{ color: '#5a6e80' }}>
+            <p className="text-[10px] text-rmpg-500">
               Open Google Authenticator and scan this QR code to add your account.
             </p>
 
@@ -172,10 +182,10 @@ export default function Force2FASetupModal() {
               )}
             </div>
 
-            <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#8a9aaa' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
               Step 2: Enter Verification Code
             </div>
-            <p className="text-[10px]" style={{ color: '#5a6e80' }}>
+            <p className="text-[10px] text-rmpg-500">
               Enter the 6-digit code shown in Google Authenticator.
             </p>
 
@@ -190,7 +200,7 @@ export default function Force2FASetupModal() {
             {busy && (
               <div className="flex items-center justify-center gap-2">
                 <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span className="text-[10px]" style={{ color: '#8a9aaa' }}>Verifying...</span>
+                <span className="text-[10px]" style={{ color: '#888888' }}>Verifying...</span>
               </div>
             )}
           </div>
@@ -219,7 +229,7 @@ export default function Force2FASetupModal() {
                   <div
                     key={i}
                     className="text-center font-mono text-xs py-1"
-                    style={{ background: '#0d1520', border: '1px solid #162236', color: '#e0e0e0' }}
+                    style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
                   >
                     {code}
                   </div>
@@ -227,20 +237,20 @@ export default function Force2FASetupModal() {
               </div>
             </div>
 
-            <p className="text-[9px] text-center" style={{ color: '#5a6e80' }}>
+            <p className="text-[9px] text-center text-rmpg-500">
               If you lose your phone, use one of these one-time codes to log in.
               Each code can only be used once.
             </p>
 
             <div className="flex gap-2">
-              <button onClick={handleCopyBackupCodes} className="btn-secondary flex-1 justify-center">
+              <button type="button" onClick={handleCopyBackupCodes} className="btn-secondary flex-1 justify-center">
                 {copiedBackups ? (
                   <><Check style={{ width: 12, height: 12 }} /> Copied!</>
                 ) : (
                   <><Copy style={{ width: 12, height: 12 }} /> Copy Codes</>
                 )}
               </button>
-              <button onClick={handleDone} className="btn-primary flex-1 justify-center">
+              <button type="button" onClick={handleDone} className="btn-primary flex-1 justify-center">
                 <Check style={{ width: 12, height: 12 }} /> I've Saved My Codes
               </button>
             </div>

@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { withOneRetry } from '../utils/retryTransient';
+import { useSearchParams } from 'react-router-dom';
 import {
   Database,
   UserCircle,
@@ -14,8 +16,12 @@ import {
   Warehouse,
   DollarSign,
   X,
+  Users,
+  Briefcase,
+  ScanLine,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { recordTypeLabel } from '../utils/recordTypeLabel';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -25,21 +31,32 @@ import SplitPanel from '../components/SplitPanel';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import PrintRecordButton from '../components/PrintRecordButton';
-import ExportButton from '../components/ExportButton';
+import ExportButton, { downloadExport } from '../components/ExportButton';
 import LinkRecordModal from '../components/LinkRecordModal';
+import PersonDuplicatesModal from '../components/PersonDuplicatesModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
+import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
+import { AssessorBackfillButton } from '../components/AssessorBackfillButton';
+import { AssessorReviewQueueBanner } from '../components/AssessorReviewQueueBanner';
+import DlScanImportModal from '../components/DlScanImportModal';
 
 // Tab hooks + components
 import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
 import { useVehiclesTab, VehiclesTabList, VehiclesTabDetail, mapDbVehicle } from './records/VehiclesTab';
 import { usePropertiesTab, PropertiesTabList, PropertiesTabDetail, mapDbProperty } from './records/PropertiesTab';
 import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/EvidenceTab';
+import { useBusinessTab, BusinessTabList, BusinessTabDetail } from './records/BusinessTab';
+import SpillmanRecordTabs from './records/spillman/SpillmanRecordTabs';
+import SpillmanMenuBar from './records/spillman/SpillmanMenuBar';
+import SpillmanFormTabs from './records/spillman/SpillmanFormTabs';
+import { RECORD_FORM_SECTIONS } from './records/spillman/recordFormSections';
 
 // ============================================================
 // Constants
 // ============================================================
 
-type TabId = 'persons' | 'vehicles' | 'properties' | 'evidence';
+type TabId = 'persons' | 'vehicles' | 'properties' | 'businesses' | 'evidence';
 
 // ============================================================
 // Component
@@ -47,9 +64,52 @@ type TabId = 'persons' | 'vehicles' | 'properties' | 'evidence';
 
 export default function RecordsPage() {
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
+  const { addToast } = useToast();
+  const { user } = useAuth();
+  const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
+  const [urlParams, setUrlParams] = useSearchParams();
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+
+  // ── Cross-module URL deep-link contract ──
+  // Accepts: ?tab=<persons|vehicles|properties|businesses|evidence>
+  //          &record_id=<id> (generic alias when tab= is also set)
+  //          &type=<persons|vehicles|properties|businesses|evidence> (alias for tab=)
+  //          &person_id= | &vehicle_id= | &property_id= | &business_id= | &evidence_id=
+  //          (legacy camelCase: personId, vehicleId, propertyId, businessId, evidenceId
+  //           and `id` when paired with a `tab`)
+  //          &q=<search box pre-fill>
+  // On mount: pick the tab and remember the target id; once the hydrated list
+  // contains it we auto-select that record and strip the params so a refresh
+  // doesn't re-trigger. Pending id sits in pendingIdRef across re-renders.
+  const pendingIdRef = useRef<{ tab: TabId; id: string } | null>(null);
+  useEffect(() => {
+    const tab = urlParams.get('tab') || urlParams.get('type');
+    const q = urlParams.get('q');
+    const validTab = tab && (['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const).includes(tab as TabId)
+      ? (tab as TabId) : null;
+    const recordId = urlParams.get('record_id');
+    // Infer target tab from whichever *_id is present, even if tab= is omitted.
+    const idByTab: Record<TabId, string | null> = {
+      persons:    urlParams.get('person_id')   || urlParams.get('personId')   || (validTab === 'persons'    ? (recordId || urlParams.get('id')) : null),
+      vehicles:   urlParams.get('vehicle_id')  || urlParams.get('vehicleId')  || (validTab === 'vehicles'   ? (recordId || urlParams.get('id')) : null),
+      properties: urlParams.get('property_id') || urlParams.get('propertyId') || (validTab === 'properties' ? (recordId || urlParams.get('id')) : null),
+      businesses: urlParams.get('business_id') || urlParams.get('businessId') || (validTab === 'businesses' ? (recordId || urlParams.get('id')) : null),
+      evidence:   urlParams.get('evidence_id') || urlParams.get('evidenceId') || (validTab === 'evidence'   ? (recordId || urlParams.get('id')) : null),
+    };
+    // Pick the tab to land on: explicit tab=/type=, else the first *_id that's set.
+    const tabsOrder: TabId[] = ['persons', 'vehicles', 'properties', 'businesses', 'evidence'];
+    const inferredTab: TabId | null = validTab ?? tabsOrder.find((t) => idByTab[t]) ?? null;
+    if (inferredTab) {
+      setActiveTab(inferredTab);
+      const targetId = idByTab[inferredTab];
+      if (targetId) pendingIdRef.current = { tab: inferredTab, id: String(targetId) };
+    }
+    if (q) setSearchQuery(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only on mount
 
   // Data state
   const [persons, setPersons] = useState<Person[]>([]);
@@ -61,6 +121,15 @@ export default function RecordsPage() {
   const [loadingVehicles, setLoadingVehicles] = useState(false);
   const [loadingProperties, setLoadingProperties] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Retry fn for the current error — held in a ref so the banner can re-run the
+  // exact list fetch that failed without threading a callback through state.
+  // reportError(msg, retry) registers both; clearError wipes both.
+  const errorRetryRef = useRef<(() => void) | null>(null);
+  const clearError = useCallback(() => { errorRetryRef.current = null; setError(null); }, []);
+  const reportError = useCallback((message: string, retry?: () => void) => {
+    errorRetryRef.current = retry ?? null;
+    setError(message);
+  }, []);
 
   // Evidence data
   const [evidence, setEvidence] = useState<any[]>([]);
@@ -74,6 +143,9 @@ export default function RecordsPage() {
   const [linkSource, setLinkSource] = useState<{ type: RecordEntityType; id: string } | null>(null);
   const [linkRefreshKey, setLinkRefreshKey] = useState(0);
 
+  // DL barcode scan-to-import
+  const [showDlScan, setShowDlScan] = useState(false);
+
   // "New" record triggers
   const [newPersonTrigger, setNewPersonTrigger] = useState(0);
   const [newVehicleTrigger, setNewVehicleTrigger] = useState(0);
@@ -81,52 +153,52 @@ export default function RecordsPage() {
   const [newEvidenceTrigger, setNewEvidenceTrigger] = useState(0);
 
   // Delete confirmation
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'person' | 'vehicle' | 'property' | 'evidence'; id: string; label: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'person' | 'vehicle' | 'property' | 'business' | 'evidence'; id: string; label: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // ── Fetchers ─────────────────────────────────────────
 
   const fetchPersons = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) { setLoadingPersons(true); setError(null); }
+    if (!options?.silent) { setLoadingPersons(true); clearError(); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100&archived=${showArchived}`);
+      const res = await withOneRetry(() => apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100000&archived=${showArchived}`));
       setPersons((Array.isArray(res?.data) ? res.data : []).map(mapDbPerson));
     } catch (err) {
-      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load persons');
+      if (!options?.silent) reportError(err instanceof Error ? err.message : 'Failed to load persons', () => { void fetchPersons(); });
     } finally {
       if (!options?.silent) setLoadingPersons(false);
     }
-  }, [showArchived]);
+  }, [showArchived, clearError, reportError]);
 
   const fetchVehicles = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) { setLoadingVehicles(true); setError(null); }
+    if (!options?.silent) { setLoadingVehicles(true); clearError(); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100&archived=${showArchived}`);
+      const res = await withOneRetry(() => apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100000&archived=${showArchived}`));
       setVehicles((Array.isArray(res?.data) ? res.data : []).map(mapDbVehicle));
     } catch (err) {
-      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load vehicles');
+      if (!options?.silent) reportError(err instanceof Error ? err.message : 'Failed to load vehicles', () => { void fetchVehicles(); });
     } finally {
       if (!options?.silent) setLoadingVehicles(false);
     }
-  }, [showArchived]);
+  }, [showArchived, clearError, reportError]);
 
   const fetchProperties = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) { setLoadingProperties(true); setError(null); }
+    if (!options?.silent) { setLoadingProperties(true); clearError(); }
     try {
-      const res = await apiFetch<Record<string, unknown>[]>(`/records/properties?archived=${showArchived}`);
+      const res = await withOneRetry(() => apiFetch<Record<string, unknown>[]>(`/records/properties?archived=${showArchived}`));
       setProperties((Array.isArray(res) ? res : []).map(mapDbProperty));
     } catch (err) {
-      if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load properties');
+      if (!options?.silent) reportError(err instanceof Error ? err.message : 'Failed to load properties', () => { void fetchProperties(); });
     } finally {
       if (!options?.silent) setLoadingProperties(false);
     }
-  }, [showArchived]);
+  }, [showArchived, clearError, reportError]);
 
   const fetchEvidence = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoadingEvidence(true);
     try {
-      const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=200&archived=${showArchived}`);
-      setEvidence(res.data || []);
+      const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=100000&archived=${showArchived}`);
+      setEvidence(res?.data || []);
     } catch {
       setEvidence([]);
     } finally {
@@ -150,7 +222,7 @@ export default function RecordsPage() {
     fetchProperties();
     fetchEvidence();
     fetchClients();
-  }, [fetchPersons, fetchVehicles, fetchProperties, fetchEvidence]);
+  }, [fetchPersons, fetchVehicles, fetchProperties, fetchEvidence, fetchClients]);
 
   // Live sync
   const silentRefreshAll = useCallback(() => {
@@ -179,6 +251,7 @@ export default function RecordsPage() {
         person: `/records/persons/${deleteTarget.id}`,
         vehicle: `/records/vehicles/${deleteTarget.id}`,
         property: `/records/properties/${deleteTarget.id}`,
+        business: `/records/businesses/${deleteTarget.id}`,
         evidence: `/records/evidence/${deleteTarget.id}`,
       };
       await apiFetch(endpointMap[deleteTarget.type], { method: 'DELETE' });
@@ -189,11 +262,14 @@ export default function RecordsPage() {
         await fetchVehicles({ silent: true });
       } else if (deleteTarget.type === 'property') {
         await fetchProperties({ silent: true });
+      } else if (deleteTarget.type === 'business') {
+        await businessState.fetchBusinesses();
       } else if (deleteTarget.type === 'evidence') {
         await fetchEvidence({ silent: true });
       }
+      addToast('Record deleted', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete record');
+      addToast(err instanceof Error ? err.message : 'Failed to delete record', 'error');
     } finally {
       setDeleting(false);
     }
@@ -201,27 +277,31 @@ export default function RecordsPage() {
 
   // ── Archive / Unarchive ──────────────────────────────
 
-  const handleArchiveRecord = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
+  const handleArchiveRecord = async (type: string, id: string) => {
     try {
       await apiFetch(`/records/${type}/${id}/archive`, { method: 'POST' });
       if (type === 'persons') { await fetchPersons(); }
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
+      else if (type === 'businesses') { await businessState.fetchBusinesses(); }
       else if (type === 'evidence') { await fetchEvidence(); }
+      addToast('Record archived', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive record');
+      addToast(err instanceof Error ? err.message : 'Failed to archive record', 'error');
     }
   };
 
-  const handleUnarchiveRecord = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
+  const handleUnarchiveRecord = async (type: string, id: string) => {
     try {
       await apiFetch(`/records/${type}/${id}/unarchive`, { method: 'POST' });
       if (type === 'persons') { await fetchPersons(); }
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
+      else if (type === 'businesses') { await businessState.fetchBusinesses(); }
       else if (type === 'evidence') { await fetchEvidence(); }
+      addToast('Record unarchived', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to unarchive record');
+      addToast(err instanceof Error ? err.message : 'Failed to unarchive record', 'error');
     }
   };
 
@@ -261,14 +341,130 @@ export default function RecordsPage() {
     fetchEvidence, openNewTrigger: newEvidenceTrigger,
   });
 
-  // ── Derived ──────────────────────────────────────────
+  const businessState = useBusinessTab({
+    searchQuery, setSearchQuery, showArchived, setError, reportError,
+    setDeleteTarget, linkRefreshKey,
+    openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
+  });
 
-  const isLoading = loadingPersons || loadingVehicles || loadingProperties || loadingEvidence;
+  // ── Deep-link auto-select ──────────────────────────────
+  // Once the active tab's list hydrates, find pendingIdRef and select that
+  // record. Falls back to a direct fetch by id if the list doesn't contain
+  // it (archived, paged-out, or fresh from a sibling page). Strips the
+  // params on success so a refresh doesn't re-trigger; surfaces a toast
+  // when the id truly misses everywhere.
+  useEffect(() => {
+    const pending = pendingIdRef.current;
+    if (!pending || pending.tab !== activeTab) return;
+    const stripParams = () => {
+      const next = new URLSearchParams(urlParams);
+      ['person_id', 'personId', 'vehicle_id', 'vehicleId', 'property_id', 'propertyId',
+       'business_id', 'businessId', 'evidence_id', 'evidenceId', 'id', 'record_id', 'type'].forEach((k) => next.delete(k));
+      setUrlParams(next, { replace: true });
+    };
+    const handleMissing = (label: string) => {
+      pendingIdRef.current = null;
+      addToast(`${label} not in the current view (try unarchiving or clearing filters)`, 'warning');
+      stripParams();
+    };
+
+    if (pending.tab === 'persons') {
+      if (loadingPersons) return;
+      const hit = persons.find(p => String(p.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        personsState.setSelectedPerson(hit);
+        stripParams();
+        return;
+      }
+      // Direct-fetch fallback for archived/foreign/paged-out records.
+      // Claim the slot immediately so this effect doesn't loop while
+      // the fetch is in flight.
+      pendingIdRef.current = null;
+      (async () => {
+        try {
+          const full = await apiFetch<Record<string, unknown>>(`/records/persons/${pending.id}`);
+          if (full && (full as any).id) {
+            personsState.setSelectedPerson(mapDbPerson(full));
+            stripParams();
+            return;
+          }
+          handleMissing(`Person ${pending.id}`);
+        } catch {
+          handleMissing(`Person ${pending.id}`);
+        }
+      })();
+    } else if (pending.tab === 'vehicles') {
+      if (loadingVehicles) return;
+      const hit = vehicles.find(v => String(v.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        vehiclesState.setSelectedVehicle(hit);
+        stripParams();
+        return;
+      }
+      handleMissing(`Vehicle ${pending.id}`);
+    } else if (pending.tab === 'properties') {
+      if (loadingProperties) return;
+      const hit = properties.find(p => String(p.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        propertiesState.setSelectedProperty(hit);
+        stripParams();
+        return;
+      }
+      pendingIdRef.current = null;
+      (async () => {
+        try {
+          const full = await apiFetch<Record<string, unknown>>(`/records/properties/${pending.id}`);
+          if (full && (full as any).id) {
+            propertiesState.setSelectedProperty(mapDbProperty(full));
+            stripParams();
+            return;
+          }
+          handleMissing(`Property ${pending.id}`);
+        } catch {
+          handleMissing(`Property ${pending.id}`);
+        }
+      })();
+    } else if (pending.tab === 'businesses') {
+      if (businessState.loading) return;
+      const hit = businessState.businesses.find(b => String(b.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        businessState.setSelectedBusiness(hit);
+        stripParams();
+        return;
+      }
+      handleMissing(`Business ${pending.id}`);
+    } else if (pending.tab === 'evidence') {
+      if (loadingEvidence) return;
+      const hit = evidence.find((e: any) => String(e.id) === pending.id);
+      if (hit) {
+        pendingIdRef.current = null;
+        evidenceState.setSelectedEvidence(hit);
+        stripParams();
+        return;
+      }
+      handleMissing(`Evidence ${pending.id}`);
+    }
+  }, [
+    activeTab,
+    persons, loadingPersons, personsState,
+    vehicles, loadingVehicles, vehiclesState,
+    properties, loadingProperties, propertiesState,
+    businessState,
+    evidence, loadingEvidence, evidenceState,
+    urlParams, setUrlParams, addToast,
+  ]);
+
+  // ── Derived ──────────────────────────────────────────
 
   const tabs: { id: TabId; label: string; icon: React.ElementType; count: number }[] = [
     { id: 'persons', label: 'Persons', icon: UserCircle, count: persons.length },
     { id: 'vehicles', label: 'Vehicles', icon: Car, count: vehicles.length },
     { id: 'properties', label: 'Properties', icon: Building2, count: properties.length },
+    { id: 'businesses', label: 'Business', icon: Briefcase, count: businessState.businesses.length },
     { id: 'evidence', label: 'Evidence', icon: Package, count: evidence.length },
   ];
 
@@ -282,19 +478,23 @@ export default function RecordsPage() {
     (activeTab === 'persons' && personsState.selectedPerson !== null) ||
     (activeTab === 'vehicles' && vehiclesState.selectedVehicle !== null) ||
     (activeTab === 'properties' && propertiesState.selectedProperty !== null) ||
+    (activeTab === 'businesses' && businessState.selectedBusiness !== null) ||
     (activeTab === 'evidence' && evidenceState.selectedEvidence !== null);
 
   // Selected record label for right PanelTitleBar
   const selectedLabel = (() => {
     if (activeTab === 'persons' && personsState.selectedPerson) {
       const p = personsState.selectedPerson;
-      return `${p.last_name}, ${p.first_name}${p.middle_name ? ` ${p.middle_name[0]}.` : ''}`;
+      return `${p.last_name || ''}, ${p.first_name || ''}${p.middle_name ? ` ${p.middle_name[0]}.` : ''}`;
     }
     if (activeTab === 'vehicles' && vehiclesState.selectedVehicle) {
       return vehiclesState.selectedVehicle.license_plate;
     }
     if (activeTab === 'properties' && propertiesState.selectedProperty) {
       return propertiesState.selectedProperty.name;
+    }
+    if (activeTab === 'businesses' && businessState.selectedBusiness) {
+      return businessState.selectedBusiness.name;
     }
     if (activeTab === 'evidence' && evidenceState.selectedEvidence) {
       return evidenceState.selectedEvidence.evidence_number;
@@ -307,6 +507,7 @@ export default function RecordsPage() {
     if (activeTab === 'persons') personsState.setSelectedPerson(null);
     else if (activeTab === 'vehicles') vehiclesState.setSelectedVehicle(null);
     else if (activeTab === 'properties') propertiesState.setSelectedProperty(null);
+    else if (activeTab === 'businesses') businessState.setSelectedBusiness(null);
     else if (activeTab === 'evidence') evidenceState.setSelectedEvidence(null);
   };
 
@@ -345,8 +546,18 @@ export default function RecordsPage() {
         {activeTab === 'persons' && (
           <>
             <ExportButton exportUrl={`/records/persons/export?format=csv&archived=${showArchived}`} exportFilename="persons_export.csv" />
+            <button type="button" className="toolbar-btn print:hidden text-amber-400" onClick={() => setShowDuplicatesModal(true)}>
+              <Users className="w-3.5 h-3.5" />
+              Duplicates
+            </button>
             {!showArchived && (
-              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPersonTrigger(t => t + 1)}>
+              <button type="button" className="toolbar-btn print:hidden text-brand-400" title="Scan a driver's license barcode to import" onClick={() => setShowDlScan(true)}>
+                <ScanLine className="w-3.5 h-3.5" />
+                Scan ID
+              </button>
+            )}
+            {!showArchived && isAdminOrManager && (
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPersonTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Person
               </button>
@@ -356,8 +567,8 @@ export default function RecordsPage() {
         {activeTab === 'vehicles' && (
           <>
             <ExportButton exportUrl={`/records/vehicles/export?format=csv&archived=${showArchived}`} exportFilename="vehicles_export.csv" />
-            {!showArchived && (
-              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewVehicleTrigger(t => t + 1)}>
+            {!showArchived && isAdminOrManager && (
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewVehicleTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Vehicle
               </button>
@@ -366,10 +577,21 @@ export default function RecordsPage() {
         )}
         {activeTab === 'properties' && (
           <>
-            {!showArchived && (
-              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewPropertyTrigger(t => t + 1)}>
+            <AssessorBackfillButton isAdminOrManager={isAdminOrManager} />
+            {!showArchived && isAdminOrManager && (
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Property
+              </button>
+            )}
+          </>
+        )}
+        {activeTab === 'businesses' && (
+          <>
+            <AssessorBackfillButton isAdminOrManager={isAdminOrManager} />
+            {!showArchived && isAdminOrManager && (
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => businessState.setShowFormModal(true)}>
+                <Plus className="w-3.5 h-3.5" /> New Business
               </button>
             )}
           </>
@@ -377,8 +599,8 @@ export default function RecordsPage() {
         {activeTab === 'evidence' && (
           <>
             <ExportButton exportUrl={`/records/evidence/export?format=csv&archived=${showArchived}`} exportFilename="evidence_export.csv" />
-            {!showArchived && (
-              <button className="toolbar-btn toolbar-btn-primary" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
+            {!showArchived && isAdminOrManager && (
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewEvidenceTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Evidence
               </button>
@@ -387,30 +609,52 @@ export default function RecordsPage() {
         )}
       </PanelTitleBar>
 
-      {/* Tab Row */}
-      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`}>
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium transition-colors whitespace-nowrap
-                ${activeTab === tab.id
-                  ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
-                  : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
-                }
-              `}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {tab.label}
-              <span className="text-[9px] text-rmpg-500">({tab.count})</span>
-            </button>
-          );
-        })}
-        {/* Archive Toggle */}
+      <SpillmanMenuBar
+        onNew={isAdminOrManager && !showArchived ? () => {
+          if (activeTab === 'persons') setNewPersonTrigger(t => t + 1);
+          else if (activeTab === 'vehicles') setNewVehicleTrigger(t => t + 1);
+          else if (activeTab === 'properties') setNewPropertyTrigger(t => t + 1);
+          else if (activeTab === 'businesses') businessState.setShowFormModal(true);
+          else if (activeTab === 'evidence') setNewEvidenceTrigger(t => t + 1);
+        } : undefined}
+        onFind={() => {
+          const el = document.querySelector<HTMLInputElement>('.records-page input[type="search"], .records-page input[type="text"]');
+          el?.focus();
+        }}
+        onPrint={() => window.print()}
+        onDuplicates={() => setShowDuplicatesModal(true)}
+        onRefresh={() => { fetchPersons(); fetchVehicles(); fetchProperties(); fetchEvidence(); }}
+        onToggleArchive={() => setShowArchived(v => !v)}
+        onClose={closeSelection}
+        onShortcuts={() => addToast('Shortcuts: type to search records · Esc closes the open panel', 'info')}
+        onExport={() => {
+          const exportConfigs: Record<string, { url: string; filename: string }> = {
+            persons:    { url: `/records/persons/export?format=csv&archived=${showArchived}`,    filename: 'persons_export.csv' },
+            vehicles:   { url: `/records/vehicles/export?format=csv&archived=${showArchived}`,   filename: 'vehicles_export.csv' },
+            properties: { url: `/records/properties/export?format=csv&archived=${showArchived}`, filename: 'properties_export.csv' },
+            evidence:   { url: `/records/evidence/export?format=csv&archived=${showArchived}`,   filename: 'evidence_export.csv' },
+          };
+          const cfg = exportConfigs[activeTab];
+          if (cfg) {
+            downloadExport(cfg.url, cfg.filename).catch((err) => {
+              console.error('[RecordsPage] menu export failed:', err);
+              addToast('Export failed — check your connection and try again', 'error');
+            });
+          } else {
+            addToast('Export is not available for this record type', 'info');
+          }
+        }}
+      />
+
+      {/* Tab Row — Spillman silver record-type tabs + archive toggle */}
+      <div className="flex items-stretch border-b border-rmpg-600">
+        <SpillmanRecordTabs
+          tabs={tabs.map(t => ({ id: t.id, label: t.label, count: t.count }))}
+          activeTab={activeTab}
+          onSelect={(id) => setActiveTab(id)}
+        />
         <button
+          type="button"
           onClick={() => setShowArchived(!showArchived)}
           className={`ml-auto flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
             showArchived
@@ -424,26 +668,26 @@ export default function RecordsPage() {
       </div>
 
       {/* Compact Stats Strip */}
-      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`}>
+      <div className={`records-stats ${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`}>
         <div className="flex items-center gap-1">
           <UserCircle className="w-2.5 h-2.5 text-brand-400" />
           <span className="text-rmpg-400">P:</span>
-          <span className="text-white font-bold">{persons.length}</span>
+          <span className="text-rmpg-100 font-bold">{persons.length}</span>
         </div>
         <div className="flex items-center gap-1">
-          <Car className="w-2.5 h-2.5 text-blue-400" />
+          <Car className="w-2.5 h-2.5 text-rmpg-400" />
           <span className="text-rmpg-400">V:</span>
-          <span className="text-white font-bold">{vehicles.length}</span>
+          <span className="text-rmpg-100 font-bold">{vehicles.length}</span>
         </div>
         <div className="flex items-center gap-1">
           <Building2 className="w-2.5 h-2.5 text-green-400" />
           <span className="text-rmpg-400">Pr:</span>
-          <span className="text-white font-bold">{properties.length}</span>
+          <span className="text-rmpg-100 font-bold">{properties.length}</span>
         </div>
         <div className="flex items-center gap-1">
           <Package className="w-2.5 h-2.5 text-purple-400" />
           <span className="text-rmpg-400">Ev:</span>
-          <span className="text-white font-bold">{evidence.length}</span>
+          <span className="text-rmpg-100 font-bold">{evidence.length}</span>
         </div>
         <div className="flex items-center gap-1">
           <Shield className="w-2.5 h-2.5 text-red-400" />
@@ -454,8 +698,8 @@ export default function RecordsPage() {
           <>
             <div className="w-px h-2.5 bg-rmpg-600" />
             <div className="flex items-center gap-1">
-              <Warehouse className="w-2.5 h-2.5 text-cyan-400" />
-              <span className="text-cyan-400 font-bold">{evidenceInStorage}</span>
+              <Warehouse className="w-2.5 h-2.5 text-rmpg-400" />
+              <span className="text-rmpg-300 font-bold">{evidenceInStorage}</span>
             </div>
             <div className="flex items-center gap-1">
               <FlaskConical className="w-2.5 h-2.5 text-purple-400" />
@@ -469,19 +713,31 @@ export default function RecordsPage() {
             )}
           </>
         )}
-        {persons.some(p => p.flags.length > 0) && (
+        {persons.some(p => p.flags.some(f => !/_IMPORTED$/i.test(typeof f === 'object' ? (f as any).type ?? '' : f))) && (
           <div className="flex items-center gap-1 ml-auto">
             <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
-            <span className="text-amber-400 font-bold">{persons.filter(p => p.flags.length > 0).length}</span>
+            <span className="text-amber-400 font-bold">
+              {persons.filter(p => p.flags.some(f => !/_IMPORTED$/i.test(typeof f === 'object' ? (f as any).type ?? '' : f))).length}
+            </span>
           </div>
         )}
       </div>
 
       {/* Error banner */}
       {error && (
-        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center">
-          {error}
-          <button onClick={() => setError(null)} className="ml-2 underline text-red-400 hover:text-red-300">dismiss</button>
+        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2" role="alert">
+          <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+          <span className="flex-1">{error}</span>
+          {errorRetryRef.current && (
+            <button
+              type="button"
+              onClick={() => { const r = errorRetryRef.current; clearError(); r?.(); }}
+              className="px-2 py-0.5 bg-red-700/60 hover:bg-red-600 border border-red-500/60 text-red-100 font-semibold uppercase tracking-wide rounded-[2px] transition-colors"
+            >
+              Retry
+            </button>
+          )}
+          <button type="button" onClick={clearError} className="text-red-400 hover:text-red-300 transition-colors underline" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
 
@@ -491,23 +747,54 @@ export default function RecordsPage() {
           <Archive className="w-3 h-3 text-amber-400" />
           <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Archives Mode</span>
           <span className="text-[10px] text-amber-400/70">Read-only</span>
-          <button onClick={() => setShowArchived(false)} className="ml-auto text-[9px] text-amber-400 hover:text-amber-300 underline">
+          <button type="button" onClick={() => setShowArchived(false)} className="ml-auto text-[9px] text-amber-400 hover:text-amber-300 underline">
             Exit
           </button>
         </div>
       )}
 
-      {/* Active TabList Content */}
-      <div className="flex-1 overflow-hidden">
-        {isLoading && (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
-            <span className="ml-2 text-sm text-rmpg-300">Loading records...</span>
+      {/* Salt Lake County Assessor backfill — ambiguous-match review queue.
+          Self-renders nothing when the queue is empty. */}
+      <div className="px-3 pt-2">
+        <AssessorReviewQueueBanner />
+      </div>
+
+      {/* Active TabList Content — per-tab loading/no-data/no-results distinct states */}
+      <div className="flex-1 overflow-hidden" role="tabpanel" aria-label={`${activeTab} records`} style={{ overscrollBehavior: 'contain' }}>
+        {activeTab === 'persons' && loadingPersons && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading persons" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading persons...</span>
+          </div>
+        )}
+        {activeTab === 'vehicles' && loadingVehicles && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading vehicles" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading vehicles...</span>
+          </div>
+        )}
+        {activeTab === 'properties' && loadingProperties && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading properties" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading properties...</span>
+          </div>
+        )}
+        {activeTab === 'evidence' && loadingEvidence && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading evidence" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading evidence...</span>
+          </div>
+        )}
+        {activeTab === 'businesses' && businessState.loading && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" role="status" aria-label="Loading businesses" />
+            <span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading businesses...</span>
           </div>
         )}
         {activeTab === 'persons' && !loadingPersons && <PersonsTabList state={personsState} />}
         {activeTab === 'vehicles' && !loadingVehicles && <VehiclesTabList state={vehiclesState} />}
         {activeTab === 'properties' && !loadingProperties && <PropertiesTabList state={propertiesState} />}
+        {activeTab === 'businesses' && !businessState.loading && <BusinessTabList state={businessState} />}
         {activeTab === 'evidence' && !loadingEvidence && <EvidenceTabList state={evidenceState} />}
       </div>
     </div>
@@ -526,6 +813,7 @@ export default function RecordsPage() {
           activeTab === 'persons' ? UserCircle :
           activeTab === 'vehicles' ? Car :
           activeTab === 'properties' ? Building2 :
+          activeTab === 'businesses' ? Briefcase :
           Package
         }
       >
@@ -540,16 +828,24 @@ export default function RecordsPage() {
             title="Print record"
           />
         )}
-        <button onClick={closeSelection} className="toolbar-btn" title="Close detail">
+        <button type="button" onClick={closeSelection} className="toolbar-btn" title="Close detail" aria-label="Close">
           <X className="w-3.5 h-3.5" />
         </button>
       </PanelTitleBar>
 
+      {hasSelection && RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]?.length > 0 && (
+        <SpillmanFormTabs
+          key={`${activeTab}-${personsState.selectedPerson?.id ?? vehiclesState.selectedVehicle?.id ?? propertiesState.selectedProperty?.id ?? businessState.selectedBusiness?.id ?? evidenceState.selectedEvidence?.id ?? 'none'}`}
+          sections={RECORD_FORM_SECTIONS[activeTab as keyof typeof RECORD_FORM_SECTIONS]}
+        />
+      )}
+
       {/* Active TabDetail Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="records-detail flex-1 overflow-hidden scrollbar-dark">
         {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
         {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
         {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}
+        {activeTab === 'businesses' && <BusinessTabDetail state={businessState} />}
         {activeTab === 'evidence' && <EvidenceTabDetail state={evidenceState} />}
       </div>
     </div>
@@ -559,8 +855,57 @@ export default function RecordsPage() {
   // RENDER — SplitPanel
   // ════════════════════════════════════════════════════
 
+  // Set document title
+  useEffect(() => { document.title = 'Records Management \u2014 RMPG Flex'; }, []);
+
+  // Esc smart-cascade — closes the smallest-open-first overlay so a single
+  // tap doesn't blow away the open record while a nested modal is showing.
+  // Order: delete-confirm → duplicates modal → business form modal →
+  // link-record modal → selected record (closes the right detail panel).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (deleteTarget !== null) { e.stopPropagation(); setDeleteTarget(null); return; }
+      if (showDuplicatesModal) { e.stopPropagation(); setShowDuplicatesModal(false); return; }
+      if (businessState.showFormModal) { e.stopPropagation(); businessState.setShowFormModal(false); return; }
+      if (linkModalOpen) { e.stopPropagation(); setLinkModalOpen(false); setLinkSource(null); return; }
+      if (hasSelection) { e.stopPropagation(); closeSelection(); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [deleteTarget, showDuplicatesModal, businessState, linkModalOpen, hasSelection, closeSelection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "N" keyboard shortcut → opens the active tab's New record flow.
+  // Typing-suppressed (skipped while focus is in any input/textarea/
+  // contenteditable). Skipped while any modal/overlay is open so it
+  // doesn't fight focus traps. Gated to admin/manager (create role gate).
+  // Same contract used across MDT / Patrol / Field Interviews / Cases / Court Tracker.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+      }
+      // Don't open New on top of an already-open modal/picker.
+      if (deleteTarget !== null || showDuplicatesModal || linkModalOpen || businessState.showFormModal) return;
+      if (showArchived) return; // archives mode is read-only
+      if (!isAdminOrManager) return; // create gated to admin/manager
+      e.preventDefault();
+      if (activeTab === 'persons') setNewPersonTrigger(n => n + 1);
+      else if (activeTab === 'vehicles') setNewVehicleTrigger(n => n + 1);
+      else if (activeTab === 'properties') setNewPropertyTrigger(n => n + 1);
+      else if (activeTab === 'businesses') businessState.setShowFormModal(true);
+      else if (activeTab === 'evidence') setNewEvidenceTrigger(n => n + 1);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [activeTab, deleteTarget, showDuplicatesModal, linkModalOpen, businessState, showArchived, isAdminOrManager]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div className="flex flex-col h-full animate-fade-in">
+    <div className="records-page flex flex-col h-full animate-fade-in">
       <SplitPanel
         left={leftPanel}
         right={rightPanel}
@@ -586,11 +931,36 @@ export default function RecordsPage() {
         isOpen={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title={`Delete ${deleteTarget?.type ? deleteTarget.type.charAt(0).toUpperCase() + deleteTarget.type.slice(1) : 'Record'}`}
+        title={`Delete ${recordTypeLabel(deleteTarget?.type)}`}
         message={`Are you sure you want to delete "${deleteTarget?.label}"? This action cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={deleting}
+      />
+
+      <PersonDuplicatesModal
+        isOpen={showDuplicatesModal}
+        onClose={() => setShowDuplicatesModal(false)}
+        onMergeComplete={() => fetchPersons({ silent: true })}
+      />
+
+      <DlScanImportModal
+        isOpen={showDlScan}
+        onClose={() => setShowDlScan(false)}
+        onImported={(person, created) => {
+          setShowDlScan(false);
+          addToast(
+            created
+              ? `Person record created for ${person.first_name} ${person.last_name}`
+              : `Matched existing record for ${person.first_name} ${person.last_name}`,
+            'success',
+          );
+          // Reload persons list and select the imported/matched person
+          fetchPersons({ silent: true }).then(() => {
+            personsState.setSelectedPerson(person);
+            if (activeTab !== 'persons') setActiveTab('persons');
+          });
+        }}
       />
     </div>
   );

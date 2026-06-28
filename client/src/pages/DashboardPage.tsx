@@ -1,41 +1,43 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Phone,
-  Users,
-  FileText,
-  Clock,
-  AlertTriangle,
-  Plus,
-  LogIn,
-  Activity,
-  Shield,
-  Loader2,
-  Radio,
-  MapPin,
-  Eye,
-  ArrowRight,
-  TrendingUp,
-  Gavel,
-  Briefcase,
-  Target,
-  CheckCircle,
-  XCircle,
+  Phone, Users, FileText, Clock, AlertTriangle, Plus, Activity, Shield, Loader2,
+  Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
+  CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
+  CloudDrizzle, CloudFog, Snowflake, Navigation, RefreshCw, Droplets, Wind,
 } from 'lucide-react';
+import { useGeolocation } from './mobile/hooks/useGeolocation';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   AreaChart, Area, PieChart, Pie,
 } from 'recharts';
 import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
+import { humanizePriority } from '../utils/statusLabels';
 import StatsCard from '../components/StatsCard';
 import ActivityFeed from '../components/ActivityFeed';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { StatsCardSkeleton, CardSkeleton } from '../components/Skeleton';
+import NewCallModal from '../components/NewCallModal';
+import IncidentFormModal from '../components/IncidentFormModal';
 import { apiFetch } from '../hooks/useApi';
+import { useToast } from '../components/ToastProvider';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
+import SpmGroup from './dashboard/SpmGroup';
+import DashboardViewSelector from './dashboard/DashboardViewSelector';
+import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
+import ServeDashboardPerformance from '../components/serve/ServeDashboardPerformance';
+import {
+  resolveDashboardView, canSwitchView, writeSavedView,
+  VIEW_PANELS, toolbarActionsForView,
+  type DashboardView, type PanelId, type ToolbarActionId,
+} from './dashboard/dashboardViews';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -68,10 +70,33 @@ interface DashboardApiResponse {
   avgResponseMinutes: number | null;
   callsByPriority: { priority: string; count: number }[];
   callsByStatus: { status: string; count: number }[];
+  /** Legacy worker emits this key name; client accepts either. */
+  by_status?: { status: string; count: number }[];
   recentActivity: unknown[];
   officersOnDuty: unknown[];
   callsByHour: { hour: string; count: number }[];
   pso?: PsoStats;
+  // Secondary stat-card metrics. Added 2026-06-21 — previously the
+  // Status Summary row read these but they were never returned, so 3 of 4
+  // tiles permanently showed 0. Optional on the wire so an older Worker
+  // still hydrates the primary tiles without a typecheck error.
+  activeWarrants?: number;
+  pendingServe?: number;
+  openCases?: number;
+  totalPersons?: number;
+}
+
+interface NearbyCall {
+  id: number;
+  call_number: string;
+  priority: string;
+  status: string;
+  location_address: string | null;
+  description: string | null;
+  latitude: number;
+  longitude: number;
+  distance_mi: number;
+  created_at: string;
 }
 
 interface ActivityApiEntry {
@@ -117,8 +142,8 @@ function mapDashboardStats(raw: DashboardApiResponse): DashboardStats {
 
   // Build calls_by_hour, converting string hour to number
   const callsByHour = (raw.callsByHour ?? []).map((entry) => ({
-    hour: typeof entry.hour === 'string' ? parseInt(entry.hour, 10) : entry.hour,
-    count: entry.count,
+    hour: typeof entry.hour === 'string' ? (parseInt(entry.hour, 10) || 0) : (entry.hour ?? 0),
+    count: entry.count ?? 0,
   }));
 
   // Fill in missing hours with zero counts
@@ -151,6 +176,10 @@ function mapDashboardStats(raw: DashboardApiResponse): DashboardStats {
       ? raw.officersOnDuty.length
       : 0,
     calls_by_hour: fullCallsByHour,
+    active_warrants: raw.activeWarrants ?? 0,
+    pending_serve: raw.pendingServe ?? 0,
+    open_cases: raw.openCases ?? 0,
+    total_persons: raw.totalPersons ?? 0,
   };
 }
 
@@ -202,6 +231,194 @@ const DEFAULT_STATS: DashboardStats = {
   calls_by_hour: Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 })),
 };
 
+// ─── Weather Helpers ─────────────────────────────────────
+
+interface WeatherData {
+  temperature: number;
+  weatherCode: number;
+  description: string;
+  icon: React.ComponentType<any>;
+  humidity?: number;
+  windSpeed?: number;
+  windDirection?: number;
+}
+
+function getWeatherInfo(code: number): { description: string; icon: React.ComponentType<any> } {
+  // WMO Weather interpretation codes (WW)
+  if (code === 0) return { description: 'Clear sky', icon: Sun };
+  if (code === 1) return { description: 'Mainly clear', icon: Sun };
+  if (code === 2) return { description: 'Partly cloudy', icon: Cloud };
+  if (code === 3) return { description: 'Overcast', icon: Cloud };
+  if (code >= 45 && code <= 48) return { description: 'Foggy', icon: CloudFog };
+  if (code >= 51 && code <= 55) return { description: 'Drizzle', icon: CloudDrizzle };
+  if (code >= 56 && code <= 57) return { description: 'Freezing drizzle', icon: CloudDrizzle };
+  if (code >= 61 && code <= 65) return { description: 'Rain', icon: CloudRain };
+  if (code >= 66 && code <= 67) return { description: 'Freezing rain', icon: CloudRain };
+  if (code >= 71 && code <= 77) return { description: 'Snow', icon: CloudSnow };
+  if (code >= 80 && code <= 82) return { description: 'Rain showers', icon: CloudRain };
+  if (code >= 85 && code <= 86) return { description: 'Snow showers', icon: CloudSnow };
+  if (code >= 95 && code <= 99) return { description: 'Thunderstorm', icon: CloudLightning };
+  return { description: 'Unknown', icon: Cloud };
+}
+
+// ─── Shift Helpers ───────────────────────────────────────
+
+interface ShiftInfo {
+  name: string;
+  startHour: number;
+  endHour: number;
+  startLabel: string;
+  endLabel: string;
+  elapsed: number; // seconds into shift
+  remaining: number; // seconds left
+  progress: number; // 0-1
+}
+
+function getCurrentShift(): ShiftInfo {
+  // Get current Mountain Time
+  const now = new Date();
+  const mt = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const hour = mt.getHours();
+  const min = mt.getMinutes();
+  const sec = mt.getSeconds();
+  const currentSeconds = hour * 3600 + min * 60 + sec;
+
+  // Shifts: Day 0600-1400, Swing 1400-2200, Night 2200-0600
+  let name: string, startHour: number, endHour: number;
+  if (hour >= 6 && hour < 14) {
+    name = 'Day Shift'; startHour = 6; endHour = 14;
+  } else if (hour >= 14 && hour < 22) {
+    name = 'Swing Shift'; startHour = 14; endHour = 22;
+  } else {
+    name = 'Night Shift'; startHour = 22; endHour = 6;
+  }
+
+  const shiftDuration = 8 * 3600; // 8 hours in seconds
+  const startSeconds = startHour * 3600;
+
+  let elapsed: number;
+  if (name === 'Night Shift') {
+    // Night shift wraps past midnight
+    if (hour >= 22) {
+      elapsed = currentSeconds - 22 * 3600;
+    } else {
+      elapsed = currentSeconds + (24 * 3600 - 22 * 3600);
+    }
+  } else {
+    elapsed = currentSeconds - startSeconds;
+  }
+
+  const remaining = Math.max(0, shiftDuration - elapsed);
+  const progress = Math.min(1, elapsed / shiftDuration);
+
+  const fmt = (h: number) => {
+    const suffix = h >= 12 ? 'PM' : 'AM';
+    const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${String(display).padStart(2, '0')}:00 ${suffix}`;
+  };
+
+  return {
+    name,
+    startHour,
+    endHour,
+    startLabel: fmt(startHour),
+    endLabel: fmt(endHour),
+    elapsed,
+    remaining,
+    progress,
+  };
+}
+
+function formatCountdown(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// ─── Warrant-polling freshness helpers ───────────────────
+// The Utah Warrant Watch scheduler runs every 4h. A poll that's <90min old
+// is unambiguously fresh (green); 90min-5h is "expected staleness" (gray);
+// 5h+ means the scheduler missed at least one cycle (amber warning); the
+// run failed = red. These thresholds intentionally bracket the 4h interval
+// so a healthy system displays gray, NOT a constant misleading "stale" amber.
+function pollFreshnessText(p: {
+  completed_at: string | null;
+  status: 'running' | 'completed' | 'failed';
+} | null): string {
+  if (!p) return '—';
+  if (p.status === 'running') return 'NOW';
+  if (p.status === 'failed') return 'FAIL';
+  const completed = p.completed_at ? parseTimestamp(p.completed_at).getTime() : NaN;
+  if (Number.isNaN(completed)) return '—';
+  const minutesAgo = Math.floor((Date.now() - completed) / 60_000);
+  if (minutesAgo < 1) return '<1m';
+  if (minutesAgo < 60) return `${minutesAgo}m`;
+  const hoursAgo = Math.floor(minutesAgo / 60);
+  if (hoursAgo < 24) return `${hoursAgo}h`;
+  return `${Math.floor(hoursAgo / 24)}d`;
+}
+
+function pollFreshnessColor(p: {
+  completed_at: string | null;
+  status: 'running' | 'completed' | 'failed';
+} | null): string {
+  if (!p) return 'text-rmpg-400';
+  if (p.status === 'failed') return 'text-red-400';
+  if (p.status === 'running') return 'text-brand-400';
+  const completed = p.completed_at ? parseTimestamp(p.completed_at).getTime() : NaN;
+  if (Number.isNaN(completed)) return 'text-rmpg-400';
+  const hoursAgo = (Date.now() - completed) / 3_600_000;
+  if (hoursAgo < 1.5) return 'text-green-400';   // within freshness window
+  if (hoursAgo < 5)   return 'text-rmpg-300';    // expected staleness mid-cycle
+  return 'text-amber-400';                       // overdue — at least one cycle missed
+}
+
+// ─── Calls-by-status pipeline config ─────────────────────
+// The CAD call lifecycle, in flow order. `key` matches the status string the
+// dispatch backend stores on calls_for_service (see dispatch/aggregates.ts).
+// Tune labels/colors here if RMPG's status vocabulary changes — anything the
+// backend returns that isn't listed falls through to an "Other" bucket so no
+// data is silently dropped.
+const STATUS_PIPELINE: { key: string; label: string; color: string }[] = [
+  { key: 'pending', label: 'Pending', color: '#f59e0b' },
+  { key: 'dispatched', label: 'Dispatched', color: '#888888' },
+  { key: 'enroute', label: 'En Route', color: '#3b82f6' },
+  { key: 'onscene', label: 'On Scene', color: '#a855f7' },
+  { key: 'cleared', label: 'Cleared', color: '#22c55e' },
+];
+
+// Build a contiguous N-day series (oldest→newest) from sparse daily rows,
+// zero-filling days with no calls so the trend line never has gaps.
+function buildVolumeSeries(rows: { date: string; count: number }[], days: number) {
+  const map = new Map(rows.map((r) => [r.date, r.count]));
+  const out: { date: string; label: string; count: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    out.push({
+      date: iso,
+      label: d.toLocaleDateString('en-US', { weekday: 'short' }),
+      count: map.get(iso) ?? 0,
+    });
+  }
+  return out;
+}
+
+// Status-dot color for a live unit's status (dispatch_units.status enum).
+function unitStatusColor(status: string | undefined): string {
+  switch (status) {
+    case 'available': return '#22c55e';
+    case 'dispatched': return '#888888';
+    case 'enroute': return '#3b82f6';
+    case 'onscene': return '#a855f7';
+    case 'off_duty': return '#555555';
+    default: return '#666666';
+  }
+}
+
 // ─── Component ───────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -214,8 +431,111 @@ export default function DashboardPage() {
   const [activeWarrants, setActiveWarrants] = useState(0);
   const [officerActivity, setOfficerActivity] = useState<{ id: number; full_name: string; badge_number: string; role: string; action_count: number }[]>([]);
   const [psoStats, setPsoStats] = useState<PsoStats | null>(null);
+  const [shiftInfo, setShiftInfo] = useState<ShiftInfo>(getCurrentShift);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherFetched, setWeatherFetched] = useState(false);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
+  const { user } = useAuth();
+  const role = user?.role ?? '';
+  const [view, setView] = useState<DashboardView>(() => resolveDashboardView(role));
+  // Re-resolve when the role becomes available after async auth load.
+  useEffect(() => { setView(resolveDashboardView(role)); }, [role]);
+  const maySwitch = canSwitchView(role);
+  const panels = VIEW_PANELS[view];
+  const hasPanel = useCallback((id: PanelId) => panels.includes(id), [panels]);
+  const handleViewChange = useCallback((v: DashboardView) => {
+    writeSavedView(v);
+    setView(v);
+  }, []);
+  const [showNewCallModal, setShowNewCallModal] = useState(false);
+  const [showIncidentModal, setShowIncidentModal] = useState(false);
+
+  // Role gates
+  // canCreate: any operational role may create records (calls, incidents, citations)
+  const canCreate = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'].includes(role);
+
+  // Deep-link: ?panel=<id> or ?widget=<id> scrolls to the named panel section on mount
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkRef = useRef(false);
+
+  // Warrant polling status (added 2026-05-24 — operator complaint that the
+  // 4h Utah warrant watch was invisible). Sourced from /api/warrants/watch/runs
+  // which is also what /warrants → Sources tab uses, so the dashboard widget
+  // and the deeper view agree on the same data.
+  const [latestWarrantPoll, setLatestWarrantPoll] = useState<{
+    started_at: string;
+    completed_at: string | null;
+    status: 'running' | 'completed' | 'failed';
+    persons_checked: number;
+    new_warrants_found: number;
+    warrants_cleared: number;
+  } | null>(null);
+
+  // ═══ Dashboard widget states (Features 31-43) ═══
+  const [shiftComparison, setShiftComparison] = useState<any>(null);
+  const [clearanceRate, setClearanceRate] = useState<any>(null);
+  const [patrolCoverage, setPatrolCoverage] = useState<any>(null);
+  const [evidencePending, setEvidencePending] = useState<any>(null);
+  const [upcomingCourt, setUpcomingCourt] = useState<any>(null);
+  const [overdueReports, setOverdueReports] = useState<any>(null);
+
+  // ═══ NEW: Shift-aware stats, court dates, expiring certs ═══
+  const [shiftStats, setShiftStats] = useState<{
+    shift_name: string; calls: number; incidents: number; citations: number; patrol_scans: number;
+  } | null>(null);
+  const [courtDatesCount, setCourtDatesCount] = useState(0);
+  const [expiringCertsCount, setExpiringCertsCount] = useState(0);
+
+  // Last-successful-sync timestamp drives the title-bar freshness chip.
+  // Updated by every silent and non-silent dashboard fetch. Null until first
+  // success — used by the title LED to flip red if the very first load errored.
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+
+  // Patrol-view geolocation (only requested when the patrol panels are mounted
+  // — saves the permission prompt for dispatch/admin who never see the panel).
+  const enableGeo = view === 'patrol';
+  const { status: geoStatus, position: geoPosition } = useGeolocation({ enabled: enableGeo });
+  const [nearbyCalls, setNearbyCalls] = useState<NearbyCall[]>([]);
+  const [nearbyRadius, setNearbyRadius] = useState<number>(5);
+
+  // Shift countdown timer — update every second
+  useEffect(() => {
+    const timer = setInterval(() => setShiftInfo(getCurrentShift()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Weather fetch — refresh every 15 minutes
+  const fetchWeather = useCallback(async () => {
+    try {
+      // Use server proxy to avoid browser CSP/CORS issues with open-meteo.com
+      const resp = await apiFetch<any>('/weather');
+      const temp = resp?.current?.temperature_2m;
+      if (temp == null) { setWeather(null); return; }
+      const code = resp?.current?.weather_code ?? 0;
+      const info = getWeatherInfo(code);
+      setWeather({
+        temperature: Math.round(temp),
+        weatherCode: code,
+        description: info.description,
+        icon: info.icon,
+        humidity: resp?.current?.relative_humidity_2m ?? undefined,
+        windSpeed: resp?.current?.wind_speed_10m ?? undefined,
+        windDirection: resp?.current?.wind_direction_10m ?? undefined,
+      });
+    } catch {
+      setWeather(null);
+    } finally {
+      setWeatherFetched(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchWeather();
+    const weatherInterval = setInterval(fetchWeather, 15 * 60 * 1000);
+    return () => clearInterval(weatherInterval);
+  }, [fetchWeather]);
 
   const fetchDashboardData = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoading(true); setError(null); }
@@ -223,12 +543,13 @@ export default function DashboardPage() {
     try {
       const [dashboardRaw, activityRaw, bolosRaw, warrantsRaw] = await Promise.all([
         apiFetch<DashboardApiResponse>('/reports/dashboard'),
-        apiFetch<{ data: ActivityApiEntry[] }>('/comms/activity-feed?limit=20').then(r => r.data),
+        apiFetch<{ data: ActivityApiEntry[] }>('/comms/activity-feed?limit=20').then(r => r?.data ?? []),
         apiFetch<BoloApiEntry[]>('/comms/bolos/active'),
-        apiFetch<any>('/warrants?status=active&per_page=1').catch(() => ({ total: 0 })),
+        apiFetch<any>('/warrants?status=active&per_page=1').catch((err) => { console.warn('[Dashboard] warrant fetch failed:', err); return { pagination: { total: 0 } }; }),
       ]);
 
       setStats(mapDashboardStats(dashboardRaw));
+      setCallsByStatus(dashboardRaw.callsByStatus ?? dashboardRaw.by_status ?? []);
       if (dashboardRaw.pso) setPsoStats(dashboardRaw.pso);
       setActivities((activityRaw ?? []).map(mapActivityEntry));
       setBolos(
@@ -236,16 +557,43 @@ export default function DashboardPage() {
           .filter((b) => b.status === 'active')
           .map(mapBoloEntry)
       );
-      setActiveWarrants(warrantsRaw?.total ?? 0);
+      setActiveWarrants(warrantsRaw?.pagination?.total ?? warrantsRaw?.total ?? 0);
+      setError(null);
+      setLastSyncedAt(new Date());
     } catch (err) {
       if (!options?.silent) {
         console.error('Dashboard fetch error:', err);
         setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+      } else {
+        // Silent refresh failed — surface as a quiet inline error so the
+        // operator knows data went stale instead of silently rotting.
+        setError((prev) => prev ?? 'Dashboard sync failed (auto-retry in 60s)');
       }
     } finally {
       if (!options?.silent) setLoading(false);
     }
   }, []);
+
+  // Calls-near-me fetcher (patrol view only). Re-runs when the operator's
+  // GPS moves, or on a manual radius change. Errors silently — the panel
+  // already has a 'no data' branch that renders correctly when empty.
+  const fetchNearbyCalls = useCallback(async (lat: number, lng: number, radius_mi: number) => {
+    try {
+      const res = await apiFetch<{ calls: NearbyCall[] }>(`/reports/calls-near?lat=${lat}&lng=${lng}&radius_mi=${radius_mi}`);
+      setNearbyCalls(Array.isArray(res?.calls) ? res.calls : []);
+    } catch (err) {
+      console.warn('[Dashboard] calls-near fetch failed:', err);
+      setNearbyCalls([]);
+    }
+  }, []);
+
+  // Pull nearby calls whenever the GPS fix or radius changes (patrol view only).
+  useEffect(() => {
+    if (!enableGeo || !geoPosition) { setNearbyCalls([]); return; }
+    fetchNearbyCalls(geoPosition.lat, geoPosition.lng, nearbyRadius);
+    const id = setInterval(() => fetchNearbyCalls(geoPosition.lat, geoPosition.lng, nearbyRadius), 45_000);
+    return () => clearInterval(id);
+  }, [enableGeo, geoPosition, nearbyRadius, fetchNearbyCalls]);
 
   // Fetch expiring credentials
   const fetchCredentials = useCallback(async () => {
@@ -253,14 +601,14 @@ export default function DashboardPage() {
       const data = await apiFetch<any[]>('/personnel/credentials');
       const now = new Date();
       const sixtyDaysOut = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-      const expiring = (data || []).filter((c: any) => {
+      const expiring = (Array.isArray(data) ? data : []).filter((c: any) => {
         if (!c.expiry_date) return false;
-        const exp = new Date(c.expiry_date);
+        const exp = parseTimestamp(c.expiry_date);
         return exp <= sixtyDaysOut;
       });
       setExpiringCredentials(expiring);
-    } catch {
-      // Endpoint may not exist yet — fail silently
+    } catch (err) {
+      console.warn('[Dashboard] credentials fetch failed:', err);
       setExpiringCredentials([]);
     }
   }, []);
@@ -269,25 +617,88 @@ export default function DashboardPage() {
   const fetchOfficerActivity = useCallback(async () => {
     try {
       const data = await apiFetch<any[]>('/reports/officer-activity');
-      setOfficerActivity(data || []);
-    } catch {
+      setOfficerActivity(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('[Dashboard] officer activity fetch failed:', err);
       setOfficerActivity([]);
     }
+  }, []);
+
+  // ═══ Fetch dashboard widget data (Features 31-43) ═══
+  const fetchWidgets = useCallback(async () => {
+    const safe = async <T,>(url: string): Promise<T | null> => {
+      try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); return null; }
+    };
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz] = await Promise.all([
+      safe<any>('/reports/shift-comparison'),
+      safe<any>('/reports/clearance-rate'),
+      safe<any>('/reports/patrol-coverage'),
+      safe<any>('/reports/evidence-pending'),
+      safe<any>('/reports/upcoming-court'),
+      safe<any>('/reports/overdue-reports'),
+      safe<any>('/admin/shift-stats'),
+      safe<any>('/admin/upcoming-court-dates?days=30'),
+      safe<any>('/admin/expiring-certifications?days=30'),
+      safe<any[]>('/dispatch/units'),
+      safe<any>('/dispatch/aggregates/call-volume?days=7'),
+      safe<any>('/dispatch/aggregates/by-zone?days=7'),
+    ]);
+    if (sc) setShiftComparison(sc);
+    if (cr) setClearanceRate(cr);
+    if (pc) setPatrolCoverage(pc);
+    if (ep) setEvidencePending(ep);
+    if (uc) setUpcomingCourt(uc);
+    if (or_) setOverdueReports(or_);
+    if (ss) setShiftStats(ss);
+    if (cd) setCourtDatesCount(cd.count ?? 0);
+    if (ec) setExpiringCertsCount((ec.expiring_count ?? 0) + (ec.expired_count ?? 0));
+    if (Array.isArray(un)) setUnits(un);
+    if (cv?.by_day) setCallVolume(cv.by_day);
+    if (cz?.by_zone) setCallsByZone(cz.by_zone);
   }, []);
 
   useEffect(() => {
     fetchDashboardData();
     fetchCredentials();
     fetchOfficerActivity();
+    fetchWidgets();
 
     // Refresh every 60 seconds (LiveSync handles real-time updates)
     const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); fetchOfficerActivity(); }, 60_000);
     return () => clearInterval(interval);
-  }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity]);
+  }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity, fetchWidgets]);
 
   // Live sync — auto-refresh dashboard when ANY module changes (silent to avoid unmounting UI)
   const silentRefreshDashboard = useCallback(() => fetchDashboardData({ silent: true }), [fetchDashboardData]);
   useLiveSync(['dispatch', 'incidents', 'records', 'personnel', 'fleet'], silentRefreshDashboard);
+
+  const runToolbarAction = useCallback((id: ToolbarActionId) => {
+    switch (id) {
+      case 'newCall': setShowNewCallModal(true); break;
+      case 'newIncident': setShowIncidentModal(true); break;
+      case 'newCitation': navigate('/citations'); break;
+      case 'startPatrol': navigate('/patrol'); break;
+      case 'processServer': navigate('/serve'); break;
+      case 'quickCapture': navigate('/intel/quick-capture'); break;
+      case 'fieldCamera': navigate('/field-camera'); break;
+      case 'patrolScan': navigate('/field-camera?alpr=1'); break;
+      case 'tasks': navigate('/tasks'); break;
+      case 'print': window.print(); break;
+      case 'refresh': fetchDashboardData(); break;
+    }
+  }, [navigate, fetchDashboardData]);
+
+  // Activity feed 30-second auto-refresh
+  useEffect(() => {
+    let cancelled = false;
+    const activityInterval = setInterval(async () => {
+      try {
+        const activityRaw = await apiFetch<{ data: ActivityApiEntry[] }>('/comms/activity-feed?limit=20');
+        if (!cancelled && activityRaw?.data) setActivities(activityRaw.data.map(mapActivityEntry));
+      } catch { /* silent */ }
+    }, 30_000);
+    return () => { cancelled = true; clearInterval(activityInterval); };
+  }, []);
 
   // Format hour labels for chart
   const chartData = stats.calls_by_hour.map((d) => ({
@@ -295,9 +706,73 @@ export default function DashboardPage() {
     label: `${d.hour.toString().padStart(2, '0')}:00`,
   }));
 
-  if (loading && stats === DEFAULT_STATS) {
+  // Set document title
+  useEffect(() => { document.title = 'Dashboard \u2014 RMPG Flex'; }, []);
+
+  // Deep-link: ?panel=<id> or ?widget=<id> \u2014 scroll to the named panel on first render,
+  // then strip the param so the back-button works correctly. useRef guard prevents
+  // double-firing if searchParams identity changes after setSearchParams.
+  useEffect(() => {
+    if (deepLinkRef.current) return;
+    const target = searchParams.get('panel') ?? searchParams.get('widget');
+    if (!target) return;
+    deepLinkRef.current = true;
+    // Defer until the DOM has rendered the panels
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`dashboard-panel-${target}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    const next = new URLSearchParams(searchParams);
+    next.delete('panel');
+    next.delete('widget');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // Poll latest warrant-watch run. 60s interval is fine \u2014 the scheduled
+  // upstream scan only fires every 4h, so 60s is responsive enough for
+  // operators to see freshness without hammering the API.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchLatestPoll = async () => {
+      try {
+        const res = await apiFetch<{ data: any[] }>('/warrants/watch/runs?limit=1');
+        if (cancelled) return;
+        setLatestWarrantPoll(res?.data?.[0] ?? null);
+      } catch { /* silent \u2014 widget shows 'no data' on failure */ }
+    };
+    fetchLatestPoll();
+    const id = setInterval(fetchLatestPoll, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // Keyboard shortcuts — must be before early return to preserve hook order.
+  // Esc cascade: NewCallModal → IncidentModal (each branch stopPropagation so only one closes per press).
+  // N: open New Call modal (primary action), gated to canCreate.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName ?? '';
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable;
+
+      if (e.key === 'Escape') {
+        if (showNewCallModal) { e.stopPropagation(); setShowNewCallModal(false); return; }
+        if (showIncidentModal) { e.stopPropagation(); setShowIncidentModal(false); return; }
+        return;
+      }
+
+      if (e.key === 'n' || e.key === 'N') {
+        if (inInput || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (canCreate) { e.preventDefault(); setShowNewCallModal(true); }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showNewCallModal, showIncidentModal, canCreate]);
+
+  const isInitialLoading = loading && stats === DEFAULT_STATS;
+
+  if (isInitialLoading) {
     return (
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-4 animate-fade-in" role="status" aria-label="Loading dashboard" aria-busy="true">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => <StatsCardSkeleton key={i} />)}
         </div>
@@ -308,51 +783,111 @@ export default function DashboardPage() {
           <div className="lg:col-span-2"><CardSkeleton /></div>
           <CardSkeleton />
         </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 space-y-4 animate-fade-in">
+    <div className="dashboard-page p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+      {/* Spillman screen title bar — LED tracks REAL data-sync health.
+          Red = current error, amber = stale (>5min since last good fetch),
+          green = healthy. Pulse while a fetch is in flight (loading=true). */}
+      {(() => {
+        const minsSinceSync = lastSyncedAt
+          ? (Date.now() - lastSyncedAt.getTime()) / 60_000
+          : null;
+        const isStale = minsSinceSync != null && minsSinceSync > 5;
+        const ledClass = error
+          ? 'led-red animate-led-blink'
+          : isStale
+            ? 'led-amber animate-led-pulse'
+            : loading
+              ? 'led-green animate-led-pulse'
+              : 'led-green';
+        const statusWord = error ? 'Sync Error' : isStale ? 'Stale' : 'Operational';
+        const syncLabel = lastSyncedAt
+          ? `Synced ${lastSyncedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+          : 'Awaiting first sync';
+        return (
+          <div className="spm-screen-title" onContextMenu={(e) => openMenu(e, [
+            m.action('Refresh dashboard', refreshAll, { icon: <RefreshCw size={12} /> }),
+            m.separator(),
+            m.action('New call', () => setShowNewCallModal(true), { icon: <Plus size={12} />, disabled: !canCreate }),
+            m.action('New incident', () => setShowIncidentModal(true), { icon: <FileText size={12} />, disabled: !canCreate }),
+          ])}>
+            <span className={`led-dot ${ledClass}`} aria-hidden="true" />
+            Command &amp; Control — {statusWord}
+            <span className="ml-auto text-[10px] font-mono text-rmpg-500 tabular-nums" title={lastSyncedAt?.toLocaleString() ?? 'Never'}>
+              {syncLabel}
+            </span>
+          </div>
+        );
+      })()}
+
+      {/* Spillman screen toolbar: View selector + raised action buttons */}
+      <div className="spm-screen-toolbar" role="toolbar" aria-label="Dashboard actions">
+        <DashboardViewSelector view={view} canSwitch={maySwitch} onChange={handleViewChange} />
+        {toolbarActionsForView(view)
+          // Gate record-create actions to roles that may create records
+          .filter((a) => {
+            if ((a.id === 'newCall' || a.id === 'newIncident' || a.id === 'newCitation') && !canCreate) return false;
+            if (a.id === 'quickCapture' && !canCreate) return false;
+            return true;
+          })
+          .map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`spm-toolbtn ${a.id === 'print' ? 'spacer' : ''}`.trim()}
+              onClick={() => runToolbarAction(a.id)}
+            >
+              {a.label}
+            </button>
+          ))}
+      </div>
+
       {/* Portal Header — RMPG Logo + System Title */}
-      <div className="panel-beveled bg-surface-base overflow-hidden">
+      <div className="panel-beveled bg-surface-base overflow-hidden shadow-lg shadow-black/20">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Blue accent line */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) 30%, var(--spm-text-muted) 70%, var(--spm-border))' }} />
           {!isMobile && <RmpgLogo height={68} />}
           {isMobile && <RmpgLogo height={36} iconOnly />}
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
-              <h1 className={`${isMobile ? 'text-xs' : 'text-sm'} font-bold tracking-wider uppercase text-rmpg-200`}>
+              <h1 className={`${isMobile ? 'text-xs' : 'text-sm'} font-bold tracking-wider uppercase text-rmpg-200 select-none`}>
                 {isMobile ? 'C&C Dashboard' : 'Command & Control Dashboard'}
               </h1>
-              <div className="hidden sm:flex items-center gap-1.5">
-                <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
-                <span className="text-[9px] font-mono font-bold text-green-500">OPERATIONAL</span>
+              <div className="hidden sm:flex items-center gap-1.5" role="status" aria-label="System status: operational">
+                <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} aria-hidden="true" />
+                <span className="text-[9px] font-mono font-bold text-green-500 tracking-wider select-none">OPERATIONAL</span>
               </div>
             </div>
             {!isMobile && (
-              <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-600">
+              <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-600 truncate">
                 Rocky Mountain Protective Group, LLC &mdash; Resolving today&rsquo;s concerns, to ensure tomorrow&rsquo;s solutions.
               </p>
             )}
           </div>
-          <div className="hidden md:flex items-center gap-2 text-[9px] font-mono text-rmpg-600">
+          <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600 flex-shrink-0">
             <PrintButton />
-            <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="border-l border-rmpg-800 pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
         </div>
       </div>
 
       {/* Error Banner */}
       {error && (
-        <div className="bg-red-900/30 border border-red-700 p-2 flex items-center justify-between">
+        <div className="bg-red-900/30 border border-red-700/60 rounded-sm p-2.5 flex items-center justify-between animate-fade-in shadow-md shadow-red-900/20" role="alert" aria-live="assertive">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-400" />
-            <span className="text-xs text-red-300">{error}</span>
+            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+            <span className="text-xs text-red-300 font-medium">{error}</span>
           </div>
-          <button
-            className="text-xs text-red-400 hover:text-red-300 underline"
+          <button type="button"
+            className="text-xs text-red-400 hover:text-red-200 underline font-bold uppercase tracking-wider transition-colors px-2 py-1 hover:bg-red-900/30 rounded-sm"
             onClick={() => fetchDashboardData()}
           >
             Retry
@@ -361,7 +896,11 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Cards Row */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`}>
+      {hasPanel('activeCalls') && (
+      <div id="dashboard-panel-activeCalls">
+      <SpmGroup title="Active Calls — Priority & Volume">
+      <div className="space-y-4">
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`} role="region" aria-label="Key statistics">
         <StatsCard
           icon={Phone}
           label="Active Calls"
@@ -396,7 +935,7 @@ export default function DashboardPage() {
           icon={Clock}
           label="Avg Response"
           value={stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A'}
-          accent="blue"
+          accent="gold"
           trendValue={stats.avg_response_time_minutes ? 'within target' : 'no data'}
           trendColor={stats.avg_response_time_minutes ? 'green' : 'gray'}
           trend={stats.avg_response_time_minutes ? 'down' : 'flat'}
@@ -405,97 +944,510 @@ export default function DashboardPage() {
       </div>
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`}>
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2`}" role="region" aria-label="Calls by priority" onContextMenu={(e) => { e.stopPropagation(); openMenu(e, [m.go('View all in Dispatch', '/dispatch', <ArrowRight size={12} />)]); }}>
         {[
-          { key: 'P1', label: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1 },
-          { key: 'P2', label: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2 },
-          { key: 'P3', label: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3 },
-          { key: 'P4', label: 'P4 Scheduled', led: 'led-off', border: 'border-l-gray-500', count: stats.calls_by_priority.P4 },
-        ].map(({ key, label, led, border, count }) => (
+          { key: 'P1', label: 'P1 Emerg', labelFull: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1, valueColor: 'var(--stat-accent-red)' },
+          { key: 'P2', label: 'P2 Urgent', labelFull: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2, valueColor: 'var(--stat-accent-amber)' },
+          { key: 'P3', label: 'P3 Routine', labelFull: 'P3 Routine', led: 'led-blue', border: 'border-l-brand-500', count: stats.calls_by_priority.P3, valueColor: 'var(--spm-text-muted)' },
+          { key: 'P4', label: 'P4 Sched', labelFull: 'P4 Scheduled', led: 'led-off', border: 'border-l-rmpg-500', count: stats.calls_by_priority.P4, valueColor: 'var(--pri-scheduled)' },
+        ].map(({ key, label, labelFull, led, border, count, valueColor }) => (
           <div
             key={key}
             onClick={() => navigate('/dispatch')}
-            className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised transition-all duration-150 group bg-surface-base`}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/dispatch'); }}
+            tabIndex={0}
+            role="button"
+            className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 group bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
             title={`View ${key} calls in Dispatch`}
+            aria-label={`${label}: ${count} calls`}
           >
-            <span className={`led-dot ${led}`} />
-            <div className="flex-1">
-              <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold text-green-400 font-mono`}>{count}</div>
-              <div className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{label}</div>
+            <span className={`led-dot ${led} ${count > 0 && key === 'P1' ? 'animate-led-pulse' : ''}`} />
+            <div className="flex-1 min-w-0">
+              <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color: valueColor }}>{count}</div>
+              <div className={`${isMobile ? 'text-[11px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{isMobile ? label : labelFull}</div>
             </div>
-            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity duration-200" aria-hidden="true" />
           </div>
         ))}
       </div>
+      </div>
+      </SpmGroup>
+      </div>
+      )}
+
+      {/* Secondary Stats Row — expanded to 5 cols 2026-05-24 to add Warrant Poll card */}
+      {hasPanel('statusSummary') && (
+      <div id="dashboard-panel-statusSummary">
+      <SpmGroup title="Status Summary">
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2'}`} role="region" aria-label="Record statistics">
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants?status=active')}>
+          <div className="flex items-center gap-2">
+            <Gavel className="w-4 h-4 text-red-400" />
+            <div>
+              {/* Both /warrants (paginated, ?status=active) and /reports/dashboard
+                  (.activeWarrants) now return this count, so they agree. The
+                  || fallback is kept so older Worker deploys still hydrate. */}
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.active_warrants || activeWarrants || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Active Warrants</div>
+            </div>
+          </div>
+        </div>
+        {/* Warrant Polling status card — surfaces the 4h Utah Warrant Watch
+            scan freshness + last-run counts. Green/amber/red coloring based on
+            staleness so an operator can tell at a glance whether polling is
+            healthy without navigating to /warrants → Sources. */}
+        <div
+          className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors"
+          onClick={() => navigate('/warrants')}
+          title={latestWarrantPoll
+            ? `Last poll: ${latestWarrantPoll.status} — ${latestWarrantPoll.persons_checked} checked, ${latestWarrantPoll.new_warrants_found} new, ${latestWarrantPoll.warrants_cleared} cleared`
+            : 'No warrant-watch run recorded yet'}
+        >
+          <div className="flex items-center gap-2">
+            <RefreshCw className={`w-4 h-4 ${pollFreshnessColor(latestWarrantPoll)}`} />
+            <div>
+              <div className={`text-lg font-bold font-mono tabular-nums ${pollFreshnessColor(latestWarrantPoll)}`}>
+                {pollFreshnessText(latestWarrantPoll)}
+              </div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Warrant Poll</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/serve?status=pending')}>
+          <div className="flex items-center gap-2">
+            <Briefcase className="w-4 h-4 text-amber-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.pending_serve || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Pending Serve</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/cases?status=open')}>
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-purple-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.open_cases || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Open Cases</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/records?tab=persons')}>
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-rmpg-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">{stats.total_persons || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Total Persons</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </SpmGroup>
+      </div>
+      )}
+
+      {/* Shift Countdown + Weather + Quick Actions Row */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'}`}>
+        {/* Shift Countdown Timer */}
+        {hasPanel('shiftStatus') && (
+        <SpmGroup title="Shift Status" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
+          <div className="p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-rmpg-200 tracking-wide">{shiftInfo.name}</div>
+                <div className="text-[10px] text-rmpg-500 font-mono mt-0.5 tabular-nums">
+                  {shiftInfo.startLabel} &mdash; {shiftInfo.endLabel}
+                </div>
+              </div>
+              <div className="text-right" aria-live="polite" aria-atomic="true">
+                <div className="text-lg font-bold font-mono text-brand-400 tabular-nums tracking-tight">{formatCountdown(shiftInfo.remaining)}</div>
+                <div className="text-[9px] text-rmpg-500 uppercase tracking-widest font-semibold">Remaining</div>
+              </div>
+            </div>
+            {/* Progress Bar */}
+            <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
+              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-rmpg-800 shadow-inner">
+                <div
+                  className="h-full transition-all duration-1000 ease-linear rounded-sm"
+                  style={{
+                    width: `${Math.round(shiftInfo.progress * 100)}%`,
+                    background: `linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) ${Math.round(shiftInfo.progress * 100)}%)`,
+                    boxShadow: '0 0 6px rgb(var(--spm-text-muted-rgb) / 0.4)',
+                  }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] font-mono text-rmpg-500 tabular-nums">
+                <span>{shiftInfo.startLabel}</span>
+                <span className="font-bold text-rmpg-400">{Math.round(shiftInfo.progress * 100)}%</span>
+                <span>{shiftInfo.endLabel}</span>
+              </div>
+            </div>
+            {/* Shift Indicator Dots */}
+            <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
+              {[
+                { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
+                { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
+                { label: 'Night', hours: '22-06', active: shiftInfo.name === 'Night Shift' },
+              ].map(s => (
+                <div key={s.label} className={`flex-1 text-center p-1.5 rounded-sm transition-colors duration-300 ${s.active ? 'bg-brand-500/20 border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'bg-surface-sunken border border-transparent'}`}>
+                  <div className="flex items-center justify-center gap-1">
+                    <span className={`led-dot ${s.active ? 'led-green animate-led-pulse' : 'led-off'}`} />
+                    <span className={`text-[10px] font-bold select-none ${s.active ? 'text-brand-400' : 'text-rmpg-500'}`}>{s.label}</span>
+                  </div>
+                  <div className="text-[8px] font-mono text-rmpg-600 mt-0.5 tabular-nums">{s.hours}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </SpmGroup>
+        )}
+
+        {/* Weather Widget */}
+        {hasPanel('weather') && (
+        <SpmGroup title="Weather — Salt Lake City" onContextMenu={(e) => openMenu(e, [m.action('Refresh weather', fetchWeather, { icon: <RefreshCw size={12} /> })])}>
+          <div className="p-3">
+            {weather ? (() => {
+              const WeatherIcon = weather.icon;
+              const isFreezing = weather.temperature < 32;
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-rmpg-800 shadow-inner">
+                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? 'var(--spm-text)' : weather.weatherCode === 0 || weather.weatherCode === 1 ? 'var(--stat-accent-amber-bright)' : 'var(--spm-text-muted)' }} />
+                    </div>
+                    <div>
+                      <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums" aria-label={`${weather.temperature} degrees Fahrenheit`}>{weather.temperature}<span className="text-lg text-rmpg-400 ml-0.5">&deg;F</span></div>
+                      <div className="text-xs text-rmpg-400 mt-0.5 font-medium">{weather.description}</div>
+                    </div>
+                  </div>
+                  {/* Humidity & Wind — Lucide icons (no emoji in operator chrome). */}
+                  {(weather.humidity != null || weather.windSpeed != null) && (
+                    <div className="flex items-center gap-4 text-[10px] text-rmpg-400 font-mono tabular-nums">
+                      {weather.humidity != null && (
+                        <span className="inline-flex items-center gap-1" title="Relative humidity">
+                          <Droplets className="w-3 h-3" aria-hidden="true" /> {weather.humidity}%
+                        </span>
+                      )}
+                      {weather.windSpeed != null && (
+                        <span className="inline-flex items-center gap-1" title={`Wind direction: ${weather.windDirection ?? '—'}°`}>
+                          <Wind className="w-3 h-3" aria-hidden="true" /> {Math.round(weather.windSpeed)} mph
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {/* Road Conditions Warning */}
+                  {isFreezing && (
+                    <div className="flex items-center gap-2 p-2.5 bg-surface-sunken border border-border-subtle rounded-sm animate-fade-in" role="alert">
+                      <Snowflake className="w-4 h-4 text-rmpg-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+                      <div>
+                        <div className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-rmpg-400 mt-0.5">Temperature below freezing — watch for ice</div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Weather Details */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-rmpg-800">
+                    <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
+                      Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-[9px] text-rmpg-600 select-none">|</span>
+                    <span className="text-[9px] text-rmpg-600 font-mono italic">Open-Meteo</span>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status" aria-label={weatherFetched ? 'Weather unavailable' : 'Loading weather data'}>
+                {!weatherFetched ? (
+                  <>
+                    <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 animate-pulse select-none">Loading weather...</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-6 h-6 text-rmpg-500 opacity-50" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 select-none">Weather unavailable</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </SpmGroup>
+        )}
+
+      </div>
 
       {/* BOLO Ticker */}
-      {bolos.length > 0 && (
-        <div className="bg-red-900/20 panel-beveled p-2 cursor-pointer hover:bg-red-900/30 transition-colors border-l-4 border-l-red-500" onClick={() => navigate('/communications')}>
-          <div className="flex items-center gap-2 mb-1.5">
+      {hasPanel('activeBolos') && (
+      <div id="dashboard-panel-activeBolos">
+        <SpmGroup title="Active BOLOs" tone="red">
+        {loading && bolos.length === 0 ? (
+          <div className="flex items-center justify-center py-4 gap-2" role="status">
+            <Loader2 className="w-4 h-4 text-rmpg-500 animate-spin" aria-hidden="true" />
+            <span className="text-[10px] text-rmpg-500 select-none">Loading BOLOs…</span>
+          </div>
+        ) : bolos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-4 gap-2" role="status">
+            <span className="led-dot led-green" aria-hidden="true" />
+            <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No active BOLOs</span>
+          </div>
+        ) : (
+        <div className="bg-red-900/20 panel-beveled p-3 cursor-pointer hover:bg-red-900/30 transition-colors duration-200 border-l-4 border-l-red-500 shadow-md shadow-red-900/15 animate-fade-in" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/intel/bolos'); }} onClick={() => navigate('/intel/bolos')} aria-label={`View ${bolos.length} active BOLO${bolos.length !== 1 ? 's' : ''}`}>
+          <div className="flex items-center gap-2 mb-2">
             <span className="led-dot led-red animate-led-pulse" />
             <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-emergency-blink" />
             <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Active BOLOs</span>
+            <span className="ml-auto text-[9px] font-mono font-bold text-red-400/80 bg-red-900/30 px-1.5 py-0.5 rounded-sm">{bolos.length}</span>
           </div>
+          <div className="space-y-2" role="list" aria-label="Active BOLO entries">
           {bolos.map((bolo) => (
-            <div key={bolo.id} className="flex items-start gap-3">
-              <span className="badge badge-p2 flex-shrink-0 mt-0.5">{bolo.priority}</span>
-              <div>
-                <p className="text-sm font-semibold text-red-300">{bolo.title}</p>
-                <p className="text-xs text-rmpg-300 mt-0.5">{bolo.vehicle_description || bolo.subject_description}</p>
-                <p className="text-[10px] text-rmpg-400 mt-0.5">
+            <div key={bolo.id} className="flex items-start gap-3 p-2 rounded-sm hover:bg-red-900/20 transition-colors duration-150" role="listitem">
+              <span className="badge badge-p2 flex-shrink-0 mt-0.5">{humanizePriority(bolo.priority)}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-red-300 truncate">{bolo.title}</p>
+                <p className="text-xs text-rmpg-300 mt-0.5 truncate">{bolo.vehicle_description || bolo.subject_description}</p>
+                <p className="text-[10px] text-rmpg-400 mt-0.5 font-mono tabular-nums">
                   Issued by {bolo.issued_by}
                 </p>
               </div>
+              <ArrowRight className="w-3 h-3 text-red-500/50 flex-shrink-0 mt-1" aria-hidden="true" />
             </div>
           ))}
+          </div>
         </div>
+        )}
+        </SpmGroup>
+      </div>
+      )}
+
+      {/* Calls Near Me (patrol view) — REAL geo-filtered list of currently-
+          active calls within `nearbyRadius` miles of the officer's GPS fix.
+          Previously this panel rendered the same 4 global priority counts as
+          the dispatch view, despite being titled "Near Me". Now it actually
+          filters by distance via /reports/calls-near. Falls back to a clear
+          "GPS required" / "no calls in radius" empty state. */}
+      {hasPanel('callsNearMe') && (
+        <SpmGroup title="Calls Near Me" onContextMenu={(e) => openMenu(e, [
+          m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+          m.go('Open Dispatch', '/dispatch', <ArrowRight size={12} />),
+        ])}>
+          <div className="p-3 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap text-[10px] text-rmpg-400">
+              {geoStatus === 'granted' && geoPosition ? (
+                <>
+                  <span className="led-dot led-green" aria-hidden="true" />
+                  <span className="font-mono tabular-nums">
+                    ±{Math.round(geoPosition.accuracy)}m fix
+                  </span>
+                </>
+              ) : geoStatus === 'requesting' ? (
+                <>
+                  <span className="led-dot led-amber animate-led-pulse" aria-hidden="true" />
+                  <span>Acquiring GPS…</span>
+                </>
+              ) : geoStatus === 'denied' ? (
+                <>
+                  <span className="led-dot led-red" aria-hidden="true" />
+                  <span>Location permission denied — enable it in browser settings.</span>
+                </>
+              ) : (
+                <>
+                  <span className="led-dot led-off" aria-hidden="true" />
+                  <span>Location unavailable</span>
+                </>
+              )}
+              <span className="ml-auto inline-flex items-center gap-1">
+                <span className="text-[9px] uppercase tracking-wider">Radius</span>
+                <select
+                  value={nearbyRadius}
+                  onChange={(e) => setNearbyRadius(Number(e.target.value))}
+                  className="bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] px-1 py-0.5 font-mono tabular-nums focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                  aria-label="Search radius in miles"
+                >
+                  {[1, 2, 5, 10, 25].map((r) => <option key={r} value={r}>{r} mi</option>)}
+                </select>
+              </span>
+            </div>
+            {nearbyCalls.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-6 gap-2" role="status">
+                <MapPin className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">
+                  {geoPosition ? `No active calls within ${nearbyRadius} mi` : 'Waiting for GPS fix'}
+                </span>
+              </div>
+            ) : (
+              <ul className="space-y-1.5" role="list" aria-label="Nearby active calls">
+                {nearbyCalls.map((call) => {
+                  const priorityClass: Record<string, { led: string; border: string; color: string }> = {
+                    P1: { led: 'led-red animate-led-pulse', border: 'border-l-red-500', color: 'var(--stat-accent-red-bright)' },
+                    P2: { led: 'led-amber', border: 'border-l-amber-500', color: 'var(--stat-accent-amber)' },
+                    P3: { led: 'led-blue', border: 'border-l-brand-500', color: 'var(--spm-text-muted)' },
+                    P4: { led: 'led-off', border: 'border-l-rmpg-500', color: 'var(--pri-scheduled)' },
+                  };
+                  const p = priorityClass[call.priority] ?? priorityClass.P3;
+                  return (
+                    <li key={call.id}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/dispatch?call_id=${call.id}`)}
+                        className={`w-full flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${p.border} cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 transition-all duration-150 bg-surface-base text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                        aria-label={`Call ${call.call_number}, priority ${call.priority}, ${call.distance_mi.toFixed(1)} miles away`}
+                      >
+                        <span className={`led-dot ${p.led}`} aria-hidden="true" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-[11px] font-bold font-mono tabular-nums" style={{ color: p.color }}>
+                              {call.priority}
+                            </span>
+                            <span className="text-[11px] font-mono text-rmpg-200 tabular-nums">{call.call_number}</span>
+                            <span className="ml-auto text-[10px] font-mono text-brand-400 tabular-nums">
+                              {call.distance_mi < 0.1 ? '<0.1' : call.distance_mi.toFixed(1)} mi
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-rmpg-400 truncate mt-0.5">
+                            {call.location_address || call.description || 'No location given'}
+                          </div>
+                        </div>
+                        <ArrowRight className="w-3 h-3 text-rmpg-500 flex-shrink-0" aria-hidden="true" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </SpmGroup>
+      )}
+
+      {/* My Activity (patrol view) — same data as Recent Activity */}
+      {hasPanel('myActivity') && (
+        <SpmGroup title="My Activity">
+          <div className="p-3">
+            <ActivityFeed entries={activities} maxHeight="320px" />
+          </div>
+        </SpmGroup>
+      )}
+
+      {/* ═══ NEW: Shift-Aware Stats + Court Dates + Expiring Certs Row ═══ */}
+      {hasPanel('alertsReminders') && (shiftStats || courtDatesCount > 0 || expiringCertsCount > 0) && (
+        <SpmGroup title="Alerts & Reminders" tone="gold" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
+        <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 sm:grid-cols-3 gap-3'}`}>
+          {shiftStats && (
+            <div className="panel-beveled bg-surface-base p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="led-dot led-green animate-led-pulse" />
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{shiftStats.shift_name} Stats</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
+                  <div className="text-lg font-bold font-mono text-brand-400">{shiftStats.calls}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Calls</div>
+                </div>
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
+                  <div className="text-lg font-bold font-mono text-amber-400">{shiftStats.incidents}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Incidents</div>
+                </div>
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
+                  <div className="text-lg font-bold font-mono text-purple-400">{shiftStats.citations}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Citations</div>
+                </div>
+                <div className="bg-surface-sunken p-2 rounded-sm border border-rmpg-800">
+                  <div className="text-lg font-bold font-mono text-green-400">{shiftStats.patrol_scans}</div>
+                  <div className="text-[9px] text-rmpg-500 uppercase">Patrols</div>
+                </div>
+              </div>
+            </div>
+          )}
+          {courtDatesCount > 0 && (
+            <div
+              className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-colors"
+              onClick={() => navigate('/citations')}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Gavel className="w-4 h-4 text-amber-400" />
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Court Dates (30d)</span>
+              </div>
+              <div className="text-3xl font-bold font-mono text-amber-400">{courtDatesCount}</div>
+              <div className="text-[10px] text-rmpg-500 mt-1">Upcoming court appearances</div>
+            </div>
+          )}
+          {expiringCertsCount > 0 && (
+            <div
+              className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-colors border-l-4 border-l-red-500"
+              onClick={() => navigate('/personnel')}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Cert Alerts</span>
+              </div>
+              <div className="text-3xl font-bold font-mono text-red-400">{expiringCertsCount}</div>
+              <div className="text-[10px] text-rmpg-500 mt-1">Expiring or expired certifications</div>
+            </div>
+          )}
+        </div>
+        </SpmGroup>
+      )}
+
+      {/* Serve Scheduler Panel — dispatch + admin only */}
+      {hasPanel('serveSchedule') && (
+        <ServeSchedulerPanel />
+      )}
+
+      {/* Serve Performance Panel — dispatch + admin only */}
+      {hasPanel('servePerformance') && (
+        <ServeDashboardPerformance />
       )}
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {hasPanel('callAnalytics') && (
+      <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
         {/* Calls by Hour — Area Chart with Gradient */}
-        <div className="lg:col-span-2 panel-beveled bg-surface-base">
+        <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
           <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
           <div className="p-3">
           <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="callsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1a5a9e" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#1a5a9e" stopOpacity={0.02} />
+                  <stop offset="5%" stopColor="var(--spm-text-muted)" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="var(--spm-text-muted)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#5a6e80', fontSize: 9 }}
-                tickLine={{ stroke: '#1e3048' }}
-                axisLine={{ stroke: '#1e3048' }}
+                tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }}
+                tickLine={{ stroke: 'var(--spm-border)' }}
+                axisLine={{ stroke: 'var(--spm-border)' }}
                 interval={2}
               />
               <YAxis
-                tick={{ fill: '#5a6e80', fontSize: 9 }}
-                tickLine={{ stroke: '#1e3048' }}
-                axisLine={{ stroke: '#1e3048' }}
+                tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }}
+                tickLine={{ stroke: 'var(--spm-border)' }}
+                axisLine={{ stroke: 'var(--spm-border)' }}
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'var(--surface-base)',
-                  border: '1px solid #2a3e58',
-                  borderRadius: '0px',
-                  color: '#d0d8e0',
+                  backgroundColor: 'var(--surface-raised)',
+                  border: '1px solid var(--border-strong)',
+                  borderRadius: '2px',
+                  color: 'var(--text-primary)',
                   fontSize: '11px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  padding: '8px 12px',
                 }}
+                labelStyle={{ color: 'var(--spm-text-muted)', fontSize: '10px', marginBottom: '4px' }}
+                cursor={{ stroke: 'var(--spm-text-muted)', strokeWidth: 1, strokeDasharray: '4 4' }}
               />
               <Area
                 type="monotone"
                 dataKey="count"
-                stroke="#1a5a9e"
+                stroke="var(--spm-text-muted)"
                 strokeWidth={2}
                 fill="url(#callsGradient)"
-                dot={{ fill: '#1a5a9e', r: 2, strokeWidth: 0 }}
-                activeDot={{ fill: '#3b8ad4', r: 4, strokeWidth: 2, stroke: '#ffffff' }}
+                dot={{ fill: 'var(--spm-text-muted)', r: 2, strokeWidth: 0 }}
+                activeDot={{ fill: 'var(--spm-text)', r: 5, strokeWidth: 2, stroke: 'var(--spm-text)' }}
+                animationDuration={800}
+                animationEasing="ease-out"
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -503,17 +1455,17 @@ export default function DashboardPage() {
         </div>
 
         {/* Priority Distribution Pie + Quick Actions */}
-        <div className="panel-beveled bg-surface-base flex flex-col">
+        <div className="panel-beveled bg-surface-base flex flex-col shadow-md shadow-black/10">
           <PanelTitleBar title="PRIORITY DISTRIBUTION" icon={Shield} />
           <div className="p-3 flex-1">
             {/* Pie Chart */}
             {(() => {
               const totalCalls = stats.calls_by_priority.P1 + stats.calls_by_priority.P2 + stats.calls_by_priority.P3 + stats.calls_by_priority.P4;
               const pieData = [
-                { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: '#dc2626' },
-                { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
-                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: '#1a5a9e' },
-                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: '#4b5563' },
+                { name: 'P1 Emergency', value: stats.calls_by_priority.P1, fill: 'var(--stat-accent-red)' },
+                { name: 'P2 Urgent', value: stats.calls_by_priority.P2, fill: 'var(--stat-accent-amber)' },
+                { name: 'P3 Routine', value: stats.calls_by_priority.P3, fill: 'var(--spm-text-muted)' },
+                { name: 'P4 Scheduled', value: stats.calls_by_priority.P4, fill: 'var(--pri-scheduled)' },
               ].filter(d => d.value > 0);
 
               return totalCalls > 0 ? (
@@ -529,93 +1481,522 @@ export default function DashboardPage() {
                       dataKey="value"
                       stroke="none"
                     >
-                      {pieData.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.fill} />
+                      {pieData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
                       ))}
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: 'var(--surface-base)',
-                        border: '1px solid #2a3e58',
-                        borderRadius: '0px',
-                        color: '#d0d8e0',
+                        backgroundColor: 'var(--surface-raised)',
+                        border: '1px solid var(--border-strong)',
+                        borderRadius: '2px',
+                        color: 'var(--text-primary)',
                         fontSize: '11px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        padding: '8px 12px',
                       }}
                       formatter={(value: number) => [`${value} calls`, '']}
                     />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex items-center justify-center h-[140px]">
-                  <span className="text-[10px] text-rmpg-500 uppercase tracking-wider">No calls today</span>
+                <div className="flex flex-col items-center justify-center h-[140px] gap-2" role="status">
+                  <Shield className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                  <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No calls today</span>
                 </div>
               );
             })()}
 
             {/* Pie Legend */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-1">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 pt-2 border-t border-rmpg-800">
               {[
-                { key: 'P1', label: 'Emergency', color: '#dc2626', count: stats.calls_by_priority.P1 },
-                { key: 'P2', label: 'Urgent', color: '#f59e0b', count: stats.calls_by_priority.P2 },
-                { key: 'P3', label: 'Routine', color: '#1a5a9e', count: stats.calls_by_priority.P3 },
-                { key: 'P4', label: 'Scheduled', color: '#4b5563', count: stats.calls_by_priority.P4 },
+                { key: 'P1', label: 'Emergency', color: 'var(--stat-accent-red)', count: stats.calls_by_priority.P1 },
+                { key: 'P2', label: 'Urgent', color: 'var(--stat-accent-amber)', count: stats.calls_by_priority.P2 },
+                { key: 'P3', label: 'Routine', color: 'var(--spm-text-muted)', count: stats.calls_by_priority.P3 },
+                { key: 'P4', label: 'Scheduled', color: 'var(--pri-scheduled)', count: stats.calls_by_priority.P4 },
               ].map(({ key, label, color, count }) => (
-                <div key={key} className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                <div key={key} className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors">
+                  <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-sm" style={{ backgroundColor: color }} />
                   <span className="text-[9px] text-rmpg-400 truncate">{key} {label}</span>
-                  <span className="text-[9px] font-mono font-bold text-rmpg-200 ml-auto">{count}</span>
+                  <span className="text-[9px] font-mono font-bold text-rmpg-200 ml-auto tabular-nums">{count}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Quick Actions — compact */}
-          <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
-            <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">Quick Actions</h4>
+          <div className="border-t border-rmpg-800 px-3 py-2.5 space-y-1.5">
+            <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-widest select-none">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
-              <button className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
+              <button type="button" className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
                 <Plus style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> New Call
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>
+              <button type="button" className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>
                 <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Incident
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
+              <button type="button" className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
                 <MapPin style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Map
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => window.open('/warrants', '_blank')}>
+              <button type="button" className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/warrants')}>
                 <Gavel style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Warrants
               </button>
             </div>
           </div>
         </div>
       </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          Operational Visuals — call status pipeline, 7-day volume
+          trend, live unit board, and calls-by-zone heat.
+          ═══════════════════════════════════════════════════════ */}
+      {/* Calls by Status pipeline + 7-Day Volume Trend */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-4'}`}>
+        {/* Calls by Status — pipeline bar (data already on the dashboard payload) */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Calls by status">
+          <PanelTitleBar title="CALLS BY STATUS — TODAY" icon={Layers} />
+          <div className="p-3">
+            {(() => {
+              const norm = (s: string) => s.toLowerCase().replace(/[\s_-]/g, '');
+              const counts = new Map<string, number>();
+              for (const row of callsByStatus) counts.set(norm(row.status), (counts.get(norm(row.status)) ?? 0) + (row.count ?? 0));
+              const segments = STATUS_PIPELINE.map((s) => ({ ...s, count: counts.get(norm(s.key)) ?? 0 }));
+              const knownKeys = new Set(STATUS_PIPELINE.map((s) => norm(s.key)));
+              const otherCount = callsByStatus.reduce((sum, r) => knownKeys.has(norm(r.status)) ? sum : sum + (r.count ?? 0), 0);
+              const all = otherCount > 0 ? [...segments, { key: 'other', label: 'Other', color: '#444444', count: otherCount }] : segments;
+              const total = all.reduce((sum, s) => sum + s.count, 0);
+
+              if (total === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center h-[120px] gap-2" role="status">
+                    <Layers className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No calls today</span>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-3">
+                  {/* Stacked proportional bar */}
+                  <div className="flex h-5 w-full rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner bg-surface-sunken" role="img" aria-label="Call status distribution">
+                    {all.filter((s) => s.count > 0).map((s) => (
+                      <div
+                        key={s.key}
+                        className="h-full transition-all duration-500 ease-out"
+                        style={{ width: `${(s.count / total) * 100}%`, backgroundColor: s.color }}
+                        title={`${s.label}: ${s.count} (${Math.round((s.count / total) * 100)}%)`}
+                      />
+                    ))}
+                  </div>
+                  {/* Legend with counts */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1.5">
+                    {all.map((s) => (
+                      <button
+                        type="button"
+                        key={s.key}
+                        onClick={() => navigate('/dispatch')}
+                        className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                        aria-label={`${s.label}: ${s.count} calls`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-sm" style={{ backgroundColor: s.color }} />
+                        <span className="text-[9px] text-rmpg-400 truncate">{s.label}</span>
+                        <span className="text-[9px] font-mono font-bold text-rmpg-200 ml-auto tabular-nums">{s.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* 7-Day Call Volume Trend */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Seven day call volume trend">
+          <PanelTitleBar title="CALL VOLUME — LAST 7 DAYS" icon={TrendingUp} />
+          <div className="p-3">
+            {callVolume.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-[140px] gap-2" role="status">
+                <TrendingUp className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none text-center">Trend data unavailable</span>
+              </div>
+            ) : (() => {
+              const series = buildVolumeSeries(callVolume, 7);
+              const weekTotal = series.reduce((sum, d) => sum + d.count, 0);
+              const peak = series.reduce((m, d) => Math.max(m, d.count), 0);
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">7-Day Total</div>
+                    <div className="flex items-center gap-3 font-mono tabular-nums">
+                      <span className="text-sm font-bold text-brand-400">{weekTotal}</span>
+                      <span className="text-[9px] text-rmpg-500">peak {peak}/day</span>
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={isMobile ? 130 : 150}>
+                    <AreaChart data={series} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#d4a017" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="#d4a017" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                      <XAxis dataKey="label" tick={{ fill: '#666666', fontSize: 9 }} tickLine={{ stroke: '#222222' }} axisLine={{ stroke: '#222222' }} />
+                      <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={{ stroke: '#222222' }} axisLine={{ stroke: '#222222' }} allowDecimals={false} width={28} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #3a3a3a', borderRadius: '2px', color: '#cccccc', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', padding: '8px 12px' }}
+                        labelStyle={{ color: '#888888', fontSize: '10px', marginBottom: '4px' }}
+                        formatter={(value: number) => [`${value} calls`, '']}
+                        cursor={{ stroke: '#d4a017', strokeWidth: 1, strokeDasharray: '4 4' }}
+                      />
+                      <Area type="monotone" dataKey="count" stroke="#d4a017" strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: '#d4a017', r: 2, strokeWidth: 0 }} activeDot={{ fill: '#f0c040', r: 5, strokeWidth: 2, stroke: '#ffffff' }} animationDuration={700} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
+
+      {/* Live Unit Status Board */}
+      {units.length > 0 && (
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Live unit status board">
+          <PanelTitleBar title="UNIT STATUS BOARD" icon={Radio}>
+            <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">
+              {units.filter((u) => u.status === 'available').length} avail / {units.length} total
+            </span>
+          </PanelTitleBar>
+          <div className="p-3">
+            <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'}`}>
+              {units.map((u) => {
+                const color = unitStatusColor(u.status);
+                const onCall = !!u.current_call_number;
+                return (
+                  <div
+                    key={u.id ?? u.call_sign}
+                    onClick={() => navigate('/dispatch')}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/dispatch'); }}
+                    tabIndex={0}
+                    role="button"
+                    className="panel-beveled bg-surface-sunken p-2 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 transition-all duration-150 border-l-[3px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                    style={{ borderLeftColor: color }}
+                    title={onCall ? `On call ${u.current_call_number} — ${u.current_call_type ?? ''}` : (u.status ?? 'unknown')}
+                    aria-label={`Unit ${u.call_sign}: ${u.status ?? 'unknown'}${onCall ? `, on call ${u.current_call_number}` : ''}`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="led-dot flex-shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
+                      <span className="text-xs font-bold font-mono text-rmpg-100 tabular-nums truncate">{u.call_sign ?? '—'}</span>
+                      <span className="text-[8px] uppercase font-bold tracking-wider ml-auto truncate" style={{ color }}>{(u.status ?? '').replace(/_/g, ' ')}</span>
+                    </div>
+                    <div className="text-[9px] text-rmpg-400 truncate">
+                      {u.officer_name ?? 'Unassigned'}{u.badge_number ? ` · #${u.badge_number}` : ''}
+                    </div>
+                    {onCall && (
+                      <div className="text-[8px] font-mono text-amber-400/90 truncate mt-0.5 tabular-nums" title={u.current_call_location ?? ''}>
+                        {u.current_call_priority ? `${u.current_call_priority} ` : ''}{u.current_call_number}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Calls by Zone — heat list */}
+      {callsByZone.length > 0 && (() => {
+        const maxZone = callsByZone.reduce((m, z) => Math.max(m, z.count), 0) || 1;
+        const zoneTotal = callsByZone.reduce((sum, z) => sum + z.count, 0);
+        // Gold→red ramp by relative volume so hot zones read at a glance.
+        const heatColor = (ratio: number) =>
+          ratio >= 0.75 ? '#ef4444' : ratio >= 0.5 ? '#f59e0b' : ratio >= 0.25 ? '#d4a017' : '#888888';
+        return (
+          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Calls by zone">
+            <PanelTitleBar title="CALLS BY ZONE — LAST 7 DAYS" icon={MapIcon}>
+              <button type="button" className="toolbar-btn flex items-center gap-1 hover:bg-surface-raised transition-colors" onClick={() => navigate('/map')} title="Open map">
+                <MapPin style={{ width: 10, height: 10 }} />
+                <span className="text-[9px] font-bold">Map</span>
+              </button>
+            </PanelTitleBar>
+            <div className="p-3 space-y-1.5">
+              {callsByZone.map((z) => {
+                const ratio = z.count / maxZone;
+                const color = heatColor(ratio);
+                return (
+                  <div key={z.zone} className="flex items-center gap-2 group hover:bg-surface-sunken rounded-sm px-1 py-0.5 transition-colors">
+                    <span className="text-[10px] text-rmpg-300 w-28 truncate group-hover:text-rmpg-100 transition-colors" title={z.zone}>{z.zone}</span>
+                    <div className="flex-1 h-2 bg-surface-sunken rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner">
+                      <div className="h-full transition-all duration-500 ease-out rounded-sm" style={{ width: `${Math.max(4, ratio * 100)}%`, backgroundColor: color, boxShadow: `0 0 6px ${color}55` }} />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold w-10 text-right tabular-nums" style={{ color }}>{z.count}</span>
+                  </div>
+                );
+              })}
+              <div className="flex justify-end pt-1 mt-1 border-t border-[#2b2b2b]">
+                <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">{zoneTotal} calls across {callsByZone.length} zones</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Shift Summary Row */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`}>
+      {hasPanel('adminExtras') && (
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
         {[
-          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#3b82f6', path: '/dispatch' },
-          { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: '#22c55e', path: '/incidents' },
-          { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: '#22c55e', path: '/personnel' },
-          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: '#1a5a9e', path: '/reports' },
-          { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: '#f59e0b', path: '/warrants' },
-          { icon: AlertTriangle, label: 'Active BOLOs', value: stats.active_bolos, color: stats.active_bolos > 0 ? '#ef4444' : '#22c55e', path: '/communications' },
+          { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: 'var(--spm-text-muted)', path: '/dispatch' },
+          { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: 'var(--stat-accent-green)', path: '/incidents' },
+          { icon: Radio, label: 'Units on Duty', value: `${stats.units_available}/${stats.units_total}`, color: 'var(--stat-accent-green)', path: '/personnel' },
+          { icon: Clock, label: 'Avg Response', value: stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A', color: 'var(--spm-text-muted)', path: '/reports' },
+          { icon: Gavel, label: 'Active Warrants', value: activeWarrants, color: 'var(--stat-accent-amber)', path: '/warrants' },
+          { icon: AlertTriangle, label: 'Active BOLOs', value: stats.active_bolos, color: stats.active_bolos > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)', path: '/communications' },
         ].map(({ icon: Icon, label, value, color, path }) => (
           <div
             key={label}
             onClick={() => navigate(path)}
-            className={`panel-beveled bg-surface-sunken ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} cursor-pointer hover:bg-surface-raised transition-colors group`}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(path); }}
+            tabIndex={0}
+            role="button"
+            className={`panel-beveled bg-surface-sunken ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 group focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+            aria-label={`${label}: ${value}`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Icon className={`${isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'}`} style={{ color }} />
-              <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-500 uppercase font-bold tracking-wide truncate`}>{label}</span>
+              <Icon className={`${isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'} transition-transform duration-200 group-hover:scale-110`} style={{ color }} />
+              <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-500 uppercase font-bold tracking-wide truncate select-none`}>{label}</span>
             </div>
-            <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono`} style={{ color }}>{value}</div>
+            <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color }}>{value}</div>
           </div>
         ))}
       </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          Features 31-43: Analytics Dashboard Widgets
+          ═══════════════════════════════════════════════════════ */}
+      {hasPanel('adminExtras') && (
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Analytics widgets">
+        {/* Feature 31: Response Time Gauge */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+          onClick={() => navigate('/reports')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/reports'); }}
+          tabIndex={0}
+          role="button"
+          title="View response time analysis"
+          aria-label={`Average response time: ${stats.avg_response_time_minutes || 'N/A'} minutes`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Clock className="w-3 h-3 text-brand-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Avg Response</span>
+          </div>
+          <div className="relative w-16 h-16 mx-auto my-1">
+            <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+              <circle cx="18" cy="18" r="14" fill="none" stroke="var(--spm-border)" strokeWidth="3" />
+              <circle
+                cx="18" cy="18" r="14" fill="none"
+                stroke={stats.avg_response_time_minutes <= 5 ? 'var(--stat-accent-green)' : stats.avg_response_time_minutes <= 10 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-red-bright)'}
+                strokeWidth="3"
+                strokeDasharray={`${Math.min(100, (stats.avg_response_time_minutes / 15) * 100) * 0.88} 88`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-sm font-bold font-mono text-rmpg-100 tabular-nums">
+                {stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}` : 'N/A'}
+              </span>
+            </div>
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase">Minutes</div>
+        </div>
+
+        {/* Feature 34: Crime Category Donut (compact) */}
+        <div className="panel-beveled bg-surface-base p-2.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Shield className="w-3 h-3 text-purple-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">By Priority</span>
+          </div>
+          <ResponsiveContainer width="100%" height={76}>
+            <PieChart>
+              <Pie
+                data={[
+                  { name: 'P1', value: stats.calls_by_priority.P1, fill: 'var(--stat-accent-red)' },
+                  { name: 'P2', value: stats.calls_by_priority.P2, fill: 'var(--stat-accent-amber)' },
+                  { name: 'P3', value: stats.calls_by_priority.P3, fill: 'var(--spm-text-muted)' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: 'var(--pri-scheduled)' },
+                ].filter(d => d.value > 0)}
+                cx="50%" cy="50%" innerRadius={20} outerRadius={32}
+                paddingAngle={2} dataKey="value" stroke="none"
+              >
+                {[
+                  { fill: 'var(--stat-accent-red)' }, { fill: 'var(--stat-accent-amber)' }, { fill: 'var(--spm-text-muted)' }, { fill: 'var(--pri-scheduled)' },
+                ].map((e, i) => <Cell key={i} fill={e.fill} />)}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Feature 38: Clearance Rate Widget */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150"
+          onClick={() => navigate('/reports')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/reports'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Clearance rate: ${clearanceRate?.rate ?? 0}%`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <CheckCircle className="w-3 h-3 text-green-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Clearance</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (clearanceRate?.rate || 0) >= 50 ? 'var(--stat-accent-green)' : 'var(--stat-accent-amber)' }}>
+            {clearanceRate?.rate ?? 0}%
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{clearanceRate?.cleared || 0}/{clearanceRate?.total || 0} cleared</div>
+        </div>
+
+        {/* Feature 39: Patrol Coverage Indicator */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150"
+          onClick={() => navigate('/patrol')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/patrol'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Patrol coverage: ${patrolCoverage?.coverage ?? 0}%`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Navigation className="w-3 h-3 text-rmpg-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Coverage</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center text-rmpg-300 tabular-nums">
+            {patrolCoverage?.coverage ?? 0}%
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{patrolCoverage?.coveredBeats || 0}/{patrolCoverage?.totalBeats || 0} beats</div>
+        </div>
+
+        {/* Feature 41: Evidence Pending Count */}
+        <div
+          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(evidencePending?.pending || 0) > 0 ? 'border-l-amber-500' : 'border-l-green-500'}`}
+          onClick={() => navigate('/evidence')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/evidence'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }} />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Evidence</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }}>
+            {evidencePending?.pending ?? 0}
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Pending</div>
+        </div>
+
+        {/* Feature 43: Overdue Reports Alert */}
+        <div
+          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(overdueReports?.count || 0) > 0 ? 'border-l-red-500' : 'border-l-green-500'}`}
+          onClick={() => navigate('/incidents')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/incidents'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }} />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Overdue</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }}>
+            {overdueReports?.count ?? 0}
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>
+        </div>
+      </div>
+      )}
+
+      {/* Feature 33: Shift Performance Comparison + Feature 42: Upcoming Court */}
+      {hasPanel('adminExtras') && (
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-3'}`}>
+        {/* Feature 33: Shift Performance Comparison */}
+        {shiftComparison?.shifts && (
+          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Shift performance comparison">
+            <PanelTitleBar title="SHIFT PERFORMANCE COMPARISON" icon={Activity} />
+            <div className="p-3">
+              <div className="grid grid-cols-3 gap-2">
+                {shiftComparison.shifts.map((s: any) => {
+                  const isCurrentShift = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
+                  return (
+                    <div key={s.shift} className={`panel-beveled bg-surface-sunken p-2.5 transition-colors duration-300 ${isCurrentShift ? 'border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'border border-transparent'}`}>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className={`led-dot ${isCurrentShift ? 'led-green animate-led-pulse' : 'led-off'}`} />
+                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isCurrentShift ? 'text-brand-400' : 'text-rmpg-200'}`}>{s.shift}</span>
+                        <span className="text-[8px] text-rmpg-600 font-mono ml-auto tabular-nums">{s.hours}</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Calls</span>
+                          <span className="text-xs font-bold font-mono text-rmpg-300 tabular-nums">{s.calls}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Incidents</span>
+                          <span className="text-xs font-bold font-mono text-green-400 tabular-nums">{s.incidents}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Avg Resp</span>
+                          <span className="text-xs font-bold font-mono text-brand-400 tabular-nums">
+                            {s.avgResponseMin ? `${s.avgResponseMin}m` : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Feature 42: Upcoming Court Widget */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Upcoming court appearances">
+          <PanelTitleBar title="UPCOMING COURT — NEXT 7 DAYS" icon={Gavel} />
+          <div className="p-3">
+            {(upcomingCourt?.upcoming?.length || 0) === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-4 justify-center" role="status">
+                <Gavel className="w-5 h-5 text-rmpg-600" aria-hidden="true" />
+                <div className="flex items-center gap-1.5">
+                  <span className="led-dot led-green" aria-hidden="true" />
+                  <span className="text-xs text-rmpg-300 select-none">No upcoming court appearances</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
+                {upcomingCourt.upcoming.map((c: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
+                    <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
+                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
+                      {c.officer_name && <div className="text-[9px] text-rmpg-500 truncate">{c.officer_name}</div>}
+                    </div>
+                    {c.time && <span className="text-[9px] font-mono text-rmpg-400 flex-shrink-0 tabular-nums">{c.time}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      )}
+
+      {/* Feature 35: Trending Incidents + Feature 36: Officer Status Board + Feature 37: Call Volume Sparkline */}
+      {/* (Feature 36 is already represented by the Officers on Duty in Operational Status) */}
+      {/* (Feature 37: Call Volume sparkline is represented by the Calls by Hour chart above) */}
+      {/* (Feature 32: Active incidents map preview — navigates to map page) */}
+      {/* Feature 35: Trending Incidents Indicator — shown inline with shift summary above */}
 
       {/* PSO Operations Panel */}
-      {psoStats && (psoStats.activeCalls > 0 || psoStats.monthCalls > 0) && (() => {
+      {hasPanel('adminExtras') && psoStats && (psoStats.activeCalls > 0 || psoStats.monthCalls > 0) && (() => {
         const serveRate = psoStats.serveResults.total > 0
           ? Math.round((psoStats.serveResults.served / psoStats.serveResults.total) * 100)
           : null;
@@ -631,7 +2012,7 @@ export default function DashboardPage() {
           other: 'Other',
         };
         return (
-          <div className="panel-beveled bg-surface-base">
+          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="PSO Operations this month">
             <PanelTitleBar title="PSO OPERATIONS — THIS MONTH" icon={Briefcase} />
             <div className="p-3 space-y-3">
               {/* PSO Stats Cards */}
@@ -641,28 +2022,28 @@ export default function DashboardPage() {
                     <Briefcase className="w-3 h-3 text-brand-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Active PSO</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-brand-400">{psoStats.activeCalls}</div>
+                  <div className="text-lg font-bold font-mono text-brand-400 tabular-nums">{psoStats.activeCalls}</div>
                 </div>
-                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-blue-500">
+                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-rmpg-500">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Phone className="w-3 h-3 text-blue-400" />
+                    <Phone className="w-3 h-3 text-rmpg-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-blue-400">{psoStats.todayCalls}</div>
+                  <div className="text-lg font-bold font-mono text-rmpg-300 tabular-nums">{psoStats.todayCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-green-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <CheckCircle className="w-3 h-3 text-green-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Completed</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-green-400">{psoStats.monthCompleted}<span className="text-[10px] text-rmpg-500 ml-1">/ {psoStats.monthCalls}</span></div>
+                  <div className="text-lg font-bold font-mono text-green-400 tabular-nums">{psoStats.monthCompleted}<span className="text-[10px] text-rmpg-500 ml-1">/ {psoStats.monthCalls}</span></div>
                 </div>
-                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
+                <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? 'var(--stat-accent-green)' : serveRate !== null ? 'var(--stat-accent-amber)' : 'var(--spm-text-muted)' }}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : '#f59e0b' }} />
+                    <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? 'var(--stat-accent-green)' : 'var(--stat-accent-amber)' }} />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Serve Rate</span>
                   </div>
-                  <div className="text-lg font-bold font-mono" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
+                  <div className="text-lg font-bold font-mono tabular-nums" style={{ color: serveRate !== null && serveRate >= 70 ? 'var(--stat-accent-green)' : serveRate !== null ? 'var(--stat-accent-amber)' : 'var(--spm-text-muted)' }}>
                     {serveRate !== null ? `${serveRate}%` : 'N/A'}
                   </div>
                 </div>
@@ -671,14 +2052,14 @@ export default function DashboardPage() {
                     <TrendingUp className="w-3 h-3 text-amber-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Avg Attempts</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-amber-400">{psoStats.avgAttempts ?? 'N/A'}</div>
+                  <div className="text-lg font-bold font-mono text-amber-400 tabular-nums">{psoStats.avgAttempts ?? 'N/A'}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-brand-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Clock className="w-3 h-3 text-brand-400" />
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">PSO Response</span>
                   </div>
-                  <div className="text-lg font-bold font-mono text-brand-400">{psoStats.avgResponseMinutes ? `${psoStats.avgResponseMinutes}m` : 'N/A'}</div>
+                  <div className="text-lg font-bold font-mono text-brand-400 tabular-nums">{psoStats.avgResponseMinutes ? `${psoStats.avgResponseMinutes}m` : 'N/A'}</div>
                 </div>
               </div>
 
@@ -687,17 +2068,17 @@ export default function DashboardPage() {
                 {/* Service Type Breakdown */}
                 {psoStats.byServiceType.length > 0 && (
                   <div className="panel-beveled bg-surface-sunken p-2.5">
-                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">By Service Type</div>
+                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-widest mb-2 select-none">By Service Type</div>
                     <div className="space-y-1.5">
                       {psoStats.byServiceType.map(st => {
                         const pct = psoStats.monthCalls > 0 ? Math.round((st.count / psoStats.monthCalls) * 100) : 0;
                         return (
-                          <div key={st.pso_service_type} className="flex items-center gap-2">
-                            <span className="text-[10px] text-rmpg-300 w-28 truncate capitalize">{SERVICE_TYPE_LABELS[st.pso_service_type] || st.pso_service_type.replace(/_/g, ' ')}</span>
-                            <div className="flex-1 h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
-                              <div className="h-full bg-brand-500 transition-all" style={{ width: `${pct}%` }} />
+                          <div key={st.pso_service_type} className="flex items-center gap-2 group hover:bg-surface-raised/50 rounded-sm px-1 py-0.5 transition-colors">
+                            <span className="text-[10px] text-rmpg-300 w-28 truncate capitalize group-hover:text-rmpg-200 transition-colors">{SERVICE_TYPE_LABELS[st.pso_service_type] || st.pso_service_type.replace(/_/g, ' ')}</span>
+                            <div className="flex-1 h-1.5 bg-rmpg-700 rounded-full overflow-hidden shadow-inner">
+                              <div className="h-full bg-brand-500 transition-all duration-500 ease-out rounded-full" style={{ width: `${pct}%` }} />
                             </div>
-                            <span className="text-[10px] font-mono text-rmpg-300 w-12 text-right">{st.count}</span>
+                            <span className="text-[10px] font-mono text-rmpg-300 w-12 text-right tabular-nums">{st.count}</span>
                           </div>
                         );
                       })}
@@ -708,27 +2089,27 @@ export default function DashboardPage() {
                 {/* Process Service Results */}
                 {psoStats.serveResults.total > 0 && (
                   <div className="panel-beveled bg-surface-sunken p-2.5">
-                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Process Service Results</div>
+                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-widest mb-2 select-none">Process Service Results</div>
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="w-3 h-3 text-green-400" />
+                      <div className="flex items-center gap-2 p-1 rounded-sm hover:bg-surface-raised/50 transition-colors">
+                        <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" />
                         <span className="text-[10px] text-rmpg-300">Served</span>
-                        <span className="text-[10px] font-mono font-bold text-green-400 ml-auto">{psoStats.serveResults.served}</span>
+                        <span className="text-[10px] font-mono font-bold text-green-400 ml-auto tabular-nums">{psoStats.serveResults.served}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <XCircle className="w-3 h-3 text-red-400" />
+                      <div className="flex items-center gap-2 p-1 rounded-sm hover:bg-surface-raised/50 transition-colors">
+                        <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
                         <span className="text-[10px] text-rmpg-300">Not Served</span>
-                        <span className="text-[10px] font-mono font-bold text-red-400 ml-auto">{psoStats.serveResults.notServed}</span>
+                        <span className="text-[10px] font-mono font-bold text-red-400 ml-auto tabular-nums">{psoStats.serveResults.notServed}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-3 h-3 text-amber-400" />
+                      <div className="flex items-center gap-2 p-1 rounded-sm hover:bg-surface-raised/50 transition-colors">
+                        <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
                         <span className="text-[10px] text-rmpg-300">Refused</span>
-                        <span className="text-[10px] font-mono font-bold text-amber-400 ml-auto">{psoStats.serveResults.refused}</span>
+                        <span className="text-[10px] font-mono font-bold text-amber-400 ml-auto tabular-nums">{psoStats.serveResults.refused}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-3 h-3 text-rmpg-400" />
+                      <div className="flex items-center gap-2 p-1 rounded-sm hover:bg-surface-raised/50 transition-colors">
+                        <Clock className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
                         <span className="text-[10px] text-rmpg-300">Pending</span>
-                        <span className="text-[10px] font-mono font-bold text-rmpg-400 ml-auto">{psoStats.serveResults.pendingResult}</span>
+                        <span className="text-[10px] font-mono font-bold text-rmpg-400 ml-auto tabular-nums">{psoStats.serveResults.pendingResult}</span>
                       </div>
                     </div>
                     {/* ServeManager Sync */}
@@ -751,121 +2132,161 @@ export default function DashboardPage() {
       })()}
 
       {/* Activity Feed + Operational Alerts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {(hasPanel('recentActivity') || hasPanel('activeUnits')) && (
+      <div id="dashboard-panel-recentActivity" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Activity Feed */}
-        <div className="lg:col-span-2 panel-beveled bg-surface-base">
-          <PanelTitleBar title="RECENT ACTIVITY" icon={Activity}>
-            <button
-              className="toolbar-btn flex items-center gap-1"
-              onClick={() => navigate('/audit')}
-              title="View full audit log"
-            >
-              <Eye style={{ width: 10, height: 10 }} />
-              <span className="text-[9px]">View All</span>
-            </button>
-          </PanelTitleBar>
+        {hasPanel('recentActivity') && (
+        <div className="lg:col-span-2" onContextMenu={(e) => openMenu(e, [
+          m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+          m.go('View full audit log', '/audit', <Eye size={12} />),
+        ])}>
+        <SpmGroup title="Recent Activity">
           <div className="p-3">
-            <ActivityFeed entries={activities} maxHeight="320px" />
+            <div className="flex justify-end mb-2">
+              <button type="button"
+                className="toolbar-btn flex items-center gap-1 hover:bg-surface-raised transition-colors"
+                onClick={() => navigate('/audit')}
+                title="View full audit log"
+              >
+                <Eye style={{ width: 10, height: 10 }} />
+                <span className="text-[9px] font-bold">View All</span>
+              </button>
+            </div>
+            {activities.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2" role="status">
+                <Activity className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No recent activity</span>
+              </div>
+            ) : (
+              <ActivityFeed entries={activities} maxHeight="320px" />
+            )}
           </div>
+        </SpmGroup>
         </div>
+        )}
 
         {/* Operational Summary */}
-        <div className="panel-beveled bg-surface-base">
-          <PanelTitleBar title="OPERATIONAL STATUS" icon={Radio} />
-          <div className="p-3 space-y-3">
+        {hasPanel('activeUnits') && (
+        <SpmGroup title="Active Units" onContextMenu={(e) => openMenu(e, [
+          m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
+          m.go('View personnel', '/personnel', <Users size={12} />),
+        ])}>
+          <div className="p-3 space-y-2.5">
             {/* Active Warrant Alerts */}
             <div
-              className={`flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-amber-900/10 transition-colors bg-surface-sunken border-l-[3px] ${activeWarrants > 0 ? 'border-l-amber-500' : 'border-l-rmpg-600'}`}
-              onClick={() => window.open('/warrants', '_blank')}
+              className={`flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-amber-900/10 hover:shadow-sm transition-all duration-150 bg-surface-sunken border-l-[3px] ${activeWarrants > 0 ? 'border-l-amber-500' : 'border-l-rmpg-600'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+              onClick={() => navigate('/warrants')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/warrants'); }}
+              tabIndex={0}
+              role="button"
+              aria-label={`Active warrants: ${activeWarrants}`}
             >
-              <Gavel className={`w-4 h-4 ${activeWarrants > 0 ? 'text-amber-400' : 'text-rmpg-500'}`} />
-              <div className="flex-1">
+              <Gavel className={`w-4 h-4 flex-shrink-0 ${activeWarrants > 0 ? 'text-amber-400' : 'text-rmpg-500'}`} />
+              <div className="flex-1 min-w-0">
                 <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wide">Active Warrants</div>
-                <div className={`text-lg font-bold font-mono ${activeWarrants > 0 ? 'text-amber-400' : 'text-green-400'}`}>{activeWarrants}</div>
+                <div className={`text-lg font-bold font-mono tabular-nums ${activeWarrants > 0 ? 'text-amber-400' : 'text-green-400'}`}>{activeWarrants}</div>
               </div>
               {activeWarrants > 0 && <span className="led-dot led-amber animate-led-pulse" />}
             </div>
 
             {/* Active BOLOs */}
             <div
-              className={`flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-red-900/10 transition-colors bg-surface-sunken border-l-[3px] ${stats.active_bolos > 0 ? 'border-l-red-500' : 'border-l-rmpg-600'}`}
-              onClick={() => navigate('/communications')}
+              className={`flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-red-900/10 hover:shadow-sm transition-all duration-150 bg-surface-sunken border-l-[3px] ${stats.active_bolos > 0 ? 'border-l-red-500' : 'border-l-rmpg-600'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+              onClick={() => navigate('/intel/bolos')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/intel/bolos'); }}
+              tabIndex={0}
+              role="button"
+              aria-label={`Active BOLOs: ${stats.active_bolos}`}
             >
-              <AlertTriangle className={`w-4 h-4 ${stats.active_bolos > 0 ? 'text-red-400' : 'text-rmpg-500'}`} />
-              <div className="flex-1">
+              <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${stats.active_bolos > 0 ? 'text-red-400' : 'text-rmpg-500'}`} />
+              <div className="flex-1 min-w-0">
                 <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wide">Active BOLOs</div>
-                <div className={`text-lg font-bold font-mono ${stats.active_bolos > 0 ? 'text-red-400' : 'text-green-400'}`}>{stats.active_bolos}</div>
+                <div className={`text-lg font-bold font-mono tabular-nums ${stats.active_bolos > 0 ? 'text-red-400' : 'text-green-400'}`}>{stats.active_bolos}</div>
               </div>
               {stats.active_bolos > 0 && <span className="led-dot led-red animate-led-pulse" />}
             </div>
 
             {/* Officers on Duty */}
             <div
-              className="flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-green-900/10 transition-colors bg-surface-sunken border-l-[3px] border-l-green-500"
+              className="flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-green-900/10 hover:shadow-sm transition-all duration-150 bg-surface-sunken border-l-[3px] border-l-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
               onClick={() => navigate('/personnel')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/personnel'); }}
+              tabIndex={0}
+              role="button"
+              aria-label={`Officers on duty: ${stats.officers_on_duty}`}
             >
-              <Users className={`w-4 h-4 text-green-400`} />
-              <div className="flex-1">
+              <Users className="w-4 h-4 text-green-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
                 <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wide">Officers on Duty</div>
-                <div className="text-lg font-bold font-mono text-green-400">{stats.officers_on_duty}</div>
+                <div className="text-lg font-bold font-mono text-green-400 tabular-nums">{stats.officers_on_duty}</div>
               </div>
             </div>
 
             {/* Credential Alerts Quick Summary */}
             <div
-              className={`flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-rmpg-700/30 transition-colors bg-surface-sunken border-l-[3px] ${expiringCredentials.length > 0 ? 'border-l-amber-500' : 'border-l-green-500'}`}
+              className={`flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-rmpg-700/30 hover:shadow-sm transition-all duration-150 bg-surface-sunken border-l-[3px] ${expiringCredentials.length > 0 ? 'border-l-amber-500' : 'border-l-green-500'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
               onClick={() => navigate('/personnel')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/personnel'); }}
+              tabIndex={0}
+              role="button"
+              aria-label={`Credential alerts: ${expiringCredentials.length}`}
             >
-              <Shield className={`w-4 h-4 ${expiringCredentials.length > 0 ? 'text-amber-400' : 'text-green-400'}`} />
-              <div className="flex-1">
+              <Shield className={`w-4 h-4 flex-shrink-0 ${expiringCredentials.length > 0 ? 'text-amber-400' : 'text-green-400'}`} />
+              <div className="flex-1 min-w-0">
                 <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wide">Credential Alerts</div>
-                <div className={`text-lg font-bold font-mono ${expiringCredentials.length > 0 ? 'text-amber-400' : 'text-green-400'}`}>{expiringCredentials.length}</div>
+                <div className={`text-lg font-bold font-mono tabular-nums ${expiringCredentials.length > 0 ? 'text-amber-400' : 'text-green-400'}`}>{expiringCredentials.length}</div>
               </div>
-              {expiringCredentials.length > 0 && <span className="led-dot led-amber" />}
+              {expiringCredentials.length > 0 && <span className="led-dot led-amber animate-led-pulse" />}
             </div>
           </div>
-        </div>
+        </SpmGroup>
+        )}
       </div>
+      )}
 
       {/* Credential Alerts */}
-      <div className="panel-beveled bg-surface-base">
+      {hasPanel('alertsReminders') && (
+      <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Credential alerts">
         <PanelTitleBar title="CREDENTIAL ALERTS" icon={Shield} />
         <div className="p-3">
           {expiringCredentials.length === 0 ? (
-            <div className="flex items-center gap-2 py-4 justify-center">
-              <span className="led-dot led-green" />
-              <span className="text-xs text-rmpg-300">All credentials current</span>
+            <div className="flex flex-col items-center gap-2 py-6 justify-center" role="status">
+              <Shield className="w-6 h-6 text-green-600/50" aria-hidden="true" />
+              <div className="flex items-center gap-1.5">
+                <span className="led-dot led-green" aria-hidden="true" />
+                <span className="text-xs text-rmpg-300 font-medium select-none">All credentials current</span>
+              </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
+              <table className="w-full text-xs" role="table" aria-label="Expiring credentials list">
                 <thead>
-                  <tr className="border-b border-rmpg-600">
-                    <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Officer</th>
-                    <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Credential</th>
-                    {!isMobile && <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Expiry Date</th>}
-                    <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Days Left</th>
-                    <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Status</th>
+                  <tr className="border-b border-rmpg-800">
+                    <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Officer</th>
+                    <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Credential</th>
+                    {!isMobile && <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Expiry Date</th>}
+                    <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Days Left</th>
+                    <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px] tracking-wider" scope="col">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {expiringCredentials.map((cred: any, idx: number) => {
                     const now = new Date();
-                    const exp = new Date(cred.expiry_date);
+                    const exp = parseTimestamp(cred.expiry_date);
                     const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
                     const isExpired = daysLeft < 0;
                     const isUrgent = daysLeft <= 30;
 
                     return (
-                      <tr key={cred.id ?? idx} className={`border-b border-rmpg-700/50 hover:bg-rmpg-800/50 ${isMobile ? 'min-h-[48px]' : ''}`}>
-                        <td className="px-3 py-2 text-rmpg-200">{cred.officer_name || cred.user_name || '-'}</td>
-                        <td className="px-3 py-2 text-rmpg-200">{cred.credential_type || cred.type || '-'}</td>
-                        {!isMobile && <td className="px-3 py-2 text-rmpg-200 font-mono">{exp.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>}
-                        <td className="px-3 py-2 font-mono font-bold" style={{ color: isExpired ? '#ef4444' : isUrgent ? '#f59e0b' : '#22c55e' }}>
+                      <tr key={cred.id ?? idx} className={`border-b border-rmpg-700/30 hover:bg-surface-raised/50 transition-colors duration-150 ${isMobile ? 'min-h-[48px]' : ''}`}>
+                        <td className="px-3 py-2.5 text-rmpg-200 font-medium">{cred.officer_name || cred.user_name || '-'}</td>
+                        <td className="px-3 py-2.5 text-rmpg-200">{cred.credential_type || cred.type || '-'}</td>
+                        {!isMobile && <td className="px-3 py-2.5 text-rmpg-200 font-mono tabular-nums">{exp.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>}
+                        <td className="px-3 py-2.5 font-mono font-bold tabular-nums" style={{ color: isExpired ? 'var(--stat-accent-red-bright)' : isUrgent ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }}>
                           {isExpired ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d`}
                         </td>
-                        <td className="px-3 py-2">
-                          <span className={`led-dot ${isExpired ? 'led-red animate-led-blink' : isUrgent ? 'led-amber' : 'led-green'}`} />
+                        <td className="px-3 py-2.5">
+                          <span className={`led-dot ${isExpired ? 'led-red animate-led-blink' : isUrgent ? 'led-amber animate-led-pulse' : 'led-green'}`} />
                         </td>
                       </tr>
                     );
@@ -876,14 +2297,15 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Officer Activity Comparison */}
-      {officerActivity.length > 0 && (() => {
+      {hasPanel('officerActivity') && officerActivity.length > 0 && (() => {
         const ROLE_COLORS: Record<string, string> = {
-          admin: '#ef4444',
-          supervisor: '#f59e0b',
-          manager: '#3b82f6',
-          officer: '#22c55e',
+          admin: 'var(--stat-accent-red-bright)',
+          supervisor: 'var(--stat-accent-amber)',
+          manager: 'var(--spm-text-muted)',
+          officer: 'var(--stat-accent-green)',
         };
         const ROLE_ORDER = ['admin', 'supervisor', 'manager', 'officer'];
         const ROLE_LABELS: Record<string, string> = {
@@ -900,60 +2322,120 @@ export default function DashboardPage() {
           return b.action_count - a.action_count;
         });
         const chartRows = sorted.map(o => ({
-          name: o.full_name?.split(' ').filter(Boolean).map(w => w[0]?.toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Unknown',
+          name: o.full_name?.split(' ').filter(Boolean).map(w => w[0] ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w).join(' ') || 'Unknown',
           badge: o.badge_number || '',
           actions: o.action_count,
           role: o.role,
-          fill: ROLE_COLORS[o.role] || '#5a6e80',
+          fill: ROLE_COLORS[o.role] || 'var(--spm-text-muted)',
         }));
 
         return (
-          <div className="panel-beveled bg-surface-base">
-            <PanelTitleBar title="OFFICER ACTIVITY COMPARISON — LAST 30 DAYS" icon={Users} />
+          <SpmGroup title="Officer Activity">
             <div className="p-3">
               {/* Role Legend */}
-              <div className="flex items-center gap-4 mb-3">
+              <div className="flex items-center gap-4 mb-3 flex-wrap">
                 {ROLE_ORDER.map(role => (
                   <div key={role} className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: ROLE_COLORS[role] }} />
-                    <span className="text-[10px] text-rmpg-300 font-semibold uppercase tracking-wide">{ROLE_LABELS[role]}</span>
+                    <div className="w-2.5 h-2.5 rounded-sm shadow-sm" style={{ backgroundColor: ROLE_COLORS[role] }} />
+                    <span className="text-[10px] text-rmpg-300 font-semibold uppercase tracking-wider select-none">{ROLE_LABELS[role]}</span>
                   </div>
                 ))}
               </div>
               <ResponsiveContainer width="100%" height={Math.max(180, chartRows.length * 32)}>
                 <BarChart data={chartRows} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e3048" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#8a9aaa', fontSize: 10 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: 'var(--spm-text-muted)', fontSize: 10 }} allowDecimals={false} />
                   <YAxis
                     type="category"
                     dataKey="name"
                     width={140}
-                    tick={{ fill: '#b0bcc8', fontSize: 10 }}
+                    tick={{ fill: 'var(--spm-text)', fontSize: 10 }}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: 'var(--surface-base)',
-                      border: '1px solid #2a3e58',
-                      borderRadius: '0px',
-                      color: '#e0e0e0',
+                      backgroundColor: 'var(--surface-raised)',
+                      border: '1px solid var(--border-strong)',
+                      borderRadius: '2px',
+                      color: 'var(--text-primary)',
                       fontSize: '11px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      padding: '8px 12px',
                     }}
                     formatter={(value: number, _name: string, props: any) => [
                       `${value} actions`,
                       `${ROLE_LABELS[props.payload.role] || props.payload.role} — Badge #${props.payload.badge || '—'}`,
                     ]}
+                    cursor={{ fill: 'rgb(var(--spm-text-muted-rgb) / 0.08)' }}
                   />
                   <Bar dataKey="actions" radius={[0, 3, 3, 0]}>
-                    {chartRows.map((entry, idx) => (
-                      <Cell key={idx} fill={entry.fill} />
+                    {chartRows.map((entry) => (
+                      <Cell key={`${entry.name}-${entry.badge}`} fill={entry.fill} />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </SpmGroup>
         );
       })()}
+
+      {/* Quick Action Modals */}
+      {showNewCallModal && (
+        <NewCallModal
+          isOpen={showNewCallModal}
+          onClose={() => setShowNewCallModal(false)}
+          onSubmit={async (callData: any) => {
+            try {
+              const body = {
+                call_type: callData.call_type || 'other',
+                priority: callData.priority || 'routine',
+                location: callData.location || '',
+                latitude: callData.latitude ?? null,
+                longitude: callData.longitude ?? null,
+                description: callData.description || '',
+                caller_name: callData.caller_name || '',
+                caller_phone: callData.caller_phone || '',
+                nature_of_call: callData.nature_of_call || '',
+                contract_id: callData.contract_id || null,
+                zone_beat: callData.zone_beat || null,
+                section_id: callData.section_id ?? null,
+                zone_id: callData.zone_id ?? null,
+                beat_id: callData.beat_id ?? null,
+                weapons_involved: callData.weapons_involved || null,
+                injuries_reported: callData.injuries_reported ?? false,
+                num_subjects: callData.num_subjects ?? null,
+                num_victims: callData.num_victims ?? null,
+                subject_description: callData.subject_description || null,
+                vehicle_description: callData.vehicle_description || null,
+                direction_of_travel: callData.direction_of_travel || null,
+                scene_safety: callData.scene_safety || null,
+                alcohol_involved: callData.alcohol_involved ?? false,
+                drugs_involved: callData.drugs_involved ?? false,
+                domestic_violence: callData.domestic_violence ?? false,
+                responding_officer: callData.responding_officer || null,
+                ...(callData.created_at ? { created_at: callData.created_at } : {}),
+                ...(callData.status && callData.status !== 'pending' ? { status: callData.status } : {}),
+                ...(callData.disposition ? { disposition: callData.disposition } : {}),
+              };
+              const result = await apiFetch<any>('/dispatch/calls', { method: 'POST', body: JSON.stringify(body) });
+              addToast(`Call ${result.call_number || ''} created`, 'success');
+              setShowNewCallModal(false);
+              fetchDashboardData({ silent: true });
+            } catch (err: any) {
+              console.error('Failed to create call from dashboard:', err);
+              addToast(err?.message || 'Failed to create call', 'error');
+            }
+          }}
+        />
+      )}
+      {showIncidentModal && (
+        <IncidentFormModal
+          isOpen={showIncidentModal}
+          onClose={() => setShowIncidentModal(false)}
+          onSubmit={() => { setShowIncidentModal(false); fetchDashboardData({ silent: true }); }}
+          isSubmitting={false}
+        />
+      )}
     </div>
   );
 }

@@ -6,6 +6,11 @@
 // ============================================================
 
 import type { CallForService, CallPriority, CallStatus } from '../types';
+import { parseTimestamp } from './dateUtils';
+// All timestamp parsing goes through parseTimestamp (not raw `new Date()`)
+// so naive server strings are read as UTC, not browser-local. Raw
+// `new Date("2026-05-28 21:38:50")` parses as LOCAL in V8 — which made
+// on-scene/elapsed timers off by the UTC offset (~6h) on every call.
 
 // ── Status Labels (short codes for timer display) ──────────
 
@@ -16,6 +21,9 @@ export const STATUS_LABELS: Partial<Record<CallStatus, string>> = {
   onscene:    'ONS',
   cleared:    'CLR',
   on_hold:    'HELD',
+  archived:   'ARCH',
+  closed:     'CLSD',
+  cancelled:  'CNCL',
 };
 
 // ── Threshold Configuration (seconds) ──────────────────────
@@ -76,7 +84,7 @@ export function getStatusElapsed(call: CallForService): number {
   }
 
   if (!refTime) return 0;
-  const elapsed = Math.floor((now - new Date(refTime).getTime()) / 1000);
+  const elapsed = Math.floor((now - parseTimestamp(refTime).getTime()) / 1000);
   return Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
 }
 
@@ -179,13 +187,33 @@ export interface TimerState {
  */
 export function getCallAge(call: CallForService): number {
   if (!call.created_at) return 0;
-  const elapsed = Math.floor((Date.now() - new Date(call.created_at).getTime()) / 1000);
+  const elapsed = Math.floor((Date.now() - parseTimestamp(call.created_at).getTime()) / 1000);
   return Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
 }
 
 export function getTimerState(call: CallForService): TimerState {
   const status = call.status;
   const label = STATUS_LABELS[status] || status.toUpperCase().slice(0, 4);
+
+  // For terminal statuses, show a static timestamp instead of running timer
+  if (['archived', 'closed', 'cancelled'].includes(status)) {
+    const terminalTime = (call as any).archived_at || call.cleared_at || call.closed_at || call.created_at;
+    const d = parseTimestamp(terminalTime);
+    const formatted = !isNaN(d.getTime())
+      ? `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      : '--';
+    return {
+      label,
+      elapsed: 0,
+      formatted,
+      threshold: Infinity,
+      progress: 0,
+      severity: 'normal',
+      color: 'var(--rmpg-500)', // muted gray for terminal calls
+      isOverdue: false,
+    };
+  }
+
   const elapsed = getStatusElapsed(call);
   const threshold = getThreshold(call);
   let severity = getTimerSeverity(elapsed, threshold);

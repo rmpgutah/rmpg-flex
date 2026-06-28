@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import { type LucideIcon } from 'lucide-react';
 
 interface EmptyStateProps {
@@ -12,20 +12,28 @@ interface EmptyStateProps {
   className?: string;
 }
 
-export default function EmptyState({ icon: Icon, title, description, action, className = '' }: EmptyStateProps) {
+function EmptyState({ icon: Icon, title, description, action, className = '' }: EmptyStateProps) {
   return (
-    <div className={`flex flex-col items-center justify-center py-16 px-4 text-center ${className}`}>
-      <div className="w-14 h-14 rounded-lg bg-rmpg-800/50 border border-rmpg-700/50 flex items-center justify-center mb-4">
-        <Icon size={28} className="text-rmpg-500" />
+    <div className={`flex flex-col items-center justify-center py-12 px-4 text-center ${className}`} role="status" aria-label={title}>
+      <div
+        className="w-12 h-12 flex items-center justify-center mb-3"
+        style={{
+          background: 'rgba(212,160,23,0.08)',
+          border: '1px solid rgba(212,160,23,0.15)',
+        }}
+        aria-hidden="true"
+      >
+        <Icon size={24} color="#d4a017" style={{ opacity: 0.5 }} />
       </div>
-      <h3 className="text-sm font-semibold text-rmpg-300 mb-1">{title}</h3>
+      <h3 className="text-[10px] font-bold uppercase tracking-wider text-rmpg-500 mb-1.5">{title}</h3>
       {description && (
-        <p className="text-xs text-rmpg-500 max-w-xs">{description}</p>
+        <p className="text-[10px] text-rmpg-500 max-w-xs leading-relaxed">{description}</p>
       )}
       {action && (
         <button
+          type="button"
           onClick={action.onClick}
-          className="mt-4 toolbar-btn toolbar-btn-primary text-xs"
+          className="btn-gold mt-3"
         >
           {action.label}
         </button>
@@ -33,3 +41,5 @@ export default function EmptyState({ icon: Icon, title, description, action, cla
     </div>
   );
 }
+
+export default React.memo(EmptyState);

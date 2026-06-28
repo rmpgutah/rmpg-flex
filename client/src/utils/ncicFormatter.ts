@@ -5,6 +5,11 @@
 // Fixed-width, coded field headers, monospace presentation.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+import {
+  fmtCoded, formatRaceEthnicity, normalizeHeight, normalizeWeight, fmtOffense,
+} from '../constants/ncicCodes';
+
 const ORI = 'RMPGFLEX01';  // Originating Agency Identifier
 const MKE = 'QH';           // Message Key (query hit)
 
@@ -21,13 +26,22 @@ export function getNcicLineClass(line: string): string {
   if (t.startsWith('*** NCIC RESPONSE') || t.startsWith('*** END OF')) return 'ncic-c-header';
   if (t.startsWith('HDR/') || t.startsWith('ORI/')) return 'ncic-c-header';
   if (t.startsWith('*** UTAH COURTS') || t.startsWith('*** DL MANUAL')) return 'ncic-c-header';
-  if (t.startsWith('*** END OF BACKGROUND') || t.startsWith('*** END OF ARREST') || t.startsWith('*** END OF SKIP TRACER')) return 'ncic-c-header';
+  if (t.startsWith('*** END OF BACKGROUND') || t.startsWith('*** END OF ARREST') || t.startsWith('*** END OF SKIP TRACKER')) return 'ncic-c-header';
 
   // Cached result indicator — amber
   if (t.startsWith('CACHED RESULT FROM')) return 'ncic-c-caution';
 
   // Pure divider lines (all ─ or ═ characters) — dim
   if (/^[─═]+$/.test(t)) return 'ncic-c-dim';
+
+  // Subject-status threat banner (top of cross-reference) — tiered color so
+  // the operator's eye lands on the overall posture before reading sections.
+  if (t.startsWith('*** SUBJECT STATUS:') || t.startsWith('▌ SUBJECT STATUS:')) {
+    if (t.includes('CRITICAL')) return 'ncic-c-danger ncic-status-critical';
+    if (t.includes('CAUTION')) return 'ncic-c-caution';
+    if (t.includes('CLEAR')) return 'ncic-c-clear';
+    return 'ncic-c-dim'; // NO RECORD ON FILE
+  }
 
   // Danger / warning lines — bright red, must check before section headers
   if (
@@ -44,6 +58,7 @@ export function getNcicLineClass(line: string): string {
 
   // Section headers using ═══ — white, unless they contain danger keywords
   if (t.includes('═══')) {
+    if (t.includes('SERVICE NOTES')) return 'ncic-c-caution'; // amber advisory, not red
     if (t.includes('OFAC') || t.includes('TRESPASS') || t.includes('WARRANT') || t.includes('SEX OFFENDER') || (t.includes('ARREST') && t.includes('***'))) return 'ncic-c-danger';
     return 'ncic-c-section';
   }
@@ -94,7 +109,7 @@ function pad(val: string | null | undefined, width: number): string {
 function ncicDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '        ';
   try {
-    const d = new Date(dateStr);
+    const d = parseTimestamp(dateStr);
     if (isNaN(d.getTime())) return '        ';
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -129,6 +144,24 @@ function noRecord(queryType: string, searchTerm: string): string {
     header(queryType, 'QN'),
     ``,
     `  NO RECORD FOUND`,
+    `  SEARCH: ${searchTerm.toUpperCase()}`,
+    ``,
+    `─`.repeat(60),
+    `*** END OF RECORD ***`,
+  ].join('\n');
+}
+
+// Graceful render for an EXTERNAL data service (DL/OFAC/skip-trace/background
+// APIs) that's down or not configured. These are third-party paid lookups —
+// a missing key or upstream hiccup is an advisory, not a system error, so it
+// renders as an amber SERVICE NOTE rather than a red failure.
+export function formatServiceUnavailable(source: string, searchTerm: string, reason = 'SERVICE UNAVAILABLE'): string {
+  return [
+    header(source, 'QN'),
+    ``,
+    `  ═══ SERVICE NOTES ═══`,
+    `  >> ${source.toUpperCase()}: ${reason.toUpperCase()}`,
+    `  >> EXTERNAL LOOKUP DID NOT RETURN — LOCAL RECORDS UNAFFECTED`,
     `  SEARCH: ${searchTerm.toUpperCase()}`,
     ``,
     `─`.repeat(60),
@@ -195,11 +228,15 @@ export function formatPersonResponse(
   lines.push('');
   lines.push('  SUBJECT IDENTIFICATION');
   lines.push(`  NAM/${pad(person.last_name, 20)},${pad(person.first_name, 15)} ${pad(person.middle_name, 1)}`);
-  lines.push(`  SEX/${pad(person.sex, 1)}  RAC/${pad(person.race, 1)}  DOB/${ncicDate(person.date_of_birth)}`);
-  lines.push(`  HGT/${pad(person.height, 4)}  WGT/${pad(String(person.weight || ''), 3)}  EYE/${pad(person.eye_color, 3)}  HAI/${pad(person.hair_color, 3)}`);
+  {
+    const { rac, etn } = formatRaceEthnicity(person.race);
+    lines.push(`  SEX/${fmtCoded('SEX', person.sex)}  RAC/${rac}  DOB/${ncicDate(person.date_of_birth)}`);
+    if (etn) lines.push(`  ETN/${etn}`);
+    lines.push(`  HGT/${normalizeHeight(person.height) || pad(person.height, 4)}  WGT/${normalizeWeight(person.weight) || pad(String(person.weight || ''), 3)}  EYE/${fmtCoded('EYE', person.eye_color)}  HAI/${fmtCoded('HAIR', person.hair_color)}`);
+  }
 
   if (person.drivers_license) {
-    lines.push(`  OLN/${pad(person.drivers_license, 15)}  OLS/${pad(person.dl_state, 2)}`);
+    lines.push(`  OLN/${pad(person.drivers_license, 15)}  OLS/${fmtCoded('STATE', person.dl_state) || pad(person.dl_state, 2)}`);
   }
   if (person.address) {
     lines.push(`  ADR/${person.address.toUpperCase()}`);
@@ -212,7 +249,11 @@ export function formatPersonResponse(
   }
 
   // ── Caution flags
-  if (person.caution_flags || person.is_sex_offender || person.gang_affiliation) {
+  // Sentinel-aware: live text cols store "None"/"0"/"N/A" not NULL, so naive
+  // truthiness on caution_flags/is_sex_offender fires a false CAUTION banner.
+  const isReal = (v: unknown) => v != null && !['none', '0', 'n/a', 'na', 'false', 'no', ''].includes(String(v).toLowerCase().trim());
+  const gangReal = isReal(person.gang_affiliation);
+  if (isReal(person.caution_flags) || isReal(person.is_sex_offender) || gangReal) {
     lines.push('');
     lines.push('  *** CAUTION ***');
     if (person.caution_flags) {
@@ -221,7 +262,7 @@ export function formatPersonResponse(
       });
     }
     if (person.is_sex_offender) lines.push('  >> REGISTERED SEX OFFENDER');
-    if (person.gang_affiliation) lines.push(`  >> GANG AFFILIATION: ${person.gang_affiliation.toUpperCase()}`);
+    if (gangReal) lines.push(`  >> GANG AFFILIATION: ${person.gang_affiliation!.toUpperCase()}`);
     if (person.probation_parole) lines.push(`  >> ${person.probation_parole.toUpperCase()}`);
   }
 
@@ -231,8 +272,8 @@ export function formatPersonResponse(
     lines.push(`  *** WARRANT HIT — ${warrants.length} ACTIVE ***`);
     for (const w of warrants) {
       lines.push(`  OCA/${pad(w.warrant_number, 15)}  DOW/${ncicDate(w.issue_date)}`);
-      lines.push(`  CHG/${(w.charge_description || w.type || '').toUpperCase()}`);
-      lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
+      lines.push(`  CHG/${fmtOffense(w.charge_description || w.type)}`);
+      lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount && Number.isFinite(Number(w.bail_amount)) ? `$${Number(w.bail_amount).toLocaleString()}` : w.bail_amount || 'N/A'}`);
       if (w.issuing_court) lines.push(`  CRT/${w.issuing_court.toUpperCase()}`);
       lines.push('');
     }
@@ -244,7 +285,7 @@ export function formatPersonResponse(
     lines.push(`  CRIMINAL HISTORY — ${criminalHistory.length} RECORD(S)`);
     lines.push(`  ${'─'.repeat(56)}`);
     for (const ch of criminalHistory) {
-      lines.push(`  DOO/${ncicDate(ch.offense_date)}  OFL/${pad(ch.offense_level, 3)}  CHG/${(ch.offense || '').toUpperCase()}`);
+      lines.push(`  DOO/${ncicDate(ch.offense_date)}  OFL/${pad(ch.offense_level, 3)}  CHG/${fmtOffense(ch.offense)}`);
       if (ch.statute) lines.push(`  STA/${ch.statute.toUpperCase()}`);
       if (ch.disposition) lines.push(`  DIS/${ch.disposition.toUpperCase()}`);
       if (ch.agency) lines.push(`  AGY/${ch.agency.toUpperCase()}`);
@@ -285,10 +326,10 @@ export function formatVehicleResponse(vehicle: NcicVehicle): string {
 
   lines.push('');
   lines.push('  VEHICLE IDENTIFICATION');
-  lines.push(`  LIC/${pad(vehicle.plate_number, 10)}  LIS/${pad(vehicle.plate_state, 2)}`);
+  lines.push(`  LIC/${pad(vehicle.plate_number, 10)}  LIS/${fmtCoded('STATE', vehicle.plate_state) || pad(vehicle.plate_state, 2)}`);
   if (vehicle.vin) lines.push(`  VIN/${vehicle.vin.toUpperCase()}`);
-  lines.push(`  VYR/${pad(String(vehicle.year || ''), 4)}  VMA/${pad(vehicle.make, 10)}  VMO/${pad(vehicle.model, 15)}`);
-  lines.push(`  VCO/${pad(vehicle.color, 10)}  VST/${pad(vehicle.style, 4)}`);
+  lines.push(`  VYR/${pad(String(vehicle.year || ''), 4)}  VMA/${fmtCoded('VMA', vehicle.make) || pad(vehicle.make, 10)}  VMO/${pad(vehicle.model, 15)}`);
+  lines.push(`  VCO/${fmtCoded('VCO', vehicle.color) || pad(vehicle.color, 10)}  VST/${fmtCoded('VST', vehicle.style) || pad(vehicle.style, 4)}`);
 
   if (vehicle.is_stolen) {
     lines.push('');
@@ -342,7 +383,7 @@ export function formatWarrantResponse(
       }
       if (w.subject_dob) lines.push(`  DOB/${ncicDate(w.subject_dob)}`);
       lines.push(`  CHG/${(w.charge_description || w.type || '').toUpperCase()}`);
-      lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
+      lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount && Number.isFinite(Number(w.bail_amount)) ? `$${Number(w.bail_amount).toLocaleString()}` : w.bail_amount || 'N/A'}`);
       if (w.issue_date) lines.push(`  DOW/${ncicDate(w.issue_date)}`);
       if (w.issuing_court) lines.push(`  CRT/${w.issuing_court.toUpperCase()}`);
       lines.push('');
@@ -428,8 +469,8 @@ export function formatDlResponse(subjects: NcicDlSubject[], searchTerm: string):
   for (const s of subjects) {
     lines.push('');
     lines.push('  DRIVER\'S LICENSE INFORMATION');
-    lines.push(`  OLN/${pad(s.dl_number, 15)}  OLS/${pad(s.dl_state, 2)}  STS/${pad(s.dl_status, 8)}`);
-    lines.push(`  CLS/${pad(s.dl_class, 4)}  EXP/${ncicDate(s.dl_expiration)}  ISS/${ncicDate(s.dl_issue_date)}`);
+    lines.push(`  OLN/${pad(s.dl_number, 15)}  OLS/${fmtCoded('STATE', s.dl_state) || pad(s.dl_state, 2)}  STS/${pad(s.dl_status, 8)}`);
+    lines.push(`  CLS/${fmtCoded('DL_CLASS', s.dl_class) || pad(s.dl_class, 4)}  EXP/${ncicDate(s.dl_expiration)}  ISS/${ncicDate(s.dl_issue_date)}`);
     if (s.dl_restrictions || s.dl_endorsements) {
       lines.push(`  RST/${pad(s.dl_restrictions || 'NONE', 15)}  END/${pad(s.dl_endorsements || 'NONE', 15)}`);
     }
@@ -437,8 +478,12 @@ export function formatDlResponse(subjects: NcicDlSubject[], searchTerm: string):
     lines.push('');
     lines.push('  SUBJECT IDENTIFICATION');
     lines.push(`  NAM/${pad(s.last_name, 20)},${pad(s.first_name, 15)} ${pad(s.middle_name, 1)}`);
-    lines.push(`  SEX/${pad(s.gender, 1)}  RAC/${pad(s.race, 1)}  DOB/${ncicDate(s.date_of_birth)}`);
-    lines.push(`  HGT/${pad(s.height, 4)}  WGT/${pad(s.weight, 3)}  EYE/${pad(s.eye_color, 3)}  HAI/${pad(s.hair_color, 3)}`);
+    {
+      const { rac, etn } = formatRaceEthnicity(s.race);
+      lines.push(`  SEX/${fmtCoded('SEX', s.gender)}  RAC/${rac}  DOB/${ncicDate(s.date_of_birth)}`);
+      if (etn) lines.push(`  ETN/${etn}`);
+      lines.push(`  HGT/${normalizeHeight(s.height) || pad(s.height, 4)}  WGT/${normalizeWeight(s.weight) || pad(s.weight, 3)}  EYE/${fmtCoded('EYE', s.eye_color)}  HAI/${fmtCoded('HAIR', s.hair_color)}`);
+    }
 
     if (s.addresses && s.addresses.length > 0) {
       lines.push('');
@@ -533,7 +578,7 @@ export function formatAddressResponse(results: AddressLookupResults, searchTerm:
     lines.push(`  ═══ PERSONS AT ADDRESS — ${results.persons.length} ═══`);
     for (const p of results.persons) {
       lines.push(`  NAM/${pad(p.last_name, 20)},${pad(p.first_name, 15)}`);
-      lines.push(`  DOB/${ncicDate(p.date_of_birth)}  SEX/${pad(p.sex, 1)}  RAC/${pad(p.race, 1)}`);
+      lines.push(`  DOB/${ncicDate(p.date_of_birth)}  SEX/${fmtCoded('SEX', p.sex)}  RAC/${formatRaceEthnicity(p.race).rac}`);
       if (p.phone) lines.push(`  TEL/${p.phone.toUpperCase()}`);
       if (p.active_warrants && p.active_warrants > 0) {
         hasWarnings = true;
@@ -635,7 +680,12 @@ export interface CrossReferenceResults {
   ofacSubjects: NcicOfacSubject[];
   arrestRecords: NcicArrestRecord[];
   skipTracerPeople: SkipTracerPerson[];
+  /** Hard failures of LOCAL data sources (person/warrant/arrest) — real errors. */
   errors: string[];
+  /** Soft unavailability of EXTERNAL services (DL/OFAC/skip-trace APIs) —
+   *  advisories, not errors. A missing API key or upstream hiccup shouldn't
+   *  read as a system fault. */
+  serviceWarnings?: string[];
 }
 
 export function formatCrossReferenceResponse(results: CrossReferenceResults, searchTerm: string): string {
@@ -643,6 +693,37 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
 
   lines.push('');
   lines.push(`  *** COMPLETE SUBJECT CHECK: ${searchTerm.toUpperCase()} ***`);
+  lines.push(`  ${'─'.repeat(56)}`);
+
+  // ── Subject-status threat banner ──────────────────────────────
+  // One-glance posture, computed before the section detail. CRITICAL =
+  // active warrant / OFAC sanction / active arrest; CAUTION = advisory flags
+  // on a person record (RSO, gang, caution); CLEAR = records found, no
+  // alerts; NO RECORD = nothing on file anywhere.
+  const isGangReal = (g?: string) => !!g && !['none', '0', 'n/a', 'na', ''].includes((g || '').toLowerCase().trim());
+  const hasWarrantHit = results.persons.some(r => r.warrants.length > 0) || results.directWarrants.length > 0;
+  const hasOfacHit = results.ofacSubjects.length > 0;
+  const hasActiveArrestHit = (results.arrestRecords || []).some(r => r.status === 'active');
+  const hasCautionPerson = results.persons.some(r => {
+    const p = r.person;
+    return !!p.caution_flags || !!p.is_sex_offender || isGangReal(p.gang_affiliation) || !!p.probation_parole;
+  });
+  const anyHit =
+    results.persons.length > 0 || results.directWarrants.length > 0 ||
+    results.dlSubjects.length > 0 || results.ofacSubjects.length > 0 ||
+    (results.arrestRecords || []).length > 0 || (results.skipTracerPeople || []).length > 0;
+
+  let statusBanner: string;
+  if (hasWarrantHit || hasOfacHit || hasActiveArrestHit) {
+    statusBanner = '  *** SUBJECT STATUS: CRITICAL — ACTIVE WARRANT / SANCTION / ARREST ***';
+  } else if (hasCautionPerson) {
+    statusBanner = '  *** SUBJECT STATUS: CAUTION — ADVISORIES ON FILE ***';
+  } else if (anyHit) {
+    statusBanner = '  *** SUBJECT STATUS: CLEAR — NO ACTIVE ALERTS ***';
+  } else {
+    statusBanner = '  *** SUBJECT STATUS: NO RECORD ON FILE ***';
+  }
+  lines.push(statusBanner);
   lines.push(`  ${'─'.repeat(56)}`);
 
   // Track what we found
@@ -657,20 +738,25 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
     for (const r of results.persons) {
       const p = r.person;
       lines.push(`  NAM/${pad(p.last_name, 20)},${pad(p.first_name, 15)} ${pad(p.middle_name, 1)}`);
-      lines.push(`  SEX/${pad(p.sex, 1)}  RAC/${pad(p.race, 1)}  DOB/${ncicDate(p.date_of_birth)}`);
-      lines.push(`  HGT/${pad(p.height, 4)}  WGT/${pad(String(p.weight || ''), 3)}  EYE/${pad(p.eye_color, 3)}  HAI/${pad(p.hair_color, 3)}`);
-      if (p.drivers_license) lines.push(`  OLN/${pad(p.drivers_license, 15)}  OLS/${pad(p.dl_state, 2)}`);
+      {
+        const { rac, etn } = formatRaceEthnicity(p.race);
+        lines.push(`  SEX/${fmtCoded('SEX', p.sex)}  RAC/${rac}  DOB/${ncicDate(p.date_of_birth)}`);
+        if (etn) lines.push(`  ETN/${etn}`);
+        lines.push(`  HGT/${normalizeHeight(p.height) || pad(p.height, 4)}  WGT/${normalizeWeight(p.weight) || pad(String(p.weight || ''), 3)}  EYE/${fmtCoded('EYE', p.eye_color)}  HAI/${fmtCoded('HAIR', p.hair_color)}`);
+      }
+      if (p.drivers_license) lines.push(`  OLN/${pad(p.drivers_license, 15)}  OLS/${fmtCoded('STATE', p.dl_state) || pad(p.dl_state, 2)}`);
       if (p.address) lines.push(`  ADR/${p.address.toUpperCase()}`);
       if (p.phone) lines.push(`  TEL/${p.phone.toUpperCase()}`);
       if (p.scars_marks_tattoos) lines.push(`  SMT/${p.scars_marks_tattoos.toUpperCase()}`);
 
       // Caution flags inline
-      if (p.caution_flags || p.is_sex_offender || p.gang_affiliation) {
+      const gangReal2 = p.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(p.gang_affiliation.toLowerCase().trim());
+      if (p.caution_flags || p.is_sex_offender || gangReal2) {
         hasWarnings = true;
         lines.push('  *** CAUTION ***');
         if (p.caution_flags) p.caution_flags.split(',').forEach(f => lines.push(`  >> ${f.trim().toUpperCase()}`));
         if (p.is_sex_offender) lines.push('  >> REGISTERED SEX OFFENDER');
-        if (p.gang_affiliation) lines.push(`  >> GANG: ${p.gang_affiliation.toUpperCase()}`);
+        if (gangReal2) lines.push(`  >> GANG: ${p.gang_affiliation!.toUpperCase()}`);
         if (p.probation_parole) lines.push(`  >> ${p.probation_parole.toUpperCase()}`);
       }
 
@@ -678,7 +764,7 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
       if (r.criminalHistory.length > 0) {
         lines.push(`  CHR/${r.criminalHistory.length} PRIOR OFFENSE(S)`);
         for (const ch of r.criminalHistory.slice(0, 3)) {
-          lines.push(`    ${ncicDate(ch.offense_date)} ${pad(ch.offense_level, 3)} ${(ch.offense || '').toUpperCase()}`);
+          lines.push(`    ${ncicDate(ch.offense_date)} ${pad(ch.offense_level, 3)} ${fmtOffense(ch.offense)}`);
         }
         if (r.criminalHistory.length > 3) lines.push(`    ... +${r.criminalHistory.length - 3} MORE`);
       }
@@ -688,8 +774,8 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
         hasWarnings = true;
         lines.push(`  *** ${r.warrants.length} ACTIVE WARRANT(S) ***`);
         for (const w of r.warrants) {
-          lines.push(`    OCA/${pad(w.warrant_number, 15)} CHG/${(w.charge_description || w.type || '').toUpperCase()}`);
-          lines.push(`    OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
+          lines.push(`    OCA/${pad(w.warrant_number, 15)} CHG/${fmtOffense(w.charge_description || w.type)}`);
+          lines.push(`    OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount && Number.isFinite(Number(w.bail_amount)) ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
         }
       }
       lines.push('');
@@ -720,8 +806,8 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
     totalHits += results.dlSubjects.length;
     lines.push(`  ═══ DRIVER'S LICENSE — ${results.dlSubjects.length} RECORD(S) ═══`);
     for (const s of results.dlSubjects) {
-      lines.push(`  OLN/${pad(s.dl_number, 15)}  OLS/${pad(s.dl_state, 2)}  STS/${pad(s.dl_status, 8)}`);
-      lines.push(`  CLS/${pad(s.dl_class, 4)}  EXP/${ncicDate(s.dl_expiration)}`);
+      lines.push(`  OLN/${pad(s.dl_number, 15)}  OLS/${fmtCoded('STATE', s.dl_state) || pad(s.dl_state, 2)}  STS/${pad(s.dl_status, 8)}`);
+      lines.push(`  CLS/${fmtCoded('DL_CLASS', s.dl_class) || pad(s.dl_class, 4)}  EXP/${ncicDate(s.dl_expiration)}`);
       if (s.addresses && s.addresses.length > 0) {
         const a = s.addresses[0];
         lines.push(`  ADR/${(a.address || '').toUpperCase()}`);
@@ -763,15 +849,15 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
     for (const r of results.arrestRecords) {
       lines.push(`  NAM/${pad((r.last_name || '').toUpperCase(), 20)},${pad((r.first_name || '').toUpperCase(), 15)}`);
       const descLine: string[] = [];
-      if (r.gender) descLine.push(`SEX/${r.gender.toUpperCase()}`);
-      if (r.race) descLine.push(`RAC/${r.race.toUpperCase()}`);
+      if (r.gender) descLine.push(`SEX/${fmtCoded('SEX', r.gender)}`);
+      if (r.race) descLine.push(`RAC/${formatRaceEthnicity(r.race).rac}`);
       descLine.push(`DOB/${r.date_of_birth || 'N/A'}`);
       if (descLine.length > 1) lines.push(`  ${descLine.join('  ')}`);
       lines.push(`  BKG/${r.booking_date || 'N/A'}  CTY/${pad((r.county || '').toUpperCase(), 20)}  STS/${pad((r.status || 'UNKNOWN').toUpperCase(), 10)}`);
       if (r.agency) lines.push(`  AGY/${r.agency.toUpperCase()}`);
       if (r.bail_amount) lines.push(`  BAL/$${Number(r.bail_amount).toLocaleString()}`);
       if (r.charges && r.charges.length > 0) {
-        lines.push(`  CHG/${r.charges[0].toUpperCase()}`);
+        lines.push(`  CHG/${fmtOffense(r.charges[0])}`);
         if (r.charges.length > 1) lines.push(`    ... +${r.charges.length - 1} MORE CHARGE(S)`);
       }
       if (r.cross_links?.warrants && r.cross_links.warrants.length > 0) {
@@ -786,10 +872,10 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
     lines.push('');
   }
 
-  // ── Section 6: Skip Tracer (RapidAPI)
+  // ── Section 6: Skip Tracker (RapidAPI)
   if (results.skipTracerPeople && results.skipTracerPeople.length > 0) {
     totalHits += results.skipTracerPeople.length;
-    lines.push(`  ═══ SKIP TRACER — ${results.skipTracerPeople.length} MATCH(ES) ═══`);
+    lines.push(`  ═══ SKIP TRACKER — ${results.skipTracerPeople.length} MATCH(ES) ═══`);
     lines.push(`  SRC/RAPIDAPI SKIP TRACING`);
     for (const p of results.skipTracerPeople.slice(0, 5)) {
       if (p.Name) lines.push(`  NAM/${p.Name.toUpperCase()}`);
@@ -807,12 +893,21 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
       lines.push('');
     }
   } else {
-    lines.push('  ═══ SKIP TRACER ═══');
+    lines.push('  ═══ SKIP TRACKER ═══');
     lines.push('  NO RECORD FOUND');
     lines.push('');
   }
 
-  // ── Errors (sources that failed)
+  // ── Service notes (external sources unavailable — advisory, not error)
+  if (results.serviceWarnings && results.serviceWarnings.length > 0) {
+    lines.push(`  ═══ SERVICE NOTES ═══`);
+    for (const w of results.serviceWarnings) {
+      lines.push(`  >> ${w.toUpperCase()}`);
+    }
+    lines.push('');
+  }
+
+  // ── Errors (LOCAL sources that hard-failed)
   if (results.errors.length > 0) {
     lines.push(`  ═══ QUERY ERRORS ═══`);
     for (const e of results.errors) {
@@ -843,6 +938,7 @@ export interface BackgroundRecord {
   offense?: string;
   offense_date?: string;
   case_number?: string;
+  case_type?: string;
   court?: string;
   disposition?: string;
   sentence?: string;
@@ -923,7 +1019,7 @@ export function formatBackgroundResponse(
   lines.push(`  ${'─'.repeat(56)}`);
   lines.push(`  ** ${records.length} RECORD(S) FOUND — ${cached ? 'CACHED' : 'LIVE SEARCH'} **`);
   if (cached && cachedAt) {
-    const cachedDate = new Date(cachedAt);
+    const cachedDate = parseTimestamp(cachedAt);
     const dateStr = `${String(cachedDate.getMonth() + 1).padStart(2, '0')}/${String(cachedDate.getDate()).padStart(2, '0')}/${cachedDate.getFullYear()}`;
     lines.push(`  CACHED RESULT FROM ${dateStr} — USE QB! TO FORCE FRESH`);
   }
@@ -955,16 +1051,16 @@ export function formatArrestResponse(records: NcicArrestRecord[], searchTerm: st
     lines.push(`  NAM/${pad(lastName, 20)},${pad(firstName, 15)}`);
     // Descriptors: sex, race, DOB, physical
     const descParts: string[] = [];
-    if (r.gender) descParts.push(`SEX/${pad(r.gender.toUpperCase(), 1)}`);
-    if (r.race) descParts.push(`RAC/${pad(r.race.toUpperCase(), 1)}`);
+    if (r.gender) descParts.push(`SEX/${fmtCoded('SEX', r.gender)}`);
+    if (r.race) descParts.push(`RAC/${formatRaceEthnicity(r.race).rac}`);
     descParts.push(`DOB/${r.date_of_birth || 'N/A'}`);
     lines.push(`  ${descParts.join('  ')}`);
     // Physical descriptors (if any)
     const physParts: string[] = [];
-    if (r.height) physParts.push(`HGT/${pad(r.height.toUpperCase(), 4)}`);
-    if (r.weight) physParts.push(`WGT/${pad(r.weight, 3)}`);
-    if (r.eye_color) physParts.push(`EYE/${pad(r.eye_color.toUpperCase(), 3)}`);
-    if (r.hair_color) physParts.push(`HAI/${pad(r.hair_color.toUpperCase(), 3)}`);
+    if (r.height) physParts.push(`HGT/${normalizeHeight(r.height) || pad(r.height.toUpperCase(), 4)}`);
+    if (r.weight) physParts.push(`WGT/${normalizeWeight(r.weight) || pad(r.weight, 3)}`);
+    if (r.eye_color) physParts.push(`EYE/${fmtCoded('EYE', r.eye_color)}`);
+    if (r.hair_color) physParts.push(`HAI/${fmtCoded('HAIR', r.hair_color)}`);
     if (physParts.length > 0) lines.push(`  ${physParts.join('  ')}`);
     // Booking info
     lines.push(`  BKG/${r.booking_date || 'N/A'}  CTY/${pad((r.county || '').toUpperCase(), 20)}  STS/${pad((r.status || 'UNKNOWN').toUpperCase(), 10)}`);
@@ -985,7 +1081,7 @@ export function formatArrestResponse(records: NcicArrestRecord[], searchTerm: st
     if (r.charges && r.charges.length > 0) {
       lines.push(`  CHG/${r.charges.length} CHARGE(S):`);
       for (const ch of r.charges) {
-        lines.push(`    >> ${ch.toUpperCase()}`);
+        lines.push(`    >> ${fmtOffense(ch)}`);
       }
     }
 
@@ -1023,7 +1119,7 @@ export function formatArrestResponse(records: NcicArrestRecord[], searchTerm: st
   return lines.join('\n');
 }
 
-// ─── Skip Tracer Query Response ─────────────────────────────
+// ─── Skip Tracker Query Response ─────────────────────────────
 
 export interface SkipTracerPerson {
   Name?: string;
@@ -1041,12 +1137,12 @@ export function formatSkipTracerResponse(
   totalRecords?: number,
   searchType?: string,
 ): string {
-  if (!people || people.length === 0) return noRecord('SKIP TRACER', searchTerm);
+  if (!people || people.length === 0) return noRecord('SKIP TRACKER', searchTerm);
 
-  const lines: string[] = [header('SKIP TRACER', 'QS')];
+  const lines: string[] = [header('SKIP TRACKER', 'QS')];
 
   lines.push('');
-  lines.push(`  SKIP TRACER — ${totalRecords || people.length} RESULT(S)`);
+  lines.push(`  SKIP TRACKER — ${totalRecords || people.length} RESULT(S)`);
   lines.push(`  SRC/RAPIDAPI SKIP TRACING  TYP/${(searchType || 'NAME').toUpperCase()}`);
   lines.push(`  ${'─'.repeat(56)}`);
 
@@ -1072,7 +1168,7 @@ export function formatSkipTracerResponse(
   }
 
   lines.push('');
-  lines.push('*** END OF SKIP TRACER ***');
+  lines.push('*** END OF SKIP TRACKER ***');
   return lines.join('\n');
 }
 

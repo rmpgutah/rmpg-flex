@@ -1,8 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
-  Archive, RotateCcw, Trash2, Printer, ChevronDown,
+  Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
+  DollarSign, Pencil, Tag, Video, CreditCard, MapPin, RefreshCw,
 } from 'lucide-react';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
   FleetInspection, FleetAssignment, FleetAnalytics, FleetVehicleStatus,
@@ -14,10 +19,24 @@ import FleetInspectionsTab from './tabs/FleetInspectionsTab';
 import FleetAssignmentsTab from './tabs/FleetAssignmentsTab';
 import FleetPersonnelTab from './tabs/FleetPersonnelTab';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
+import FleetTiresTab from './tabs/FleetTiresTab';
+import FleetDamageTab from './tabs/FleetDamageTab';
+import FleetRecallsTab from './tabs/FleetRecallsTab';
+import FleetCostsTab from './tabs/FleetCostsTab';
+import FleetDashCamTab from './tabs/FleetDashCamTab';
+import FleetFuelCardsTab from './tabs/FleetFuelCardsTab';
+import type { CostCategory } from './modals/FleetCostFormModal';
+import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostSummary } from '../../types';
 import { formatMilitary } from './utils/fleetFormatters';
+import { generateFleetFuelReport } from './utils/fleetFuelReport';
+import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
+import EmailedDocuments from '../../components/EmailedDocuments';
+import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
+import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics';
+export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards';
+export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -29,14 +48,13 @@ const STATUS_LABEL: Record<FleetVehicleStatus, string> = {
 };
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
-  out_of_service: '#ef4444', retired: '#6b7280',
+  out_of_service: '#ef4444', retired: 'var(--rmpg-500)',
 };
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
-  // Force local-time parse for date-only strings to avoid UTC timezone shift
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00` : dateStr;
-  const exp = new Date(normalized);
+  // parseTimestamp reads naive timestamps as UTC and date-only strings as local
+  const exp = parseTimestamp(dateStr);
   const now = new Date();
   if (exp < now) return 'expired';
   const thirtyDays = new Date();
@@ -48,10 +66,16 @@ function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'non
 const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'overview', label: 'Overview', icon: Car },
   { key: 'fuel', label: 'Fuel', icon: Fuel },
+  { key: 'costs', label: 'Costs', icon: DollarSign },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'assignments', label: 'Assignments', icon: Radio },
   { key: 'personnel', label: 'Personnel', icon: Users },
+  { key: 'tires', label: 'Tires', icon: Circle },
+  { key: 'damage', label: 'Damage', icon: AlertTriangle },
+  { key: 'recalls', label: 'Recalls', icon: AlertOctagon },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { key: 'dashcam', label: 'Dash Cam', icon: Video },
+  { key: 'fuel_cards', label: 'Fuel Cards', icon: CreditCard },
 ];
 
 interface Props {
@@ -73,6 +97,19 @@ interface Props {
   onNewInspection: () => void;
   onEditFuel?: (log: FleetFuelLog) => void;
   onDeleteFuel?: (log: FleetFuelLog) => void;
+  // Cost-of-ownership tab (Loan / Insurance / Accessory / Utility)
+  loans: FleetLoan[];
+  insurancePolicies: FleetInsurancePolicy[];
+  accessories: FleetAccessory[];
+  utilities: FleetUtilityCost[];
+  otherCosts: FleetOtherCost[];
+  costSummary: FleetCostSummary | null;
+  costSubTab: CostSubTab;
+  onCostSubTabChange: (t: CostSubTab) => void;
+  onAddCost: (category: CostCategory) => void;
+  onEditCost: (category: CostCategory, record: any) => void;
+  onDeleteCost: (category: CostCategory, record: any) => void;
+  onSaveBudgets?: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
   onEditMaintenance?: (record: FleetMaintenance) => void;
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
   onEditInspection?: (inspection: FleetInspection) => void;
@@ -86,14 +123,20 @@ interface Props {
   onUnarchiveVehicle: () => void;
   onDeleteVehicle: () => void;
   isArchived: boolean;
+  // GPS mileage
+  gpsMileage: any;
+  gpsMileageLoading: boolean;
+  onFetchGpsMileage: (days?: number) => void;
+  onSyncGpsMileage: () => void;
   onClose: () => void;
 }
 
 // ── Fleet Print Menu (dropdown to select report type) ──
-function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
+function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
   detail: FleetVehicle;
   fuelLogs: FleetFuelLog[];
   maintenance: FleetMaintenance[];
+  fuelSummary?: FleetFuelSummary | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -127,7 +170,22 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
       fuel_type: f.fuel_type,
       distance: f.distance,
       efficiency: f.efficiency,
+      mpg: f.mpg,
+      calc_distance: f.calc_distance,
+      cost_per_mile: f.cost_per_mile,
+      running_avg_mpg: f.running_avg_mpg,
     })),
+    fuel_summary: fuelSummary ? {
+      total_gallons: fuelSummary.total_gallons,
+      total_cost: fuelSummary.total_cost,
+      avg_mpg: fuelSummary.avg_mpg,
+      avg_cost_per_gallon: fuelSummary.avg_cost_per_gallon,
+      best_mpg: fuelSummary.best_mpg,
+      worst_mpg: fuelSummary.worst_mpg,
+      total_distance: fuelSummary.total_distance,
+      cost_per_mile: fuelSummary.cost_per_mile,
+      fuel_cost_per_day: fuelSummary.fuel_cost_per_day,
+    } : undefined,
     maintenance_logs: maintenance.map((m: any) => ({
       service_date: m.service_date,
       service_type: m.service_type,
@@ -142,11 +200,11 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance }: {
 
   return (
     <div className="relative" ref={ref}>
-      <button className="toolbar-btn" onClick={() => setOpen(!open)}>
+      <button type="button" className="toolbar-btn" onClick={() => setOpen(!open)}>
         <Printer className="w-3 h-3" /> Print <ChevronDown className="w-2.5 h-2.5" />
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded shadow-lg min-w-[180px]">
+        <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded-sm shadow-lg min-w-[180px]">
           {reportOptions.map((opt) => (
             <PrintRecordButton
               key={opt.key}
@@ -170,18 +228,42 @@ export default function FleetDetailPanel({
   analytics, analyticsLoading, personnelData, personnelLoading,
   activeTab, onTabChange,
   onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
-  onEditFuel, onDeleteFuel, onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
+  onEditFuel, onDeleteFuel,
+  loans, insurancePolicies, accessories, utilities, otherCosts, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost, onSaveBudgets,
+  onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
   onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
+  gpsMileage, gpsMileageLoading, onFetchGpsMileage, onSyncGpsMileage,
   onClose,
 }: Props) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin'; // Admin God Mode
+
+  // Right-click context menu for the vehicle header (acts on this record).
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+  const buildVehicleMenu = (): ContextMenuItem[] => [
+    ...(!isArchived ? [cm.action('Edit vehicle', onEditVehicle, { icon: <Pencil size={12} /> })] : []),
+    cm.separator(),
+    cm.copy('Copy unit #', detail.vehicle_number),
+    ...(detail.plate_number ? [cm.copy('Copy plate', detail.plate_number, <Tag size={12} />)] : []),
+    ...(detail.vin ? [cm.copy('Copy VIN', detail.vin)] : []),
+    cm.copyId(detail.id),
+    ...((isArchived || isAdmin)
+      ? [cm.separator(), cm.action('Delete', onDeleteVehicle, { danger: true, icon: <Trash2 size={12} /> })]
+      : []),
+  ];
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* Detail header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken">
+      <div
+        className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-0 bg-surface-sunken transition-colors duration-200"
+        onContextMenu={(e) => openMenu(e, buildVehicleMenu())}
+      >
         <div>
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded flex items-center justify-center border ${
+            <div className={`w-10 h-10 rounded-sm flex items-center justify-center border ${
               detail.status === 'in_service' ? 'bg-green-900/30 border-green-700/50' :
               detail.status === 'maintenance' ? 'bg-amber-900/30 border-amber-700/50' :
               detail.status === 'out_of_service' ? 'bg-red-900/30 border-red-700/50' :
@@ -190,7 +272,7 @@ export default function FleetDetailPanel({
               <Car className="w-5 h-5" style={{ color: STATUS_COLOR[detail.status] }} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white font-mono">{detail.vehicle_number}</h2>
+              <h2 className="text-lg font-bold text-rmpg-100 font-mono">{detail.vehicle_number}</h2>
               <div className="flex items-center gap-2 mt-0.5 text-xs text-rmpg-300">
                 <span>{[detail.year, detail.make, detail.model].filter(Boolean).join(' ')}</span>
                 {detail.color && <span className="text-rmpg-500">({detail.color})</span>}
@@ -214,6 +296,9 @@ export default function FleetDetailPanel({
                 <Radio className="w-3 h-3" /> {detail.assigned_unit_call_sign}
               </span>
             )}
+            {maintenance.length > 0 && (
+              <span className="px-2 py-0.5 text-[9px] font-bold bg-brand-900/40 text-brand-300 border border-brand-700/50">{maintenance.length} service{maintenance.length !== 1 ? 's' : ''}</span>
+            )}
             {getExpiryStatus(detail.registration_expiry) === 'expired' && (
               <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse">REG EXPIRED</span>
             )}
@@ -222,6 +307,50 @@ export default function FleetDetailPanel({
             )}
             {getExpiryStatus(detail.next_service_due) === 'expired' && (
               <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">SERVICE OVERDUE</span>
+            )}
+            {(() => {
+              const nextMi = (detail as any).next_service_mileage;
+              const curMi = detail.current_mileage;
+              if (nextMi && curMi) {
+                const milesLeft = nextMi - curMi;
+                if (milesLeft <= 0) return <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50 animate-pulse">MILEAGE SERVICE OVERDUE</span>;
+                if (milesLeft <= 100) return <span className="px-2 py-0.5 text-[9px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SERVICE IN {milesLeft} MI</span>;
+                if (milesLeft <= 500) return <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">SERVICE IN {milesLeft} MI</span>;
+              }
+              return null;
+            })()}
+          </div>
+
+          {/* GPS-derived mileage section */}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <button type="button"
+              className={`toolbar-btn text-[9px] ${gpsMileageLoading ? 'opacity-50' : ''}`}
+              onClick={() => onFetchGpsMileage()}
+              disabled={gpsMileageLoading}
+              title="Compute GPS-derived mileage from dispatch breadcrumbs">
+              <MapPin className="w-3 h-3" />
+              {gpsMileageLoading ? 'Computing...' : gpsMileage ? 'GPS Mileage ▼' : 'Get GPS Mileage'}
+            </button>
+            {gpsMileage && !gpsMileage.error && (
+              <>
+                <span className="text-[9px] text-rmpg-400 font-mono">
+                  <span className="text-green-400 font-bold">{gpsMileage.total_miles?.toFixed(1)}</span> mi
+                  ({gpsMileage.valid_segments} segments, {gpsMileage.time_span_hours?.toFixed(0)}h)
+                </span>
+                {gpsMileage.unit_call_sign && (
+                  <span className="text-[9px] text-rmpg-500 font-mono">via {gpsMileage.unit_call_sign}</span>
+                )}
+                <button type="button"
+                  className="toolbar-btn toolbar-btn-primary text-[9px]"
+                  onClick={onSyncGpsMileage}
+                  disabled={gpsMileageLoading}
+                  title="Add GPS-calculated miles to the vehicle odometer">
+                  <RefreshCw className="w-3 h-3" /> Sync Odo
+                </button>
+              </>
+            )}
+            {gpsMileage?.error && (
+              <span className="text-[9px] text-rmpg-500 italic font-mono">{gpsMileage.error}</span>
             )}
           </div>
 
@@ -236,18 +365,18 @@ export default function FleetDetailPanel({
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-1.5">
-          <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} fuelSummary={fuelSummary} />
           {!isArchived && (
             <>
-              <button className="toolbar-btn" onClick={onEditVehicle}>
+              <button type="button" className="toolbar-btn" onClick={onEditVehicle}>
                 <Settings className="w-3 h-3" /> Edit
               </button>
-              <button className="toolbar-btn toolbar-btn-primary" onClick={onLogMaintenance}>
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onLogMaintenance}>
                 <Wrench className="w-3 h-3" /> Maintenance
               </button>
               {detail.status === 'retired' && (
-                <button className="toolbar-btn text-amber-400 hover:text-amber-300" onClick={onArchiveVehicle} title="Archive this retired vehicle">
+                <button type="button" className="toolbar-btn text-amber-400 hover:text-amber-300" onClick={onArchiveVehicle} title="Archive this retired vehicle">
                   <Archive className="w-3 h-3" /> Archive
                 </button>
               )}
@@ -255,48 +384,122 @@ export default function FleetDetailPanel({
           )}
           {isArchived && (
             <>
-              <button className="toolbar-btn text-green-400 hover:text-green-300" onClick={onUnarchiveVehicle} title="Unarchive this vehicle">
+              <button type="button" className="toolbar-btn text-green-400 hover:text-green-300" onClick={onUnarchiveVehicle} title="Unarchive this vehicle">
                 <RotateCcw className="w-3 h-3" /> Unarchive
               </button>
-              <button className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Permanently delete this vehicle">
+              <button type="button" className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Permanently delete this vehicle">
                 <Trash2 className="w-3 h-3" /> Delete
               </button>
             </>
           )}
-          <button
-            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors"
+          {!isArchived && isAdmin && (
+            <button type="button" className="toolbar-btn text-red-400 hover:text-red-300" onClick={onDeleteVehicle} title="Admin: Delete this vehicle">
+              <Trash2 className="w-3 h-3" /> Delete
+            </button>
+          )}
+          <button type="button"
+            className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50"
             onClick={onClose}
-          >
+            aria-label="Close vehicle details">
             <X className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex-shrink-0 flex items-center border-b border-rmpg-700 px-1 bg-surface-base overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-        {TABS.map(({ key, label, icon: Icon }) => {
-          const isActive = activeTab === key;
-          return (
-          <button
-            key={key}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider transition-colors border-b-2 ${
-              isActive
-                ? 'text-white border-brand-500 bg-brand-900/10'
-                : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:bg-rmpg-700/20'
-            }`}
-            onClick={() => onTabChange(key)}
-          >
-            <Icon className={`w-3 h-3 ${isActive ? 'text-brand-400' : ''}`} />
-            {label}
-          </button>
-          );
-        })}
-      </div>
+      {/* Tab Bar — grouped Spillman module strip */}
+      <SpillmanModuleGroup
+        groups={[
+          {
+            label: 'Status',
+            tone: 'steel',
+            tabs: [
+              { id: 'overview',   label: 'Overview' },
+              { id: 'fuel',       label: 'Fuel' },
+              { id: 'fuel_cards', label: 'Fuel Cards' },
+            ],
+          },
+          {
+            label: 'Maintenance',
+            tone: 'gold',
+            tabs: [
+              { id: 'inspections', label: 'Inspections' },
+              { id: 'tires',       label: 'Tires' },
+              { id: 'damage',      label: 'Damage' },
+              { id: 'recalls',     label: 'Recalls' },
+            ],
+          },
+          {
+            label: 'Personnel & Ops',
+            tone: 'neutral',
+            tabs: [
+              { id: 'assignments', label: 'Assignments' },
+              { id: 'personnel',   label: 'Personnel' },
+              { id: 'costs',       label: 'Costs' },
+            ],
+          },
+          {
+            label: 'Intelligence',
+            tone: 'green',
+            tabs: [
+              { id: 'analytics', label: 'Analytics' },
+              { id: 'dashcam',   label: 'Dash Cam' },
+            ],
+          },
+        ] as ModuleGroupSpec[]}
+        activeTab={activeTab}
+        onTabChange={(id) => onTabChange(id as DetailTab)}
+      />
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {activeTab === 'overview' && <FleetOverviewTab detail={detail} maintenance={maintenance} onEditMaintenance={onEditMaintenance} onDeleteMaintenance={onDeleteMaintenance} />}
-        {activeTab === 'fuel' && <FleetFuelTab fuelLogs={fuelLogs} summary={fuelSummary} onAddFuel={onLogFuel} onEditFuel={onEditFuel} onDeleteFuel={onDeleteFuel} />}
+      <div className="flex-1 min-h-0 overflow-y-auto min-h-0 scrollbar-dark" role="tabpanel" aria-label={`${activeTab} tab content`}>
+        {activeTab === 'overview' && (
+          <>
+            <FleetOverviewTab detail={detail} maintenance={maintenance} onEditMaintenance={onEditMaintenance} onDeleteMaintenance={onDeleteMaintenance} />
+            {/* Emailed Documents (outbound PDFs sent from this record) */}
+            <div className="p-2"><EmailedDocuments recordType="fleet" recordId={detail.id} /></div>
+          </>
+        )}
+        {activeTab === 'fuel' && (
+          <FleetFuelTab
+            fuelLogs={fuelLogs}
+            summary={fuelSummary}
+            onAddFuel={onLogFuel}
+            onEditFuel={onEditFuel}
+            onDeleteFuel={onDeleteFuel}
+            onGenerateReport={() => generateFleetFuelReport({
+              vehicle: detail,
+              fuelLogs,
+              summary: fuelSummary,
+            })}
+            onGenerateFlaggedAudit={() => generateFlaggedAuditPdf({
+              // Client-side filter to just flagged rows — avoids a server
+              // round-trip since we already have the full fuel history
+              // loaded for this vehicle.
+              logs: fuelLogs.filter((l: any) => !!l.flags),
+              scopeLabel: `#${detail.vehicle_number} ${[detail.year, detail.make, detail.model].filter(Boolean).join(' ')}`.trim(),
+              dateRange: {
+                from: fuelLogs[fuelLogs.length - 1]?.fuel_date,
+                to:   fuelLogs[0]?.fuel_date,
+              },
+            })}
+          />
+        )}
+        {activeTab === 'costs' && (
+          <FleetCostsTab
+            loans={loans}
+            insurance={insurancePolicies}
+            accessories={accessories}
+            utilities={utilities}
+            other={otherCosts}
+            summary={costSummary}
+            subTab={costSubTab}
+            onSubTabChange={onCostSubTabChange}
+            onAdd={onAddCost}
+            onEdit={onEditCost}
+            onDelete={onDeleteCost}
+            onSaveBudgets={onSaveBudgets}
+          />
+        )}
         {activeTab === 'inspections' && <FleetInspectionsTab inspections={inspections} onNewInspection={onNewInspection} onEditInspection={onEditInspection} onDeleteInspection={onDeleteInspection} />}
         {activeTab === 'assignments' && <FleetAssignmentsTab assignments={assignments} />}
         {activeTab === 'personnel' && (
@@ -312,7 +515,12 @@ export default function FleetDetailPanel({
             onRefresh={onRefreshPersonnel}
           />
         )}
+        {activeTab === 'tires' && <FleetTiresTab vehicleId={detail.id} />}
+        {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
+        {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
+        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
+        {activeTab === 'fuel_cards' && <FleetFuelCardsTab />}
       </div>
     </div>
   );

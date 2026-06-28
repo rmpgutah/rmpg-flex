@@ -2,7 +2,7 @@
 // RMPG Flex — Officer Detail: Deployment History Tab
 // ============================================================
 
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   MapPinned, Plus, Calendar, Clock, Briefcase, Building2,
   Loader2,
@@ -10,6 +10,7 @@ import {
 import type { Deployment } from '../../../types';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   deployments: Deployment[];
@@ -31,14 +32,14 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const pastBorderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-l-rmpg-500';
       case 'cancelled': return 'border-l-red-500';
-      case 'scheduled': return 'border-l-blue-500';
+      case 'scheduled': return 'border-l-rmpg-500';
       default: return 'border-l-rmpg-600';
     }
   };
@@ -46,7 +47,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         <span className="ml-2 text-xs text-rmpg-400">Loading deployment history...</span>
       </div>
     );
@@ -60,7 +61,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
           <MapPinned className="w-3.5 h-3.5 text-brand-400" />
           Deployment History
         </h3>
-        <button
+        <button type="button"
           onClick={() => onAddDeployment(officerId)}
           className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
         >
@@ -73,7 +74,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
       {currentDeployment && (
         <div
           className="panel-beveled p-3 border-l-2 border-l-green-500 border-t-2 border-t-green-500"
-          style={{ background: '#0a1a0a' }}
+          style={{ background: 'color-mix(in srgb, var(--surface-sunken) 85%, transparent)' }}
         >
           <div className="flex items-center gap-2 mb-2">
             <span className="led-dot led-green" />
@@ -164,12 +165,12 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
 
       {/* Empty State */}
       {deployments.length === 0 && (
-        <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
-            <MapPinned className="w-7 h-7 text-rmpg-600" />
+        <div className="text-center py-16" role="status">
+          <div className="w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+            <MapPinned className="w-8 h-8 text-rmpg-600" />
           </div>
-          <p className="text-xs text-rmpg-500">No deployment history for this officer.</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Click &quot;Add Deployment&quot; to assign a deployment.</p>
+          <p className="text-sm text-rmpg-400 font-medium">No deployment history for this officer</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Click "Add Deployment" to assign a deployment</p>
         </div>
       )}
     </div>

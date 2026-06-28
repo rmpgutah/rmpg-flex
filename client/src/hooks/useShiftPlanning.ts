@@ -9,6 +9,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { apiFetch } from './useApi';
+import { useLiveSync } from './useLiveSync';
 import type { GeoFeatureInfo } from './useGeoJsonLayers';
 
 // ── Types ────────────────────────────────────────────────────
@@ -44,9 +45,9 @@ export type ShiftType = 'day' | 'swing' | 'night' | 'custom';
 
 export const SHIFT_TYPES: Record<ShiftType, { label: string; defaultStart: string; defaultEnd: string; color: string }> = {
   day:    { label: 'Day Shift',   defaultStart: '06:00', defaultEnd: '14:00', color: '#f59e0b' },
-  swing:  { label: 'Swing Shift', defaultStart: '14:00', defaultEnd: '22:00', color: '#3b82f6' },
+  swing:  { label: 'Swing Shift', defaultStart: '14:00', defaultEnd: '22:00', color: '#888888' },
   night:  { label: 'Night Shift', defaultStart: '22:00', defaultEnd: '06:00', color: '#a855f7' },
-  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: '#6b7280' },
+  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: 'var(--rmpg-500)' },
 };
 
 const LS_KEY = 'rmpg_shift_plans';
@@ -125,7 +126,7 @@ export function useShiftPlanning() {
       setOfficers(activeOfficers);
       setUnits(unitData as UnitOption[]);
     } catch (err) {
-      console.error('[ShiftPlanning] Failed to fetch personnel:', err);
+      console.warn('[useShiftPlanning] Failed to fetch personnel:', err);
     }
   }, []);
 
@@ -309,19 +310,19 @@ export function useShiftPlanning() {
     const plan = plansRef.current.find((p) => p.id === planId);
     if (!plan) return;
     try {
-      await apiFetch('/admin/shift-plans', {
+      await apiFetch('/shift-plans', {
         method: 'POST',
         body: JSON.stringify(plan),
       });
     } catch (err) {
-      console.error('[ShiftPlanning] Save to server failed:', err);
+      console.warn('[useShiftPlanning] Save to server failed:', err);
       throw err;
     }
   }, []);
 
   const loadPlansFromServer = useCallback(async () => {
     try {
-      const data = await apiFetch('/admin/shift-plans') as ShiftPlan[];
+      const data = await apiFetch('/shift-plans') as ShiftPlan[];
       if (Array.isArray(data) && data.length > 0) {
         setPlans((prev) => {
           // Merge server plans with local (server wins on conflict)
@@ -330,12 +331,13 @@ export function useShiftPlanning() {
           return [...data, ...localOnly];
         });
       }
-    } catch {
-      // Server endpoint might not exist yet — use localStorage fallback
+    } catch (err) {
+      console.warn('[useShiftPlanning] Server plans fetch failed, using localStorage fallback:', err);
     }
   }, []);
 
   useEffect(() => { loadPlansFromServer(); }, [loadPlansFromServer]);
+  useLiveSync('admin', loadPlansFromServer);
 
   return {
     // Plans

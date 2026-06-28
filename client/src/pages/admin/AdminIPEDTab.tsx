@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Microscope, FolderOpen, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
-  Trash2, Zap, AlertTriangle, ExternalLink, ToggleLeft, ToggleRight,
-  Shield, Download, HardDrive, Hash, Database, Clock, Activity,
-  FileSearch, Upload, RefreshCw, Server,
+  Microscope, FolderOpen, Loader2, CheckCircle2, XCircle, Trash2, AlertTriangle,
+  ExternalLink, ToggleLeft, ToggleRight, Shield, Download, HardDrive, Hash,
+  Database, Activity, FileSearch, RefreshCw, Server,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -133,7 +135,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
   const fetchHashSets = useCallback(async () => {
     try {
       const data = await apiFetch<{ sets: HashSetInfo[] }>('/iped/hash-sets');
-      setHashSets(data.sets || []);
+      setHashSets(asArray<HashSetInfo>(data?.sets));
     } catch { /* non-critical */ }
   }, []);
 
@@ -281,6 +283,21 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
     }
   };
 
+  // Right-click context menu for hash set rows (copy + remove).
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildHashSetMenu = (hs: HashSetInfo): ContextMenuItem[] => [
+    m.copy('Copy name', hs.name),
+    m.copy('Copy category', hs.category),
+    m.copy('Copy entry count', String(hs.count ?? 0), <Hash size={12} />),
+    m.separator(),
+    m.action('Remove hash set', () => handleRemoveHashSet(hs.name), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  // Set document title
+  useEffect(() => { document.title = 'Admin - IPED \u2014 RMPG Flex'; }, []);
+
   if (loading) return <LoadingSpinner />;
 
   return (
@@ -330,8 +347,8 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* IPED Install Path */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">IPED Installation Path</label>
-          <input
+          <label htmlFor="ff-adminipedtab-0" className="text-[10px] text-rmpg-400">IPED Installation Path</label>
+          <input id="ff-adminipedtab-0"
             type="text"
             value={installPath}
             onChange={(e) => setInstallPath(e.target.value)}
@@ -345,8 +362,8 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Java Home */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Java Home <span className="text-rmpg-600">(JDK 11+ required)</span></label>
-          <input
+          <label htmlFor="ff-adminipedtab-1" className="text-[10px] text-rmpg-400">Java Home <span className="text-rmpg-600">(JDK 11+ required)</span></label>
+          <input id="ff-adminipedtab-1"
             type="text"
             value={javaHome}
             onChange={(e) => setJavaHome(e.target.value)}
@@ -360,25 +377,25 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          <button
+          <button type="button"
             onClick={handleSaveConfig}
             disabled={saving}
-            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50"
           >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle2 className="w-3 h-3" />}
             Save Config
           </button>
           {status?.configured && (
             <>
-              <button
+              <button type="button"
                 onClick={handleValidate}
                 disabled={validating}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
               >
-                {validating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
+                {validating ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Shield className="w-3 h-3" />}
                 Validate Installation
               </button>
-              <button
+              <button type="button"
                 onClick={handleClear}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300"
               >
@@ -422,7 +439,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 <div className="text-[9px] text-rmpg-500 mb-2">v{downloads.bundles.mac.version} • {(downloads.bundles.mac.size / 1048576).toFixed(0)} MB</div>
                 <a
                   href={`/downloads/${downloads.bundles.mac.filename}`}
-                  className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white inline-flex"
+                  className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 inline-flex"
                 >
                   <Download className="w-3 h-3" />
                   Download
@@ -444,7 +461,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 <div className="text-[9px] text-rmpg-500 mb-2">v{downloads.bundles.win.version} • {(downloads.bundles.win.size / 1048576).toFixed(0)} MB</div>
                 <a
                   href={`/downloads/${downloads.bundles.win.filename}`}
-                  className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white inline-flex"
+                  className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 inline-flex"
                 >
                   <Download className="w-3 h-3" />
                   Download
@@ -480,16 +497,16 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Default Profile */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Default Processing Profile</label>
+          <label htmlFor="ff-adminipedtab-3" className="text-[10px] text-rmpg-400">Default Processing Profile</label>
           <div className="space-y-0.5">
             {PROFILES.map(p => (
-              <button
+              <button type="button"
                 key={p.id}
                 onClick={() => handleProfileChange(p.id)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30"
                 style={{
-                  background: defaultProfile === p.id ? 'rgba(188, 16, 16, 0.08)' : undefined,
-                  border: defaultProfile === p.id ? '1px solid rgba(188, 16, 16, 0.25)' : '1px solid transparent',
+                  background: defaultProfile === p.id ? 'rgba(136, 136, 136, 0.12)' : undefined,
+                  border: defaultProfile === p.id ? '1px solid rgba(136, 136, 136, 0.3)' : '1px solid transparent',
                 }}
               >
                 <div className={`w-2 h-2 rounded-full shrink-0 ${defaultProfile === p.id ? 'bg-brand-400' : 'bg-rmpg-700'}`} />
@@ -506,7 +523,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Toggle settings */}
         <div className="space-y-1">
-          <button
+          <button type="button"
             onClick={handleTogglePhotoDna}
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30"
           >
@@ -519,7 +536,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
             </div>
           </button>
 
-          <button
+          <button type="button"
             onClick={handleToggleAutoHash}
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30"
           >
@@ -535,16 +552,16 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Web API Config */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">IPED Web API <span className="text-rmpg-600">(optional — for case browsing)</span></label>
+          <label htmlFor="ff-adminipedtab-2" className="text-[10px] text-rmpg-400">IPED Web API <span className="text-rmpg-600">(optional — for case browsing)</span></label>
           <div className="flex gap-2">
-            <input
+            <input id="ff-adminipedtab-2"
               type="text"
               value={webApiUrl}
               onChange={(e) => setWebApiUrl(e.target.value)}
               placeholder={status?.webApiUrl || 'http://localhost'}
               className="flex-1 bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
-            <input
+            <input id="ff-adminipedtab-3"
               type="text"
               value={webApiPort}
               onChange={(e) => setWebApiPort(e.target.value)}
@@ -554,12 +571,12 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </div>
           {status?.configured && (
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 onClick={handleTestApi}
                 disabled={testingApi}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1"
               >
-                {testingApi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Server className="w-3 h-3" />}
+                {testingApi ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Server className="w-3 h-3" />}
                 Test API
               </button>
               {apiTestResult && (
@@ -582,7 +599,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </div>
           <div className="flex items-center gap-2">
             <div className="space-y-1">
-              <input
+              <input id="ff-adminipedtab-4"
                 type="text"
                 value={hashSetsPath}
                 onChange={(e) => setHashSetsPath(e.target.value)}
@@ -596,12 +613,12 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
         {hashSets.length > 0 ? (
           <div className="space-y-0.5 max-h-40 overflow-y-auto">
             {hashSets.map(hs => (
-              <div key={hs.name} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded-sm">
+              <div key={hs.name} onContextMenu={(e) => openMenu(e, buildHashSetMenu(hs))} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded-sm">
                 <div className="flex-1 min-w-0">
                   <div className="text-[10px] font-medium text-rmpg-200">{hs.name}</div>
                   <div className="text-[9px] text-rmpg-500">{hs.category} • {(hs.count || 0).toLocaleString()} entries</div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => handleRemoveHashSet(hs.name)}
                   className="text-rmpg-600 hover:text-red-400 shrink-0 ml-2"
                 >
@@ -626,7 +643,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
               <Activity className="w-3.5 h-3.5" />
               Processing Dashboard
             </div>
-            <button
+            <button type="button"
               onClick={() => { fetchStatus(); fetchHashSets(); }}
               className="toolbar-btn text-[10px] flex items-center gap-1 px-2 py-1"
             >
@@ -635,7 +652,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
             </button>
           </div>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { label: 'Total Jobs', value: status.totalJobs, icon: Database },
               { label: 'Completed', value: status.completedJobs, icon: CheckCircle2 },
@@ -651,8 +668,8 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </div>
 
           {status.runningJobs > 0 && (
-            <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-blue-950/30 border border-blue-800/40 text-blue-400">
-              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+            <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-surface-overlay/30 border border-border-subtle/40 text-rmpg-400">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" role="status" aria-label="Loading" />
               {status.runningJobs} job(s) currently running
             </div>
           )}

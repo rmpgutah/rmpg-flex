@@ -1,3 +1,4 @@
+import React from "react";
 // ============================================================
 // RMPG Flex — Disposition Prompt
 // Compact inline panel that requires a disposition code before
@@ -5,8 +6,9 @@
 // dispatchers must select a disposition on every call clear.
 // ============================================================
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AlertTriangle, X, Check, FileText } from 'lucide-react';
+import { DEFAULT_DISPOSITIONS } from '../constants/dispositionCodes';
 
 interface DispositionCode {
   code: string;
@@ -21,7 +23,12 @@ interface DispositionPromptProps {
   onCancel: () => void;
 }
 
-export default function DispositionPrompt({
+// Built-in fallback when the admin-configured codes haven't loaded (or the
+// prop is empty). Uses the single short-coded source of truth so the Clear-call
+// dropdown matches the inline edit dropdown exactly (same codes + descriptions).
+const FALLBACK_DISPOSITIONS: DispositionCode[] = DEFAULT_DISPOSITIONS;
+
+function DispositionPrompt({
   callNumber,
   dispositionCodes,
   onConfirm,
@@ -29,10 +36,14 @@ export default function DispositionPrompt({
 }: DispositionPromptProps) {
   const [selected, setSelected] = useState('');
   const [createIncident, setCreateIncident] = useState(false);
+  const codes = dispositionCodes.length > 0 ? dispositionCodes : FALLBACK_DISPOSITIONS;
 
+  // 39: role="alert" for screen reader announcement; 40: aria-live polite
   return (
     <div
       className="animate-fade-in"
+      role="alert"
+      aria-live="polite"
       style={{
         background: 'rgba(180, 130, 0, 0.12)',
         border: '1px solid #b48200',
@@ -47,39 +58,45 @@ export default function DispositionPrompt({
             Clear {callNumber} — Select Disposition
           </span>
         </div>
-        <button
+        {/* 41: Close button with hover background and transition */}
+        <button type="button"
           onClick={onCancel}
-          className="text-rmpg-500 hover:text-white"
+          className="text-rmpg-500 hover:text-rmpg-100 hover:bg-rmpg-700/50 p-0.5 transition-colors rounded-sm"
           title="Cancel clear"
+          aria-label="Cancel disposition"
         >
           <X style={{ width: 12, height: 12 }} />
         </button>
       </div>
 
       <div className="flex items-center gap-2">
-        <select
+        {/* 44: Focus ring on select input matching design system */}
+        <select id="ff-dispositionprompt-0"
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
-          className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:outline-none"
+          className="flex-1 bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
+          aria-label="Disposition code"
           autoFocus
         >
           <option value="">— Select Disposition Code —</option>
-          {dispositionCodes.map((d) => (
+          {codes.map((d) => (
             <option key={d.code} value={d.code}>
               {d.code} — {d.description}
             </option>
           ))}
         </select>
 
-        <button
+        {/* 42: Hover/active states on confirm button; 43: Transition on background color */}
+        <button type="button"
           onClick={() => selected && onConfirm(selected, createIncident)}
           disabled={!selected}
-          className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider"
+          className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
           style={{
-            background: selected ? '#16a34a' : '#1e3048',
-            color: selected ? '#fff' : '#5a6e80',
-            border: `1px solid ${selected ? '#16a34a' : '#2a3e58'}`,
+            background: selected ? '#16a34a' : 'var(--border-subtle)',
+            color: selected ? '#fff' : 'var(--rmpg-500)',
+            border: `1px solid ${selected ? '#16a34a' : 'var(--border-default)'}`,
             cursor: selected ? 'pointer' : 'not-allowed',
+            opacity: selected ? 1 : 0.6,
           }}
         >
           <Check style={{ width: 10, height: 10 }} />
@@ -89,13 +106,13 @@ export default function DispositionPrompt({
 
       {/* Create Incident Report checkbox — Spillman Flex call promotion */}
       <label className="flex items-center gap-1.5 mt-2 cursor-pointer group">
-        <input
+        <input id="ff-dispositionprompt-1"
           type="checkbox"
           checked={createIncident}
           onChange={(e) => setCreateIncident(e.target.checked)}
           className="w-3 h-3 accent-brand-500"
         />
-        <FileText style={{ width: 10, height: 10, color: createIncident ? '#60a5fa' : '#6b7280' }} />
+        <FileText style={{ width: 10, height: 10, color: createIncident ? '#aaaaaa' : 'var(--rmpg-500)' }} />
         <span className={`text-[10px] font-bold uppercase tracking-wider ${createIncident ? 'text-brand-400' : 'text-rmpg-500 group-hover:text-rmpg-300'}`}>
           Create Incident Report from this call
         </span>
@@ -103,3 +120,5 @@ export default function DispositionPrompt({
     </div>
   );
 }
+
+export default React.memo(DispositionPrompt);

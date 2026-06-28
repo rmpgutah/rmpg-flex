@@ -2,14 +2,19 @@
 // RMPG Flex — Arrest / Booking Form Modal
 // Create or edit manual booking records with tabbed sections.
 // Follows VehicleFormModal pattern: FormModal wrapper,
-// useFormDirty hook, 4-tab layout, EMPTY_FORM constant.
+// useFormDraft hook, 4-tab layout, EMPTY_FORM constant.
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
+import { useAuth } from '../context/AuthContext';
+import AddressAutocomplete from './AddressAutocomplete';
+import { localToday } from '../utils/dateUtils';
 
+import RichTextArea from './RichTextArea';
+import { composeAddressUnit } from '../utils/addressUnit';
 // ── Types ─────────────────────────────────────────────────
 
 export interface ArrestFormData {
@@ -48,7 +53,7 @@ interface ArrestFormModalProps {
 const EMPTY_FORM: ArrestFormData = {
   full_name: '',
   date_of_birth: '',
-  booking_date: new Date().toISOString().split('T')[0],
+  booking_date: localToday(),
   release_date: '',
   county: '',
   status: 'active',
@@ -95,8 +100,27 @@ export default function ArrestFormModal({
   editingRecord,
   submitError,
 }: ArrestFormModalProps) {
-  const [form, setForm] = useState<ArrestFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  // Per-user draft scope — a half-typed bail amount, charge list, or
+  // booking note from operator A must not surface for operator B on a
+  // shared MDT. Falls back to the legacy global key when the auth
+  // context hasn't hydrated yet (login-screen pre-fill safety).
+  const { user } = useAuth();
+  const draftKey = user?.id
+    ? `rmpg_arrest_form_${user.id}`
+    : 'rmpg_arrest_form';
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    signalSaved,
+    snapshot,
+  } = useFormDraft<ArrestFormData>({
+    storageKey: draftKey,
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<SectionId>('booking');
 
   // ── Init form on open ───────────────────────────────────
@@ -138,11 +162,11 @@ export default function ArrestFormModal({
           notes: editingRecord.notes || '',
         };
         setForm(initial);
-        snapshot(initial);
+        snapshot();
       } else {
-        const fresh = { ...EMPTY_FORM, booking_date: new Date().toISOString().split('T')[0] };
+        const fresh = { ...EMPTY_FORM, booking_date: localToday() };
         setForm(fresh);
-        snapshot(fresh);
+        snapshot();
       }
     }
   }, [isOpen, editingRecord]);
@@ -154,6 +178,8 @@ export default function ArrestFormModal({
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
+  const [addressUnit, setAddressUnit] = useState('');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Convert charges textarea (one per line) to JSON array before submitting
@@ -161,8 +187,10 @@ export default function ArrestFormModal({
       .split('\n')
       .map(l => l.trim())
       .filter(l => l.length > 0);
+    signalSaved();
     onSubmit({
       ...form,
+      address: composeAddressUnit(form.address, addressUnit),
       charges: JSON.stringify(chargeLines),
     });
   };
@@ -187,6 +215,8 @@ export default function ArrestFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Submit Error */}
       {submitError && (
@@ -205,7 +235,7 @@ export default function ArrestFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -224,6 +254,7 @@ export default function ArrestFormModal({
             <input
               name="full_name"
               type="text"
+              required
               className="input-dark mt-1"
               placeholder="Last, First Middle"
               value={form.full_name}
@@ -330,11 +361,23 @@ export default function ArrestFormModal({
             </div>
           </div>
 
-          {/* Address */}
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Address</label>
-            <input name="address" type="text" className="input-dark mt-1" placeholder="Street address" value={form.address} onChange={handleChange} />
-          </div>
+           {/* Address */}
+           <div className="flex gap-3">
+             <div className="flex-1">
+             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Address</label>
+             <AddressAutocomplete
+               value={form.address}
+               onChange={(value) => setForm(prev => ({ ...prev, address: value }))}
+               placeholder="Enter address..."
+               className="input-dark mt-1 w-full"
+               name="address"
+             />
+             </div>
+             <div className="w-28">
+               <label htmlFor="ff-arrestformmodal-addrunit" className="text-[10px] text-rmpg-400 uppercase font-semibold">Apt / Unit</label>
+               <input id="ff-arrestformmodal-addrunit" type="text" className="input-dark mt-1 w-full" value={addressUnit} onChange={e => setAddressUnit(e.target.value)} placeholder="Apt 4B" />
+             </div>
+           </div>
         </>
       )}
 
@@ -345,14 +388,16 @@ export default function ArrestFormModal({
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">
               Charges <span className="text-rmpg-500">(one per line)</span>
             </label>
-            <textarea
+            <RichTextArea
               name="charges"
               rows={6}
               className="input-dark mt-1 font-mono text-xs"
               placeholder="e.g.&#10;Assault — Class A Misdemeanor&#10;Theft — 3rd Degree Felony"
               value={form.charges}
               onChange={handleChange}
+              maxLength={2000}
             />
+            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.charges.length}/2000</div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -362,6 +407,8 @@ export default function ArrestFormModal({
                 type="text"
                 className="input-dark mt-1"
                 placeholder="e.g. 5000"
+                pattern="[0-9]*\.?[0-9]*"
+                inputMode="decimal"
                 value={form.bail_amount}
                 onChange={handleChange}
               />
@@ -385,14 +432,16 @@ export default function ArrestFormModal({
       {activeSection === 'notes' && (
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
-          <textarea
+          <RichTextArea
             name="notes"
             rows={8}
             className="input-dark mt-1"
             placeholder="Additional booking notes, officer observations, etc."
             value={form.notes}
             onChange={handleChange}
+            maxLength={5000}
           />
+          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
         </div>
       )}
     </FormModal>

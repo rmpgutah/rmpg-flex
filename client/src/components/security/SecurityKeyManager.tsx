@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { Usb, Plus, Trash2, RefreshCw, Shield, Fingerprint } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -20,7 +21,7 @@ interface WebAuthnCredential {
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return 'Never';
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseTimestamp(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins}m ago`;
@@ -28,7 +29,7 @@ function timeAgo(dateStr: string | null): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  return parseTimestamp(dateStr).toLocaleDateString();
 }
 
 function transportLabel(transports: string[]): string {
@@ -137,7 +138,7 @@ export default function SecurityKeyManager() {
     try {
       const res = await fetch(`/api/auth/webauthn/credentials/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, 'X-Requested-With': 'XMLHttpRequest' },
       });
       if (res.ok) {
         setCredentials(prev => prev.filter(c => c.id !== id));
@@ -155,7 +156,7 @@ export default function SecurityKeyManager() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-4">
-        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#6b7280' }} />
+        <RefreshCw className="w-4 h-4 animate-spin text-rmpg-500" />
       </div>
     );
   }
@@ -166,7 +167,7 @@ export default function SecurityKeyManager() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Usb className="w-3.5 h-3.5" style={{ color: '#d97706' }} />
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
             Security Keys ({credentials.length})
           </span>
         </div>
@@ -191,7 +192,7 @@ export default function SecurityKeyManager() {
             <div
               key={cred.id}
               className="flex items-center gap-3 px-3 py-2 panel-beveled"
-              style={{ background: '#141e2b' }}
+              style={{ background:"var(--surface-sunken)" }}
             >
               <div className="p-1.5 panel-inset" style={{ color: '#d97706', background: 'rgba(217,119,6,0.1)' }}>
                 {cred.deviceType === 'multiDevice' ? (
@@ -202,30 +203,30 @@ export default function SecurityKeyManager() {
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] font-semibold truncate" style={{ color: '#e5e7eb' }}>
+                <div className="text-[11px] font-semibold truncate text-rmpg-300">
                   {cred.name}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-[9px] font-mono" style={{ color: '#6b7280' }}>
+                  <span className="text-[9px] font-mono text-rmpg-500">
                     {transportLabel(cred.transports)}
                   </span>
-                  <span className="text-[9px]" style={{ color: '#4b5563' }}>
+                  <span className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
                     Last used {timeAgo(cred.lastUsedAt)}
                   </span>
                 </div>
               </div>
 
               <div className="text-right flex-shrink-0">
-                <div className="text-[9px] font-mono" style={{ color: '#8a9aaa' }}>
-                  Added {new Date(cred.createdAt).toLocaleDateString()}
+                <div className="text-[9px] font-mono" style={{ color: '#888888' }}>
+                  Added {cred.createdAt ? parseTimestamp(cred.createdAt).toLocaleDateString() : 'N/A'}
                 </div>
               </div>
 
-              <button
+              <button type="button"
                 onClick={() => handleRevoke(cred.id)}
                 disabled={revoking === cred.id}
                 className="toolbar-btn flex items-center gap-1 text-[9px]"
-                style={{ color: revoking === cred.id ? '#4b5563' : '#ef4444' }}
+                style={{ color: revoking === cred.id ? 'var(--rmpg-500)' : '#ef4444' }}
                 title="Remove key"
               >
                 <Trash2 className="w-3 h-3" />
@@ -235,9 +236,9 @@ export default function SecurityKeyManager() {
         </div>
       ) : (
         <div className="text-center py-4">
-          <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2a3e58' }} />
-          <p className="text-[10px]" style={{ color: '#6b7280' }}>No security keys registered</p>
-          <p className="text-[9px] mt-1" style={{ color: '#4b5563' }}>
+          <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
+          <p className="text-[10px] text-rmpg-500">No security keys registered</p>
+          <p className="text-[9px] mt-1" style={{ color: 'var(--rmpg-500)' }}>
             Register a YubiKey, Touch ID, or Windows Hello to use as 2FA
           </p>
         </div>
@@ -246,7 +247,7 @@ export default function SecurityKeyManager() {
       {/* Register new key */}
       {showNameInput ? (
         <div className="flex items-center gap-2">
-          <input
+          <input id="ff-securitykeymanager-0"
             type="text"
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}
@@ -261,7 +262,7 @@ export default function SecurityKeyManager() {
               }
             }}
           />
-          <button
+          <button type="button"
             onClick={handleRegister}
             disabled={registering}
             className="toolbar-btn toolbar-btn-primary h-8 px-3 text-[10px] font-bold uppercase tracking-wide flex items-center gap-1"
@@ -273,19 +274,18 @@ export default function SecurityKeyManager() {
             )}
             {registering ? 'Tap Key...' : 'Register'}
           </button>
-          <button
+          <button type="button"
             onClick={() => {
               setShowNameInput(false);
               setNewKeyName('');
             }}
-            className="toolbar-btn h-8 px-2 text-[10px]"
-            style={{ color: '#6b7280' }}
+                        className="toolbar-btn h-8 px-2 text-[10px] text-rmpg-500"
           >
             Cancel
           </button>
         </div>
       ) : (
-        <button
+        <button type="button"
           onClick={() => setShowNameInput(true)}
           className="toolbar-btn w-full h-8 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-wide"
           style={{ color: '#d97706', borderColor: '#d97706' }}
@@ -295,7 +295,7 @@ export default function SecurityKeyManager() {
         </button>
       )}
 
-      <p className="text-[9px]" style={{ color: '#4b5563' }}>
+      <p className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
         Supports YubiKey, Touch ID, Windows Hello, and other FIDO2-compatible keys
       </p>
     </div>
