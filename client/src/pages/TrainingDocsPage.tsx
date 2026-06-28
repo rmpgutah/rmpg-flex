@@ -11,6 +11,12 @@ import {
   FileImage, File, Printer,
 } from 'lucide-react';
 import { BLANK_FORMS, downloadBlankForm } from '../utils/blankFormGenerator';
+import { renderPdfV2 } from '../utils/pdf/v2';
+import { arrestReportBlankSchema } from '../utils/pdf/v2/blankForms/arrestReportBlank';
+import { useOfForceBlankSchema } from '../utils/pdf/v2/blankForms/useOfForceBlank';
+import { supplementalReportBlankSchema } from '../utils/pdf/v2/blankForms/supplementalReportBlank';
+import { evidenceChainBlankSchema } from '../utils/pdf/v2/blankForms/evidenceChainBlank';
+import { proofOfServiceBlankSchema } from '../utils/pdf/v2/blankForms/proofOfServiceBlank';
 import { useAuth } from '../context/AuthContext';
 import {
   apiFetchCompanyDocuments, apiCreateCompanyDocument, apiUpdateCompanyDocument,
@@ -44,6 +50,30 @@ const CATEGORY_COLORS: Record<string, string> = {
   reference: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
   general: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
 };
+
+// v2 blank forms (schema-driven, low-ink)
+const V2_BLANK_FORMS: { id: string; name: string; formNumber: string; description: string; schema: typeof arrestReportBlankSchema; category: 'incident' | 'record' | 'operations' | 'administrative' | 'service' | 'communications' }[] = [
+  { id: 'v2_arrest', name: 'Arrest Report (v2)', formNumber: 'PS-215-BLK', description: 'Custodial arrest documentation — schema-driven, low-ink', schema: arrestReportBlankSchema, category: 'incident' },
+  { id: 'v2_use_of_force', name: 'Use of Force Report (v2)', formNumber: 'PS-216-BLK', description: 'Force deployment documentation — schema-driven, low-ink', schema: useOfForceBlankSchema, category: 'incident' },
+  { id: 'v2_supplemental', name: 'Supplemental Report (v2)', formNumber: 'PS-213-BLK', description: 'Additional report for existing case — schema-driven, low-ink', schema: supplementalReportBlankSchema, category: 'incident' },
+  { id: 'v2_evidence_chain', name: 'Evidence Chain of Custody (v2)', formNumber: 'PS-214-BLK', description: 'Evidence chain tracking — schema-driven, low-ink', schema: evidenceChainBlankSchema, category: 'record' },
+  { id: 'v2_proof_of_service', name: 'Affidavit of Service (v2)', formNumber: 'PS-212-BLK', description: 'Proof of process service — schema-driven, low-ink', schema: proofOfServiceBlankSchema, category: 'service' },
+];
+
+async function downloadV2BlankForm(form: typeof V2_BLANK_FORMS[number]) {
+  try {
+    const pdf = await renderPdfV2(form.schema, {} as any);
+    const blob = pdf instanceof Blob ? pdf : new Blob([await pdf.arrayBuffer()], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${form.id}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error(`Failed to generate ${form.name}:`, err);
+  }
+}
 
 function fileIcon(mimeType?: string) {
   if (!mimeType) return <File className="w-5 h-5 text-rmpg-400" />;
@@ -296,6 +326,40 @@ export default function TrainingDocsPage() {
                 ))}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* v2 Blank Forms — Schema-Driven, Low-Ink */}
+      {showBlankForms && (
+        <div className="mx-3 mt-3 panel-beveled border border-rmpg-700 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Printer className="w-4 h-4 text-brand-400" />
+            <h2 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">v2 Blank Forms</h2>
+            <span className="text-[9px] text-rmpg-500 ml-2">Schema-driven, low-ink PDFs — new format</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {(['incident', 'record', 'service'] as const).map(cat => {
+              const forms = V2_BLANK_FORMS.filter(f => f.category === cat);
+              if (!forms.length) return null;
+              return (
+                <div key={cat}>
+                  <h3 className="text-[10px] font-bold text-rmpg-400 uppercase mb-2 tracking-wider">{cat === 'service' ? 'Process Service' : cat}</h3>
+                  {forms.map(form => (
+                    <button
+                      key={form.id}
+                      onClick={() => downloadV2BlankForm(form)}
+                      className="w-full text-left mb-2 px-3 py-2 bg-surface-raised hover:bg-surface-raised/80 border border-brand-700/50 transition-colors"
+                      style={{ borderRadius: '2px' }}
+                    >
+                      <div className="text-[11px] font-bold text-rmpg-100">{form.name}</div>
+                      <div className="text-[9px] text-brand-400 mt-0.5">{form.formNumber}</div>
+                      <div className="text-[9px] text-rmpg-500 mt-0.5">{form.description}</div>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

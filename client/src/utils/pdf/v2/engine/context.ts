@@ -33,6 +33,10 @@ export function drawSectionHeader(doc: jsPDF, layout: LayoutEngine, title: strin
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
+  // Left accent bar (gold brand color) — 0.5mm wide × 3mm tall
+  doc.setFillColor(212, 160, 23); // brand gold #d4a017
+  doc.rect(layout.leftX - 1.5, y - 2.5, 0.5, 3, 'F');
+
   // Section number prefix (Police Report Format standard)
   _sectionCounter++;
   const numStr = `${_sectionCounter}.`;
