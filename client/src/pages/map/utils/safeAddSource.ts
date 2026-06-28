@@ -39,7 +39,7 @@ export function whenStyleReady(map: mapboxgl.Map | null | undefined, fn: () => v
     // listener, so it never retried) and the layer never appeared.
     // getStyle() is falsy on a removed/torn-down style — the real "don't
     // mutate" condition.
-    if (cleaned || !map.getStyle()) return;
+    if ((map as any)._removed || !map.getStyle()) return;
     fn();
   };
   const cleanup = () => {

@@ -8,6 +8,7 @@
 import { useState, useCallback } from 'react';
 import type { MapUnit } from '../utils/mapConstants';
 import type { ActiveCall } from '../utils/mapConstants';
+import { fetchMapboxMatrix, hasMapboxDirections } from '../../../utils/mapboxRouting';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -15,6 +16,8 @@ export interface ClosestUnitResult {
   unit: MapUnit;
   distanceMiles: number;
   estimatedMinutes: number;
+  routeDistanceText?: string;
+  routeEtaText?: string;
 }
 
 // ─── Haversine (miles) ──────────────────────────────────────
@@ -51,13 +54,13 @@ export function useClosestUnit() {
    * Only considers units with GPS coordinates and status 'available'.
    * Optionally includes 'busy' units if includeBusy is true.
    */
-  const findClosestUnits = useCallback((
+  const findClosestUnits = useCallback(async (
     callLat: number,
     callLng: number,
     units: MapUnit[],
     topN = 5,
     includeBusy = false,
-  ): ClosestUnitResult[] => {
+  ): Promise<ClosestUnitResult[]> => {
     const eligibleStatuses = new Set(['available']);
     if (includeBusy) eligibleStatuses.add('busy');
 
@@ -79,15 +82,42 @@ export function useClosestUnit() {
     // Sort by distance ascending
     results.sort((a, b) => a.distanceMiles - b.distanceMiles);
 
-    return results.slice(0, topN);
+    const nearest = results.slice(0, topN);
+
+    if (!hasMapboxDirections() || nearest.length === 0) return nearest;
+
+    try {
+      const matrix = await fetchMapboxMatrix(
+        nearest.map(result => ({ lat: result.unit.latitude!, lng: result.unit.longitude! })),
+        { lat: callLat, lng: callLng },
+      );
+
+      const enriched = nearest.map((result, idx) => {
+        const route = matrix[idx];
+        if (route?.durationSec == null || route.distanceMeters == null) return result;
+        return {
+          ...result,
+          estimatedMinutes: route.durationSec / 60,
+          distanceMiles: route.distanceMeters / 1609.344,
+          routeDistanceText: route.distance,
+          routeEtaText: route.eta,
+        };
+      });
+
+      enriched.sort((a, b) => a.estimatedMinutes - b.estimatedMinutes);
+      return enriched;
+    } catch (error) {
+      console.warn('[useClosestUnit] Mapbox matrix lookup failed, falling back to haversine ranking:', error);
+      return nearest;
+    }
   }, []);
 
   /**
    * Open the closest-unit panel for a given call.
    */
-  const openClosestPanel = useCallback((call: ActiveCall, units: MapUnit[]) => {
+  const openClosestPanel = useCallback(async (call: ActiveCall, units: MapUnit[]) => {
     if (call.latitude == null || call.longitude == null) return;
-    const results = findClosestUnits(call.latitude, call.longitude, units);
+    const results = await findClosestUnits(call.latitude, call.longitude, units);
     setClosestResults(results);
     setSelectedCall(call);
     setShowClosestPanel(true);

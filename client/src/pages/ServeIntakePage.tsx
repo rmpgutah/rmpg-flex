@@ -364,7 +364,8 @@ export default function ServeIntakePage() {
     };
   }, []);
 
-  // Deep-link: strip ?intake_id= after mount (no-op if absent).
+  // Deep-link: strip ?intake_id= / ?case_id= after mount (no-ops if absent).
+  // ?case_id= redirects to /dispatch immediately; ?intake_id= toasts the id.
   useEffect(() => {
     const id = pendingIntakeIdRef.current;
     if (!id) return;

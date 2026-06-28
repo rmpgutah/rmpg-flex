@@ -189,7 +189,7 @@ export const FONT = {
   SIZE_CLASSIF_BAR:       7,     // Classification/priority bar (kept for compat)
   SIZE_SUBHEADER:         6.5,   // Subheader text in report header
   SIZE_REPORT_TYPE:       7,     // Report type label in header
-  SIZE_CASE_NUMBER:       9,     // Case number value (courier bold)
+  SIZE_CASE_NUMBER:       8.5,   // Case number value (courier bold)
   SIZE_FORM_CELL_LABEL:   6,     // Form cell label (same as field label)
   SIZE_FORM_CELL_VALUE:   8.5,   // Form cell value (same as field value)
   SIZE_SIDEBAR_TAB:       7,     // Sidebar tab rotated text

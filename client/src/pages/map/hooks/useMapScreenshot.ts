@@ -44,28 +44,16 @@ export function useMapScreenshot(
   const captureMapImage = useCallback(async (): Promise<string | null> => {
     if (busyRef.current) return null;
     busyRef.current = true;
-
     try {
-      const url = await buildStaticUrl(1280, 720);
-      if (!url) return null;
-
-      const resp = await fetch(url);
-      if (!resp.ok) return null;
-
-      const blob = await resp.blob();
-      return new Promise<string | null>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(blob);
-      });
+      const map = mapInstanceRef.current;
+      if (!map) return null;
+      const canvas = map.getCanvas();
+      return canvas.toDataURL('image/png');
     } catch (err) {
       console.error('[useMapScreenshot] capture failed:', err);
       return null;
-    } finally {
-      busyRef.current = false;
-    }
-  }, [buildStaticUrl]);
+    } finally { busyRef.current = false; }
+  }, [mapInstanceRef]);
 
   const downloadMapImage = useCallback(async (filename?: string): Promise<boolean> => {
     if (busyRef.current) return false;
@@ -82,14 +70,18 @@ export function useMapScreenshot(
       const center = map?.getCenter();
       const zoom = map?.getZoom();
 
+      const canvas = map.getCanvas();
+      const dataUrl = canvas.toDataURL('image/png');
+
+      const center = map.getCenter();
+      const zoom = map.getZoom();
       const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const coords = center ? `_${center.lat.toFixed(4)}_${center.lng.toFixed(4)}` : '';
       const zStr = zoom != null ? `_z${zoom}` : '';
       const name = filename || `map-export_${ts}${coords}${zStr}.png`;
 
       const a = document.createElement('a');
-      const objectUrl = URL.createObjectURL(blob);
-      a.href = objectUrl;
+      a.href = dataUrl;
       a.download = name;
       document.body.appendChild(a);
       a.click();

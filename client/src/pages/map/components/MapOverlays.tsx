@@ -1,4 +1,5 @@
 import React from 'react';
+import mapboxgl from 'mapbox-gl';
 import { Siren, Shield, Navigation2, Crosshair, Plus, Minus } from 'lucide-react';
 import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
@@ -236,7 +237,7 @@ export default function MapOverlays({
           <button type="button"
             onClick={() => {
               if (gps.latitude != null && gps.longitude != null) {
-                mapInstanceRef.current?.panTo({ lat: gps.latitude, lng: gps.longitude });
+                mapInstanceRef.current?.panTo([gps.longitude, gps.latitude]);
                 mapInstanceRef.current?.setZoom(16);
               }
             }}
@@ -262,7 +263,7 @@ export default function MapOverlays({
         />
         <button type="button"
           onClick={() => {
-            mapInstanceRef.current?.panTo({ lat: 40.7608, lng: -111.8910 });
+            mapInstanceRef.current?.panTo([-111.8910, 40.7608]);
             mapInstanceRef.current?.setZoom(12);
           }}
           className={`backdrop-blur-md shadow-xl transition-colors ${

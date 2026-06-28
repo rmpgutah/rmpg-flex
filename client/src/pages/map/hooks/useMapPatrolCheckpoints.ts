@@ -211,6 +211,7 @@ export function useMapPatrolCheckpoints(
       byProperty.set(cp.property_id, existing);
     });
 
+    let polylineCounter = 0;
     byProperty.forEach((cps) => {
       if (cps.length < 2) return;
       const sorted = [...cps].sort((a, b) => a.sequence_order - b.sequence_order);
@@ -331,7 +332,7 @@ export function useMapPatrolCheckpoints(
         intervalRef.current = null;
       }
     };
-  }, []);
+  }, [map]);
 
   const completionPct = checkpoints.length > 0
     ? Math.round(((checkpoints.length - overdueCount) / checkpoints.length) * 100)
