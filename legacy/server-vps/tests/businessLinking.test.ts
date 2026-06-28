@@ -1,0 +1,374 @@
+// ============================================================
+// Tests for the incident_businesses junction table.
+// Plan task 1.1 — first junction in the Business records parity
+// effort, mirroring the incident_persons pattern.
+//
+// NOTE: The plan originally placed this file at server/__tests__/
+// and used initDatabase(':memory:'). Adjusted to:
+//   - Live in server/tests/ (only path scanned by vitest.config.ts)
+//   - Use the project's setupTestDataDir helper (initDatabase()
+//     here takes no path argument and uses RMPG_DATA_DIR)
+// ============================================================
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { setupTestDataDir, teardownTestDataDir } from './helpers/testDb';
+
+let testDir: string;
+
+beforeAll(async () => {
+  testDir = setupTestDataDir();
+  const { initDatabase } = await import('../src/models/database');
+  initDatabase();
+});
+
+afterAll(() => { teardownTestDataDir(testDir); });
+
+describe('incident_businesses table', () => {
+  it('creates the table with expected columns', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = db.prepare("PRAGMA table_info(incident_businesses)").all() as any[];
+    const names = cols.map(c => c.name).sort();
+    expect(names).toEqual(['added_by','business_id','created_at','id','incident_id','notes','role'].sort());
+  });
+
+  it('enforces UNIQUE(incident_id, business_id)', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    // Seed an officer so incidents.officer_id FK is satisfied.
+    const officerId = (db.prepare(
+      `INSERT INTO users (username, password_hash, full_name, email, role, status, must_change_password, password_changed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'officer', 'active', 0, datetime('now'), datetime('now'), datetime('now'))`
+    ).run('unique_test_officer', 'x', 'Unique Officer', 'unique@test.local').lastInsertRowid) as number;
+    const incidentId = (db.prepare(
+      `INSERT INTO incidents (incident_number, incident_type, officer_id) VALUES (?, ?, ?)`
+    ).run('IR-T1', 'TEST', officerId).lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('Acme UNIQUE Test').lastInsertRowid) as number;
+    db.prepare(
+      `INSERT INTO incident_businesses (incident_id, business_id, role) VALUES (?, ?, ?)`
+    ).run(incidentId, businessId, 'victim');
+    expect(() =>
+      db.prepare(
+        `INSERT INTO incident_businesses (incident_id, business_id, role) VALUES (?, ?, ?)`
+      ).run(incidentId, businessId, 'witness')
+    ).toThrow(/UNIQUE/);
+  });
+
+  it('enforces role enum CHECK constraint', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const officerId = (db.prepare(
+      `INSERT INTO users (username, password_hash, full_name, email, role, status, must_change_password, password_changed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'officer', 'active', 0, datetime('now'), datetime('now'), datetime('now'))`
+    ).run('check_test_officer', 'x', 'Check Officer', 'check@test.local').lastInsertRowid) as number;
+    const incidentId = (db.prepare(
+      `INSERT INTO incidents (incident_number, incident_type, officer_id) VALUES (?, ?, ?)`
+    ).run('IR-T2', 'TEST', officerId).lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('Acme CHECK Test').lastInsertRowid) as number;
+    expect(() =>
+      db.prepare(
+        `INSERT INTO incident_businesses (incident_id, business_id, role) VALUES (?, ?, ?)`
+      ).run(incidentId, businessId, 'not_a_real_role')
+    ).toThrow(/CHECK/);
+  });
+
+  it('cascades on incident delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const officerId = (db.prepare(
+      `INSERT INTO users (username, password_hash, full_name, email, role, status, must_change_password, password_changed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'officer', 'active', 0, datetime('now'), datetime('now'), datetime('now'))`
+    ).run('cascade_test_officer', 'x', 'Cascade Officer', 'cascade@test.local').lastInsertRowid) as number;
+    const incidentId = (db.prepare(
+      `INSERT INTO incidents (incident_number, incident_type, officer_id) VALUES (?, ?, ?)`
+    ).run('IR-CASC-1', 'TEST', officerId).lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('CascadeBiz1').lastInsertRowid) as number;
+    db.prepare(
+      `INSERT INTO incident_businesses (incident_id, business_id, role) VALUES (?, ?, ?)`
+    ).run(incidentId, businessId, 'victim');
+    // Delete the parent incident — link must vanish, not throw
+    expect(() => db.prepare('DELETE FROM incidents WHERE id = ?').run(incidentId)).not.toThrow();
+    const remaining = db.prepare('SELECT COUNT(*) as c FROM incident_businesses WHERE incident_id = ?').get(incidentId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it("role defaults to 'involved' when omitted", async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const officerId = (db.prepare(
+      `INSERT INTO users (username, password_hash, full_name, email, role, status, must_change_password, password_changed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'officer', 'active', 0, datetime('now'), datetime('now'), datetime('now'))`
+    ).run('default_test_officer', 'x', 'Default Officer', 'default@test.local').lastInsertRowid) as number;
+    const incidentId = (db.prepare(
+      `INSERT INTO incidents (incident_number, incident_type, officer_id) VALUES (?, ?, ?)`
+    ).run('IR-DEF-1', 'TEST', officerId).lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('DefaultBiz1').lastInsertRowid) as number;
+    // Insert without role
+    db.prepare(`INSERT INTO incident_businesses (incident_id, business_id) VALUES (?, ?)`).run(incidentId, businessId);
+    const row = db.prepare('SELECT role FROM incident_businesses WHERE incident_id = ?').get(incidentId) as { role: string };
+    expect(row.role).toBe('involved');
+  });
+});
+
+describe('call_businesses table', () => {
+  it('creates the table with expected columns', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = db.prepare("PRAGMA table_info(call_businesses)").all() as any[];
+    const names = cols.map(c => c.name).sort();
+    expect(names).toEqual(['added_by','business_id','call_id','created_at','id','notes','role'].sort());
+  });
+
+  it('enforces UNIQUE(call_id, business_id)', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const callId = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-UNQ-${Date.now()}`, 'disturbance', 'P3', '100 Test St').lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('Acme CB UNIQUE').lastInsertRowid) as number;
+    db.prepare(
+      `INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`
+    ).run(callId, businessId, 'victim');
+    expect(() =>
+      db.prepare(
+        `INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`
+      ).run(callId, businessId, 'witness')
+    ).toThrow(/UNIQUE/);
+  });
+
+  it('cascades on call delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const callId = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-CASC-${Date.now()}`, 'disturbance', 'P3', '200 Test St').lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('CascadeCallBiz1').lastInsertRowid) as number;
+    db.prepare(
+      `INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`
+    ).run(callId, businessId, 'victim');
+    expect(() => db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(callId)).not.toThrow();
+    const remaining = db.prepare('SELECT COUNT(*) as c FROM call_businesses WHERE call_id = ?').get(callId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it('allows duplicate role across different calls (UNIQUE is on the pair, not the role)', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const callId1 = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-DUP1-${Date.now()}`, 'disturbance', 'P3', '300 Test St').lastInsertRowid) as number;
+    const callId2 = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-DUP2-${Date.now()}`, 'disturbance', 'P3', '301 Test St').lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('DupRoleBiz').lastInsertRowid) as number;
+    expect(() => {
+      db.prepare(`INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`)
+        .run(callId1, businessId, 'victim');
+      db.prepare(`INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`)
+        .run(callId2, businessId, 'victim');
+    }).not.toThrow();
+    const count = db.prepare(
+      `SELECT COUNT(*) as c FROM call_businesses WHERE business_id = ? AND role = 'victim'`
+    ).get(businessId) as { c: number };
+    expect(count.c).toBe(2);
+  });
+
+  it("role defaults to 'involved' when omitted", async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const callId = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-DEF-${Date.now()}`, 'disturbance', 'P3', '400 Test St').lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('CallDefaultBiz').lastInsertRowid) as number;
+    // Insert without role
+    db.prepare(`INSERT INTO call_businesses (call_id, business_id) VALUES (?, ?)`).run(callId, businessId);
+    const row = db.prepare('SELECT role FROM call_businesses WHERE call_id = ?').get(callId) as { role: string };
+    expect(row.role).toBe('involved');
+  });
+});
+
+describe('business_persons table', () => {
+  // Helper to seed a person row (persons table has many addCol columns; only
+  // first/last name should be required for a minimal insert).
+  const seedPerson = (db: any, suffix: string): number => {
+    return (db.prepare(
+      `INSERT INTO persons (first_name, last_name) VALUES (?, ?)`
+    ).run(`First${suffix}`, `Last${suffix}`).lastInsertRowid) as number;
+  };
+  const seedBusiness = (db: any, name: string): number => {
+    return (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run(name).lastInsertRowid) as number;
+  };
+
+  it('creates the table with expected columns', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = db.prepare("PRAGMA table_info(business_persons)").all() as any[];
+    const names = cols.map(c => c.name).sort();
+    expect(names).toEqual(['added_by','business_id','created_at','end_date','id','notes','person_id','role','start_date'].sort());
+  });
+
+  it('allows the same person+business with different roles', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPDIFF${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPDiffBiz-${suffix}`);
+    expect(() => {
+      db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+        .run(businessId, personId, 'manager');
+      db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+        .run(businessId, personId, 'key_holder');
+    }).not.toThrow();
+    const count = db.prepare(
+      'SELECT COUNT(*) as c FROM business_persons WHERE business_id = ? AND person_id = ?'
+    ).get(businessId, personId) as { c: number };
+    expect(count.c).toBe(2);
+  });
+
+  it('rejects duplicate (business, person, role) triples', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPUNQ${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPUnqBiz-${suffix}`);
+    db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+      .run(businessId, personId, 'employee');
+    expect(() =>
+      db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+        .run(businessId, personId, 'employee')
+    ).toThrow(/UNIQUE/);
+  });
+
+  it('cascades on business delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPCASCB${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPCascBBiz-${suffix}`);
+    db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+      .run(businessId, personId, 'owner');
+    expect(() => db.prepare('DELETE FROM businesses WHERE id = ?').run(businessId)).not.toThrow();
+    const remaining = db.prepare(
+      'SELECT COUNT(*) as c FROM business_persons WHERE business_id = ?'
+    ).get(businessId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it('cascades on person delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPCASCP${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPCascPBiz-${suffix}`);
+    db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+      .run(businessId, personId, 'owner');
+    expect(() => db.prepare('DELETE FROM persons WHERE id = ?').run(personId)).not.toThrow();
+    const remaining = db.prepare(
+      'SELECT COUNT(*) as c FROM business_persons WHERE person_id = ?'
+    ).get(personId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it('enforces role enum CHECK constraint', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPCHK${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPChkBiz-${suffix}`);
+    expect(() =>
+      db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+        .run(businessId, personId, 'kingmaker')
+    ).toThrow(/CHECK/);
+  });
+});
+
+describe('enrichment tables', () => {
+  it.each([
+    ['business_vehicles', ['added_by','business_id','created_at','id','notes','relationship','vehicle_id']],
+    ['business_visits',   ['business_id','id','latitude','longitude','notes','officer_id','visit_at']],
+    ['business_photos',   ['business_id','caption','category','id','uploaded_at','uploaded_by','url']],
+  ])('table %s exists with expected columns', async (table, expected) => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as any[]).map(c => c.name);
+    expect(cols.sort()).toEqual([...expected].sort());
+  });
+
+  it('business_vehicles cascades on business delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BVCASC${Date.now()}`;
+    const businessId = (db.prepare(`INSERT INTO businesses (name) VALUES (?)`).run(`BVCascBiz-${suffix}`).lastInsertRowid) as number;
+    const vehicleId = (db.prepare(`INSERT INTO vehicles_records (plate_number) VALUES (?)`).run(`PLT${suffix}`).lastInsertRowid) as number;
+    db.prepare(`INSERT INTO business_vehicles (business_id, vehicle_id, relationship) VALUES (?, ?, ?)`)
+      .run(businessId, vehicleId, 'fleet');
+    expect(() => db.prepare('DELETE FROM businesses WHERE id = ?').run(businessId)).not.toThrow();
+    const remaining = db.prepare('SELECT COUNT(*) as c FROM business_vehicles WHERE business_id = ?').get(businessId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it('business_visits requires officer_id NOT NULL', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const businessId = (db.prepare(`INSERT INTO businesses (name) VALUES (?)`).run(`BVisitNN-${Date.now()}`).lastInsertRowid) as number;
+    expect(() =>
+      db.prepare(`INSERT INTO business_visits (business_id, officer_id) VALUES (?, ?)`).run(businessId, null)
+    ).toThrow(/NOT NULL/);
+  });
+});
+
+describe('cross-table business FK columns', () => {
+  it('bolos has linked_business_id', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = (db.prepare("PRAGMA table_info(bolos)").all() as any[]).map(c => c.name);
+    expect(cols).toContain('linked_business_id');
+  });
+
+  it('trespass_orders has protected_business_id', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = (db.prepare("PRAGMA table_info(trespass_orders)").all() as any[]).map(c => c.name);
+    expect(cols).toContain('protected_business_id');
+  });
+});
+
+describe('businesses table migrations', () => {
+  it('has all 14 new enrichment columns', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = (db.prepare("PRAGMA table_info(businesses)").all() as any[]).map(c => c.name);
+    for (const col of [
+      'alarm_company','alarm_panel_code','alarm_passphrase',
+      'after_hours_contact_name','after_hours_contact_phone',
+      'hours_of_operation','holiday_schedule',
+      'loss_prevention_contact','insurance_carrier','insurance_policy_number',
+      'parent_company','franchise_id','photo_storefront_url','archived_at'
+    ]) {
+      expect(cols).toContain(col);
+    }
+  });
+});
+

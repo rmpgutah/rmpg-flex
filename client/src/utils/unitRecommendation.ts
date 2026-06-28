@@ -26,6 +26,7 @@ export function haversineDistance(
   lat1: number, lng1: number,
   lat2: number, lng2: number
 ): number {
+  if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return Infinity;
   const toRad = (deg: number) => deg * Math.PI / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lng2 - lng1);
@@ -41,6 +42,7 @@ export function haversineDistance(
  * Estimate minutes to scene based on straight-line distance.
  */
 export function estimateETA(distanceMiles: number): number {
+  if (!Number.isFinite(distanceMiles) || distanceMiles < 0) return 0;
   const roadDistance = distanceMiles * ROAD_FACTOR;
   return (roadDistance / AVG_SPEED_MPH) * 60; // minutes
 }
@@ -57,7 +59,7 @@ export function rankUnits(
 ): RankedUnit[] {
   // Filter to non-off-duty, non-excluded units
   const eligible = units.filter(
-    u => u.status !== 'off_duty' && !excludeIds.includes(u.id)
+    u => u.status !== 'off_duty' && !excludeIds.includes(String(u.id))
   );
 
   if (!callLat || !callLng) {
@@ -79,9 +81,15 @@ export function rankUnits(
 
   // Calculate distance for each unit
   const withDistance = eligible.map(unit => {
-    const hasGps = !!(unit.latitude && unit.longitude);
+    // Coerce + finite-check: live coords can arrive as sentinel strings
+    // ("None"/"0"/"") — a bare `unit.latitude && unit.longitude` treats "0" as
+    // truthy (→ NaN distance) and can't tell null from a real 0. Reject NaN and
+    // the null-island (0,0) placeholder.
+    const lat = Number(unit.latitude);
+    const lng = Number(unit.longitude);
+    const hasGps = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
     const distance = hasGps
-      ? haversineDistance(callLat, callLng, unit.latitude!, unit.longitude!)
+      ? haversineDistance(callLat, callLng, lat, lng)
       : 999;
     const eta = hasGps ? estimateETA(distance) : -1;
     return { unit, distance, eta, hasGps, rank: 0 };

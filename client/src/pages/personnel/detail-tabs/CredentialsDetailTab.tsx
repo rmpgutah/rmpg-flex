@@ -2,12 +2,12 @@
 // RMPG Flex — Officer Credentials Detail Tab
 // ============================================================
 
-import React from 'react';
-import { Award, Plus, Edit2, Trash2, Clock, Hash, Building } from 'lucide-react';
+import { Award, Plus, Edit2, Trash2, Clock } from 'lucide-react';
 import type { Credential } from '../../../types';
 import { calcDaysUntilExpiry } from '../utils/personnelFormatters';
 import { CREDENTIAL_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   credentials: Credential[];
@@ -42,7 +42,7 @@ export default function CredentialsDetailTab({
 
   const formatDate = (d: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
@@ -53,7 +53,7 @@ export default function CredentialsDetailTab({
           <Award className="w-3 h-3" />
           Credentials
         </h3>
-        <button
+        <button type="button"
           onClick={() => onAddCredential(officerId)}
           className="toolbar-btn toolbar-btn-primary flex items-center gap-1 text-[10px]"
         >
@@ -83,7 +83,7 @@ export default function CredentialsDetailTab({
         <div className="space-y-3">
           {credentials.map((cred) => {
             const days = calcDaysUntilExpiry(cred.expiry_date);
-            const statusLabel = cred.status.replace(/_/g, ' ').toUpperCase();
+            const statusLabel = (cred.status || '').replace(/_/g, ' ').toUpperCase();
 
             return (
               <div
@@ -100,14 +100,14 @@ export default function CredentialsDetailTab({
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button
+                    <button type="button"
                       onClick={() => onEditCredential(cred)}
                       className="toolbar-btn p-1"
                       title="Edit credential"
                     >
                       <Edit2 className="w-3 h-3" />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => onDeleteCredential(cred.id)}
                       className="toolbar-btn toolbar-btn-danger p-1"
                       title="Delete credential"

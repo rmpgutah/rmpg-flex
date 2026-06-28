@@ -23,7 +23,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
   if (!alerts || alerts.length === 0) return null;
 
   return (
-    <div className="w-full flex flex-col gap-0">
+    <div className="w-full flex flex-col gap-0" role="alert" aria-live="assertive">
       {alerts.map((alert, index) => {
         const isCritical = alert.priority === 'critical';
         const Icon = TYPE_ICONS[alert.type] || Flag;
@@ -31,7 +31,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
         return (
           <div
             key={`${alert.type}-${alert.entity_id || index}`}
-            className="w-full flex items-center gap-3 px-3 py-2"
+            className={`alert-banner-row ${isCritical ? 'alert-banner-critical' : 'alert-banner-warning'} w-full flex items-center gap-3 px-3 py-2`}
             style={{
               background: isCritical
                 ? 'rgba(220, 38, 38, 0.3)'
@@ -60,7 +60,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
             {/* Alert content */}
             <div className="flex-1 min-w-0">
               <div
-                className="font-bold uppercase tracking-wider text-white"
+                className="font-bold uppercase tracking-wider text-rmpg-100"
                 style={{ fontSize: '10px', lineHeight: '14px' }}
               >
                 {alert.title}
@@ -91,6 +91,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
                 className="flex-shrink-0 p-1 hover:bg-white/10 transition-colors"
                 style={{ border: 'none', background: 'transparent', borderRadius: 0 }}
                 title="Dismiss alert"
+                aria-label="Dismiss alert"
               >
                 <X
                   className="w-3.5 h-3.5"

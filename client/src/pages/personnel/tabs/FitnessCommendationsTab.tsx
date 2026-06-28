@@ -1,0 +1,211 @@
+import { useState, useEffect } from 'react';
+import { Activity, Award, Plus, TrendingUp, Star, Loader2 } from 'lucide-react';
+import { apiFetch } from '../../../hooks/useApi';
+import { useToast } from '../../../components/ToastProvider';
+import { localToday, parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
+
+import RichTextArea from '../../../components/RichTextArea';
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return '';
+  try { return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+}
+
+interface FitnessScore {
+  date: string;
+  score: number;
+  run_time: string;
+  pushups: number;
+  situps: number;
+  notes: string;
+}
+
+interface Commendation {
+  id: number;
+  date: string;
+  type: string;
+  description: string;
+  awarded_by_name: string;
+  created_at: string;
+}
+
+export default function FitnessCommendationsTab({ officerId }: { officerId: string | number }) {
+  const { addToast } = useToast();
+  const [fitness, setFitness] = useState<FitnessScore[]>([]);
+  const [commendations, setCommendations] = useState<Commendation[]>([]);
+  const [showFitnessForm, setShowFitnessForm] = useState(false);
+  const [showCommForm, setShowCommForm] = useState(false);
+  const [fitnessForm, setFitnessForm] = useState({ date: localToday(), score: '', run_time: '', pushups: '', situps: '', notes: '' });
+  const [commForm, setCommForm] = useState({ date: localToday(), type: 'commendation', description: '' });
+  const [submittingFitness, setSubmittingFitness] = useState(false);
+  const [submittingComm, setSubmittingComm] = useState(false);
+
+  const loadFitness = async () => {
+    try {
+      const raw = await apiFetch<any>(`/personnel/fitness/${officerId}`);
+      setFitness(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []));
+    } catch { addToast('Failed to load fitness scores', 'error'); }
+  };
+
+  const loadCommendations = async () => {
+    try {
+      const raw = await apiFetch<any>(`/personnel/commendations/${officerId}`);
+      setCommendations(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []));
+    } catch { addToast('Failed to load commendations', 'error'); }
+  };
+
+  useEffect(() => { loadFitness(); loadCommendations(); }, [officerId]);
+
+  // Escape to close forms
+  useEffect(() => {
+    if (!showFitnessForm && !showCommForm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setShowFitnessForm(false); setShowCommForm(false); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showFitnessForm, showCommForm]);
+
+  const submitFitness = async () => {
+    if (!fitnessForm.date) { addToast('Date is required', 'error'); return; }
+    setSubmittingFitness(true);
+    try { await apiFetch<any[]>(`/personnel/fitness/${officerId}`, {
+      method: 'POST', body: JSON.stringify({
+        ...fitnessForm,
+        score: fitnessForm.score ? Number(fitnessForm.score) : null,
+        pushups: fitnessForm.pushups ? Number(fitnessForm.pushups) : null,
+        situps: fitnessForm.situps ? Number(fitnessForm.situps) : null,
+      }),
+    }); addToast('Fitness score recorded', 'success'); setShowFitnessForm(false); loadFitness(); } catch { addToast('Failed to record fitness score', 'error'); } finally { setSubmittingFitness(false); }
+  };
+
+  const submitComm = async () => {
+    if (!commForm.description.trim()) { addToast('Description is required', 'error'); return; }
+    setSubmittingComm(true);
+    try { await apiFetch<any[]>(`/personnel/commendations/${officerId}`, { method: 'POST', body: JSON.stringify(commForm) }); addToast('Commendation added', 'success'); setShowCommForm(false); setCommForm({ date: localToday(), type: 'commendation', description: '' }); loadCommendations(); } catch { addToast('Failed to add commendation', 'error'); } finally { setSubmittingComm(false); }
+  };
+
+  // Right-click context menus
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildFitnessMenu = (f: FitnessScore): ContextMenuItem[] => [
+    m.copy('Copy date', fmtDate(f.date)),
+    ...(f.score != null ? [m.copy('Copy score', f.score)] : []),
+    ...(f.notes ? [m.copy('Copy notes', f.notes)] : []),
+  ];
+  const buildCommMenu = (c: Commendation): ContextMenuItem[] => [
+    m.copy('Copy type', c.type?.replace(/_/g, ' ')),
+    m.copy('Copy description', c.description),
+    m.separator(),
+    m.copyId(c.id),
+  ];
+
+  // Set document title
+  useEffect(() => { document.title = 'Personnel - Fitness \u2014 RMPG Flex'; }, []);
+
+  return (
+    <div className="space-y-4">
+      {/* Fitness Section */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xs font-bold text-rmpg-100 flex items-center gap-1"><Activity className="w-3.5 h-3.5 text-green-400" /> Physical Fitness Tracking</h3>
+          <button type="button" onClick={() => setShowFitnessForm(!showFitnessForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Record Score</button>
+        </div>
+
+        {showFitnessForm && (
+          <div className="panel-inset p-3 space-y-2 mb-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input id="ff-fitnesscommendationstab-0" type="date" value={fitnessForm.date} onChange={e => setFitnessForm(f => ({ ...f, date: e.target.value }))} className="input-field text-xs" />
+              <input id="ff-fitnesscommendationstab-1" type="number" value={fitnessForm.score} onChange={e => setFitnessForm(f => ({ ...f, score: e.target.value }))} className="input-field text-xs" placeholder="Overall Score" />
+              <input id="ff-fitnesscommendationstab-2" value={fitnessForm.run_time} onChange={e => setFitnessForm(f => ({ ...f, run_time: e.target.value }))} className="input-field text-xs" placeholder="Run Time (e.g. 12:30)" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input id="ff-fitnesscommendationstab-3" type="number" value={fitnessForm.pushups} onChange={e => setFitnessForm(f => ({ ...f, pushups: e.target.value }))} className="input-field text-xs" placeholder="Pushups" />
+              <input id="ff-fitnesscommendationstab-4" type="number" value={fitnessForm.situps} onChange={e => setFitnessForm(f => ({ ...f, situps: e.target.value }))} className="input-field text-xs" placeholder="Situps" />
+              <input id="ff-fitnesscommendationstab-5" value={fitnessForm.notes} onChange={e => setFitnessForm(f => ({ ...f, notes: e.target.value }))} className="input-field text-xs" placeholder="Notes" />
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={submitFitness} disabled={submittingFitness} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-40">{submittingFitness ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
+              <button type="button" onClick={() => setShowFitnessForm(false)} disabled={submittingFitness} className="toolbar-btn text-[9px]">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {fitness.length > 0 ? (
+          <div className="space-y-1">
+            {fitness.slice(0, 10).map((f, i) => (
+              <div key={i} className="panel-inset p-2 flex items-center justify-between" onContextMenu={(e) => openMenu(e, buildFitnessMenu(f))}>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-rmpg-400">{fmtDate(f.date)}</span>
+                  {f.score && <span className="text-xs font-bold text-rmpg-100">Score: {f.score}</span>}
+                  {f.run_time && <span className="text-[10px] text-rmpg-300">Run: {f.run_time}</span>}
+                  {f.pushups && <span className="text-[10px] text-rmpg-300">PU: {f.pushups}</span>}
+                  {f.situps && <span className="text-[10px] text-rmpg-300">SU: {f.situps}</span>}
+                </div>
+                {f.notes && <span className="text-[10px] text-rmpg-400 italic">{f.notes}</span>}
+              </div>
+            ))}
+            {fitness.length > 1 && (
+              <div className="panel-inset p-2 text-center">
+                <TrendingUp className={`w-4 h-4 inline mr-1 ${
+                  (fitness[0]?.score || 0) >= (fitness[1]?.score || 0) ? 'text-green-400' : 'text-red-400'
+                }`} />
+                <span className="text-[10px] text-rmpg-300">
+                  Trend: {(fitness[0]?.score || 0) >= (fitness[1]?.score || 0) ? 'Improving' : 'Declining'}
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-[10px] text-rmpg-500 text-center py-2">No fitness scores recorded</p>
+        )}
+      </div>
+
+      {/* Commendations Section */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xs font-bold text-rmpg-100 flex items-center gap-1"><Award className="w-3.5 h-3.5 text-amber-400" /> Commendations & Awards</h3>
+          <button type="button" onClick={() => setShowCommForm(!showCommForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add</button>
+        </div>
+
+        {showCommForm && (
+          <div className="panel-inset p-3 space-y-2 mb-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input id="ff-fitnesscommendationstab-6" type="date" value={commForm.date} onChange={e => setCommForm(f => ({ ...f, date: e.target.value }))} className="input-field text-xs" />
+              <select id="ff-fitnesscommendationstab-7" value={commForm.type} onChange={e => setCommForm(f => ({ ...f, type: e.target.value }))} className="input-field text-xs">
+                <option value="commendation">Commendation</option>
+                <option value="award">Award</option>
+                <option value="medal">Medal</option>
+                <option value="citation">Citation</option>
+                <option value="letter_of_recognition">Letter of Recognition</option>
+              </select>
+            </div>
+            <RichTextArea value={commForm.description} onChange={e => setCommForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
+            <div className="flex gap-2">
+              <button type="button" onClick={submitComm} disabled={submittingComm || !commForm.description.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-40">{submittingComm ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
+              <button type="button" onClick={() => setShowCommForm(false)} disabled={submittingComm} className="toolbar-btn text-[9px]">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {commendations.length > 0 ? (
+          <div className="space-y-1">
+            {commendations.map((c, i) => (
+              <div key={i} className="panel-inset p-2 flex items-start gap-2" onContextMenu={(e) => openMenu(e, buildCommMenu(c))}>
+                <Star className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-amber-400 font-bold uppercase">{c.type?.replace(/_/g, ' ')}</span>
+                    <span className="text-[10px] text-rmpg-400">{fmtDate(c.date)}</span>
+                  </div>
+                  <p className="text-[10px] text-rmpg-200">{c.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[10px] text-rmpg-500 text-center py-2">No commendations recorded</p>
+        )}
+      </div>
+    </div>
+  );
+}

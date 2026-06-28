@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Award } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 
+import RichTextArea from './RichTextArea';
 export interface CredentialFormData {
   officer_id: string;
   credential_type: string;
@@ -67,8 +68,19 @@ export default function CredentialFormModal({
   initialData,
   mode = 'create',
 }: CredentialFormModalProps) {
-  const [form, setForm] = useState<CredentialFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    signalSaved,
+    snapshot,
+  } = useFormDraft<CredentialFormData>({
+    storageKey: 'rmpg_credential_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
@@ -82,20 +94,21 @@ export default function CredentialFormModal({
         notes: initialData.notes || '',
       };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen && !initialData) {
       setForm(EMPTY_FORM);
-      snapshot(EMPTY_FORM);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit(form);
   };
 
   const handleClose = () => {
-    setForm(EMPTY_FORM);
+    clearDraft();
     onClose();
   };
 
@@ -109,17 +122,19 @@ export default function CredentialFormModal({
       submitLabel={mode === 'edit' ? 'Update Credential' : 'Add Credential'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Officer */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-credentialformmodal-0" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Officer <span className="text-red-400">*</span>
         </label>
-        <select
+        <select id="ff-credentialformmodal-0"
           required
           value={form.officer_id}
           onChange={(e) => setForm((prev) => ({ ...prev, officer_id: e.target.value }))}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           disabled={mode === 'edit'}
         >
           <option value="">Select officer...</option>
@@ -131,14 +146,14 @@ export default function CredentialFormModal({
 
       {/* Credential Type */}
       <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+        <label htmlFor="ff-credentialformmodal-1" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Credential Type <span className="text-red-400">*</span>
         </label>
-        <select
+        <select id="ff-credentialformmodal-1"
           required
           value={form.credential_type}
           onChange={(e) => setForm((prev) => ({ ...prev, credential_type: e.target.value }))}
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
         >
           <option value="">Select type...</option>
           {CREDENTIAL_TYPES.map((t) => (
@@ -150,27 +165,27 @@ export default function CredentialFormModal({
       {/* Number / Authority */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-credentialformmodal-2" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Credential Number
           </label>
-          <input
+          <input id="ff-credentialformmodal-2"
             type="text"
             value={form.credential_number}
             onChange={(e) => setForm((prev) => ({ ...prev, credential_number: e.target.value }))}
             placeholder="License/Cert #"
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-credentialformmodal-3" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Issuing Authority
           </label>
-          <input
+          <input id="ff-credentialformmodal-3"
             type="text"
             value={form.issuing_authority}
             onChange={(e) => setForm((prev) => ({ ...prev, issuing_authority: e.target.value }))}
             placeholder="e.g. State of Utah"
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
       </div>
@@ -178,25 +193,25 @@ export default function CredentialFormModal({
       {/* Dates */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-credentialformmodal-4" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Issued Date
           </label>
-          <input
+          <input id="ff-credentialformmodal-4"
             type="date"
             value={form.issued_date}
             onChange={(e) => setForm((prev) => ({ ...prev, issued_date: e.target.value }))}
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
         <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
+          <label htmlFor="ff-credentialformmodal-5" className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Expiry Date
           </label>
-          <input
+          <input id="ff-credentialformmodal-5"
             type="date"
             value={form.expiry_date}
             onChange={(e) => setForm((prev) => ({ ...prev, expiry_date: e.target.value }))}
-            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
+            className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
       </div>
@@ -206,13 +221,15 @@ export default function CredentialFormModal({
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Notes
         </label>
-        <textarea
+        <RichTextArea
           value={form.notes}
           onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
           rows={3}
           placeholder="Additional notes..."
-          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
+          maxLength={2000}
+          className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
         />
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
       </div>
     </FormModal>
   );

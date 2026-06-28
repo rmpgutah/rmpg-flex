@@ -4,8 +4,8 @@
 // Supports Download, Preview, and Sign & Export modes
 // ============================================================
 
-import React, { useState, useRef, useEffect } from 'react';
-import { FileDown, ChevronDown, Eye, PenLine } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { FileDown, ChevronDown, Eye, PenLine, Smartphone } from 'lucide-react';
 import {
   type PdfReportType,
   PDF_REPORT_LABELS,
@@ -20,12 +20,16 @@ interface ReportTypeSelectorProps {
   onPreview?: (reportType: PdfReportType) => void;
   /** Called with (reportType, signatureDataUrl) when user signs and exports */
   onSignAndExport?: (reportType: PdfReportType, signature: string) => void;
+  /** Mobile thermal print (Brother PJ-700, +6mm top offset). Direct
+   *  download — bypasses preview, since the PDF is queued straight
+   *  to the in-vehicle printer driver. */
+  onMobilePrint?: (reportType: PdfReportType) => void;
   className?: string;
 }
 
 const REPORT_TYPES = Object.entries(PDF_REPORT_LABELS) as [PdfReportType, string][];
 
-export default function ReportTypeSelector({ incidentType, onSelect, onPreview, onSignAndExport, className = '' }: ReportTypeSelectorProps) {
+export default function ReportTypeSelector({ incidentType, onSelect, onPreview, onSignAndExport, onMobilePrint, className = '' }: ReportTypeSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [signModalOpen, setSignModalOpen] = useState(false);
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
@@ -116,16 +120,29 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
           </button>
         )}
 
-        {/* Main export button */}
+        {/* Main export button (Office Print / desk laser) */}
         <button
           type="button"
           onClick={handleQuickExport}
           className="toolbar-btn toolbar-btn-primary"
-          title={`Export as ${PDF_REPORT_LABELS[defaultType]}`}
+          title={`Export as ${PDF_REPORT_LABELS[defaultType]} (office laser)`}
         >
           <FileDown className="w-3.5 h-3.5" />
-          Export PDF
+          Office Print
         </button>
+
+        {/* Mobile Print (Brother PJ-700 in-vehicle thermal) */}
+        {onMobilePrint && (
+          <button
+            type="button"
+            onClick={() => onMobilePrint(defaultType)}
+            className="toolbar-btn"
+            title="Print on in-vehicle Brother PJ thermal printer (+6mm top offset)"
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            Mobile Print
+          </button>
+        )}
 
         {/* Dropdown arrow for other report types */}
         <button
@@ -174,7 +191,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
                       onPreview(type);
                       setIsOpen(false);
                     }}
-                    className="ml-2 p-1 hover:bg-rmpg-600 rounded text-rmpg-400 hover:text-rmpg-200"
+                    className="ml-2 p-1 hover:bg-rmpg-600 rounded-sm text-rmpg-400 hover:text-rmpg-200"
                     title={`Preview ${label}`}
                   >
                     <Eye className="w-3 h-3" />
@@ -188,8 +205,8 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
 
       {/* Quick-sign modal */}
       {signModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-surface-base border border-rmpg-600 shadow-2xl p-6 max-w-lg w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true">
+          <div className="bg-surface-base border border-rmpg-600 shadow-md p-6 max-w-lg w-full mx-4">
             <h3 className="text-sm font-bold text-rmpg-100 mb-1">Sign Document</h3>
             <p className="text-[10px] text-rmpg-400 mb-4">
               Draw your signature below. It will be embedded in the PDF and saved to your profile for future reports.

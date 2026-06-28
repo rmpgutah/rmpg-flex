@@ -1,14 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   FileText, Plus, ArrowLeft, Send, DollarSign, XCircle, Loader2, Trash2,
-  CheckCircle, AlertCircle, Clock, RefreshCw, Download, Printer, Hash,
-  CreditCard, Calendar, ChevronRight, Edit, Zap, Eye,
+  CheckCircle, AlertCircle, Clock, RefreshCw, Download, Printer, Hash, CreditCard,
+  Edit, Zap, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { toDisplayLabel } from '../../utils/formatters';
-import type { Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client } from '../../types';
+import type {
+  Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client,
+} from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
+import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
+
+function fmtShortDate(d: string | null | undefined): string {
+  if (!d) return '\u2014';
+  try { return new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
+}
 
 // ============================================================
 // Props
@@ -26,7 +38,7 @@ interface AdminInvoiceTabProps {
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  sent: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
+  sent: 'bg-surface-sunken/50 text-rmpg-300 border-border-default/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   partial: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   overdue: 'bg-red-900/60 text-red-300 border-red-700/50',
@@ -36,7 +48,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
   contract_base: <FileText className="w-3 h-3 text-brand-400" />,
-  service_hours: <Clock className="w-3 h-3 text-blue-400" />,
+  service_hours: <Clock className="w-3 h-3 text-rmpg-400" />,
   incident_response: <AlertCircle className="w-3 h-3 text-red-400" />,
   dispatch_call: <Hash className="w-3 h-3 text-amber-400" />,
   citation: <FileText className="w-3 h-3 text-purple-400" />,
@@ -55,6 +67,7 @@ function formatCurrency(n: number | undefined | null): string {
 // ============================================================
 
 export default function AdminInvoiceTab({ clientId, clientName, client }: AdminInvoiceTabProps) {
+  const { addToast } = useToast();
   const [view, setView] = useState<'list' | 'detail' | 'create'>('list');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceDetail | null>(null);
@@ -88,7 +101,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     setLoading(true);
     try {
       const res = await apiFetch<{ data: Invoice[]; pagination: any }>(`/invoices?client_id=${clientId}&limit=100`);
-      setInvoices(res.data || []);
+      setInvoices(asArray<Invoice>(res?.data));
     } catch { setError('Failed to load invoices'); }
     setLoading(false);
   }, [clientId]);
@@ -97,7 +110,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     try {
       const res = await apiFetch<{ data: InvoiceStats }>(`/invoices/stats?client_id=${clientId}`);
       setStats(res.data);
-    } catch { /* silent */ }
+    } catch (e) { console.error('Failed to load invoice stats:', e); }
   }, [clientId]);
 
   const fetchInvoiceDetail = useCallback(async (id: string) => {
@@ -109,7 +122,27 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     setLoading(false);
   }, []);
 
+  // Shared "open invoice" — used by the list row onClick + right-click menu.
+  const openInvoice = useCallback((id: string) => {
+    fetchInvoiceDetail(id);
+    setView('detail');
+  }, [fetchInvoiceDetail]);
+
   useEffect(() => { fetchInvoices(); fetchStats(); }, [fetchInvoices, fetchStats]);
+
+  // Right-click context menu (list rows). Status changes operate on the
+  // open invoice in the detail view, so the row menu sticks to Open + copy.
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildInvoiceMenu = (inv: Invoice): ContextMenuItem[] => [
+    m.action('Open invoice', () => openInvoice(inv.id), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy invoice #', inv.invoice_number, <Hash size={12} />),
+    m.copy('Copy total', formatCurrency(inv.total), <DollarSign size={12} />),
+    m.copy('Copy balance due', formatCurrency(inv.balance_due), <DollarSign size={12} />),
+    m.copyId(inv.id),
+  ];
 
   // ─── Actions ──────────────────────────────────────
   const handleCreate = async () => {
@@ -131,10 +164,11 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         }),
       });
       // Auto-generate line items
-      const invoiceId = res?.data?.id ?? (res as any)?.id;
+      const invoiceId = res?.data?.id;
       if (!invoiceId) throw new Error('Invoice creation returned no ID');
       const genRes = await apiFetch<{ data: InvoiceDetail }>(`/invoices/${invoiceId}/generate`, { method: 'POST' });
-      setSelectedInvoice(genRes?.data ?? genRes as any);
+      if (!genRes?.data) throw new Error('Invoice generation returned no data');
+      setSelectedInvoice(genRes.data);
       setView('detail');
       fetchInvoices();
       fetchStats();
@@ -240,7 +274,15 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         method: 'PUT',
         body: JSON.stringify({ internal_notes: notes }),
       });
-    } catch { /* silent */ }
+    } catch (e: any) {
+      // Audit caught (2026-06-21): autosave handler for collection notes /
+      // payment-disputed-reason was silently swallowing failures. Notes
+      // are a billing audit-trail surface — subpoena-relevant — so a
+      // silent failure here is high-risk. Surface the error so the
+      // operator knows to retry.
+      console.error('Failed to save invoice notes:', e);
+      addToast(e?.message || 'Failed to save invoice notes — retry', 'error');
+    }
   };
 
   // ─── Render Stats Bar ─────────────────────────────
@@ -274,10 +316,10 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Invoices</span>
         <div className="flex gap-1">
-          <button onClick={() => { fetchInvoices(); fetchStats(); }} className="toolbar-btn" title="Refresh">
+          <button type="button" onClick={() => { fetchInvoices(); fetchStats(); }} className="toolbar-btn" title="Refresh">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
-          <button
+          <button type="button"
             onClick={() => {
               const now = new Date();
               const start = dateToLocalYMD(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -293,7 +335,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
       </div>
 
-      {loading && <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" /></div>}
+      {loading && <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" role="status" aria-label="Loading" /></div>}
 
       {!loading && invoices.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
@@ -305,7 +347,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
       {!loading && invoices.length > 0 && (
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-[10px]">
+          <div className="overflow-x-auto"><table className="w-full text-[10px]">
             <thead>
               <tr className="text-rmpg-400 uppercase tracking-wider border-b border-rmpg-700">
                 <th className="text-left p-1.5 font-bold">Invoice #</th>
@@ -321,26 +363,27 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               {invoices.map(inv => (
                 <tr
                   key={inv.id}
-                  onClick={() => { fetchInvoiceDetail(inv.id); setView('detail'); }}
+                  onClick={() => openInvoice(inv.id)}
+                  onContextMenu={(e) => openMenu(e, buildInvoiceMenu(inv))}
                   className="border-b border-rmpg-700/50 hover:bg-rmpg-700/20 cursor-pointer transition-colors"
                 >
                   <td className="p-1.5 font-mono text-brand-400 font-bold">{inv.invoice_number}</td>
                   <td className="p-1.5 text-rmpg-300">
-                    {inv.period_start?.substring(0, 10)} – {inv.period_end?.substring(0, 10)}
+                    {fmtShortDate(inv.period_start)} – {fmtShortDate(inv.period_end)}
                   </td>
                   <td className="p-1.5">
-                    <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
-                      {inv.status}
+                    <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
+                      {(inv.status || '').replace(/_/g, ' ')}
                     </span>
                   </td>
-                  <td className="p-1.5 text-right font-mono text-white">{formatCurrency(inv.total)}</td>
+                  <td className="p-1.5 text-right font-mono text-rmpg-100">{formatCurrency(inv.total)}</td>
                   <td className="p-1.5 text-right font-mono text-green-400">{formatCurrency(inv.amount_paid)}</td>
                   <td className="p-1.5 text-right font-mono text-amber-400">{formatCurrency(inv.balance_due)}</td>
-                  <td className="p-1.5 text-rmpg-400">{inv.due_date?.substring(0, 10) || '—'}</td>
+                  <td className="p-1.5 text-rmpg-400">{fmtShortDate(inv.due_date)}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>
@@ -350,45 +393,45 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const renderCreateView = () => (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 mb-3">
-        <button onClick={() => setView('list')} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
+        <button type="button" onClick={() => setView('list')} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
         <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Create New Invoice</span>
       </div>
 
-      <div className="bg-surface-raised border border-rmpg-700 rounded p-3 space-y-3">
+      <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 space-y-3">
         <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Billing Period</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Period Start</label>
-            <input
+            <label htmlFor="ff-admininvoicetab-0" className="block text-[10px] uppercase text-rmpg-500 mb-1">Period Start</label>
+            <input id="ff-admininvoicetab-0"
               type="date"
-              className="input-dark w-full text-xs"
+              className="input-dark w-full text-xs min-h-[36px]"
               value={createForm.period_start}
               onChange={e => setCreateForm(f => ({ ...f, period_start: e.target.value }))}
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Period End</label>
-            <input
+            <label htmlFor="ff-admininvoicetab-1" className="block text-[10px] uppercase text-rmpg-500 mb-1">Period End</label>
+            <input id="ff-admininvoicetab-1"
               type="date"
-              className="input-dark w-full text-xs"
+              className="input-dark w-full text-xs min-h-[36px]"
               value={createForm.period_end}
               onChange={e => setCreateForm(f => ({ ...f, period_end: e.target.value }))}
             />
           </div>
         </div>
         <div>
-          <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Issue Date</label>
-          <input
+          <label htmlFor="ff-admininvoicetab-2" className="block text-[10px] uppercase text-rmpg-500 mb-1">Issue Date</label>
+          <input id="ff-admininvoicetab-2"
             type="date"
-            className="input-dark w-full text-xs"
+            className="input-dark w-full text-xs min-h-[36px]"
             value={createForm.issue_date}
             onChange={e => setCreateForm(f => ({ ...f, issue_date: e.target.value }))}
           />
         </div>
         <div>
           <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Notes</label>
-          <textarea
-            className="input-dark w-full text-xs"
+          <RichTextArea
+            className="input-dark w-full text-xs min-h-[36px]"
             rows={2}
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
@@ -396,13 +439,13 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           />
         </div>
         <div className="pt-2 border-t border-rmpg-700 flex justify-end gap-2">
-          <button onClick={() => setView('list')} className="toolbar-btn text-rmpg-400">Cancel</button>
-          <button
+          <button type="button" onClick={() => setView('list')} className="toolbar-btn text-rmpg-400">Cancel</button>
+          <button type="button"
             onClick={handleCreate}
             disabled={saving || !createForm.period_start || !createForm.period_end}
             className="toolbar-btn text-brand-400 hover:text-brand-300 disabled:opacity-50"
           >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3.5 h-3.5" />}
             <span className="text-[10px]">Create & Auto-Generate</span>
           </button>
         </div>
@@ -412,7 +455,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
   // ─── Detail View ──────────────────────────────────
   const renderDetailView = () => {
-    if (!selectedInvoice) return <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" /></div>;
+    if (!selectedInvoice) return <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" role="status" aria-label="Loading" /></div>;
     const inv = selectedInvoice;
 
     return (
@@ -420,37 +463,37 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <button onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
             <span className="font-mono text-brand-400 font-bold text-sm">{inv.invoice_number}</span>
-            <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
+            <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
               {toDisplayLabel(inv.status)}
             </span>
           </div>
           <div className="flex gap-1">
             {inv.status === 'draft' && (
               <>
-                <button onClick={handleRegenerate} className="toolbar-btn text-amber-400" title="Re-generate line items" disabled={saving}>
+                <button type="button" onClick={handleRegenerate} className="toolbar-btn text-amber-400" title="Re-generate line items" disabled={saving}>
                   <RefreshCw className="w-3.5 h-3.5" /> <span className="text-[10px]">Regenerate</span>
                 </button>
-                <button onClick={() => handleStatusChange('sent')} className="toolbar-btn text-blue-400" disabled={saving}>
+                <button type="button" onClick={() => handleStatusChange('sent')} className="toolbar-btn text-rmpg-400" disabled={saving}>
                   <Send className="w-3.5 h-3.5" /> <span className="text-[10px]">Send</span>
                 </button>
-                <button onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
+                <button type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
                   <XCircle className="w-3.5 h-3.5" /> <span className="text-[10px]">Void</span>
                 </button>
               </>
             )}
             {(inv.status === 'sent' || inv.status === 'partial' || inv.status === 'overdue') && (
               <>
-                <button onClick={() => setShowPayment(true)} className="toolbar-btn text-green-400" disabled={saving}>
+                <button type="button" onClick={() => setShowPayment(true)} className="toolbar-btn text-green-400" disabled={saving}>
                   <CreditCard className="w-3.5 h-3.5" /> <span className="text-[10px]">Record Payment</span>
                 </button>
                 {inv.status !== 'partial' && (
-                  <button onClick={() => handleStatusChange('paid')} className="toolbar-btn text-green-400" disabled={saving}>
+                  <button type="button" onClick={() => handleStatusChange('paid')} className="toolbar-btn text-green-400" disabled={saving}>
                     <CheckCircle className="w-3.5 h-3.5" /> <span className="text-[10px]">Mark Paid</span>
                   </button>
                 )}
-                <button onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
+                <button type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
                   <XCircle className="w-3.5 h-3.5" />
                 </button>
               </>
@@ -459,15 +502,15 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
 
         {/* Invoice Info */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[10px]">
             <div>
               <span className="text-rmpg-500 uppercase block">Client</span>
-              <span className="text-white font-bold">{inv.client_name || clientName}</span>
+              <span className="text-rmpg-100 font-bold">{inv.client_name || clientName}</span>
             </div>
             <div>
               <span className="text-rmpg-500 uppercase block">Period</span>
-              <span className="text-rmpg-300">{inv.period_start?.substring(0, 10)} – {inv.period_end?.substring(0, 10)}</span>
+              <span className="text-rmpg-300">{fmtShortDate(inv.period_start)} – {fmtShortDate(inv.period_end)}</span>
             </div>
             <div>
               <span className="text-rmpg-500 uppercase block">Payment Terms</span>
@@ -475,12 +518,12 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             </div>
             <div>
               <span className="text-rmpg-500 uppercase block">Issue Date</span>
-              <span className="text-rmpg-300">{inv.issue_date?.substring(0, 10) || '—'}</span>
+              <span className="text-rmpg-300">{fmtShortDate(inv.issue_date)}</span>
             </div>
             <div>
               <span className="text-rmpg-500 uppercase block">Due Date</span>
               <span className={`${inv.status === 'overdue' ? 'text-red-400 font-bold' : 'text-rmpg-300'}`}>
-                {inv.due_date?.substring(0, 10) || '—'}
+                {fmtShortDate(inv.due_date)}
               </span>
             </div>
             <div>
@@ -491,22 +534,22 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
 
         {/* Line Items */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Line Items</span>
             {inv.status === 'draft' && (
-              <button onClick={() => setShowAddItem(!showAddItem)} className="toolbar-btn text-brand-400">
+              <button type="button" onClick={() => setShowAddItem(!showAddItem)} className="toolbar-btn text-brand-400">
                 <Plus className="w-3 h-3" /> <span className="text-[10px]">Add Item</span>
               </button>
             )}
           </div>
 
           {showAddItem && inv.status === 'draft' && (
-            <div className="bg-surface-base border border-rmpg-700 rounded p-2 mb-2">
+            <div className="bg-surface-base border border-rmpg-700 rounded-sm p-2 mb-2">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
                 <div>
-                  <label className="text-rmpg-500 uppercase block mb-0.5">Type</label>
-                  <select className="select-dark w-full text-[10px]" value={itemForm.line_type} onChange={e => setItemForm(f => ({ ...f, line_type: e.target.value }))}>
+                  <label htmlFor="ff-admininvoicetab-3" className="text-rmpg-500 uppercase block mb-0.5">Type</label>
+                  <select id="ff-admininvoicetab-3" className="select-dark w-full text-[10px] min-h-[36px]" value={itemForm.line_type} onChange={e => setItemForm(f => ({ ...f, line_type: e.target.value }))}>
                     <option value="custom">Custom</option>
                     <option value="contract_base">Contract Base</option>
                     <option value="service_hours">Service Hours</option>
@@ -518,28 +561,28 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </select>
                 </div>
                 <div className="col-span-3">
-                  <label className="text-rmpg-500 uppercase block mb-0.5">Description</label>
-                  <input className="input-dark w-full text-[10px]" value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Description..." />
+                  <label htmlFor="ff-admininvoicetab-4" className="text-rmpg-500 uppercase block mb-0.5">Description</label>
+                  <input id="ff-admininvoicetab-4" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Description..." />
                 </div>
                 <div>
-                  <label className="text-rmpg-500 uppercase block mb-0.5">Qty</label>
-                  <input type="number" className="input-dark w-full text-[10px]" value={itemForm.quantity} onChange={e => setItemForm(f => ({ ...f, quantity: e.target.value }))} />
+                  <label htmlFor="ff-admininvoicetab-5" className="text-rmpg-500 uppercase block mb-0.5">Qty</label>
+                  <input id="ff-admininvoicetab-5" type="number" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.quantity} onChange={e => setItemForm(f => ({ ...f, quantity: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-rmpg-500 uppercase block mb-0.5">Unit Price</label>
-                  <input type="number" step="0.01" className="input-dark w-full text-[10px]" value={itemForm.unit_price} onChange={e => setItemForm(f => ({ ...f, unit_price: e.target.value }))} />
+                  <label htmlFor="ff-admininvoicetab-6" className="text-rmpg-500 uppercase block mb-0.5">Unit Price</label>
+                  <input id="ff-admininvoicetab-6" type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.unit_price} onChange={e => setItemForm(f => ({ ...f, unit_price: e.target.value }))} />
                 </div>
                 <div className="col-span-2 flex items-end gap-1">
-                  <button onClick={handleAddLineItem} disabled={saving || !itemForm.description} className="toolbar-btn text-green-400 disabled:opacity-50">
-                    {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />} Add
+                  <button type="button" onClick={handleAddLineItem} disabled={saving || !itemForm.description} className="toolbar-btn text-green-400 disabled:opacity-50">
+                    {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <CheckCircle className="w-3 h-3" />} Add
                   </button>
-                  <button onClick={() => setShowAddItem(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
+                  <button type="button" onClick={() => setShowAddItem(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
                 </div>
               </div>
             </div>
           )}
 
-          <table className="w-full text-[10px]">
+          <div className="overflow-x-auto"><table className="w-full text-[10px]">
             <thead>
               <tr className="text-rmpg-500 uppercase tracking-wider border-b border-rmpg-700">
                 <th className="text-left p-1 w-4"></th>
@@ -551,18 +594,18 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               </tr>
             </thead>
             <tbody>
-              {(inv.line_items || []).map(item => (
+              {asArray<InvoiceLineItem>(inv.line_items).map(item => (
                 <tr key={item.id} className="border-b border-rmpg-700/30 hover:bg-rmpg-700/10">
                   <td className="p-1">{TYPE_ICON[item.line_type] || <FileText className="w-3 h-3 text-rmpg-500" />}</td>
                   <td className="p-1 text-rmpg-300">{item.description}</td>
                   <td className="p-1 text-right text-rmpg-400 font-mono">{item.quantity}</td>
                   <td className="p-1 text-right text-rmpg-400 font-mono">{formatCurrency(item.unit_price)}</td>
-                  <td className={`p-1 text-right font-mono font-bold ${item.amount < 0 ? 'text-green-400' : 'text-white'}`}>
+                  <td className={`p-1 text-right font-mono font-bold ${item.amount < 0 ? 'text-green-400' : 'text-rmpg-100'}`}>
                     {formatCurrency(item.amount)}
                   </td>
                   {inv.status === 'draft' && (
                     <td className="p-1 text-center">
-                      <button onClick={() => handleDeleteLineItem(item.id)} className="text-rmpg-600 hover:text-red-400 transition-colors">
+                      <button type="button" onClick={() => handleDeleteLineItem(item.id)} className="text-rmpg-600 hover:text-red-400 transition-colors">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </td>
@@ -570,16 +613,16 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 </tr>
               ))}
               {(!inv.line_items || inv.line_items.length === 0) && (
-                <tr><td colSpan={6} className="text-center p-3 text-rmpg-500">No line items</td></tr>
+                <tr><td colSpan={inv.status === 'draft' ? 6 : 5} className="text-center p-3 text-rmpg-500">No line items</td></tr>
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
 
         {/* Totals */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <div className="flex flex-col items-end gap-1 text-[10px]">
-            <div className="flex gap-8"><span className="text-rmpg-400 uppercase w-32 text-right">Subtotal:</span><span className="text-white font-mono w-24 text-right">{formatCurrency(inv.subtotal)}</span></div>
+            <div className="flex gap-8"><span className="text-rmpg-400 uppercase w-32 text-right">Subtotal:</span><span className="text-rmpg-100 font-mono w-24 text-right">{formatCurrency(inv.subtotal)}</span></div>
             {inv.discount_amount > 0 && (
               <div className="flex gap-8"><span className="text-green-400 uppercase w-32 text-right">Discount:</span><span className="text-green-400 font-mono w-24 text-right">-{formatCurrency(inv.discount_amount)}</span></div>
             )}
@@ -587,8 +630,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               <div className="flex gap-8"><span className="text-red-400 uppercase w-32 text-right">Late Fee:</span><span className="text-red-400 font-mono w-24 text-right">{formatCurrency(inv.late_fee_amount)}</span></div>
             )}
             <div className="flex gap-8 pt-1 border-t border-rmpg-700 font-bold">
-              <span className="text-white uppercase w-32 text-right">Total:</span>
-              <span className="text-white font-mono w-24 text-right">{formatCurrency(inv.total)}</span>
+              <span className="text-rmpg-100 uppercase w-32 text-right">Total:</span>
+              <span className="text-rmpg-100 font-mono w-24 text-right">{formatCurrency(inv.total)}</span>
             </div>
             {inv.amount_paid > 0 && (
               <div className="flex gap-8"><span className="text-green-400 uppercase w-32 text-right">Paid:</span><span className="text-green-400 font-mono w-24 text-right">-{formatCurrency(inv.amount_paid)}</span></div>
@@ -602,20 +645,20 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
         {/* Payment Recording Form */}
         {showPayment && (
-          <div className="bg-surface-raised border border-green-700/50 rounded p-3 mb-3">
+          <div className="bg-surface-raised border border-green-700/50 rounded-sm p-3 mb-3">
             <div className="text-[10px] uppercase tracking-wider text-green-400 font-bold mb-2">Record Payment</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
               <div>
-                <label className="text-rmpg-500 uppercase block mb-0.5">Amount</label>
-                <input type="number" step="0.01" className="input-dark w-full text-[10px]" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+                <label htmlFor="ff-admininvoicetab-7" className="text-rmpg-500 uppercase block mb-0.5">Amount</label>
+                <input id="ff-admininvoicetab-7" type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
               </div>
               <div>
-                <label className="text-rmpg-500 uppercase block mb-0.5">Date</label>
-                <input type="date" className="input-dark w-full text-[10px]" value={payForm.payment_date} onChange={e => setPayForm(f => ({ ...f, payment_date: e.target.value }))} />
+                <label htmlFor="ff-admininvoicetab-8" className="text-rmpg-500 uppercase block mb-0.5">Date</label>
+                <input id="ff-admininvoicetab-8" type="date" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_date} onChange={e => setPayForm(f => ({ ...f, payment_date: e.target.value }))} />
               </div>
               <div>
-                <label className="text-rmpg-500 uppercase block mb-0.5">Method</label>
-                <select className="select-dark w-full text-[10px]" value={payForm.payment_method} onChange={e => setPayForm(f => ({ ...f, payment_method: e.target.value }))}>
+                <label htmlFor="ff-admininvoicetab-9" className="text-rmpg-500 uppercase block mb-0.5">Method</label>
+                <select id="ff-admininvoicetab-9" className="select-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_method} onChange={e => setPayForm(f => ({ ...f, payment_method: e.target.value }))}>
                   <option value="check">Check</option>
                   <option value="ach">ACH</option>
                   <option value="wire">Wire</option>
@@ -625,28 +668,28 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 </select>
               </div>
               <div>
-                <label className="text-rmpg-500 uppercase block mb-0.5">Reference #</label>
-                <input className="input-dark w-full text-[10px]" value={payForm.reference_number} onChange={e => setPayForm(f => ({ ...f, reference_number: e.target.value }))} placeholder="Check #, etc." />
+                <label htmlFor="ff-admininvoicetab-10" className="text-rmpg-500 uppercase block mb-0.5">Reference #</label>
+                <input id="ff-admininvoicetab-10" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.reference_number} onChange={e => setPayForm(f => ({ ...f, reference_number: e.target.value }))} placeholder="Check #, etc." />
               </div>
               <div className="col-span-2">
-                <label className="text-rmpg-500 uppercase block mb-0.5">Notes</label>
-                <input className="input-dark w-full text-[10px]" value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />
+                <label htmlFor="ff-admininvoicetab-11" className="text-rmpg-500 uppercase block mb-0.5">Notes</label>
+                <input id="ff-admininvoicetab-11" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />
               </div>
             </div>
             <div className="flex justify-end gap-1 mt-2">
-              <button onClick={() => setShowPayment(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
-              <button onClick={handleRecordPayment} disabled={saving || !payForm.amount} className="toolbar-btn text-green-400 disabled:opacity-50">
-                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />} Record Payment
+              <button type="button" onClick={() => setShowPayment(false)} className="toolbar-btn text-rmpg-500"><XCircle className="w-3 h-3" /> Cancel</button>
+              <button type="button" onClick={handleRecordPayment} disabled={saving || !payForm.amount} className="toolbar-btn text-green-400 disabled:opacity-50">
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <DollarSign className="w-3 h-3" />} Record Payment
               </button>
             </div>
           </div>
         )}
 
         {/* Payments Table */}
-        {(inv.payments || []).length > 0 && (
-          <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+        {asArray<Payment>(inv.payments).length > 0 && (
+          <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
             <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 block">Payments</span>
-            <table className="w-full text-[10px]">
+            <div className="overflow-x-auto"><table className="w-full text-[10px]">
               <thead>
                 <tr className="text-rmpg-500 uppercase tracking-wider border-b border-rmpg-700">
                   <th className="text-left p-1 font-bold">Date</th>
@@ -658,28 +701,28 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 </tr>
               </thead>
               <tbody>
-                {inv.payments.map(pay => (
+                {asArray<Payment>(inv.payments).map(pay => (
                   <tr key={pay.id} className="border-b border-rmpg-700/30">
-                    <td className="p-1 text-rmpg-300">{pay.payment_date?.substring(0, 10)}</td>
+                    <td className="p-1 text-rmpg-300">{fmtShortDate(pay.payment_date)}</td>
                     <td className="p-1 text-right text-green-400 font-mono font-bold">{formatCurrency(pay.amount)}</td>
                     <td className="p-1 text-rmpg-400 uppercase">{pay.payment_method || '—'}</td>
                     <td className="p-1 text-rmpg-400">{pay.reference_number || '—'}</td>
                     <td className="p-1 text-rmpg-400">{pay.recorded_by_name || '—'}</td>
                     <td className="p-1">
-                      <button onClick={() => handleDeletePayment(pay.id)} className="text-rmpg-600 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                      <button type="button" onClick={() => handleDeletePayment(pay.id)} className="text-rmpg-600 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
 
         {/* Internal Notes */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
+        <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 block">Internal Notes</span>
-          <textarea
-            className="input-dark w-full text-xs"
+          <RichTextArea
+            className="input-dark w-full text-xs min-h-[36px]"
             rows={3}
             defaultValue={inv.internal_notes || ''}
             onBlur={e => handleSaveNotes(e.target.value)}
@@ -689,7 +732,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
         {/* PDF / Print / Preview Actions */}
         <div className="flex gap-2 mb-3">
-          <button
+          <button type="button"
             onClick={async () => {
               try {
                 setError(null);
@@ -709,7 +752,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           >
             <Eye className="w-3.5 h-3.5" /> <span className="text-[10px]">Preview</span>
           </button>
-          <button
+          <button type="button"
             onClick={async () => {
               try {
                 setError(null);
@@ -727,7 +770,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           >
             <Download className="w-3.5 h-3.5" /> <span className="text-[10px]">Download PDF</span>
           </button>
-          <button
+          <button type="button"
             onClick={async () => {
               try {
                 setError(null);
@@ -737,15 +780,20 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 const html = generatePrintableInvoiceHtml(res.data.invoice);
                 const win = window.open('', '_blank');
                 if (win) {
-                  win.document.write(html);
-                  win.document.close();
-                  setTimeout(() => win.print(), 500);
+                  // Safe print: use Blob URL instead of direct DOM write to prevent XSS
+                  const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+                  const blobUrl = URL.createObjectURL(blob);
+                  win.location.href = blobUrl;
+                  win.addEventListener('load', () => {
+                    URL.revokeObjectURL(blobUrl);
+                    setTimeout(() => win.print(), 300);
+                  });
                 } else {
                   setError('Pop-up blocked — please allow pop-ups for this site');
                 }
               } catch (e: any) {
                 console.error('Invoice print error:', e);
-                setError(e.message || 'Print failed');
+                setError(e?.message || 'Print failed');
               }
             }}
             className="toolbar-btn text-rmpg-300"
@@ -758,13 +806,16 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   };
 
   // ─── Main Render ──────────────────────────────────
+  // Set document title
+  useEffect(() => { document.title = 'Admin - Invoice \u2014 RMPG Flex'; }, []);
+
   return (
     <div className="flex flex-col h-full p-3 overflow-auto">
       {error && (
-        <div className="flex items-center gap-2 bg-red-900/30 border border-red-700/50 text-red-300 text-[10px] px-3 py-2 rounded mb-2">
+        <div className="flex items-center gap-2 bg-red-900/30 border border-red-700/50 text-red-300 text-[10px] px-3 py-2 rounded-sm mb-2">
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-auto"><XCircle className="w-3 h-3" /></button>
+          <button type="button" onClick={() => setError(null)} className="ml-auto"><XCircle className="w-3 h-3" /></button>
         </div>
       )}
       {view === 'list' && renderListView()}

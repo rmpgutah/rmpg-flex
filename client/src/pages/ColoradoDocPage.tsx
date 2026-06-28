@@ -1,0 +1,622 @@
+// ============================================================
+// RMPG Flex — Colorado DOC Offender Search
+// ============================================================
+// Search the Colorado Department of Corrections offender
+// database by name or DOC number. Results are cached locally
+// for 24 hours after initial lookup.
+// ============================================================
+
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Search, Loader2, X, User, Building2, Calendar, Hash,
+  AlertCircle, ChevronRight, Shield, FileText, Link2, Plus, UserCheck,
+} from 'lucide-react';
+import PanelTitleBar from '../components/PanelTitleBar';
+import { toDisplayLabel } from '../utils/formatters';
+import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
+
+// ── Types ────────────────────────────────────────────────────
+
+interface CdocOffender {
+  doc_number: string;
+  first_name: string;
+  last_name: string;
+  middle_name: string | null;
+  dob: string | null;
+  gender: string | null;
+  race: string | null;
+  facility: string | null;
+  status: string | null;
+  parole_eligibility: string | null;
+  release_date: string | null;
+  photo_url: string | null;
+  offenses: string | null;
+  source: string;
+  fetched_at: string;
+}
+
+// Role gate — admin/manager/supervisor may create local person records
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
+// ── Status badge colors ──────────────────────────────────────
+
+function statusClass(status: string | null): string {
+  if (!status) return 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/40';
+  const s = status.toLowerCase();
+  if (s.includes('incarcerat') || s.includes('prison') || s.includes('confined'))
+    return 'bg-red-900/60 text-red-300 border-red-600/50';
+  if (s.includes('parole') || s.includes('community'))
+    return 'bg-amber-900/50 text-amber-400 border-amber-700/50';
+  if (s.includes('discharged') || s.includes('released') || s.includes('completed'))
+    return 'bg-green-900/50 text-green-400 border-green-700/50';
+  if (s.includes('escape') || s.includes('abscond'))
+    return 'bg-rose-900/60 text-rose-300 border-rose-600/50';
+  return 'bg-surface-sunken/50 text-rmpg-400 border-border-default/50';
+}
+
+// ── Main Component ───────────────────────────────────────────
+
+export default function ColoradoDocPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Role gate
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  // Search state
+  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [docNumber, setDocNumber] = useState('');
+  const [searchMode, setSearchMode] = useState<'name' | 'doc'>('name');
+
+  // Results
+  const [results, setResults] = useState<CdocOffender[]>([]);
+  const [selected, setSelected] = useState<CdocOffender | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [searched, setSearched] = useState(false);
+
+  // Local person matching
+  const [localMatch, setLocalMatch] = useState<{ id: number; full_name: string; dob?: string } | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
+
+  // When an offender is selected, check for local person match
+  useEffect(() => {
+    if (!selected) { setLocalMatch(null); return; }
+    setMatchLoading(true);
+    setLocalMatch(null);
+    const params = new URLSearchParams({ last_name: selected.last_name });
+    if (selected.first_name) params.set('first_name', selected.first_name);
+    apiFetch<any[]>(`/records/persons?${params}&limit=5`)
+      .then(persons => {
+        const match = (persons || []).find((p: any) => {
+          const nameMatch = p.last_name?.toLowerCase() === selected.last_name.toLowerCase()
+            && p.first_name?.toLowerCase() === selected.first_name.toLowerCase();
+          if (!nameMatch) return false;
+          if (selected.dob && p.dob) return p.dob === selected.dob;
+          return true;
+        });
+        setLocalMatch(match ? { id: match.id, full_name: match.full_name || `${match.first_name} ${match.last_name}`, dob: match.dob } : null);
+      })
+      .catch(() => setLocalMatch(null))
+      .finally(() => setMatchLoading(false));
+  }, [selected]);
+
+  // ── Deep-link: ?doc_number=<id> auto-runs a DOC lookup ──────────────────────────────
+  const docDeepLinkRef = useRef(false);
+  const docNumberParam = searchParams.get('doc_number');
+  useEffect(() => {
+    if (docDeepLinkRef.current || !docNumberParam) return;
+    docDeepLinkRef.current = true;
+    const num = docNumberParam.trim();
+    if (!num) {
+      addToast('No DOC number specified in link.', 'warning');
+    } else {
+      setSearchMode('doc');
+      setDocNumber(num);
+      setLoading(true);
+      setError('');
+      setSearched(true);
+      setResults([]);
+      apiFetch<CdocOffender>(`/colorado-doc/offender/${encodeURIComponent(num)}`)
+        .then(offender => {
+          setResults([offender]);
+          setSelected(offender);
+        })
+        .catch((err: any) => {
+          if (err.message?.includes('404') || err.message?.includes('not found')) {
+            addToast(`DOC #${num} not found.`, 'warning');
+          } else {
+            addToast(err.message || 'DOC lookup failed.', 'error');
+          }
+        })
+        .finally(() => setLoading(false));
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('doc_number');
+    setSearchParams(next, { replace: true });
+  }, [docNumberParam, searchParams, setSearchParams, addToast]);
+
+  // ── Search by name ───────────────────────────────────────
+  const searchByName = useCallback(async () => {
+    if (!lastName.trim() || lastName.trim().length < 2) {
+      setError('Last name is required (minimum 2 characters)');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setSearched(true);
+    setSelected(null);
+    try {
+      const params = new URLSearchParams({ lastName: lastName.trim() });
+      if (firstName.trim()) params.set('firstName', firstName.trim());
+      const resp = await apiFetch<{ data: CdocOffender[]; total: number }>(
+        `/colorado-doc/search?${params.toString()}`
+      );
+      setResults(resp.data || []);
+    } catch (err: any) {
+      setError(err.message || 'Search failed');
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [lastName, firstName]);
+
+  // ── Search by DOC number ─────────────────────────────────
+  const searchByDoc = useCallback(async () => {
+    if (!docNumber.trim()) {
+      setError('DOC number is required');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setSearched(true);
+    setResults([]);
+    try {
+      const offender = await apiFetch<CdocOffender>(
+        `/colorado-doc/offender/${encodeURIComponent(docNumber.trim())}`
+      );
+      setResults([offender]);
+      setSelected(offender);
+    } catch (err: any) {
+      if (err.message?.includes('404') || err.message?.includes('not found')) {
+        setError('No offender found with that DOC number');
+      } else {
+        setError(err.message || 'Lookup failed');
+      }
+      setResults([]);
+      setSelected(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [docNumber]);
+
+  // ── Submit handler ───────────────────────────────────────
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchMode === 'name') searchByName();
+    else searchByDoc();
+  };
+
+  // ── Clear ────────────────────────────────────────────────
+  const clearSearch = () => {
+    setLastName('');
+    setFirstName('');
+    setDocNumber('');
+    setResults([]);
+    setSelected(null);
+    setError('');
+    setSearched(false);
+  };
+
+  // ── Parse offenses JSON ──────────────────────────────────
+  const parseOffenses = (offenses: string | null): string[] => {
+    if (!offenses) return [];
+    try {
+      const parsed = JSON.parse(offenses);
+      if (Array.isArray(parsed)) {
+        return parsed.map((o: any) =>
+          typeof o === 'string' ? o : (o.description || o.offense || o.charge || JSON.stringify(o))
+        );
+      }
+      return [];
+    } catch {
+      return [offenses];
+    }
+  };
+
+  // Set document title
+  useEffect(() => { document.title = 'Colorado DOC — RMPG Flex'; }, []);
+
+  // ── N shortcut → focus the last-name input (name mode) or DOC input ─────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      const tag = t.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (t.isContentEditable) return;
+      e.preventDefault();
+      document.getElementById('cdoc-search-primary')?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // ── Esc cascade: close detail panel → clear search results ──────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (selected) {
+        e.stopPropagation();
+        setSelected(null);
+        return;
+      }
+      if (searched) {
+        e.stopPropagation();
+        clearSearch();
+        return;
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selected, searched]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="app-grid-bg h-full flex flex-col overflow-hidden">
+      {/* ── Header ──────────────────────────────────────────── */}
+      <PanelTitleBar
+        title="Colorado DOC Offender Search"
+        icon={Shield}
+        statusLed={loading ? 'amber' : results.length > 0 ? 'green' : 'off'}
+        ledPulse={loading}
+      >
+        <span className="text-[9px] uppercase tracking-wider text-rmpg-500 mr-2">
+          Colorado Department of Corrections
+        </span>
+      </PanelTitleBar>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* ── Left: Search + Results ──────────────────────── */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Search Form */}
+          <form onSubmit={handleSearch} className="card-glass m-2 p-3 space-y-2">
+            {/* Mode Toggle */}
+            <div className="flex items-center gap-1 mb-1">
+              <button
+                type="button"
+                onClick={() => setSearchMode('name')}
+                className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
+                  searchMode === 'name'
+                    ? 'bg-rmpg-400/30 text-rmpg-300 border border-rmpg-400/50'
+                    : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
+                }`}
+              >
+                Name Search
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchMode('doc')}
+                className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${
+                  searchMode === 'doc'
+                    ? 'bg-rmpg-400/30 text-rmpg-300 border border-rmpg-400/50'
+                    : 'text-rmpg-500 hover:text-rmpg-300 border border-transparent'
+                }`}
+              >
+                DOC Number
+              </button>
+            </div>
+
+            {searchMode === 'name' ? (
+              <div className="flex gap-2">
+                <input
+                  id="cdoc-search-primary"
+                  type="text"
+                  placeholder="Last Name *"
+                  value={lastName}
+                  onChange={e => setLastName(e.target.value)}
+                  className="flex-1 bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-rmpg-400 focus:outline-none"
+                  autoFocus
+                />
+                <input id="ff-coloradodocpage-1"
+                  type="text"
+                  placeholder="First Name"
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  className="flex-1 bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-rmpg-400 focus:outline-none"
+                />
+              </div>
+            ) : (
+              <input
+                id="cdoc-search-primary"
+                type="text"
+                placeholder="DOC Number (e.g. 123456)"
+                value={docNumber}
+                onChange={e => setDocNumber(e.target.value)}
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:border-rmpg-400 focus:outline-none font-mono"
+                autoFocus
+              />
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rmpg-400/20 border border-rmpg-400/40 text-rmpg-300 text-[10px] uppercase tracking-wider font-bold rounded-sm hover:bg-rmpg-400/30 transition-colors disabled:opacity-40"
+              >
+                {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                Search
+              </button>
+              {searched && (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-rmpg-500 text-[10px] uppercase tracking-wider hover:text-rmpg-300 transition-colors"
+                >
+                  <X size={12} />
+                  Clear
+                </button>
+              )}
+            </div>
+          </form>
+
+          {/* Honest source notice — live CDOC search is CAPTCHA-gated */}
+          <div className="mx-2 px-3 py-2 bg-amber-900/15 border border-amber-700/30 rounded-sm text-[10px] leading-snug text-amber-300/90">
+            Live Colorado DOC search is CAPTCHA-protected and can't be queried automatically. Results come from RMPG's local cache; use the{' '}
+            <a href="https://www.doc.state.co.us/oss/" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-200">official CDOC portal</a>{' '}for a live lookup.
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="mx-2 px-3 py-2 bg-red-900/20 border border-red-700/30 rounded-sm flex items-center gap-2 text-red-400 text-xs">
+              <AlertCircle size={14} />
+              {error}
+            </div>
+          )}
+
+          {/* Results Table */}
+          <div className="flex-1 overflow-auto mx-2 mb-2">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center h-full text-rmpg-600">
+                <Loader2 size={28} className="animate-spin mb-2 opacity-40" />
+                <p className="text-xs">Searching…</p>
+              </div>
+            ) : results.length > 0 ? (
+              <div className="overflow-x-auto"><table className="w-full text-xs">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-surface-base border-b border-rmpg-700">
+                    <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">DOC #</th>
+                    <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">Name</th>
+                    <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">DOB</th>
+                    <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">Status</th>
+                    <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">Facility</th>
+                    <th className="text-left px-2.5 py-1.5 text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">Gender</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.map((r) => (
+                    <tr
+                      key={r.doc_number}
+                      onClick={() => setSelected(r)}
+                      className={`cursor-pointer border-b border-rmpg-700/50 transition-colors ${
+                        selected?.doc_number === r.doc_number
+                          ? 'bg-rmpg-400/15 text-rmpg-100'
+                          : 'hover:bg-surface-raised text-rmpg-300'
+                      }`}
+                    >
+                      <td className="px-2.5 py-1.5 font-mono text-rmpg-400">{r.doc_number}</td>
+                      <td className="px-2.5 py-1.5 font-medium">
+                        {r.last_name}, {r.first_name}
+                        {r.middle_name ? ` ${r.middle_name}` : ''}
+                      </td>
+                      <td className="px-2.5 py-1.5 text-rmpg-400">{r.dob || '--'}</td>
+                      <td className="px-2.5 py-1.5">
+                        {r.status ? (
+                          <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[9px] uppercase tracking-wider font-bold border ${statusClass(r.status)}`}>
+                            {toDisplayLabel(r.status)}
+                          </span>
+                        ) : (
+                          <span className="text-rmpg-600">--</span>
+                        )}
+                      </td>
+                      <td className="px-2.5 py-1.5 text-rmpg-400">{r.facility || '--'}</td>
+                      <td className="px-2.5 py-1.5 text-rmpg-400">{r.gender || '--'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            ) : searched && !error ? (
+              <div className="flex flex-col items-center justify-center h-full text-rmpg-600">
+                <Search size={32} className="mb-2 opacity-30" />
+                <p className="text-xs">No results found</p>
+                <p className="text-[10px] mt-1 text-rmpg-700">Try a different name or DOC number</p>
+              </div>
+            ) : !searched ? (
+              <div className="flex flex-col items-center justify-center h-full text-rmpg-600">
+                <Shield size={32} className="mb-2 opacity-20" />
+                <p className="text-xs">Enter a name or DOC number to search</p>
+                <p className="text-[10px] mt-1 text-rmpg-700">Colorado Department of Corrections public records</p>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Footer */}
+          {results.length > 0 && !loading && (
+            <div className="mx-2 mb-2 px-2.5 py-1 bg-surface-base border border-rmpg-700 rounded-sm flex items-center justify-between text-[9px] text-rmpg-500">
+              <span>{results.length} result{results.length !== 1 ? 's' : ''}</span>
+              {results[0]?.source && (
+                <span className="uppercase tracking-wider">
+                  Source: {results[0].source === 'cache' ? 'Local Cache' : 'CDOC API'}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Right: Detail Panel ──────────────────────────── */}
+        {selected && (
+          <div className="w-[380px] border-l border-rmpg-700 bg-surface-base overflow-y-auto flex-shrink-0">
+            <div className="p-3 border-b border-rmpg-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <User size={14} className="text-rmpg-400" />
+                <span className="text-xs font-bold text-rmpg-100">Offender Detail</span>
+              </div>
+              <button type="button"
+                onClick={() => setSelected(null)}
+                className="text-rmpg-500 hover:text-rmpg-300 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="p-3 space-y-3">
+              {/* Photo */}
+              {selected.photo_url && (
+                <div className="flex justify-center">
+                  <img
+                    src={selected.photo_url}
+                    alt={`${selected.first_name} ${selected.last_name}`}
+                    className="w-24 h-28 object-cover rounded-sm border border-rmpg-700"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
+
+              {/* Name */}
+              <div className="text-center">
+                <h2 className="text-sm font-bold text-rmpg-100">
+                  {selected.last_name}, {selected.first_name}
+                  {selected.middle_name ? ` ${selected.middle_name}` : ''}
+                </h2>
+                <p className="text-[10px] text-rmpg-500 font-mono mt-0.5">
+                  DOC# {selected.doc_number}
+                </p>
+              </div>
+
+              {/* Status Badge */}
+              {selected.status && (
+                <div className="flex justify-center">
+                  <span className={`px-2.5 py-1 rounded-sm text-[10px] uppercase tracking-wider font-bold border ${statusClass(selected.status)}`}>
+                    {toDisplayLabel(selected.status)}
+                  </span>
+                </div>
+              )}
+
+              {/* Detail Fields */}
+              <div className="space-y-1.5">
+                <DetailRow icon={Calendar} label="Date of Birth" value={selected.dob} />
+                <DetailRow icon={User} label="Gender" value={selected.gender} />
+                <DetailRow icon={User} label="Race" value={selected.race} />
+                <DetailRow icon={Building2} label="Facility" value={selected.facility} />
+                <DetailRow icon={Calendar} label="Parole Eligibility" value={selected.parole_eligibility} />
+                <DetailRow icon={Calendar} label="Release Date" value={selected.release_date} />
+                <DetailRow icon={Hash} label="Source" value={selected.source === 'cache' ? 'Local Cache' : 'CDOC API'} />
+                <DetailRow icon={Calendar} label="Last Fetched" value={selected.fetched_at} />
+              </div>
+
+              {/* Offenses */}
+              {selected.offenses && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <FileText size={12} className="text-rmpg-500" />
+                    <span className="text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">Offenses / Charges</span>
+                  </div>
+                  <div className="space-y-1">
+                    {parseOffenses(selected.offenses).map((offense, i) => (
+                      <div
+                        key={i}
+                        className="px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-300 flex items-start gap-1.5"
+                      >
+                        <ChevronRight size={10} className="text-rmpg-600 mt-0.5 flex-shrink-0" />
+                        <span>{offense}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Local Person Match */}
+              <div className="border-t border-rmpg-700 pt-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Link2 size={12} className="text-rmpg-500" />
+                  <span className="text-[9px] uppercase tracking-wider text-rmpg-500 font-bold">Local Records Match</span>
+                </div>
+                {matchLoading ? (
+                  <div className="flex items-center gap-2 text-[10px] text-rmpg-400">
+                    <Loader2 size={12} className="animate-spin" /> Checking local records…
+                  </div>
+                ) : localMatch ? (
+                  <div className="px-2.5 py-2 bg-green-900/20 border border-green-700/40 rounded-sm">
+                    <div className="flex items-center gap-2">
+                      <UserCheck size={14} className="text-green-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] text-green-300 font-bold">Match Found in Local Records</div>
+                        <div className="text-[10px] text-green-400/80 mt-0.5">{localMatch.full_name} (Person #{localMatch.id})</div>
+                      </div>
+                    </div>
+                    <button type="button"
+                      onClick={() => navigate(`/records?person=${localMatch.id}`)}
+                      className="mt-2 w-full text-[10px] py-1.5 bg-green-900/40 text-green-400 border border-green-700/50 hover:bg-green-800/50 transition-colors text-center font-bold uppercase tracking-wider"
+                    >
+                      View Person Record
+                    </button>
+                  </div>
+                ) : (
+                  <div className="px-2.5 py-2 bg-surface-sunken border border-rmpg-700 rounded-sm">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} className="text-rmpg-500 flex-shrink-0" />
+                      <div className="text-[10px] text-rmpg-400">No local match found</div>
+                    </div>
+                    {canManage && (
+                      <button type="button"
+                        onClick={() => navigate(`/records?action=new-person&first_name=${encodeURIComponent(selected.first_name)}&last_name=${encodeURIComponent(selected.last_name)}${selected.dob ? `&dob=${encodeURIComponent(selected.dob)}` : ''}`)}
+                        className="mt-2 w-full text-[10px] py-1.5 bg-brand-900/30 text-brand-400 border border-brand-700/50 hover:bg-brand-800/40 transition-colors text-center font-bold uppercase tracking-wider flex items-center justify-center gap-1"
+                      >
+                        <Plus size={10} /> Create Person Record
+                      </button>
+                    )}
+                    {!canManage && (
+                      <div className="mt-2 text-[10px] text-rmpg-600 italic text-center">
+                        Supervisor or higher required to create person records.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Detail Row Component ───────────────────────────────────
+
+function DetailRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string | null;
+}) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start gap-2 px-2 py-1 bg-surface-sunken/60 border border-rmpg-700/50 rounded-sm">
+      <Icon size={12} className="text-rmpg-600 mt-0.5 flex-shrink-0" />
+      <div className="min-w-0">
+        <div className="text-[8px] uppercase tracking-wider text-rmpg-600 font-bold">{label}</div>
+        <div className="text-[11px] text-rmpg-300 break-words">{value}</div>
+      </div>
+    </div>
+  );
+}

@@ -2,15 +2,15 @@
 // RMPG Flex — Personnel: Deployment Management Tab
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
-import {
-  MapPinned, Plus, AlertTriangle, Users, Calendar, CheckCircle,
-  Loader2,
-} from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { MapPinned, Plus, AlertTriangle, Loader2 } from 'lucide-react';
 import type { Deployment, CoverageGap, DeploymentStatus } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 type StatusFilter = 'all' | DeploymentStatus;
 
@@ -49,7 +49,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const FILTER_BUTTONS: { value: StatusFilter; label: string }[] = [
@@ -60,20 +60,39 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
     { value: 'cancelled', label: 'Cancelled' },
   ];
 
+  // ── Right-click context menu ──────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildDeploymentMenu = (dep: Deployment): ContextMenuItem[] => [
+    m.copy('Copy officer', dep.officer_name),
+    m.copy('Copy property', dep.property_name),
+    ...(dep.client_name ? [m.copy('Copy client', dep.client_name)] : []),
+    m.separator(),
+    m.copyId(dep.id),
+  ];
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
-        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
         <span className="ml-2 text-xs text-rmpg-400">Loading deployments...</span>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <MapPinned className="w-4 h-4 text-brand-400" />
+        <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Deployment</h2>
+        <span className="text-[11px] font-mono text-rmpg-500">({deployments.length})</span>
+      </div>
+
       {/* Coverage Gap Alert */}
       {gapsWithDeficit.length > 0 && (
-        <div className="panel-beveled p-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="panel-beveled p-3 border border-red-700/40 border-l-2 border-l-red-500 bg-red-900/20">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-4 h-4 text-red-400" />
             <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Coverage Gaps Detected</span>
@@ -104,15 +123,15 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
           <p className="text-lg font-bold font-mono text-rmpg-100">{deployments.length}</p>
           <p className="text-[8px] uppercase text-rmpg-400 font-bold tracking-wider">Total Deployments</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a1a0a] border-t-2 border-t-green-500">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-green-500">
           <p className="text-lg font-bold font-mono text-green-400">{activeCount}</p>
           <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Active</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a0f1a] border-t-2 border-t-blue-500">
-          <p className="text-lg font-bold font-mono text-blue-400">{scheduledCount}</p>
-          <p className="text-[8px] uppercase text-blue-400/70 font-bold tracking-wider">Scheduled</p>
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500">
+          <p className="text-lg font-bold font-mono text-rmpg-400">{scheduledCount}</p>
+          <p className="text-[8px] uppercase text-rmpg-400/70 font-bold tracking-wider">Scheduled</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a170a] border-t-2 border-t-amber-500">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-amber-500">
           <p className="text-lg font-bold font-mono text-amber-400">{unassignedCount}</p>
           <p className="text-[8px] uppercase text-amber-400/70 font-bold tracking-wider">Unassigned Officers</p>
         </div>
@@ -122,18 +141,18 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {FILTER_BUTTONS.map((btn) => (
-            <button
+            <button type="button"
               key={btn.value}
               onClick={() => setStatusFilter(btn.value)}
               className={`text-[10px] px-2.5 py-1 ${
-                statusFilter === btn.value ? 'toolbar-btn-primary' : 'toolbar-btn'
+                statusFilter === btn.value ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'
               }`}
             >
               {btn.label}
             </button>
           ))}
         </div>
-        <button onClick={onAddDeployment} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+        <button type="button" onClick={onAddDeployment} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
           <Plus className="w-3 h-3" />
           Add Deployment
         </button>
@@ -165,7 +184,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
             </thead>
             <tbody>
               {filtered.map((dep) => (
-                <tr key={dep.id} className="border-t border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={dep.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors" onContextMenu={(e) => openMenu(e, buildDeploymentMenu(dep))}>
                   <td className="py-1.5 px-2 text-rmpg-100">{dep.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{dep.property_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-400">{dep.client_name || '-'}</td>

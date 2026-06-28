@@ -1,13 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ClipboardCheck, Plus, Calendar, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight, Gauge, Pencil, Trash2,
 } from 'lucide-react';
 import type { FleetInspection, InspectionType, InspectionResult, InspectionItemStatus } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
+import { authedImageUrl } from '../../../hooks/useApi';
+
+// Field-app (iOS) inspections use {item,result,note}; normalize to the
+// desktop shape and surface photo notes as viewable images.
+function normalizeItem(raw: any): { category: string; item: string; status: InspectionItemStatus; notes: string } {
+  return {
+    category: raw.category ?? 'FIELD',
+    item: raw.item ?? raw.label ?? '',
+    status: (raw.status ?? (raw.result === 'fail' ? 'fail' : 'pass')) as InspectionItemStatus,
+    notes: raw.notes ?? raw.note ?? '',
+  };
+}
+const isPhotoNote = (s: string) => s.startsWith('/api/field-photos/file/');
 
 const TYPE_BADGE: Record<InspectionType, { bg: string; text: string; border: string }> = {
-  pre_trip: { bg: 'bg-blue-900/30', text: 'text-blue-400', border: 'border-blue-700/40' },
-  post_trip: { bg: 'bg-cyan-900/30', text: 'text-cyan-400', border: 'border-cyan-700/40' },
+  pre_trip: { bg: 'bg-surface-sunken/30', text: 'text-rmpg-400', border: 'border-border-default/40' },
+  post_trip: { bg: 'bg-surface-sunken/30', text: 'text-rmpg-400', border: 'border-border-default/40' },
   monthly: { bg: 'bg-amber-900/30', text: 'text-amber-400', border: 'border-amber-700/40' },
   annual: { bg: 'bg-green-900/30', text: 'text-green-400', border: 'border-green-700/40' },
 };
@@ -50,30 +63,33 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
   const passRate = inspections.length > 0 ? Math.round((passCount / inspections.length) * 100) : 0;
   const lastInspection = inspections.length > 0 ? inspections[0] : null;
 
+  // Set document title
+  useEffect(() => { document.title = 'Fleet - Inspections \u2014 RMPG Flex'; }, []);
+
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="p-4 space-y-3">
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
-          <ClipboardCheck className="w-3.5 h-3.5 mx-auto text-blue-400 mb-1" />
-          <div className="text-sm font-bold font-mono text-blue-400">{inspections.length}</div>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
+          <ClipboardCheck className="w-3.5 h-3.5 mx-auto text-rmpg-400 mb-1" />
+          <div className="text-sm font-bold font-mono text-rmpg-400">{inspections.length}</div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <CheckCircle className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: passRate >= 80 ? '#22c55e' : passRate >= 50 ? '#f59e0b' : '#ef4444' }} />
           <div className="text-sm font-bold font-mono" style={{ color: passRate >= 80 ? '#22c55e' : passRate >= 50 ? '#f59e0b' : '#ef4444' }}>
             {inspections.length > 0 ? `${passRate}%` : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Pass Rate</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
-          <Calendar className="w-3.5 h-3.5 mx-auto text-cyan-400 mb-1" />
-          <div className="text-[10px] font-bold font-mono text-cyan-400">
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
+          <Calendar className="w-3.5 h-3.5 mx-auto text-rmpg-400 mb-1" />
+          <div className="text-[10px] font-bold font-mono text-rmpg-400">
             {lastInspection ? formatMilitary(lastInspection.inspection_date) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Last Insp.</div>
         </div>
-        <div className="panel-beveled p-2.5 text-center" style={{ background: '#0d1520' }}>
+        <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <span className={lastInspection ? RESULT_LED[lastInspection.overall_result] : 'led-dot led-off'} style={{ width: 10, height: 10, margin: '0 auto 4px' }} />
           <div className={`text-[10px] font-bold ${lastInspection ? RESULT_COLOR[lastInspection.overall_result] : 'text-rmpg-500'}`}>
             {lastInspection ? RESULT_LABEL[lastInspection.overall_result] : '-'}
@@ -92,7 +108,7 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
             </span>
           )}
         </h3>
-        <button className="toolbar-btn toolbar-btn-primary" onClick={onNewInspection}>
+        <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onNewInspection}>
           <Plus className="w-3 h-3" /> New Inspection
         </button>
       </div>
@@ -100,14 +116,14 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
       {/* Inspection List */}
       {inspections.length === 0 ? (
         <div className="text-center py-10 panel-beveled bg-surface-base">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
             <ClipboardCheck className="w-7 h-7 text-rmpg-600" />
           </div>
           <p className="text-[11px] text-rmpg-400 font-semibold">No Inspections Recorded</p>
           <p className="text-[9px] text-rmpg-600 mt-1 max-w-[260px] mx-auto">
             Perform pre-trip, post-trip, monthly, or annual inspections to maintain compliance and track vehicle condition.
           </p>
-          <button className="toolbar-btn toolbar-btn-primary mt-3" onClick={onNewInspection}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary mt-3" onClick={onNewInspection}>
             <Plus className="w-3 h-3" /> Start First Inspection
           </button>
         </div>
@@ -116,8 +132,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
           {inspections.map((insp) => {
             const badge = TYPE_BADGE[insp.inspection_type];
             const isExpanded = expandedId === insp.id;
-            const itemFailCount = insp.items.filter(i => i.status === 'fail').length;
-            const attentionCount = insp.items.filter(i => i.status === 'needs_attention').length;
+            const itemFailCount = (insp.items || []).filter(i => i.status === 'fail').length;
+            const attentionCount = (insp.items || []).filter(i => i.status === 'needs_attention').length;
 
             return (
               <div key={insp.id} className="panel-beveled bg-surface-base">
@@ -145,8 +161,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                         {formatMilitary(insp.inspection_date)}
                       </span>
                       <span>Inspector: {insp.inspector_name}</span>
-                      {insp.mileage != null && (
-                        <span className="flex items-center gap-0.5"><Gauge className="w-2.5 h-2.5" />{insp.mileage.toLocaleString()} mi</span>
+                      {insp.mileage != null && Number.isFinite(Number(insp.mileage)) && (
+                        <span className="flex items-center gap-0.5"><Gauge className="w-2.5 h-2.5" />{Number(insp.mileage).toLocaleString()} mi</span>
                       )}
                     </div>
                   </div>
@@ -154,8 +170,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                   {(onEditInspection || onDeleteInspection) && (
                     <div className="flex items-center gap-1 mr-1">
                       {onEditInspection && (
-                        <button
-                          className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded transition-colors"
+                        <button type="button"
+                          className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded-sm transition-colors"
                           onClick={(e) => { e.stopPropagation(); onEditInspection(insp); }}
                           title="Edit inspection"
                         >
@@ -163,8 +179,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                         </button>
                       )}
                       {onDeleteInspection && (
-                        <button
-                          className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                        <button type="button"
+                          className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors"
                           onClick={(e) => { e.stopPropagation(); onDeleteInspection(insp); }}
                           title="Delete inspection"
                         >
@@ -180,20 +196,34 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                 {isExpanded && (
                   <div className="border-t border-rmpg-700">
                     {/* Group by category */}
-                    {Array.from(new Set(insp.items.map(i => i.category))).map(category => (
-                      <div key={category}>
-                        <div className="px-3 py-1 text-[8px] text-rmpg-400 uppercase font-bold tracking-wider" style={{ background: '#0d1520' }}>
-                          {category}
-                        </div>
-                        {insp.items.filter(i => i.category === category).map((item, idx) => (
-                          <div key={idx} className="flex items-center gap-2 px-3 py-1 border-t border-rmpg-700">
-                            {ITEM_STATUS_ICON[item.status]}
-                            <span className="text-[10px] text-rmpg-300 flex-1">{item.item}</span>
-                            {item.notes && <span className="text-[9px] text-rmpg-500 italic">{item.notes}</span>}
+                    {(() => {
+                      const items = (insp.items || []).map(normalizeItem);
+                      return Array.from(new Set(items.map(i => i.category))).map(category => (
+                        <div key={category}>
+                          <div className="px-3 py-1 text-[8px] text-rmpg-400 uppercase font-bold tracking-wider bg-surface-sunken">
+                            {category}
                           </div>
-                        ))}
-                      </div>
-                    ))}
+                          {items.filter(i => i.category === category).map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-2 px-3 py-1 border-t border-rmpg-700">
+                              {ITEM_STATUS_ICON[item.status]}
+                              <span className="text-[10px] text-rmpg-300 flex-1">{item.item}</span>
+                              {item.notes && (isPhotoNote(item.notes) ? (
+                                <a href={authedImageUrl(item.notes)} target="_blank" rel="noreferrer">
+                                  <img
+                                    src={authedImageUrl(item.notes)}
+                                    alt={item.item}
+                                    className="h-16 w-24 object-cover border border-rmpg-700"
+                                    loading="lazy"
+                                  />
+                                </a>
+                              ) : (
+                                <span className="text-[9px] text-rmpg-500 italic">{item.notes}</span>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      ));
+                    })()}
                     {insp.notes && (
                       <div className="px-3 py-2 border-t border-rmpg-700">
                         <span className="text-[9px] text-rmpg-400 uppercase font-bold">Notes: </span>

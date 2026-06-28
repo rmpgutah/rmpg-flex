@@ -9,6 +9,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, X, Video, Loader2, XCircle, CheckCircle2, Zap, Radio } from 'lucide-react';
 import type { BodyCamera, VideoClassification } from '../types';
 
+import RichTextArea from './RichTextArea';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -62,6 +63,7 @@ export default function VideoUploadModal({
   const [chunkStatus, setChunkStatus] = useState('');
   const [error, setError] = useState('');
   const abortRef = useRef(false);
+  const activeXhrRef = useRef<XMLHttpRequest | null>(null);
   const uploadIdRef = useRef<string | null>(null);
 
   if (!isOpen) return null;
@@ -117,9 +119,11 @@ export default function VideoUploadModal({
       headers['Content-Type'] = 'application/json';
     }
     const res = await fetch(`${apiBase}${url}`, { ...opts, headers: { ...headers, ...(opts.headers as Record<string, string> || {}) } });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP ${res.status}`);
+    }
+    return await res.json();
   };
 
   /** Upload a single chunk via XHR (for progress tracking per chunk) */
@@ -156,6 +160,7 @@ export default function VideoUploadModal({
 
   const handleAbort = async () => {
     abortRef.current = true;
+    if (activeXhrRef.current) { activeXhrRef.current.abort(); activeXhrRef.current = null; }
     setPhase('idle');
     setChunkStatus('Upload cancelled');
     if (uploadIdRef.current) {
@@ -203,6 +208,7 @@ export default function VideoUploadModal({
       if (notes) formData.append('notes', notes);
 
       const xhr = new XMLHttpRequest();
+      activeXhrRef.current = xhr;
       xhr.open('POST', `${apiBase}/personnel/bodycam-videos`);
       xhr.timeout = 600000;
       const headers = getAuthHeaders();
@@ -212,6 +218,7 @@ export default function VideoUploadModal({
         if (ev.lengthComputable) setProgress(Math.round((ev.loaded / ev.total) * 100));
       };
       xhr.onload = () => {
+        activeXhrRef.current = null;
         if (xhr.status >= 200 && xhr.status < 300) {
           setPhase('done');
           setTimeout(() => { reset(); onUploaded(); onClose(); }, 500);
@@ -225,8 +232,8 @@ export default function VideoUploadModal({
           }
         }
       };
-      xhr.onerror = () => { setPhase('error'); setError('Network error — upload failed.'); };
-      xhr.ontimeout = () => { setPhase('error'); setError('Upload timed out.'); };
+      xhr.onerror = () => { activeXhrRef.current = null; setPhase('error'); setError('Network error — upload failed.'); };
+      xhr.ontimeout = () => { activeXhrRef.current = null; setPhase('error'); setError('Upload timed out.'); };
       xhr.send(formData);
       return;
     }
@@ -361,15 +368,15 @@ export default function VideoUploadModal({
   const isUploading = phase === 'uploading' || phase === 'initializing' || phase === 'finalizing';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={handleClose}>
-      <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-[520px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={handleClose}>
+      <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-[520px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
           <div className="flex items-center gap-2">
             <Upload className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-bold text-rmpg-100">Upload Body Camera Video</h2>
           </div>
-          <button onClick={handleClose} disabled={isUploading} className="toolbar-btn p-1">
+          <button type="button" onClick={handleClose} disabled={isUploading} className="toolbar-btn p-1" aria-label="Close" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -384,7 +391,7 @@ export default function VideoUploadModal({
 
           {/* File Input */}
           <div className="panel-inset p-3">
-            <label className="field-label mb-2 block">Video File <span className="text-red-400">*</span></label>
+            <label htmlFor="ff-videouploadmodal-0" className="field-label mb-2 block">Video File <span className="text-red-400">*</span></label>
             {file ? (
               <div className="flex items-center gap-2">
                 <Video className="w-4 h-4 text-brand-400 flex-shrink-0" />
@@ -410,14 +417,14 @@ export default function VideoUploadModal({
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="w-full py-6 border-2 border-dashed border-rmpg-600 rounded-lg hover:border-brand-500 transition-colors flex flex-col items-center gap-2"
+                className="w-full py-6 border-2 border-dashed border-rmpg-600 rounded-sm hover:border-brand-500 transition-colors flex flex-col items-center gap-2"
               >
                 <Upload className="w-6 h-6 text-rmpg-500" />
                 <span className="text-xs text-rmpg-400">Click to select video</span>
                 <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM — Up to 10 GB</span>
               </button>
             )}
-            <input
+            <input id="ff-videouploadmodal-0"
               ref={fileRef}
               type="file"
               accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm"
@@ -429,43 +436,43 @@ export default function VideoUploadModal({
           {/* Metadata */}
           <div className="panel-inset p-3 space-y-3">
             <div>
-              <label className="field-label">Title <span className="text-red-400">*</span></label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" disabled={isUploading} />
+              <label htmlFor="ff-videouploadmodal-1" className="field-label">Title <span className="text-red-400">*</span></label>
+              <input id="ff-videouploadmodal-1" type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" disabled={isUploading} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="field-label">Camera <span className="text-red-400">*</span></label>
-                <select value={cameraId} onChange={e => setCameraId(e.target.value)} required className="select-dark" disabled={isUploading}>
+                <label htmlFor="ff-videouploadmodal-2" className="field-label">Camera <span className="text-red-400">*</span></label>
+                <select id="ff-videouploadmodal-2" value={cameraId} onChange={e => setCameraId(e.target.value)} required className="select-dark" disabled={isUploading}>
                   <option value="">Select camera...</option>
                   {cameras.map(c => <option key={c.id} value={c.id}>{c.camera_id} — {[c.make, c.model].filter(Boolean).join(' ') || 'Unknown'}</option>)}
                 </select>
               </div>
               <div>
-                <label className="field-label">Classification</label>
-                <select value={classification} onChange={e => setClassification(e.target.value as VideoClassification)} className="select-dark" disabled={isUploading}>
+                <label htmlFor="ff-videouploadmodal-3" className="field-label">Classification</label>
+                <select id="ff-videouploadmodal-3" value={classification} onChange={e => setClassification(e.target.value as VideoClassification)} className="select-dark" disabled={isUploading}>
                   {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="field-label">Recorded Date</label>
-                <input type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" disabled={isUploading} />
+                <label htmlFor="ff-videouploadmodal-4" className="field-label">Recorded Date</label>
+                <input id="ff-videouploadmodal-4" type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" disabled={isUploading} />
               </div>
               <div>
-                <label className="field-label">Case Number</label>
-                <input type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" disabled={isUploading} />
+                <label htmlFor="ff-videouploadmodal-5" className="field-label">Case Number</label>
+                <input id="ff-videouploadmodal-5" type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" disabled={isUploading} />
               </div>
             </div>
             <div>
-              <label className="field-label flex items-center gap-1"><Radio className="w-2.5 h-2.5" /> Activation Type</label>
-              <select value={eventType} onChange={e => setEventType(e.target.value)} className="select-dark">
+              <label htmlFor="ff-videouploadmodal-6" className="field-label flex items-center gap-1"><Radio className="w-2.5 h-2.5" /> Activation Type</label>
+              <select id="ff-videouploadmodal-6" value={eventType} onChange={e => setEventType(e.target.value)} className="select-dark">
                 {ACTIVATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
               <label className="field-label">Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Additional notes..." className="textarea-dark" disabled={isUploading} />
+              <RichTextArea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Additional notes..." className="textarea-dark" disabled={isUploading} />
             </div>
           </div>
 
@@ -534,7 +541,7 @@ export default function VideoUploadModal({
                 <button
                   type="submit"
                   disabled={!file || !title || !cameraId || phase === 'done'}
-                  className="toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
+                  className="toolbar-btn toolbar-btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
                 >
                   <Upload className="w-3 h-3" />
                   {phase === 'error' ? 'Retry Upload' : 'Upload Video'}

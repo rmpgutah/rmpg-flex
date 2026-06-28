@@ -4,9 +4,11 @@
 // local database. Black background, green monospace text.
 // ============================================================
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { X, Terminal, Loader2, Copy, Check } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { X, Terminal, Loader2, Download, Trash2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import {
   formatPersonResponse,
   formatVehicleResponse,
@@ -19,6 +21,7 @@ import {
   formatArrestResponse,
   formatSkipTracerResponse,
   formatNoRecord,
+  formatServiceUnavailable,
   getNcicLineClass,
   type NcicPerson,
   type NcicVehicle,
@@ -32,10 +35,15 @@ import {
   type AddressLookupResults,
   type BackgroundRecord,
 } from '../utils/ncicFormatter';
+import { lookupAnyCode, decode, type CodeHit } from '../constants/ncicCodes';
 import { playTone } from '../utils/dispatchTones';
+import { displayTimeZone } from '../utils/timeZoneMode';
 
 // ── Quick-query buttons shown on welcome screen ──────────────
-const QUICK_QUERIES = [
+// Quick-query buttons rendered above the input. Clicking populates the input
+// with the verb + a trailing space so the operator just types the term.
+// Exported for unit testing.
+export const QUICK_QUERIES = [
   { label: 'XREF', prefix: 'QX ', desc: 'Cross-Reference (ALL)' },
   { label: 'PERSON', prefix: 'QH ', desc: 'Person / History' },
   { label: 'VEHICLE', prefix: 'QV ', desc: 'Vehicle / Plate' },
@@ -46,11 +54,47 @@ const QUICK_QUERIES = [
   { label: 'ARREST', prefix: 'QR ', desc: 'Arrest Records' },
 ] as const;
 
+// Welcome banner — same ASCII-box art for both embedded and overlay modes.
+// Lifted to a single constant (previously the 18-line block was duplicated
+// verbatim at both render sites, doubling theme-cleanup cost).
+const WELCOME_BANNER = `╔══════════════════════════════════════════╗
+║     NCIC / NLETS QUERY TERMINAL          ║
+║     RMPG FLEX DISPATCH CAD               ║
+╠══════════════════════════════════════════╣
+║  COMMANDS:                               ║
+║  QX <name>     Cross-Reference (ALL)     ║
+║  QH <name>     Query Person / History    ║
+║  QV <plate>    Query Vehicle             ║
+║  QW <name>     Query Warrants            ║
+║  QT <phone>    Query Phone Number        ║
+║  QD <name/DL#> Query Driver's License    ║
+║  QA <address>  Query Address / Premise   ║
+║  QO <name>     Query OFAC Watchlist      ║
+║  QR <name>     Query Arrest Records      ║
+║  QS <name>     Query Skip Tracker        ║
+║  QB <name>     Query Background Check    ║
+║  QC <name>     Query Utah Courts (web)   ║
+║  QZ <code/term> Code Translation         ║
+║                                          ║
+║  HISTORY:  ↑ / ↓  navigate prior queries ║
+╚══════════════════════════════════════════╝`;
+
+/** History size cap — typical shift sees < 100 queries; 30 is plenty for the
+ *  "I mistyped a plate, let me fix it" use case while bounding the array. */
+const NCIC_HISTORY_CAP = 30;
+
+export interface NcicQueryPanelHandle {
+  focusInput: () => void;
+  clearSession: () => void;
+  exportSession: () => void;
+}
+
 interface NcicQueryPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  initialQuery?: { type: 'person' | 'vehicle' | 'warrant'; query: string } | null;
+  initialQuery?: { type: 'person' | 'vehicle' | 'warrant' | 'xref' | 'phone' | 'address' | 'dl' | 'ofac'; query: string } | null;
   embedded?: boolean;
+  canManage?: boolean;
 }
 
 interface QueryEntry {
@@ -61,7 +105,7 @@ interface QueryEntry {
   hasHit: boolean;
 }
 
-let queryIdCounter = 0;
+// queryIdCounter moved to useRef inside component to avoid shared state across instances
 
 /** Render NCIC response text with per-line semantic coloring and inline field-label highlighting */
 function renderColorizedResponse(text: string): React.ReactNode {
@@ -78,11 +122,13 @@ function renderColorizedResponse(text: string): React.ReactNode {
       return <React.Fragment key={i}>{'\n'}</React.Fragment>;
     }
 
-    // Normal data lines — highlight field-label codes (NAM/, DOB/, etc.) inline
+    // Normal data lines — gold field-label tags (NAM/, DOB/, …) with the
+    // values in the bright parchment tone, so the two-tone read (gold index,
+    // bright data) is instantly scannable.
     const parts = line.split(/([A-Z]{2,5}\/)/g);
     if (parts.length <= 1) {
-      // No field labels found — plain amber text
-      return <React.Fragment key={i}>{line}{'\n'}</React.Fragment>;
+      // No field labels found — plain value text
+      return <React.Fragment key={i}><span className="ncic-c-value">{line}</span>{'\n'}</React.Fragment>;
     }
 
     return (
@@ -90,7 +136,9 @@ function renderColorizedResponse(text: string): React.ReactNode {
         {parts.map((part, j) =>
           /^[A-Z]{2,5}\/$/.test(part)
             ? <span key={j} className="ncic-c-label">{part}</span>
-            : <React.Fragment key={j}>{part}</React.Fragment>
+            : part
+              ? <span key={j} className="ncic-c-value">{part}</span>
+              : <React.Fragment key={j}>{part}</React.Fragment>
         )}
         {'\n'}
       </React.Fragment>
@@ -98,12 +146,80 @@ function renderColorizedResponse(text: string): React.ReactNode {
   });
 }
 
-export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded }: NcicQueryPanelProps) {
+const QZ_DOMAIN_LABEL: Record<string, string> = {
+  RACE: 'RACE', ETHNICITY: 'ETHNICITY', SEX: 'SEX', EYE: 'EYE COLOR',
+  HAIR: 'HAIR COLOR', VMA: 'VEHICLE MAKE', VCO: 'VEHICLE COLOR',
+  VST: 'VEHICLE STYLE', STATE: 'STATE', DL_CLASS: 'DL CLASS',
+  DL_RESTRICTION: 'DL RESTRICTION', DL_ENDORSEMENT: 'DL ENDORSEMENT',
+};
+
+/** Build the NCIC-style text block for a QZ code-translation query. */
+function formatCodeDecode(term: string, hits: CodeHit[]): string {
+  const hdr = [
+    '*** NCIC RESPONSE ***',
+    `ORI/RMPGFLEX01  MKE/QZ  QRY/CODE TRANSLATION`,
+    '─'.repeat(60),
+    '',
+    `  CODE TRANSLATION: ${term.toUpperCase()}`,
+    `  ${'─'.repeat(56)}`,
+  ];
+  if (hits.length === 0) {
+    return [...hdr, '', '  NO MATCHING CODE FOUND', '', '─'.repeat(60), '*** END OF RECORD ***'].join('\n');
+  }
+  const body = hits.map(h => `  ${QZ_DOMAIN_LABEL[h.domain] || h.domain}: ${h.code} (${h.label.toUpperCase()})`);
+  return [...hdr, '', ...body, '', `  SUMMARY: ${hits.length} CODE(S) FOUND`, '─'.repeat(60), '*** END OF RECORD ***'].join('\n');
+}
+
+const NcicQueryPanel = forwardRef<NcicQueryPanelHandle, NcicQueryPanelProps>(function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded, canManage }, ref) {
   const [input, setInput] = useState('');
   const [entries, setEntries] = useState<QueryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const queryIdCounterRef = useRef(0);
+
+  // In-memory query history — drives ↑/↓ arrow-key recall like a shell
+  // terminal. `historyIdx` is the cursor: -1 means "live input" (typing new),
+  // 0 = most recent prior query, history.length-1 = oldest kept. Bounded at
+  // NCIC_HISTORY_CAP so a long shift can't grow this list unbounded.
+  const historyRef = useRef<string[]>([]);
+  const historyIdxRef = useRef<number>(-1);
+  const draftRef = useRef<string>('');
+
+  // Export + clear session handlers — exposed via imperative ref for parent shortcuts
+  const clearSession = useCallback(() => { setEntries([]); }, []);
+  const exportSession = useCallback(() => {
+    if (entries.length === 0) return;
+    const lines: string[] = [
+      'RMPG FLEX — NCIC/NLETS TERMINAL SESSION EXPORT',
+      `EXPORTED: ${new Date().toLocaleString('en-US', { timeZone: displayTimeZone() ?? undefined, hour12: false })}`,
+      '═'.repeat(70),
+      '',
+    ];
+    for (const e of entries) {
+      lines.push(`[${e.timestamp}] > ${e.command}`);
+      lines.push(e.response);
+      lines.push('');
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ncic-session-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [entries]);
+
+  useImperativeHandle(ref, () => ({ focusInput: () => inputRef.current?.focus(), clearSession, exportSession }), [clearSession, exportSession]);
+
+  // ── Right-click context menu (per result entry) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildEntryMenu = (entry: QueryEntry): ContextMenuItem[] => [
+    m.copy('Copy command', entry.command),
+    m.copy('Copy response', entry.response),
+    m.copyId(entry.id),
+  ];
 
   // Auto-focus input when panel opens
   useEffect(() => {
@@ -115,8 +231,8 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   // Process initial query from command line
   useEffect(() => {
     if (initialQuery && isOpen) {
-      const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO' };
-      const cmd = `${cmdMap[initialQuery.type]} ${initialQuery.query}`;
+      const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO', xref: 'QX', phone: 'QT', address: 'QA' };
+      const cmd = `${cmdMap[initialQuery.type] || 'QH'} ${initialQuery.query}`;
       runQuery(cmd);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,11 +252,24 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 
     if (!queryText) return;
 
+    // Push to history (dedupe a back-to-back repeat — re-running the SAME
+    // command shouldn't add two entries). Reset the cursor after every new
+    // submission so ↑ always starts from the most recent.
+    const trimmed = command.trim();
+    if (trimmed && historyRef.current[0] !== trimmed) {
+      historyRef.current.unshift(trimmed);
+      if (historyRef.current.length > NCIC_HISTORY_CAP) {
+        historyRef.current.length = NCIC_HISTORY_CAP;
+      }
+    }
+    historyIdxRef.current = -1;
+    draftRef.current = '';
+
     // Input validation: enforce length limits
     if (queryText.length > 200) {
-      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: displayTimeZone() });
       setEntries(prev => [...prev, {
-        id: ++queryIdCounter, timestamp: ts, command,
+        id: ++queryIdCounterRef.current, timestamp: ts, command,
         response: 'ERROR: QUERY TOO LONG — MAXIMUM 200 CHARACTERS', hasHit: false,
       }]);
       playTone('error');
@@ -148,7 +277,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
     }
 
     setLoading(true);
-    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: displayTimeZone() });
 
     try {
       let response = '';
@@ -188,12 +317,15 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         }
 
         case 'QV': {
-          // Vehicle query
+          // Vehicle query. If the operator typed an NCIC make code (e.g. TOYT),
+          // expand it to the make label so the server's `LIKE make` matches.
+          const qvExpanded = decode('VMA', queryText.trim());
+          const qvText = qvExpanded !== queryText.trim().toUpperCase() ? qvExpanded : queryText;
           const data = await apiFetch<{
             type: string;
             results: NcicVehicle[];
             query: string;
-          }>(`/records/ncic-query?type=vehicle&query=${encodeURIComponent(queryText)}`);
+          }>(`/records/ncic-query?type=vehicle&query=${encodeURIComponent(qvText)}`);
 
           if (!data.results || data.results.length === 0) {
             response = formatNoRecord('VEHICLE', queryText);
@@ -269,22 +401,27 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             body.lastName = dlParts[0];
           }
 
-          const dlData = await apiFetch<{
-            hit: boolean;
-            source: string;
-            subjects: NcicDlSubject[];
-            resultCount: number;
-          }>('/microbilt/dl/search', {
-            method: 'POST',
-            body: JSON.stringify(body),
-          });
+          try {
+            const dlData = await apiFetch<{
+              hit: boolean;
+              source: string;
+              subjects: NcicDlSubject[];
+              resultCount: number;
+            }>('/microbilt/dl/search', {
+              method: 'POST',
+              body: JSON.stringify(body),
+            });
 
-          if (!dlData.hit || !dlData.subjects || dlData.subjects.length === 0) {
-            response = formatNoRecord('DL SEARCH', queryText);
-          } else {
-            response = formatDlResponse(dlData.subjects, queryText);
-            hasHit = true;
-            playTone('info');
+            if (!dlData.hit || !dlData.subjects || dlData.subjects.length === 0) {
+              response = formatNoRecord('DL SEARCH', queryText);
+            } else {
+              response = formatDlResponse(dlData.subjects, queryText);
+              hasHit = true;
+              playTone('info');
+            }
+          } catch {
+            response = '*** DL SEARCH UNAVAILABLE ***\n\n  MicroBilt DL Search service is currently offline.\n  Try again later or use Records > DL Search.\n\n*** END ***';
+            playTone('error');
           }
           break;
         }
@@ -301,22 +438,27 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             ofacBody.fullName = queryText;
           }
 
-          const ofacData = await apiFetch<{
-            hit: boolean;
-            sources: string[];
-            subjects: NcicOfacSubject[];
-            resultCount: number;
-          }>('/microbilt/ofac/search', {
-            method: 'POST',
-            body: JSON.stringify(ofacBody),
-          });
+          try {
+            const ofacData = await apiFetch<{
+              hit: boolean;
+              sources: string[];
+              subjects: NcicOfacSubject[];
+              resultCount: number;
+            }>('/microbilt/ofac/search', {
+              method: 'POST',
+              body: JSON.stringify(ofacBody),
+            });
 
-          if (!ofacData.hit || ofacData.subjects.length === 0) {
-            response = formatNoRecord('OFAC WATCHLIST', queryText);
-          } else {
-            response = formatOfacResponse(ofacData.subjects, queryText);
-            hasHit = true;
-            playTone('warning');
+            if (!ofacData.hit || ofacData.subjects.length === 0) {
+              response = formatNoRecord('OFAC WATCHLIST', queryText);
+            } else {
+              response = formatOfacResponse(ofacData.subjects, queryText);
+              hasHit = true;
+              playTone('warning');
+            }
+          } catch {
+            response = '*** OFAC SEARCH UNAVAILABLE ***\n\n  OFAC/SDN Watchlist service is currently offline.\n  Try again later.\n\n*** END ***';
+            playTone('error');
           }
           break;
         }
@@ -336,32 +478,37 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           }
 
           // Fire all queries in parallel — allSettled so one failure doesn't block others
+          // Wrap each in a 15-second timeout to prevent infinite hang
+          const withTimeout = <T,>(p: Promise<T>, label: string): Promise<T> =>
+            Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${label} timeout`)), 15000))]);
           const [personResult, warrantResult, dlResult, ofacResult, arrestResult, skipResult] = await Promise.allSettled([
-            apiFetch<{ results: Array<{ person: NcicPerson; criminalHistory: NcicCriminalHistory[]; warrants: NcicWarrant[] }> }>(
+            withTimeout(apiFetch<{ results: Array<{ person: NcicPerson; criminalHistory: NcicCriminalHistory[]; warrants: NcicWarrant[] }> }>(
               `/records/ncic-query?type=person&query=${encodeURIComponent(queryText)}`
-            ),
-            apiFetch<{ results: (NcicWarrant & { subject_first_name?: string; subject_last_name?: string; subject_dob?: string })[] }>(
+            ), 'PERSON'),
+            withTimeout(apiFetch<{ results: (NcicWarrant & { subject_first_name?: string; subject_last_name?: string; subject_dob?: string })[] }>(
               `/records/ncic-query?type=warrant&query=${encodeURIComponent(queryText)}`
-            ),
-            apiFetch<{ hit: boolean; subjects: NcicDlSubject[] }>(
+            ), 'WARRANT'),
+            withTimeout(apiFetch<{ hit: boolean; subjects: NcicDlSubject[] }>(
               '/microbilt/dl/search',
               { method: 'POST', body: JSON.stringify(xrefBody) }
-            ),
-            apiFetch<{ hit: boolean; subjects: NcicOfacSubject[] }>(
+            ), 'DL'),
+            withTimeout(apiFetch<{ hit: boolean; subjects: NcicOfacSubject[] }>(
               '/microbilt/ofac/search',
               { method: 'POST', body: JSON.stringify(xrefBody.firstName ? { lastName: xrefBody.lastName, firstName: xrefBody.firstName } : { fullName: queryText }) }
-            ),
-            apiFetch<{ hit: boolean; records: NcicArrestRecord[] }>(
+            ), 'OFAC'),
+            withTimeout(apiFetch<{ hit: boolean; records: NcicArrestRecord[] }>(
               `/arrests/search?name=${encodeURIComponent(queryText)}`
-            ),
-            apiFetch<{ PeopleDetails?: SkipTracerPerson[]; Records?: number }>(
+            ), 'ARREST'),
+            withTimeout(apiFetch<{ PeopleDetails?: SkipTracerPerson[]; Records?: number }>(
               `/skiptracer/search/byname?name=${encodeURIComponent(queryText)}&page=1`
-            ),
+            ), 'SKIP'),
           ]);
 
-          // Collect results, track errors
+          // Collect results, track errors. Local data sources (person/warrant/
+          // arrest) failing is a real ERROR; external services (DL/OFAC/skip-
+          // trace APIs) being unavailable is a soft SERVICE NOTE, not a fault.
           const xref: CrossReferenceResults = {
-            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [],
+            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [], serviceWarnings: [],
           };
 
           if (personResult.status === 'fulfilled') {
@@ -385,13 +532,13 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (dlResult.status === 'fulfilled') {
             xref.dlSubjects = dlResult.value.subjects || [];
           } else {
-            xref.errors.push('DL QUERY FAILED');
+            xref.serviceWarnings!.push('DRIVER LICENSE SERVICE UNAVAILABLE');
           }
 
           if (ofacResult.status === 'fulfilled') {
             xref.ofacSubjects = ofacResult.value.subjects || [];
           } else {
-            xref.errors.push('OFAC QUERY FAILED');
+            xref.serviceWarnings!.push('OFAC SANCTIONS SERVICE UNAVAILABLE');
           }
 
           if (arrestResult.status === 'fulfilled') {
@@ -403,7 +550,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (skipResult.status === 'fulfilled') {
             xref.skipTracerPeople = skipResult.value.PeopleDetails || [];
           } else {
-            xref.errors.push('SKIP TRACER QUERY FAILED');
+            xref.serviceWarnings!.push('SKIP TRACER SERVICE UNAVAILABLE');
           }
 
           // ── Cross-load: enrich empty sections from person records ──
@@ -640,28 +787,33 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             arName = `${first} ${last}`;
           }
 
-          const arData = await apiFetch<{
-            hit: boolean;
-            records: NcicArrestRecord[];
-            resultCount: number;
-            cached: boolean;
-          }>(`/arrests/search?name=${encodeURIComponent(arName)}`);
+          try {
+            const arData = await apiFetch<{
+              hit: boolean;
+              records: NcicArrestRecord[];
+              resultCount: number;
+              cached: boolean;
+            }>(`/arrests/search?name=${encodeURIComponent(arName)}`);
 
-          if (!arData.hit || !arData.records?.length) {
-            response = formatNoRecord('ARREST RECORDS', queryText);
-          } else {
-            response = formatArrestResponse(arData.records, queryText);
-            hasHit = true;
+            if (!arData.hit || !arData.records?.length) {
+              response = formatNoRecord('ARREST RECORDS', queryText);
+            } else {
+              response = formatArrestResponse(arData.records, queryText);
+              hasHit = true;
 
-            const hasActive = arData.records.some(r => r.status === 'active');
-            const hasLinkedWarrants = arData.records.some(r => (r.cross_links?.warrants?.length || 0) > 0);
-            playTone(hasActive || hasLinkedWarrants ? 'warning' : 'info');
+              const hasActive = arData.records.some(r => r.status === 'active');
+              const hasLinkedWarrants = arData.records.some(r => (r.cross_links?.warrants?.length || 0) > 0);
+              playTone(hasActive || hasLinkedWarrants ? 'warning' : 'info');
+            }
+          } catch {
+            response = '*** ARREST RECORDS UNAVAILABLE ***\n\n  JailBase arrest search service timed out.\n  Cached local records may still be available in Records.\n\n*** END ***';
+            playTone('error');
           }
           break;
         }
 
         case 'QS': {
-          // Skip Tracer — RapidAPI skip tracing lookup
+          // Skip Tracker — RapidAPI skip tracing lookup
           // Supports: QS NAME  |  QS ADDR:123 Main St  |  QS PHONE:8015551234  |  QS EMAIL:john@example.com
           let stPath = '/skiptracer/search/byname';
           let stParams: Record<string, string> = {};
@@ -693,7 +845,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           const stPeople = stData.PeopleDetails || [];
 
           if (stPeople.length === 0) {
-            response = formatNoRecord('SKIP TRACER', queryText);
+            response = formatNoRecord('SKIP TRACKER', queryText);
           } else {
             response = formatSkipTracerResponse(stPeople, queryText, stData.Records, stType);
             hasHit = true;
@@ -702,26 +854,48 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           break;
         }
 
+        case 'QZ': {
+          // Code translation / decoder — no backend call
+          const hits = lookupAnyCode(queryText);
+          response = formatCodeDecode(queryText, hits);
+          hasHit = hits.length > 0;
+          playTone(hits.length > 0 ? 'info' : 'error');
+          break;
+        }
+
         default:
-          response = `UNKNOWN QUERY TYPE: ${verb}\nValid: QX (cross-ref), QH/QP (person), QV (vehicle), QW (warrant), QT (phone), QA (address), QD (DL), QO (OFAC), QR (arrests), QS (skip tracer), QC (courts), QB (background)`;
+          response = `UNKNOWN QUERY TYPE: ${verb}\nValid: QX (cross-ref), QH/QP (person), QV (vehicle), QW (warrant), QT (phone), QA (address), QD (DL), QO (OFAC), QR (arrests), QS (skip tracer), QC (courts), QB (background), QZ (code decode)`;
       }
 
       setEntries(prev => [...prev, {
-        id: ++queryIdCounter,
+        id: ++queryIdCounterRef.current,
         timestamp,
         command,
         response,
         hasHit,
       }]);
     } catch (err: any) {
+      // External paid-API commands (skip-trace / DL / OFAC / background) being
+      // down or unconfigured is an advisory, not a system fault — render an
+      // amber SERVICE NOTE instead of a red ERROR. Local-DB commands still
+      // surface a real error.
+      const EXTERNAL_SOURCES: Record<string, string> = {
+        QS: 'SKIP TRACKER', QD: "DRIVER'S LICENSE", QL: "DRIVER'S LICENSE",
+        QO: 'OFAC SANCTIONS', QB: 'BACKGROUND CHECK',
+      };
+      const source = EXTERNAL_SOURCES[verb];
+      const reason = /timeout/i.test(err?.message || '') ? 'REQUEST TIMED OUT' : 'SERVICE UNAVAILABLE';
+      const response = source
+        ? formatServiceUnavailable(source, queryText, reason)
+        : `ERROR: ${err.message || 'Query failed'}`;
       setEntries(prev => [...prev, {
-        id: ++queryIdCounter,
+        id: ++queryIdCounterRef.current,
         timestamp,
         command,
-        response: `ERROR: ${err.message || 'Query failed'}`,
+        response,
         hasHit: false,
       }]);
-      playTone('error');
+      playTone(source ? 'info' : 'error');
     } finally {
       setLoading(false);
     }
@@ -738,11 +912,67 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
     if (e.key === 'Enter') {
       e.preventDefault();
       handleSubmit();
+      return;
     }
     if (e.key === 'Escape') {
       onClose();
+      return;
     }
-  }, [handleSubmit, onClose]);
+    // ↑/↓ — terminal-style command-history recall. -1 is "live draft"; 0 is
+    // most recent prior. Stepping past the oldest entry stays at the oldest;
+    // stepping past -1 returns to whatever was typed before history began.
+    if (e.key === 'ArrowUp') {
+      if (historyRef.current.length === 0) return;
+      e.preventDefault();
+      if (historyIdxRef.current === -1) draftRef.current = input;
+      const next = Math.min(historyRef.current.length - 1, historyIdxRef.current + 1);
+      historyIdxRef.current = next;
+      setInput(historyRef.current[next]);
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      if (historyIdxRef.current === -1) return;
+      e.preventDefault();
+      const next = historyIdxRef.current - 1;
+      historyIdxRef.current = next;
+      setInput(next === -1 ? draftRef.current : historyRef.current[next]);
+      return;
+    }
+  }, [handleSubmit, onClose, input]);
+
+  // Clicking a QUICK_QUERIES button populates the verb prefix and focuses
+  // the input so the operator just types the search term. Reset history
+  // cursor so a subsequent ↑ doesn't yank them out of the prefix.
+  const insertQuickPrefix = useCallback((prefix: string) => {
+    setInput(prefix);
+    historyIdxRef.current = -1;
+    draftRef.current = '';
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
+
+  // Shared quick-button row + welcome banner — rendered identically by both
+  // embedded and overlay modes. Extracted so the markup (and its theme
+  // tokens) live in exactly one place.
+  const QuickButtons = (
+    <div className="ncic-quick-row" role="toolbar" aria-label="Quick NCIC queries">
+      {QUICK_QUERIES.map(({ label, prefix, desc }) => (
+        <button
+          key={label}
+          type="button"
+          className="ncic-quick-btn"
+          onClick={() => insertQuickPrefix(prefix)}
+          title={`${prefix.trim()} — ${desc}`}
+          disabled={loading}
+        >
+          <span className="ncic-quick-verb">{prefix.trim()}</span>
+          <span className="ncic-quick-label">{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+  const WelcomeBlock = (
+    <div className="ncic-welcome"><pre>{WELCOME_BANNER}</pre></div>
+  );
 
   if (!isOpen && !embedded) return null;
 
@@ -752,30 +982,9 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
       <div className="ncic-embedded flex flex-col h-full">
         {/* Terminal output area */}
         <div className="ncic-output flex-1" ref={scrollRef}>
-          {entries.length === 0 && !loading && (
-            <div className="ncic-welcome">
-              <pre>{`╔══════════════════════════════════════════╗
-║     NCIC / NLETS QUERY TERMINAL          ║
-║     RMPG FLEX DISPATCH CAD               ║
-╠══════════════════════════════════════════╣
-║  COMMANDS:                               ║
-║  QX <name>     Cross-Reference (ALL)     ║
-║  QH <name>     Query Person / History    ║
-║  QV <plate>    Query Vehicle             ║
-║  QW <name>     Query Warrants            ║
-║  QT <phone>    Query Phone Number        ║
-║  QD <name/DL#> Query Driver's License    ║
-║  QA <address>  Query Address / Premise   ║
-║  QO <name>     Query OFAC Watchlist      ║
-║  QR <name>     Query Arrest Records      ║
-║  QS <name>     Query Skip Tracer         ║
-║  QB <name>     Query Background Check    ║
-║  QC <name>     Query Utah Courts (web)   ║
-╚══════════════════════════════════════════╝`}</pre>
-            </div>
-          )}
+          {entries.length === 0 && !loading && WelcomeBlock}
           {entries.map(entry => (
-            <div key={entry.id} className="ncic-entry">
+            <div key={entry.id} className="ncic-entry" onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}>
               <div className="ncic-entry-cmd">
                 <span className="ncic-timestamp">[{entry.timestamp}]</span>
                 <span className="ncic-cmd-text">&gt; {entry.command}</span>
@@ -792,17 +1001,43 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             </div>
           )}
         </div>
+        {QuickButtons}
+        {/* Action bar — Export always visible; Clear gated to admin/manager */}
+        <div className="flex items-center gap-1 px-2 py-1 border-t border-rmpg-800">
+          <button
+            type="button"
+            onClick={exportSession}
+            disabled={entries.length === 0}
+            title="Export session as TXT"
+            className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-brand-400 hover:text-brand-300 border border-rmpg-700 hover:border-brand-500 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download size={10} />
+            <span>EXPORT</span>
+          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={clearSession}
+              disabled={entries.length === 0}
+              title="Clear session (admin/manager only)"
+              className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-red-400 hover:text-red-300 border border-rmpg-700 hover:border-red-800 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 size={10} />
+              <span>CLEAR</span>
+            </button>
+          )}
+        </div>
         {/* Input bar */}
         <div className="ncic-input-row">
           <span className="ncic-prompt">&gt;</span>
-          <input
+          <input id="ff-ncicquerypanel-0"
             ref={inputRef}
             type="text"
             className="ncic-input"
             value={input}
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
-            placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QR NAME | QB NAME"
+            placeholder="QX SMITH, JOHN | QV PLATE | QZ TOYT | QH NAME"
             maxLength={210}
             spellCheck={false}
             autoComplete="off"
@@ -819,43 +1054,23 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         {/* Header */}
         <div className="ncic-header">
           <div className="flex items-center gap-2">
-            <Terminal style={{ width: 14, height: 14, color: '#d4a017' }} />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+            <Terminal style={{ width: 14, height: 14, color: 'var(--brand-gold)' }} />
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--brand-gold)', letterSpacing: '0.1em' }}>
               NCIC / NLETS Terminal
             </span>
+            <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: 'rgb(var(--brand-gold-rgb) / 0.1)', color: 'var(--brand-gold)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.2)' }}>SECURE</span>
           </div>
-          <button onClick={onClose} className="ncic-close-btn">
+          <button type="button" onClick={onClose} className="ncic-close-btn" aria-label="Close terminal" title="Close terminal">
             <X style={{ width: 14, height: 14 }} />
           </button>
         </div>
 
         {/* Terminal output area */}
         <div className="ncic-output" ref={scrollRef}>
-          {entries.length === 0 && !loading && (
-            <div className="ncic-welcome">
-              <pre>{`╔══════════════════════════════════════════╗
-║     NCIC / NLETS QUERY TERMINAL          ║
-║     RMPG FLEX DISPATCH CAD               ║
-╠══════════════════════════════════════════╣
-║  COMMANDS:                               ║
-║  QX <name>     Cross-Reference (ALL)     ║
-║  QH <name>     Query Person / History    ║
-║  QV <plate>    Query Vehicle             ║
-║  QW <name>     Query Warrants            ║
-║  QT <phone>    Query Phone Number        ║
-║  QD <name/DL#> Query Driver's License    ║
-║  QA <address>  Query Address / Premise   ║
-║  QO <name>     Query OFAC Watchlist      ║
-║  QR <name>     Query Arrest Records      ║
-║  QS <name>     Query Skip Tracer         ║
-║  QB <name>     Query Background Check    ║
-║  QC <name>     Query Utah Courts (web)   ║
-╚══════════════════════════════════════════╝`}</pre>
-            </div>
-          )}
+          {entries.length === 0 && !loading && WelcomeBlock}
 
           {entries.map(entry => (
-            <div key={entry.id} className="ncic-entry">
+            <div key={entry.id} className="ncic-entry" onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}>
               <div className="ncic-entry-cmd">
                 <span className="ncic-timestamp">[{entry.timestamp}]</span>
                 <span className="ncic-cmd-text">&gt; {entry.command}</span>
@@ -874,17 +1089,43 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           )}
         </div>
 
+        {QuickButtons}
+        {/* Action bar — Export always visible; Clear gated to admin/manager */}
+        <div className="flex items-center gap-1 px-2 py-1 border-t border-rmpg-800">
+          <button
+            type="button"
+            onClick={exportSession}
+            disabled={entries.length === 0}
+            title="Export session as TXT"
+            className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-brand-400 hover:text-brand-300 border border-rmpg-700 hover:border-brand-500 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download size={10} />
+            <span>EXPORT</span>
+          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={clearSession}
+              disabled={entries.length === 0}
+              title="Clear session (admin/manager only)"
+              className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-red-400 hover:text-red-300 border border-rmpg-700 hover:border-red-800 bg-surface-raised disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 size={10} />
+              <span>CLEAR</span>
+            </button>
+          )}
+        </div>
         {/* Input bar */}
         <div className="ncic-input-row">
           <span className="ncic-prompt">&gt;</span>
-          <input
+          <input id="ff-ncicquerypanel-1"
             ref={inputRef}
             type="text"
             className="ncic-input"
             value={input}
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
-            placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QV PLATE | QB NAME"
+            placeholder="QX SMITH, JOHN | QV PLATE | QZ TOYT | QH NAME"
             maxLength={210}
             spellCheck={false}
             autoComplete="off"
@@ -894,4 +1135,6 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
       </div>
     </div>
   );
-}
+});
+
+export default NcicQueryPanel;

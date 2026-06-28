@@ -129,10 +129,10 @@ export default function MobileBottomSheet({
         height: Math.max(currentHeight, 0),
         maxHeight: '92vh',
         transition: isDragging ? 'none' : 'height 0.3s cubic-bezier(0.32,0.72,0,1)',
-        background: 'linear-gradient(180deg, #1a2636 0%, #0d1520 100%)',
-        borderTop: '1px solid #2a3e58',
+        background: 'linear-gradient(180deg, var(--surface-base) 0%, var(--surface-sunken) 100%)',
+        borderTop: '1px solid var(--border-default)',
         boxShadow: '0 -8px 32px rgba(0,0,0,0.5)',
-        willChange: 'height',
+        willChange: 'height, transform',
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
@@ -140,7 +140,7 @@ export default function MobileBottomSheet({
       <div
         className="flex-shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing"
         style={{
-          height: 28,
+          height: 44,
           touchAction: 'none',
         }}
         onTouchStart={handleTouchStart}
@@ -152,7 +152,7 @@ export default function MobileBottomSheet({
           style={{
             width: 36,
             height: 4,
-            background: '#3a5070',
+            background: 'var(--border-default)',
             borderRadius: 2,
           }}
         />
@@ -162,7 +162,7 @@ export default function MobileBottomSheet({
       {header && (
         <div
           className="flex-shrink-0 px-4 pb-2"
-          style={{ borderBottom: '1px solid #1e3048' }}
+          style={{ borderBottom: '1px solid var(--border-default)' }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -173,7 +173,7 @@ export default function MobileBottomSheet({
 
       {/* ── Scrollable Content ────────────────────────────── */}
       <div
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
         style={{
           WebkitOverflowScrolling: 'touch',
           // Only allow scroll when not at collapsed snap
@@ -187,7 +187,7 @@ export default function MobileBottomSheet({
       <div
         className="absolute top-0 left-1/4 right-1/4 h-[2px]"
         style={{
-          background: 'linear-gradient(90deg, transparent, #1a5a9e, transparent)',
+          background: 'linear-gradient(90deg, transparent, #888888, transparent)',
         }}
       />
     </div>

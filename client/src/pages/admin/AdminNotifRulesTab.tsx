@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Bell, Plus, Edit2, Trash2, Zap, Loader2, X, Search,
-  Play, CheckCircle2, AlertTriangle, Mail, Smartphone,
+  Bell, Plus, Edit2, Trash2, Zap, Loader2, X, Search, Play, CheckCircle2, Mail,
+  Smartphone, Power, PowerOff,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import IconButton from '../../components/IconButton';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type { User } from '../../types';
 
 // ============================================================
@@ -34,20 +38,24 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+// `live: true` = a real event emitter in the Worker fires this trigger
+// today (see src/routes/notificationEngine.ts callers). Triggers without
+// it are valid to configure but won't fire until their emitter is wired —
+// the form labels them "(not yet active)" so rules aren't created blind.
 const TRIGGER_EVENTS = [
-  { value: 'call_created_p1', label: 'P1 Call Created', desc: 'When a Priority 1 call is created' },
-  { value: 'call_created_p2', label: 'P2 Call Created', desc: 'When a Priority 2 call is created' },
-  { value: 'warrant_created', label: 'Warrant Created', desc: 'When a new warrant is entered' },
-  { value: 'warrant_served', label: 'Warrant Served', desc: 'When a warrant is served' },
-  { value: 'credential_expiring', label: 'Credential Expiring', desc: 'When an officer credential is about to expire' },
-  { value: 'unit_panic', label: 'Panic Button', desc: 'When a unit activates panic' },
-  { value: 'shift_unattended', label: 'Shift Unattended', desc: 'When a scheduled shift has no clock-in' },
-  { value: 'invoice_overdue', label: 'Invoice Overdue', desc: 'When an invoice passes its due date' },
-  { value: 'incident_submitted', label: 'Incident Submitted', desc: 'When an incident report is submitted for review' },
-  { value: 'bolo_created', label: 'BOLO Created', desc: 'When a new BOLO is issued' },
-  { value: 'login_failed_threshold', label: 'Login Failures', desc: 'When login failures exceed threshold' },
-  { value: 'training_expiring', label: 'Training Expiring', desc: 'When training certification is about to expire' },
-  { value: 'vehicle_maintenance_due', label: 'Vehicle Service Due', desc: 'When a fleet vehicle needs maintenance' },
+  { value: 'call_created_p1', label: 'P1 Call Created', desc: 'When a Priority 1 call is created', live: true },
+  { value: 'call_created_p2', label: 'P2 Call Created', desc: 'When a Priority 2 call is created', live: true },
+  { value: 'unit_panic', label: 'Panic Button', desc: 'When a unit activates panic', live: true },
+  { value: 'warrant_created', label: 'Warrant Created', desc: 'When a new warrant is entered', live: true },
+  { value: 'warrant_served', label: 'Warrant Served', desc: 'When a warrant is served', live: false },
+  { value: 'credential_expiring', label: 'Credential Expiring', desc: 'When an officer credential is about to expire', live: false },
+  { value: 'shift_unattended', label: 'Shift Unattended', desc: 'When a scheduled shift has no clock-in', live: false },
+  { value: 'invoice_overdue', label: 'Invoice Overdue', desc: 'When an invoice passes its due date', live: false },
+  { value: 'incident_submitted', label: 'Incident Submitted', desc: 'When an incident report is submitted for review', live: false },
+  { value: 'bolo_created', label: 'BOLO Created', desc: 'When a new BOLO is issued', live: false },
+  { value: 'login_failed_threshold', label: 'Login Failures', desc: 'When login failures exceed threshold', live: false },
+  { value: 'training_expiring', label: 'Training Expiring', desc: 'When training certification is about to expire', live: false },
+  { value: 'vehicle_maintenance_due', label: 'Vehicle Service Due', desc: 'When a fleet vehicle needs maintenance', live: false },
 ];
 
 const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
@@ -84,7 +92,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     setLoading(true);
     try {
       const data = await apiFetch<NotificationRule[]>('/admin/notification-rules');
-      setRules(data || []);
+      setRules(asArray<NotificationRule>(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load notification rules');
     } finally {
@@ -113,6 +121,13 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
 
   const handleSubmit = async () => {
     if (!form.name.trim()) { setError('Rule name is required'); return; }
+    // Guard the no-target rule (notifies nobody) on the client too, so the
+    // admin gets an inline message instead of the server's 400. Covers both
+    // create and edit (PUT) since they share this form.
+    const arr = (v: string) => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+    if (arr(form.target_roles).length === 0 && arr(form.target_user_ids).length === 0) {
+      setError('Select at least one target role or user'); return;
+    }
     setSubmitting(true);
     try {
       if (editing) {
@@ -177,23 +192,53 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     setForm((f) => ({ ...f, target_roles: JSON.stringify(next) }));
   };
 
+  // ── Right-click context menu (per rule) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildRuleMenu = (r: NotificationRule): ContextMenuItem[] => [
+    m.action('Edit rule', () => openEdit(r), { icon: <Edit2 size={12} /> }),
+    m.action('Send test notification', () => testRule(r.id), { icon: <Play size={12} />, disabled: testing === r.id }),
+    m.action(r.is_active ? 'Disable rule' : 'Enable rule', () => toggleActive(r), {
+      icon: r.is_active ? <PowerOff size={12} /> : <Power size={12} />,
+    }),
+    m.separator(),
+    m.copy('Copy name', r.name),
+    m.copyId(r.id),
+    m.separator(),
+    m.action('Delete rule', () => setDeleteId(r.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  // Keyboard shortcut: Escape to close modals
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setEditing(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   if (loading && rules.length === 0) return <LoadingSpinner />;
+
 
   return (
     <div className="p-4 space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Zap className="w-4 h-4 text-brand-400" />
-          <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Notification Rules</h2>
-          <span className="text-[10px] text-rmpg-500 ml-1">({rules.filter((r) => r.is_active).length} active)</span>
+          <div className="w-7 h-7 flex items-center justify-center bg-amber-900/30 border border-amber-700/40 shrink-0" aria-hidden="true">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">Notification Rules</h2>
+            <span className="text-[9px] text-rmpg-500">{rules.filter((r) => r.is_active).length} active</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="input-dark text-[10px] pl-6 pr-2 py-1 w-40" />
+            <input id="ff-adminnotifrulestab-0" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search rules..." aria-label="Search notification rules" autoComplete="off" className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]" />
           </div>
-          <button onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+          <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1">
             <Plus className="w-3 h-3" />
             New Rule
           </button>
@@ -203,14 +248,17 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
       {/* Rules List */}
       <div className="space-y-2">
         {filtered.length === 0 ? (
-          <div className="text-center py-8 text-rmpg-500 text-xs">No notification rules configured.</div>
+          <div className="flex flex-col items-center justify-center py-12 text-rmpg-500 text-xs gap-2">
+            <Zap className="w-6 h-6 text-rmpg-600" />
+            <span>No notification rules configured.</span>
+          </div>
         ) : filtered.map((r) => {
           const trigger = TRIGGER_EVENTS.find((t) => t.value === r.trigger_event);
           const NotifIcon = NOTIF_TYPE_ICONS[r.notification_type] || Bell;
           const roles = (() => { try { return JSON.parse(r.target_roles || '[]') as string[]; } catch { return []; } })();
 
           return (
-            <div key={r.id} className={`panel-beveled bg-surface-base p-3 border-l-[3px] ${r.is_active ? 'border-l-brand-500' : 'border-l-rmpg-700 opacity-60'}`}>
+            <div key={r.id} onContextMenu={(e) => openMenu(e, buildRuleMenu(r))} className={`panel-beveled bg-surface-base p-3 border-l-[3px] ${r.is_active ? 'border-l-brand-500' : 'border-l-rmpg-700 opacity-60'}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-2 flex-1 min-w-0">
                   <div className="p-1 rounded-sm bg-surface-sunken border border-rmpg-700">
@@ -235,21 +283,22 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button
+                  <IconButton
                     onClick={() => testRule(r.id)}
                     disabled={testing === r.id}
                     className="toolbar-btn p-1"
                     title="Send test notification"
+                    aria-label="Send test notification"
                   >
                     {testing === r.id ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Play className="w-3 h-3" />}
-                  </button>
-                  <button onClick={() => toggleActive(r)} className="toolbar-btn p-1" title={r.is_active ? 'Disable' : 'Enable'}>
+                  </IconButton>
+                  <button type="button" onClick={() => toggleActive(r)} className="toolbar-btn p-1" title={r.is_active ? 'Disable' : 'Enable'}>
                     <span className={`text-[9px] font-bold ${r.is_active ? 'text-green-400' : 'text-rmpg-500'}`}>
                       {r.is_active ? 'ON' : 'OFF'}
                     </span>
                   </button>
-                  <button onClick={() => openEdit(r)} className="toolbar-btn p-1"><Edit2 className="w-3 h-3" /></button>
-                  <button onClick={() => setDeleteId(r.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                  <IconButton onClick={() => openEdit(r)} className="toolbar-btn p-1" aria-label={`Edit ${r.name}`}><Edit2 className="w-3 h-3" /></IconButton>
+                  <IconButton onClick={() => setDeleteId(r.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" aria-label={`Delete ${r.name}`}><Trash2 className="w-3 h-3" /></IconButton>
                 </div>
               </div>
             </div>
@@ -259,36 +308,44 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit notification rule' : 'New notification rule'}>
           <div className="bg-surface-base panel-beveled w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Notification Rule' : 'New Notification Rule'}
               </h3>
-              <button onClick={() => setShowForm(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setShowForm(false)} className="p-0.5 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700 transition-colors rounded-sm" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Rule Name *</label>
-                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs" placeholder="e.g. Alert supervisors on P1 calls" />
+                <label htmlFor="ff-adminnotifrulestab-1" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Rule Name *</label>
+                <input id="ff-adminnotifrulestab-1" type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Alert supervisors on P1 calls" />
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
-                <input type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs" placeholder="Optional description..." />
+                <label htmlFor="ff-adminnotifrulestab-2" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
+                <input id="ff-adminnotifrulestab-2" type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="Optional description..." />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Trigger Event *</label>
-                  <select value={form.trigger_event} onChange={(e) => setForm((f) => ({ ...f, trigger_event: e.target.value }))} className="select-dark w-full text-xs">
+                  <label htmlFor="ff-adminnotifrulestab-3" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Trigger Event *</label>
+                  <select id="ff-adminnotifrulestab-3" value={form.trigger_event} onChange={(e) => setForm((f) => ({ ...f, trigger_event: e.target.value }))} className="select-dark w-full text-xs">
                     {TRIGGER_EVENTS.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
+                      <option key={t.value} value={t.value}>{t.label}{t.live ? '' : ' (not yet active)'}</option>
                     ))}
                   </select>
-                  <p className="text-[9px] text-rmpg-500 mt-0.5">{TRIGGER_EVENTS.find((t) => t.value === form.trigger_event)?.desc}</p>
+                  {(() => {
+                    const t = TRIGGER_EVENTS.find((x) => x.value === form.trigger_event);
+                    return (
+                      <p className="text-[9px] mt-0.5 flex items-center gap-1">
+                        <span className={t?.live ? 'text-green-500' : 'text-amber-500'}>{t?.live ? '● Live' : '○ Not yet active'}</span>
+                        <span className="text-rmpg-500">— {t?.desc}</span>
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Delivery Method</label>
-                  <select value={form.notification_type} onChange={(e) => setForm((f) => ({ ...f, notification_type: e.target.value as any }))} className="select-dark w-full text-xs">
+                  <label htmlFor="ff-adminnotifrulestab-4" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Delivery Method</label>
+                  <select id="ff-adminnotifrulestab-4" value={form.notification_type} onChange={(e) => setForm((f) => ({ ...f, notification_type: e.target.value as any }))} className="select-dark w-full text-xs">
                     <option value="in_app">In-App Only</option>
                     <option value="email">Email Only</option>
                     <option value="both">In-App + Email</option>
@@ -301,7 +358,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {ROLES.map((role) => (
-                    <button
+                    <button type="button"
                       key={role}
                       onClick={() => toggleRole(role)}
                       className={`text-[10px] px-2 py-0.5 rounded-sm border transition-colors ${
@@ -317,9 +374,9 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
-              <button onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
-              <button onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
-                {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
+              <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
+              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1">
+                {submitting && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
                 {editing ? 'Update' : 'Create'}
               </button>
             </div>

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Camera } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
-import { useFormDirty } from '../../../hooks/useFormDirty';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { CameraStatus } from '../../../types';
 
+import RichTextArea from '../../../components/RichTextArea';
 export interface BodyCameraFormData {
   officer_id: string;
   camera_id: string;
@@ -61,17 +62,27 @@ const EMPTY: BodyCameraFormData = {
 export default function BodyCameraFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, initialData, mode = 'create',
 }: Props) {
-  const [form, setForm] = useState<BodyCameraFormData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<BodyCameraFormData>({
+    storageKey: 'rmpg_personnel_bodycam_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
       const initial = { ...EMPTY, ...initialData, storage_capacity_gb: String(initialData.storage_capacity_gb || '32') };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen) {
       setForm(EMPTY);
-      snapshot(EMPTY);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
@@ -93,32 +104,34 @@ export default function BodyCameraFormModal({
       submitLabel={mode === 'edit' ? 'Update' : 'Assign Camera'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Assignment */}
       <div className="panel-inset p-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Officer <span className="text-red-400">*</span></label>
-            <select required value={form.officer_id} onChange={e => set('officer_id', e.target.value)} className="select-dark">
+            <label htmlFor="ff-bodycameraformmodal-0" className="field-label">Officer <span className="text-red-400">*</span></label>
+            <select id="ff-bodycameraformmodal-0" required value={form.officer_id} onChange={e => set('officer_id', e.target.value)} className="select-dark">
               <option value="">Select officer...</option>
               {officers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Camera ID / Serial <span className="text-red-400">*</span></label>
-            <input type="text" required value={form.camera_id} onChange={e => set('camera_id', e.target.value)} placeholder="e.g. BC-001" className="input-dark" />
+            <label htmlFor="ff-bodycameraformmodal-1" className="field-label">Camera ID / Serial <span className="text-red-400">*</span></label>
+            <input id="ff-bodycameraformmodal-1" type="text" required value={form.camera_id} onChange={e => set('camera_id', e.target.value)} placeholder="e.g. BC-001" className="input-dark min-h-[36px]" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Status</label>
-            <select value={form.status} onChange={e => set('status', e.target.value)} className="select-dark">
+            <label htmlFor="ff-bodycameraformmodal-2" className="field-label">Status</label>
+            <select id="ff-bodycameraformmodal-2" value={form.status} onChange={e => set('status', e.target.value)} className="select-dark">
               {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Condition</label>
-            <select value={form.condition} onChange={e => set('condition', e.target.value)} className="select-dark">
+            <label htmlFor="ff-bodycameraformmodal-3" className="field-label">Condition</label>
+            <select id="ff-bodycameraformmodal-3" value={form.condition} onChange={e => set('condition', e.target.value)} className="select-dark">
               {CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
@@ -133,22 +146,22 @@ export default function BodyCameraFormModal({
       <div className="panel-inset p-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Make</label>
-            <input type="text" value={form.make} onChange={e => set('make', e.target.value)} placeholder="e.g. Axon" className="input-dark" />
+            <label htmlFor="ff-bodycameraformmodal-4" className="field-label">Make</label>
+            <input id="ff-bodycameraformmodal-4" type="text" value={form.make} onChange={e => set('make', e.target.value)} placeholder="e.g. Axon" className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Model</label>
-            <input type="text" value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. Body 4" className="input-dark" />
+            <label htmlFor="ff-bodycameraformmodal-5" className="field-label">Model</label>
+            <input id="ff-bodycameraformmodal-5" type="text" value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. Body 4" className="input-dark min-h-[36px]" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Firmware Version</label>
-            <input type="text" value={form.firmware_version} onChange={e => set('firmware_version', e.target.value)} placeholder="e.g. v3.2.1" className="input-dark" />
+            <label htmlFor="ff-bodycameraformmodal-6" className="field-label">Firmware Version</label>
+            <input id="ff-bodycameraformmodal-6" type="text" value={form.firmware_version} onChange={e => set('firmware_version', e.target.value)} placeholder="e.g. v3.2.1" className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Storage Capacity (GB)</label>
-            <input type="number" value={form.storage_capacity_gb} onChange={e => set('storage_capacity_gb', e.target.value)} min={1} className="input-dark" />
+            <label htmlFor="ff-bodycameraformmodal-7" className="field-label">Storage Capacity (GB)</label>
+            <input id="ff-bodycameraformmodal-7" type="number" value={form.storage_capacity_gb} onChange={e => set('storage_capacity_gb', e.target.value)} min={1} className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>
@@ -161,16 +174,16 @@ export default function BodyCameraFormModal({
       <div className="panel-inset p-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="field-label">Assigned Date</label>
-            <input type="date" value={form.assigned_at} onChange={e => set('assigned_at', e.target.value)} className="input-dark" />
+            <label htmlFor="ff-bodycameraformmodal-8" className="field-label">Assigned Date</label>
+            <input id="ff-bodycameraformmodal-8" type="date" value={form.assigned_at} onChange={e => set('assigned_at', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
-            <label className="field-label">Returned Date</label>
-            <input
+            <label htmlFor="ff-bodycameraformmodal-9" className="field-label">Returned Date</label>
+            <input id="ff-bodycameraformmodal-9"
               type="date"
               value={form.returned_at}
               onChange={e => set('returned_at', e.target.value)}
-              className="input-dark"
+              className="input-dark min-h-[36px]"
               disabled={form.status !== 'available' && form.status !== 'retired'}
             />
           </div>
@@ -183,7 +196,8 @@ export default function BodyCameraFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3">
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." className="textarea-dark" />
+        <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." maxLength={3000} className="textarea-dark" />
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
       </div>
     </FormModal>
   );

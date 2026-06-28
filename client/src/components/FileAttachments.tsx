@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import {
   Paperclip,
   Upload,
@@ -13,9 +14,14 @@ import {
   X,
   Eye,
   ZoomIn,
+  Camera,
 } from 'lucide-react';
-import { apiUploadFiles, apiFetchAttachments, apiDeleteAttachment } from '../hooks/useApi';
+import { apiUploadFilesWithProgress, apiFetchAttachments, apiDeleteAttachment } from '../hooks/useApi';
+import type { UploadProgress } from '../hooks/useApi';
+import UploadProgressBar from './ui/UploadProgressBar';
 import ConfirmDialog from './ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
+import { stampPhoto, getGeoFix, contextLabelForEntity } from '../utils/photoStamp';
 
 interface Attachment {
   id: number;
@@ -36,6 +42,12 @@ interface FileAttachmentsProps {
   entityId: string | number;
   readOnly?: boolean;
   compact?: boolean;
+  /** Override the burned-in photo-context label (else derived from entityType). */
+  photoContext?: string;
+  /** Case/incident number woven into the stamp for evidence photos. */
+  caseNumber?: string;
+  /** Disable the forensic photo stamp for this surface (default: on). */
+  disablePhotoStamp?: boolean;
 }
 
 const TOKEN_KEY = 'rmpg_token';
@@ -48,16 +60,18 @@ const TOKEN_KEY = 'rmpg_token';
  * compatibility (but this is what caused TOKEN_EXPIRED errors).
  */
 export function authUrl(path: string, sig?: string, exp?: number): string {
-  const separator = path.includes('?') ? '&' : '?';
+  // Strip any existing token= param to prevent duplicates on re-render
+  const cleanPath = path.replace(/([?&])token=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+  const separator = cleanPath.includes('?') ? '&' : '?';
 
   // Prefer HMAC signature — session-independent, 24h TTL
   if (sig && exp) {
-    return `${path}${separator}sig=${encodeURIComponent(sig)}&exp=${exp}`;
+    return `${cleanPath}${separator}sig=${encodeURIComponent(sig)}&exp=${exp}`;
   }
 
   // Fallback to JWT token (short-lived, same session only)
   const token = localStorage.getItem(TOKEN_KEY) || '';
-  return `${path}${separator}token=${encodeURIComponent(token)}`;
+  return `${cleanPath}${separator}token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -94,7 +108,7 @@ function getFileIcon(mime: string) {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('en-US', {
+  return parseTimestamp(dateStr).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -108,7 +122,11 @@ export default function FileAttachments({
   entityId,
   readOnly = false,
   compact = false,
+  photoContext,
+  caseNumber,
+  disablePhotoStamp = false,
 }: FileAttachmentsProps) {
+  const { user } = useAuth();
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -116,7 +134,13 @@ export default function FileAttachments({
   const [dragOver, setDragOver] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  const [totalUploadFiles, setTotalUploadFiles] = useState(0);
+  const [currentFileName, setCurrentFileName] = useState<string | undefined>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -135,18 +159,53 @@ export default function FileAttachments({
   }, [fetchFiles]);
 
   const handleUpload = async (files: FileList | File[]) => {
-    const fileArray = Array.from(files);
+    let fileArray = Array.from(files);
     if (fileArray.length === 0) return;
+
+    // ── Forensic photo stamp ──
+    // Burn timestamp + geo + officer + context into every image before
+    // upload, so the metadata is part of the pixels (chain of custody).
+    // Best-effort: a stamp failure (geo denied, decode error) never blocks
+    // the upload — stampPhoto returns the original on any error.
+    if (!disablePhotoStamp && fileArray.some(f => f.type.startsWith('image/'))) {
+      try {
+        const geo = await getGeoFix();
+        const context = photoContext || contextLabelForEntity(entityType, caseNumber);
+        const officerLast = (user?.last_name || user?.full_name?.split(' ').slice(-1)[0] || user?.username || '').trim();
+        fileArray = await Promise.all(fileArray.map(f =>
+          f.type.startsWith('image/')
+            ? stampPhoto(f, { officerLast, badge: user?.badge_number, context, lat: geo?.lat, lon: geo?.lon })
+            : Promise.resolve(f),
+        ));
+      } catch { /* leave files unstamped on any failure */ }
+    }
 
     setUploading(true);
     setError(null);
+    setTotalUploadFiles(fileArray.length);
+    setCurrentFileIndex(0);
+    setCurrentFileName(fileArray[0]?.name);
+    setUploadProgress(null);
+
     try {
-      await apiUploadFiles(fileArray, entityType, entityId);
+      await apiUploadFilesWithProgress(
+        fileArray,
+        entityType,
+        entityId,
+        (progress, fileIndex, totalFiles) => {
+          setUploadProgress(progress);
+          setCurrentFileIndex(fileIndex);
+          setTotalUploadFiles(totalFiles);
+          setCurrentFileName(fileArray[fileIndex]?.name);
+        },
+      );
       await fetchFiles();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
+      setUploadProgress(null);
+      setCurrentFileName(undefined);
     }
   };
 
@@ -183,12 +242,22 @@ export default function FileAttachments({
     }
   };
 
-  const openPreview = (attachment: Attachment) => {
-    if (attachment.mime_type.startsWith('image/') || attachment.mime_type === 'application/pdf') {
+  const openPreview = async (attachment: Attachment) => {
+    if (attachment.mime_type.startsWith('image/')) {
       setPreviewAttachment(attachment);
+    } else if (attachment.mime_type === 'application/pdf') {
+      setPreviewAttachment(attachment);
+      setPdfBlobUrl(null);
+      try {
+        const url = authUrl(`/api/uploads/${attachment.file_id}`, attachment.access_sig, attachment.access_exp);
+        const res = await fetch(url);
+        if (res.ok) {
+          const blob = await res.blob();
+          setPdfBlobUrl(URL.createObjectURL(blob));
+        }
+      } catch { /* iframe will show empty */ }
     } else {
-      // Direct download for non-previewable files
-      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank');
+      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -202,15 +271,16 @@ export default function FileAttachments({
 
   return (
     <div className="space-y-2">
-      <label className="text-[10px] text-rmpg-400 uppercase font-semibold flex items-center gap-1">
+      <label htmlFor="ff-fileattachments-0" className="text-[10px] text-rmpg-400 uppercase font-semibold flex items-center gap-1">
         <Paperclip className="w-3 h-3" />
         Attachments ({attachments.length})
       </label>
 
+      {/* 51: Error banner with role="alert" for screen readers; 52: Animate error in */}
       {error && (
-        <div className="px-2 py-1 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
-          {error}
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+        <div className="px-2 py-1.5 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between animate-fade-in" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 hover:bg-red-900/40 p-0.5 transition-colors rounded-sm ml-2" aria-label="Dismiss error">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -218,6 +288,7 @@ export default function FileAttachments({
 
       {/* Upload Zone */}
       {!readOnly && (
+        <>
         <div
           onDrop={handleDrop}
           onDragOver={handleDragOver}
@@ -231,7 +302,7 @@ export default function FileAttachments({
             }
           `}
         >
-          <input
+          <input id="ff-fileattachments-0"
             ref={fileInputRef}
             type="file"
             multiple
@@ -240,9 +311,13 @@ export default function FileAttachments({
             accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.mp4,.mov,.avi,.mp3,.wav,.ogg"
           />
           {uploading ? (
-            <div className="flex items-center justify-center gap-2 text-brand-400 text-xs">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading...
+            <div className="py-1">
+              <UploadProgressBar
+                progress={uploadProgress}
+                fileName={currentFileName}
+                fileCount={currentFileIndex + 1}
+                totalFiles={totalUploadFiles}
+              />
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2 text-rmpg-300 text-xs">
@@ -251,6 +326,29 @@ export default function FileAttachments({
             </div>
           )}
         </div>
+        {/* Take Photo — phones/tablets only. capture="environment" opens the
+            rear camera directly (the mixed-type accept list above makes some
+            mobile browsers skip the camera option entirely). Reuses the same
+            change handler/upload pipeline. */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileInput}
+          accept="image/*"
+          capture="environment"
+        />
+        {!uploading && (
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            className="md:hidden mt-1.5 w-full flex items-center justify-center gap-2 py-2.5 border border-rmpg-600 text-rmpg-200 text-xs font-bold uppercase tracking-wider hover:border-rmpg-400 active:scale-[0.99]"
+          >
+            <Camera className="w-4 h-4" />
+            Take photo
+          </button>
+        )}
+        </>
       )}
 
       {/* Content */}
@@ -298,7 +396,7 @@ export default function FileAttachments({
                   </div>
                   {/* Overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
-                    <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ZoomIn className="w-5 h-5 text-rmpg-100 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity" />
                   </div>
                   {/* Image name */}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1">
@@ -306,9 +404,9 @@ export default function FileAttachments({
                   </div>
                   {/* Delete button */}
                   {!readOnly && (
-                    <button
+                    <button type="button"
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: att.file_id, name: att.original_name }); }}
-                      className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-red-900/80 text-rmpg-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                      className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-red-900/80 text-rmpg-300 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                       title="Delete"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -332,16 +430,16 @@ export default function FileAttachments({
                   >
                     <Icon className="w-4 h-4 flex-shrink-0 text-brand-400" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-gray-200 truncate">{att.original_name}</p>
+                      <p className="text-xs text-rmpg-200 truncate">{att.original_name}</p>
                       <p className="text-[10px] text-rmpg-400">
                         {formatFileSize(att.file_size)}
                         {att.uploader_name && <> &middot; {att.uploader_name}</>}
                         {' '}&middot; {formatDate(att.created_at)}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                       {att.mime_type === 'application/pdf' && (
-                        <button
+                        <button type="button"
                           onClick={() => openPreview(att)}
                           className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400 transition-colors"
                           title="Preview"
@@ -360,7 +458,7 @@ export default function FileAttachments({
                         <Download className="w-3.5 h-3.5" />
                       </a>
                       {!readOnly && (
-                        <button
+                        <button type="button"
                           onClick={() => setDeleteTarget({ id: att.file_id, name: att.original_name })}
                           className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-red-400 transition-colors"
                           title="Delete"
@@ -376,16 +474,24 @@ export default function FileAttachments({
           )}
         </div>
       ) : (
+        /* 55: Empty state with icon and larger padding; 56: File icon for empty state */
         !readOnly && (
-          <p className="text-[10px] text-rmpg-500 text-center py-1">No files attached</p>
+          <div className="flex flex-col items-center gap-1 py-3 text-rmpg-500">
+            <Paperclip className="w-4 h-4 opacity-40" aria-hidden="true" />
+            <p className="text-[10px]">No files attached</p>
+          </div>
         )
       )}
 
-      {/* Preview Modal */}
+      {/* 53: Preview modal with backdrop-blur; 54: Animate modal entrance */}
       {previewAttachment && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-8"
-          onClick={() => setPreviewAttachment(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Preview: ${previewAttachment.original_name}`}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-fade-in"
+          onClick={() => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); setPdfBlobUrl(null); setPreviewAttachment(null); }}
+          style={{ touchAction: 'manipulation' }}
         >
           <div className="relative max-w-4xl max-h-full" onClick={(e) => e.stopPropagation()}>
             <div className="absolute -top-8 left-0 right-0 flex items-center justify-between">
@@ -400,20 +506,28 @@ export default function FileAttachments({
                 >
                   <Download className="w-4 h-4" />
                 </a>
-                <button
-                  onClick={() => setPreviewAttachment(null)}
-                  className="p-1 hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
+                <button type="button"
+                  onClick={() => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); setPdfBlobUrl(null); setPreviewAttachment(null); }}
+                  className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-200 hover:text-rmpg-100 transition-colors"
+                  style={{ touchAction: 'manipulation' }}
+                  aria-label="Close"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5 sm:w-4 sm:h-4" />
                 </button>
               </div>
             </div>
             {previewAttachment.mime_type === 'application/pdf' ? (
-              <iframe
-                src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}
-                className="w-[800px] h-[600px] bg-white"
-                title="PDF Preview"
-              />
+              pdfBlobUrl ? (
+                <iframe
+                  src={pdfBlobUrl}
+                  className="w-[800px] h-[600px] bg-white"
+                  title="PDF Preview"
+                />
+              ) : (
+                <div className="w-[800px] h-[600px] bg-white flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-rmpg-400" />
+                </div>
+              )
             ) : (
               <img
                 src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}

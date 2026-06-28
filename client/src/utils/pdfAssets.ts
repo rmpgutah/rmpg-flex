@@ -3,6 +3,14 @@
 // Runtime image loader for agency seal/logo + form identifiers
 // ============================================================
 
+// rmpg-seal.png is imported via Vite (?url) so it lands in the hashed
+// /assets/ path that the deployed Worker reliably serves. The previous
+// `/rmpg-seal.png` at the bundle root 404'd on live (other root-level
+// PNGs work — this specific file was missing from the served set, root
+// cause not identified). The Vite path is asset-fingerprinted, so
+// cache invalidation is automatic on rebuild.
+import sealUrl from '../assets/rmpg-seal.png?url';
+
 // ── Module-level image cache ────────────────────────────────
 
 let sealBase64: string | null = null;
@@ -16,7 +24,7 @@ let logoDarkBase64: string | null = null;
 export async function loadSealBase64(): Promise<string | null> {
   if (sealBase64) return sealBase64;
   try {
-    const res = await fetch('/rmpg-seal.png');
+    const res = await fetch(sealUrl);
     if (!res.ok) return null;
     const blob = await res.blob();
     const bmp = await createImageBitmap(blob);
@@ -37,7 +45,8 @@ export async function loadSealBase64(): Promise<string | null> {
       reader.readAsDataURL(outBlob);
     });
 
-    // Strip data URL prefix to get raw base64
+    // Cache the full data URL — jsPDF addImage accepts it directly (the prior
+    // "strip prefix" comment was misleading; nothing is stripped).
     sealBase64 = dataUrl;
     return sealBase64;
   } catch {
@@ -132,27 +141,43 @@ export function clearImageCache(): void {
 
 export const FORM_NUMBERS: Record<string, string> = {
   // Incident reports (PS-1xx)
-  incident: 'FORM PS-101',
+  incident: 'FORM UIR-205',
   trespass: 'FORM PS-102',
   accident: 'FORM PS-103',
   medical: 'FORM PS-104',
   use_of_force: 'FORM PS-105',
   daily_activity: 'FORM PS-106',
   arrest: 'FORM PS-107',
+  process_service: 'FORM PS-108',
   // Record reports (PS-2xx)
   call: 'FORM PS-201',
   person: 'FORM PS-202',
   vehicle: 'FORM PS-203',
   warrant: 'FORM PS-204',
+  warrant_summary: 'FORM PS-204S',
   evidence: 'FORM PS-205',
   fleet: 'FORM PS-206',
   personnel: 'FORM PS-207',
   property: 'FORM PS-208',
   citation: 'FORM PS-209',
+  // Fleet operational forms (PS-206-*)
+  'FORM PS-206-PTI': 'FORM PS-206-PTI',  // Pre-Trip Inspection
+  'FORM PS-206-CKO': 'FORM PS-206-CKO',  // Vehicle Check-Out
+  'FORM PS-206-DMG': 'FORM PS-206-DMG',  // Damage Report
   // Tracking & Analytics (PS-2xx cont.)
   patrol_tracking: 'FORM PS-210',
-  // Financial (PS-3xx)
+  trip_log: 'FORM PS-211',
+  // Serve / Process Service (PS-3xx)
+  serve_affidavit:   'FORM PS-311',
+  serve_non_service: 'FORM PS-312',
+  service_log:       'FORM PS-313',
+  // Financial (PS-3xx cont.)
   invoice: 'FORM PS-301',
+  proposal: 'FORM PS-302',
+  // Communications (PS-4xx)
+  radio_log:      'FORM PS-401',
+  comms_message:  'FORM PS-402',
+  bolo_broadcast: 'FORM PS-403',
 };
 
 export const FORM_REVISION = 'Rev. 2026-03';

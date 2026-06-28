@@ -5,6 +5,7 @@
 
 import React, { Component, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { CHUNK_RELOAD_KEY, CHUNK_RELOAD_WINDOW_MS, isChunkLoadError } from '../utils/chunkRetry';
 
 interface Props {
   children: ReactNode;
@@ -30,6 +31,21 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary] Uncaught error:', error, info.componentStack);
+
+    // Auto-reload on stale chunk errors (happens after deploys when cached JS
+    // references old chunks). This is a safety net — lazyRetry normally reloads
+    // before the boundary is hit. Uses the same key/window as chunkRetry.ts so
+    // the two guards are always in sync (avoids duplicate hardcoded strings).
+    if (isChunkLoadError(error)) {
+      const lastReload = sessionStorage.getItem(CHUNK_RELOAD_KEY);
+      const lastAt = lastReload ? parseInt(lastReload, 10) : null;
+      if (lastAt === null || Number.isNaN(lastAt) || Date.now() - lastAt > CHUNK_RELOAD_WINDOW_MS) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+        window.location.reload();
+        return;
+      }
+    }
+
     // Save component stack for display in error UI
     this.setState({ componentStack: info.componentStack || null });
     // Report to server for diagnostics (fire-and-forget, best-effort)
@@ -52,11 +68,19 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReload = () => {
+    // Clear the chunk-reload guard so the fresh load can auto-retry if chunks
+    // still fail (e.g. during a multi-minute CF Pages propagation window).
+    try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* private mode */ }
     window.location.reload();
   };
 
   handleDismiss = () => {
-    this.setState({ hasError: false, error: null, showDetails: false });
+    // Navigate to the app root rather than re-rendering children — resetting
+    // hasError would re-render the same children that threw (render-time
+    // error like a null-pointer), which immediately throws again, creating
+    // a rapid crash loop. Navigation creates a fresh document, gives
+    // transient errors a clean slate, and avoids the loop entirely.
+    window.location.href = '/';
   };
 
   render() {
@@ -68,11 +92,11 @@ export default class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex items-center justify-center min-h-[400px] p-8">
-          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-2xl">
+          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-md animate-scale-in" style={{ borderTop: '2px solid #dc2626' }}>
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3 border-b border-red-900/30"
-              style={{ background: 'linear-gradient(180deg, #2a1515 0%, #141e2b 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #2a1515 0%, #141414 100%)' }}
             >
               <AlertTriangle className="w-5 h-5 text-red-400" />
               <h2 className="text-sm font-bold text-red-300 uppercase tracking-wider">
@@ -91,24 +115,24 @@ export default class ErrorBoundary extends Component<Props, State> {
 
               {/* Action buttons */}
               <div className="flex items-center gap-3 mb-4">
-                <button
+                <button type="button"
                   onClick={this.handleReload}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide
-                             bg-red-700 hover:bg-red-600 border border-red-500 text-white shadow-sm transition-colors"
+                             bg-red-700 hover:bg-red-600 border border-red-500 text-rmpg-100 shadow-sm transition-colors"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Reload Page
                 </button>
-                <button
+                <button type="button"
                   onClick={this.handleDismiss}
                   className="toolbar-btn"
                 >
-                  Try Again
+                  Return Home
                 </button>
               </div>
 
               {/* Collapsible details */}
-              <button
+              <button type="button"
                 onClick={() => this.setState({ showDetails: !showDetails })}
                 className="flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-rmpg-200 transition-colors uppercase tracking-wider font-bold"
               >

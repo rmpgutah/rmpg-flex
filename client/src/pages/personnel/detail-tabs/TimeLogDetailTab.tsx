@@ -2,10 +2,11 @@
 // RMPG Flex — Officer Time Log Detail Tab
 // ============================================================
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Clock, LogIn, LogOut, Pencil, Coffee, Zap, Trash2 } from 'lucide-react';
 import type { TimeEntry } from '../../../types';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   timeEntries: TimeEntry[];
@@ -22,7 +23,7 @@ interface Props {
 
 function formatTime(dateStr: string): string {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString('en-US', {
+  return parseTimestamp(dateStr).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -32,10 +33,11 @@ function formatTime(dateStr: string): string {
 }
 
 function calcHours(entry: TimeEntry): string {
-  if (entry.total_hours != null) return entry.total_hours.toFixed(2);
+  if (entry.total_hours != null && Number.isFinite(Number(entry.total_hours))) return Number(entry.total_hours).toFixed(2);
   if (!entry.clock_in) return '-';
-  const start = new Date(entry.clock_in).getTime();
-  const end = entry.clock_out ? new Date(entry.clock_out).getTime() : Date.now();
+  const start = parseTimestamp(entry.clock_in).getTime();
+  const end = entry.clock_out ? parseTimestamp(entry.clock_out).getTime() : Date.now();
+  if (isNaN(start) || isNaN(end)) return '-';
   const hrs = (end - start) / (1000 * 60 * 60);
   return hrs.toFixed(2);
 }
@@ -43,7 +45,7 @@ function calcHours(entry: TimeEntry): string {
 function leftBarColor(status: string): string {
   if (status === 'clocked_in') return 'border-l-green-500';
   if (status === 'on_break') return 'border-l-amber-500';
-  if (status === 'edited') return 'border-l-blue-500';
+  if (status === 'edited') return 'border-l-rmpg-500';
   return 'border-l-rmpg-500';
 }
 
@@ -59,7 +61,7 @@ export default function TimeLogDetailTab({
   const totalHours = timeEntries.reduce((sum, e) => {
     const h = e.total_hours ?? (
       e.clock_in
-        ? (((e.clock_out ? new Date(e.clock_out).getTime() : Date.now()) - new Date(e.clock_in).getTime()) / (1000 * 60 * 60))
+        ? (((e.clock_out ? parseTimestamp(e.clock_out).getTime() : Date.now()) - parseTimestamp(e.clock_in).getTime()) / (1000 * 60 * 60))
         : 0
     );
     return sum + h;
@@ -76,22 +78,22 @@ export default function TimeLogDetailTab({
           {isActive ? (
             <>
               {isClockedIn && (
-                <button
+                <button type="button"
                   onClick={() => onStartBreak(officerId)}
-                  className="toolbar-btn flex items-center gap-1.5 text-blue-400 border-blue-700/50 hover:bg-blue-900/40"
+                  className="toolbar-btn flex items-center gap-1.5 text-rmpg-400 border-border-default/50 hover:bg-surface-sunken/40"
                 >
                   <Coffee className="w-3 h-3" /> Start Break
                 </button>
               )}
               {isOnBreak && (
-                <button
+                <button type="button"
                   onClick={() => onEndBreak(officerId)}
                   className="toolbar-btn toolbar-btn-success flex items-center gap-1.5"
                 >
                   <Zap className="w-3 h-3" /> End Break
                 </button>
               )}
-              <button
+              <button type="button"
                 onClick={() => onClockOut(officerId)}
                 className="toolbar-btn toolbar-btn-danger flex items-center gap-1.5"
               >
@@ -99,7 +101,7 @@ export default function TimeLogDetailTab({
               </button>
             </>
           ) : (
-            <button
+            <button type="button"
               onClick={() => onClockIn(officerId)}
               className="toolbar-btn toolbar-btn-success flex items-center gap-1.5"
             >
@@ -119,7 +121,7 @@ export default function TimeLogDetailTab({
           <p className="text-lg font-bold text-brand-400 font-mono">{totalHours.toFixed(1)}</p>
           <p className="field-label">Hours</p>
         </div>
-        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-blue-500">
+        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">
           <p className="text-lg font-bold text-rmpg-100 font-mono">{avgPerEntry.toFixed(1)}</p>
           <p className="field-label">Avg/Entry</p>
         </div>
@@ -187,11 +189,11 @@ export default function TimeLogDetailTab({
                       {entry.break_minutes > 0 && (
                         <span className="text-[9px] text-amber-400 font-mono">
                           <Coffee className="w-2.5 h-2.5 inline mr-0.5" />
-                          {entry.break_minutes.toFixed(0)}min break
+                          {(Number(entry.break_minutes) || 0).toFixed(0)}min break
                         </span>
                       )}
                       {entry.status === 'edited' && (
-                        <span className="text-[8px] px-1 py-0.5 bg-blue-900/40 text-blue-400 border border-blue-700/50 font-bold uppercase">
+                        <span className="text-[8px] px-1 py-0.5 bg-surface-sunken/40 text-rmpg-400 border border-border-default/50 font-bold uppercase">
                           Edited
                         </span>
                       )}
@@ -203,14 +205,14 @@ export default function TimeLogDetailTab({
                     <div className="text-right">
                       <p className="text-sm font-mono font-bold text-rmpg-100">{hours}h</p>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => onEditTimeEntry(entry)}
                       className="toolbar-btn p-1"
                       title="Edit time entry"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => setDeleteTarget(entry.id)}
                       className="toolbar-btn toolbar-btn-danger p-1"
                       title="Delete time entry"

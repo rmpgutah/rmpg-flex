@@ -6,7 +6,8 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowLeft, MoreVertical, X } from 'lucide-react';
+import { ArrowLeft, MoreVertical } from 'lucide-react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 // ─── Types ────────────────────────────────────────────────────
 interface ActionItem {
@@ -62,21 +63,15 @@ export default function MobileDetailView({
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setVisible(true));
       });
-      // Lock body scroll
-      document.body.style.overflow = 'hidden';
     } else {
       setVisible(false);
       setMenuOpen(false);
-      // Restore scroll after transition
-      const timer = setTimeout(() => {
-        document.body.style.overflow = '';
-      }, 300);
-      return () => clearTimeout(timer);
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
   }, [open]);
+
+  // Body scroll lock (reference-counted, leak-proof) — separate from the
+  // animation state so the lock is released synchronously on close.
+  useBodyScrollLock(open);
 
   // ── Swipe-back gesture ─────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -149,7 +144,7 @@ export default function MobileDetailView({
       <div
         className="absolute inset-0 flex flex-col"
         style={{
-          background: '#0d1520',
+          background: 'var(--surface-overlay)',
           transform: `translateX(${translateX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.32,0.72,0,1)',
           willChange: 'transform',
@@ -162,25 +157,25 @@ export default function MobileDetailView({
             height: 48,
             paddingLeft: 4,
             paddingRight: 8,
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-            borderBottom: '1px solid #1e3048',
+            background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+            borderBottom: '1px solid var(--border-default)',
           }}
         >
           {/* Blue accent */}
           <div
             className="absolute top-0 left-0 right-0 h-[2px]"
             style={{
-              background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)',
+              background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)',
               zIndex: 1,
             }}
           />
 
           {/* Back button + title */}
           <div className="flex items-center gap-1 min-w-0 flex-1">
-            <button
+            <button type="button"
               onClick={onClose}
-              className="flex items-center justify-center w-10 h-10"
-              style={{ color: '#b0bcc8' }}
+              className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
+              style={{ color: 'var(--rmpg-400)' }}
               aria-label="Go back"
             >
               <ArrowLeft style={{ width: 20, height: 20 }} />
@@ -201,10 +196,10 @@ export default function MobileDetailView({
           {/* Actions overflow (⋮) */}
           {actions && actions.length > 0 && (
             <div className="relative">
-              <button
+              <button type="button"
                 onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center justify-center w-10 h-10"
-                style={{ color: '#b0bcc8' }}
+                className="flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11"
+                style={{ color: 'var(--rmpg-400)' }}
                 aria-label="More actions"
               >
                 <MoreVertical style={{ width: 20, height: 20 }} />
@@ -221,15 +216,15 @@ export default function MobileDetailView({
                   <div
                     className="absolute right-0 top-full mt-1 z-50 py-1 min-w-[180px]"
                     style={{
-                      background: '#1a2636',
-                      border: '1px solid #2a3e58',
+                      background: 'var(--surface-base)',
+                      border: '1px solid var(--border-default)',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                     }}
                   >
                     {actions.map((action, i) => {
                       const Icon = action.icon;
                       return (
-                        <button
+                        <button type="button"
                           key={i}
                           onClick={() => {
                             setMenuOpen(false);
@@ -237,7 +232,7 @@ export default function MobileDetailView({
                           }}
                           className="flex items-center gap-2 w-full px-4 py-3 text-left text-sm font-mono hover:bg-rmpg-700 transition-colors"
                           style={{
-                            color: action.danger ? '#ef4444' : '#b0bcc8',
+                            color: action.danger ? '#ef4444' : '#aaaaaa',
                             minHeight: 44,
                           }}
                         >
@@ -255,8 +250,8 @@ export default function MobileDetailView({
 
         {/* ── Scrollable Content ──────────────────────────── */}
         <div
-          className="flex-1 overflow-y-auto overflow-x-hidden"
-          style={{ WebkitOverflowScrolling: 'touch' }}
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+          style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
         >
           {children}
         </div>
@@ -266,8 +261,8 @@ export default function MobileDetailView({
           <div
             className="flex-shrink-0"
             style={{
-              borderTop: '1px solid #1e3048',
-              background: '#141e2b',
+              borderTop: '1px solid var(--border-default)',
+              background: 'var(--surface-overlay)',
               paddingBottom: 'env(safe-area-inset-bottom)',
             }}
           >

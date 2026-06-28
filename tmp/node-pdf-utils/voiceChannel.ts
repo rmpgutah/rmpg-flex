@@ -1,0 +1,852 @@
+// ============================================================
+// RMPG Flex — Voice Channel State Machine
+//
+// Manages the unified alert→listen→process→respond cycle for
+// hands-free voice interaction. Supports three listen modes:
+//   auto   — mic opens automatically after every alert
+//   wake   — mic listens for wake word before activating
+//   manual — mic only opens on keybind (V key)
+//
+// Uses hybrid STT: browser Web Speech API in parallel with
+// MediaRecorder capture (WebM/Opus) for server-side Whisper.
+//
+// This is a plain TypeScript state machine — NOT a React
+// component. Wrap with useVoiceChannel hook for React usage.
+// ============================================================
+
+import { announceWithSeverity, speak, clearQueue } from './edgeTTS';
+import type { AlertSeverity } from './alertSeverity';
+import { createStressAnalyzer, type StressResult } from './stressAnalyzer';
+import * as conversationMemory from './conversationMemory';
+
+// ─── Types ──────────────────────────────────────────────────
+
+export type VoiceChannelState =
+  | 'idle'
+  | 'alerting'
+  | 'listening'
+  | 'processing'
+  | 'responding';
+
+export type ListenMode = 'auto' | 'wake' | 'manual';
+
+export type ConfirmMode = 'speak' | 'beep' | 'silent';
+
+export interface VoiceChannelConfig {
+  listenMode: ListenMode;
+  listenDuration: number;       // ms, default 5000
+  wakeWord: string;             // default "dispatch"
+  confirmMode: ConfirmMode;     // default "speak"
+  enabled: boolean;             // master toggle, default false
+}
+
+export interface CommandResult {
+  success: boolean;
+  action: string;
+  message: string;
+  data?: Record<string, unknown>;
+}
+
+export interface VoiceChannelCallbacks {
+  onStateChange: (state: VoiceChannelState) => void;
+  onTranscript: (text: string, isFinal: boolean) => void;
+  onCommandResult: (result: CommandResult) => void;
+  onError: (error: string) => void;
+  onStressDetected?: (result: StressResult) => void;
+}
+
+// ─── localStorage Keys ──────────────────────────────────────
+
+const LS_LISTEN_MODE = 'rmpg-voice-listen-mode';
+const LS_LISTEN_DURATION = 'rmpg-voice-listen-duration';
+const LS_WAKE_WORD = 'rmpg-voice-wake-word';
+const LS_CONFIRM_MODE = 'rmpg-voice-confirm-mode';
+const LS_ENABLED = 'rmpg-voice-channel-enabled';
+
+// ─── Config Accessors ───────────────────────────────────────
+
+const DEFAULTS: VoiceChannelConfig = {
+  listenMode: 'manual',
+  listenDuration: 5000,
+  wakeWord: 'dispatch',
+  confirmMode: 'speak',
+  enabled: false,
+};
+
+export function getVoiceChannelConfig(): VoiceChannelConfig {
+  try {
+    return {
+      listenMode: (localStorage.getItem(LS_LISTEN_MODE) as ListenMode) || DEFAULTS.listenMode,
+      listenDuration: parseInt(localStorage.getItem(LS_LISTEN_DURATION) || '', 10) || DEFAULTS.listenDuration,
+      wakeWord: localStorage.getItem(LS_WAKE_WORD) || DEFAULTS.wakeWord,
+      confirmMode: (localStorage.getItem(LS_CONFIRM_MODE) as ConfirmMode) || DEFAULTS.confirmMode,
+      enabled: localStorage.getItem(LS_ENABLED) === 'true',
+    };
+  } catch {
+    return { ...DEFAULTS };
+  }
+}
+
+export function setVoiceChannelConfig(partial: Partial<VoiceChannelConfig>): void {
+  try {
+    if (partial.listenMode !== undefined) localStorage.setItem(LS_LISTEN_MODE, partial.listenMode);
+    if (partial.listenDuration !== undefined) localStorage.setItem(LS_LISTEN_DURATION, String(partial.listenDuration));
+    if (partial.wakeWord !== undefined) localStorage.setItem(LS_WAKE_WORD, partial.wakeWord);
+    if (partial.confirmMode !== undefined) localStorage.setItem(LS_CONFIRM_MODE, partial.confirmMode);
+    if (partial.enabled !== undefined) localStorage.setItem(LS_ENABLED, String(partial.enabled));
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+export function isVoiceChannelEnabled(): boolean {
+  try {
+    return localStorage.getItem(LS_ENABLED) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setVoiceChannelEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(LS_ENABLED, String(enabled));
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+// ─── Quick Command Matching ─────────────────────────────────
+//
+// Fast client-side regex patterns for common radio commands.
+// Returns a CommandResult if matched, or null for server fallback.
+
+interface QuickCommandPattern {
+  pattern: RegExp;
+  action: string;
+  message: string;
+  data?: (match: RegExpMatchArray) => Record<string, unknown>;
+}
+
+const QUICK_COMMANDS: QuickCommandPattern[] = [
+  // ── Status Changes ──
+  {
+    pattern: /\b(?:en\s*route|10[- ]?76|responding|en route)\b/i,
+    action: 'status_change',
+    message: 'Status: En Route',
+    data: () => ({ status: 'en_route', code: '10-76' }),
+  },
+  {
+    pattern: /\b(?:on\s*scene|10[- ]?97|arrived|on scene)\b/i,
+    action: 'status_change',
+    message: 'Status: On Scene',
+    data: () => ({ status: 'on_scene', code: '10-97' }),
+  },
+  {
+    pattern: /\b(?:available|10[- ]?8|cleared|clear|in service)\b/i,
+    action: 'status_change',
+    message: 'Status: Available',
+    data: () => ({ status: 'available', code: '10-8' }),
+  },
+  {
+    pattern: /\b(?:out\s*of\s*service|10[- ]?7)\b/i,
+    action: 'status_change',
+    message: 'Status: Out of Service',
+    data: () => ({ status: 'out_of_service', code: '10-7' }),
+  },
+  {
+    pattern: /\b(?:on\s*break|10[- ]?10)\b/i,
+    action: 'status_change',
+    message: 'Status: On Break',
+    data: () => ({ status: 'on_break', code: '10-10' }),
+  },
+  {
+    pattern: /\b(?:busy|10[- ]?6)\b/i,
+    action: 'status_change',
+    message: 'Status: Busy',
+    data: () => ({ status: 'busy', code: '10-6' }),
+  },
+
+  // ── Acknowledgments ──
+  {
+    pattern: /\b(?:copy|10[- ]?4|roger|affirmative)\b/i,
+    action: 'acknowledge',
+    message: 'Acknowledged',
+  },
+
+  // ── Requests ──
+  {
+    pattern: /\b(?:request\s*backup|need\s*backup|send\s*backup)\b/i,
+    action: 'request_backup',
+    message: 'Backup requested',
+  },
+  {
+    pattern: /\b(?:request\s*(?:ems|ambulance|medic)|need\s*(?:ems|ambulance|medic)|send\s*(?:ems|ambulance|medic))\b/i,
+    action: 'request_ems',
+    message: 'EMS requested',
+  },
+  {
+    pattern: /\b(?:request\s*(?:k[- ]?9|canine)|need\s*(?:k[- ]?9|canine)|send\s*(?:k[- ]?9|canine))\b/i,
+    action: 'request_k9',
+    message: 'K-9 unit requested',
+  },
+
+  // ── Queries ──
+  {
+    pattern: /\b(?:run\s*(?:plate|tag|registration))\s+([A-Z0-9]{2,8})\b/i,
+    action: 'run_plate',
+    message: 'Running plate lookup',
+    data: (m) => ({ plate: m[1].toUpperCase() }),
+  },
+  {
+    pattern: /\b(?:what(?:'s| is)\s*my\s*next\s*call|next\s*call)\b/i,
+    action: 'next_call',
+    message: 'Checking next pending call',
+  },
+
+  // ── Dispatch Actions ──
+  {
+    pattern: /\b(?:start\s*pursuit|in\s*pursuit|vehicle\s*pursuit)\b/i,
+    action: 'start_pursuit',
+    message: 'Pursuit initiated',
+  },
+  {
+    pattern: /\b(?:mark\s*evidence|evidence\s*(?:at|here)|tag\s*evidence)\b/i,
+    action: 'mark_evidence',
+    message: 'Evidence marked at current location',
+  },
+
+  // ── Situation Awareness ──
+  {
+    pattern: /\b(?:sitrep|sit\s*rep|situation\s*report|status\s*report)\b/i,
+    action: 'sitrep',
+    message: 'Generating situation report',
+  },
+  {
+    pattern: /\b(?:area\s*check|area\s*scan)\b/i,
+    action: 'area_check',
+    message: 'Checking area activity',
+  },
+
+  // ── Emergency ──
+  {
+    pattern: /\b(?:officer\s*down|shots?\s*fired|10[- ]?99|panic|emergency\s*traffic)\b/i,
+    action: 'officer_down',
+    message: 'EMERGENCY — Officer down broadcast transmitted',
+  },
+];
+
+/**
+ * Match a transcript against quick command patterns.
+ * Returns a CommandResult if matched, or null for server fallback.
+ */
+export function matchQuickCommand(transcript: string): CommandResult | null {
+  const text = transcript.trim();
+  if (!text) return null;
+
+  for (const cmd of QUICK_COMMANDS) {
+    const match = text.match(cmd.pattern);
+    if (match) {
+      return {
+        success: true,
+        action: cmd.action,
+        message: cmd.message,
+        data: cmd.data ? cmd.data(match) : undefined,
+      };
+    }
+  }
+  return null;
+}
+
+// ─── Audio Helpers ──────────────────────────────────────────
+
+/** Play a short "roger" beep — 1200Hz for 80ms. */
+function playRogerBeep(): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.value = 1200;
+      gain.gain.value = 0.15;
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.08);
+      osc.onended = () => {
+        ctx.close().catch(() => {});
+        resolve();
+      };
+    } catch {
+      resolve();
+    }
+  });
+}
+
+/** Small delay utility. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ─── Server API Helpers ─────────────────────────────────────
+
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('rmpg_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * Send recorded audio to the server for Whisper transcription + command parsing.
+ * Endpoint: POST /api/voice/command
+ */
+async function sendAudioToServer(audioBlob: Blob): Promise<CommandResult> {
+  try {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'voice-command.webm');
+
+    const res = await fetch('/api/voice/command', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData,
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return { success: false, action: 'error', message: 'Voice command endpoint not available yet' };
+      }
+      return { success: false, action: 'error', message: `Server error: ${res.status}` };
+    }
+
+    return await res.json();
+  } catch (err) {
+    return { success: false, action: 'error', message: 'Failed to reach voice command server' };
+  }
+}
+
+/**
+ * Send transcript text to the server for NLP command parsing.
+ * Endpoint: POST /api/voice/parse
+ */
+async function sendTextToServer(text: string): Promise<CommandResult> {
+  try {
+    const res = await fetch('/api/voice/parse', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return { success: false, action: 'error', message: 'Voice parse endpoint not available yet' };
+      }
+      return { success: false, action: 'error', message: `Server error: ${res.status}` };
+    }
+
+    return await res.json();
+  } catch (err) {
+    return { success: false, action: 'error', message: 'Failed to reach voice parse server' };
+  }
+}
+
+// ─── Voice Channel Class ────────────────────────────────────
+
+/**
+ * VoiceChannel — unified voice channel state machine.
+ *
+ * States: idle → alerting → listening → processing → responding → idle
+ *                               ↓
+ *                           timeout → idle
+ */
+export class VoiceChannel {
+  private state: VoiceChannelState = 'idle';
+  private config: VoiceChannelConfig;
+  private callbacks: VoiceChannelCallbacks;
+
+  // Listening infrastructure
+  private mediaStream: MediaStream | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private audioChunks: Blob[] = [];
+  private recognition: InstanceType<NonNullable<typeof window.SpeechRecognition>> | null = null;
+  private listenTimer: ReturnType<typeof setTimeout> | null = null;
+  private destroyed = false;
+
+  // Radio PTT cross-integration
+  private radioActive = false;
+
+  // Track the latest transcript from Web Speech API
+  private lastTranscript = '';
+  private hasSpeechDetected = false;
+
+  // Pending alert that should preempt listening
+  private pendingAlert: { narrative: string; severity: AlertSeverity } | null = null;
+
+  // Stress analysis
+  private stressAnalyzer: ReturnType<typeof createStressAnalyzer> | null = null;
+  private stressAudioContext: AudioContext | null = null;
+
+  constructor(callbacks: VoiceChannelCallbacks) {
+    this.callbacks = callbacks;
+    this.config = getVoiceChannelConfig();
+  }
+
+  // ─── Public API ─────────────────────────────────────────
+
+  getState(): VoiceChannelState {
+    return this.state;
+  }
+
+  refreshConfig(): void {
+    this.config = getVoiceChannelConfig();
+  }
+
+  /** Call when radio PTT starts or ends on any channel */
+  setRadioActive(active: boolean): void {
+    this.radioActive = active;
+    if (active && this.state === 'listening') {
+      // Pause listen timer — don't timeout while radio is busy
+      this.clearListenTimer();
+    } else if (!active && this.state === 'listening') {
+      // Resume listen timer
+      this.resetListenTimer();
+    }
+  }
+
+  isRadioBusy(): boolean {
+    return this.radioActive;
+  }
+
+  /**
+   * Trigger an alert announcement. If currently listening,
+   * major alerts preempt the listen window.
+   */
+  async alert(narrative: string, severity: AlertSeverity): Promise<void> {
+    if (this.destroyed) return;
+
+    // Alert preemption: major alert during listening cancels listen window
+    if (this.state === 'listening' && severity === 'major') {
+      this.stopListening();
+    }
+
+    // If already alerting, queue via pendingAlert (major overrides)
+    if (this.state === 'alerting') {
+      if (severity === 'major') {
+        clearQueue();
+        this.pendingAlert = { narrative, severity };
+      }
+      return;
+    }
+
+    // If we're processing or responding, save for later
+    if (this.state === 'processing' || this.state === 'responding') {
+      this.pendingAlert = { narrative, severity };
+      return;
+    }
+
+    await this.runAlert(narrative, severity);
+  }
+
+  /**
+   * Manually activate the listen window (e.g., from V keybind).
+   * Works regardless of listenMode setting.
+   */
+  async activateManualListen(): Promise<void> {
+    if (this.destroyed) return;
+    if (!this.config.enabled) return;
+
+    // Can activate from idle or override from any non-alerting state
+    if (this.state === 'alerting') return;
+
+    // If already listening, extend the timer
+    if (this.state === 'listening') {
+      this.resetListenTimer();
+      return;
+    }
+
+    // If processing/responding, skip — they'll complete first
+    if (this.state === 'processing' || this.state === 'responding') return;
+
+    await this.startListening();
+  }
+
+  /**
+   * Clean up all resources. Call when unmounting.
+   */
+  destroy(): void {
+    this.destroyed = true;
+    this.stopListening();
+    this.clearListenTimer();
+    // Clean up stress analyzer
+    this.stressAnalyzer?.disconnect();
+    this.stressAnalyzer = null;
+    if (this.stressAudioContext) {
+      this.stressAudioContext.close().catch(() => {});
+      this.stressAudioContext = null;
+    }
+    this.setState('idle');
+  }
+
+  // ─── Internal State Machine ─────────────────────────────
+
+  private setState(next: VoiceChannelState): void {
+    if (this.state === next) return;
+    this.state = next;
+    this.callbacks.onStateChange(next);
+  }
+
+  private async runAlert(narrative: string, severity: AlertSeverity): Promise<void> {
+    this.setState('alerting');
+
+    // If radio is active, wait up to 10s for it to clear before speaking
+    if (this.radioActive) {
+      await new Promise<void>(resolve => {
+        const check = setInterval(() => {
+          if (!this.radioActive) { clearInterval(check); resolve(); }
+        }, 500);
+        setTimeout(() => { clearInterval(check); resolve(); }, 10_000);
+      });
+    }
+
+    try {
+      await announceWithSeverity(narrative, severity);
+    } catch {
+      // TTS failed — still transition
+    }
+
+    if (this.destroyed) return;
+
+    // Check for preempted alert
+    if (this.pendingAlert) {
+      const next = this.pendingAlert;
+      this.pendingAlert = null;
+      await this.runAlert(next.narrative, next.severity);
+      return;
+    }
+
+    // After alert, determine whether to open mic
+    const shouldListen = this.config.listenMode === 'auto';
+
+    if (shouldListen) {
+      await this.startListening();
+    } else {
+      this.setState('idle');
+    }
+  }
+
+  // ─── Listening ──────────────────────────────────────────
+
+  private async startListening(): Promise<void> {
+    this.setState('listening');
+    this.lastTranscript = '';
+    this.hasSpeechDetected = false;
+    this.audioChunks = [];
+
+    // Play roger beep to indicate mic is open
+    await playRogerBeep();
+    await delay(100);
+
+    if (this.destroyed || this.state !== 'listening') return;
+
+    // Start mic capture
+    try {
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    } catch (err) {
+      this.callbacks.onError('Microphone access denied or unavailable');
+      this.setState('idle');
+      return;
+    }
+
+    if (this.destroyed || this.state !== 'listening') {
+      this.releaseMediaStream();
+      return;
+    }
+
+    // MediaRecorder for server-side Whisper (WebM/Opus, 500ms chunks)
+    try {
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+
+      this.mediaRecorder = new MediaRecorder(this.mediaStream, { mimeType });
+      this.mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          this.audioChunks.push(e.data);
+        }
+      };
+      this.mediaRecorder.start(500); // 500ms chunks
+    } catch (err) {
+      // MediaRecorder not available — fall back to Web Speech API only
+      console.warn('MediaRecorder unavailable, using Web Speech API only');
+    }
+
+    // Start stress analysis on the mic stream
+    try {
+      this.stressAudioContext = new AudioContext();
+      const source = this.stressAudioContext.createMediaStreamSource(this.mediaStream!);
+      this.stressAnalyzer = createStressAnalyzer(this.stressAudioContext);
+      this.stressAnalyzer.connectSource(source);
+    } catch { /* stress analysis non-critical */ }
+
+    // Web Speech API for parallel real-time transcription
+    this.startWebSpeechRecognition();
+
+    // Start listen timeout
+    this.resetListenTimer();
+  }
+
+  private startWebSpeechRecognition(): void {
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionCtor) {
+      // Browser doesn't support Web Speech API — rely on server Whisper
+      return;
+    }
+
+    try {
+      this.recognition = new SpeechRecognitionCtor();
+      this.recognition.continuous = true;
+      this.recognition.interimResults = true;
+      this.recognition.lang = 'en-US';
+      this.recognition.maxAlternatives = 1;
+
+      this.recognition.onresult = (event: SpeechRecognitionEvent) => {
+        if (this.state !== 'listening') return;
+
+        let interim = '';
+        let final = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            final += result[0].transcript;
+          } else {
+            interim += result[0].transcript;
+          }
+        }
+
+        if (final) {
+          this.hasSpeechDetected = true;
+          this.lastTranscript = final.trim();
+          this.callbacks.onTranscript(this.lastTranscript, true);
+
+          // Wake word mode: check if transcript starts with wake word
+          if (this.config.listenMode === 'wake') {
+            const wakeWordLower = this.config.wakeWord.toLowerCase();
+            if (!this.lastTranscript.toLowerCase().startsWith(wakeWordLower)) {
+              // Not a wake-word-activated command — ignore
+              return;
+            }
+            // Strip wake word from command
+            this.lastTranscript = this.lastTranscript.slice(this.config.wakeWord.length).trim();
+          }
+
+          // We got a final transcript — proceed to processing
+          this.clearListenTimer();
+          this.processTranscript();
+        } else if (interim) {
+          this.hasSpeechDetected = true;
+          this.callbacks.onTranscript(interim, false);
+          // Reset timer — user is still speaking
+          this.resetListenTimer();
+        }
+      };
+
+      this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        // 'no-speech' is normal timeout — not an error
+        if (event.error === 'no-speech') return;
+        if (event.error === 'aborted') return;
+        console.warn('SpeechRecognition error:', event.error);
+      };
+
+      this.recognition.onend = () => {
+        // If we're still in listening state, restart recognition
+        if (this.state === 'listening' && !this.destroyed) {
+          try {
+            this.recognition?.start();
+          } catch {
+            // Already started or destroyed
+          }
+        }
+      };
+
+      this.recognition.start();
+    } catch (err) {
+      console.warn('Failed to start SpeechRecognition:', err);
+    }
+  }
+
+  private resetListenTimer(): void {
+    this.clearListenTimer();
+    this.listenTimer = setTimeout(() => {
+      if (this.state === 'listening') {
+        this.handleListenTimeout();
+      }
+    }, this.config.listenDuration);
+  }
+
+  private clearListenTimer(): void {
+    if (this.listenTimer) {
+      clearTimeout(this.listenTimer);
+      this.listenTimer = null;
+    }
+  }
+
+  private handleListenTimeout(): void {
+    if (this.hasSpeechDetected && this.lastTranscript) {
+      // User was speaking — process what we have
+      this.processTranscript();
+    } else {
+      // No speech detected — return to idle
+      this.stopListening();
+      this.setState('idle');
+    }
+  }
+
+  private stopListening(): void {
+    this.clearListenTimer();
+
+    // Stop Web Speech API
+    if (this.recognition) {
+      try { this.recognition.abort(); } catch { /* already stopped */ }
+      this.recognition = null;
+    }
+
+    // Stop MediaRecorder
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      try { this.mediaRecorder.stop(); } catch { /* already stopped */ }
+    }
+    this.mediaRecorder = null;
+
+    // Release mic
+    this.releaseMediaStream();
+  }
+
+  private releaseMediaStream(): void {
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach((t) => t.stop());
+      this.mediaStream = null;
+    }
+  }
+
+  // ─── Processing ─────────────────────────────────────────
+
+  private async processTranscript(): Promise<void> {
+    const transcript = this.lastTranscript;
+    const audioBlob = this.audioChunks.length > 0
+      ? new Blob(this.audioChunks, { type: 'audio/webm' })
+      : null;
+
+    // Stop listening hardware
+    this.stopListening();
+    this.setState('processing');
+
+    if (this.destroyed) return;
+
+    // Check stress level from audio analysis
+    const stress = this.stressAnalyzer?.getResult();
+    if (stress?.isStressed && this.callbacks.onStressDetected) {
+      this.callbacks.onStressDetected(stress);
+    }
+
+    // Add officer entry to conversation memory
+    conversationMemory.addEntry({ role: 'officer', text: transcript });
+
+    // Check for pending confirmation in conversation memory
+    const pending = conversationMemory.getPendingConfirmation();
+    if (pending && transcript) {
+      if (conversationMemory.isConfirmation(transcript)) {
+        // Re-send the pending action as confirmed
+        // Fall through to normal processing with the original pending text
+      } else if (conversationMemory.isDenial(transcript)) {
+        conversationMemory.clearMemory();
+        const cancelResult: CommandResult = { success: true, action: 'cancelled', message: 'Cancelled.' };
+        this.callbacks.onCommandResult(cancelResult);
+        await this.respond(cancelResult);
+        return;
+      }
+    }
+
+    // 1. Try quick command match first (instant, client-side)
+    let result = matchQuickCommand(transcript);
+
+    if (!result) {
+      // 2. Try server text parsing
+      if (transcript) {
+        result = await sendTextToServer(transcript);
+      }
+
+      // 3. If text parse failed and we have audio, try audio endpoint
+      if ((!result || !result.success) && audioBlob && audioBlob.size > 1000) {
+        const audioResult = await sendAudioToServer(audioBlob);
+        if (audioResult.success) {
+          result = audioResult;
+        }
+      }
+    }
+
+    if (this.destroyed) return;
+
+    // Default result if nothing worked
+    if (!result) {
+      result = {
+        success: false,
+        action: 'unrecognized',
+        message: transcript
+          ? `Unrecognized command: "${transcript}"`
+          : 'No speech detected',
+      };
+    }
+
+    // Record system response in conversation memory
+    conversationMemory.addEntry({ role: 'system', text: result.message, action: result.action });
+
+    this.callbacks.onCommandResult(result);
+    await this.respond(result);
+  }
+
+  // ─── Responding ─────────────────────────────────────────
+
+  private async respond(result: CommandResult): Promise<void> {
+    if (this.destroyed) return;
+    this.setState('responding');
+
+    try {
+      switch (this.config.confirmMode) {
+        case 'speak':
+          await speak(result.message);
+          break;
+        case 'beep':
+          await playRogerBeep();
+          break;
+        case 'silent':
+          // No audio confirmation
+          break;
+      }
+    } catch {
+      // Confirmation audio failed — not critical
+    }
+
+    if (this.destroyed) return;
+
+    // Check for pending alert
+    if (this.pendingAlert) {
+      const next = this.pendingAlert;
+      this.pendingAlert = null;
+      await this.runAlert(next.narrative, next.severity);
+      return;
+    }
+
+    this.setState('idle');
+  }
+}
