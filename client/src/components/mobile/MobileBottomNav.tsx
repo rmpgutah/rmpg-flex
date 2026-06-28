@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Map, Radio, Bell, Menu, LayoutList } from 'lucide-react';
+import { LayoutDashboard, Map, Bell, Menu, LayoutList } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'home',     path: '/',          icon: LayoutDashboard, label: 'Home' },
@@ -31,6 +31,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
 
   return (
     <nav
+      className="safe-px safe-pb"
       style={{
         background: 'var(--surface-raised)',
         borderTop: '1px solid var(--border-default)',
@@ -70,7 +71,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
             <Icon
               size={22}
               style={{
-                color: active ? 'var(--brand-gold)' : '#666666',
+                color: active ? 'var(--brand-gold)' : 'var(--rmpg-500)',
                 transition: 'color 0.15s',
               }}
             />
@@ -80,7 +81,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
-                color: active ? 'var(--brand-gold)' : '#666666',
+                color: active ? 'var(--brand-gold)' : 'var(--rmpg-500)',
                 transition: 'color 0.15s',
               }}
             >
@@ -136,7 +137,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
         <Menu
           size={22}
           style={{
-            color: !isPrimaryPage ? 'var(--brand-gold)' : '#666666',
+            color: !isPrimaryPage ? 'var(--brand-gold)' : 'var(--rmpg-500)',
             transition: 'color 0.15s',
           }}
         />
@@ -146,7 +147,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0.04em',
-            color: !isPrimaryPage ? 'var(--brand-gold)' : '#666666',
+            color: !isPrimaryPage ? 'var(--brand-gold)' : 'var(--rmpg-500)',
             transition: 'color 0.15s',
           }}
         >

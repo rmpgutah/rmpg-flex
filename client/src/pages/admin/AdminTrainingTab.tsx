@@ -5,11 +5,14 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { GraduationCap, AlertTriangle, CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { GraduationCap, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
 import { useToast } from '../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface OfficerCompliance {
   user_id: number;
@@ -37,35 +40,34 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Props) {
   const { addToast } = useToast();
   const [stats, setStats] = useState<TrainingStats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // ── Right-click context menu (read-only compliance dashboard → copy-only) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildOfficerMenu = (o: OfficerCompliance): ContextMenuItem[] => [
+    m.copy('Copy name', o.full_name),
+    ...(o.badge_number ? [m.copy('Copy badge', o.badge_number)] : []),
+    m.copyId(o.user_id, 'Copy user ID'),
+  ];
 
   const fetchData = useCallback(async () => {
     try {
       // Fetch training records + requirements and compute compliance
       const [records, users] = await Promise.all([
         apiFetch<any[]>('/admin/training'),
-        apiFetch<any[]>('/admin/users'),
+        apiFetch<any[]>('/personnel').catch(() => []),
       ]);
 
-      const activeUsers = (users || []).filter((u: any) => u.status === 'active' && ['officer', 'supervisor', 'admin', 'manager'].includes(u.role));
-      const trainingRecords = records || [];
+      // asArray() — endpoints may return {} from a stub instead of [].
+      // Without this guard, `users.filter` crashed the entire AdminPage
+      // with "u.map is not a function" (the minified `u` was `users`).
+      const activeUsers = asArray<any>(users).filter((u: any) => u.status === 'active' && ['officer', 'supervisor', 'admin', 'manager'].includes(u.role));
+      const trainingRecords = asArray<any>(records);
 
       // Group records by user
       const userRecords = new Map<number, any[]>();
@@ -156,11 +158,11 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" role="group" aria-label="Training compliance overview">
         <div className="panel-beveled p-3 flex items-center gap-3">
-          <div className="w-8 h-8 flex items-center justify-center bg-blue-900/30 border border-blue-700/40 shrink-0" aria-hidden="true">
-            <GraduationCap style={{ width: 14, height: 14 }} className="text-blue-400" />
+          <div className="w-8 h-8 flex items-center justify-center bg-surface-sunken/30 border border-border-default/40 shrink-0" aria-hidden="true">
+            <GraduationCap style={{ width: 14, height: 14 }} className="text-rmpg-400" />
           </div>
           <div>
-            <div className="text-[18px] font-black text-blue-400 tabular-nums leading-tight">{stats.total_officers}</div>
+            <div className="text-[18px] font-black text-rmpg-400 tabular-nums leading-tight">{stats.total_officers}</div>
             <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Total Officers</div>
           </div>
         </div>
@@ -196,7 +198,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
 
       {/* Category Compliance Bars */}
-      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-[#242424] pb-1.5">
+      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-border-default pb-1.5">
         <GraduationCap style={{ width: 10, height: 10 }} />
         Compliance by Category
       </div>
@@ -208,7 +210,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             <div key={cat.category} className="panel-beveled p-2 flex items-center gap-3">
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-white font-semibold capitalize">
+                  <span className="text-[10px] text-rmpg-100 font-semibold capitalize">
                     {cat.category.replace(/_/g, ' ')}
                   </span>
                   <span className="text-[9px] font-mono" style={{ color }}>
@@ -228,9 +230,9 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">
         Officer Training Status
       </div>
-      <table className="w-full text-[10px]">
+      <div className="overflow-x-auto"><table className="w-full text-[10px]">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#080808' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background:"var(--surface-sunken)" }}>
             <th className="text-left px-3 py-1.5 font-bold">Officer</th>
             <th className="text-left px-3 py-1.5 font-bold">Badge</th>
             <th className="text-left px-3 py-1.5 font-bold">Role</th>
@@ -245,12 +247,12 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             const statusColor = o.overdue === 0 ? '#22c55e' : o.overdue <= 2 ? '#f59e0b' : '#ef4444';
             const statusLabel = o.overdue === 0 ? 'COMPLIANT' : `${o.overdue} OVERDUE`;
             return (
-              <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors">
-                <td className="px-3 py-2 font-semibold text-white">{o.full_name}</td>
+              <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors" onContextMenu={(e) => openMenu(e, buildOfficerMenu(o))}>
+                <td className="px-3 py-2 font-semibold text-rmpg-100">{o.full_name}</td>
                 <td className="px-3 py-2 text-rmpg-400 font-mono">{o.badge_number || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(o.role)}</td>
                 <td className="px-3 py-2 text-center font-mono text-rmpg-300">{o.completed}/{o.required}</td>
-                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : '#666666' }}>
+                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : 'var(--rmpg-500)' }}>
                   {o.overdue}
                 </td>
                 <td className="px-3 py-2">
@@ -265,7 +267,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             );
           })}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

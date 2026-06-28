@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { useWebSocket } from '../../context/WebSocketContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 export interface LogEntry {
   id: number;
@@ -30,7 +32,15 @@ const TYPE_COLORS: Record<LogEntry['type'], string> = {
 
 const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionLog(_props, ref) {
   const { subscribe } = useWebSocket();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [entries, setEntries] = useState<LogEntry[]>([]);
+
+  const buildEntryMenu = (entry: LogEntry): ContextMenuItem[] => [
+    m.copy('Copy text', entry.text),
+    m.copy('Copy source', entry.source),
+    m.copy('Copy line', `[${entry.time}] [${entry.source}] ${entry.text}`),
+  ];
 
   const addEntry = useCallback((partial: Omit<LogEntry, 'id' | 'time'>) => {
     const entry: LogEntry = {
@@ -50,11 +60,35 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
   useEffect(() => {
     const unsubs: Array<() => void> = [];
 
+    // Legacy event retained for compat with any future emitter.
     unsubs.push(subscribe('radio_transmission', (msg) => {
       const data = (msg.data || msg.payload) as { source?: string; text?: string } | undefined;
       addEntry({
         source: data?.source || 'UNKNOWN',
         text: data?.text || 'Transmission received',
+        type: 'unit',
+      });
+    }));
+
+    // Actual live radio traffic — emitted by server/websocket.ts when a
+    // unit un-keys. We only log on transmit_end so we have the final
+    // transcript + duration; transmit_start alone has neither.
+    unsubs.push(subscribe('radio_transmit_end', (msg) => {
+      const data = (msg.data || msg.payload) as {
+        userId?: number;
+        username?: string;
+        fullName?: string;
+        transcript?: string;
+        duration?: number;
+        hasAudio?: boolean;
+      } | undefined;
+      if (!data?.userId) return;
+      const who = data.fullName || data.username || `UNIT ${data.userId}`;
+      const dur = data.duration ? ` · ${data.duration}s` : '';
+      const rec = data.hasAudio ? ' · REC' : '';
+      addEntry({
+        source: who.toUpperCase().slice(0, 10),
+        text: (data.transcript || 'Voice transmission') + dur + rec,
         type: 'unit',
       });
     }));
@@ -97,7 +131,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
   }, [subscribe, addEntry]);
 
   return (
-    <div className="border border-[#222222] rounded-[2px] p-2 bg-[#0d0d0d]">
+    <div className="border border-border-default rounded-[2px] p-2 bg-surface-base">
       <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">
         TX LOG
       </div>
@@ -107,15 +141,16 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
         style={{ maxHeight: 140 }}
       >
         {entries.length === 0 ? (
-          <div className="text-[9px] text-[#555555] italic py-1">No transmissions</div>
+          <div className="text-[9px] text-rmpg-500 italic py-1">No transmissions</div>
         ) : (
           entries.map((entry) => (
             <div
               key={entry.id}
               className="flex items-start gap-1.5 py-px"
               style={{ fontFamily: 'monospace' }}
+              onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}
             >
-              <span className="text-[10px] text-[#555555] tabular-nums shrink-0 whitespace-nowrap">
+              <span className="text-[10px] text-rmpg-500 tabular-nums shrink-0 whitespace-nowrap">
                 {entry.time}
               </span>
               <span

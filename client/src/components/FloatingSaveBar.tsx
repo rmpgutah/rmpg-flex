@@ -23,6 +23,8 @@ export default function FloatingSaveBar({
   onSaveRef.current = onSave;
   const onCancelRef = useRef(onCancel);
   onCancelRef.current = onCancel;
+  const isSavingRef = useRef(isSaving);
+  isSavingRef.current = isSaving;
 
   // Ctrl+S keyboard shortcut to save, Escape to cancel
   useEffect(() => {
@@ -30,16 +32,16 @@ export default function FloatingSaveBar({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        if (!isSaving) onSaveRef.current();
+        if (!isSavingRef.current) onSaveRef.current();
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (!isSaving) onCancelRef.current();
+        if (!isSavingRef.current) onCancelRef.current();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [visible, isSaving]);
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -49,9 +51,9 @@ export default function FloatingSaveBar({
       style={{
         bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))',
         background: 'linear-gradient(180deg, #2b2b2b 0%, #141414 100%)',
-        border: '1px solid #4d4d4d',
+        border: '1px solid var(--border-strong)',
         borderTop: '2px solid #888888',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(26,90,158,0.2)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(212,160,23,0.25)',
       }}
     >
       <div className="flex items-center gap-1.5 mr-2">

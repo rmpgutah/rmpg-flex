@@ -5,14 +5,17 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
-import { FORM_NUMBERS, FORM_REVISION, loadSealBase64 } from './pdfAssets';
+import { registerArialFont } from './pdf/fonts/registerArial';
+import { FORM_NUMBERS } from './pdfAssets';
 import {
-  COLOR, FONT, BORDER, SPACING, LAYOUT,
-  getContentWidth, getLeftX, getRightColumnX,
+  COLOR, FONT, BORDER, LAYOUT, getContentWidth, getLeftX, getRightColumnX,
   getHalfFieldWidth, getFullFieldWidth,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
-import { openAutoSection, closeAutoSection, addCheckboxField, addConfidentialWatermark, addPageFooter, sanitizePdfText, setActiveCaseNumber, setActiveFormKey } from './pdfGenerator';
+import {
+  openAutoSection, closeAutoSection, addCheckboxField, addConfidentialWatermark,
+  addPageFooter, setActiveCaseNumber, setActiveFormKey,
+} from './pdfGenerator';
 
 // All blank form definitions
 export interface BlankFormDef {
@@ -20,7 +23,7 @@ export interface BlankFormDef {
   name: string;
   formNumber: string;
   description: string;
-  category: 'incident' | 'record' | 'operations' | 'administrative';
+  category: 'incident' | 'record' | 'operations' | 'administrative' | 'service' | 'communications';
 }
 
 export const BLANK_FORMS: BlankFormDef[] = [
@@ -42,6 +45,14 @@ export const BLANK_FORMS: BlankFormDef[] = [
   { id: 'patrol_tracking', name: 'Patrol Tracking Report', formNumber: FORM_NUMBERS.patrol_tracking, description: 'Patrol route & activity log', category: 'operations' },
   // Administrative
   { id: 'invoice', name: 'Invoice', formNumber: FORM_NUMBERS.invoice, description: 'Client billing invoice', category: 'administrative' },
+  // Process Service (field service of legal documents)
+  { id: 'serve_affidavit',   name: 'Affidavit / Proof of Service', formNumber: FORM_NUMBERS.serve_affidavit,   description: 'Sworn proof a document was served', category: 'service' },
+  { id: 'service_log',       name: 'Service Attempt Log',          formNumber: FORM_NUMBERS.service_log,       description: 'Log of dated service attempts', category: 'service' },
+  { id: 'serve_non_service', name: 'Return of Non-Service',        formNumber: FORM_NUMBERS.serve_non_service, description: 'Due-diligence return when not served', category: 'service' },
+  // Communications (radio / dispatch / message)
+  { id: 'radio_log',      name: 'Radio / Communications Log', formNumber: FORM_NUMBERS.radio_log,      description: 'Time-stamped radio traffic log', category: 'communications' },
+  { id: 'comms_message',  name: 'Telephone / Message Log',    formNumber: FORM_NUMBERS.comms_message,  description: 'Incoming call & message log', category: 'communications' },
+  { id: 'bolo_broadcast', name: 'BOLO Broadcast Record',      formNumber: FORM_NUMBERS.bolo_broadcast, description: 'Be-on-the-lookout broadcast record', category: 'communications' },
 ];
 
 /** Generate a blank form PDF with empty fields for handwriting */
@@ -50,6 +61,7 @@ export function generateBlankForm(formId: string): jsPDF {
   if (!form) throw new Error(`Unknown form: ${formId}`);
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const ffw = getFullFieldWidth(doc);
@@ -111,6 +123,24 @@ export function generateBlankForm(formId: string): jsPDF {
       break;
     case 'daily_activity':
       y = blankDailyActivityForm(doc, y, lx, rx, ffw, hfw, cw);
+      break;
+    case 'serve_affidavit':
+      y = blankServeAffidavitForm(doc, y, lx, rx, ffw, hfw, cw);
+      break;
+    case 'service_log':
+      y = blankServiceAttemptLogForm(doc, y, lx, rx, ffw, hfw, cw);
+      break;
+    case 'serve_non_service':
+      y = blankNonServiceForm(doc, y, lx, rx, ffw, hfw, cw);
+      break;
+    case 'radio_log':
+      y = blankRadioLogForm(doc, y, lx, rx, ffw, hfw, cw);
+      break;
+    case 'comms_message':
+      y = blankMessageLogForm(doc, y, lx, rx, ffw, hfw, cw);
+      break;
+    case 'bolo_broadcast':
+      y = blankBoloBroadcastForm(doc, y, lx, rx, ffw, hfw, cw);
       break;
     default:
       y = blankGenericForm(doc, y, lx, rx, ffw, hfw, cw, form.name);
@@ -672,6 +702,241 @@ function blankGenericForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: nu
       doc.setDrawColor(...COLOR.BORDER_TABLE); doc.setLineWidth(BORDER.TABLE_ROW);
       doc.line(lx, y + 5, lx + ffw, y + 5); y += 6;
     }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  return y;
+}
+
+// ── Shared helpers for the service + communications log forms ───────────────
+
+/** Draw a multi-column log grid: zebra header + N empty body rows with column
+ *  separators and an outer border. `cols` fracs should sum to ~1. Adds a page
+ *  break first if the whole grid won't fit. Returns the y below the grid. */
+function blankLogTable(
+  doc: jsPDF, lx: number, y: number, tw: number,
+  cols: { label: string; frac: number }[], rows: number, rowH = 6,
+): number {
+  const headH = 5;
+  if (y + headH + rows * rowH > 248) { doc.addPage(); y = LAYOUT.PAGE_MARGIN + 5; }
+  const xs: number[] = []; let acc = 0;
+  for (const c of cols) { xs.push(lx + acc * tw); acc += c.frac; }
+  doc.setFillColor(...COLOR.BG_ZEBRA);
+  doc.rect(lx, y, tw, headH, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(FONT.SIZE_FIELD_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  cols.forEach((c, i) => doc.text(c.label.toUpperCase(), xs[i] + 1.5, y + 3.3));
+  doc.setDrawColor(...COLOR.BORDER_TABLE); doc.setLineWidth(BORDER.TABLE_ROW);
+  const top = y;
+  doc.line(lx, y + headH, lx + tw, y + headH);
+  y += headH;
+  for (let r = 0; r < rows; r++) { y += rowH; doc.line(lx, y, lx + tw, y); }
+  for (let i = 1; i < cols.length; i++) doc.line(xs[i], top, xs[i], y);
+  doc.line(lx, top, lx, y);
+  doc.line(lx + tw, top, lx + tw, y);
+  return y + 2;
+}
+
+/** Draw a horizontal row of empty checkboxes, wrapping at the right margin. */
+function blankCheckboxRow(doc: jsPDF, labels: string[], lx: number, y: number, maxX: number): number {
+  let x = lx;
+  for (const label of labels) {
+    const next = blankCheckbox(doc, label, x, y);
+    if (next > maxX && x > lx) { y += 6; x = blankCheckbox(doc, label, lx, y); }
+    else x = next;
+  }
+  return y + 6;
+}
+
+// ── Process Service forms (category: service) ───────────────────────────────
+
+function blankServeAffidavitForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: number, hfw: number, cw: number): number {
+  { const sec = openAutoSection(doc, 'Court / Case', y); y = sec.contentY;
+    y = blankField(doc, 'Court / Jurisdiction', lx, y, ffw);
+    y = blankField(doc, 'Case Number', lx, y, ffw * 0.4);
+    blankField(doc, 'Plaintiff / Petitioner', lx + ffw * 0.4, y - 7.5, ffw * 0.6);
+    y = blankField(doc, 'Defendant / Respondent', lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Document(s) Served', y); y = sec.contentY;
+    y = blankField(doc, 'Document(s) (Summons, Subpoena, Complaint, etc.)', lx, y, ffw);
+    y = blankField(doc, 'Issued / Filed Date', lx, y, hfw);
+    blankField(doc, 'Fee', rx, y - 7.5, hfw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Service', y); y = sec.contentY;
+    y = blankField(doc, 'Served Upon (Name)', lx, y, ffw * 0.6);
+    blankField(doc, 'Relationship to Party', lx + ffw * 0.6, y - 7.5, ffw * 0.4);
+    y = blankField(doc, 'Address of Service', lx, y, ffw);
+    y = blankField(doc, 'Date of Service', lx, y, ffw * 0.34);
+    blankField(doc, 'Time', lx + ffw * 0.34, y - 7.5, ffw * 0.22);
+    blankField(doc, 'County / State', lx + ffw * 0.56, y - 7.5, ffw * 0.44);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(FONT.SIZE_FIELD_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('MANNER OF SERVICE', lx + 0.5, y + 2); y += 4;
+    y = blankCheckboxRow(doc, ['Personal', 'Substituted (resident 18+)', 'Posted', 'Certified Mail', 'Refused / Left in presence'], lx, y, lx + ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Person Served — Description', y); y = sec.contentY;
+    y = blankField(doc, 'Sex', lx, y, ffw * 0.16);
+    blankField(doc, 'Race', lx + ffw * 0.16, y - 7.5, ffw * 0.16);
+    blankField(doc, 'Age', lx + ffw * 0.32, y - 7.5, ffw * 0.14);
+    blankField(doc, 'Height', lx + ffw * 0.46, y - 7.5, ffw * 0.16);
+    blankField(doc, 'Weight', lx + ffw * 0.62, y - 7.5, ffw * 0.16);
+    blankField(doc, 'Hair', lx + ffw * 0.78, y - 7.5, ffw * 0.22);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Server / Affiant', y); y = sec.contentY;
+    y = blankField(doc, 'Process Server (Print Name)', lx, y, ffw * 0.6);
+    blankField(doc, 'Server License / ID #', lx + ffw * 0.6, y - 7.5, ffw * 0.4);
+    y += 8;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY); doc.setLineWidth(BORDER.SIGNATURE_LINE);
+    doc.line(lx, y, lx + ffw * 0.6, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('SIGNATURE OF SERVER', lx, y + 3); y += 10;
+    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.text('Subscribed and sworn to before me this ____ day of ____________, 20____', lx, y); y += 9;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY); doc.setLineWidth(BORDER.SIGNATURE_LINE);
+    doc.line(lx, y, lx + ffw * 0.55, y);
+    blankField(doc, 'Commission Expires', lx + ffw * 0.6, y - 5.5, ffw * 0.4);
+    doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('NOTARY PUBLIC', lx, y + 3); y += 8;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  return y;
+}
+
+function blankServiceAttemptLogForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: number, hfw: number, cw: number): number {
+  { const sec = openAutoSection(doc, 'Service Assignment', y); y = sec.contentY;
+    y = blankField(doc, 'Case Number', lx, y, ffw * 0.4);
+    blankField(doc, 'Document(s)', lx + ffw * 0.4, y - 7.5, ffw * 0.6);
+    y = blankField(doc, 'Recipient / Party to Serve', lx, y, ffw * 0.6);
+    blankField(doc, 'Client / Requestor', lx + ffw * 0.6, y - 7.5, ffw * 0.4);
+    y = blankField(doc, 'Service Address', lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Attempts', y); y = sec.contentY;
+    y = blankLogTable(doc, lx, y, ffw, [
+      { label: '#', frac: 0.06 }, { label: 'Date', frac: 0.16 }, { label: 'Time', frac: 0.12 },
+      { label: 'Address / Location', frac: 0.34 }, { label: 'Result', frac: 0.20 }, { label: 'Server', frac: 0.12 },
+    ], 10);
+    y += 1;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('Result codes: S = Served · NS = Not Served · NA = No Answer · REF = Refused · MV = Moved / Vacant · BAD = Bad Address', lx, y + 3); y += 6;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  return y;
+}
+
+function blankNonServiceForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: number, hfw: number, cw: number): number {
+  { const sec = openAutoSection(doc, 'Case / Recipient', y); y = sec.contentY;
+    y = blankField(doc, 'Court / Jurisdiction', lx, y, ffw);
+    y = blankField(doc, 'Case Number', lx, y, ffw * 0.4);
+    blankField(doc, 'Document(s)', lx + ffw * 0.4, y - 7.5, ffw * 0.6);
+    y = blankField(doc, 'Recipient / Party', lx, y, ffw * 0.6);
+    blankField(doc, 'Last Known Address', lx + ffw * 0.6, y - 7.5, ffw * 0.4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Reason Not Served', y); y = sec.contentY;
+    y = blankCheckboxRow(doc, ['Moved / Unknown', 'Vacant', 'Insufficient Address', 'Refused', 'Evading Service', 'Deceased', 'Unable to Locate', 'Other'], lx, y, lx + ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Attempts Made', y); y = sec.contentY;
+    y = blankLogTable(doc, lx, y, ffw, [
+      { label: '#', frac: 0.06 }, { label: 'Date', frac: 0.18 }, { label: 'Time', frac: 0.14 },
+      { label: 'Address / Location', frac: 0.40 }, { label: 'Result', frac: 0.22 },
+    ], 5);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Due-Diligence Narrative', y); y = sec.contentY;
+    for (let i = 0; i < 10; i++) {
+      doc.setDrawColor(...COLOR.BORDER_TABLE); doc.setLineWidth(BORDER.TABLE_ROW);
+      doc.line(lx, y + 5, lx + ffw, y + 5); y += 6;
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  return y;
+}
+
+// ── Communications forms (category: communications) ─────────────────────────
+
+function blankRadioLogForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: number, hfw: number, cw: number): number {
+  { const sec = openAutoSection(doc, 'Log Header', y); y = sec.contentY;
+    y = blankField(doc, 'Date', lx, y, ffw * 0.28);
+    blankField(doc, 'Shift', lx + ffw * 0.28, y - 7.5, ffw * 0.22);
+    blankField(doc, 'Operator / Dispatcher', lx + ffw * 0.5, y - 7.5, ffw * 0.5);
+    y = blankField(doc, 'Channel / Talkgroup', lx, y, ffw * 0.5);
+    blankField(doc, 'Page ____ of ____', lx + ffw * 0.5, y - 7.5, ffw * 0.5);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Radio Traffic', y); y = sec.contentY;
+    y = blankLogTable(doc, lx, y, ffw, [
+      { label: 'Time', frac: 0.12 }, { label: 'Unit', frac: 0.12 }, { label: 'From → To', frac: 0.20 },
+      { label: 'Message / Traffic', frac: 0.46 }, { label: 'Disp', frac: 0.10 },
+    ], 22, 6.5);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  return y;
+}
+
+function blankMessageLogForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: number, hfw: number, cw: number): number {
+  { const sec = openAutoSection(doc, 'Log Header', y); y = sec.contentY;
+    y = blankField(doc, 'Date', lx, y, ffw * 0.3);
+    blankField(doc, 'Operator', lx + ffw * 0.3, y - 7.5, ffw * 0.4);
+    blankField(doc, 'Shift', lx + ffw * 0.7, y - 7.5, ffw * 0.3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Telephone / Message Log', y); y = sec.contentY;
+    y = blankLogTable(doc, lx, y, ffw, [
+      { label: 'Time', frac: 0.12 }, { label: 'Caller / From', frac: 0.24 }, { label: 'Phone', frac: 0.18 },
+      { label: 'Message', frac: 0.30 }, { label: 'Action / Routed To', frac: 0.16 },
+    ], 18, 6.5);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  return y;
+}
+
+function blankBoloBroadcastForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: number, hfw: number, cw: number): number {
+  { const sec = openAutoSection(doc, 'BOLO Details', y); y = sec.contentY;
+    y = blankCheckboxRow(doc, ['Person', 'Vehicle', 'Property', 'Suspect', 'Missing Person'], lx, y, lx + ffw);
+    y = blankField(doc, 'Priority', lx, y, ffw * 0.2);
+    blankField(doc, 'Originating Officer / Agency', lx + ffw * 0.2, y - 7.5, ffw * 0.5);
+    blankField(doc, 'Reference / Case #', lx + ffw * 0.7, y - 7.5, ffw * 0.3);
+    y = blankField(doc, 'Date / Time Issued', lx, y, hfw);
+    blankField(doc, 'Expires', rx, y - 7.5, hfw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Subject Description', y); y = sec.contentY;
+    y = blankField(doc, 'Name / Alias', lx, y, ffw * 0.6);
+    blankField(doc, 'DOB', lx + ffw * 0.6, y - 7.5, ffw * 0.4);
+    y = blankField(doc, 'Sex', lx, y, ffw * 0.16);
+    blankField(doc, 'Race', lx + ffw * 0.16, y - 7.5, ffw * 0.16);
+    blankField(doc, 'Height', lx + ffw * 0.32, y - 7.5, ffw * 0.16);
+    blankField(doc, 'Weight', lx + ffw * 0.48, y - 7.5, ffw * 0.16);
+    blankField(doc, 'Hair / Eyes', lx + ffw * 0.64, y - 7.5, ffw * 0.36);
+    y = blankField(doc, 'Clothing / Distinguishing Features', lx, y, ffw);
+    y = blankCheckboxRow(doc, ['Armed', 'Dangerous', 'Caution', 'Do Not Approach'], lx, y, lx + ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Vehicle (if applicable)', y); y = sec.contentY;
+    y = blankField(doc, 'Year', lx, y, ffw * 0.12);
+    blankField(doc, 'Make', lx + ffw * 0.12, y - 7.5, ffw * 0.2);
+    blankField(doc, 'Model', lx + ffw * 0.32, y - 7.5, ffw * 0.2);
+    blankField(doc, 'Color', lx + ffw * 0.52, y - 7.5, ffw * 0.16);
+    blankField(doc, 'Plate', lx + ffw * 0.68, y - 7.5, ffw * 0.2);
+    blankField(doc, 'State', lx + ffw * 0.88, y - 7.5, ffw * 0.12);
+    y = blankField(doc, 'Direction of Travel / Last Seen', lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Reason / Caution', y); y = sec.contentY;
+    for (let i = 0; i < 6; i++) {
+      doc.setDrawColor(...COLOR.BORDER_TABLE); doc.setLineWidth(BORDER.TABLE_ROW);
+      doc.line(lx, y + 5, lx + ffw, y + 5); y += 6;
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  { const sec = openAutoSection(doc, 'Broadcast', y); y = sec.contentY;
+    y = blankField(doc, 'Broadcast By', lx, y, hfw);
+    blankField(doc, 'Time Aired', rx, y - 7.5, hfw);
+    y = blankField(doc, 'Channels / Agencies Notified', lx, y, ffw);
+    y = blankField(doc, 'Cancelled — Date / Time / By', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
   return y;

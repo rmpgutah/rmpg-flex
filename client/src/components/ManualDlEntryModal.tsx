@@ -7,7 +7,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CreditCard } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
+import AddressAutocomplete from './AddressAutocomplete';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -77,14 +78,25 @@ interface ManualDlEntryModalProps {
 }
 
 export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmitting }: ManualDlEntryModalProps) {
-  const [form, setForm] = useState<ManualDlFormData>({ ...EMPTY_FORM });
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    signalSaved,
+    snapshot,
+  } = useFormDraft<ManualDlFormData>({
+    storageKey: 'rmpg_manual_dl_entry_form',
+    defaultValue: { ...EMPTY_FORM },
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen) {
       const initial = { ...EMPTY_FORM };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     }
   }, [isOpen, snapshot]);
 
@@ -94,8 +106,9 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
+    signalSaved();
     onSubmit(form);
-  }, [form, onSubmit]);
+  }, [form, onSubmit, clearDraft, signalSaved]);
 
   return (
     <FormModal
@@ -107,6 +120,8 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
       submitLabel="Save DL Record"
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
       maxWidth="max-w-3xl"
     >
       {/* License Information */}
@@ -114,41 +129,41 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
         <legend className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-2">License Information</legend>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
-            <label className="field-label">DL Number *</label>
-            <input className="input-dark w-full" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} required />
+            <label htmlFor="ff-manualdlentrymodal-0" className="field-label">DL Number *</label>
+            <input id="ff-manualdlentrymodal-0" className="input-dark w-full" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} required />
           </div>
           <div>
-            <label className="field-label">State *</label>
-            <select className="select-dark w-full" value={form.dl_state} onChange={e => set('dl_state', e.target.value)} required>
+            <label htmlFor="ff-manualdlentrymodal-1" className="field-label">State *</label>
+            <select id="ff-manualdlentrymodal-1" className="select-dark w-full" value={form.dl_state} onChange={e => set('dl_state', e.target.value)} required>
               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Class</label>
-            <input className="input-dark w-full" value={form.dl_class} onChange={e => set('dl_class', e.target.value)} placeholder="D" />
+            <label htmlFor="ff-manualdlentrymodal-2" className="field-label">Class</label>
+            <input id="ff-manualdlentrymodal-2" className="input-dark w-full" value={form.dl_class} onChange={e => set('dl_class', e.target.value)} placeholder="D" />
           </div>
           <div>
-            <label className="field-label">Status</label>
-            <select className="select-dark w-full" value={form.dl_status} onChange={e => set('dl_status', e.target.value)}>
+            <label htmlFor="ff-manualdlentrymodal-3" className="field-label">Status</label>
+            <select id="ff-manualdlentrymodal-3" className="select-dark w-full" value={form.dl_status} onChange={e => set('dl_status', e.target.value)}>
               <option value="">—</option>
               {DL_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Expiration</label>
-            <input className="input-dark w-full" type="date" value={form.dl_expiration} onChange={e => set('dl_expiration', e.target.value)} />
+            <label htmlFor="ff-manualdlentrymodal-4" className="field-label">Expiration</label>
+            <input id="ff-manualdlentrymodal-4" className="input-dark w-full" type="date" value={form.dl_expiration} onChange={e => set('dl_expiration', e.target.value)} />
           </div>
           <div>
-            <label className="field-label">Issue Date</label>
-            <input className="input-dark w-full" type="date" value={form.dl_issue_date} onChange={e => set('dl_issue_date', e.target.value)} />
+            <label htmlFor="ff-manualdlentrymodal-5" className="field-label">Issue Date</label>
+            <input id="ff-manualdlentrymodal-5" className="input-dark w-full" type="date" value={form.dl_issue_date} onChange={e => set('dl_issue_date', e.target.value)} />
           </div>
           <div>
-            <label className="field-label">Restrictions</label>
-            <input className="input-dark w-full" value={form.dl_restrictions} onChange={e => set('dl_restrictions', e.target.value)} placeholder="NONE" />
+            <label htmlFor="ff-manualdlentrymodal-6" className="field-label">Restrictions</label>
+            <input id="ff-manualdlentrymodal-6" className="input-dark w-full" value={form.dl_restrictions} onChange={e => set('dl_restrictions', e.target.value)} placeholder="NONE" />
           </div>
           <div>
-            <label className="field-label">Endorsements</label>
-            <input className="input-dark w-full" value={form.dl_endorsements} onChange={e => set('dl_endorsements', e.target.value)} placeholder="NONE" />
+            <label htmlFor="ff-manualdlentrymodal-7" className="field-label">Endorsements</label>
+            <input id="ff-manualdlentrymodal-7" className="input-dark w-full" value={form.dl_endorsements} onChange={e => set('dl_endorsements', e.target.value)} placeholder="NONE" />
           </div>
         </div>
       </fieldset>
@@ -158,57 +173,57 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
         <legend className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-2">Subject Information</legend>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
-            <label className="field-label">Last Name *</label>
-            <input className="input-dark w-full" value={form.last_name} onChange={e => set('last_name', e.target.value)} required />
+            <label htmlFor="ff-manualdlentrymodal-8" className="field-label">Last Name *</label>
+            <input id="ff-manualdlentrymodal-8" className="input-dark w-full" value={form.last_name} onChange={e => set('last_name', e.target.value)} required />
           </div>
           <div>
-            <label className="field-label">First Name *</label>
-            <input className="input-dark w-full" value={form.first_name} onChange={e => set('first_name', e.target.value)} required />
+            <label htmlFor="ff-manualdlentrymodal-9" className="field-label">First Name *</label>
+            <input id="ff-manualdlentrymodal-9" className="input-dark w-full" value={form.first_name} onChange={e => set('first_name', e.target.value)} required />
           </div>
           <div>
-            <label className="field-label">Middle Name</label>
-            <input className="input-dark w-full" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} />
+            <label htmlFor="ff-manualdlentrymodal-10" className="field-label">Middle Name</label>
+            <input id="ff-manualdlentrymodal-10" className="input-dark w-full" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} />
           </div>
           <div>
-            <label className="field-label">Suffix</label>
-            <input className="input-dark w-full" value={form.suffix} onChange={e => set('suffix', e.target.value)} placeholder="Jr, Sr, III" />
+            <label htmlFor="ff-manualdlentrymodal-11" className="field-label">Suffix</label>
+            <input id="ff-manualdlentrymodal-11" className="input-dark w-full" value={form.suffix} onChange={e => set('suffix', e.target.value)} placeholder="Jr, Sr, III" />
           </div>
           <div>
-            <label className="field-label">DOB</label>
-            <input className="input-dark w-full" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+            <label htmlFor="ff-manualdlentrymodal-12" className="field-label">DOB</label>
+            <input id="ff-manualdlentrymodal-12" className="input-dark w-full" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
           </div>
           <div>
-            <label className="field-label">Gender</label>
-            <select className="select-dark w-full" value={form.gender} onChange={e => set('gender', e.target.value)}>
+            <label htmlFor="ff-manualdlentrymodal-13" className="field-label">Gender</label>
+            <select id="ff-manualdlentrymodal-13" className="select-dark w-full" value={form.gender} onChange={e => set('gender', e.target.value)}>
               <option value="">—</option>
               {GENDER_OPTIONS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Height</label>
-            <input className="input-dark w-full" value={form.height} onChange={e => set('height', e.target.value)} placeholder="510" />
+            <label htmlFor="ff-manualdlentrymodal-14" className="field-label">Height</label>
+            <input id="ff-manualdlentrymodal-14" className="input-dark w-full" value={form.height} onChange={e => set('height', e.target.value)} placeholder="510" />
           </div>
           <div>
-            <label className="field-label">Weight</label>
-            <input className="input-dark w-full" value={form.weight} onChange={e => set('weight', e.target.value)} placeholder="180" />
+            <label htmlFor="ff-manualdlentrymodal-15" className="field-label">Weight</label>
+            <input id="ff-manualdlentrymodal-15" className="input-dark w-full" value={form.weight} onChange={e => set('weight', e.target.value)} placeholder="180" />
           </div>
           <div>
-            <label className="field-label">Eye Color</label>
-            <select className="select-dark w-full" value={form.eye_color} onChange={e => set('eye_color', e.target.value)}>
+            <label htmlFor="ff-manualdlentrymodal-16" className="field-label">Eye Color</label>
+            <select id="ff-manualdlentrymodal-16" className="select-dark w-full" value={form.eye_color} onChange={e => set('eye_color', e.target.value)}>
               <option value="">—</option>
               {EYE_COLOR_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Hair Color</label>
-            <select className="select-dark w-full" value={form.hair_color} onChange={e => set('hair_color', e.target.value)}>
+            <label htmlFor="ff-manualdlentrymodal-17" className="field-label">Hair Color</label>
+            <select id="ff-manualdlentrymodal-17" className="select-dark w-full" value={form.hair_color} onChange={e => set('hair_color', e.target.value)}>
               <option value="">—</option>
               {HAIR_COLOR_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <label className="field-label">Race</label>
-            <select className="select-dark w-full" value={form.race} onChange={e => set('race', e.target.value)}>
+            <label htmlFor="ff-manualdlentrymodal-18" className="field-label">Race</label>
+            <select id="ff-manualdlentrymodal-18" className="select-dark w-full" value={form.race} onChange={e => set('race', e.target.value)}>
               <option value="">—</option>
               {RACE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
@@ -216,34 +231,50 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
         </div>
       </fieldset>
 
-      {/* Address */}
-      <fieldset>
-        <legend className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-2">Address</legend>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="col-span-2">
-            <label className="field-label">Street Address</label>
-            <input className="input-dark w-full" value={form.address} onChange={e => set('address', e.target.value)} />
-          </div>
-          <div>
-            <label className="field-label">Apt / Unit</label>
-            <input className="input-dark w-full" value={form.address2} onChange={e => set('address2', e.target.value)} />
-          </div>
-          <div>
-            <label className="field-label">City</label>
-            <input className="input-dark w-full" value={form.city} onChange={e => set('city', e.target.value)} />
-          </div>
-          <div>
-            <label className="field-label">State</label>
-            <select className="select-dark w-full" value={form.address_state} onChange={e => set('address_state', e.target.value)}>
-              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="field-label">ZIP</label>
-            <input className="input-dark w-full" value={form.postal_code} onChange={e => set('postal_code', e.target.value)} placeholder="84101" />
-          </div>
-        </div>
-      </fieldset>
+       {/* Address */}
+       <fieldset>
+         <legend className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-2">Address</legend>
+         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+           <div className="col-span-2">
+             <label className="field-label">Street Address</label>
+             <AddressAutocomplete
+               value={form.address}
+               onChange={(value) => set('address', value)}
+               placeholder="Enter street address..."
+               className="input-dark w-full"
+               name="address"
+               onSelect={(addr) => {
+                 // Auto-fill related fields when address is selected.
+                 // Street column holds the street line only (city/state/zip are
+                 // separate fields below). Fall back to the full formatted
+                 // string only if Mapbox didn't return a parsed street.
+                 set('address', addr.formatted || addr.street);
+                 if (addr.city) set('city', addr.city);
+                 if (addr.state) set('address_state', addr.state);
+                 if (addr.zip) set('postal_code', addr.zip);
+               }}
+             />
+           </div>
+           <div>
+             <label htmlFor="ff-manualdlentrymodal-19" className="field-label">Apt / Unit</label>
+             <input id="ff-manualdlentrymodal-19" className="input-dark w-full" value={form.address2} onChange={e => set('address2', e.target.value)} />
+           </div>
+           <div>
+             <label htmlFor="ff-manualdlentrymodal-20" className="field-label">City</label>
+             <input id="ff-manualdlentrymodal-20" className="input-dark w-full" value={form.city} onChange={e => set('city', e.target.value)} />
+           </div>
+           <div>
+             <label htmlFor="ff-manualdlentrymodal-21" className="field-label">State</label>
+             <select id="ff-manualdlentrymodal-21" className="select-dark w-full" value={form.address_state} onChange={e => set('address_state', e.target.value)}>
+               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+             </select>
+           </div>
+           <div>
+             <label htmlFor="ff-manualdlentrymodal-22" className="field-label">ZIP</label>
+             <input id="ff-manualdlentrymodal-22" className="input-dark w-full" value={form.postal_code} onChange={e => set('postal_code', e.target.value)} placeholder="84101" />
+           </div>
+         </div>
+       </fieldset>
     </FormModal>
   );
 }
