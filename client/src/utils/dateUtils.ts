@@ -185,6 +185,45 @@ export function safeTimeStr(value: string | null | undefined, fallback = '—'):
 }
 
 /**
+ * Display a clock-time (HH:MM) string for a time_entries timestamp pair.
+ *
+ * `local` is the Denver wall-clock string written by nowDualStamp() — no
+ * offset, already in the operator's zone, so we just format the HH:MM
+ * portion as-is. `utc` is the canonical ISO string and the fallback when
+ * `local` is absent (historical rows pre-backfill, or admin paths that
+ * don't dual-stamp). When falling back to UTC we MUST pass timeZone so the
+ * Intl format converts UTC → Denver rather than using device-local.
+ *
+ * Returns '-' when both inputs are null/undefined or unparseable.
+ */
+export function displayClockTime(
+  local: string | null | undefined,
+  utc: string | null | undefined,
+  fallback = '-',
+): string {
+  // Local-only — render the HH:MM portion of the wall-clock string verbatim.
+  if (local) {
+    // Format: 'YYYY-MM-DDTHH:MM:SS' (no offset). Extract HH:MM directly so we
+    // don't round-trip through Date and risk a zone re-interpretation.
+    const m = /T(\d{2}):(\d{2})/.exec(local);
+    if (m) return `${m[1]}:${m[2]}`;
+  }
+  // UTC fallback — explicitly format in the display zone.
+  if (utc) {
+    const d = parseTimestamp(utc);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: displayTimeZone(),
+      });
+    }
+  }
+  return fallback;
+}
+
+/**
  * Format a server timestamp as a relative date (e.g., "2 hours ago").
  */
 export function formatRelativeTime(dateStr: string | null | undefined): string {

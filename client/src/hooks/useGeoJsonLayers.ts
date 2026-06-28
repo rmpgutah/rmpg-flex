@@ -10,6 +10,13 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+
+// Tactical-dark fallback when a config color won't parse as a Mapbox color
+// (most commonly a leaked `var(--…)` string). Keeps the layer rendered while
+// the upstream value is repaired. Matches AdminMapSettingsTab default.
+const COLOR_FALLBACK_FILL = '#0d1722';
+const COLOR_FALLBACK_STROKE = '#444444';
 
 // ── Layer Configuration ──────────────────────────────────────
 
@@ -50,7 +57,10 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     file: 'county.geojson',
     visible: true,
     selectable: true,
-    style: { fillColor: '#141414', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
+    // fillColor: steel-blue tactical-dark surface. NEVER use a CSS var string
+    // here — mapbox.addLayer's style-spec validator rejects var(...) and the
+    // whole layer fails to render. Tactical map stays dark always.
+    style: { fillColor: '#0d1722', fillOpacity: 0.15, strokeColor: '#444444', strokeOpacity: 0.5, strokeWeight: 1.5 },
     labelProp: 'NAME',
     featureKeyProp: 'NAME',
     detailProps: ['POP_CURRESTIMATE', 'STATEPLANE'],
@@ -343,11 +353,11 @@ export function useGeoJsonLayers({
       strokeWeight = ASSIGNED_STROKE_WEIGHT;
     }
 
-    if (map.getLayer(fillId)) {
+    if (hasLayer(map, fillId)) {
       map.setPaintProperty(fillId, 'fill-color', fillColor);
       map.setPaintProperty(fillId, 'fill-opacity', fillOpacity);
     }
-    if (map.getLayer(lineId)) {
+    if (hasLayer(map, lineId)) {
       map.setPaintProperty(lineId, 'line-color', strokeColor);
       map.setPaintProperty(lineId, 'line-opacity', strokeOpacity);
       map.setPaintProperty(lineId, 'line-width', strokeWeight);
@@ -364,9 +374,9 @@ export function useGeoJsonLayers({
     if (inFlightLayersRef.current.has(cfg.id)) return;
 
     const sourceId = getLayerSourceId(cfg.id);
-    if (map.getSource(sourceId)) {
+    if (hasSource(map, sourceId)) {
       // Safe check: If layers were somehow removed but source remained, or vice versa, handle it
-      if (!map.getLayer(getFillLayerId(cfg.id)) && !map.getLayer(getLineLayerId(cfg.id))) {
+      if (!hasLayer(map, getFillLayerId(cfg.id)) && !hasLayer(map, getLineLayerId(cfg.id))) {
         // Let it fall through or clean up the source first to re-add safely
         try { map.removeSource(sourceId); } catch { /* ignore */ }
       } else {
@@ -377,26 +387,26 @@ export function useGeoJsonLayers({
     }
 
     inFlightLayersRef.current.add(cfg.id);
-    try {
-      let geojson = geojsonCacheRef.current[cfg.id];
-      if (!geojson) {
-        try {
-          const resp = await fetch(`/geojson/${cfg.file}`);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          geojson = await resp.json();
-          geojsonCacheRef.current[cfg.id] = geojson;
-        } catch (err) {
-          console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
-          return;
-        }
+    let geojson = geojsonCacheRef.current[cfg.id];
+    if (!geojson) {
+      try {
+        const resp = await fetch(`/geojson/${cfg.file}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        geojson = await resp.json();
+        geojsonCacheRef.current[cfg.id] = geojson;
+      } catch (err) {
+        console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
+        inFlightLayersRef.current.delete(cfg.id);
+        return;
       }
+    }
 
       // Defensive re-check before each side-effect — a sibling caller could
       // have completed between our fetch starting and finishing. Guard on
       // STYLE readiness — addSource/addLayer throw "Style is not done loading"
       // when the basemap style hasn't finished, even if map.loaded() is true.
       whenStyleReady(map, () => {
-      if (!map.getSource(sourceId)) {
+      if (!hasSource(map, sourceId)) {
         map.addSource(sourceId, {
           type: 'geojson',
           data: geojson as any,
@@ -406,15 +416,21 @@ export function useGeoJsonLayers({
       // For beats specifically, use a data-driven color expression keyed
       // on city_code so each city renders in its own color (per
       // beatDistrictMap). All other layers use the static config color.
+      //
+      // safeMapboxColor is the boundary guard: a leaked `var(--…)` string
+      // or empty value here crashes the whole layer and renders nothing.
+      // 'transparent' is fine — only invalid colors fall back.
+      const safeFill = safeMapboxColor(cfg.style.fillColor, COLOR_FALLBACK_FILL);
+      const safeStroke = safeMapboxColor(cfg.style.strokeColor, COLOR_FALLBACK_STROKE);
       const fillColorExpr = cfg.id === 'beat'
-        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => e.style.fillColor, cfg.style.fillColor)
-        : cfg.style.fillColor;
+        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => safeMapboxColor(e.style.fillColor, COLOR_FALLBACK_FILL), safeFill)
+        : safeFill;
       const lineColorExpr = cfg.id === 'beat'
-        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => e.style.strokeColor, cfg.style.strokeColor)
-        : cfg.style.strokeColor;
+        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => safeMapboxColor(e.style.strokeColor, COLOR_FALLBACK_STROKE), safeStroke)
+        : safeStroke;
 
       // Add fill layer for polygon features
-      if (!map.getLayer(getFillLayerId(cfg.id))) {
+      if (!hasLayer(map, getFillLayerId(cfg.id))) {
         map.addLayer({
           id: getFillLayerId(cfg.id),
           type: 'fill',
@@ -430,7 +446,7 @@ export function useGeoJsonLayers({
       }
 
       // Add line layer for stroke
-      if (!map.getLayer(getLineLayerId(cfg.id))) {
+      if (!hasLayer(map, getLineLayerId(cfg.id))) {
         map.addLayer({
           id: getLineLayerId(cfg.id),
           type: 'line',
@@ -499,13 +515,18 @@ export function useGeoJsonLayers({
       }
       }); // end whenStyleReady
 
+      // REGRESSION-GUARD: in-flight flag cleared INSIDE whenStyleReady (not
+      // in a finally block outside it). whenStyleReady may defer via
+      // map.once('style.load') — clearing the flag before the callback fires
+      // allows a second loadLayer() invocation to enter before the first
+      // callback's addSource/addLayer mutations complete, causing a
+      // "Layer with id '...' already exists" duplicate-layer error.
+      inFlightLayersRef.current.delete(cfg.id);
+
       setLayerStates((prev) => ({
         ...prev,
         [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
-      }));
-    } finally {
-      inFlightLayersRef.current.delete(cfg.id);
-    }
+    }));
   }, [map, popup]);
 
   // Keep the beat layer's paint in sync with beatStyleLookup. The layer's
@@ -520,12 +541,12 @@ export function useGeoJsonLayers({
     if (!beatCfg) return;
     const fillId = getFillLayerId('beat');
     const lineId = getLineLayerId('beat');
-    if (!map.getLayer(fillId) && !map.getLayer(lineId)) return;
+    if (!hasLayer(map, fillId) && !hasLayer(map, lineId)) return;
 
     const fillExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.fillColor, beatCfg.style.fillColor);
     const lineExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.strokeColor, beatCfg.style.strokeColor);
-    try { if (map.getLayer(fillId)) map.setPaintProperty(fillId, 'fill-color', fillExpr as any); } catch {}
-    try { if (map.getLayer(lineId)) map.setPaintProperty(lineId, 'line-color', lineExpr as any); } catch {}
+    try { if (hasLayer(map, fillId)) map.setPaintProperty(fillId, 'fill-color', fillExpr as any); } catch {}
+    try { if (hasLayer(map, lineId)) map.setPaintProperty(lineId, 'line-color', lineExpr as any); } catch {}
   }, [map, beatStyleLookup]);
 
   const ensureLayerLoaded = useCallback(async (layerId: string) => {
@@ -551,8 +572,8 @@ export function useGeoJsonLayers({
       const vis = nowVisible ? 'visible' : 'none';
 
       if (map) {
-        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', vis); } catch {}
-        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', vis); } catch {}
+        try { if (hasLayer(map, fillId)) map.setLayoutProperty(fillId, 'visibility', vis); } catch {}
+        try { if (hasLayer(map, lineId)) map.setLayoutProperty(lineId, 'visibility', vis); } catch {}
       }
 
       // Show/hide label markers
@@ -597,8 +618,8 @@ export function useGeoJsonLayers({
         const fillId = getFillLayerId(cfg.id);
         const lineId = getLineLayerId(cfg.id);
         const viz = !cfg.minZoom || zoom >= cfg.minZoom ? 'visible' : 'none';
-        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', viz); } catch {}
-        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch {}
+        try { if (hasLayer(map, fillId)) map.setLayoutProperty(fillId, 'visibility', viz); } catch {}
+        try { if (hasLayer(map, lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch {}
       }
     };
     map.on('zoomend', onZoomEnd);

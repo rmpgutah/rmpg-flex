@@ -12,10 +12,12 @@ void _buildTime;
 
 import jsPDF from 'jspdf';
 import { toNum } from './sentinel';
+import { classifyLine, stripStrayMarkers } from './noteFormatting';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { parseTimestamp } from './dateUtils';
+import { toDisplayLabel } from './formatters';
 // Document hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts) is
 // dormant as of 2026-05-04 per user request. The trailer page +
 // per-page footer hash prefix are removed; payload-hash computation +
@@ -57,6 +59,7 @@ import {
   type WatermarkVariant, type PriorityLevel,
 } from './pdfFormHelpers';
 import type { ClassificationLevel } from './pdfTokens';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 // ── Re-exports so callers only need to import from pdfGenerator ──
 export {
@@ -128,7 +131,7 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
   report_subheader_text: 'PRIVATE SECURITY & LAW ENFORCEMENT',
   primary_color: '#888888',
-  accent_color: '#555555', // neutralized 2026-05-30 (was gold #d4a017)
+  accent_color: 'var(--rmpg-500)', // neutralized 2026-05-30 (was gold #d4a017)
   header_bg_color: '#333333', // neutralized 2026-05-30 (was dark blue #232832)
   // section_accent_color is intentionally LEFT UNSET so the
   // thematic per-section palette in resolveSectionAccentColor
@@ -204,7 +207,7 @@ export function setGenerationTimestamp(ts: string) { generationTimestamp = ts; }
 // flip to 'light' on entry and restore 'dark' on exit so other forms
 // keep their existing look.
 export type SectionHeaderStyle = 'dark' | 'light';
-let activeSectionStyle: SectionHeaderStyle = 'dark';
+let activeSectionStyle: SectionHeaderStyle = 'light';
 export function setActiveSectionStyle(s: SectionHeaderStyle) { activeSectionStyle = s; }
 export function getActiveSectionStyle(): SectionHeaderStyle { return activeSectionStyle; }
 
@@ -241,9 +244,9 @@ export function applyFieldNumber(label: string): string {
  * These fonts only support Latin-1 (ISO-8859-1). Unicode arrows, em-dashes, curly quotes,
  * etc. have zero width in font metrics, causing justification to spread text wildly.
  */
-export function sanitizePdfText(text: string): string {
+export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean; preserveCase?: boolean } = {}): string {
   if (!text) return text;
-  return text
+  let s = text
     // HTML entity decode — narrative text occasionally arrives still
     // escaped from upstream rich-text editors / scrapers (e.g.
     // "BANKRUPTCY -&GT;" surfacing as literal "&GT;" in serve-intake
@@ -276,10 +279,24 @@ export function sanitizePdfText(text: string): string {
     // word characters (e.g. "*urgent*" or "*Note:") — bare standalone
     // asterisks (e.g. "list bullet *") are kept since stripping them
     // would mangle real bullet content.
-    .replace(/\*\*/g, '')
-    .replace(/__/g, '')
+    ;
+  // Marker stripping is the serve-intake "unmatched marker" safety net. It is
+  // destructive to matched pairs, so skip it when the caller will render markup
+  // downstream (addFormattedText); stray markers are removed per plain-segment
+  // via stripStrayMarkers instead.
+  if (!opts.preserveMarkers) {
+    s = s
+      .replace(/\*\*/g, '')
+      .replace(/__/g, '')
+    // Paired single-underscore italic markers around a parenthetical —
+    // "_(AUTO-GENERATED)_" rendered literally on PS-201 notes (caught
+    // 2026-06-11). Paired-only so real underscores in case numbers /
+    // filenames (CASE_123, REPORT_FINAL.PDF) are never touched.
+    .replace(/_\((.*?)\)_/g, '($1)')
     .replace(/\*(?=\w)/g, '')
-    .replace(/(?<=\w)\*/g, '')
+    .replace(/(?<=\w)\*/g, '');
+  }
+  s = s
     // Render-side patch for known concatenated-word artifacts in stored
     // case-narrative text (legacy generator bug from before the source
     // was fixed; existing dispatch_messages rows have the bad text
@@ -317,14 +334,32 @@ export function sanitizePdfText(text: string): string {
     .replace(/\u2022/g, '*')     // • bullet
     .replace(/\u00A0/g, ' ')     // non-breaking space
     .replace(/\u200B/g, '')      // zero-width space
-    .replace(/\u00B7/g, '.')     // · middle dot
+    .replace(/\u00B7/g, '-')     // · middle dot — '-' reads as a separator ('.' looked like a stray period)
     .replace(/\u2713/g, '[X]')   // ✓ check mark
     .replace(/\u2717/g, '[ ]')   // ✗ cross mark
     .replace(/\u26A0/g, '[!]')   // ⚠ warning
-    .replace(/[^\x00-\xFF]/g, '?') // Replace any remaining non-Latin-1 chars
-    .toUpperCase();              // Police-form convention: ALL CAPS (applied
-                                 // globally as the single sanitization chokepoint
-                                 // so every render path emits uppercase text).
+    // Strip emoji plumbing BEFORE the catch-all: variation selectors
+    // (U+FE0F after \u26A0 etc.) and zero-width joiners are invisible
+    // modifiers that the '?' catch-all surfaced as a literal "?" (caught
+    // 2026-06-11 on PS-201: "[!]? OFFICER SAFETY").
+    .replace(/[\uFE00-\uFE0F\u200D]/g, '')
+    // Emoji / supplementary-plane chars are surrogate PAIRS — the old
+    // per-code-unit '?' replacement turned one pictograph into "??".
+    // Drop them entirely; a formal report renders words, not pictographs.
+    // (also consume one adjacent space so "EMOJI WORD" doesn't leave a
+    // stray leading/doubled space behind)
+    .replace(/[\uD800-\uDFFF]+ ?/g, '')
+    .replace(/ ?[\uD800-\uDFFF]+/g, '')
+    .replace(/[^\x00-\xFF]/g, '') // Drop remaining non-Latin-1 chars ('?' placeholders read as data errors)
+    .replace(/(?<=\S)[ \t]{2,}/g, ' ');  // collapse INTERIOR double spaces only; keep leading indentation (drives list nesting depth)
+  // Police-form convention: ALL CAPS — applied globally as the single
+  // sanitization chokepoint so every render path emits uppercase text.
+  // Recipient-facing prose (legal disclaimer paragraphs on a Notice of
+  // Attempt) opts out via { preserveCase: true } since all-caps body
+  // text is hard to read for the subject and reads as aggressive on a
+  // notice meant to be helpful.
+  if (!opts.preserveCase) s = s.toUpperCase();
+  return s;
 }
 
 /**
@@ -437,6 +472,10 @@ export function addConfidentialWatermark(doc: jsPDF) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
+  // Wrap GState/font changes so callers don't inherit our 6 %-opacity state
+  // (the old version mutated GState globally; if a downstream draw landed
+  // before the final `opacity: 1.0` reset, body text rendered ghost-faint).
+  doc.saveGraphicsState();
   // @ts-expect-error jsPDF GState — visible on both white and dark backgrounds
   doc.setGState(new doc.GState({ opacity: 0.06 }));
   doc.setFont(PDF_VALUE_FONT, 'bold');
@@ -445,19 +484,18 @@ export function addConfidentialWatermark(doc: jsPDF) {
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
 
-  // Dark gray text — visible on white paper
+  // 45° rotation matches addDraftWatermark — without it the word sits on a
+  // line of body text instead of crossing the page diagonally as a watermark.
   doc.setTextColor(80, 80, 80);
-  doc.text('CONFIDENTIAL', cx, cy, { align: 'center' });
+  doc.text('CONFIDENTIAL', cx, cy, { align: 'center', angle: 45 });
 
-  // White text slightly offset — visible over dark section headers
+  // White ghost echo improves contrast over dark section header bands.
   doc.setTextColor(255, 255, 255);
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 0.15 }));
-  doc.text('CONFIDENTIAL', cx, cy, { align: 'center' });
+  doc.text('CONFIDENTIAL', cx, cy, { align: 'center', angle: 45 });
 
-  // Reset opacity to full
-  // @ts-expect-error jsPDF GState
-  doc.setGState(new doc.GState({ opacity: 1.0 }));
+  doc.restoreGraphicsState();
 }
 
 // Feature 34: Add "DRAFT" watermark to unapproved reports
@@ -713,24 +751,23 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Spillman Flex / LexisNexis convention:
-  // Solid black header band across the full content width, white UPPERCASE
-  // bold text. No accent strip, no tint — pure black-and-white police form.
+  // Clean section header: bold UPPERCASE title + thin underline rule.
+  // No filled bands — matches the fuel-report / line-and-text standard.
   const sectionY = y;
   const sectionPage = doc.getNumberOfPages();
   const barH = SPACING.SECTION_HEADER_H;
 
-  doc.setFillColor(0, 0, 0);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
-
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('Arial', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
   const capH = FONT.SIZE_SECTION_TITLE * 0.35;
   const textY = y + (barH + capH) / 2;
-  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textY);
+  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, textY);
 
-  // Reset text to black for content
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(0.5);
+  doc.line(LAYOUT.PAGE_MARGIN, y + barH, LAYOUT.PAGE_MARGIN + cw, y + barH);
+
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   return { contentY: y + barH + SPACING.SECTION_CONTENT_PAD, sectionY, sectionPage };
 }
@@ -1198,24 +1235,41 @@ export function addSignatureBlock(
 
   if (sigData?.signatureImage) {
     try {
-      const imgW = Math.min(width * 0.5, 70);
-      const imgH = sigRowH - 2;
-      doc.addImage(sigData.signatureImage, 'PNG', x + SPACING.MD + 5, row1Y + 1, imgW, imgH);
+      // Natural placement: preserve the pad image's aspect ratio (the old
+      // code stretched it to fill the whole row — squashed/cropped look),
+      // and rest it on a signature baseline like a real signed form.
+      const sigLineY = row1Y + sigRowH - 2.5;
+      doc.setDrawColor(...COLOR.TEXT_TERTIARY);
+      doc.setLineWidth(BORDER.SIGNATURE_LINE);
+      doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
+
+      const maxW = Math.min(width * 0.5, 70);
+      const maxH = sigRowH - 3.5; // breathing room inside the row
+      let imgW = maxW;
+      let imgH = maxH;
+      try {
+        const props = doc.getImageProperties(sigData.signatureImage);
+        if (props?.width && props?.height) {
+          const scale = Math.min(maxW / props.width, maxH / props.height);
+          imgW = props.width * scale;
+          imgH = props.height * scale;
+        }
+      } catch { /* unknown dims — fall back to box fit */ }
+      // Bottom edge sits just above the baseline (ink touches the line).
+      const imgX = x + SPACING.CONTENT_INSET + 4;
+      const imgY = sigLineY - 0.5 - imgH;
+      doc.addImage(sigData.signatureImage, 'PNG', imgX, imgY, imgW, imgH);
     } catch { /* skip */ }
   } else {
-    // Write-in line + X
+    // Clean signature line — no bureaucratic X marker
     const sigLineY = row1Y + sigRowH - 2.5;
-    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setDrawColor(...COLOR.TEXT_TERTIARY);
     doc.setLineWidth(BORDER.SIGNATURE_LINE);
     doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_SIGNATURE_X);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 1.5);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('SIGNATURE', x + width / 2, sigLineY + 2, { align: 'center' });
+    doc.text('SIGNATURE', x + width / 2, sigLineY + 2.5, { align: 'center' });
   }
 
   // ── Info row: PRINTED NAME | BADGE NUMBER | DATE ──
@@ -1245,8 +1299,13 @@ export function addSignatureBlock(
     if (sigData!.printedName) doc.text(sanitizePdfText(sigData!.printedName).toUpperCase(), x + SPACING.MD, valY);
     if (sigData!.badgeNumber) doc.text(sanitizePdfText(sigData!.badgeNumber).toUpperCase(), x + colW + SPACING.MD, valY);
     const now = new Date();
-    const pad2 = (n: number) => String(n).padStart(2, '0');
-    const dateStr = sigData!.date || `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+    // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
+    // Legal documents require the correct local timestamp — UTC drift corrupts records.
+    const dateStr = sigData!.date || now.toLocaleString('en-US', {
+      timeZone: 'America/Denver',
+      month: '2-digit', day: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).replace(', ', ' ');
     doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
   }
 
@@ -1322,8 +1381,14 @@ export function addStackedSignatures(
 
 /**
  * Compact single-line footer: accent bar + form info left, confidential center, page right.
+ * `opts.audienceLabel` overrides the default "INTERNAL USE ONLY" tag for
+ * outward-facing documents (e.g. 'RESPONDENT COPY' on the PSO notice);
+ * pass null to omit the tag entirely.
  */
-export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, formKey?: string) {
+export function addPageFooter(
+  doc: jsPDF, pageNum: number, totalPages: number, formKey?: string,
+  opts?: { audienceLabel?: string | null },
+) {
   const brand = activeBranding;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -1378,7 +1443,8 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
+  const audience = opts && 'audienceLabel' in opts ? opts.audienceLabel : 'INTERNAL USE ONLY';
+  const leftParts = [formNum, audience].filter(Boolean) as string[];
   doc.text(leftParts.join('  |  '), SAFE_PRINT_EDGE_SIDE, textY);
 
   doc.setFont('helvetica', 'normal');
@@ -1581,9 +1647,20 @@ export function addDocumentIntegrityTrailer(
  * Text is justified (words distributed to fill line width) except for
  * the last line of each paragraph which stays left-aligned.
  */
-export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE): number {
+export function addWrappedText(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  fontSize: number = FONT.SIZE_FIELD_VALUE,
+  opts: { preserveCase?: boolean } = {},
+): number {
   if (!text) return y;
-  text = sanitizePdfText(text);
+  // Recipient-facing prose passes preserveCase so the legal disclaimer
+  // paragraphs render in mixed case (professional, readable) instead of
+  // shouting in ALL CAPS like the field labels around them.
+  text = sanitizePdfText(text, { preserveCase: opts.preserveCase });
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1637,11 +1714,14 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
  */
 export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!rawText) return y;
-  const text = sanitizePdfText(rawText);
+  const text = sanitizePdfText(rawText, { preserveMarkers: true });
   const lineH = getPdfTextLineHeight(fontSize, true);
   const paragraphGap = SPACING.MD;
-  // Reduce maxWidth by 2mm safety margin to prevent right-edge clipping when printed
-  const safeMaxWidth = maxWidth - 2;
+  const safeMaxWidth = maxWidth - 2; // 2mm safety margin against right-edge clipping
+  const INDENT_MM = 5;   // horizontal indent per nesting level
+  const GUTTER_MM = 5;   // minimum space reserved for the bullet/number marker
+  const BULLET_R = 0.5;  // filled-circle bullet radius (mm)
+
   // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier
   const wordWrap = (str: string, maxW: number): string[] => {
     const words = str.split(/(\s+)/); // Split keeping whitespace tokens
@@ -1662,29 +1742,60 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
     return result.length > 0 ? result : [str];
   };
   let lastPage = doc.getNumberOfPages();
-  const stripMarkers = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/__(.+?)__/g, '$1');
-  const hasMarkers = (s: string) => /(\*\*|__|\*[^*])/.test(s);
+  const stripMarkers = (s: string) =>
+    s.replace(/\*\*(.+?)\*\*/g, '$1')
+     .replace(/~~(.+?)~~/g, '$1')
+     .replace(/__(.+?)__/g, '$1')
+     .replace(/\*(.+?)\*/g, '$1');
+
+  // Outline numbering state, persisted across the whole block. Reset by a
+  // depth-0 plain line (also how notes are joined), so numbering never bleeds.
+  const counters: number[] = [];
+  const orderedMarker = (depth: number): string => {
+    counters.length = depth + 1;
+    counters[depth] = (counters[depth] ?? 0) + 1;
+    return counters.slice(0, depth + 1).filter((v) => v > 0).join('.');
+  };
+
   const paragraphs = text.split(/\n\n+/);
   for (let p = 0; p < paragraphs.length; p++) {
     if (p > 0) y += paragraphGap;
-    const para = paragraphs[p].trim();
-    if (!para) continue;
+    if (!paragraphs[p].trim()) continue;
 
-    const hardLines = para.split(/\n/);
+    const hardLines = paragraphs[p].split(/\n/);
     for (let hlIdx = 0; hlIdx < hardLines.length; hlIdx++) {
       const hardLine = hardLines[hlIdx];
       if (!hardLine.trim()) continue;
+
+      // Classify for list rendering. content keeps inline markers intact.
+      const cl = classifyLine(hardLine);
+      let marker = '';
+      if (cl.kind === 'ordered') marker = orderedMarker(cl.depth);
+      else if (cl.kind === 'bullet') marker = '•';
+      else if (cl.depth === 0) counters.length = 0; // top-level plain -> reset
+
+      const isList = cl.kind === 'ordered' || cl.kind === 'bullet';
+      const lineText = isList ? cl.content : hardLine;
+      const indentMm = isList ? cl.depth * INDENT_MM : 0;
+
+      // Reserve gutter wide enough for the number string (deep chains widen).
+      doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize);
+      const gutterMm = !isList ? 0
+        : cl.kind === 'ordered' ? Math.max(GUTTER_MM, doc.getTextWidth(`${marker}.`) + 1.5)
+        : GUTTER_MM;
+      const contentX = x + indentMm + gutterMm;
+      const availWidth = safeMaxWidth - indentMm - gutterMm;
+
       // Use bold font width for wrapping if line contains bold markers — bold Courier is wider
-      const hasBold = /\*\*/.test(hardLine);
+      const hasBold = /\*\*/.test(lineText);
       doc.setFont(PDF_VALUE_FONT, hasBold ? 'bold' : 'normal');
       doc.setFontSize(fontSize);
-      const stripped = stripMarkers(hardLine);
-      const wrappedLines: string[] = wordWrap(stripped, safeMaxWidth);
+      const stripped = stripMarkers(lineText);
+      const wrappedLines: string[] = wordWrap(stripped, availWidth);
       doc.setFont(PDF_VALUE_FONT, 'normal');
       let charIdx = 0;
       for (let wli = 0; wli < wrappedLines.length; wli++) {
         const wrappedLine = wrappedLines[wli];
-        const isLastLine = wli === wrappedLines.length - 1 && hlIdx === hardLines.length - 1;
         y = checkPageBreak(doc, y, lineH + SPACING.SM);
         // If page changed, call onPageBreak to draw section continuation header
         const curPage = doc.getNumberOfPages();
@@ -1692,74 +1803,88 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
           lastPage = curPage;
           if (onPageBreak) y = onPageBreak(y);
         }
+
+        // Draw the list marker on the first wrapped line only.
+        if (isList && wli === 0) {
+          doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+          if (cl.kind === 'bullet') {
+            doc.setFillColor(...COLOR.TEXT_PRIMARY);
+            doc.circle(x + indentMm + 1.2, y - lineH * 0.28, BULLET_R, 'F');
+          } else {
+            doc.text(`${marker}.`, x + indentMm, y);
+          }
+        }
+
         const lineLen = wrappedLine.length;
         // Skip whitespace between words at line boundaries
-        while (charIdx < hardLine.length && hardLine[charIdx] === ' ' && wli > 0) charIdx++;
-        let segStart = charIdx;
+        while (charIdx < lineText.length && lineText[charIdx] === ' ' && wli > 0) charIdx++;
+        const segStart = charIdx;
         let visibleCount = 0;
         let i = charIdx;
-        while (visibleCount < lineLen && i < hardLine.length) {
-          if (hardLine.slice(i, i + 2) === '**') {
-            const end = hardLine.indexOf('**', i + 2);
+        while (visibleCount < lineLen && i < lineText.length) {
+          if (lineText.slice(i, i + 2) === '**') {
+            const end = lineText.indexOf('**', i + 2);
             if (end !== -1) { visibleCount += end - i - 2; i = end + 2; continue; }
           }
-          if (hardLine[i] === '*' && (i + 1 >= hardLine.length || hardLine[i + 1] !== '*')) {
-            const end = hardLine.indexOf('*', i + 1);
-            if (end !== -1 && (end + 1 >= hardLine.length || hardLine[end + 1] !== '*')) { visibleCount += end - i - 1; i = end + 1; continue; }
-          }
-          if (hardLine.slice(i, i + 2) === '__') {
-            const end = hardLine.indexOf('__', i + 2);
+          if (lineText.slice(i, i + 2) === '~~') {
+            const end = lineText.indexOf('~~', i + 2);
             if (end !== -1) { visibleCount += end - i - 2; i = end + 2; continue; }
+          }
+          if (lineText.slice(i, i + 2) === '__') {
+            const end = lineText.indexOf('__', i + 2);
+            if (end !== -1) { visibleCount += end - i - 2; i = end + 2; continue; }
+          }
+          if (lineText[i] === '*' && (i + 1 >= lineText.length || lineText[i + 1] !== '*')) {
+            const end = lineText.indexOf('*', i + 1);
+            if (end !== -1 && (end + 1 >= lineText.length || lineText[end + 1] !== '*')) { visibleCount += end - i - 1; i = end + 1; continue; }
           }
           visibleCount++; i++;
         }
-        const lineSeg = hardLine.slice(segStart, i);
+        const lineSeg = lineText.slice(segStart, i);
         charIdx = i;
 
-        // Justification disabled 2026-05-05 — the per-line word-spacing
-        // adjustment was making narrative text appear visually denser
-        // than the surrounding left-aligned field values, which the
-        // user perceived as a font-size mismatch (the actual font size
-        // is identical, but justified text reads as more compressed
-        // than left-aligned text at the same size). Plain left-aligned
-        // rendering keeps the narrative tonally consistent with
-        // addFieldPair's wrapped values everywhere else.
-
-        // Lines with formatting markers or last line: render with formatting
-        let cursorX = x;
-        const segRegex = /(\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__)/g;
+        // Render the slice with inline formatting (groups: 2=bold, 3=strike, 4=underline, 5=italic).
+        let cursorX = contentX;
+        const segRegex = /(\*\*(.+?)\*\*|~~(.+?)~~|__(.+?)__|\*(.+?)\*)/g;
         let lastIdx = 0;
         let segMatch: RegExpExecArray | null;
         while ((segMatch = segRegex.exec(lineSeg)) !== null) {
           if (segMatch.index > lastIdx) {
-            const plain = lineSeg.slice(lastIdx, segMatch.index);
+            const plain = stripStrayMarkers(lineSeg.slice(lastIdx, segMatch.index));
             doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(plain, cursorX, y); cursorX += doc.getTextWidth(plain);
           }
-          if (segMatch[2]) {
+          if (segMatch[2] !== undefined) {            // BOLD
             doc.setFont(PDF_VALUE_FONT, 'bold'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(segMatch[2], cursorX, y); cursorX += doc.getTextWidth(segMatch[2]);
-          } else if (segMatch[3]) {
-            doc.setFont(PDF_VALUE_FONT, 'bolditalic'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
-            doc.text(segMatch[3], cursorX, y); cursorX += doc.getTextWidth(segMatch[3]);
-          } else if (segMatch[4]) {
+          } else if (segMatch[3] !== undefined) {     // STRIKE
+            doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.text(segMatch[3], cursorX, y);
+            const tw = doc.getTextWidth(segMatch[3]);
+            doc.setDrawColor(...COLOR.TEXT_PRIMARY); doc.setLineWidth(0.2);
+            doc.line(cursorX, y - lineH * 0.28, cursorX + tw, y - lineH * 0.28);
+            cursorX += tw;
+          } else if (segMatch[4] !== undefined) {     // UNDERLINE
             doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             doc.text(segMatch[4], cursorX, y);
             const tw = doc.getTextWidth(segMatch[4]);
             doc.setDrawColor(...COLOR.TEXT_PRIMARY); doc.setLineWidth(0.2);
             doc.line(cursorX, y + 0.8, cursorX + tw, y + 0.8);
             cursorX += tw;
+          } else if (segMatch[5] !== undefined) {     // ITALIC (existing bolditalic look)
+            doc.setFont(PDF_VALUE_FONT, 'bolditalic'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
+            doc.text(segMatch[5], cursorX, y); cursorX += doc.getTextWidth(segMatch[5]);
           }
           lastIdx = segMatch.index + segMatch[0].length;
         }
         if (lastIdx < lineSeg.length) {
-          const plain = lineSeg.slice(lastIdx);
+          const plain = stripStrayMarkers(lineSeg.slice(lastIdx));
           doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
           doc.text(plain, cursorX, y);
         }
         y += lineH;
       }
-      while (charIdx < hardLine.length && hardLine[charIdx] === ' ') charIdx++;
+      while (charIdx < lineText.length && lineText[charIdx] === ' ') charIdx++;
     }
   }
   doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -1779,7 +1904,7 @@ export function addNarrativeSection(
   priority?: string,
 ): number {
   if (!rawText) return y;
-  const text = sanitizePdfText(rawText);
+  const text = sanitizePdfText(rawText, { preserveMarkers: true });
   y = checkPageBreak(doc, y, 30, priority);
   const sec = openAutoSection(doc, title, y);
   // Extra breathing room between the section header bar and the first
@@ -2037,7 +2162,11 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     // Continuation header sits 1mm above HEADER_TOP in office mode.
     // Mobile mode pushes it past the PJ-700 6mm leading-edge dead zone.
     const contY = 4 + (((doc as any).__printTarget === 'mobile') ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
-    const contH = SPACING.SECTION_HEADER_H;
+    // Taller than SECTION_HEADER_H (4.5mm): 9pt text centered in a 4.5mm
+    // band leaves no room for descenders/commas, and the rule below used to
+    // draw THROUGH the baseline — "ZAMORA," printed as "ZAMORA." with a
+    // strikethrough (live PDF 2026-06-11).
+    const contH = SPACING.SECTION_HEADER_H + 1.7;
 
     // Spillman black-band continuation header — solid black bar, white text
     doc.setFillColor(0, 0, 0);
@@ -2060,8 +2189,9 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
       doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
-    // Thin full-width rule just below the continuation title.
-    const contRuleY = contY + contH - 0.6;
+    // Thin full-width rule just below the black band (was contH-0.6 —
+    // INSIDE the band, striking through the white title text).
+    const contRuleY = contY + contH + 0.5;
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     doc.setLineWidth(BORDER.SECTION_OUTER);
     doc.line(LAYOUT.PAGE_MARGIN, contRuleY, LAYOUT.PAGE_MARGIN + cw, contRuleY);
@@ -2426,8 +2556,8 @@ interface IncidentData {
   process_service_result?: string;
   // GPS breadcrumb trail (auto-fetched before generation)
   breadcrumb_trail?: {
-    points: { lat: number; lng: number; time: string; speed_mph: number | null; road_name?: string | null; nearest_intersection?: string | null; source?: string; call_sign?: string; officer_name?: string }[];
-    stats: { total_points: number; total_distance_miles: number; duration_minutes: number; avg_speed_mph: number; max_speed_mph: number; source_breakdown?: Record<string, number> };
+    points: { lat: number; lng: number; time: string; speed: number | null; status: string | null; call_type: string | null; road_name: string | null; intersection: string | null; call_sign?: string | null; officer_name?: string | null }[];
+    stats?: { total_points: number; total_distance_miles: number; duration_minutes: number; avg_speed_mph: number; max_speed_mph: number; source_breakdown?: Record<string, number> };
   };
   // Source + dispatch code
   source?: string;
@@ -2451,83 +2581,6 @@ interface IncidentData {
     status: string;
     created_at: string;
   }[];
-}
-
-// ── GPS Activity Log Section (shared across report templates) ──
-
-function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, priority: string): number {
-  const lx = getLeftX();
-  const trail = data.breadcrumb_trail;
-
-  y = checkPageBreak(doc, y, 30, priority);
-  const sec = openAutoSection(doc, 'GPS Activity Log', y); y = sec.contentY;
-
-  if (trail && trail.points.length > 0) {
-    const stats = trail.stats;
-    y = addThreeColumnFields(doc, [
-      { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
-      { label: 'Duration', value: `${stats.duration_minutes} min` },
-      { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
-      { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
-      { label: 'Breadcrumb Points', value: String(stats.total_points) },
-      { label: 'Sources', value: stats.source_breakdown
-        ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
-        : '' },
-    ], y);
-    y += SPACING.SM;
-
-    // Sampled breadcrumb table — max 50 rows for readability
-    const maxRows = 50;
-    const step = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
-    const sampled = trail.points.filter((_, i) => i % step === 0 || i === trail.points.length - 1);
-
-    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 130];
-    const tableHeaders = [
-      { label: 'TIME', x: colPositions[0] },
-      { label: 'LOCATION / ROAD', x: colPositions[1] },
-      { label: 'SPEED', x: colPositions[2] },
-      { label: 'SOURCE', x: colPositions[3] },
-    ];
-    const tableRows = sampled.map(p => {
-      let timeStr = '';
-      try {
-        timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-      } catch { timeStr = p.time; }
-      // Prefer road name + nearest intersection, fall back to raw coordinates.
-      // Guard coords so a single non-numeric point can't crash the whole PDF.
-      const latN = toNum(p.lat), lngN = toNum(p.lng);
-      let locationStr = (latN != null && lngN != null) ? `${latN.toFixed(5)}, ${lngN.toFixed(5)}` : '—';
-      if (p.road_name) {
-        locationStr = p.road_name;
-        if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;
-      }
-      return [
-        timeStr,
-        locationStr,
-        p.speed_mph != null ? `${p.speed_mph} mph` : '-',
-        (p.source || 'unknown').toUpperCase(),
-      ];
-    });
-
-    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-
-    if (step > 1) {
-      doc.setFontSize(5);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.MD;
-    }
-  } else {
-    doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('No GPS breadcrumb data available', lx, y);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    y += SPACING.XL;
-  }
-
-  y = closeAutoSection(doc, sec.sectionY, y);
-  return y;
 }
 
 type IncidentOverviewField = {
@@ -2667,8 +2720,6 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   const rx = getRightColumnX(doc);
   const mx = LAYOUT.PAGE_MARGIN;  // margin x
   const capFirst = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-  const formatServiceType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
-  const formatDocumentType = (v: string | undefined) => v ? v.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
   const incidentAlertFlags = buildIncidentAlertFlags(data, [
     data.call_number ? 'DISPATCH LINK' : '',
     data.contract_id ? 'CLIENT CONTRACT' : '',
@@ -2768,7 +2819,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       const attemptNum = data.pso_attempt_number || 1;
 
       // Row 1: Service Type / Authorization / Billing Code
-      const fy1 = addFieldPair(doc, 'Service Type', formatServiceType(data.pso_service_type), lx, y, thirdW);
+      const fy1 = addFieldPair(doc, 'Service Type', toDisplayLabel(data.pso_service_type), lx, y, thirdW);
       const fy2 = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx + thirdW, y, thirdW);
       const fy3 = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', lx + thirdW * 2, y, thirdW);
       y = Math.max(fy1, fy2, fy3);
@@ -2801,12 +2852,16 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         if (data.pso_72hr_notified === 'overdue') slaStatus = 'OVERDUE';
         else if (data.pso_72hr_notified === 'resolved') slaStatus = 'RESOLVED';
         else if (data.pso_72hr_deadline) {
-          const dlTs = Date.parse(data.pso_72hr_deadline);
+          // parseTimestamp interprets naive server strings as UTC (the app
+          // standard). The pre-wave-3.1 code used Date.parse() which treated
+          // them as local time, skewing the 72hr SLA check by the user's
+          // timezone offset (~6h in Mountain Time). (Wave 3.1)
+          const dlTs = parseTimestamp(data.pso_72hr_deadline).getTime();
           if (!Number.isNaN(dlTs) && dlTs < Date.now()) slaStatus = 'OVERDUE';
         }
         let timeRemaining = '';
         if (data.pso_72hr_deadline) {
-          const dlTs = Date.parse(data.pso_72hr_deadline);
+          const dlTs = parseTimestamp(data.pso_72hr_deadline).getTime();
           if (!Number.isNaN(dlTs)) {
             const diffMs = dlTs - Date.now();
             const absH = Math.floor(Math.abs(diffMs) / 3_600_000);
@@ -2840,8 +2895,8 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       if (data.dispatched_at || data.onscene_at || data.cleared_at || data.closed_at) {
         const durMin = (from?: string, to?: string): string => {
           if (!from || !to) return '';
-          const a = Date.parse(from);
-          const b = Date.parse(to);
+          const a = parseTimestamp(from).getTime();
+          const b = parseTimestamp(to).getTime();
           if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
           const mins = Math.round((b - a) / 60_000);
           const h = Math.floor(mins / 60);
@@ -2888,7 +2943,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     y = checkPageBreak(doc, y, 15);
     { const sec = openAutoSection(doc, 'Process Service Details', y); y = sec.contentY;
       const thirdW = ffw / 3;
-      const fy1 = addFieldPair(doc, 'Document Type', formatDocumentType(data.process_service_type), lx, y, thirdW);
+      const fy1 = addFieldPair(doc, 'Document Type', toDisplayLabel(data.process_service_type), lx, y, thirdW);
       const fy2 = addFieldPair(doc, 'Serve To', data.process_served_to || '', lx + thirdW, y, thirdW);
       const fy3 = addFieldPair(doc, 'Attempts', data.process_attempts != null ? String(data.process_attempts) : '', lx + thirdW * 2, y, thirdW);
       y = Math.max(fy1, fy2, fy3);
@@ -3322,9 +3377,6 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // GPS Activity Log
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
-
   // Narrative
   y = addNarrativeSection(doc, 'Officer Notes', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
@@ -3454,8 +3506,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // GPS, Narrative, Attachments, Signatures
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
+  // Narrative, Attachments, Signatures
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
 
@@ -3541,7 +3592,6 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   // Free-form sections
   y = addNarrativeSection(doc, 'Vitals / Condition', data.patient_vitals || '', y, data.priority);
   y = addNarrativeSection(doc, 'Treatment Rendered', data.treatment_rendered || '', y, data.priority);
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
 
@@ -3748,8 +3798,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // GPS, Narrative, Attachments, Signatures
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
+  // Narrative, Attachments, Signatures
   y = addNarrativeSection(doc, 'Summary / Notes', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
 
@@ -3879,10 +3928,9 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
 
 
   // ═══════════════════════════════════════════════════════════
-  // FREE-FORM — GPS, Narrative, Attachments, Signatures
+  // FREE-FORM — Narrative, Attachments, Signatures
   // ═══════════════════════════════════════════════════════════
 
-  y = addGpsActivityLogSection(doc, data, y, data.priority);
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
   y = addSupplementsSection(doc, data, y);
 
@@ -4075,6 +4123,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
 export function generatePdfReport(reportType: PdfReportType, data: IncidentData, options: PdfReportOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'office');
 
   setActiveFormKey(reportType);
