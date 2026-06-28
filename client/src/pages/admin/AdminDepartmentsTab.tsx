@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Building2, Plus, Edit2, Trash2, Users, Loader2, X, Search,
   ChevronRight, UserCircle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import IconButton from '../../components/IconButton';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type { User } from '../../types';
 
 // ============================================================
@@ -51,7 +55,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
     setLoading(true);
     try {
       const data = await apiFetch<Department[]>('/admin/departments');
-      setDepartments(data || []);
+      setDepartments(asArray<Department>(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load departments');
     } finally {
@@ -122,6 +126,20 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
     }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildDeptMenu = (d: Department): ContextMenuItem[] => [
+    m.action('Edit department', () => openEdit(d), { icon: <Edit2 size={12} /> }),
+    m.separator(),
+    m.copy('Copy name', d.name),
+    ...(d.code ? [m.copy('Copy code', d.code)] : []),
+    m.copyId(d.id),
+    m.separator(),
+    m.action('Delete department', () => setDeleteTarget(d), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   const filtered = departments.filter((d) =>
     !search || d.name.toLowerCase().includes(search.toLowerCase()) || (d.code || '').toLowerCase().includes(search.toLowerCase())
   );
@@ -162,7 +180,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" aria-hidden="true" />
-            <input
+            <input id="ff-admindepartmentstab-0"
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -170,7 +188,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]"
             />
           </div>
-          <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Create new department">
+          <button type="button" onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Create new department">
             <Plus className="w-3 h-3" aria-hidden="true" />
             New Department
           </button>
@@ -189,7 +207,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
         {topLevel.map((dept) => {
           const subs = children(dept.id);
           return (
-            <div key={dept.id} className={`panel-beveled bg-surface-base p-3 ${!dept.is_active ? 'opacity-60' : ''}`}>
+            <div key={dept.id} onContextMenu={(e) => openMenu(e, buildDeptMenu(dept))} className={`panel-beveled bg-surface-base p-3 ${!dept.is_active ? 'opacity-60' : ''}`}>
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-brand-400" />
@@ -216,7 +234,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               {subs.length > 0 && (
                 <div className="mt-2 ml-4 space-y-1 border-l border-rmpg-700 pl-3">
                   {subs.map((sub) => (
-                    <div key={sub.id} className="flex items-center justify-between bg-surface-sunken px-2 py-1 rounded-sm">
+                    <div key={sub.id} onContextMenu={(e) => openMenu(e, buildDeptMenu(sub))} className="flex items-center justify-between bg-surface-sunken px-2 py-1 rounded-sm">
                       <div className="flex items-center gap-1.5">
                         <ChevronRight className="w-3 h-3 text-rmpg-600" />
                         <span className="text-[10px] text-rmpg-200 font-medium">{sub.name}</span>
@@ -240,25 +258,25 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit department' : 'New department'}>
           <div className="bg-surface-base panel-beveled w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#242424]">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Department' : 'New Department'}
               </h3>
-              <IconButton onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
+              <IconButton onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Name *</label>
-                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Patrol Division" />
+                <label htmlFor="ff-admindepartmentstab-1" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Name *</label>
+                <input id="ff-admindepartmentstab-1" type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Patrol Division" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Code</label>
-                  <input type="text" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} className="input-dark w-full text-xs font-mono min-h-[36px]" placeholder="e.g. PAT" maxLength={10} />
+                  <label htmlFor="ff-admindepartmentstab-2" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Code</label>
+                  <input id="ff-admindepartmentstab-2" type="text" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} className="input-dark w-full text-xs font-mono min-h-[36px]" placeholder="e.g. PAT" maxLength={10} />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Parent Dept</label>
-                  <select value={form.parent_id} onChange={(e) => setForm((f) => ({ ...f, parent_id: e.target.value }))} className="select-dark w-full text-xs">
+                  <label htmlFor="ff-admindepartmentstab-3" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Parent Dept</label>
+                  <select id="ff-admindepartmentstab-3" value={form.parent_id} onChange={(e) => setForm((f) => ({ ...f, parent_id: e.target.value }))} className="select-dark w-full text-xs">
                     <option value="">None (Top-level)</option>
                     {departments.filter((d) => d.id !== editing?.id).map((d) => (
                       <option key={d.id} value={d.id}>{d.name}</option>
@@ -267,8 +285,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Manager</label>
-                <select value={form.manager_id} onChange={(e) => setForm((f) => ({ ...f, manager_id: e.target.value }))} className="select-dark w-full text-xs">
+                <label htmlFor="ff-admindepartmentstab-4" className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Manager</label>
+                <select id="ff-admindepartmentstab-4" value={form.manager_id} onChange={(e) => setForm((f) => ({ ...f, manager_id: e.target.value }))} className="select-dark w-full text-xs">
                   <option value="">No Manager</option>
                   {activeUsers.map((u) => (
                     <option key={u.id} value={u.id}>{u.first_name} {u.last_name} {u.badge_number ? `(${u.badge_number})` : ''}</option>
@@ -277,12 +295,12 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
-                <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[60px] resize-y" placeholder="Department description..." />
+                <RichTextArea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[60px] resize-y" placeholder="Department description..." />
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">
               <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn text-[10px]">Cancel</button>
-              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
+              <button type="button" onClick={handleSubmit} disabled={submitting} className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1">
                 {submitting && <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" />}
                 {editing ? 'Update' : 'Create'}
               </button>

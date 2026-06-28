@@ -1,12 +1,19 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { Network, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Network, Loader2, Eye, Pencil, Route } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
 import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
 import { select } from 'd3-selection';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { apiFetch } from '../hooks/useApi';
 import { svgElementToPngDataUrl, downloadDataUrl } from '../utils/graphToPng';
 import { exportGraphToPdf } from '../utils/graphToPdf';
+import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
+import RichTextArea from '../components/RichTextArea';
 
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
@@ -38,25 +45,60 @@ interface SimEdge {
   sourceTable: string;
 }
 
+// Entity-type color palette for the d3 force graph. Categorical hues — each
+// entity type gets a distinct color so an operator can scan the graph at a
+// glance. Previously 3 collisions silently rendered different entity types
+// as the same dot:
+//   person + case        both #d4a017 → case bumped to #84cc16 lime
+//   evidence + arrest    both #ef4444 → arrest bumped to #f43f5e rose
+//   incident + business  both #f59e0b → business bumped to #0ea5e9 sky
+// This is the LEGITIMATE use of raw hex literals in this codebase: a
+// categorical palette where every entry must be distinguishable. The
+// semantic --sev-* tokens can't serve here — only 5 tokens vs 16 entity
+// types — but the 3 hues that DO match sev (brand gold, sev-warn, sev-
+// critical) stay perceptually consistent with the rest of the app.
 const NODE_COLORS: Record<string, string> = {
-  person: '#d4a017',
-  vehicle: '#10b981',
-  property: '#8b5cf6',
-  evidence: '#ef4444',
-  case: '#3b82f6',
-  incident: '#f59e0b',
-  warrant: '#dc2626',
-  citation: '#fbbf24',
-  arrest: '#ef4444',
-  field_interview: '#64748b',
-  trespass_order: '#a855f7',
-  serve_job: '#14b8a6',
+  person:          '#d4a017', // brand gold (mirrors --brand-gold)
+  vehicle:         '#10b981', // emerald
+  property:        '#8b5cf6', // violet
+  business:        '#0ea5e9', // sky (was #f59e0b — collided with incident)
+  evidence:        '#ef4444', // red (mirrors --sev-critical)
+  case:            '#84cc16', // lime (was #d4a017 — collided with person)
+  incident:        '#f59e0b', // amber (mirrors --sev-warn)
+  warrant:         '#dc2626', // darker red — wider use across the app
+  citation:        '#fbbf24', // yellow (mirrors --sev-warn-soft)
+  arrest:          '#f43f5e', // rose (was #ef4444 — collided with evidence)
+  field_interview: '#64748b', // slate
+  trespass_order:  '#a855f7', // purple
+  serve_job:       '#14b8a6', // teal
+  call:            '#22d3ee', // cyan
+  report:          '#ec4899', // pink
+  intel_report:    '#e879f9', // fuchsia
 };
 
 const NODE_RADIUS: Record<string, number> = {
-  person: 28, vehicle: 18, property: 18, evidence: 16,
+  person: 28, vehicle: 18, property: 18, business: 18, evidence: 16,
   case: 18, incident: 20, warrant: 18, citation: 16,
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
+  call: 20, report: 14, intel_report: 20,
+};
+
+// Timeline-drawer colors — mirror NODE_COLORS exactly so the same entity
+// type renders the same dot color in both the graph AND the timeline.
+// Previously this map drifted: case used brand-gold (collided with the
+// person-node color in the graph) and arrest used the same red as
+// evidence. Re-aligned 2026-06-22.
+const TIMELINE_KIND_COLOR: Record<string, string> = {
+  intel:           '#e879f9', // fuchsia (matches intel_report)
+  incident:        '#f59e0b',
+  call:            '#22d3ee',
+  citation:        '#fbbf24',
+  warrant:         '#dc2626',
+  arrest:          '#f43f5e', // was '#ef4444' — collided with evidence
+  field_interview: '#64748b',
+  trespass_order:  '#a855f7',
+  case:            '#84cc16', // was '#d4a017' — collided with person
+  evidence:        '#ef4444',
 };
 
 const VIEW_W = 1000;
@@ -64,7 +106,25 @@ const VIEW_H = 600;
 const DEBOUNCE_MS = 250;
 const MIN_QUERY_LEN = 2;
 
+// Roles that can save/delete investigations
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
 export default function ConnectionsPage() {
+  const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role ?? '');
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Deep-link: read params ONCE at mount so they survive later setSearchParams calls.
+  // Supports both ?connection_id=<id>&type=<type> and the legacy ?type=<t>&id=<n> forms.
+  const pendingConnectionTypeRef = useRef<string | null>(searchParams.get('type'));
+  const pendingConnectionIdRef   = useRef<string | null>(
+    searchParams.get('connection_id') ?? searchParams.get('id')
+  );
+
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -91,6 +151,9 @@ export default function ConnectionsPage() {
   const [annotations, setAnnotations] = useState<Record<string, string>>({});
   const [editingAnnotationFor, setEditingAnnotationFor] = useState<string | null>(null);
   const [annotationDraft, setAnnotationDraft] = useState('');
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  // ConfirmDialog state for deleting a saved investigation
+  const [confirmDelete, setConfirmDelete] = useState<{ invId: number; name: string } | null>(null);
   const pendingLayoutRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
@@ -98,6 +161,77 @@ export default function ConnectionsPage() {
   const gRef = useRef<SVGGElement>(null);
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [transform, setTransform] = useState('translate(0,0) scale(1)');
+  const [zoomScale, setZoomScale] = useState(1);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [timeline, setTimeline] = useState<Array<{ kind: string; id: number; date: string | null; title: string; subtitle: string; status: string }>>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState('');
+
+  // Deep-link: seed graph from URL params on mount, then strip them so refresh doesn't loop.
+  useEffect(() => {
+    const t     = pendingConnectionTypeRef.current;
+    const rawId = pendingConnectionIdRef.current;
+    pendingConnectionTypeRef.current = null;
+    pendingConnectionIdRef.current   = null;
+
+    if (t && rawId) {
+      const idNum = Number(rawId);
+      if (Number.isInteger(idNum) && idNum > 0) {
+        setSeed({ type: t, id: idNum, label: `${t} #${idNum}` });
+      }
+    }
+
+    // Strip deep-link params from the URL.
+    const next = new URLSearchParams(searchParams);
+    let stripped = false;
+    for (const key of ['type', 'id', 'connection_id']) {
+      if (next.has(key)) { next.delete(key); stripped = true; }
+    }
+    if (stripped) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keyboard shortcuts:
+  //   N — open Save Investigation modal (canManage + graph loaded, not while typing)
+  //   Esc cascade — annotation modal → save modal → load dropdown → path-from mode
+  useEffect(() => {
+    const isTypingInField = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+    };
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (editingAnnotationFor) {
+          e.stopPropagation();
+          setEditingAnnotationFor(null);
+          setAnnotationDraft('');
+          return;
+        }
+        if (saveModalOpen) {
+          e.stopPropagation();
+          setSaveModalOpen(false);
+          setSaveName('');
+          setSaveDescription('');
+          setSaveError(null);
+          return;
+        }
+        if (loadDropdownOpen) { e.stopPropagation(); setLoadDropdownOpen(false); return; }
+        if (pathFrom)         { e.stopPropagation(); setPathFrom(null); setPathNodes(new Set()); setPathEdges(new Set()); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && canManage && seed && nodes.length > 0) {
+        e.preventDefault();
+        setSaveModalOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editingAnnotationFor, saveModalOpen, loadDropdownOpen, pathFrom, canManage, seed, nodes.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -142,7 +276,7 @@ export default function ConnectionsPage() {
         );
         if (cancelled) return;
         const isSeedNode = (n: ServerNode) => n.type === seed.type && n.entityId === seed.id;
-        const hydrated: SimNode[] = data.nodes.map(n => {
+        const hydrated: SimNode[] = (data?.nodes || []).map(n => {
           const isSeed = isSeedNode(n);
           return {
             ...n,
@@ -152,7 +286,7 @@ export default function ConnectionsPage() {
             fy: isSeed ? VIEW_H / 2 : null,
           };
         });
-        const hydratedEdges: SimEdge[] = data.edges.map(e => ({ ...e }));
+        const hydratedEdges: SimEdge[] = (data?.edges || []).map(e => ({ ...e }));
         if (pendingLayoutRef.current) {
           const layout = pendingLayoutRef.current;
           pendingLayoutRef.current = null;
@@ -182,11 +316,18 @@ export default function ConnectionsPage() {
     if (simRef.current) { simRef.current.stop(); simRef.current = null; }
     if (nodes.length === 0) return;
 
+    // Force parameters scale with node count so dense graphs (depth=3, 100+ nodes)
+    // don't collapse into the central blob seen with the previous fixed values.
+    const n = nodes.length;
+    const chargeStrength = -Math.min(2400, 400 + n * 18);
+    const linkDistance = Math.min(220, 110 + Math.sqrt(n) * 8);
+    const collidePad = n > 60 ? 14 : n > 25 ? 10 : 8;
+
     const sim = forceSimulation<SimNode>(nodes)
-      .force('charge', forceManyBody().strength(-600))
-      .force('link', forceLink<SimNode, SimEdge>(edges as any).id((d: any) => d.id).distance(130))
+      .force('charge', forceManyBody().strength(chargeStrength))
+      .force('link', forceLink<SimNode, SimEdge>(edges as any).id((d: any) => d.id).distance(linkDistance))
       .force('center', forceCenter(VIEW_W / 2, VIEW_H / 2))
-      .force('collide', forceCollide<SimNode>(d => (NODE_RADIUS[d.type] || 16) + 8))
+      .force('collide', forceCollide<SimNode>(d => (NODE_RADIUS[d.type] || 16) + collidePad))
       .alpha(1)
       .on('tick', () => {
         setNodes(prev => [...prev]);
@@ -206,11 +347,25 @@ export default function ConnectionsPage() {
       .on('zoom', (event) => {
         const t = event.transform;
         setTransform(`translate(${t.x},${t.y}) scale(${t.k})`);
+        setZoomScale(t.k);
       });
     svg.call(z as any);
     zoomRef.current = z;
     return () => { svg.on('.zoom', null); };
   }, [nodes.length]);
+
+  // Stable string signature of node membership — only changes when nodes are added/removed,
+  // not on every d3 tick (which calls setNodes(prev => [...prev]) and replaces the array ref).
+  const nodeKeySig = nodes.map(n => `${n.type}:${n.entityId}`).join(',');
+
+  useEffect(() => {
+    if (!timelineOpen || nodeKeySig === '') { setTimeline([]); return; }
+    setTimelineLoading(true); setTimelineError('');
+    apiFetch<any[]>(`/connections/timeline?nodes=${encodeURIComponent(nodeKeySig)}`)
+      .then(r => setTimeline(Array.isArray(r) ? r : []))
+      .catch(() => setTimelineError('Failed to load timeline.'))
+      .finally(() => setTimelineLoading(false));
+  }, [timelineOpen, nodeKeySig]);
 
   function resetView() {
     if (!svgRef.current || !zoomRef.current) return;
@@ -263,7 +418,7 @@ export default function ConnectionsPage() {
         setPathEdges(new Set(data.edges.map(e => `${e.source}|${e.target}`)));
       } catch (err) {
         console.error('Path fetch error:', err);
-        alert('No path found between those nodes (within 6 hops).');
+        addToast('No path found between those nodes (within 6 hops).', 'info');
       }
       setPathFrom(null);
       return;
@@ -302,7 +457,7 @@ export default function ConnectionsPage() {
     }
   }
 
-  async function openLoadDropdown() {
+  const openLoadDropdown = useCallback(async () => {
     setLoadDropdownOpen(true);
     setLoadingInvestigations(true);
     try {
@@ -313,7 +468,7 @@ export default function ConnectionsPage() {
     } finally {
       setLoadingInvestigations(false);
     }
-  }
+  }, []);
 
   async function openInvestigation(id: number) {
     setLoadDropdownOpen(false);
@@ -328,7 +483,20 @@ export default function ConnectionsPage() {
       setSelectedNodeId(null);
     } catch (err) {
       console.error('load investigation err:', err);
-      alert('Failed to load investigation — the saved data may be corrupted. See console for details.');
+      addToast('Failed to load investigation — the saved data may be corrupted. See console for details.', 'error');
+    }
+  }
+
+  async function handleDeleteInvestigation(id: number) {
+    try {
+      await apiFetch(`/connections/investigations/${id}`, { method: 'DELETE' });
+      setInvestigations(prev => prev.filter(inv => inv.id !== id));
+      addToast('Investigation deleted.', 'success');
+    } catch (err) {
+      console.error('delete investigation err:', err);
+      addToast('Failed to delete investigation.', 'error');
+    } finally {
+      setConfirmDelete(null);
     }
   }
 
@@ -341,7 +509,7 @@ export default function ConnectionsPage() {
       downloadDataUrl(dataUrl, name);
     } catch (err) {
       console.error('PNG export failed:', err);
-      alert('PNG export failed — see console for details.');
+      addToast('PNG export failed — see console for details.', 'error');
     }
   }
 
@@ -376,7 +544,7 @@ export default function ConnectionsPage() {
       }
     } catch (err) {
       console.error('PDF export failed:', err);
-      alert('PDF export failed — see console for details.');
+      addToast('PDF export failed — see console for details.', 'error');
     }
   }
 
@@ -388,37 +556,53 @@ export default function ConnectionsPage() {
     });
   }
 
+  // ── Right-click context menu for graph nodes ──
+  const buildNodeMenu = (n: SimNode): ContextMenuItem[] => [
+    m.action('Select node', () => setSelectedNodeId(n.id), { icon: <Eye size={12} /> }),
+    m.action('Start path from here', () => setPathFrom({ type: n.type, id: n.entityId, label: n.label }), { icon: <Route size={12} /> }),
+    m.action(annotations[n.id] ? 'Edit note' : 'Add note', () => { setEditingAnnotationFor(n.id); setAnnotationDraft(annotations[n.id] || ''); }, { icon: <Pencil size={12} /> }),
+    m.separator(),
+    m.copy('Copy label', n.label),
+    m.copyId(n.entityId),
+  ];
+
+  const selectedNode = nodes.find(n => n.id === selectedNodeId) ?? null;
+
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
 
+      {/* Search bar + toolbar */}
       <div className="relative">
         <div className="flex items-center gap-2">
-          <input
+          <input id="ff-connectionspage-0"
             type="text"
             placeholder="Search for a person, vehicle, case, incident..."
-            className="flex-1 bg-surface-raised border border-[#222222] px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4a017] focus:outline-none"
+            className="flex-1 bg-surface-raised border border-rmpg-700 px-3 py-2 text-sm text-rmpg-200 placeholder-rmpg-500 focus:border-brand-400 focus:outline-none"
             style={{ borderRadius: 2 }}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onFocus={() => { if (results.length) setDropdownOpen(true); }}
             aria-label="Seed search"
           />
-          {searching && <Loader2 className="w-4 h-4 animate-spin text-[#d4a017]" />}
-          <button
-            type="button"
-            disabled={!seed || nodes.length === 0}
-            onClick={() => setSaveModalOpen(true)}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ borderRadius: 2 }}
-          >
-            SAVE INVESTIGATION
-          </button>
+          {searching && <Loader2 className="w-4 h-4 animate-spin text-brand-400" />}
+          {canManage && (
+            <button
+              type="button"
+              disabled={!seed || nodes.length === 0}
+              onClick={() => setSaveModalOpen(true)}
+              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-brand-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ borderRadius: 2 }}
+              title="N to save"
+            >
+              SAVE INVESTIGATION
+            </button>
+          )}
           <button
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPng}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-brand-400 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PNG
@@ -427,7 +611,7 @@ export default function ConnectionsPage() {
             type="button"
             disabled={!seed || nodes.length === 0}
             onClick={handleExportPdf}
-            className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-brand-400 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderRadius: 2 }}
           >
             EXPORT PDF
@@ -436,7 +620,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={openLoadDropdown}
-              className="px-3 py-1.5 text-xs bg-surface-raised border border-[#222222] text-gray-300 hover:text-[#d4a017]"
+              className="px-3 py-1.5 text-xs bg-surface-raised border border-rmpg-700 text-rmpg-300 hover:text-brand-400"
               style={{ borderRadius: 2 }}
             >
               LOAD INVESTIGATION
@@ -445,29 +629,47 @@ export default function ConnectionsPage() {
               <div
                 role="dialog"
                 aria-label="Load investigation"
-                className="absolute right-0 z-40 mt-1 w-80 bg-surface-raised border border-[#222222]"
+                className="absolute right-0 z-40 mt-1 w-80 bg-surface-raised border border-rmpg-700"
                 style={{ borderRadius: 2 }}
               >
-                {loadingInvestigations && <div className="p-3 text-xs text-gray-400">Loading...</div>}
+                {loadingInvestigations && (
+                  <div className="p-4 flex items-center gap-2 text-xs text-rmpg-400">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                  </div>
+                )}
                 {!loadingInvestigations && investigations.length === 0 && (
-                  <div className="p-3 text-xs text-gray-500">No saved investigations yet.</div>
+                  <div className="p-4 text-xs text-rmpg-500 text-center">No saved investigations yet.</div>
                 )}
                 {!loadingInvestigations && investigations.length > 0 && (
                   <ul className="max-h-80 overflow-y-auto">
                     {investigations.map(inv => (
                       <li
                         key={inv.id}
-                        onClick={() => openInvestigation(inv.id)}
-                        className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-[#1a1a1a]"
+                        className="px-3 py-2 text-sm text-rmpg-200 border-b border-border-subtle flex items-start gap-2"
                       >
-                        <div className="font-semibold">{inv.name}</div>
-                        {inv.description && <div className="text-xs text-gray-500 mt-0.5">{inv.description}</div>}
+                        <span
+                          className="flex-1 min-w-0 cursor-pointer hover:text-rmpg-100"
+                          onClick={() => openInvestigation(inv.id)}
+                        >
+                          <div className="font-semibold">{inv.name}</div>
+                          {inv.description && <div className="text-xs text-rmpg-500 mt-0.5">{inv.description}</div>}
+                        </span>
+                        {canManage && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete({ invId: inv.id, name: inv.name })}
+                            className="shrink-0 text-xs text-rmpg-600 hover:text-red-400 mt-0.5"
+                            aria-label={`Delete investigation ${inv.name}`}
+                          >
+                            DEL
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>
                 )}
-                <div className="p-2 border-t border-[#222222] text-right">
-                  <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-gray-400 hover:text-[#d4a017]">Close</button>
+                <div className="p-2 border-t border-rmpg-700 text-right">
+                  <button type="button" onClick={() => setLoadDropdownOpen(false)} className="text-xs text-rmpg-400 hover:text-brand-400">Close</button>
                 </div>
               </div>
             )}
@@ -477,10 +679,11 @@ export default function ConnectionsPage() {
           )}
         </div>
 
+        {/* Search results dropdown */}
         {dropdownOpen && results.length > 0 && (
           <ul
             role="listbox"
-            className="absolute z-10 mt-1 w-full bg-surface-raised border border-[#222222] max-h-80 overflow-y-auto"
+            className="absolute z-10 mt-1 w-full bg-surface-raised border border-rmpg-700 max-h-80 overflow-y-auto"
             style={{ borderRadius: 2 }}
           >
             {results.map(r => (
@@ -489,27 +692,44 @@ export default function ConnectionsPage() {
                 role="option"
                 aria-selected={false}
                 onClick={() => pickSeed(r)}
-                className="px-3 py-2 text-sm text-gray-200 cursor-pointer hover:bg-surface-sunken border-b border-[#1a1a1a] last:border-b-0"
+                className="px-3 py-2 text-sm text-rmpg-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle last:border-b-0"
               >
-                <span className="text-[#d4a017] text-xs uppercase mr-2">{r.type}</span>
+                <span className="text-brand-400 text-xs uppercase mr-2">{r.type}</span>
                 {r.label}
               </li>
             ))}
           </ul>
         )}
+
+        {/* No search results empty state */}
+        {dropdownOpen && !searching && searchQuery.trim().length >= MIN_QUERY_LEN && results.length === 0 && (
+          <div
+            className="absolute z-10 mt-1 w-full bg-surface-raised border border-rmpg-700 px-3 py-3 text-xs text-rmpg-500"
+            style={{ borderRadius: 2 }}
+          >
+            No results for &ldquo;{searchQuery.trim()}&rdquo;
+          </div>
+        )}
       </div>
+
+      {/* No-seed empty state */}
+      {!seed && !loadingGraph && (
+        <div className="flex-1 flex items-center justify-center text-rmpg-500 text-sm">
+          Search for an entity above to start a connections graph.
+        </div>
+      )}
 
       {seed && (
         <div
           data-testid="seed-display"
-          className="px-3 py-2 bg-surface-raised border border-[#d4a017] text-sm text-gray-200 flex items-center gap-3"
+          className="px-3 py-2 bg-surface-raised border border-brand-400 text-sm text-rmpg-200 flex items-center gap-3"
           style={{ borderRadius: 2 }}
         >
-          <span className="text-[#d4a017] text-xs uppercase font-semibold">{seed.type}</span>
+          <span className="text-brand-400 text-xs uppercase font-semibold">{seed.type}</span>
           <span className="font-semibold">{seed.label}</span>
-          <span className="text-gray-500 text-xs ml-auto">#{seed.id}</span>
-          <div className="flex items-center gap-2 border-l border-[#222222] pl-3">
-            <label htmlFor="depth-slider" className="uppercase font-semibold text-xs text-gray-400">Depth</label>
+          <span className="text-rmpg-500 text-xs ml-auto">#{seed.id}</span>
+          <div className="flex items-center gap-2 border-l border-rmpg-700 pl-3">
+            <label htmlFor="depth-slider" className="uppercase font-semibold text-xs text-rmpg-400">Depth</label>
             <input
               id="depth-slider"
               type="range"
@@ -518,15 +738,24 @@ export default function ConnectionsPage() {
               step={1}
               value={graphDepth}
               onChange={e => setGraphDepth(Number(e.target.value))}
-              className="accent-[#d4a017]"
+              className="accent-brand-400"
               aria-label="Graph depth"
             />
-            <span className="text-[#d4a017] font-mono w-4 text-center text-xs">{graphDepth}</span>
+            <span className="text-brand-400 font-mono w-4 text-center text-xs">{graphDepth}</span>
           </div>
           <button
             type="button"
+            onClick={() => setTimelineOpen(o => !o)}
+            disabled={nodes.length === 0}
+            style={{ background: timelineOpen ? '#e879f9' : 'var(--surface-raised)', color: timelineOpen ? '#000' : '#888', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}
+            aria-label="Toggle timeline"
+          >
+            TIMELINE
+          </button>
+          <button
+            type="button"
             onClick={() => { setSeed(null); setAnnotations({}); }}
-            className="text-xs text-gray-400 hover:text-[#d4a017]"
+            className="text-xs text-rmpg-400 hover:text-brand-400"
             aria-label="Clear seed"
           >
             CLEAR
@@ -534,24 +763,20 @@ export default function ConnectionsPage() {
         </div>
       )}
 
+      {seed && (
       <div className="flex-1 flex gap-2 min-h-0" style={{ minHeight: 400 }}>
       <div
         data-testid="graph-canvas"
-        className="flex-1 bg-surface-sunken border border-[#222222] relative overflow-hidden"
+        className="flex-1 bg-surface-sunken border border-rmpg-700 relative overflow-hidden"
         style={{ borderRadius: 2 }}
       >
         {loadingGraph && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-[#d4a017] gap-2 z-10">
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-brand-400 gap-2 z-10">
             <Loader2 className="w-4 h-4 animate-spin" /> Building graph...
           </div>
         )}
-        {!seed && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
-            Seed a graph by searching above.
-          </div>
-        )}
-        {seed && hasOnlySeed && !loadingGraph && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+        {hasOnlySeed && !loadingGraph && (
+          <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-sm">
             No connections found for {seed.label}.
           </div>
         )}
@@ -564,6 +789,7 @@ export default function ConnectionsPage() {
             preserveAspectRatio="xMidYMid meet"
           >
             <g ref={gRef} data-testid="zoom-target" transform={transform}>
+            {/* Pass 1 — edges (bottom layer) */}
             {visibleEdges.map((e, i) => {
               const src = typeof e.source === 'string' ? nodes.find(n => n.id === e.source) : (e.source as SimNode);
               const tgt = typeof e.target === 'string' ? nodes.find(n => n.id === e.target) : (e.target as SimNode);
@@ -573,17 +799,17 @@ export default function ConnectionsPage() {
               const inPath = pathEdges.has(`${srcId}|${tgtId}`) || pathEdges.has(`${tgtId}|${srcId}`);
               const dim = pathNodes.size > 0 && !inPath;
               return (
-                <g key={`edge-${i}`}>
-                  <line
-                    x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
-                    stroke={inPath ? '#22c55e' : '#333'}
-                    strokeWidth={inPath ? 3 : 1.5}
-                    strokeDasharray={inPath ? undefined : '4,3'}
-                    opacity={dim ? 0.2 : 1}
-                  />
-                </g>
+                <line
+                  key={`edge-${i}`}
+                  x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
+                  stroke={inPath ? '#22c55e' : 'var(--rmpg-600)'}
+                  strokeWidth={inPath ? 3 : 1.5}
+                  strokeDasharray={inPath ? undefined : '4,3'}
+                  opacity={dim ? 0.2 : 1}
+                />
               );
             })}
+            {/* Pass 2 — node circles (middle layer) */}
             {visibleNodes.map(n => {
               const r = NODE_RADIUS[n.type] || 16;
               const color = NODE_COLORS[n.type] || '#888';
@@ -594,6 +820,9 @@ export default function ConnectionsPage() {
                 <g
                   key={n.id}
                   onClick={() => handleNodeClick(n)}
+                  onContextMenu={(e) => openMenu(e, buildNodeMenu(n))}
+                  onMouseEnter={() => setHoveredNodeId(n.id)}
+                  onMouseLeave={() => setHoveredNodeId(prev => (prev === n.id ? null : prev))}
                   data-has-annotation={annotations[n.id] ? 'true' : 'false'}
                   style={{ cursor: 'pointer', opacity: dim ? 0.25 : 1 }}
                 >
@@ -605,8 +834,26 @@ export default function ConnectionsPage() {
                   )}
                   <circle
                     cx={n.x} cy={n.y} r={r}
-                    fill="#0a0a0a" stroke={inPath ? '#22c55e' : color} strokeWidth={inPath ? 3 : 2}
+                    fill="var(--surface-sunken)" stroke={inPath ? '#22c55e' : color} strokeWidth={inPath ? 3 : 2}
                   />
+                  {n.type === 'intel_report' && (() => {
+                    const THREAT_RING: Record<string, string> = { critical: '#ef4444', high: '#f59e0b', medium: '#d4a017', low: '#64748b' };
+                    const ring = THREAT_RING[(n.metadata?.threat_level as string) || 'low'] || '#64748b';
+                    const rr = (NODE_RADIUS[n.type] || 20);
+                    return (
+                      <>
+                        <circle cx={n.x} cy={n.y} r={rr + 3} fill="none" stroke={ring} strokeWidth={2.5} />
+                        {n.metadata?.grade ? (
+                          <>
+                            <rect x={(n.x ?? 0) - 12} y={(n.y ?? 0) - rr - 16} width={24} height={13} rx={2} fill="#e879f9" />
+                            <text x={n.x} y={(n.y ?? 0) - rr - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--surface-sunken)">
+                              {String(n.metadata.grade)}
+                            </text>
+                          </>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   <text
                     x={n.x} y={n.y - 1} textAnchor="middle" dominantBaseline="middle"
                     fontSize={r > 20 ? 11 : 9} fill={color} fontFamily="monospace" fontWeight="bold"
@@ -614,17 +861,10 @@ export default function ConnectionsPage() {
                   >
                     {n.type[0].toUpperCase()}
                   </text>
-                  <text
-                    x={n.x} y={n.y + r + 11} textAnchor="middle"
-                    fontSize={9} fill="#ccc" fontFamily="monospace"
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    {n.label.length > 22 ? n.label.slice(0, 20) + '…' : n.label}
-                  </text>
                   {annotations[n.id] && (
                     <text
                       x={n.x + r - 4} y={n.y - r + 8}
-                      fontSize={10} fill="#d4a017" fontFamily="monospace" fontWeight="bold"
+                      fontSize={10} fill="var(--brand-gold)" fontFamily="monospace" fontWeight="bold"
                       style={{ pointerEvents: 'none' }}
                     >
                       ✎
@@ -633,12 +873,69 @@ export default function ConnectionsPage() {
                 </g>
               );
             })}
+            {/* Pass 3 — labels (top layer, with backdrop rect for legibility against neighbors) */}
+            {visibleNodes.map(n => {
+              const r = NODE_RADIUS[n.type] || 16;
+              const isSeed = !!seed && n.type === seed.type && n.entityId === seed.id;
+              const isSelected = selectedNodeId === n.id;
+              const isHovered = hoveredNodeId === n.id;
+              const inPath = pathNodes.has(n.id);
+              const hasAnnotation = !!annotations[n.id];
+              const dim = pathNodes.size > 0 && !inPath;
+
+              // Density-aware visibility (strategy "D"): always show in small graphs
+              // and when zoomed in; in dense+zoomed-out graphs, only show "important" labels.
+              const dense = visibleNodes.length > 25;
+              const zoomedIn = zoomScale >= 1.5;
+              const important = isSeed || isSelected || isHovered || inPath || hasAnnotation;
+              const showLabel = !dense || zoomedIn || important;
+              if (!showLabel) return null;
+
+              const truncated = n.label.length > 18 ? n.label.slice(0, 16) + '…' : n.label;
+              // Approximate text width for the backdrop rect (monospace ~5.4px/char @ 9px).
+              const textW = truncated.length * 5.4 + 6;
+              const textH = 11;
+              const labelY = n.y + r + 11;
+              return (
+                // Clicking a label is the same as clicking its node — better UX,
+                // and keeps DOM-traversal-based tests working (closest('g') from
+                // the label text reaches a clickable group).
+                <g
+                  key={`label-${n.id}`}
+                  onClick={() => handleNodeClick(n)}
+                  onContextMenu={(e) => openMenu(e, buildNodeMenu(n))}
+                  onMouseEnter={() => setHoveredNodeId(n.id)}
+                  onMouseLeave={() => setHoveredNodeId(prev => (prev === n.id ? null : prev))}
+                  style={{ cursor: 'pointer', opacity: dim ? 0.35 : 1 }}
+                >
+                  <rect
+                    x={n.x - textW / 2}
+                    y={labelY - textH + 1}
+                    width={textW}
+                    height={textH + 2}
+                    fill="var(--surface-sunken)"
+                    fillOpacity={0.82}
+                    stroke={important ? 'var(--brand-gold)' : 'none'}
+                    strokeWidth={important ? 0.5 : 0}
+                  />
+                  <text
+                    x={n.x} y={labelY} textAnchor="middle"
+                    fontSize={9}
+                    fill={isSeed ? 'var(--brand-gold)' : important ? '#fff' : '#ccc'}
+                    fontWeight={important ? 'bold' : 'normal'}
+                    fontFamily="monospace"
+                  >
+                    {truncated}
+                  </text>
+                </g>
+              );
+            })}
             </g>
           </svg>
           <button
             type="button"
             onClick={resetView}
-            className="absolute top-2 right-2 bg-surface-raised border border-[#222222] px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
+            className="absolute top-2 right-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-brand-400"
             style={{ borderRadius: 2 }}
             aria-label="Reset view"
           >
@@ -648,7 +945,7 @@ export default function ConnectionsPage() {
             <button
               type="button"
               onClick={() => { setPathNodes(new Set()); setPathEdges(new Set()); }}
-              className="absolute top-2 right-28 bg-surface-raised border border-[#222222] px-2 py-1 text-xs text-gray-300 hover:text-[#d4a017]"
+              className="absolute top-2 right-28 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 hover:text-brand-400"
               style={{ borderRadius: 2 }}
             >
               CLEAR PATH
@@ -656,17 +953,18 @@ export default function ConnectionsPage() {
           )}
           {selectedNodeId && !pathFrom && (
             <div
-              className="absolute bottom-2 left-2 bg-surface-raised border border-[#222222] px-2 py-1 flex items-center gap-2 text-xs text-gray-300 z-20 max-w-md"
+              className="absolute bottom-2 left-2 bg-surface-raised border border-rmpg-700 px-2 py-1 text-xs text-rmpg-300 z-20 max-w-md"
               style={{ borderRadius: 2 }}
             >
-              <span>Selected: {nodes.find(n => n.id === selectedNodeId)?.label}</span>
+              <div className="flex items-center gap-2 flex-wrap">
+              <span>Selected: {selectedNode?.label}</span>
               <button
                 type="button"
                 onClick={() => {
                   const sel = nodes.find(n => n.id === selectedNodeId);
                   if (sel) setPathFrom({ type: sel.type, id: sel.entityId, label: sel.label });
                 }}
-                className="text-[#d4a017] hover:underline uppercase font-semibold"
+                className="text-brand-400 hover:underline uppercase font-semibold"
               >
                 Start Path
               </button>
@@ -676,27 +974,36 @@ export default function ConnectionsPage() {
                   setEditingAnnotationFor(selectedNodeId);
                   setAnnotationDraft(annotations[selectedNodeId] || '');
                 }}
-                className="text-[#d4a017] hover:underline uppercase font-semibold"
+                className="text-brand-400 hover:underline uppercase font-semibold"
               >
                 {annotations[selectedNodeId] ? 'Edit note' : 'Add note'}
               </button>
               {annotations[selectedNodeId] && (
-                <span className="text-gray-400 italic border-l border-[#222222] pl-2 ml-1">
+                <span className="text-rmpg-400 italic border-l border-rmpg-700 pl-2 ml-1">
                   {annotations[selectedNodeId]}
                 </span>
+              )}
+              </div>
+              {selectedNode?.type === 'intel_report' && (
+                <div className="mt-2 space-y-1 text-[11px]">
+                  <div className="text-rmpg-500">
+                    Grade {String(selectedNode.metadata?.grade || '—')} · Threat {String(selectedNode.metadata?.threat_level || '—')} · Handling {String(selectedNode.metadata?.handling_code || '—')}
+                  </div>
+                  <Link to={`/intel/reports/${selectedNode.entityId}`} style={{ color: '#e879f9' }}>Open intelligence product →</Link>
+                </div>
               )}
             </div>
           )}
           {pathFrom && (
             <div
-              className="absolute top-2 left-2 right-32 bg-[#1a1a1a] border border-[#d4a017] px-3 py-2 flex items-center justify-between text-xs text-[#d4a017] z-20"
+              className="absolute top-2 left-2 right-32 bg-surface-raised border border-brand-400 px-3 py-2 flex items-center justify-between text-xs text-brand-400 z-20"
               style={{ borderRadius: 2 }}
             >
               <span>Click a second node to find the path from <strong>{pathFrom.label}</strong></span>
               <button
                 type="button"
                 onClick={() => { setPathFrom(null); setPathNodes(new Set()); setPathEdges(new Set()); }}
-                className="text-gray-300 hover:text-[#d4a017] uppercase font-semibold"
+                className="text-rmpg-300 hover:text-brand-400 uppercase font-semibold"
                 aria-label="Cancel path"
               >
                 Cancel Path
@@ -708,21 +1015,21 @@ export default function ConnectionsPage() {
       </div>
       {availableTypes.length > 0 && (
         <div
-          className="w-40 bg-surface-raised border border-[#222222] p-2 space-y-1 overflow-y-auto"
+          className="w-40 bg-surface-raised border border-rmpg-700 p-2 space-y-1 overflow-y-auto"
           style={{ borderRadius: 2 }}
         >
-          <div className="text-[#d4a017] text-xs uppercase font-semibold mb-2">Filter by Type</div>
+          <div className="text-brand-400 text-xs uppercase font-semibold mb-2">Filter by Type</div>
           {availableTypes.map(t => (
             <label
               key={t}
-              className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-[#d4a017]"
+              className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer hover:text-brand-400"
             >
-              <input
+              <input id="ff-connectionspage-1"
                 type="checkbox"
                 checked={!hiddenTypes.has(t)}
                 onChange={() => toggleType(t)}
                 aria-label={`Show ${t}`}
-                className="accent-[#d4a017]"
+                className="accent-brand-400"
               />
               <span
                 className="inline-block w-2 h-2 rounded-full"
@@ -733,17 +1040,41 @@ export default function ConnectionsPage() {
           ))}
         </div>
       )}
+      {timelineOpen && (
+        <div style={{ width: 320, background: 'var(--surface-overlay)', borderLeft: '1px solid var(--border-subtle)', overflowY: 'auto', padding: 8, flexShrink: 0, maxHeight: '100%' }}>
+          <div className="text-[9px] font-semibold mb-2" style={{ color: '#e879f9' }}>TIMELINE — {nodes.length} NODES</div>
+          {timelineError && <div style={{ color: 'var(--sev-critical)', fontSize: 11 }}>{timelineError}</div>}
+          {timelineLoading && <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>Loading…</div>}
+          {!timelineLoading && !timelineError && timeline.length === 0 && (
+            <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>No dated events in this graph.</div>
+          )}
+          {timeline.map((ev, i) => {
+            return (
+              <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span style={{ color: TIMELINE_KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
+                  <span style={{ color: 'var(--rmpg-500)' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
+                </div>
+                <div className="text-[11px]" style={{ color: 'var(--rmpg-200)' }}>{ev.title}</div>
+                {ev.subtitle && <div className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>{ev.subtitle}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
       </div>
+      )}
 
+      {/* Annotation edit modal */}
       {editingAnnotationFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-          <div role="dialog" className="w-96 bg-surface-raised border border-[#222222] p-4 space-y-3" style={{ borderRadius: 2 }}>
-            <h2 className="text-[#d4a017] text-sm uppercase font-semibold">
+          <div role="dialog" className="w-96 bg-surface-raised border border-rmpg-700 p-4 space-y-3" style={{ borderRadius: 2 }}>
+            <h2 className="text-brand-400 text-sm uppercase font-semibold">
               Note for {nodes.find(n => n.id === editingAnnotationFor)?.label}
             </h2>
-            <textarea
+            <RichTextArea
               aria-label={`Note for ${nodes.find(n => n.id === editingAnnotationFor)?.label}`}
-              className="w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-28"
+              className="w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-brand-400 focus:outline-none h-28"
               style={{ borderRadius: 2 }}
               value={annotationDraft}
               onChange={e => setAnnotationDraft(e.target.value)}
@@ -753,7 +1084,7 @@ export default function ConnectionsPage() {
               <button
                 type="button"
                 onClick={() => { setEditingAnnotationFor(null); setAnnotationDraft(''); }}
-                className="px-3 py-1.5 text-xs text-gray-300 hover:text-[#d4a017]"
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-brand-400"
               >
                 Cancel
               </button>
@@ -782,7 +1113,7 @@ export default function ConnectionsPage() {
                   setEditingAnnotationFor(null);
                   setAnnotationDraft('');
                 }}
-                className="px-3 py-1.5 text-xs bg-[#d4a017] text-black font-semibold hover:bg-[#e0b030]"
+                className="px-3 py-1.5 text-xs bg-brand-700 text-rmpg-100 font-semibold hover:bg-brand-600"
                 style={{ borderRadius: 2 }}
               >
                 Save note
@@ -792,21 +1123,22 @@ export default function ConnectionsPage() {
         </div>
       )}
 
+      {/* Save investigation modal */}
       {saveModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
           <div
             role="dialog"
             aria-label="Save investigation"
-            className="w-96 bg-surface-raised border border-[#222222] p-4 space-y-3"
+            className="w-96 bg-surface-raised border border-rmpg-700 p-4 space-y-3"
             style={{ borderRadius: 2 }}
           >
-            <h2 className="text-[#d4a017] text-sm uppercase font-semibold">Save Investigation</h2>
+            <h2 className="text-brand-400 text-sm uppercase font-semibold">Save Investigation</h2>
 
-            <label className="block text-xs text-gray-300">
+            <label className="block text-xs text-rmpg-300">
               Name
-              <input
+              <input id="ff-connectionspage-2"
                 type="text"
-                className="mt-1 w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none"
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-brand-400 focus:outline-none"
                 style={{ borderRadius: 2 }}
                 value={saveName}
                 onChange={e => setSaveName(e.target.value)}
@@ -814,10 +1146,10 @@ export default function ConnectionsPage() {
               />
             </label>
 
-            <label className="block text-xs text-gray-300">
+            <label className="block text-xs text-rmpg-300">
               Description
-              <textarea
-                className="mt-1 w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-20"
+              <RichTextArea
+                className="mt-1 w-full bg-surface-sunken border border-rmpg-700 px-2 py-1.5 text-sm text-rmpg-200 focus:border-brand-400 focus:outline-none h-20"
                 style={{ borderRadius: 2 }}
                 value={saveDescription}
                 onChange={e => setSaveDescription(e.target.value)}
@@ -835,7 +1167,7 @@ export default function ConnectionsPage() {
                   setSaveDescription('');
                   setSaveError(null);
                 }}
-                className="px-3 py-1.5 text-xs text-gray-300 hover:text-[#d4a017]"
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-brand-400"
               >
                 Cancel
               </button>
@@ -843,7 +1175,7 @@ export default function ConnectionsPage() {
                 type="button"
                 onClick={handleSave}
                 disabled={!saveName.trim() || saving}
-                className="px-3 py-1.5 text-xs bg-[#d4a017] text-black font-semibold hover:bg-[#e0b030] disabled:opacity-40"
+                className="px-3 py-1.5 text-xs bg-brand-700 text-rmpg-100 font-semibold hover:bg-brand-600 disabled:opacity-40"
                 style={{ borderRadius: 2 }}
               >
                 {saving ? 'Saving...' : 'Save'}
@@ -852,6 +1184,18 @@ export default function ConnectionsPage() {
           </div>
         </div>
       )}
+
+      {/* Delete investigation confirm dialog */}
+      <ConfirmDialog
+        isOpen={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && handleDeleteInvestigation(confirmDelete.invId)}
+        title="Delete Investigation"
+        message="Permanently delete this saved investigation? This cannot be undone."
+        details={confirmDelete ? <span>{confirmDelete.name}</span> : undefined}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

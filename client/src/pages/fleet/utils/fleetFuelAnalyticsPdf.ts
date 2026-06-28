@@ -14,6 +14,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
 import type {
   FuelAnalyticsOverview, FuelAnalyticsByOfficer, FuelAnalyticsByCard,
 } from '../../../types';
@@ -26,16 +27,23 @@ interface Args {
 
 export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: Args): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 36;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const contentW = pageW - marginX * 2;
   let y = 36;
 
-  const fmtCurrency = (n: number | null | undefined, d = 2) =>
-    n == null ? '—' : `$${n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })}`;
-  const fmtNumber = (n: number | null | undefined, d = 0) =>
-    n == null ? '—' : n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+  // Coerce + finite-guard so sentinel strings ("None"/"N/A"/"") from live D1
+  // render as '—' instead of crashing a raw .toFixed or printing garbage.
+  const fmtCurrency = (n: unknown, d = 2) => {
+    const x = Number(n);
+    return Number.isFinite(x) ? `$${x.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })}` : '—';
+  };
+  const fmtNumber = (n: unknown, d = 0) => {
+    const x = Number(n);
+    return Number.isFinite(x) ? x.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }) : '—';
+  };
   const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + '…' : s);
 
   // Page-break helper — drops to next page when we've run out of room and
@@ -159,10 +167,10 @@ export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: A
   ], (overview.vehicles || []).filter((v: any) => v.fill_count > 0).map((v: any) => [
     `#${v.vehicle_number} ${[v.year, v.make, v.model].filter(Boolean).join(' ')}`,
     v.fill_count,
-    v.total_gallons.toFixed(1),
+    fmtNumber(v.total_gallons, 1),
     fmtCurrency(v.total_cost),
-    v.avg_mpg != null ? v.avg_mpg.toFixed(1) : '—',
-    `${v.flag_rate.toFixed(1)}%`,
+    fmtNumber(v.avg_mpg, 1),
+    `${fmtNumber(v.flag_rate, 1)}%`,
     '',
   ]));
 
@@ -178,10 +186,10 @@ export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: A
   ], byOfficer.map(o => [
     o.display_name,
     o.fill_count,
-    o.total_gallons.toFixed(1),
+    o.total_gallons != null ? o.total_gallons.toFixed(1) : '—',
     fmtCurrency(o.total_cost),
     o.avg_mpg != null ? o.avg_mpg.toFixed(1) : '—',
-    `${o.flag_rate.toFixed(1)}%`,
+    o.flag_rate != null ? `${o.flag_rate.toFixed(1)}%` : '—',
     o.avg_cpg != null ? `$${o.avg_cpg.toFixed(3)}` : '—',
   ]));
 

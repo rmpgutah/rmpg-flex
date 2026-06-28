@@ -2,12 +2,12 @@
 // RMPG Flex — Officer Credentials Detail Tab
 // ============================================================
 
-import React from 'react';
-import { Award, Plus, Edit2, Trash2, Clock, Hash, Building } from 'lucide-react';
+import { Award, Plus, Edit2, Trash2, Clock } from 'lucide-react';
 import type { Credential } from '../../../types';
 import { calcDaysUntilExpiry } from '../utils/personnelFormatters';
 import { CREDENTIAL_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   credentials: Credential[];
@@ -42,7 +42,7 @@ export default function CredentialsDetailTab({
 
   const formatDate = (d: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
