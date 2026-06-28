@@ -19,10 +19,13 @@
 // rewrite (env.API), where fleet lives — the whole reason this can be atomic.
 // ============================================================
 import { Hono } from 'hono';
+import type { Context } from 'hono';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 import { setFleetOdometer } from '../../utils/fleetOdometer';
+import { log } from '../../utils/logger';
 
 const duty = new Hono<Env>();
 
@@ -75,7 +78,7 @@ function validateMileage(raw: unknown, previous: number | null, overrideReason: 
 
 // Whose shift this request acts on: self by default; another officer only for
 // dispatch-tier roles passing officer_id.
-function resolveOfficerId(c: any, requested?: unknown): number | null {
+function resolveOfficerId(c: Context<Env>, requested?: unknown): number | null {
   const self = c.get('userId') as number | undefined;
   const role = (c.get('user') as { role?: string } | undefined)?.role;
   const reqId = requested != null ? Number(requested) : NaN;
@@ -84,43 +87,43 @@ function resolveOfficerId(c: any, requested?: unknown): number | null {
 }
 
 // The officer's unit — most-recently-active crewed unit.
-function officerUnit(db: any, officerId: number) {
+function officerUnit(db: D1Database, officerId: number) {
   return queryFirst<UnitRow>(db,
     `SELECT id, call_sign, officer_id, status, vehicle_id, current_call_id
        FROM units WHERE officer_id = ? ORDER BY last_status_change DESC, id DESC LIMIT 1`, officerId);
 }
-function unitById(db: any, id: number) {
+function unitById(db: D1Database, id: number) {
   return queryFirst<UnitRow>(db,
     `SELECT id, call_sign, officer_id, status, vehicle_id, current_call_id FROM units WHERE id = ?`, id);
 }
-function openEntry(db: any, officerId: number) {
-  return queryFirst<Record<string, any>>(db,
+function openEntry(db: D1Database, officerId: number) {
+  return queryFirst<Record<string, unknown>>(db,
     `SELECT * FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
 }
 const VEH_COLS = `id, vehicle_number, vehicle_name, make, model, status, assigned_unit_id, is_take_home, current_mileage`;
-function vehicleById(db: any, id: number | null | undefined) {
+function vehicleById(db: D1Database, id: number | null | undefined) {
   return id ? queryFirst<VehicleRow>(db, `SELECT ${VEH_COLS} FROM fleet_vehicles WHERE id = ?`, id) : Promise.resolve(null);
 }
 // The unit's currently-assigned vehicle via the authoritative link.
-function currentVehicleForUnit(db: any, unitId: number) {
+function currentVehicleForUnit(db: D1Database, unitId: number) {
   return queryFirst<VehicleRow>(db, `SELECT ${VEH_COLS} FROM fleet_vehicles WHERE assigned_unit_id = ? LIMIT 1`, unitId);
 }
 // In-service vehicles free to take (unassigned, or already on this unit).
-function availableVehicles(db: any, unitId: number | null) {
+function availableVehicles(db: D1Database, unitId: number | null) {
   return query<VehicleRow>(db,
     `SELECT ${VEH_COLS} FROM fleet_vehicles
       WHERE status = 'in_service' AND (assigned_unit_id IS NULL OR assigned_unit_id = ?)
       ORDER BY is_take_home DESC, vehicle_number`, unitId ?? -1);
 }
 // The unit's take-home car, if one is marked + in service.
-function takeHomeVehicle(db: any, unitId: number | null) {
+function takeHomeVehicle(db: D1Database, unitId: number | null) {
   return unitId ? queryFirst<VehicleRow>(db,
     `SELECT ${VEH_COLS} FROM fleet_vehicles WHERE is_take_home = 1 AND assigned_unit_id = ? AND status = 'in_service' LIMIT 1`, unitId)
     : Promise.resolve(null);
 }
 
 // Release whatever vehicle a unit holds (close audit rows + clear both links).
-async function releaseUnitVehicle(db: any, unitId: number) {
+async function releaseUnitVehicle(db: D1Database, unitId: number) {
   await execute(db, `UPDATE fleet_assignments SET unassigned_at = datetime('now') WHERE unit_id = ? AND unassigned_at IS NULL`, unitId);
   await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE assigned_unit_id = ?`, unitId);
   await execute(db, `UPDATE units SET vehicle_id = NULL WHERE id = ?`, unitId);
@@ -128,7 +131,7 @@ async function releaseUnitVehicle(db: any, unitId: number) {
 // Assign a vehicle to a unit. Idempotent: closes the unit's + the vehicle's
 // prior OPEN assignment rows first (prevents the stale-open-row leak), then
 // writes the fresh audit row + both directional links.
-async function assignUnitVehicle(db: any, unitId: number, callSign: string | null, officerName: string | null, vehicleId: number, vehicleNumber: string | null) {
+async function assignUnitVehicle(db: D1Database, unitId: number, callSign: string | null, officerName: string | null, vehicleId: number, vehicleNumber: string | null) {
   await execute(db, `UPDATE fleet_assignments SET unassigned_at = datetime('now') WHERE (unit_id = ? OR vehicle_id = ?) AND unassigned_at IS NULL`, unitId, vehicleId);
   await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE assigned_unit_id = ? AND id != ?`, unitId, vehicleId);
   await execute(db, `INSERT INTO fleet_assignments (vehicle_id, unit_id, unit_call_sign, officer_name, assigned_at) VALUES (?,?,?,?,datetime('now'))`, vehicleId, unitId, callSign, officerName);
@@ -137,7 +140,7 @@ async function assignUnitVehicle(db: any, unitId: number, callSign: string | nul
   await execute(db, `UPDATE units SET vehicle_id = ? WHERE id = ?`, vehicleNumber, unitId);
 }
 
-async function stateFor(db: any, officerId: number) {
+async function stateFor(db: D1Database, officerId: number) {
   const unit = await officerUnit(db, officerId);
   const entry = await openEntry(db, officerId);
   const vehicle = unit ? await currentVehicleForUnit(db, unit.id) : null;
@@ -153,6 +156,108 @@ async function stateFor(db: any, officerId: number) {
   };
 }
 
+// Shape one roster row from the joined SELECT. Exported for the test suite —
+// the nesting contract (unit/vehicle/last_gps null vs object) is what the iOS
+// DutyRosterView decodes, so it's locked here rather than re-derived.
+export function _rosterRowForTest(r: Record<string, unknown>) {
+  return rosterRow(r);
+}
+function rosterRow(r: Record<string, unknown>) {
+  const onShift = r.entry_id != null;
+  const clockInMs = onShift ? new Date(String(r.clock_in)).getTime() : NaN;
+  return {
+    officer_id: r.officer_id,
+    name: r.full_name ?? null,
+    role: r.role ?? null,
+    on_shift: onShift,
+    entry_id: r.entry_id ?? null,
+    clock_in: onShift ? r.clock_in : null,
+    hours_so_far: Number.isFinite(clockInMs)
+      ? Math.max(0, Math.round((Date.now() - clockInMs) / 36_000) / 100)
+      : null,
+    unit: r.unit_id != null
+      ? { id: r.unit_id, call_sign: r.call_sign ?? null, status: r.unit_status ?? null, current_call_id: r.current_call_id ?? null }
+      : null,
+    vehicle: r.veh_id != null
+      ? { id: r.veh_id, vehicle_number: r.veh_number ?? null, vehicle_name: r.veh_name ?? null }
+      : null,
+    last_gps: r.latitude != null && r.longitude != null
+      ? { lat: r.latitude, lng: r.longitude, at: r.gps_updated_at ?? null }
+      : null,
+  };
+}
+
+// The active-roster SELECT, shared by /roster (dispatch, full) and /onduty
+// (any officer, on-duty only). One pass: users × open time entry × claimed
+// unit (with GPS mirror) × assigned fleet vehicle.
+async function loadRoster(db: D1Database) {
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT us.id AS officer_id, us.full_name, us.role,
+           te.id AS entry_id, te.clock_in,
+           un.id AS unit_id, un.call_sign, un.status AS unit_status,
+           un.current_call_id, un.latitude, un.longitude, un.gps_updated_at,
+           fv.id AS veh_id, fv.vehicle_number AS veh_number, fv.vehicle_name AS veh_name
+      FROM users us
+      LEFT JOIN time_entries te ON te.id = (
+        SELECT id FROM time_entries WHERE officer_id = us.id AND clock_out IS NULL
+         ORDER BY clock_in DESC LIMIT 1)
+      LEFT JOIN units un ON un.id = (
+        SELECT id FROM units WHERE officer_id = us.id
+         ORDER BY last_status_change DESC, id DESC LIMIT 1)
+      LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = un.id
+     WHERE COALESCE(us.status, 'active') NOT IN ('terminated', 'inactive')
+     ORDER BY (te.id IS NULL), us.full_name`);
+  return rows.map(rosterRow);
+}
+
+// GET /dispatch/duty/roster — every active officer's duty state in one call.
+// Dispatch-tier only: this is the supervision surface behind the iOS Duty
+// Roster screen (start/end on behalf + time corrections hang off these rows).
+duty.get('/roster', async (c) => {
+  try {
+    const role = (c.get('user') as { role?: string } | undefined)?.role;
+    if (!role || !ON_BEHALF_ROLES.has(role)) {
+      return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+    }
+    return c.json({ officers: await loadRoster(getDb(c.env)) });
+  } catch (err) {
+    log.error('GET /dispatch/duty/roster failed', {}, err);
+    return c.json({ error: 'Failed to load duty roster', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dispatch/duty/onduty — on-duty officers only, readable by ANY authed
+// officer (situational awareness / mutual aid). Reuses the roster shape but
+// filtered to on-shift; no dispatch-tier gate.
+duty.get('/onduty', async (c) => {
+  try {
+    const officers = (await loadRoster(getDb(c.env))).filter((o) => o.on_shift);
+    return c.json({ officers });
+  } catch (err) {
+    log.error('GET /dispatch/duty/onduty failed', {}, err);
+    return c.json({ error: 'Failed to load on-duty roster', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dispatch/duty/timecard — the SESSION officer's own time entries (last
+// 60). Unlike /api/personnel/time (manager-gated), this is self-only: any
+// officer can read their own card.
+duty.get('/timecard', async (c) => {
+  try {
+    const officerId = resolveOfficerId(c);
+    if (!officerId) return c.json({ error: 'No officer in session', code: 'NO_OFFICER' }, 401);
+    const entries = await query<Record<string, unknown>>(getDb(c.env), `
+      SELECT id, clock_in, clock_out, total_hours, break_minutes, status, notes,
+             starting_mileage, ending_mileage
+        FROM time_entries WHERE officer_id = ?
+       ORDER BY clock_in DESC LIMIT 60`, officerId);
+    return c.json({ entries });
+  } catch (err) {
+    log.error('GET /dispatch/duty/timecard failed', {}, err);
+    return c.json({ error: 'Failed to load timecard', detail: (err as Error)?.message }, 500);
+  }
+});
+
 // GET /dispatch/duty/me — current shift state + vehicle options for the picker.
 duty.get('/me', async (c) => {
   try {
@@ -160,7 +265,7 @@ duty.get('/me', async (c) => {
     if (!officerId) return c.json({ error: 'No officer in session', code: 'NO_OFFICER' }, 401);
     return c.json(await stateFor(getDb(c.env), officerId));
   } catch (err) {
-    console.error('GET /dispatch/duty/me failed:', err);
+    log.error('GET /dispatch/duty/me failed', {}, err);
     return c.json({ error: 'Failed to load shift state', detail: (err as Error)?.message }, 500);
   }
 });
@@ -263,11 +368,11 @@ duty.post('/start', async (c) => {
     await assignUnitVehicle(db, unit.id, unit.call_sign, officerName, vehicle.id, vehicle.vehicle_number);
 
     const fresh = await queryFirst(db, `SELECT * FROM units WHERE id = ?`, unit.id);
-    try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { /* never break the write */ }
+    try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { log.warn('[duty/start] broadcast unit_updated failed', { unitId: unit.id }); /* never break the write */ }
 
     return c.json(await stateFor(db, officerId), 200);
   } catch (err) {
-    console.error('POST /dispatch/duty/start failed:', err);
+    log.error('POST /dispatch/duty/start failed', {}, err);
     return c.json({ error: 'Failed to start shift', detail: (err as Error)?.message }, 500);
   }
 });
@@ -310,7 +415,7 @@ duty.post('/end', async (c) => {
       const totalMiles = startMi != null && endingMileage != null ? Math.max(0, Math.round((endingMileage - startMi) * 10) / 10) : null;
 
       const stamp = nowStamp();
-      const hrs = hoursBetween(entry.clock_in, stamp, Number(entry.break_minutes) || 0);
+      const hrs = hoursBetween(String(entry.clock_in), stamp, Number(entry.break_minutes) || 0);
       await execute(db,
         `UPDATE time_entries SET clock_out = ?, total_hours = ?, ending_mileage = ?, total_miles = ?, status = 'completed' WHERE id = ?`,
         stamp, hrs, endingMileage, totalMiles, entry.id);
@@ -321,15 +426,46 @@ duty.post('/end', async (c) => {
     // 2) Take the unit off duty + release its vehicle back to the pool.
     if (unit) {
       await execute(db,
-        `UPDATE units SET status = 'off_duty', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, unit.id);
+        `UPDATE units SET status = 'off_duty', current_call_id = NULL, on_foot = 0, on_foot_since = NULL, on_foot_alerted = 0, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, unit.id);
       await releaseUnitVehicle(db, unit.id);
       const fresh = await queryFirst(db, `SELECT * FROM units WHERE id = ?`, unit.id);
-      try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { /* never break the write */ }
+      try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { log.warn('[duty/end] broadcast unit_updated failed', { unitId: unit.id }); /* never break the write */ }
+    }
+
+    // 3) Tear down any armed WelfareWatchDO for this officer. Without this,
+    // a watch armed on a P1/P2 onscene that never de-escalated will keep
+    // firing alarms against an off-duty officer (phantom escalations to
+    // supervisors, dispatcher distrust of the watch system). handleStop()
+    // is idempotent (setState(null) + deleteAlarm), so it's safe to fire
+    // unconditionally — but we only broadcast the auto-clear when the DO
+    // actually had state to clear, to avoid ghost dispatch_update frames
+    // on every shift-end. Best-effort: a DO failure must NEVER block the
+    // shift transition itself.
+    try {
+      const id = c.env.WELFARE_WATCH.idFromName(`u-${officerId}`);
+      const stub = c.env.WELFARE_WATCH.get(id);
+      const stateRes = await stub.fetch('https://do/state', { method: 'GET' });
+      const prev = await stateRes.json<{ stage?: number; idle?: boolean; call_sign?: string | null; call_number?: string | null }>().catch(() => ({} as { stage?: number; idle?: boolean; call_sign?: string | null; call_number?: string | null }));
+      const wasArmed = prev && !prev.idle && (prev.stage ?? 0) >= 0 && (prev.call_sign != null || prev.call_number != null);
+      await stub.fetch('https://do/stop', { method: 'POST' });
+      if (wasArmed) {
+        try {
+          await emitAlert(c.env, 'dispatch_update', {
+            action: 'welfare_auto_cleared',
+            user_id: officerId,
+            call_sign: prev.call_sign ?? null,
+            call_number: prev.call_number ?? null,
+            reason: 'shift_end',
+          });
+        } catch { log.warn('[duty/end] broadcast welfare_auto_cleared failed', { officerId }); /* broadcast is non-fatal */ }
+      }
+    } catch (err) {
+      log.error('[duty/end] welfare DO teardown failed (non-fatal)', { officerId, err: (err as Error)?.message });
     }
 
     return c.json(await stateFor(db, officerId), 200);
   } catch (err) {
-    console.error('POST /dispatch/duty/end failed:', err);
+    log.error('POST /dispatch/duty/end failed', {}, err);
     return c.json({ error: 'Failed to end shift', detail: (err as Error)?.message }, 500);
   }
 });

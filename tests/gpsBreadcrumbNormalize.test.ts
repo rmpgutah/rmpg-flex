@@ -41,4 +41,16 @@ describe('POST /api/dispatch/gps — norm() lat/lng contract', () => {
     expect(Number.isFinite(out.latitude)).toBe(false);
     expect(Number.isFinite(out.longitude)).toBe(false);
   });
+
+  it('passes through CoreMotion activity fields', () => {
+    const n = normalizePoint({ lat: 40.7, lng: -111.9, activity: 'walking', activity_confidence: 'high' });
+    expect(n.activity).toBe('walking');
+    expect(n.activity_confidence).toBe('high');
+  });
+
+  it('omits activity fields when absent (web clients)', () => {
+    const n = normalizePoint({ lat: 40.7, lng: -111.9 });
+    expect(n.activity).toBeUndefined();
+    expect(n.activity_confidence).toBeUndefined();
+  });
 });

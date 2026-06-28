@@ -137,12 +137,12 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-[#141414] border border-[#222] rounded-[2px] p-4 max-w-[760px] w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[760px] w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-white inline-flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <Stamp className="w-4 h-4 text-[#d4a017]" /> Stamps gallery
           </h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="text-[10px] text-rmpg-500 mb-3">
@@ -160,7 +160,7 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
           {PRESETS.map(label => (
             <button key={label} type="button"
               onClick={() => { onPick({ kind: 'preset', label }); onClose(); }}
-              className="bg-[#0d0d0d] hover:bg-[#1a1a1a] border-2 border-[#555555]/70 hover:border-[#555555] rounded-sm py-2 px-3 text-[#555555] font-bold text-sm tracking-wider">
+              className="bg-surface-base hover:bg-surface-raised border-2 border-border-panel/70 hover:border-border-panel rounded-sm py-2 px-3 text-rmpg-500 font-bold text-sm tracking-wider">
               {label}
             </button>
           ))}
@@ -185,13 +185,13 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
         </div>
 
         {stamps.length === 0 ? (
-          <div className="bg-[#0d0d0d] border border-[#222] rounded-sm p-6 text-center text-[10px] text-rmpg-500">
+          <div className="bg-surface-base border border-border-default rounded-sm p-6 text-center text-[10px] text-rmpg-500">
             No custom stamps yet. Upload a PNG (transparent backgrounds work) or JPEG up to {Math.round(MAX_BYTES / 1024)} KB.
           </div>
         ) : (
           <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
             {stamps.map(s => (
-              <div key={s.id} className="bg-[#0d0d0d] border border-[#222] hover:border-[#d4a017]/50 rounded-sm p-2 group">
+              <div key={s.id} className="bg-surface-base border border-border-default hover:border-[#d4a017]/50 rounded-sm p-2 group">
                 <button type="button"
                   onClick={() => { onPick({ kind: 'custom', stamp: s }); onClose(); }}
                   className="block w-full bg-white rounded-sm overflow-hidden mb-1.5 aspect-[4/3] flex items-center justify-center">
@@ -200,7 +200,7 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
                 <div className="flex items-center gap-1">
                   <input id="ff-customstampsgallery-1" type="text" value={s.name}
                     onChange={(e) => handleRename(s.id, e.target.value.slice(0, 40))}
-                    className="flex-1 bg-transparent text-[10px] text-rmpg-200 border-b border-transparent hover:border-[#222] focus:outline-none focus:border-[#d4a017]" />
+                    className="flex-1 bg-transparent text-[10px] text-rmpg-200 border-b border-transparent hover:border-border-default focus:outline-none focus:border-[#d4a017]" />
                   <button type="button" onClick={() => { onPick({ kind: 'custom', stamp: s }); onClose(); }}
                     className="p-0.5 text-rmpg-400 hover:text-[#d4a017]" title="Use this stamp">
                     <Check className="w-3 h-3" />

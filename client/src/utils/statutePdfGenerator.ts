@@ -15,6 +15,7 @@
 import jsPDF from 'jspdf';
 import { parseOutline } from './statuteOutline';
 import type { StatuteResult } from '../components/StatuteLookup';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 const PAGE_W = 612;
 const PAGE_H = 792;
@@ -245,6 +246,7 @@ export interface StatutePdfOptions {
 /** Build the jsPDF doc (headless-friendly). */
 export function buildStatuteDoc(opts: StatutePdfOptions): jsPDF {
   const doc = new jsPDF({ format: 'letter', unit: 'pt' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const ctx: Ctx = { doc, y: 0, docTitle: opts.docTitle };
   drawMasthead(ctx, opts.subtitle);
   opts.sections.forEach((s, i) => drawSection(ctx, s, i < opts.sections.length - 1));

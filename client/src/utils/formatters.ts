@@ -250,9 +250,43 @@ export function toTitleCase(str: string): string {
  * for TTS output. This set remains for visual display labels only.
  */
 export const ACRONYMS = new Set([
-  'pso', 'cfs', 'dv', 'ems', 'leo', 'ncic', 'bolo', 'atl', 'mdt',
-  'sla', 'id', 'dui', 'dwi', 'hoa', 'llc', 'eta', 'rmpg', 'gps',
-  'ip', 'pdf', 'api', 'url', 'vpn', 'opr', 'le', 'sop',
+  // Communications / systems
+  'pso', 'cfs', 'cad', 'rms', 'mdt', 'mds', 'gps', 'rmpg',
+  // Domestic / personal categories
+  'dv', 'dl', 'dob', 'ssn', 'dlv',
+  // Emergency response
+  'ems', 'leo', 'swat', 'k9', 'sro', 'qrf', 'eta',
+  // Records / intel
+  'ncic', 'bolo', 'atl', 'fbi', 'doc', 'udc', 'sor', 'nsopw',
+  // Driving-related
+  'dui', 'dwi', 'cdl', 'dmv', 'vin', 'mva', 'dlc',
+  // Service / process
+  'sla', 'sop', 'opr', 'le', 'id', 'loc',
+  // Property / corporate
+  'hoa', 'llc', 'hud',
+  // Tech / network
+  'ip', 'pdf', 'api', 'url', 'vpn', 'alpr', 'json', 'html', 'csv', 'ui', 'ux', 'sdk',
+  // Legal / enforcement
+  'leo', 'ua', 'uof', 'oat', 'oatc', 'ia', 'ippa', 'ncic',
+  // Court / legal
+  'doc', 'dc', 'pd', 'da',
+  // Medical
+  'ems', 'md', 'rn',
+  // Military
+  'idf', 'mp', 'mos',
+  // Geography / time
+  'ut', 'slc', 'mt', 'utc', 'mtn',
+  // Other law enforcement specific
+  'cpr', 'atv', 'utv', 'vin',
+  // Financial
+  'atm', 'pos',
+  // Investigation
+  'mis', 'ped', 'vcl', 'unsub',
+  // Common multi-word compound labels (specific to this app)
+  'microbilt',
+  'forecaws',
+  'utahlex',
+  'openpyxl',
 ]);
 
 /**
@@ -268,16 +302,31 @@ export function titleCaseWord(word: string): string {
 }
 
 /**
- * Convert snake_case or kebab-case to a display label:
- * "pso_client_request" → "PSO Client Request"
- * "active_warrant"     → "Active Warrant"
- * Automatically uppercases known acronyms (PSO, CFS, DV, etc.)
+ * Convert snake_case, kebab-case, or camelCase to a display label:
+ * "pso_client_request"     → "PSO Client Request"
+ * "active_warrant"         → "Active Warrant"
+ * "in_progress"            → "In Progress"
+ * "client_viewer"          → "Client Viewer"
+ * "citizen_portal_enabled" → "Citizen Portal Enabled"
+ * "underReview"            → "Under Review"
+ * "offense_level"          → "Offense Level"
+ * "served"                 → "Served"
+ * "sub_service"            → "Sub Service"
+ * "dl_status"              → "DL Status"
+ * Automatically uppercases known acronyms (PSO, CFS, DV, DL, etc.)
+ * Normalizes whitespace: trims and collapses multiple spaces.
  */
-export function toDisplayLabel(str: string): string {
+export function toDisplayLabel(str: string | null | undefined): string {
   if (!str) return '';
-  return str
-    .replace(/[_-]/g, ' ')
-    .replace(/\b[A-Za-z0-9]+\b/g, titleCaseWord);
+  const s = String(str).trim();
+  if (!s) return '';
+  // Insert space before uppercase letters in camelCase (except first char)
+  const withSpaces = s.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+  return withSpaces
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b[A-Za-z0-9]+/g, titleCaseWord)
+    .trim();
 }
 
 /**

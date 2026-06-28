@@ -42,11 +42,17 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
   const [submittingComm, setSubmittingComm] = useState(false);
 
   const loadFitness = async () => {
-    try { const data = await apiFetch<any[]>(`/personnel/fitness/${officerId}`); setFitness(data); } catch { addToast('Failed to load fitness scores', 'error'); }
+    try {
+      const raw = await apiFetch<any>(`/personnel/fitness/${officerId}`);
+      setFitness(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []));
+    } catch { addToast('Failed to load fitness scores', 'error'); }
   };
 
   const loadCommendations = async () => {
-    try { const data = await apiFetch<any[]>(`/personnel/commendations/${officerId}`); setCommendations(data); } catch { addToast('Failed to load commendations', 'error'); }
+    try {
+      const raw = await apiFetch<any>(`/personnel/commendations/${officerId}`);
+      setCommendations(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []));
+    } catch { addToast('Failed to load commendations', 'error'); }
   };
 
   useEffect(() => { loadFitness(); loadCommendations(); }, [officerId]);
@@ -101,7 +107,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
       {/* Fitness Section */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-bold text-white flex items-center gap-1"><Activity className="w-3.5 h-3.5 text-green-400" /> Physical Fitness Tracking</h3>
+          <h3 className="text-xs font-bold text-rmpg-100 flex items-center gap-1"><Activity className="w-3.5 h-3.5 text-green-400" /> Physical Fitness Tracking</h3>
           <button type="button" onClick={() => setShowFitnessForm(!showFitnessForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Record Score</button>
         </div>
 
@@ -130,7 +136,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
               <div key={i} className="panel-inset p-2 flex items-center justify-between" onContextMenu={(e) => openMenu(e, buildFitnessMenu(f))}>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] text-rmpg-400">{fmtDate(f.date)}</span>
-                  {f.score && <span className="text-xs font-bold text-white">Score: {f.score}</span>}
+                  {f.score && <span className="text-xs font-bold text-rmpg-100">Score: {f.score}</span>}
                   {f.run_time && <span className="text-[10px] text-rmpg-300">Run: {f.run_time}</span>}
                   {f.pushups && <span className="text-[10px] text-rmpg-300">PU: {f.pushups}</span>}
                   {f.situps && <span className="text-[10px] text-rmpg-300">SU: {f.situps}</span>}
@@ -157,7 +163,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
       {/* Commendations Section */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-bold text-white flex items-center gap-1"><Award className="w-3.5 h-3.5 text-amber-400" /> Commendations & Awards</h3>
+          <h3 className="text-xs font-bold text-rmpg-100 flex items-center gap-1"><Award className="w-3.5 h-3.5 text-amber-400" /> Commendations & Awards</h3>
           <button type="button" onClick={() => setShowCommForm(!showCommForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Add</button>
         </div>
 

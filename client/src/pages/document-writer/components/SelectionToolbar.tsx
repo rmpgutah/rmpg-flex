@@ -18,7 +18,7 @@ export default function SelectionToolbar({
 }) {
   const btn = (active: boolean) =>
     `p-1 rounded-[2px] transition-colors ${
-      active ? 'bg-[#d4a017]/25 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-[#1a1a1a]'
+      active ? 'bg-[#d4a017]/25 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-surface-raised'
     }`;
 
   const setLink = () => {
@@ -42,7 +42,7 @@ export default function SelectionToolbar({
       options={{ placement: 'top', offset: 8 }}
       shouldShow={({ editor: ed, from, to }) => from !== to && ed.isEditable && !ed.isActive('image')}
     >
-      <div className="flex items-center gap-0.5 bg-[#0d0d0d] border border-[#2e2e2e] rounded-[2px] shadow-2xl shadow-black/60 px-1 py-0.5">
+      <div className="flex items-center gap-0.5 bg-surface-base border border-rmpg-700 rounded-[2px] shadow-2xl shadow-black/60 px-1 py-0.5">
         <button type="button" aria-label="Bold" title="Bold" className={btn(editor.isActive('bold'))}
           onClick={() => editor.chain().focus().toggleBold().run()}><Bold className="w-3.5 h-3.5" /></button>
         <button type="button" aria-label="Italic" title="Italic" className={btn(editor.isActive('italic'))}
@@ -51,7 +51,7 @@ export default function SelectionToolbar({
           onClick={() => editor.chain().focus().toggleUnderline().run()}><UnderlineIcon className="w-3.5 h-3.5" /></button>
         <button type="button" aria-label="Highlight" title="Highlight" className={btn(editor.isActive('highlight'))}
           onClick={() => editor.chain().focus().toggleHighlight().run()}><Highlighter className="w-3.5 h-3.5" /></button>
-        <div className="w-px h-4 bg-[#222] mx-0.5" />
+        <div className="w-px h-4 bg-surface-raised mx-0.5" />
         <button type="button" aria-label="Add link" title="Add / edit link" className={btn(editor.isActive('link'))}
           onClick={setLink}><Link2 className="w-3.5 h-3.5" /></button>
         <button type="button" aria-label="Uppercase selection" title="UPPERCASE selection" className={btn(false)}

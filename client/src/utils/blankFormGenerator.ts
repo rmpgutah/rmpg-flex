@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { registerArialFont } from './pdf/fonts/registerArial';
 import { FORM_NUMBERS } from './pdfAssets';
 import {
   COLOR, FONT, BORDER, LAYOUT, getContentWidth, getLeftX, getRightColumnX,
@@ -60,6 +61,7 @@ export function generateBlankForm(formId: string): jsPDF {
   if (!form) throw new Error(`Unknown form: ${formId}`);
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const ffw = getFullFieldWidth(doc);

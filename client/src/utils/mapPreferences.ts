@@ -175,3 +175,17 @@ export function resetMapPreferences(): void {
   } catch { /* noop */ }
   emitSettingsChange('map');
 }
+
+// ─── Generic key/value helpers (used by feature-specific hooks) ──────────────
+
+const GENERIC_PREFIX = 'rmpg_map_';
+
+/** Read an arbitrary map preference by raw key (prefixed with `rmpg_map_`). */
+export function loadMapPref(key: string): unknown {
+  try { return JSON.parse(localStorage.getItem(GENERIC_PREFIX + key) ?? 'null'); } catch { return null; }
+}
+
+/** Persist an arbitrary map preference by raw key (prefixed with `rmpg_map_`). */
+export function saveMapPref(key: string, value: unknown): void {
+  try { localStorage.setItem(GENERIC_PREFIX + key, JSON.stringify(value)); } catch {}
+}

@@ -148,19 +148,20 @@ cloudflare.get('/resources', async (c) => {
     const db = getDb(c.env);
     const token = await cfg(db, 'cf_api_token');
     const accountId = await cfg(db, 'cf_account_id');
-    if (!token || !accountId) return c.json({ configured: false, d1: [], r2: [], kv: [], workers: [] });
+    if (!token || !accountId) return c.json({ configured: false, d1: [], r2: [], kv: [], workers: [], pages: [] });
 
     // Each call soft-fails to [] so one missing scope doesn't blank the panel.
     const soft = async (path: string, pick: (r: any) => any[]) => {
       try { const r = await cfFetch(token, path); return r.ok ? pick(r.json) : []; } catch { return []; }
     };
-    const [d1, r2, kv, workers] = await Promise.all([
+    const [d1, r2, kv, workers, pages] = await Promise.all([
       soft(`/accounts/${accountId}/d1/database`, j => (j.result || []).map((x: any) => ({ name: x.name, uuid: x.uuid, size: x.file_size }))),
       soft(`/accounts/${accountId}/r2/buckets`, j => (j.result?.buckets || []).map((x: any) => ({ name: x.name, created: x.creation_date }))),
       soft(`/accounts/${accountId}/storage/kv/namespaces`, j => (j.result || []).map((x: any) => ({ id: x.id, title: x.title }))),
       soft(`/accounts/${accountId}/workers/scripts`, j => (j.result || []).map((x: any) => ({ id: x.id, modified: x.modified_on }))),
+      soft(`/accounts/${accountId}/pages/projects`, j => (j.result || []).map((x: any) => ({ name: x.name, domain: (x.domains || [])[0] || x.subdomain || '' }))),
     ]);
-    return c.json({ configured: true, d1, r2, kv, workers });
+    return c.json({ configured: true, d1, r2, kv, workers, pages });
   } catch (err) {
     return c.json({ configured: false, d1: [], r2: [], kv: [], workers: [], error: err instanceof Error ? err.message : String(err) }, 200);
   }

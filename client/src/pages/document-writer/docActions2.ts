@@ -16,7 +16,8 @@ import type { Editor } from '@tiptap/react';
 import { WAVE5_ACTIONS } from './docActions3';
 
 const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;'); // escape quotes too — output is used inside HTML attributes
 
 const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 
@@ -201,7 +202,7 @@ export function insertBandedTable(editor: Editor, rows = 4, cols = 3): void {
   const headerCells = Array.from({ length: cols }, (_, i) =>
     `<th style="background:#d4a017;color:#000;padding:6px;border:1px solid #222;">Col ${i + 1}</th>`).join('');
   const bodyRows = Array.from({ length: rows }, (_, r) => {
-    const bg = r % 2 ? '#0a0a0a' : '#141414';
+    const bg = r % 2 ? '#0a0a0a' : 'var(--surface-base)';
     const cells = Array.from({ length: cols }, () =>
       `<td style="background:${bg};padding:6px;border:1px solid #222;">&nbsp;</td>`).join('');
     return `<tr>${cells}</tr>`;
@@ -790,14 +791,17 @@ export async function copyAsHTML(editor: Editor): Promise<void> {
 export async function copyAsMarkdown(editor: Editor): Promise<void> {
   // Lossy but useful — headings, bold, italic, lists, links.
   const html = editor.getHTML();
-  const md = html
+  let md = html
     .replace(/<h([1-6])>([\s\S]*?)<\/h\1>/gi, (_m, l, t) => `\n${'#'.repeat(Number(l))} ${t}\n`)
     .replace(/<strong>([\s\S]*?)<\/strong>/gi, '**$1**')
     .replace(/<em>([\s\S]*?)<\/em>/gi, '*$1*')
     .replace(/<li>([\s\S]*?)<\/li>/gi, '- $1\n')
-    .replace(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\n{3,}/g, '\n\n');
+    .replace(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
+  // Strip any remaining tags, looping until stable so overlapping angle brackets
+  // (e.g. "<<b>>") can't leave a tag fragment behind after a single pass.
+  let prevMd: string;
+  do { prevMd = md; md = md.replace(/<[^>]+>/g, ''); } while (md !== prevMd);
+  md = md.replace(/\n{3,}/g, '\n\n');
   await navigator.clipboard.writeText(md.trim());
 }
 export async function pasteAsPlainText(editor: Editor): Promise<void> {
@@ -833,7 +837,11 @@ export function setOddEvenHeaders(odd: string, even: string): void {
     style.id = 'doc-odd-even-headers';
     document.head.appendChild(style);
   }
-  style.textContent = `@page :left{@top-center{content:"${even.replace(/"/g, '\\"')}"}}@page :right{@top-center{content:"${odd.replace(/"/g, '\\"')}"}}`;
+  // Escape for a CSS string literal: backslash FIRST (otherwise we'd re-process the
+  // backslashes we add for the quotes), then quotes, then drop newlines (illegal in
+  // a CSS string and a way to break out of the content:"…" value).
+  const cssStr = (v: string) => v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ');
+  style.textContent = `@page :left{@top-center{content:"${cssStr(even)}"}}@page :right{@top-center{content:"${cssStr(odd)}"}}`;
 }
 export function setPaperSize(size: 'letter' | 'legal' | 'a4'): void {
   let style = document.getElementById('doc-paper-size') as HTMLStyleElement | null;

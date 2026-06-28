@@ -13,6 +13,7 @@ import {
   Fingerprint, BookOpen, type LucideIcon,
 } from 'lucide-react';
 import { knowledgeBaseSearch, kbTypeLabel, KB_TYPE_META, type KbResult } from '../utils/knowledgeBase';
+import { useAuth } from '../context/AuthContext';
 
 const TYPE_ICON: Record<string, LucideIcon> = {
   call: Phone, person: User, vehicle: Car, warrant: Shield, citation: Receipt,
@@ -23,10 +24,18 @@ const iconFor = (type: string): LucideIcon => TYPE_ICON[type] || BookOpen;
 
 interface RecentSearch extends KbResult { timestamp: number; }
 
-const RECENT_SEARCHES_KEY = 'rmpg-recent-searches-v2';
+// Storage key is scoped per user.id so a shared MDT doesn't leak one
+// operator's Cmd+K queries (names, plates, badges) to the next person who
+// opens the dialog. When no user is known (mid-login first render) we skip
+// reads and writes entirely rather than fall back to a shared key.
+const LEGACY_RECENT_KEY = 'rmpg-recent-searches-v2';
+const recentKeyFor = (userId: string | number | undefined): string | null =>
+  userId ? `rmpg_globalsearch_recent_${userId}` : null;
 const MAX_RECENT = 6;
 
 export const GlobalSearch: React.FC = () => {
+  const { user } = useAuth();
+  const recentKey = recentKeyFor(user?.id);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<KbResult[]>([]);
@@ -36,12 +45,25 @@ export const GlobalSearch: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
+  // Re-loads when the signed-in user changes (login, fast user-switch on a
+  // shared MDT). One-time read-through migration copies the legacy unscoped
+  // key into this user's slot, then deletes it so the next operator never
+  // sees a previous shift's queries.
   useEffect(() => {
+    if (!recentKey) { setRecent([]); return; }
     try {
-      const stored = localStorage.getItem(RECENT_SEARCHES_KEY);
-      if (stored) setRecent(JSON.parse(stored));
+      const scoped = localStorage.getItem(recentKey);
+      if (scoped) { setRecent(JSON.parse(scoped)); return; }
+      const legacy = localStorage.getItem(LEGACY_RECENT_KEY);
+      if (legacy) {
+        localStorage.setItem(recentKey, legacy);
+        localStorage.removeItem(LEGACY_RECENT_KEY);
+        setRecent(JSON.parse(legacy));
+        return;
+      }
+      setRecent([]);
     } catch { /* ignore */ }
-  }, []);
+  }, [recentKey]);
 
   // Ctrl/Cmd+K opens search.
   useEffect(() => {
@@ -77,10 +99,12 @@ export const GlobalSearch: React.FC = () => {
     setRecent((prev) => {
       const filtered = prev.filter((r) => !(r.recordId === result.recordId && r.type === result.type));
       const updated = [{ ...result, timestamp: Date.now() }, ...filtered].slice(0, MAX_RECENT);
-      try { localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+      if (recentKey) {
+        try { localStorage.setItem(recentKey, JSON.stringify(updated)); } catch { /* ignore */ }
+      }
       return updated;
     });
-  }, []);
+  }, [recentKey]);
 
   const handleSelect = useCallback((result: KbResult) => {
     saveRecent(result);
@@ -130,7 +154,7 @@ export const GlobalSearch: React.FC = () => {
             onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown}
             placeholder="Search by call #, name, plate, warrant #, badge, statute…"
             aria-label="Search all records" autoComplete="off"
-            className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 outline-none"
+            className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-rmpg-500 outline-none"
           />
           <div className="flex items-center gap-2 text-xs text-rmpg-400">
             <kbd className="px-2 py-1 bg-rmpg-700 border border-rmpg-600"><Command className="w-3 h-3 inline" />K</kbd>
@@ -166,7 +190,7 @@ export const GlobalSearch: React.FC = () => {
                 const Icon = iconFor(type);
                 return (
                   <div key={type} className="mb-4 last:mb-0">
-                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium" style={{ color: KB_TYPE_META[type]?.color || '#9ca3af' }}>
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs font-medium" style={{ color: KB_TYPE_META[type]?.color || 'var(--rmpg-400)' }}>
                       <Icon className="w-3 h-3" /> {kbTypeLabel(type).toUpperCase()}
                     </div>
                     {list.map((r) => { flatIdx += 1; const idx = flatIdx; return (
@@ -181,7 +205,18 @@ export const GlobalSearch: React.FC = () => {
 
         <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-600 text-[10px] text-rmpg-600">
           <span>↑↓ navigate • Enter open • Esc close</span>
-          {query.trim() && <span>{results.length} result{results.length === 1 ? '' : 's'}</span>}
+          <span className="flex items-center gap-3">
+            {query.trim() && (
+              <button
+                type="button"
+                onClick={() => { navigate(`/intel?q=${encodeURIComponent(query)}`); handleClose(); }}
+                className="text-[#d4a017] hover:underline"
+              >
+                Open in Intel Search →
+              </button>
+            )}
+            {query.trim() && <span>{results.length} result{results.length === 1 ? '' : 's'}</span>}
+          </span>
         </div>
       </div>
     </div>,
@@ -191,7 +226,7 @@ export const GlobalSearch: React.FC = () => {
 
 const ResultItem: React.FC<{ result: KbResult; isSelected: boolean; onClick: () => void }> = ({ result, isSelected, onClick }) => {
   const Icon = iconFor(result.type);
-  const color = KB_TYPE_META[result.type]?.color || '#9ca3af';
+  const color = KB_TYPE_META[result.type]?.color || 'var(--rmpg-400)';
   const sub = [result.title, result.subtitle].filter(Boolean).join(' · ');
   return (
     <button type="button"
@@ -201,7 +236,7 @@ const ResultItem: React.FC<{ result: KbResult; isSelected: boolean; onClick: () 
       <Icon className="w-4 h-4 flex-shrink-0" style={{ color }} />
       <div className="flex-1 min-w-0">
         {/* The VISIBLE identifier is the headline. */}
-        <p className="text-sm text-white truncate font-medium">{result.label}</p>
+        <p className="text-sm text-rmpg-100 truncate font-medium">{result.label}</p>
         {sub && <p className="text-xs text-rmpg-300 truncate">{sub}</p>}
       </div>
       <span className="px-2 py-0.5 bg-rmpg-700 text-rmpg-200 text-xs border border-rmpg-600 flex-shrink-0">{kbTypeLabel(result.type)}</span>

@@ -99,6 +99,9 @@ export function useDispatchVoiceAlerts(options?: {
   // value without re-running the (large) subscription effect on every auth tick.
   const selfIdRef = useRef<string | number | null | undefined>(user?.id);
   selfIdRef.current = user?.id;
+  // Panic ids already alarmed this session — AlertHubDO re-broadcasts unacked
+  // panics every 15s; each frame must not stack another banner/announcement.
+  const seenPanicIdsRef = useRef<Set<number | string>>(new Set());
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
@@ -197,10 +200,31 @@ export function useDispatchVoiceAlerts(options?: {
     unsubs.push(
       subscribe('panic_alert', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
-        const officerName = data.user_name || data.userName || data.officerName || 'Unknown officer';
+        // Server frames are { action, panic: {...} } — AlertHubDO re-broadcasts
+        // an unacked panic every 15s and replays on reconnect, and ALSO emits
+        // ack/resolve/cancel transitions on this same channel. Only the initial
+        // activation should alarm here, and only once per panic id — otherwise
+        // the banner stack grows one "PANIC" per re-broadcast (and per ack).
+        const action = data.action || msg.action;
+        // Escalation re-alerts the fleet (Spillman: an unanswered emergency
+        // gets louder) — everything else terminal/ack stays silent here.
+        if (action === 'panic_escalated') {
+          const level = data.panic?.escalation_level ?? data.escalation_level;
+          speak(`Panic alert escalated${level ? `, level ${level}` : ''}. Still unacknowledged.`, 'major');
+          onAlert?.({ id: nextAlertId(), severity: 'major', title: 'PANIC ESCALATED', message: `Level ${level ?? '?'} — unacknowledged`, timestamp: Date.now() });
+          return;
+        }
+        if (action && action !== 'panic_activated') return;
+        const panic = data.panic || data;
+        const panicId = panic?.id ?? panic?.panic_id ?? data.panic_id;
+        if (panicId != null) {
+          if (seenPanicIdsRef.current.has(panicId)) return;
+          seenPanicIdsRef.current.add(panicId);
+        }
+        const officerName = panic.user_name || panic.userName || panic.officerName || data.user_name || 'Unknown officer';
         if (isEdgeTTSEnabled()) {
-          const loc = data.location || data.gps_address || '';
-          const cs = data.call_sign || data.unit || '';
+          const loc = panic.location_address || panic.location || panic.gps_address || '';
+          const cs = panic.call_sign || panic.unit || '';
           speak(composePanicNarrative(officerName, loc, cs), 'major');
         } else {
           announcePanicAlert(officerName);
@@ -227,6 +251,25 @@ export function useDispatchVoiceAlerts(options?: {
           announceBolo(boloTitle, data.priority);
         }
         onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'BOLO', message: boloTitle, timestamp: Date.now() });
+      })
+    );
+
+    // ── Officer on foot overdue (safety sweep) ──
+    unsubs.push(
+      subscribe('officer_on_foot_overdue', (msg) => {
+        const data = ((msg as any).data || msg) as any;
+        const cs = data.call_sign || 'Unit';
+        const mins = data.minutes ?? 5;
+        if (isEdgeTTSEnabled()) {
+          speak(`${cs} has been on foot for over ${mins} minutes. Check officer status.`, 'moderate');
+        }
+        onAlert?.({
+          id: nextAlertId(),
+          severity: 'moderate',
+          title: 'OFFICER ON FOOT',
+          message: `${cs} on foot over ${mins} min${data.officer_name ? ` — ${data.officer_name}` : ''}`,
+          timestamp: Date.now(),
+        });
       })
     );
 
@@ -481,6 +524,31 @@ export function useDispatchVoiceAlerts(options?: {
         } else if (status === 'failed' || status === 'unable') {
           speak(`Service attempt failed for ${subject}. ${data.reason || ''}`, 'minor');
         }
+      })
+    );
+
+    // ── Serve attempt pre-event reminder ──────────────────────
+    // Fires when the random pre-event window (30 min–6 h before the
+    // attempt window opens) arrives. Shows a dispatch banner + voice.
+    unsubs.push(
+      subscribe('serve_attempt_reminder' as any, (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        const name = data.recipientName || 'recipient';
+        const addr = data.recipientAddress || '';
+        const mins: number = data.minutesBefore ?? 0;
+        const timeUntil = mins < 60
+          ? `${mins} minutes`
+          : `${Math.round(mins / 60)} hour${Math.round(mins / 60) > 1 ? 's' : ''}`;
+        const windowStr = data.windowStart && data.windowEnd ? ` (${data.windowStart}–${data.windowEnd})` : '';
+        const text = `Serve attempt reminder: ${name}${addr ? ` at ${addr}` : ''}. Window opens in approximately ${timeUntil}${windowStr}.`;
+        speak(text, 'moderate');
+        onAlert?.({
+          id: `serve-remind-${data.queueId}-${data.attemptNumber ?? 0}-${Date.now()}`,
+          severity: data.priority === 'urgent' || data.priority === 'rush' ? 'moderate' : 'minor',
+          title: 'SERVE WINDOW',
+          message: data.message || text,
+          timestamp: Date.now(),
+        });
       })
     );
 

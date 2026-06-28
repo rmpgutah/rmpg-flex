@@ -15,6 +15,7 @@
 import jsPDF from 'jspdf';
 import type { NavTrip } from '../types';
 import { parseTimestamp } from './dateUtils';
+import { registerArialFont } from './pdf/fonts/registerArial';
 
 interface Args {
   trips: NavTrip[];
@@ -128,6 +129,7 @@ function drawGridBox(doc: jsPDF, x: number, y: number, w: number, h: number, lab
 export function generateNavTripReport({ trips, officerName, vehicleLabel, periodLabel }: Args): void {
   // Landscape — wider page fits the breadcrumb + path summary columns
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();   // 792pt
   const pageH = doc.internal.pageSize.getHeight(); // 612pt
@@ -439,6 +441,7 @@ export function generateNavSingleTripReport({
   officerName?: string;
 }): void {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
+  registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
 import { X, Phone, AlertTriangle, Clock, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/bodyScrollLock';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,
@@ -19,6 +20,7 @@ import BoloAlertBanner from './BoloAlertBanner';
 import RunCardPreview, { type RunCard } from './RunCardPreview';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../hooks/useAddressAutofill';
+import { useLinkOptions } from '../hooks/useLinkOptions';
 import { parseLocationParts } from '../utils/parseLocationParts';
 import { apiFetch } from '../hooks/useApi';
 import Dropdown from './ui/Dropdown';
@@ -74,19 +76,6 @@ export const PROCESS_SERVICE_DOC_TYPES: { value: string; label: string }[] = [
   { value: 'order', label: 'Court Order' },
   { value: 'notice', label: 'Notice' },
   { value: 'petition', label: 'Petition' },
-  { value: 'other', label: 'Other' },
-];
-
-const CALLER_RELATIONSHIPS = [
-  { value: '', label: '-- Select --' },
-  { value: 'employee', label: 'Employee' },
-  { value: 'victim', label: 'Victim' },
-  { value: 'witness', label: 'Witness' },
-  { value: 'complainant', label: 'Complainant' },
-  { value: 'management', label: 'Management' },
-  { value: 'alarm_company', label: 'Alarm Company' },
-  { value: 'officer', label: 'Officer' },
-  { value: 'anonymous', label: 'Anonymous' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -187,6 +176,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const dialogRef = useRef<HTMLDivElement>(null);
   const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
   const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel, getArea } = useDistrictOptions();
+  const { options } = useLinkOptions();
 
   // Person/vehicle record search for linking
   const [personSearchResults, setPersonSearchResults] = useState<any[]>([]);
@@ -286,14 +276,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   useEffect(() => {
     if (isOpen) {
       const scrollY = window.scrollY;
-      document.body.style.overflow = 'hidden';
+      lockBodyScroll();
       document.body.style.position = 'fixed';
       document.body.style.width = '100%';
       document.body.style.top = `-${scrollY}px`;
     }
     return () => {
       const scrollY = Math.abs(parseInt(document.body.style.top || '0'));
-      document.body.style.overflow = '';
+      unlockBodyScroll();
       document.body.style.position = '';
       document.body.style.width = '';
       document.body.style.top = '';
@@ -416,10 +406,10 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       {/* 78: Modal with deeper shadow for elevation */}
       <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header - Toolbar style */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
           <div className="flex items-center gap-2">
             {formData.is_historical ? <History className="w-4 h-4 text-amber-400" /> : <Phone className="w-4 h-4 text-brand-400" />}
-            <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">
+            <h2 id={titleId} className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
               {formData.is_historical ? 'Historical Call Entry' : 'New Call for Service'}
             </h2>
             {/* Quick / Full mode toggle */}
@@ -428,7 +418,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               onClick={() => setMode(m => m === 'quick' ? 'full' : 'quick')}
               className="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border transition-colors flex items-center gap-1"
               style={{
-                borderColor: mode === 'quick' ? '#d4a017' : '#383838',
+                borderColor: mode === 'quick' ? '#d4a017' : 'var(--border-default)',
                 color: mode === 'quick' ? '#d4a017' : '#888888',
                 background: mode === 'quick' ? 'rgba(212,160,23,0.1)' : 'transparent',
               }}
@@ -444,7 +434,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <button type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors rounded-sm disabled:opacity-40"
+            className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-300 hover:text-rmpg-100 transition-colors rounded-sm disabled:opacity-40"
             style={{ touchAction: 'manipulation' }}
             aria-label="Close">
             <X className="w-5 h-5 sm:w-4 sm:h-4" />
@@ -456,7 +446,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <div className="flex items-center gap-2 px-4 py-2 bg-amber-900/30 border-b border-amber-700/30">
             <History className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Restored pending draft</span>
-            <button type="button" onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-white transition-colors uppercase tracking-wider font-bold">
+            <button type="button" onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-rmpg-100 transition-colors uppercase tracking-wider font-bold">
               Discard
             </button>
           </div>
@@ -500,7 +490,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
             {mode === 'full' && (
               <div>
-                <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Source</label>
+                <label htmlFor="ff-newcallmodal-0" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Source</label>
                 <select id="ff-newcallmodal-0"
                   className="select-dark"
                   value={formData.source}
@@ -516,13 +506,13 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* PSO Client Request fields — visible in both modes when PSO type is selected */}
           {formData.incident_type === 'pso_client_request' && (
-            <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: '#181818' }}>
+            <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: 'var(--surface-raised)' }}>
               <div className="text-[9px] font-bold text-purple-400 uppercase tracking-wider mb-1">PSO Client Request Details</div>
 
               {/* Client / Requestor dropdown — auto-fills name, phone, address */}
               {clients.length > 0 && (
                 <div>
-                  <label className="block text-xs font-semibold text-brand-gold-500 uppercase mb-1">Client / Requestor</label>
+                  <label htmlFor="ff-newcallmodal-1" className="block text-xs font-semibold text-brand-gold-500 uppercase mb-1">Client / Requestor</label>
                   <select id="ff-newcallmodal-1"
                     className="select-dark w-full"
                     value={formData.client_id || ''}
@@ -578,11 +568,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Contract ID</label>
+                  <label htmlFor="ff-newcallmodal-2" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Contract ID</label>
                   <input id="ff-newcallmodal-2" type="text" className="input-dark" placeholder="PSO contract #" value={formData.contract_id} onChange={(e) => update('contract_id', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Type</label>
+                  <label htmlFor="ff-newcallmodal-3" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Type</label>
                   <select id="ff-newcallmodal-3" className="select-dark" value={formData.pso_service_type || ''} onChange={(e) => update('pso_service_type', e.target.value)}>
                     {PSO_SERVICE_TYPES.map((t) => (
                       <option key={t.value} value={t.value}>{t.label}</option>
@@ -590,21 +580,21 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Authorization / PO #</label>
+                  <label htmlFor="ff-newcallmodal-4" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Authorization / PO #</label>
                   <input id="ff-newcallmodal-4" type="text" className="input-dark" placeholder="Auth or PO number" value={formData.pso_authorization || ''} onChange={(e) => update('pso_authorization', e.target.value)} />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Name</label>
+                  <label htmlFor="ff-newcallmodal-5" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Name</label>
                   <input id="ff-newcallmodal-5" type="text" className="input-dark" placeholder="Client contact" value={formData.pso_requestor_name || ''} onChange={(e) => update('pso_requestor_name', e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Phone</label>
+                  <label htmlFor="ff-newcallmodal-6" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Phone</label>
                   <input id="ff-newcallmodal-6" type="text" inputMode="tel" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Billing Code</label>
+                  <label htmlFor="ff-newcallmodal-7" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Billing Code</label>
                   <input id="ff-newcallmodal-7" type="text" className="input-dark" placeholder="Billing code" value={formData.pso_billing_code || ''} onChange={(e) => update('pso_billing_code', e.target.value)} />
                 </div>
               </div>
@@ -614,7 +604,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   <div className="text-[9px] font-bold text-amber-400 uppercase tracking-wider mb-2">Process Service Details</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                     <div>
-                      <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
+                      <label htmlFor="ff-newcallmodal-8" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
                       <select id="ff-newcallmodal-8" className="select-dark" value={formData.process_service_type || ''} onChange={(e) => update('process_service_type', e.target.value)}>
                         {PROCESS_SERVICE_DOC_TYPES.map((t) => (
                           <option key={t.value} value={t.value}>{t.label}</option>
@@ -622,7 +612,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Serve To (Name)</label>
+                      <label htmlFor="ff-newcallmodal-9" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Serve To (Name)</label>
                       <input id="ff-newcallmodal-9" type="text" className="input-dark" placeholder="Person to be served" value={formData.process_served_to || ''} onChange={(e) => update('process_served_to', e.target.value)} />
                     </div>
                   </div>
@@ -672,7 +662,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               above with PSO-specific autofill. */}
           {clients.length > 0 && formData.incident_type !== 'pso_client_request' && (
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Client</label>
+              <label htmlFor="ff-newcallmodal-client" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Client</label>
               <select id="ff-newcallmodal-client"
                 className="select-dark w-full"
                 value={formData.client_id || ''}
@@ -727,7 +717,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Caller Info — Quick: name + phone only; Full: all 4 fields */}
           <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2'}`}>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Name</label>
+              <label htmlFor="ff-newcallmodal-10" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Name</label>
               <input id="ff-newcallmodal-10"
                 type="text"
                 className="input-dark"
@@ -737,7 +727,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Phone</label>
+              <label htmlFor="ff-newcallmodal-11" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Phone</label>
               <input id="ff-newcallmodal-11"
                 type="text"
                 inputMode="tel"
@@ -749,14 +739,15 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
             {mode === 'full' && (
               <div>
-                <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Relationship</label>
+                <label htmlFor="ff-newcallmodal-12" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Relationship</label>
                 <select id="ff-newcallmodal-12"
                   className="select-dark"
                   value={formData.caller_relationship}
                   onChange={(e) => update('caller_relationship', e.target.value)}
                 >
-                  {CALLER_RELATIONSHIPS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
+                  <option value="">-- Select --</option>
+                  {options.caller_relationship.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </div>
@@ -774,7 +765,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 />
                 </div>
                 <div className="w-24">
-                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Apt</label>
+                  <label htmlFor="ff-newcallmodal-callerunit" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Apt</label>
                   <input id="ff-newcallmodal-callerunit" type="text" className="input-dark" value={callerAddressUnit} onChange={(e) => setCallerAddressUnit(e.target.value)} placeholder="4B" />
                 </div>
               </div>
@@ -795,7 +786,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* Location */}
           <div>
-            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address</label>
+            <label htmlFor="ff-newcallmodal-26" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address</label>
             <AddressAutocomplete
               className="input-dark"
               placeholder="123 Main St, Salt Lake City, UT"
@@ -880,7 +871,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* Description — moved up for faster tab flow */}
           <div>
-            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
+            <label htmlFor="ff-newcallmodal-13" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
             <textarea id="ff-newcallmodal-13"
               className="textarea-dark"
               rows={mode === 'quick' ? 2 : 4}
@@ -895,7 +886,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Property — full mode only */}
           {mode === 'full' && properties.length > 0 && (
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Property</label>
+              <label htmlFor="ff-newcallmodal-14" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Property</label>
               <select id="ff-newcallmodal-14"
                 className="select-dark"
                 value={formData.property_id}
@@ -915,23 +906,23 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Location Details — full mode only */}
           {mode === 'full' && <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Cross Street</label>
+              <label htmlFor="ff-newcallmodal-16" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Cross Street</label>
               <input id="ff-newcallmodal-16" type="text" className="input-dark" placeholder="Nearest intersection" value={formData.cross_street} onChange={(e) => update('cross_street', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Building</label>
+              <label htmlFor="ff-newcallmodal-17" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Building</label>
               <input id="ff-newcallmodal-17" type="text" className="input-dark" placeholder="Bldg A, Tower 2" value={formData.location_building} onChange={(e) => update('location_building', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Floor</label>
+              <label htmlFor="ff-newcallmodal-18" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Floor</label>
               <input id="ff-newcallmodal-18" type="text" className="input-dark" placeholder="3rd" value={formData.location_floor} onChange={(e) => update('location_floor', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Room / Suite</label>
+              <label htmlFor="ff-newcallmodal-19" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Room / Suite</label>
               <input id="ff-newcallmodal-19" type="text" className="input-dark" placeholder="Suite 302" value={formData.location_room} onChange={(e) => update('location_room', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Area</label>
+              <label htmlFor="ff-newcallmodal-area" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Area</label>
               <input
                 id="ff-newcallmodal-area"
                 type="text"
@@ -944,7 +935,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Section</label>
+              <label htmlFor="ff-newcallmodal-20" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Section</label>
               <select id="ff-newcallmodal-20" className="select-dark" value={formData.sector_id} onChange={(e) => {
                 // Manual Section change re-derives Area (its parent) and resets
                 // the dependent Zone/Beat so the A/S/Z/B chain stays consistent.
@@ -957,14 +948,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Zone</label>
+              <label htmlFor="ff-newcallmodal-21" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Zone</label>
               <select id="ff-newcallmodal-21" className="select-dark" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">— Select —</option>
                 {zonesForSection(formData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Beat</label>
+              <label htmlFor="ff-newcallmodal-22" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Beat</label>
               <select id="ff-newcallmodal-22" className="select-dark" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)}>
                 <option value="">— Select —</option>
                 {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
@@ -976,15 +967,15 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {mode === 'full' && <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1"># Subjects</label>
+              <label htmlFor="ff-newcallmodal-23" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1"># Subjects</label>
               <input id="ff-newcallmodal-23" type="number" min="0" className="input-dark" placeholder="0" value={formData.num_subjects} onChange={(e) => update('num_subjects', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1"># Victims</label>
+              <label htmlFor="ff-newcallmodal-24" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1"># Victims</label>
               <input id="ff-newcallmodal-24" type="number" min="0" className="input-dark" placeholder="0" value={formData.num_victims} onChange={(e) => update('num_victims', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Weapons</label>
+              <label htmlFor="ff-newcallmodal-25" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Weapons</label>
               {(() => {
                 const isCustom = formData.weapons_involved && !(WEAPONS_OPTIONS as readonly string[]).includes(formData.weapons_involved);
                 return (<>
@@ -999,7 +990,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               })()}
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Direction of Travel</label>
+              <label htmlFor="ff-newcallmodal-27" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Direction of Travel</label>
               <select id="ff-newcallmodal-27" className="select-dark" value={formData.direction_of_travel || ''} onChange={(e) => update('direction_of_travel', e.target.value)}>
                 <option value="">— Select —</option>
                 {DIRECTION_OPTIONS.filter(Boolean).map((d) => <option key={d} value={d}>{d}</option>)}
@@ -1009,7 +1000,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="relative" ref={personDropdownRef}>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject / Name <span className="text-rmpg-500 normal-case">(search records)</span></label>
+              <label htmlFor="ff-newcallmodal-28" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject / Name <span className="text-rmpg-500 normal-case">(search records)</span></label>
               <input id="ff-newcallmodal-28" type="text" className="input-dark" placeholder="Type name to search records..." value={formData.subject_description} onChange={(e) => { update('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
               {showPersonDropdown && personSearchResults.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
@@ -1019,7 +1010,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                       update('subject_description', desc);
                       setShowPersonDropdown(false);
                     }}>
-                      <span className="font-semibold text-white">{p.last_name}, {p.first_name}</span>
+                      <span className="font-semibold text-rmpg-100">{p.last_name}, {p.first_name}</span>
                       {p.dob && <span className="text-rmpg-400 ml-1">DOB: {p.dob}</span>}
                       {p.address && <span className="text-rmpg-500 ml-1 text-[10px]">— {p.address}</span>}
                     </button>
@@ -1028,7 +1019,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               )}
             </div>
             <div className="relative" ref={vehicleDropdownRef}>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Vehicle <span className="text-rmpg-500 normal-case">(search records)</span></label>
+              <label htmlFor="ff-newcallmodal-29" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Vehicle <span className="text-rmpg-500 normal-case">(search records)</span></label>
               <input id="ff-newcallmodal-29" type="text" className="input-dark" placeholder="Type plate/make/model to search..." value={formData.vehicle_description} onChange={(e) => { update('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
               {showVehicleDropdown && vehicleSearchResults.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
@@ -1038,7 +1029,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                       update('vehicle_description', desc);
                       setShowVehicleDropdown(false);
                     }}>
-                      <span className="font-semibold text-white">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
+                      <span className="font-semibold text-rmpg-100">{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ')}</span>
                       {v.plate_number && <span className="text-brand-400 ml-1">PLT: {v.plate_number}{v.plate_state ? `/${v.plate_state}` : ''}</span>}
                       {v.owner_first_name && <span className="text-rmpg-400 ml-1 text-[10px]">Owner: {v.owner_last_name}, {v.owner_first_name}</span>}
                     </button>
@@ -1051,21 +1042,21 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Scene Conditions */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Scene Safety</label>
+              <label htmlFor="ff-newcallmodal-30" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Scene Safety</label>
               <select id="ff-newcallmodal-30" className="select-dark" value={formData.scene_safety || ''} onChange={(e) => update('scene_safety', e.target.value)}>
                 <option value="">— Select —</option>
                 {SCENE_SAFETY_OPTIONS.filter(Boolean).map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Weather</label>
+              <label htmlFor="ff-newcallmodal-31" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Weather</label>
               <select id="ff-newcallmodal-31" className="select-dark" value={formData.weather_conditions || ''} onChange={(e) => update('weather_conditions', e.target.value)}>
                 <option value="">— Select —</option>
                 {WEATHER_OPTIONS.filter(Boolean).map((w) => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Lighting</label>
+              <label htmlFor="ff-newcallmodal-32" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Lighting</label>
               <select id="ff-newcallmodal-32" className="select-dark" value={formData.lighting_conditions || ''} onChange={(e) => update('lighting_conditions', e.target.value)}>
                 <option value="">— Select —</option>
                 {LIGHTING_OPTIONS.filter(Boolean).map((l) => <option key={l} value={l}>{l}</option>)}
@@ -1076,18 +1067,18 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Damage Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Damage Estimate ($)</label>
+              <label htmlFor="ff-newcallmodal-33" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Damage Estimate ($)</label>
               <input id="ff-newcallmodal-33" type="number" min="0" step="0.01" className="input-dark" placeholder="0.00" value={formData.damage_estimate} onChange={(e) => update('damage_estimate', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Damage Description</label>
+              <label htmlFor="ff-newcallmodal-34" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Damage Description</label>
               <input id="ff-newcallmodal-34" type="text" className="input-dark" placeholder="Describe damage..." value={formData.damage_description} onChange={(e) => update('damage_description', e.target.value)} />
             </div>
           </div>
 
           {/* Flags / Checkboxes */}
           <div>
-            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-2">Flags</label>
+            <label htmlFor="ff-newcallmodal-57" className="block text-xs font-semibold text-rmpg-300 uppercase mb-2">Flags</label>
             <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input id="ff-newcallmodal-35" type="checkbox" checked={formData.injuries_reported as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, injuries_reported: e.target.checked }))} className="accent-red-500" />
@@ -1183,7 +1174,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {formData.le_notified && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">LE Agency</label>
+                <label htmlFor="ff-newcallmodal-56" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">LE Agency</label>
                 {(() => {
                   const isCustom = formData.le_agency && !(LE_AGENCY_OPTIONS as readonly string[]).includes(formData.le_agency);
                   return (<>
@@ -1198,7 +1189,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 })()}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">LE Case Number</label>
+                <label htmlFor="ff-newcallmodal-58" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">LE Case Number</label>
                 <input id="ff-newcallmodal-58" type="text" className="input-dark" placeholder="PD-2026-1234" value={formData.le_case_number} onChange={(e) => update('le_case_number', e.target.value)} />
               </div>
             </div>
@@ -1206,12 +1197,12 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* Responding Officer */}
           <div>
-            <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Responding Officer</label>
+            <label htmlFor="ff-newcallmodal-59" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Responding Officer</label>
             <input id="ff-newcallmodal-59" type="text" className="input-dark" placeholder="Officer name or badge number" value={formData.responding_officer} onChange={(e) => update('responding_officer', e.target.value)} />
           </div>
 
           {/* Historical Entry Toggle */}
-          <div className="border border-rmpg-600 p-3" style={{ background: formData.is_historical ? '#181818' : 'transparent' }}>
+          <div className="border border-rmpg-600 p-3" style={{ background: formData.is_historical ? 'var(--surface-raised)' : 'transparent' }}>
             <label className="flex items-center gap-2 cursor-pointer">
               <input id="ff-newcallmodal-60"
                 type="checkbox"
@@ -1229,7 +1220,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 {/* Date/Time of original call */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Call Date *</label>
+                    <label htmlFor="ff-newcallmodal-61" className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Call Date *</label>
                     <input id="ff-newcallmodal-61"
                       type="date"
                       className="input-dark text-xs"
@@ -1239,7 +1230,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Call Time</label>
+                    <label htmlFor="ff-newcallmodal-62" className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Call Time</label>
                     <input id="ff-newcallmodal-62"
                       type="time"
                       className="input-dark text-xs"
@@ -1248,7 +1239,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Final Status</label>
+                    <label htmlFor="ff-newcallmodal-63" className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Final Status</label>
                     <select id="ff-newcallmodal-63"
                       className="select-dark text-xs"
                       value={formData.historical_status}
@@ -1268,7 +1259,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
                 {/* Disposition */}
                 <div>
-                  <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Disposition</label>
+                  <label htmlFor="ff-newcallmodal-64" className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Disposition</label>
                   <input id="ff-newcallmodal-64"
                     type="text"
                     className="input-dark text-xs"
@@ -1283,23 +1274,23 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Status Timestamps <span className="text-rmpg-500 normal-case">(optional)</span></label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                     <div>
-                      <label className="block text-[9px] text-rmpg-400 mb-0.5">Dispatched</label>
+                      <label htmlFor="ff-newcallmodal-65" className="block text-[9px] text-rmpg-400 mb-0.5">Dispatched</label>
                       <input id="ff-newcallmodal-65" type="datetime-local" className="input-dark text-[10px]" value={formData.historical_dispatched_at} onChange={(e) => update('historical_dispatched_at', e.target.value)} />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-400 mb-0.5">En Route</label>
+                      <label htmlFor="ff-newcallmodal-66" className="block text-[9px] text-rmpg-400 mb-0.5">En Route</label>
                       <input id="ff-newcallmodal-66" type="datetime-local" className="input-dark text-[10px]" value={formData.historical_enroute_at} onChange={(e) => update('historical_enroute_at', e.target.value)} />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-400 mb-0.5">On Scene</label>
+                      <label htmlFor="ff-newcallmodal-67" className="block text-[9px] text-rmpg-400 mb-0.5">On Scene</label>
                       <input id="ff-newcallmodal-67" type="datetime-local" className="input-dark text-[10px]" value={formData.historical_onscene_at} onChange={(e) => update('historical_onscene_at', e.target.value)} />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-400 mb-0.5">Cleared</label>
+                      <label htmlFor="ff-newcallmodal-68" className="block text-[9px] text-rmpg-400 mb-0.5">Cleared</label>
                       <input id="ff-newcallmodal-68" type="datetime-local" className="input-dark text-[10px]" value={formData.historical_cleared_at} onChange={(e) => update('historical_cleared_at', e.target.value)} />
                     </div>
                     <div>
-                      <label className="block text-[9px] text-rmpg-400 mb-0.5">Closed</label>
+                      <label htmlFor="ff-newcallmodal-69" className="block text-[9px] text-rmpg-400 mb-0.5">Closed</label>
                       <input id="ff-newcallmodal-69" type="datetime-local" className="input-dark text-[10px]" value={formData.historical_closed_at} onChange={(e) => update('historical_closed_at', e.target.value)} />
                     </div>
                   </div>

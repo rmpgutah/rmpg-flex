@@ -20,8 +20,11 @@ const LEVEL_PROP: Record<ChoroLevel, string> = { beat: 'beat_id', zone: '_zone',
 const SRC = 'choro-beats';
 const FILL = 'choro-fill';
 
-// Gold → red ramp (zero-blue theme). Index 0 is the near-zero bucket.
-const RAMP = ['#2a2a2a', '#d4a017', '#f59e0b', '#fb923c', '#ef4444'];
+// Gold → red ramp. Index 0 is the near-zero bucket.
+// Mapbox paint properties don't resolve CSS variables — they need literal
+// colors at parse time. Use the night-theme value of --border-default here
+// (the map surfaces stay dark always per the .tactical-dark rule).
+const RAMP = ['#2a3a4d', '#d4a017', '#f59e0b', '#fb923c', '#ef4444'];
 
 export interface ChoroLegend { level: ChoroLevel; max: number; thresholds: number[]; colors: string[]; }
 
