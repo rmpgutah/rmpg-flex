@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { formatEnumValue } from '../utils/formatters';
 import PanelTitleBar from '../components/PanelTitleBar';
-import ConfirmDialog from '../components/ConfirmDialog';
 import { Camera, MapPin, Radio, RefreshCw, Activity, Search, Monitor } from 'lucide-react';
 import IconButton from '../components/IconButton';
 import UnitPicker from '../components/UnitPicker';
@@ -26,8 +25,7 @@ const EVENT_ICONS: Record<string, string> = {
 export default function DashcamPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
-  const canManage = ['admin', 'manager'].includes(user?.role || '');
-  const canEdit = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
+  const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
 
   const [searchParams] = useSearchParams();
 
@@ -101,18 +99,16 @@ export default function DashcamPage() {
   // Deep-link: ?device_id=<numeric howen_devices.id>
   // Navigating from the fleet page or a notification lands the operator
   // directly on the right device with the detail panel open.
-  // deepLinkRef prevents double-consume on re-render.
   useEffect(() => {
     const target = searchParams.get('device_id');
-    if (!target || loading || deepLinkRef.current) return;
+    if (!target || loading) return;
     const numeric = parseInt(target, 10);
     if (isNaN(numeric)) return;
-    deepLinkRef.current = true;
     // Try in-page list first; fall back to direct fetch when paged out.
     const hit = devices.find((d) => d.id === numeric);
     if (hit) {
       loadDeviceDetail(numeric);
-    } else {
+    } else if (!loading) {
       loadDeviceDetail(numeric).catch(() =>
         addToast(`Device ${target} not found`, 'warning'),
       );
@@ -125,32 +121,14 @@ export default function DashcamPage() {
   // Esc cascade — closes detail panel first, then deactivate confirm.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-
-      if (e.key === 'Escape') {
-        if (deactivateTarget) {
-          e.stopPropagation();
-          setDeactivateTarget(null);
-          return;
-        }
-        if (selectedDevice) {
-          e.stopPropagation();
-          setSelectedDevice(null);
-          setDeviceDetail(null);
-          return;
-        }
-        return;
-      }
-
-      if (e.key === 'n' && !editable && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        doRefresh();
+      if (e.key === 'Escape' && selectedDevice) {
+        setSelectedDevice(null);
+        setDeviceDetail(null);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedDevice, deactivateTarget, doRefresh]);
+  }, [selectedDevice]);
 
   const loadDeviceDetail = async (id: number) => {
     try {
@@ -320,59 +298,52 @@ export default function DashcamPage() {
 
             {tab === 'devices' && (
               <div className="overflow-x-auto">
-                {loading ? (
-                  <div className="text-center py-8 text-text-muted text-xs">
-                    <Camera className="w-6 h-6 mx-auto mb-2 opacity-30 animate-pulse" />
-                    Loading devices…
-                  </div>
-                ) : (
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-text-muted font-semibold tracking-wider border-b border-border-default">
-                        <th className="text-left px-3 py-1.5">Device ID</th>
-                        <th className="text-left px-3 py-1.5">Label</th>
-                        <th className="text-left px-3 py-1.5">Unit</th>
-                        <th className="text-left px-3 py-1.5">Model</th>
-                        <th className="text-right px-3 py-1.5">Last GPS</th>
-                        <th className="text-center px-3 py-1.5">Status</th>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-text-muted font-semibold tracking-wider border-b border-border-default">
+                      <th className="text-left px-3 py-1.5">Device ID</th>
+                      <th className="text-left px-3 py-1.5">Label</th>
+                      <th className="text-left px-3 py-1.5">Unit</th>
+                      <th className="text-left px-3 py-1.5">Model</th>
+                      <th className="text-right px-3 py-1.5">Last GPS</th>
+                      <th className="text-center px-3 py-1.5">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {devices.map((d: any) => (
+                      <tr
+                        key={d.id}
+                        className={`border-b border-border-default cursor-pointer hover:bg-surface-raised ${selectedDevice?.id === d.id ? 'bg-surface-raised' : ''}`}
+                        onClick={() => loadDeviceDetail(d.id)}
+                      >
+                        <td className="px-3 py-1.5 font-mono text-brand-400">{d.device_id}</td>
+                        <td className="px-3 py-1.5">{d.label || '—'}</td>
+                        <td className="px-3 py-1.5">{d.call_sign || d.unit_id || '—'}</td>
+                        <td className="px-3 py-1.5 text-text-muted">{d.model || d.fw_version || '—'}</td>
+                        <td className="px-3 py-1.5 text-right text-text-muted">
+                          {d.last_gps_at ? (
+                            <span className="flex items-center gap-1 justify-end">
+                              <MapPin className="w-3 h-3" />
+                              {d.last_lat?.toFixed(4)}, {d.last_lon?.toFixed(4)}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-center">
+                          <span className={`inline-block w-2 h-2 rounded-full ${d.last_connection_at && Date.now() - parseTimestamp(d.last_connection_at).getTime() < 300000 ? 'bg-green-400 shadow-green' : d.is_active ? 'bg-amber-400' : 'bg-red-400'}`} />
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {devices.map((d: any) => (
-                        <tr
-                          key={d.id}
-                          className={`border-b border-border-default cursor-pointer hover:bg-surface-raised ${selectedDevice?.id === d.id ? 'bg-surface-raised' : ''}`}
-                          onClick={() => loadDeviceDetail(d.id)}
-                        >
-                          <td className="px-3 py-1.5 font-mono text-brand-400">{d.device_id}</td>
-                          <td className="px-3 py-1.5">{d.label || '—'}</td>
-                          <td className="px-3 py-1.5">{d.call_sign || d.unit_id || '—'}</td>
-                          <td className="px-3 py-1.5 text-text-muted">{d.model || d.fw_version || '—'}</td>
-                          <td className="px-3 py-1.5 text-right text-text-muted">
-                            {d.last_gps_at ? (
-                              <span className="flex items-center gap-1 justify-end">
-                                <MapPin className="w-3 h-3" />
-                                {d.last_lat?.toFixed(4)}, {d.last_lon?.toFixed(4)}
-                              </span>
-                            ) : '—'}
-                          </td>
-                          <td className="px-3 py-1.5 text-center">
-                            <span className={`inline-block w-2 h-2 rounded-full ${d.last_connection_at && Date.now() - parseTimestamp(d.last_connection_at).getTime() < 300000 ? 'bg-green-400 shadow-green' : d.is_active ? 'bg-amber-400' : 'bg-red-400'}`} />
-                          </td>
-                        </tr>
-                      ))}
-                      {devices.length === 0 && (
-                        <tr>
-                          <td colSpan={6} className="text-center py-8 text-text-muted">
-                            {search.trim()
-                              ? <>No devices match &ldquo;{search}&rdquo;</>
-                              : 'No Howen devices registered — devices auto-register on first TCP connection'}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                )}
+                    ))}
+                    {devices.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-text-muted">
+                          {search.trim()
+                            ? <>No devices match &ldquo;{search}&rdquo;</>
+                            : 'No Howen devices registered — devices auto-register on first TCP connection'}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
                 {total > 50 && (
                   <div className="flex items-center justify-between px-3 py-2 border-t border-border-default text-xs text-text-muted">
                     <span>{total} total devices</span>
@@ -388,20 +359,34 @@ export default function DashcamPage() {
 
             {tab === 'events' && (
               <div className="overflow-x-auto">
-                {loading ? (
-                  <div className="text-center py-8 text-text-muted text-xs">
-                    <Activity className="w-6 h-6 mx-auto mb-2 opacity-30 animate-pulse" />
-                    Loading events…
-                  </div>
-                ) : (
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-text-muted font-semibold tracking-wider border-b border-border-default">
-                        <th className="text-left px-3 py-1.5">Time</th>
-                        <th className="text-left px-3 py-1.5">Device</th>
-                        <th className="text-left px-3 py-1.5">Event</th>
-                        <th className="text-left px-3 py-1.5">Severity</th>
-                        <th className="text-right px-3 py-1.5">Location</th>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-text-muted font-semibold tracking-wider border-b border-border-default">
+                      <th className="text-left px-3 py-1.5">Time</th>
+                      <th className="text-left px-3 py-1.5">Device</th>
+                      <th className="text-left px-3 py-1.5">Event</th>
+                      <th className="text-left px-3 py-1.5">Severity</th>
+                      <th className="text-right px-3 py-1.5">Location</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {events.map((e: any) => (
+                      <tr key={e.id} className="border-b border-border-default">
+                        <td className="px-3 py-1.5 font-mono text-text-muted">{e.event_at}</td>
+                        <td className="px-3 py-1.5">
+                          <span className="text-brand-400">{e.device_id}</span>
+                          {e.device_label && <span className="text-text-muted ml-1">({e.device_label})</span>}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          {EVENT_ICONS[e.event_type] && <span className="mr-1">{EVENT_ICONS[e.event_type]}</span>}
+                          {formatEnumValue(e.event_type)}
+                        </td>
+                        <td className={`px-3 py-1.5 ${SEVERITY_COLORS[e.severity] || 'text-text-muted'}`}>
+                          {formatEnumValue(e.severity)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right text-text-muted">
+                          {e.latitude ? `${e.latitude.toFixed(4)}, ${e.longitude.toFixed(4)}` : '—'}
+                        </td>
                       </tr>
                     </thead>
                     <tbody>

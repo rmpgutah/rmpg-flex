@@ -228,15 +228,6 @@ export default function CrmPage() {
   const [taskToDelete, setTaskToDelete] = useState<CrmTask | null>(null);
   const [deletingTask, setDeletingTask] = useState(false);
 
-  // Contact delete confirmation
-  const [contactToDelete, setContactToDelete] = useState<any | null>(null);
-  const [deletingContact, setDeletingContact] = useState(false);
-
-  // Per-section loading states for 3-state empty (loading / no-data / no-results)
-  const [propertiesLoading, setPropertiesLoading] = useState(false);
-  const [contactsLoading, setContactsLoading] = useState(false);
-  const [invoicesLoading, setInvoicesLoading] = useState(false);
-
   // Activity log modal
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [activityForm, setActivityForm] = useState<{ client_id: string; activity_type: string; subject: string; details: string }>({
@@ -357,10 +348,7 @@ export default function CrmPage() {
   // client. One-shot per page load; the param is stripped after applying so
   // back-button / refresh don't keep re-selecting the same row. Mirrors the
   // FlexCam (?request_id=) / AuditLog (?source_*=) pattern.
-  // ?account_id= is an alias for ?client_id= (CRM "accounts" == clients).
-  const pendingClientIdRef = useRef<string | null>(
-    searchParams.get('client_id') ?? searchParams.get('account_id')
-  );
+  const pendingClientIdRef = useRef<string | null>(searchParams.get('client_id'));
   // ?contact_id= routes to the Contacts tab and pre-searches by id.
   const pendingContactIdRef = useRef<string | null>(searchParams.get('contact_id'));
   // ?section= is seeded into activeSection at init time (above). Strip it
@@ -416,7 +404,6 @@ export default function CrmPage() {
     const next = new URLSearchParams(searchParams);
     next.delete('section');
     next.delete('contact_id');
-    next.delete('account_id');
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -490,24 +477,6 @@ export default function CrmPage() {
       setDeletingTask(false);
     }
   }, [taskToDelete, addToast, fetchTasks]);
-
-  // Stage for confirm dialog; actual delete in confirmDeleteContact below.
-  const deleteContact = (contact: any) => { setContactToDelete(contact); };
-
-  const confirmDeleteContact = useCallback(async () => {
-    if (!contactToDelete) return;
-    setDeletingContact(true);
-    try {
-      await apiFetch(`/crm/contacts/${contactToDelete.id}`, { method: 'DELETE' });
-      addToast('Contact deleted', 'success');
-      setContactToDelete(null);
-      fetchContacts();
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to delete contact', 'error');
-    } finally {
-      setDeletingContact(false);
-    }
-  }, [contactToDelete, addToast, fetchContacts]);
 
   const toggleTaskComplete = async (task: CrmTask) => {
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
@@ -584,21 +553,8 @@ export default function CrmPage() {
     m.separator(),
     m.copy('Copy title', task.title),
     m.copyId(task.id),
-    ...(canManage ? [
-      m.separator(),
-      m.action('Delete', () => deleteTask(task), { icon: <Trash2 size={12} />, danger: true }),
-    ] : []),
-  ];
-
-  const buildContactMenu = (contact: any): ContextMenuItem[] => [
-    m.copy('Copy name', `${contact.first_name} ${contact.last_name}`.trim()),
-    ...(contact.phone ? [m.copy('Copy phone', contact.phone, <Phone size={12} />)] : []),
-    ...(contact.person_email ? [m.copy('Copy email', contact.person_email, <Mail size={12} />)] : []),
-    m.copyId(contact.id),
-    ...(canManage ? [
-      m.separator(),
-      m.action('Delete', () => deleteContact(contact), { icon: <Trash2 size={12} />, danger: true }),
-    ] : []),
+    m.separator(),
+    m.action('Delete', () => deleteTask(task), { icon: <Trash2 size={12} />, danger: true }),
   ];
 
   // ════════════════════════════════════════════════════════
@@ -621,24 +577,19 @@ export default function CrmPage() {
     };
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // Cascade: innermost confirm first → task confirm → contact confirm →
-        // task edit → activity → client modal → client selection
-        if (contactToDelete) { e.stopPropagation(); setContactToDelete(null); return; }
-        if (taskToDelete) { e.stopPropagation(); setTaskToDelete(null); return; }
-        if (showTaskModal) { e.stopPropagation(); setShowTaskModal(false); setEditingTask(null); return; }
-        if (showActivityModal) { e.stopPropagation(); setShowActivityModal(false); return; }
-        if (showClientModal) { e.stopPropagation(); setShowClientModal(false); setEditingClient(null); return; }
-        if (selectedClientId) { e.stopPropagation(); setSelectedClientId(null); return; }
+        // Cascade: innermost modal first → task delete confirm → task edit → activity → client → client selection
+        if (taskToDelete) { setTaskToDelete(null); return; }
+        if (showTaskModal) { setShowTaskModal(false); setEditingTask(null); return; }
+        if (showActivityModal) { setShowActivityModal(false); return; }
+        if (showClientModal) { setShowClientModal(false); setEditingClient(null); return; }
+        if (selectedClientId) { setSelectedClientId(null); return; }
         return;
       }
       if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (isTypingInField(e.target)) return;
         // Don't shortcut while a modal is already open.
-        if (contactToDelete || taskToDelete || showTaskModal || showActivityModal || showClientModal) return;
-        if (activeSection === 'tasks') {
-          if (!canManage) return;
-          e.preventDefault(); openNewTask(); return;
-        }
+        if (taskToDelete || showTaskModal || showActivityModal || showClientModal) return;
+        if (activeSection === 'tasks') { e.preventDefault(); openNewTask(); return; }
         if (activeSection === 'clients') { e.preventDefault(); setEditingClient(null); setShowClientModal(true); return; }
         if (activeSection === 'dashboard') {
           e.preventDefault();
@@ -650,7 +601,7 @@ export default function CrmPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [contactToDelete, taskToDelete, showTaskModal, showActivityModal, showClientModal, selectedClientId, activeSection, canManage]);
+  }, [taskToDelete, showTaskModal, showActivityModal, showClientModal, selectedClientId, activeSection]);
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -875,24 +826,6 @@ export default function CrmPage() {
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={deletingTask}
-      />
-
-      {/* ── Contact Delete Confirmation ────────────────── */}
-      <ConfirmDialog
-        isOpen={contactToDelete !== null}
-        onClose={() => { if (!deletingContact) setContactToDelete(null); }}
-        onConfirm={confirmDeleteContact}
-        title="Delete contact?"
-        message="This permanently removes the contact record."
-        details={contactToDelete ? (
-          <div className="mt-2 text-[11px] text-rmpg-300">
-            <div><span className="text-rmpg-500">Name:</span> {contactToDelete.first_name} {contactToDelete.last_name}</div>
-            {contactToDelete.client_name && <div><span className="text-rmpg-500">Client:</span> {contactToDelete.client_name}</div>}
-          </div>
-        ) : undefined}
-        confirmLabel="Delete"
-        confirmVariant="danger"
-        isLoading={deletingContact}
       />
     </div>
   );
@@ -1555,9 +1488,7 @@ export default function CrmPage() {
                   {/* Actions */}
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <IconButton onClick={() => openEditTask(task)} className="p-1 text-rmpg-400 hover:text-rmpg-200" aria-label={`Edit task ${task.title}`}><Edit3 className="w-3 h-3" /></IconButton>
-                    {canManage && (
-                      <IconButton onClick={() => deleteTask(task)} className="p-1 text-rmpg-400 hover:text-red-400" aria-label={`Delete task ${task.title}`}><Trash2 className="w-3 h-3" /></IconButton>
-                    )}
+                    <IconButton onClick={() => deleteTask(task)} className="p-1 text-rmpg-400 hover:text-red-400" aria-label={`Delete task ${task.title}`}><Trash2 className="w-3 h-3" /></IconButton>
                   </div>
                 </div>
               ))}

@@ -121,7 +121,6 @@ export default function DashCamerasPage() {
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const isAdmin = user?.role === 'admin';
-  const isAdminOrManager = ['admin', 'manager'].includes(user?.role || '');
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();

@@ -235,13 +235,13 @@ export default function BodyCamerasPage() {
     const handler = (e: KeyboardEvent) => {
       // Esc cascade: top-most-first — destructive dialog → player → upload → form.
       if (e.key === 'Escape') {
-        if (cameraToDelete) { e.stopPropagation(); setCameraToDelete(null); return; }
-        if (videoToDelete) { e.stopPropagation(); setVideoToDelete(null); return; }
-        if (playingVideo) { e.stopPropagation(); setPlayingVideo(null); return; }
-        if (modal === 'upload_video') { e.stopPropagation(); setModal('none'); return; }
+        if (cameraToDelete) { setCameraToDelete(null); return; }
+        if (videoToDelete) { setVideoToDelete(null); return; }
+        if (playingVideo) { setPlayingVideo(null); return; }
+        if (modal === 'upload_video') { setModal('none'); return; }
         if (modal === 'new_body_camera' || modal === 'edit_body_camera') {
           if (isTypingInField(e.target)) return;
-          e.stopPropagation(); setModal('none'); setEditData(undefined); return;
+          setModal('none'); setEditData(undefined); return;
         }
         return;
       }
