@@ -693,6 +693,10 @@ export default function NavigationPage() {
   // Shown on the gauges: device speed when available, else position-derived.
   const displayMph = mph ?? derivedMph;
   const hasFix = gps.latitude != null && gps.longitude != null;
+  // Reverse-geocoded street name for the "Following GPS" banner. Not yet wired
+  // to a geocoder, so it's null today (the UI falls back to "Locating street…").
+  // Restores the client typecheck that referenced this before it was declared.
+  const currentStreet: string | null = null;
   const src = SOURCE_META[gps.positionSource] || SOURCE_META.unknown;
   // #29/#52/#65/#69 — posted speed limit near the live fix (best-effort, drive lane).
   const { limitMph, buffer: limitBuffer } = useSpeedLimit(gps.latitude, gps.longitude);
