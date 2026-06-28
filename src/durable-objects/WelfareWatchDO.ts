@@ -19,6 +19,8 @@
 // lose active watches.
 // ============================================================
 
+import { doCallbackToken } from '../utils/signedAccess';
+
 interface WatchState {
   user_id: number;
   call_sign: string | null;
@@ -104,6 +106,11 @@ export class WelfareWatchDO {
     s.stage = 0;
     s.fired_at = null;
     await this.setState(s);
+    // Clear any prior alarm before re-arming. Workers semantics already
+    // overwrite on setAlarm(), so this is defensive parity with handleAck()
+    // and handleStop() — keeps a reader from having to internalize the
+    // overwrite contract to be confident the activity path is safe.
+    await this.state.storage.deleteAlarm();
     await this.state.storage.setAlarm(now + PROMPT_AFTER_MS);
     return Response.json({ success: true, reset: true });
   }
@@ -136,56 +143,90 @@ export class WelfareWatchDO {
 
   // alarm() — invoked by the Workers runtime at the time we set via
   // state.storage.setAlarm(). Drives the 3-stage escalation.
+  //
+  // Hardening (2026-06-20): wrapped in try/catch with a fallback re-arm.
+  // The Workers runtime does NOT automatically re-schedule the alarm if
+  // alarm() throws — the escalation chain dies silently, mid-stage, and
+  // Stage 3 emergency never fires. The fallback re-arms at now+60s only
+  // when stage < 3, so transient failures (network blip during
+  // notifyWorker, KV hiccup) self-heal without an infinite loop after
+  // emergency has fired.
   async alarm(): Promise<void> {
-    const s = await this.getState();
-    if (!s) return;
+    try {
+      const s = await this.getState();
+      if (!s) return;
 
-    const now = Date.now();
-    const silentMs = now - s.last_activity_at;
+      const now = Date.now();
+      const silentMs = now - s.last_activity_at;
 
-    if (s.stage === 0 && silentMs >= PROMPT_AFTER_MS) {
-      // Stage 1 — prompt
-      s.stage = 1;
-      s.fired_at = now;
-      await this.setState(s);
-      await this.notifyWorker('prompt', s);
-      await this.state.storage.setAlarm(now + ALERT_AFTER_MS);
-      return;
-    }
-    if (s.stage === 1 && silentMs >= PROMPT_AFTER_MS + ALERT_AFTER_MS) {
-      // Stage 2 — supervisor alert
-      s.stage = 2;
-      s.fired_at = now;
-      await this.setState(s);
-      await this.notifyWorker('alert', s);
-      await this.state.storage.setAlarm(now + EMERGENCY_AFTER_MS);
-      return;
-    }
-    if (s.stage === 2 && silentMs >= PROMPT_AFTER_MS + ALERT_AFTER_MS + EMERGENCY_AFTER_MS) {
-      // Stage 3 — emergency
-      s.stage = 3;
-      s.fired_at = now;
-      await this.setState(s);
-      await this.notifyWorker('emergency', s);
-      // No further alarm — waits for officer ack or supervisor stop
+      if (s.stage === 0 && silentMs >= PROMPT_AFTER_MS) {
+        // Stage 1 — prompt
+        s.stage = 1;
+        s.fired_at = now;
+        await this.setState(s);
+        await this.notifyWorker('prompt', s);
+        await this.state.storage.setAlarm(now + ALERT_AFTER_MS);
+        return;
+      }
+      if (s.stage === 1 && silentMs >= PROMPT_AFTER_MS + ALERT_AFTER_MS) {
+        // Stage 2 — supervisor alert
+        s.stage = 2;
+        s.fired_at = now;
+        await this.setState(s);
+        await this.notifyWorker('alert', s);
+        await this.state.storage.setAlarm(now + EMERGENCY_AFTER_MS);
+        return;
+      }
+      if (s.stage === 2 && silentMs >= PROMPT_AFTER_MS + ALERT_AFTER_MS + EMERGENCY_AFTER_MS) {
+        // Stage 3 — emergency
+        s.stage = 3;
+        s.fired_at = now;
+        await this.setState(s);
+        await this.notifyWorker('emergency', s);
+        // No further alarm — waits for officer ack or supervisor stop
+      }
+    } catch (err) {
+      console.error('[WelfareWatchDO.alarm] unhandled error', err);
+      // Fallback re-arm: keep the escalation chain alive after a transient
+      // failure. Only while we're below emergency — past stage 3 there's
+      // no further stage to fire and we'd loop forever.
+      try {
+        const s = await this.getState();
+        if (s && s.stage < 3) {
+          await this.state.storage.setAlarm(Date.now() + 60_000);
+        }
+      } catch { /* nothing more to do */ }
     }
   }
 
-  // Calls back into the Worker via an internal RPC. The Worker
-  // listens on /__welfare-fire (auth-gated by JWT_SECRET) and
-  // routes the broadcast/sendToUser side-effects.
+  // Calls back into the Worker via an internal RPC. The Worker listens
+  // on /__welfare-fire, auth-gated by a token DERIVED from JWT_SECRET
+  // (doCallbackToken) — the raw signing key never travels in a header.
+  //
+  // Hardening (2026-06-20): the previous empty catch dropped JWT_SECRET drift,
+  // missing /__welfare-fire route, and Cloudflare-edge connectivity failures
+  // on the floor — no log, dispatcher never gets the page, we don't notice
+  // until an officer is harmed. Logging gives ops something to grep on
+  // ('[WelfareWatchDO]') instead of silent dispatch failures.
   private async notifyWorker(stage: 'prompt' | 'alert' | 'emergency', s: WatchState): Promise<void> {
     try {
-      await fetch('https://api.rmpgutah.us/__welfare-fire', {
+      const res = await fetch('https://api.rmpgutah.us/__welfare-fire', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-DO-Secret': this.env.JWT_SECRET,
+          'X-DO-Secret': await doCallbackToken(this.env.JWT_SECRET),
         },
         body: JSON.stringify({ stage, watch: s }),
       });
-    } catch {
-      // best-effort — alarm will retry on next stage transition
+      if (!res.ok) {
+        console.error('[WelfareWatchDO] notifyWorker non-2xx (escalation may be lost)', {
+          stage, officerId: s.user_id, status: res.status,
+        });
+      }
+    } catch (err) {
+      console.error('[WelfareWatchDO] notifyWorker failed (escalation may be lost)', {
+        stage, officerId: s.user_id, err: (err as Error)?.message,
+      });
     }
   }
 }

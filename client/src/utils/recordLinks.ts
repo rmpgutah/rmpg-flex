@@ -25,6 +25,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { RecordEntityType } from '../types';
+import { recordTypeLabel } from './recordTypeLabel';
 
 export interface EntityMeta {
   /** Singular human label shown in the picker + type badge ("Person"). */
@@ -40,11 +41,11 @@ export interface EntityMeta {
 export const ENTITY_META: Record<RecordEntityType, EntityMeta> = {
   person: {
     label: 'Person', plural: 'People', icon: UserCircle,
-    color: { text: 'text-gray-300', bg: 'bg-gray-900/30', border: 'border-gray-700/50' },
+    color: { text: 'text-rmpg-300', bg: 'bg-surface-sunken/30', border: 'border-border-default/50' },
   },
   vehicle: {
     label: 'Vehicle', plural: 'Vehicles', icon: Car,
-    color: { text: 'text-gray-300', bg: 'bg-[#1f1f1f]', border: 'border-[#2e2e2e]' },
+    color: { text: 'text-rmpg-300', bg: 'bg-[#1f1f1f]', border: 'border-[#2e2e2e]' },
   },
   property: {
     label: 'Property', plural: 'Property', icon: Building2,
@@ -92,9 +93,12 @@ export function getRecordTypeColor(type: string) {
   return getEntityMeta(type).color;
 }
 
-/** Title-case singular label for a type ("incident" → "Incident"). */
+/** Title-case singular label for a type ("incident" → "Incident").
+ *  Delegates to the shared mandatory formatter so the icon-registry's 8
+ *  linkable types and the broader record-type vocabulary never diverge, and
+ *  any type (even one with no ENTITY_META entry) still renders plain. */
 export function getEntityLabel(type: string): string {
-  return getEntityMeta(type).label;
+  return recordTypeLabel(type);
 }
 
 // ── Relationship vocabulary ──────────────────────────────────
@@ -132,4 +136,29 @@ export function humanizeRelationship(code: string | null | undefined): string {
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ') || 'Associated';
+}
+
+// Role-style relationships read naturally as "<source> — <Rel> of <target>"
+// (Owner of, Resident of, Witness of…). Symmetric/associative ones don't take
+// "of", so they fall back to a neutral em-dash form. Used for the Connections
+// graph edge tooltip — a full plain-English description of the link.
+const ROLE_OF_RELATIONSHIPS = new Set([
+  'owner', 'resident', 'employee', 'registered_keeper',
+  'witness', 'suspect', 'victim', 'involved_party',
+]);
+
+/** Plain-English one-line description of a link, e.g.
+ *  "John Smith — Owner of 325 S Melrose Cir". Direction is source → target. */
+export function linkSentence(
+  sourceLabel: string,
+  relationshipCodeOrLabel: string | null | undefined,
+  targetLabel: string,
+): string {
+  const src = (sourceLabel || 'Record').trim();
+  const tgt = (targetLabel || 'Record').trim();
+  const rel = humanizeRelationship(relationshipCodeOrLabel);
+  const code = String(relationshipCodeOrLabel || '').trim().toLowerCase().replace(/\s+/g, '_');
+  return ROLE_OF_RELATIONSHIPS.has(code)
+    ? `${src} — ${rel} of ${tgt}`
+    : `${src} — ${rel} — ${tgt}`;
 }

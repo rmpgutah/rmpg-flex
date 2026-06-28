@@ -23,10 +23,10 @@ function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBadgeProps) {
   const severity = typeof warrantFlag === 'object' ? warrantFlag.severity : 'unknown';
 
   const severityColors: Record<string, string> = {
-    felony: 'bg-red-600 text-white',
-    misdemeanor: 'bg-amber-600 text-white',
+    felony: 'bg-red-600 text-rmpg-100',
+    misdemeanor: 'bg-amber-600 text-rmpg-100',
     infraction: 'bg-yellow-500 text-yellow-950',
-    unknown: 'bg-red-500 text-white',
+    unknown: 'bg-red-500 text-rmpg-100',
   };
 
   const sizeClasses = size === 'sm' ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-1';

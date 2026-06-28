@@ -302,3 +302,48 @@ describe('PdfReviewModal', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// emailBlob unit tests — vi.mock intercepts the ESM live binding reliably.
+// vi.hoisted() ensures the mock fn is initialised before the hoisted vi.mock
+// factory runs (avoids "Cannot access before initialization" TDZ error).
+// ---------------------------------------------------------------------------
+const { mockApiPostForm } = vi.hoisted(() => {
+  return { mockApiPostForm: vi.fn() };
+});
+
+vi.mock('../../hooks/useApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../hooks/useApi')>();
+  return { ...actual, apiPostForm: mockApiPostForm };
+});
+
+import { emailBlob } from '../../utils/emailPdf';
+
+describe('emailBlob', () => {
+  beforeEach(() => {
+    mockApiPostForm.mockReset();
+    mockApiPostForm.mockResolvedValue({});
+  });
+
+  it('posts to /pdf-engine/email via apiPostForm with record fields', async () => {
+    const blob = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+    await emailBlob(blob, 'FI-9', ['a@x.com'], ['b@y.com'], 'Subj', '<p>hi</p>', 'case', 42);
+
+    expect(mockApiPostForm).toHaveBeenCalledTimes(1);
+    const [endpoint, fd] = mockApiPostForm.mock.calls[0];
+    expect(endpoint).toBe('/pdf-engine/email');
+    expect(fd.get('form_type')).toBe('FI-9');
+    expect(fd.getAll('to')).toEqual(['a@x.com']);
+    expect(fd.get('record_type')).toBe('case');
+    expect(fd.get('record_id')).toBe('42');
+    expect(fd.get('pdf')).toBeInstanceOf(Blob);
+  });
+
+  it('omits record fields when not provided', async () => {
+    const blob = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+    await emailBlob(blob, 'FI-9', ['a@x.com'], [], 'Subj', 'hi');
+    const fd = mockApiPostForm.mock.calls[0][1];
+    expect(fd.get('record_type')).toBeNull();
+    expect(fd.get('record_id')).toBeNull();
+  });
+});

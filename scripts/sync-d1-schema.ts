@@ -23,7 +23,7 @@ console.log(`Found ${addCols.length} addCol calls across ${new Set(addCols.map(a
 
 // Query D1 using --json flag
 function d1Query(sql: string): any[] {
-  const escaped = sql.replace(/"/g, '\\"');
+  const escaped = sql.replace(/\\/g, '\\\\').replace(/"/g, '\\"'); // backslash first, then quotes
   const cmd = `npx wrangler d1 execute rmpg-flex --remote --json --command "${escaped}"`;
   try {
     const output = execSync(cmd, { encoding: 'utf-8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] });

@@ -319,7 +319,7 @@ export default function WebIntelPanel() {
                   className="w-full flex items-center gap-2 px-2 py-1 text-left hover:bg-rmpg-700/20 rounded-sm transition-colors"
                 >
                   <Search className="w-2.5 h-2.5 text-rmpg-500 shrink-0" />
-                  <span className="text-[11px] text-rmpg-200 truncate flex-1">{h.query}</span>
+                  <span className="text-[11px] text-rmpg-200 min-w-0 truncate flex-1">{h.query}</span>
                   <span className="text-[9px] text-rmpg-500 font-mono shrink-0">{h.result_count} results</span>
                   <span className="text-[9px] text-rmpg-600 font-mono shrink-0">{relativeTime(h.created_at)}</span>
                 </button>

@@ -9,6 +9,7 @@ import {
   RELATIONSHIP_OPTIONS,
   relationshipCode,
   DEFAULT_RELATIONSHIP_CODE,
+  getEntityLabel,
 } from '../utils/recordLinks';
 
 import RichTextArea from './RichTextArea';
@@ -159,7 +160,7 @@ export default function LinkRecordModal({
 
       {/* Search Input */}
       <div>
-        <label className={labelClass}>Search {targetType}</label>
+        <label htmlFor="ff-linkrecordmodal-0" className={labelClass}>Search {targetType}</label>
         <div className="relative">
           <Search
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-rmpg-500"
@@ -209,7 +210,7 @@ export default function LinkRecordModal({
                 )}
                 <span className="truncate">{result.label || result.name || result.id}</span>
                 <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-rmpg-500 bg-rmpg-700 px-1.5 py-0.5 rounded-sm">
-                  {result.record_type || targetType}
+                  {getEntityLabel(result.record_type || targetType)}
                 </span>
               </div>
             );
@@ -241,7 +242,7 @@ export default function LinkRecordModal({
 
       {/* Relationship Dropdown */}
       <div>
-        <label className={labelClass}>Relationship</label>
+        <label htmlFor="ff-linkrecordmodal-1" className={labelClass}>Relationship</label>
         <select id="ff-linkrecordmodal-1"
           className="input-dark w-full text-xs"
           value={relationship}

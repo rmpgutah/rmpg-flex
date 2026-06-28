@@ -29,7 +29,21 @@ export async function serveDownloadPage(bucket: R2Bucket, c: any) {
     c.header('Content-Type', 'text/html; charset=utf-8');
     return c.body(data);
   }
-  return c.text('Download page not found', 404);
+  c.header('Content-Type', 'text/html; charset=utf-8');
+  return c.html(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>RMPG Flex — Downloads</title>
+<style>
+  body{background:#0a0a0a;color:#d4a017;font-family:monospace;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+  .card{background:#141414;border:1px solid #222;padding:2rem;max-width:480px;text-align:center}
+  h1{font-size:1.2rem;margin:0 0 1rem}p{color:#888;font-size:.9rem}
+  a{color:#d4a017}
+</style></head>
+<body><div class="card">
+  <h1>RMPG FLEX — DOWNLOADS</h1>
+  <p>The download page is not yet available. Contact your administrator for installer access.</p>
+  <p><a href="/">Return to application</a></p>
+</div></body></html>`, 404);
 }
 
 export async function serveRmpgSeal(bucket: R2Bucket, c: any) {
@@ -225,7 +239,7 @@ downloads.get('/downloads/check', async (c) => {
       latestVersion: target.version,
       mandatory: false,
       releaseDate: target.releaseDate,
-      downloadUrl: `/downloads/${target.filename}`,
+      downloadUrl: `https://api.rmpgutah.us/downloads/${target.filename}`,
       downloadSize: fmtBytes(target.bytes),
       downloadBytes: target.bytes,
     });

@@ -8,6 +8,31 @@ import type { CallForService, Unit, CallNote } from '../../../types';
 /**
  * Map a raw calls_for_service DB row to a CallForService frontend object.
  */
+/**
+ * Merge a partial call update into an existing CallForService, preserving
+ * fields the update source doesn't carry (e.g. ext-table PSO/process fields
+ * absent from the list endpoint or WS broadcasts). Only keys present in the
+ * raw source row overwrite; absent keys keep the prior value.
+ */
+export function mergeCallUpdate(prev: CallForService, rawRow: any): CallForService {
+  const incoming = mapDbCall(rawRow);
+  const sourceKeys = new Set(Object.keys(rawRow || {}));
+  const merged = { ...prev };
+  for (const key of Object.keys(incoming) as (keyof CallForService)[]) {
+    if (sourceKeys.has(key) || sourceKeys.has(fieldSourceMap[key] ?? '')) {
+      (merged as any)[key] = incoming[key];
+    }
+  }
+  if (sourceKeys.has('status')) merged.status = incoming.status;
+  if (sourceKeys.has('updated_at')) merged.updated_at = incoming.updated_at;
+  return merged;
+}
+
+const fieldSourceMap: Record<string, string> = {
+  location: 'location_address',
+  created_by: 'dispatcher_name',
+};
+
 export function mapDbCall(row: any): CallForService {
   // Notes: backend stores as single string; we parse or wrap
   let notes: CallNote[] = [];
@@ -64,6 +89,13 @@ export function mapDbCall(row: any): CallForService {
     hazard_notes: row.hazard_notes || undefined,
     client_id: row.client_id ? String(row.client_id) : undefined,
     client_name: row.client_name || undefined,
+    // Authoritative contracting-client fields (from the clients JOIN) — used by
+    // the PSO Notice of Communication so the addressee + service type come from
+    // the client record rather than the (inconsistent) call-level caller block.
+    client_contact_name: row.client_contact_name || undefined,
+    client_phone: row.client_phone || undefined,
+    client_address: row.client_address || undefined,
+    client_industry: row.client_industry || undefined,
     description: row.description || '',
     source: row.source || 'phone',
     assigned_units: assignedUnits,
@@ -139,9 +171,13 @@ export function mapDbCall(row: any): CallForService {
     process_service_type: row.process_service_type || undefined,
     process_served_to: row.process_served_to || undefined,
     process_served_address: row.process_served_address || undefined,
-    process_attempts: row.process_attempts ?? undefined,
+    // Explicit Number() conversion guards against SQLite returning "0" as a string,
+    // which would be truthy in JS comparisons and break the "No process service
+    // details entered yet" conditional.
+    process_attempts: row.process_attempts != null ? Number(row.process_attempts) : undefined,
     process_served_at: row.process_served_at || undefined,
     process_service_result: row.process_service_result || undefined,
+    court_name: row.court_name || undefined,
     // Damage
     damage_estimate: row.damage_estimate ?? undefined,
     damage_description: row.damage_description || undefined,
@@ -192,7 +228,24 @@ export function mapDbUnit(row: any): Unit {
     latitude: row.latitude,
     longitude: row.longitude,
     vehicle: row.vehicle || row.vehicle_id || undefined,
+    // Setup fields. capabilities is a JSON-text column — parse defensively to
+    // an array so the edit modal can pre-fill the multi-select.
+    capabilities: (() => {
+      const raw = row.capabilities;
+      if (Array.isArray(raw)) return raw.map(String);
+      if (typeof raw === 'string' && raw.trim()) {
+        try { const p = JSON.parse(raw); return Array.isArray(p) ? p.map(String) : []; } catch { return []; }
+      }
+      return [];
+    })(),
+    assigned_beat: row.assigned_beat || undefined,
+    audio_mode: row.audio_mode || undefined,
     last_status_change: row.last_status_change || '',
+    // Spillman EMERGENCY overlay — drives the flashing-red Status Monitor row
+    // + map treatment. Normalized to a 0/1 number so isEmergency() is simple.
+    emergency_active: row.emergency_active ? 1 : 0,
+    emergency_call_id: row.emergency_call_id ?? null,
+    emergency_since: row.emergency_since ?? null,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
   };
