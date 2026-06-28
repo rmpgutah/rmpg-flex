@@ -1,5 +1,5 @@
 // ============================================================
-// Skip Tracker 3.5 — Shared Types & Interfaces
+// Skip Tracer 3.5 — Shared Types & Interfaces
 // ============================================================
 // Dossier builder system: multi-source skip tracing with
 // unified profile resolution. Imported by all source adapters,
@@ -208,7 +208,7 @@ export type SourceCategory = 'people' | 'court' | 'property' | 'business' | 'reg
 
 export interface SourceResult {
   source: string;
-  sourceType: SourceCategory;
+  sourceType: SkipTracerSourceCategory;
   confidence: number;
   fetchedAt: string;
   rawResultCount?: number;
@@ -250,7 +250,7 @@ export interface DataSource {
   /** Human-readable name shown in UI */
   displayName: string;
   /** Category for grouping in the dossier */
-  category: SourceCategory;
+  category: SkipTracerSourceCategory;
   /** Estimated cost per lookup in USD (0 for free sources) */
   costPerLookup: number;
   /** Priority order — lower numbers searched first */
