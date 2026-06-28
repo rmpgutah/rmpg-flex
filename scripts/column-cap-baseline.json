@@ -1,0 +1,7 @@
+{
+  "note": "Auto-managed by scripts/check-column-cap.js. Captures projected column counts for tables at or above the threshold. To regenerate after an intentional schema change, run COLUMN_CAP_BASELINE_UPDATE=1 node scripts/check-column-cap.js.",
+  "threshold": 90,
+  "tables": {
+    "calls_for_service": 110
+  }
+}

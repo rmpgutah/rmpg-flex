@@ -1817,6 +1817,7 @@ callActions.patch('/:id/pin', requireRole('admin', 'manager', 'supervisor', 'dis
 
     await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
     await execute(db, 'UPDATE calls_for_service_ext SET pinned = ? WHERE id = ?', pinned, id);
+    await execute(db, 'UPDATE calls_for_service SET pinned = ? WHERE id = ?', pinned, id);
     return c.json({ success: true, id, pinned: Boolean(pinned) });
   } catch (err) {
     log.error('[dispatch] pin error', {}, err);
