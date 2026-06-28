@@ -9,6 +9,7 @@ import { useMemo } from 'react';
 import { Navigation, MapPin, Clock, Star, PlusCircle, Plus } from 'lucide-react';
 import type { Unit } from '../types';
 import { rankUnits, type RankedUnit } from '../utils/unitRecommendation';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface UnitRecommendationPanelProps {
   units: Unit[];
@@ -85,7 +86,7 @@ export default function UnitRecommendationPanel({
               className={`unit-rec-item ${isTopPick ? 'unit-rec-top-pick' : ''}`}
             >
               {/* Rank badge */}
-              <div className="unit-rec-rank" style={{ color: isTopPick ? '#4ade80' : '#666666' }}>
+              <div className="unit-rec-rank" style={{ color: isTopPick ? '#4ade80' : 'var(--rmpg-500)' }}>
                 {isTopPick ? (
                   <Star style={{ width: 10, height: 10, fill: '#4ade80' }} />
                 ) : (
@@ -101,7 +102,7 @@ export default function UnitRecommendationPanel({
                 />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-white font-mono">
+                    <span className="text-[11px] font-bold text-rmpg-100 font-mono">
                       {item.unit.call_sign}
                     </span>
                     {item.unit.status !== 'available' && (
@@ -109,7 +110,7 @@ export default function UnitRecommendationPanel({
                         className="text-[8px] uppercase font-bold px-1"
                         style={{ color: statusColor }}
                       >
-                        {item.unit.status === 'onscene' ? 'ON SCN' : item.unit.status.replace(/_/g, ' ')}
+                        {item.unit.status === 'onscene' ? 'ON SCN' : toDisplayLabel(item.unit.status)}
                       </span>
                     )}
                   </div>

@@ -113,7 +113,7 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">
                 <span className="text-red-400 font-bold font-mono">{bolo.bolo_number}</span>
-                <span className="text-white font-semibold truncate">{bolo.title}</span>
+                <span className="text-rmpg-100 font-semibold truncate">{bolo.title}</span>
                 {/* 72: View BOLO button with hover bg and transition */}
                 {onViewBolo && (
                   <button type="button"

@@ -2,6 +2,8 @@
 import { useRef, useCallback, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { getMatrix, type MatrixResult } from '../utils/mapboxServices';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 export interface UnitEta {
   unitId: number;
@@ -31,8 +33,8 @@ export function useMapboxMatrix(map: mapboxgl.Map | null) {
     if (!map) return;
     if (routeSourceRef.current) {
       try {
-        if (map.getLayer('rmpg-matrix-route')) map.removeLayer('rmpg-matrix-route');
-        if (map.getSource(routeSourceRef.current)) map.removeSource(routeSourceRef.current);
+        safeRemoveLayer(map, 'rmpg-matrix-route');
+        safeRemoveSource(map, routeSourceRef.current);
       } catch { /* ignore */ }
     }
     routeSourceRef.current = null;
@@ -95,16 +97,20 @@ export function useMapboxMatrix(map: mapboxgl.Map | null) {
             if (geom) {
               const srcId = 'rmpg-matrix-route';
               routeSourceRef.current = srcId;
-              map.addSource(srcId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: geom } });
-              map.addLayer({
-                id: 'rmpg-matrix-route',
-                type: 'line',
-                source: srcId,
-                paint: {
-                  'line-color': '#d4a017',
-                  'line-width': 3,
-                  'line-opacity': 0.85,
-                },
+              const m = map;
+              // Guard on STYLE readiness — addSource throws otherwise.
+              whenStyleReady(m, () => {
+                m.addSource(srcId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: geom } });
+                m.addLayer({
+                  id: 'rmpg-matrix-route',
+                  type: 'line',
+                  source: srcId,
+                  paint: {
+                    'line-color': '#d4a017',
+                    'line-width': 3,
+                    'line-opacity': 0.85,
+                  },
+                });
               });
             }
           } catch { /* route rendering is non-critical */ }

@@ -35,8 +35,8 @@ export const SPACING = {
   pageMarginLeft:    10,
   pageMarginRight:   10,
   headerBlockHeight: 22,
-  sectionGap:        3,
-  fieldRowHeight:    8,
+  sectionGap:        4,
+  fieldRowHeight:    9,
   cellPaddingY:      2,
   cellPaddingX:      3,
 } as const;

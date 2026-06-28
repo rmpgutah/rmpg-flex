@@ -151,9 +151,12 @@ export async function fetchPdfSignature(
   caseNumber: string,
   payloadHash: string,
 ): Promise<PdfSignatureBundle | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
   try {
     const res = await fetch('/api/pdf-tools/sign-payload', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         // Auth header is set globally by the apiFetch interceptor in
@@ -174,16 +177,21 @@ export async function fetchPdfSignature(
     };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-// Best-effort auth header lookup — mirrors useApi's strategy
-// (token persisted in localStorage under 'authToken'). Kept
-// inline here to avoid a circular import with hooks/useApi.
+// Best-effort auth header lookup — mirrors useApi's strategy.
+// Token is persisted in localStorage under 'rmpg_token' (NOT 'authToken'
+// — that was the bug here: every other client module uses 'rmpg_token',
+// so reading the wrong key produced an empty Authorization header and
+// the server returned 401 on /api/pdf-tools/sign-payload). Kept inline
+// to avoid a circular import with hooks/useApi.
 function getAuthHeader(): string {
   try {
     if (typeof localStorage === 'undefined') return '';
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('rmpg_token');
     return token ? `Bearer ${token}` : '';
   } catch {
     return '';
