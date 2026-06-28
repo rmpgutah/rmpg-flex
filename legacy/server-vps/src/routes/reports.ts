@@ -5,6 +5,7 @@ import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
 import { localNow, localToday } from '../utils/timeUtils';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -988,7 +989,12 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const params: any[] = [];
 
     if (startDate && endDate) {
-      dateClause = `b.recorded_at >= ? AND b.recorded_at <= ?`;
+      // Wrap both sides in datetime() so ISO-UTC and localtime-format
+      // rows compare correctly against the caller's bounds. Without the
+      // cast, a row with ISO-UTC "2026-04-23T23:59:59.000Z" sorts above
+      // localtime-format "2026-04-23 23:59:59" (ASCII 'T' > space) and
+      // gets wrongly excluded at day-boundary queries.
+      dateClause = `datetime(b.recorded_at) >= datetime(?) AND datetime(b.recorded_at) <= datetime(?)`;
       params.push(startDate, endDate);
     } else {
       dateClause = `b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')`;
@@ -1005,17 +1011,24 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       params.push(parseInt(officerId));
     }
 
+    // LIMIT was 1000 — truncated long-period reports to the earliest N points,
+    // which usually means "the officer parked at start-of-shift" when N is small
+    // relative to total. A multi-week query can easily hit 50k+ rows; we accept
+    // that cost and downsample in JS below if needed. Bumped to 100000 which
+    // covers a full quarter of continuous 10-second breadcrumbs.
+    // Source column defaults to 'unknown' — the real device/ingestion source
+    // is stored in gps_source. Prefer that, falling back through source.
     const rows = db.prepare(`
       SELECT b.id, b.unit_id, b.officer_id, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.call_sign, b.officer_name,
         b.badge_number, b.current_call_id, b.current_call_number,
         b.current_call_type, b.road_name, b.nearest_intersection,
-        b.recorded_at, COALESCE(b.source, 'unknown') as source
+        b.recorded_at,
+        COALESCE(NULLIF(b.gps_source, ''), NULLIF(b.source, ''), 'unknown') AS source
       FROM gps_breadcrumbs b
       WHERE ${dateClause} ${whereExtra}
       ORDER BY b.unit_id, b.recorded_at ASC
-    
-      LIMIT 1000
+      LIMIT 100000
     `).all(...params) as any[];
 
     // ── Constants for filtering ─────────────────────────
@@ -1295,13 +1308,21 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       });
     }
 
-    // ── Optional reverse geocoding (sampled) ─────────────
-    // Only geocode every point > 100m from last geocoded point,
-    // capped at 50 calls per report request.
-    if (includeGeocode) {
+    // ── Optional reverse geocoding (sampled + time-budgeted) ────
+    // OSM Nominatim enforces 1 req/sec; 50 sequential calls blows the 30s
+    // nginx/node request timeout on long-period reports. Respect a 15s wall
+    // budget, cap per-request calls, AND skip entirely when the raw point
+    // count is large — large reports are for route audit, not per-point
+    // address annotation. Points keep whatever road_name was stored at
+    // ingestion time (gps_breadcrumbs.road_name) as a fallback.
+    const totalPoints = trails.reduce((s, t) => s + t.points.length, 0);
+    const skipGeocodeLarge = totalPoints > 2000;
+    if (includeGeocode && !skipGeocodeLarge) {
       let geocodeCount = 0;
-      const MAX_GEOCODE_CALLS = 50;
-      const GEOCODE_MIN_DISTANCE = 100; // meters between geocoded points
+      const MAX_GEOCODE_CALLS = 25;
+      const GEOCODE_MIN_DISTANCE = 200; // meters between geocoded points (was 100)
+      const GEOCODE_BUDGET_MS = 15_000;
+      const geocodeStart = Date.now();
 
       for (const trail of trails) {
         let lastGeocodedLat = 0;
@@ -1311,24 +1332,28 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
         let lastAddress: string | null = null;
 
         for (const pt of trail.points) {
+          if (Date.now() - geocodeStart > GEOCODE_BUDGET_MS) break;
           const dist = lastGeocodedLat ? haversineM(lastGeocodedLat, lastGeocodedLng, pt.lat, pt.lng) : Infinity;
 
           if (dist > GEOCODE_MIN_DISTANCE && geocodeCount < MAX_GEOCODE_CALLS) {
-            const result = await reverseGeocodeDetailed(pt.lat, pt.lng);
-            if (result) {
-              lastRoadName = result.road_name;
-              lastIntersection = result.nearest_intersection;
-              lastAddress = result.formatted_address;
-            }
+            try {
+              const result = await reverseGeocodeDetailed(pt.lat, pt.lng);
+              if (result) {
+                lastRoadName = result.road_name;
+                lastIntersection = result.nearest_intersection;
+                lastAddress = result.formatted_address;
+              }
+            } catch { /* non-fatal, carry previous values */ }
             lastGeocodedLat = pt.lat;
             lastGeocodedLng = pt.lng;
             geocodeCount++;
           }
 
-          pt.road_name = lastRoadName;
-          pt.nearest_intersection = lastIntersection;
+          pt.road_name = lastRoadName || pt.road_name;
+          pt.nearest_intersection = lastIntersection || pt.nearest_intersection;
           pt.formatted_address = lastAddress;
         }
+        if (Date.now() - geocodeStart > GEOCODE_BUDGET_MS) break;
       }
     }
 
@@ -1361,6 +1386,39 @@ router.get('/daily-reports', requireRole('admin', 'manager', 'supervisor'), (req
   } catch (error: any) {
     console.error('List daily reports error:', error);
     res.status(500).json({ error: 'Failed to list daily reports', code: 'LIST_DAILY_REPORTS_ERROR' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/reports/daily-reports/by-month — Grouped month → day tree
+// ─────────────────────────────────────────────────────────────
+// Returns reports pre-grouped as:
+//   { "2026-04": [ { date, filename, size, generated_at }, ... ],
+//     "2026-03": [ ... ] }
+// Sorted newest-month-first, newest-day-first within each month.
+// Powers the Fleet "Daily Reports" archive browser without making
+// the client re-parse filenames client-side.
+router.get('/daily-reports/by-month', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const reports = listDailyReports();
+    const byMonth: Record<string, typeof reports> = {};
+    for (const r of reports) {
+      // Each report has `date` in YYYY-MM-DD form (see listDailyReports).
+      const monthKey = r.date?.slice(0, 7) || 'unknown';
+      if (!byMonth[monthKey]) byMonth[monthKey] = [];
+      byMonth[monthKey].push(r);
+    }
+    // Sort each month's days newest-first
+    for (const k of Object.keys(byMonth)) {
+      byMonth[k].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    }
+    // Sort months newest-first in the response key order
+    const sortedMonths = Object.keys(byMonth).sort((a, b) => b.localeCompare(a));
+    const grouped = sortedMonths.map(month => ({ month, days: byMonth[month] }));
+    res.json({ months: grouped, total_reports: reports.length });
+  } catch (error: any) {
+    console.error('List daily reports (by month) error:', error);
+    res.status(500).json({ error: 'Failed to list daily reports', code: 'LIST_DAILY_REPORTS_BY_MONTH_ERROR' });
   }
 });
 
@@ -2586,6 +2644,93 @@ router.get('/officer-feed/:officerId', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Officer feed error:', error);
     res.status(500).json({ error: 'Failed to get officer feed', code: 'OFFICER_FEED_ERROR' });
+  }
+});
+
+// ── Dashboard Weekly Trend ──────────────────────────────────────────
+router.get('/dashboard-weekly-trend', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const dailyTrend = db.prepare(`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-7 days')
+      GROUP BY DATE(created_at) ORDER BY date ASC
+    `).all();
+
+    const yesterday = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now', '-1 day')
+    `).get() as any;
+
+    const lastWeek = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now', '-7 days')
+    `).get() as any;
+
+    const today = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now')
+    `).get() as any;
+
+    res.json({
+      dailyTrend,
+      today: today.count,
+      yesterday: yesterday.count,
+      lastWeekSameDay: lastWeek.count,
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Dashboard weekly trend error');
+    res.status(500).json({ error: 'Failed to get weekly trend', code: 'DASHBOARD_WEEKLY_TREND_ERROR' });
+  }
+});
+
+// ── Dashboard Calls by Type ─────────────────────────────────────────
+router.get('/dashboard-calls-by-type', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const byType = db.prepare(`
+      SELECT COALESCE(incident_type, call_type, 'Unknown') as type, COUNT(*) as count
+      FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now')
+      GROUP BY type ORDER BY count DESC LIMIT 10
+    `).all();
+
+    res.json(byType);
+  } catch (error: any) {
+    logger.error({ err: error }, 'Dashboard calls by type error');
+    res.status(500).json({ error: 'Failed to get calls by type', code: 'DASHBOARD_CALLS_BY_TYPE_ERROR' });
+  }
+});
+
+// ── Dashboard Unit Status ───────────────────────────────────────────
+router.get('/dashboard-unit-status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM units
+      GROUP BY status ORDER BY count DESC
+    `).all();
+
+    const activeUnits = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.current_call_id,
+        us.full_name as officer_name, us.badge_number,
+        c.call_number, c.incident_type as call_type, c.location as call_location
+      FROM units u
+      LEFT JOIN users us ON u.officer_id = us.id
+      LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+      WHERE u.status != 'off_duty'
+      ORDER BY u.status, u.call_sign
+      LIMIT 50
+    `).all();
+
+    res.json({ statusCounts, activeUnits });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Dashboard unit status error');
+    res.status(500).json({ error: 'Failed to get unit status', code: 'DASHBOARD_UNIT_STATUS_ERROR' });
   }
 });
 

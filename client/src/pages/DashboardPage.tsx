@@ -9,7 +9,7 @@ import {
 import { useGeolocation } from './mobile/hooks/useGeolocation';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  AreaChart, Area, PieChart, Pie,
+  AreaChart, Area, PieChart, Pie, Legend,
 } from 'recharts';
 import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
 import { humanizePriority } from '../utils/statusLabels';
@@ -70,6 +70,8 @@ interface DashboardApiResponse {
   avgResponseMinutes: number | null;
   callsByPriority: { priority: string; count: number }[];
   callsByStatus: { status: string; count: number }[];
+  /** Legacy worker emits this key name; client accepts either. */
+  by_status?: { status: string; count: number }[];
   recentActivity: unknown[];
   officersOnDuty: unknown[];
   callsByHour: { hour: string; count: number }[];
@@ -128,6 +130,57 @@ interface BoloApiEntry {
   created_at: string;
   updated_at?: string;
 }
+
+interface WeeklyTrendData {
+  dailyTrend: { date: string; count: number }[];
+  today: number;
+  yesterday: number;
+  lastWeekSameDay: number;
+}
+
+interface CallsByTypeEntry {
+  type: string;
+  count: number;
+}
+
+interface UnitStatusEntry {
+  id: number;
+  call_sign: string;
+  status: string;
+  current_call_id: number | null;
+  officer_name: string | null;
+  badge_number: string | null;
+  call_number: string | null;
+  call_type: string | null;
+  call_location: string | null;
+}
+
+interface UnitStatusData {
+  statusCounts: { status: string; count: number }[];
+  activeUnits: UnitStatusEntry[];
+}
+
+// ─── Status & Chart Helpers ──────────────────────────────
+
+const UNIT_STATUS_COLORS: Record<string, string> = {
+  available: '#22c55e', dispatched: '#f59e0b', enroute: '#3b82f6',
+  onscene: '#ef4444', busy: '#a855f7', break: '#888888', off_duty: '#444444',
+};
+
+const UNIT_STATUS_LABELS: Record<string, string> = {
+  available: 'Available', dispatched: 'Dispatched', enroute: 'En Route',
+  onscene: 'On Scene', busy: 'Busy', break: 'Break', off_duty: 'Off Duty',
+};
+
+const CHART_TOOLTIP_STYLE = {
+  backgroundColor: '#0a0a0a',
+  border: '1px solid #3a3a3a',
+  borderRadius: '2px',
+  color: '#cccccc',
+  fontSize: '11px',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+  padding: '8px 12px',
+};
 
 // ─── Mapper Functions ────────────────────────────────────
 
@@ -373,7 +426,65 @@ function pollFreshnessColor(p: {
   return 'text-amber-400';                       // overdue — at least one cycle missed
 }
 
+// ─── Calls-by-status pipeline config ─────────────────────
+// The CAD call lifecycle, in flow order. `key` matches the status string the
+// dispatch backend stores on calls_for_service (see dispatch/aggregates.ts).
+// Tune labels/colors here if RMPG's status vocabulary changes — anything the
+// backend returns that isn't listed falls through to an "Other" bucket so no
+// data is silently dropped.
+const STATUS_PIPELINE: { key: string; label: string; color: string }[] = [
+  { key: 'pending', label: 'Pending', color: '#f59e0b' },
+  { key: 'dispatched', label: 'Dispatched', color: '#888888' },
+  { key: 'enroute', label: 'En Route', color: '#3b82f6' },
+  { key: 'onscene', label: 'On Scene', color: '#a855f7' },
+  { key: 'cleared', label: 'Cleared', color: '#22c55e' },
+];
+
+// Build a contiguous N-day series (oldest→newest) from sparse daily rows,
+// zero-filling days with no calls so the trend line never has gaps.
+function buildVolumeSeries(rows: { date: string; count: number }[], days: number) {
+  const map = new Map(rows.map((r) => [r.date, r.count]));
+  const out: { date: string; label: string; count: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    out.push({
+      date: iso,
+      label: d.toLocaleDateString('en-US', { weekday: 'short' }),
+      count: map.get(iso) ?? 0,
+    });
+  }
+  return out;
+}
+
+// Status-dot color for a live unit's status (dispatch_units.status enum).
+function unitStatusColor(status: string | undefined): string {
+  switch (status) {
+    case 'available': return '#22c55e';
+    case 'dispatched': return '#888888';
+    case 'enroute': return '#3b82f6';
+    case 'onscene': return '#a855f7';
+    case 'off_duty': return '#555555';
+    default: return '#666666';
+  }
+}
+
 // ─── Component ───────────────────────────────────────────
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
@@ -405,11 +516,6 @@ export default function DashboardPage() {
   }, []);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
-
-  const { openMenu } = useContextMenu();
-  const m = useMenuActions();
-
-  const refreshAll = () => fetchDashboardData({ silent: false });
 
   // Role gates
   // canCreate: any operational role may create records (calls, incidents, citations)
@@ -508,6 +614,7 @@ export default function DashboardPage() {
       ]);
 
       setStats(mapDashboardStats(dashboardRaw));
+      setCallsByStatus(dashboardRaw.callsByStatus ?? dashboardRaw.by_status ?? []);
       if (dashboardRaw.pso) setPsoStats(dashboardRaw.pso);
       setActivities((activityRaw ?? []).map(mapActivityEntry));
       setBolos(
@@ -587,7 +694,7 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); return null; }
     };
-    const [sc, cr, pc, ep, uc, or_, ss, cd, ec] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
@@ -597,6 +704,9 @@ export default function DashboardPage() {
       safe<any>('/admin/shift-stats'),
       safe<any>('/admin/upcoming-court-dates?days=30'),
       safe<any>('/admin/expiring-certifications?days=30'),
+      safe<any[]>('/dispatch/units'),
+      safe<any>('/dispatch/aggregates/call-volume?days=7'),
+      safe<any>('/dispatch/aggregates/by-zone?days=7'),
     ]);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
@@ -607,6 +717,24 @@ export default function DashboardPage() {
     if (ss) setShiftStats(ss);
     if (cd) setCourtDatesCount(cd.count ?? 0);
     if (ec) setExpiringCertsCount((ec.expiring_count ?? 0) + (ec.expired_count ?? 0));
+    if (Array.isArray(un)) setUnits(un);
+    if (cv?.by_day) setCallVolume(cv.by_day);
+    if (cz?.by_zone) setCallsByZone(cz.by_zone);
+  }, []);
+
+  // Fetch enhanced dashboard data (weekly trend, calls by type, unit status)
+  const fetchEnhancedData = useCallback(async () => {
+    const safe = async <T,>(url: string): Promise<T | null> => {
+      try { return await apiFetch<T>(url); } catch { return null; }
+    };
+    const [wt, cbt, us] = await Promise.all([
+      safe<WeeklyTrendData>('/reports/dashboard-weekly-trend'),
+      safe<CallsByTypeEntry[]>('/reports/dashboard-calls-by-type'),
+      safe<UnitStatusData>('/reports/dashboard-unit-status'),
+    ]);
+    if (wt) setWeeklyTrend(wt);
+    if (cbt) setCallsByType(Array.isArray(cbt) ? cbt : []);
+    if (us) setUnitStatus(us);
   }, []);
 
   useEffect(() => {
@@ -614,14 +742,15 @@ export default function DashboardPage() {
     fetchCredentials();
     fetchOfficerActivity();
     fetchWidgets();
+    fetchEnhancedData();
 
     // Refresh every 60 seconds (LiveSync handles real-time updates)
-    const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); fetchOfficerActivity(); }, 60_000);
+    const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); fetchOfficerActivity(); fetchEnhancedData(); }, 60_000);
     return () => clearInterval(interval);
-  }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity, fetchWidgets]);
+  }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity, fetchWidgets, fetchEnhancedData]);
 
   // Live sync — auto-refresh dashboard when ANY module changes (silent to avoid unmounting UI)
-  const silentRefreshDashboard = useCallback(() => fetchDashboardData({ silent: true }), [fetchDashboardData]);
+  const silentRefreshDashboard = useCallback(() => { fetchDashboardData({ silent: true }); fetchEnhancedData(); }, [fetchDashboardData, fetchEnhancedData]);
   useLiveSync(['dispatch', 'incidents', 'records', 'personnel', 'fleet'], silentRefreshDashboard);
 
   const runToolbarAction = useCallback((id: ToolbarActionId) => {
@@ -742,6 +871,31 @@ export default function DashboardPage() {
     );
   }
 
+  // ─── Weekly trend chart data ───────────────────────────
+  const trendChartData = (weeklyTrend?.dailyTrend ?? []).map((d) => {
+    const dt = new Date(d.date + 'T12:00:00');
+    return {
+      date: d.date,
+      label: dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      shortLabel: dt.toLocaleDateString('en-US', { weekday: 'short' }),
+      count: d.count,
+    };
+  });
+
+  // ─── Volume comparison helpers ─────────────────────────
+  const todayCount = weeklyTrend?.today ?? stats.calls_today;
+  const yesterdayCount = weeklyTrend?.yesterday ?? 0;
+  const lastWeekCount = weeklyTrend?.lastWeekSameDay ?? 0;
+  const vsYesterday = yesterdayCount > 0 ? Math.round(((todayCount - yesterdayCount) / yesterdayCount) * 100) : 0;
+  const vsLastWeek = lastWeekCount > 0 ? Math.round(((todayCount - lastWeekCount) / lastWeekCount) * 100) : 0;
+
+  // ─── Incident clearance donut data ─────────────────────
+  const incidentPieData = clearanceRate ? [
+    { name: 'Cleared', value: clearanceRate.cleared || 0, fill: '#22c55e' },
+    { name: 'Active', value: clearanceRate.active || 0, fill: '#f59e0b' },
+    { name: 'Pending', value: clearanceRate.pending || 0, fill: '#888888' },
+  ].filter(d => d.value > 0) : [];
+
   return (
     <div className="dashboard-page p-4 space-y-4 animate-fade-in" role="main" aria-label="Command and Control Dashboard" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
       {/* Spillman screen title bar — LED tracks REAL data-sync health.
@@ -849,10 +1003,7 @@ export default function DashboardPage() {
 
       {/* Stats Cards Row */}
       {hasPanel('activeCalls') && (
-      <div id="dashboard-panel-activeCalls" onContextMenu={(e) => openMenu(e, [
-        m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
-        m.go('Go to Dispatch', '/dispatch', <ArrowRight size={12} />),
-      ])}>
+      <div id="dashboard-panel-activeCalls">
       <SpmGroup title="Active Calls — Priority & Volume">
       <div className="space-y-4">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`} role="region" aria-label="Key statistics">
@@ -923,7 +1074,40 @@ export default function DashboardPage() {
             </div>
             <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity duration-200" aria-hidden="true" />
           </div>
-        ))}
+        </div>
+
+        {/* Call Volume Comparison */}
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Call volume comparison">
+          <PanelTitleBar title="CALL VOLUME COMPARISON" icon={TrendingUp} />
+          <div className="p-3 space-y-3">
+            <div className="text-center">
+              <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums">{todayCount}</div>
+              <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Calls Today</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="panel-beveled bg-surface-sunken p-2.5 text-center">
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  {vsYesterday > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsYesterday < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
+                  <span className={`text-sm font-bold font-mono tabular-nums ${vsYesterday > 0 ? 'text-red-400' : vsYesterday < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
+                    {vsYesterday > 0 ? '+' : ''}{vsYesterday}%
+                  </span>
+                </div>
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold">vs Yesterday</div>
+                <div className="text-[10px] text-rmpg-400 font-mono tabular-nums mt-0.5">{yesterdayCount} calls</div>
+              </div>
+              <div className="panel-beveled bg-surface-sunken p-2.5 text-center">
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  {vsLastWeek > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsLastWeek < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
+                  <span className={`text-sm font-bold font-mono tabular-nums ${vsLastWeek > 0 ? 'text-red-400' : vsLastWeek < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
+                    {vsLastWeek > 0 ? '+' : ''}{vsLastWeek}%
+                  </span>
+                </div>
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold">vs Last Week</div>
+                <div className="text-[10px] text-rmpg-400 font-mono tabular-nums mt-0.5">{lastWeekCount} calls</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       </div>
       </SpmGroup>
@@ -932,7 +1116,7 @@ export default function DashboardPage() {
 
       {/* Secondary Stats Row — expanded to 5 cols 2026-05-24 to add Warrant Poll card */}
       {hasPanel('statusSummary') && (
-      <div id="dashboard-panel-statusSummary" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
+      <div id="dashboard-panel-statusSummary">
       <SpmGroup title="Status Summary">
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2'}`} role="region" aria-label="Record statistics">
         <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants?status=active')}>
@@ -1130,12 +1314,171 @@ export default function DashboardPage() {
 
       </div>
 
+      {/* Shift Countdown + Weather + Quick Actions Row */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'}`}>
+        {/* Shift Countdown Timer */}
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current shift status">
+          <PanelTitleBar title="SHIFT STATUS" icon={Timer} />
+          <div className="p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-rmpg-200 tracking-wide">{shiftInfo.name}</div>
+                <div className="text-[10px] text-rmpg-500 font-mono mt-0.5 tabular-nums">
+                  {shiftInfo.startLabel} &mdash; {shiftInfo.endLabel}
+                </div>
+              </div>
+              <div className="text-right" aria-live="polite" aria-atomic="true">
+                <div className="text-lg font-bold font-mono text-brand-400 tabular-nums tracking-tight">{formatCountdown(shiftInfo.remaining)}</div>
+                <div className="text-[9px] text-rmpg-500 uppercase tracking-widest font-semibold">Remaining</div>
+              </div>
+            </div>
+            {/* Progress Bar */}
+            <div className="space-y-1" role="progressbar" aria-valuenow={Math.round(shiftInfo.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Shift progress: ${Math.round(shiftInfo.progress * 100)}%`}>
+              <div className="h-2.5 bg-surface-sunken rounded-sm overflow-hidden border border-[#222222] shadow-inner">
+                <div
+                  className="h-full transition-all duration-1000 ease-linear rounded-sm"
+                  style={{
+                    width: `${Math.round(shiftInfo.progress * 100)}%`,
+                    background: `linear-gradient(90deg, #1a1a1a, #888888 ${Math.round(shiftInfo.progress * 100)}%)`,
+                    boxShadow: '0 0 6px rgba(136, 136, 136, 0.4)',
+                  }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] font-mono text-rmpg-500 tabular-nums">
+                <span>{shiftInfo.startLabel}</span>
+                <span className="font-bold text-rmpg-400">{Math.round(shiftInfo.progress * 100)}%</span>
+                <span>{shiftInfo.endLabel}</span>
+              </div>
+            </div>
+            {/* Shift Indicator Dots */}
+            <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
+              {[
+                { label: 'Day', hours: '06-14', active: shiftInfo.name === 'Day Shift' },
+                { label: 'Swing', hours: '14-22', active: shiftInfo.name === 'Swing Shift' },
+                { label: 'Night', hours: '22-06', active: shiftInfo.name === 'Night Shift' },
+              ].map(s => (
+                <div key={s.label} className={`flex-1 text-center p-1.5 rounded-sm transition-colors duration-300 ${s.active ? 'bg-brand-500/20 border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'bg-surface-sunken border border-transparent'}`}>
+                  <div className="flex items-center justify-center gap-1">
+                    <span className={`led-dot ${s.active ? 'led-green animate-led-pulse' : 'led-off'}`} />
+                    <span className={`text-[10px] font-bold select-none ${s.active ? 'text-brand-400' : 'text-rmpg-500'}`}>{s.label}</span>
+                  </div>
+                  <div className="text-[8px] font-mono text-rmpg-600 mt-0.5 tabular-nums">{s.hours}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Weather Widget */}
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Current weather conditions" style={{ minWidth: 260 }}>
+          <PanelTitleBar title="WEATHER — SALT LAKE CITY" icon={Cloud} />
+          <div className="p-3">
+            {weather ? (() => {
+              const WeatherIcon = weather.icon;
+              const isFreezing = weather.temperature < 32;
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-sm bg-surface-sunken border border-[#222222] shadow-inner">
+                      <WeatherIcon className="w-10 h-10 drop-shadow-md" style={{ color: isFreezing ? '#aaaaaa' : weather.weatherCode === 0 || weather.weatherCode === 1 ? '#fbbf24' : '#888888' }} />
+                    </div>
+                    <div>
+                      <div className="text-3xl font-bold font-mono text-rmpg-100 tabular-nums" aria-label={`${weather.temperature} degrees Fahrenheit`}>{weather.temperature}<span className="text-lg text-rmpg-400 ml-0.5">&deg;F</span></div>
+                      <div className="text-xs text-rmpg-400 mt-0.5 font-medium">{weather.description}</div>
+                    </div>
+                  </div>
+                  {/* Humidity & Wind */}
+                  {(weather.humidity != null || weather.windSpeed != null) && (
+                    <div className="flex items-center gap-4 text-[10px] text-rmpg-400 font-mono tabular-nums">
+                      {weather.humidity != null && (
+                        <span title="Relative humidity">💧 {weather.humidity}%</span>
+                      )}
+                      {weather.windSpeed != null && (
+                        <span title={`Wind direction: ${weather.windDirection ?? '—'}°`}>💨 {Math.round(weather.windSpeed)} mph</span>
+                      )}
+                    </div>
+                  )}
+                  {/* Road Conditions Warning */}
+                  {isFreezing && (
+                    <div className="flex items-center gap-2 p-2.5 bg-gray-900/20 border border-gray-700/30 rounded-sm animate-fade-in" role="alert">
+                      <Snowflake className="w-4 h-4 text-gray-400 flex-shrink-0 animate-pulse" aria-hidden="true" />
+                      <div>
+                        <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Road Conditions Warning</div>
+                        <div className="text-[10px] text-gray-400/80 mt-0.5">Temperature below freezing — watch for ice</div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Weather Details */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-[#222222]">
+                    <span className="text-[9px] text-rmpg-500 font-mono tabular-nums">
+                      Updated {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-[9px] text-rmpg-600 select-none">|</span>
+                    <span className="text-[9px] text-rmpg-600 font-mono italic">Open-Meteo</span>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status" aria-label={weatherFetched ? 'Weather unavailable' : 'Loading weather data'}>
+                {!weatherFetched ? (
+                  <>
+                    <Loader2 className="w-5 h-5 text-rmpg-500 animate-spin" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 animate-pulse select-none">Loading weather...</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-6 h-6 text-rmpg-500 opacity-50" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 select-none">Weather unavailable</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Action Buttons */}
+        <div className="panel-beveled bg-surface-base" role="region" aria-label="Quick actions">
+          <PanelTitleBar title="QUICK ACTIONS" icon={Zap} />
+          <div className="p-3">
+            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'} gap-2`}>
+              {[
+                { icon: Phone, label: 'New Call', path: '', color: '#ef4444', action: () => setShowNewCallModal(true) },
+                { icon: FileText, label: 'New Incident', path: '', color: '#f59e0b', action: () => setShowIncidentModal(true) },
+                { icon: Navigation, label: 'Start Patrol', path: '/patrol', color: '#22c55e' },
+                { icon: Gavel, label: 'New Citation', path: '/citations', color: '#888888' },
+                { icon: Target, label: 'Process Server', path: '/serve', color: '#a855f7' },
+                { icon: Mail, label: 'Email', path: '/email', color: '#22c55e' },
+                { icon: Briefcase, label: 'Cases', path: '/cases', color: '#06b6d4' },
+                { icon: ClipboardList, label: 'Field Interviews', path: '/field-interviews', color: '#888888' },
+                { icon: Fingerprint, label: 'Arrest Records', path: '/arrest-records', color: '#ef4444' },
+                { icon: Gavel, label: 'Court Tracker', path: '/court', color: '#f59e0b' },
+                { icon: ShieldBan, label: 'Trespass Orders', path: '/trespass-orders', color: '#f97316' },
+                { icon: Car, label: 'Fleet', path: '/fleet', color: '#888888' },
+              ].map(({ icon: ActionIcon, label, path, color, action }) => (
+                <button type="button"
+                  key={label}
+                  onClick={() => action ? action() : navigate(path)}
+                  className={`flex flex-col items-center justify-center gap-1.5 ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} panel-beveled bg-surface-sunken hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 active:scale-[0.98] transition-all duration-150 cursor-pointer group border border-transparent hover:border-[#2e2e2e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50`}
+                  aria-label={label}
+                >
+                  <ActionIcon
+                    className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} transition-transform duration-200 group-hover:scale-110 drop-shadow-sm`}
+                    style={{ color }}
+                    aria-hidden="true"
+                  />
+                  <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} font-bold text-rmpg-300 uppercase tracking-wider group-hover:text-rmpg-100 transition-colors duration-200 text-center leading-tight select-none`}>
+                    {label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* BOLO Ticker */}
       {hasPanel('activeBolos') && (
-      <div id="dashboard-panel-activeBolos" onContextMenu={(e) => openMenu(e, [
-        m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> }),
-        m.go('View all BOLOs', '/intel/bolos', <ArrowRight size={12} />),
-      ])}>
+      <div id="dashboard-panel-activeBolos">
         <SpmGroup title="Active BOLOs" tone="red">
         {loading && bolos.length === 0 ? (
           <div className="flex items-center justify-center py-4 gap-2" role="status">
@@ -1356,10 +1699,10 @@ export default function DashboardPage() {
 
       {/* Main Content Grid */}
       {hasPanel('callAnalytics') && (
-      <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
+      <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
-          <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
+          <PanelTitleBar title="CALL VOLUME — 7-DAY TREND" icon={Activity} />
           <div className="p-3">
           <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
             <AreaChart data={chartData}>
@@ -1412,11 +1755,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Priority Distribution Pie + Quick Actions */}
+        {/* Priority Distribution + Incident Clearance */}
         <div className="panel-beveled bg-surface-base flex flex-col shadow-md shadow-black/10">
-          <PanelTitleBar title="PRIORITY DISTRIBUTION" icon={Shield} />
-          <div className="p-3 flex-1">
-            {/* Pie Chart */}
+          <PanelTitleBar title="PRIORITY & CLEARANCE" icon={Shield} />
+          <div className="p-3 flex-1 space-y-3">
             {(() => {
               const totalCalls = stats.calls_by_priority.P1 + stats.calls_by_priority.P2 + stats.calls_by_priority.P3 + stats.calls_by_priority.P4;
               const pieData = [
@@ -1427,21 +1769,10 @@ export default function DashboardPage() {
               ].filter(d => d.value > 0);
 
               return totalCalls > 0 ? (
-                <ResponsiveContainer width="100%" height={140}>
+                <ResponsiveContainer width="100%" height={120}>
                   <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={35}
-                      outerRadius={55}
-                      paddingAngle={2}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      {pieData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.fill} />
-                      ))}
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={30} outerRadius={48} paddingAngle={2} dataKey="value" stroke="none">
+                      {pieData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
                     </Pie>
                     <Tooltip
                       contentStyle={{
@@ -1458,8 +1789,8 @@ export default function DashboardPage() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex flex-col items-center justify-center h-[140px] gap-2" role="status">
-                  <Shield className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <div className="flex flex-col items-center justify-center h-[100px] gap-2" role="status">
+                  <Shield className="w-5 h-5 text-rmpg-600" aria-hidden="true" />
                   <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No calls today</span>
                 </div>
               );
@@ -1504,6 +1835,201 @@ export default function DashboardPage() {
       </div>
       )}
 
+      {/* ═══════════════════════════════════════════════════════
+          Operational Visuals — call status pipeline, 7-day volume
+          trend, live unit board, and calls-by-zone heat.
+          ═══════════════════════════════════════════════════════ */}
+      {/* Calls by Status pipeline + 7-Day Volume Trend */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-4'}`}>
+        {/* Calls by Status — pipeline bar (data already on the dashboard payload) */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Calls by status">
+          <PanelTitleBar title="CALLS BY STATUS — TODAY" icon={Layers} />
+          <div className="p-3">
+            {(() => {
+              const norm = (s: string) => s.toLowerCase().replace(/[\s_-]/g, '');
+              const counts = new Map<string, number>();
+              for (const row of callsByStatus) counts.set(norm(row.status), (counts.get(norm(row.status)) ?? 0) + (row.count ?? 0));
+              const segments = STATUS_PIPELINE.map((s) => ({ ...s, count: counts.get(norm(s.key)) ?? 0 }));
+              const knownKeys = new Set(STATUS_PIPELINE.map((s) => norm(s.key)));
+              const otherCount = callsByStatus.reduce((sum, r) => knownKeys.has(norm(r.status)) ? sum : sum + (r.count ?? 0), 0);
+              const all = otherCount > 0 ? [...segments, { key: 'other', label: 'Other', color: '#444444', count: otherCount }] : segments;
+              const total = all.reduce((sum, s) => sum + s.count, 0);
+
+              if (total === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center h-[120px] gap-2" role="status">
+                    <Layers className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No calls today</span>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-3">
+                  {/* Stacked proportional bar */}
+                  <div className="flex h-5 w-full rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner bg-surface-sunken" role="img" aria-label="Call status distribution">
+                    {all.filter((s) => s.count > 0).map((s) => (
+                      <div
+                        key={s.key}
+                        className="h-full transition-all duration-500 ease-out"
+                        style={{ width: `${(s.count / total) * 100}%`, backgroundColor: s.color }}
+                        title={`${s.label}: ${s.count} (${Math.round((s.count / total) * 100)}%)`}
+                      />
+                    ))}
+                  </div>
+                  {/* Legend with counts */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1.5">
+                    {all.map((s) => (
+                      <button
+                        type="button"
+                        key={s.key}
+                        onClick={() => navigate('/dispatch')}
+                        className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                        aria-label={`${s.label}: ${s.count} calls`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-sm" style={{ backgroundColor: s.color }} />
+                        <span className="text-[9px] text-rmpg-400 truncate">{s.label}</span>
+                        <span className="text-[9px] font-mono font-bold text-rmpg-200 ml-auto tabular-nums">{s.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* 7-Day Call Volume Trend */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Seven day call volume trend">
+          <PanelTitleBar title="CALL VOLUME — LAST 7 DAYS" icon={TrendingUp} />
+          <div className="p-3">
+            {callVolume.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-[140px] gap-2" role="status">
+                <TrendingUp className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none text-center">Trend data unavailable</span>
+              </div>
+            ) : (() => {
+              const series = buildVolumeSeries(callVolume, 7);
+              const weekTotal = series.reduce((sum, d) => sum + d.count, 0);
+              const peak = series.reduce((m, d) => Math.max(m, d.count), 0);
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">7-Day Total</div>
+                    <div className="flex items-center gap-3 font-mono tabular-nums">
+                      <span className="text-sm font-bold text-brand-400">{weekTotal}</span>
+                      <span className="text-[9px] text-rmpg-500">peak {peak}/day</span>
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={isMobile ? 130 : 150}>
+                    <AreaChart data={series} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#d4a017" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="#d4a017" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                      <XAxis dataKey="label" tick={{ fill: '#666666', fontSize: 9 }} tickLine={{ stroke: '#222222' }} axisLine={{ stroke: '#222222' }} />
+                      <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={{ stroke: '#222222' }} axisLine={{ stroke: '#222222' }} allowDecimals={false} width={28} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #3a3a3a', borderRadius: '2px', color: '#cccccc', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', padding: '8px 12px' }}
+                        labelStyle={{ color: '#888888', fontSize: '10px', marginBottom: '4px' }}
+                        formatter={(value: number) => [`${value} calls`, '']}
+                        cursor={{ stroke: '#d4a017', strokeWidth: 1, strokeDasharray: '4 4' }}
+                      />
+                      <Area type="monotone" dataKey="count" stroke="#d4a017" strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: '#d4a017', r: 2, strokeWidth: 0 }} activeDot={{ fill: '#f0c040', r: 5, strokeWidth: 2, stroke: '#ffffff' }} animationDuration={700} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
+
+      {/* Live Unit Status Board */}
+      {units.length > 0 && (
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Live unit status board">
+          <PanelTitleBar title="UNIT STATUS BOARD" icon={Radio}>
+            <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">
+              {units.filter((u) => u.status === 'available').length} avail / {units.length} total
+            </span>
+          </PanelTitleBar>
+          <div className="p-3">
+            <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'}`}>
+              {units.map((u) => {
+                const color = unitStatusColor(u.status);
+                const onCall = !!u.current_call_number;
+                return (
+                  <div
+                    key={u.id ?? u.call_sign}
+                    onClick={() => navigate('/dispatch')}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/dispatch'); }}
+                    tabIndex={0}
+                    role="button"
+                    className="panel-beveled bg-surface-sunken p-2 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 transition-all duration-150 border-l-[3px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                    style={{ borderLeftColor: color }}
+                    title={onCall ? `On call ${u.current_call_number} — ${u.current_call_type ?? ''}` : (u.status ?? 'unknown')}
+                    aria-label={`Unit ${u.call_sign}: ${u.status ?? 'unknown'}${onCall ? `, on call ${u.current_call_number}` : ''}`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="led-dot flex-shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
+                      <span className="text-xs font-bold font-mono text-rmpg-100 tabular-nums truncate">{u.call_sign ?? '—'}</span>
+                      <span className="text-[8px] uppercase font-bold tracking-wider ml-auto truncate" style={{ color }}>{(u.status ?? '').replace(/_/g, ' ')}</span>
+                    </div>
+                    <div className="text-[9px] text-rmpg-400 truncate">
+                      {u.officer_name ?? 'Unassigned'}{u.badge_number ? ` · #${u.badge_number}` : ''}
+                    </div>
+                    {onCall && (
+                      <div className="text-[8px] font-mono text-amber-400/90 truncate mt-0.5 tabular-nums" title={u.current_call_location ?? ''}>
+                        {u.current_call_priority ? `${u.current_call_priority} ` : ''}{u.current_call_number}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Calls by Zone — heat list */}
+      {callsByZone.length > 0 && (() => {
+        const maxZone = callsByZone.reduce((m, z) => Math.max(m, z.count), 0) || 1;
+        const zoneTotal = callsByZone.reduce((sum, z) => sum + z.count, 0);
+        // Gold→red ramp by relative volume so hot zones read at a glance.
+        const heatColor = (ratio: number) =>
+          ratio >= 0.75 ? '#ef4444' : ratio >= 0.5 ? '#f59e0b' : ratio >= 0.25 ? '#d4a017' : '#888888';
+        return (
+          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Calls by zone">
+            <PanelTitleBar title="CALLS BY ZONE — LAST 7 DAYS" icon={MapIcon}>
+              <button type="button" className="toolbar-btn flex items-center gap-1 hover:bg-surface-raised transition-colors" onClick={() => navigate('/map')} title="Open map">
+                <MapPin style={{ width: 10, height: 10 }} />
+                <span className="text-[9px] font-bold">Map</span>
+              </button>
+            </PanelTitleBar>
+            <div className="p-3 space-y-1.5">
+              {callsByZone.map((z) => {
+                const ratio = z.count / maxZone;
+                const color = heatColor(ratio);
+                return (
+                  <div key={z.zone} className="flex items-center gap-2 group hover:bg-surface-sunken rounded-sm px-1 py-0.5 transition-colors">
+                    <span className="text-[10px] text-rmpg-300 w-28 truncate group-hover:text-rmpg-100 transition-colors" title={z.zone}>{z.zone}</span>
+                    <div className="flex-1 h-2 bg-surface-sunken rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner">
+                      <div className="h-full transition-all duration-500 ease-out rounded-sm" style={{ width: `${Math.max(4, ratio * 100)}%`, backgroundColor: color, boxShadow: `0 0 6px ${color}55` }} />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold w-10 text-right tabular-nums" style={{ color }}>{z.count}</span>
+                  </div>
+                );
+              })}
+              <div className="flex justify-end pt-1 mt-1 border-t border-[#2b2b2b]">
+                <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">{zoneTotal} calls across {callsByZone.length} zones</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Shift Summary Row */}
       {hasPanel('adminExtras') && (
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics" onContextMenu={(e) => openMenu(e, [m.action('Refresh', refreshAll, { icon: <RefreshCw size={12} /> })])}>
@@ -1530,7 +2056,34 @@ export default function DashboardPage() {
             </div>
             <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono tabular-nums`} style={{ color }}>{value}</div>
           </div>
-        ))}
+        </div>
+
+        {/* Calls by Type */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10">
+          <PanelTitleBar title="CALLS BY TYPE — TODAY" icon={Target} />
+          <div className="p-3">
+            {callsByType.length > 0 ? (
+              <ResponsiveContainer width="100%" height={isMobile ? 140 : 180}>
+                <BarChart data={callsByType.slice(0, 8)} layout="vertical" margin={{ left: 5, right: 15, top: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#181818" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="type" width={100} tick={{ fill: '#aaaaaa', fontSize: 9 }} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: number) => [`${value} calls`, '']} cursor={{ fill: 'rgba(212, 160, 23, 0.06)' }} />
+                  <Bar dataKey="count" radius={[0, 3, 3, 0]} fill="#d4a017" animationDuration={600}>
+                    {callsByType.slice(0, 8).map((_, i) => (
+                      <Cell key={i} fill={i === 0 ? '#d4a017' : i < 3 ? '#b8860b' : '#888888'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-[140px] gap-2" role="status">
+                <Target className="w-5 h-5 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No calls today</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
       )}
 
@@ -1565,9 +2118,7 @@ export default function DashboardPage() {
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-sm font-bold font-mono text-rmpg-100 tabular-nums">
-                {stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}` : 'N/A'}
-              </span>
+              <span className="text-sm font-bold font-mono text-rmpg-100 tabular-nums">{stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}` : 'N/A'}</span>
             </div>
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase">Minutes</div>
@@ -1637,15 +2188,8 @@ export default function DashboardPage() {
           <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{patrolCoverage?.coveredBeats || 0}/{patrolCoverage?.totalBeats || 0} beats</div>
         </div>
 
-        {/* Feature 41: Evidence Pending Count */}
-        <div
-          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(evidencePending?.pending || 0) > 0 ? 'border-l-amber-500' : 'border-l-green-500'}`}
-          onClick={() => navigate('/evidence')}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/evidence'); }}
-          tabIndex={0}
-          role="button"
-          aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}
-        >
+        {/* Evidence Pending */}
+        <div className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-all duration-150 border-l-[3px] ${(evidencePending?.pending || 0) > 0 ? 'border-l-amber-500' : 'border-l-green-500'}`} onClick={() => navigate('/evidence')} tabIndex={0} role="button" aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}>
           <div className="flex items-center gap-1.5 mb-1">
             <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Evidence</span>
@@ -1656,15 +2200,8 @@ export default function DashboardPage() {
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Pending</div>
         </div>
 
-        {/* Feature 43: Overdue Reports Alert */}
-        <div
-          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(overdueReports?.count || 0) > 0 ? 'border-l-red-500' : 'border-l-green-500'}`}
-          onClick={() => navigate('/incidents')}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/incidents'); }}
-          tabIndex={0}
-          role="button"
-          aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}
-        >
+        {/* Overdue Reports */}
+        <div className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-all duration-150 border-l-[3px] ${(overdueReports?.count || 0) > 0 ? 'border-l-red-500' : 'border-l-green-500'}`} onClick={() => navigate('/incidents')} tabIndex={0} role="button" aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}>
           <div className="flex items-center gap-1.5 mb-1">
             <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? 'var(--stat-accent-red-bright)' : 'var(--stat-accent-green)' }} />
             <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Overdue</span>
@@ -1674,20 +2211,41 @@ export default function DashboardPage() {
           </div>
           <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>
         </div>
+
+        {/* Active Warrants mini */}
+        <div className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/warrants')} tabIndex={0} role="button" aria-label={`Active warrants: ${activeWarrants}`}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <Gavel className="w-3 h-3 text-amber-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Warrants</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center text-amber-400 tabular-nums">{activeWarrants}</div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Active</div>
+        </div>
       </div>
       )}
 
       {/* Feature 33: Shift Performance Comparison + Feature 42: Upcoming Court */}
       {hasPanel('adminExtras') && (
       <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-3'}`}>
-        {/* Feature 33: Shift Performance Comparison */}
         {shiftComparison?.shifts && (
           <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Shift performance comparison">
-            <PanelTitleBar title="SHIFT PERFORMANCE COMPARISON" icon={Activity} />
+            <PanelTitleBar title="SHIFT PERFORMANCE — 30 DAYS" icon={Activity} />
             <div className="p-3">
-              <div className="grid grid-cols-3 gap-2">
+              <ResponsiveContainer width="100%" height={isMobile ? 160 : 200}>
+                <BarChart data={shiftComparison.shifts.map((s: any) => ({ shift: s.shift, calls: s.calls, incidents: s.incidents }))} margin={{ left: 5, right: 10, top: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#181818" vertical={false} />
+                  <XAxis dataKey="shift" tick={{ fill: '#888888', fontSize: 10 }} axisLine={{ stroke: '#222222' }} tickLine={{ stroke: '#222222' }} />
+                  <YAxis tick={{ fill: '#666666', fontSize: 9 }} axisLine={{ stroke: '#222222' }} tickLine={{ stroke: '#222222' }} allowDecimals={false} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                  <Legend wrapperStyle={{ fontSize: '10px', color: '#888' }} />
+                  <Bar dataKey="calls" name="Calls" fill="#888888" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              {/* Active shift highlight */}
+              <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-[#2b2b2b]">
                 {shiftComparison.shifts.map((s: any) => {
-                  const isCurrentShift = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
+                  const isActive = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
                   return (
                     <div key={s.shift} className={`panel-beveled bg-surface-sunken p-2.5 transition-colors duration-300 ${isCurrentShift ? 'border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'border border-transparent'}`}>
                       <div className="flex items-center gap-1.5 mb-2">
@@ -1711,6 +2269,7 @@ export default function DashboardPage() {
                           </span>
                         </div>
                       </div>
+                      <div className="text-[9px] text-rmpg-400 font-mono tabular-nums">Avg: {s.avgResponseMin ? `${s.avgResponseMin}m` : 'N/A'}</div>
                     </div>
                   );
                 })}
@@ -1751,6 +2310,298 @@ export default function DashboardPage() {
         </div>
       </div>
       )}
+
+      {/* Feature 35: Trending Incidents + Feature 36: Officer Status Board + Feature 37: Call Volume Sparkline */}
+      {/* (Feature 36 is already represented by the Officers on Duty in Operational Status) */}
+      {/* (Feature 37: Call Volume sparkline is represented by the Calls by Hour chart above) */}
+      {/* (Feature 32: Active incidents map preview — navigates to map page) */}
+      {/* Feature 35: Trending Incidents Indicator — shown inline with shift summary above */}
+
+      {/* ═══════════════════════════════════════════════════════
+          Unified Stats Widgets: Warrants, Incident Backlog, Crime Types
+          ═══════════════════════════════════════════════════════ */}
+      {unifiedStats && (
+        <div className={`grid ${isMobile ? 'grid-cols-1 gap-2' : 'grid-cols-1 lg:grid-cols-3 gap-2'}`}>
+          {/* Active Warrants Summary */}
+          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/warrants')}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 bg-red-500" style={{ borderRadius: '1px' }} />
+              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Active Warrants</span>
+              <span className="ml-auto text-lg font-bold font-mono text-red-400">{unifiedStats.warrants?.active || 0}</span>
+            </div>
+            <div className="space-y-1">
+              {Object.entries(unifiedStats.warrants?.by_type || {}).map(([type, count]) => (
+                <div key={type} className="flex items-center gap-2">
+                  <span className="text-[9px] text-rmpg-400 uppercase w-14 truncate">{type}</span>
+                  <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
+                    <div className="h-full" style={{ width: `${Math.min(100, ((count as number) / Math.max(1, unifiedStats.warrants?.active || 1)) * 100)}%`, background: type === 'arrest' ? '#ef4444' : type === 'bench' ? '#f59e0b' : type === 'search' ? '#888888' : '#888888' }} />
+                  </div>
+                  <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{count as number}</span>
+                </div>
+              ))}
+              <div className="text-[8px] text-rmpg-500 pt-1 border-t border-rmpg-700">Served (30d): <span className="text-green-400 font-mono">{unifiedStats.warrants?.served_30d || 0}</span></div>
+            </div>
+          </div>
+
+          {/* Incident Backlog */}
+          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 bg-amber-500" style={{ borderRadius: '1px' }} />
+              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Incident Backlog</span>
+            </div>
+            <div className="space-y-1">
+              {(unifiedStats.incidents?.by_status || []).map((s: any) => {
+                const colorMap: Record<string, string> = { draft: '#888888', submitted: '#888888', under_review: '#f59e0b', approved: '#22c55e', closed: '#6b7280', open: '#ef4444' };
+                return (
+                  <div key={s.status} className="flex items-center gap-2">
+                    <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{(s.status || '').replace(/_/g, ' ')}</span>
+                    <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
+                      <div className="h-full" style={{ width: `${Math.min(100, (s.count / Math.max(1, (unifiedStats.incidents?.by_status || []).reduce((a: number, b: any) => a + b.count, 0))) * 100)}%`, background: colorMap[s.status] || '#888888' }} />
+                    </div>
+                    <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{s.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Crime Type Breakdown */}
+          <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2" style={{ background: '#d4a017', borderRadius: '1px' }} />
+              <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Top Incident Types</span>
+            </div>
+            <div className="space-y-1">
+              {(unifiedStats.incidents?.by_type || []).slice(0, 8).map((t: any, i: number) => {
+                const maxCount = (unifiedStats.incidents?.by_type || [])[0]?.count || 1;
+                return (
+                  <div key={t.incident_type || i} className="flex items-center gap-2">
+                    <span className="text-[9px] text-rmpg-400 w-24 truncate capitalize">{(t.incident_type || 'Unknown').replace(/_/g, ' ')}</span>
+                    <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
+                      <div className="h-full" style={{ width: `${(t.count / maxCount) * 100}%`, background: '#d4a017', opacity: 1 - i * 0.08 }} />
+                    </div>
+                    <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{t.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          Features 31-43: Analytics Dashboard Widgets
+          ═══════════════════════════════════════════════════════ */}
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Analytics widgets">
+        {/* Feature 31: Response Time Gauge */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+          onClick={() => navigate('/reports')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/reports'); }}
+          tabIndex={0}
+          role="button"
+          title="View response time analysis"
+          aria-label={`Average response time: ${stats.avg_response_time_minutes || 'N/A'} minutes`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Clock className="w-3 h-3 text-brand-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Avg Response</span>
+          </div>
+          <div className="relative w-16 h-16 mx-auto my-1">
+            <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
+              <circle cx="18" cy="18" r="14" fill="none" stroke="#222222" strokeWidth="3" />
+              <circle
+                cx="18" cy="18" r="14" fill="none"
+                stroke={stats.avg_response_time_minutes <= 5 ? '#22c55e' : stats.avg_response_time_minutes <= 10 ? '#f59e0b' : '#ef4444'}
+                strokeWidth="3"
+                strokeDasharray={`${Math.min(100, (stats.avg_response_time_minutes / 15) * 100) * 0.88} 88`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-sm font-bold font-mono text-rmpg-100 tabular-nums">
+                {stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}` : 'N/A'}
+              </span>
+            </div>
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase">Minutes</div>
+        </div>
+
+        {/* Feature 34: Crime Category Donut (compact) */}
+        <div className="panel-beveled bg-surface-base p-2.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Shield className="w-3 h-3 text-purple-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">By Priority</span>
+          </div>
+          <ResponsiveContainer width="100%" height={76}>
+            <PieChart>
+              <Pie
+                data={[
+                  { name: 'P1', value: stats.calls_by_priority.P1, fill: '#dc2626' },
+                  { name: 'P2', value: stats.calls_by_priority.P2, fill: '#f59e0b' },
+                  { name: 'P3', value: stats.calls_by_priority.P3, fill: '#888888' },
+                  { name: 'P4', value: stats.calls_by_priority.P4, fill: '#555555' },
+                ].filter(d => d.value > 0)}
+                cx="50%" cy="50%" innerRadius={20} outerRadius={32}
+                paddingAngle={2} dataKey="value" stroke="none"
+              >
+                {[
+                  { fill: '#dc2626' }, { fill: '#f59e0b' }, { fill: '#888888' }, { fill: '#555555' },
+                ].map((e, i) => <Cell key={i} fill={e.fill} />)}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Feature 38: Clearance Rate Widget */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150"
+          onClick={() => navigate('/reports')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/reports'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Clearance rate: ${clearanceRate?.rate ?? 0}%`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <CheckCircle className="w-3 h-3 text-green-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Clearance</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (clearanceRate?.rate || 0) >= 50 ? '#22c55e' : '#f59e0b' }}>
+            {clearanceRate?.rate ?? 0}%
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{clearanceRate?.cleared || 0}/{clearanceRate?.total || 0} cleared</div>
+        </div>
+
+        {/* Feature 39: Patrol Coverage Indicator */}
+        <div
+          className="panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150"
+          onClick={() => navigate('/patrol')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/patrol'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Patrol coverage: ${patrolCoverage?.coverage ?? 0}%`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Navigation className="w-3 h-3 text-cyan-400" />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Coverage</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center text-cyan-400 tabular-nums">
+            {patrolCoverage?.coverage ?? 0}%
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center font-mono tabular-nums">{patrolCoverage?.coveredBeats || 0}/{patrolCoverage?.totalBeats || 0} beats</div>
+        </div>
+
+        {/* Feature 41: Evidence Pending Count */}
+        <div
+          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(evidencePending?.pending || 0) > 0 ? 'border-l-amber-500' : 'border-l-green-500'}`}
+          onClick={() => navigate('/evidence')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/evidence'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Evidence pending: ${evidencePending?.pending ?? 0}`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Briefcase className="w-3 h-3" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }} />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Evidence</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (evidencePending?.pending || 0) > 0 ? '#f59e0b' : '#22c55e' }}>
+            {evidencePending?.pending ?? 0}
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Pending</div>
+        </div>
+
+        {/* Feature 43: Overdue Reports Alert */}
+        <div
+          className={`panel-beveled bg-surface-base p-2.5 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 hover:-translate-y-px active:translate-y-0 transition-all duration-150 border-l-[3px] ${(overdueReports?.count || 0) > 0 ? 'border-l-red-500' : 'border-l-green-500'}`}
+          onClick={() => navigate('/incidents')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/incidents'); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`Overdue reports: ${overdueReports?.count ?? 0}`}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <AlertTriangle className="w-3 h-3" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }} />
+            <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Overdue</span>
+          </div>
+          <div className="text-xl font-bold font-mono text-center tabular-nums" style={{ color: (overdueReports?.count || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+            {overdueReports?.count ?? 0}
+          </div>
+          <div className="text-[8px] text-rmpg-500 text-center uppercase tracking-wider">Reports</div>
+        </div>
+      </div>
+
+      {/* Feature 33: Shift Performance Comparison + Feature 42: Upcoming Court */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-3'}`}>
+        {/* Feature 33: Shift Performance Comparison */}
+        {shiftComparison?.shifts && (
+          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Shift performance comparison">
+            <PanelTitleBar title="SHIFT PERFORMANCE COMPARISON" icon={Activity} />
+            <div className="p-3">
+              <div className="grid grid-cols-3 gap-2">
+                {shiftComparison.shifts.map((s: any) => {
+                  const isCurrentShift = shiftInfo.name.toLowerCase().includes(s.shift.toLowerCase());
+                  return (
+                    <div key={s.shift} className={`panel-beveled bg-surface-sunken p-2.5 transition-colors duration-300 ${isCurrentShift ? 'border border-brand-500/30 shadow-sm shadow-brand-500/10' : 'border border-transparent'}`}>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className={`led-dot ${isCurrentShift ? 'led-green animate-led-pulse' : 'led-off'}`} />
+                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isCurrentShift ? 'text-brand-400' : 'text-rmpg-200'}`}>{s.shift}</span>
+                        <span className="text-[8px] text-rmpg-600 font-mono ml-auto tabular-nums">{s.hours}</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Calls</span>
+                          <span className="text-xs font-bold font-mono text-gray-400 tabular-nums">{s.calls}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Incidents</span>
+                          <span className="text-xs font-bold font-mono text-green-400 tabular-nums">{s.incidents}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400">Avg Resp</span>
+                          <span className="text-xs font-bold font-mono text-brand-400 tabular-nums">
+                            {s.avgResponseMin ? `${s.avgResponseMin}m` : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Feature 42: Upcoming Court Widget */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Upcoming court appearances">
+          <PanelTitleBar title="UPCOMING COURT — NEXT 7 DAYS" icon={Gavel} />
+          <div className="p-3">
+            {(upcomingCourt?.upcoming?.length || 0) === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-4 justify-center" role="status">
+                <Gavel className="w-5 h-5 text-rmpg-600" aria-hidden="true" />
+                <div className="flex items-center gap-1.5">
+                  <span className="led-dot led-green" aria-hidden="true" />
+                  <span className="text-xs text-rmpg-300 select-none">No upcoming court appearances</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-600 scrollbar-track-transparent">
+                {upcomingCourt.upcoming.map((c: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
+                    <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
+                      {c.date ? new Date(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
+                      {c.officer_name && <div className="text-[9px] text-rmpg-500 truncate">{c.officer_name}</div>}
+                    </div>
+                    {c.time && <span className="text-[9px] font-mono text-rmpg-400 flex-shrink-0 tabular-nums">{c.time}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Feature 35: Trending Incidents + Feature 36: Officer Status Board + Feature 37: Call Volume Sparkline */}
       {/* (Feature 36 is already represented by the Officers on Duty in Operational Status) */}
