@@ -27,6 +27,20 @@ import { parseTimestamp } from '../utils/dateUtils';
 
 type ModalMode = 'none' | 'new_body_camera' | 'edit_body_camera' | 'upload_video';
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function BodyCamerasPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
@@ -221,13 +235,13 @@ export default function BodyCamerasPage() {
     const handler = (e: KeyboardEvent) => {
       // Esc cascade: top-most-first — destructive dialog → player → upload → form.
       if (e.key === 'Escape') {
-        if (cameraToDelete) { e.stopPropagation(); setCameraToDelete(null); return; }
-        if (videoToDelete) { e.stopPropagation(); setVideoToDelete(null); return; }
-        if (playingVideo) { e.stopPropagation(); setPlayingVideo(null); return; }
-        if (modal === 'upload_video') { e.stopPropagation(); setModal('none'); return; }
+        if (cameraToDelete) { setCameraToDelete(null); return; }
+        if (videoToDelete) { setVideoToDelete(null); return; }
+        if (playingVideo) { setPlayingVideo(null); return; }
+        if (modal === 'upload_video') { setModal('none'); return; }
         if (modal === 'new_body_camera' || modal === 'edit_body_camera') {
           if (isTypingInField(e.target)) return;
-          e.stopPropagation(); setModal('none'); setEditData(undefined); return;
+          setModal('none'); setEditData(undefined); return;
         }
         return;
       }
