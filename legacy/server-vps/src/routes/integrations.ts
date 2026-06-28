@@ -94,10 +94,22 @@ function getStats(db: any, queries: { [key: string]: string }): Record<string, n
 }
 
 function getIntegrationConfigValue(db: any, key: string): string | null {
+  // Keys stored plain-text (not encrypted) by the admin PUT handler
+  const PLAIN_TEXT_KEYS = new Set([
+    'traccar_url', 'traccar_enabled', 'traccar_poll_interval',
+    'mapbox_style_url', 'mapbox_username',
+  ]);
+
   const row = db.prepare(
     "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
   ).get(key) as { config_value?: string } | undefined;
   if (!row?.config_value) return null;
+
+  // Plain-text keys bypass decryption entirely
+  if (PLAIN_TEXT_KEYS.has(key)) {
+    return row.config_value;
+  }
+
   try {
     const decrypted = decryptApiKey(row.config_value);
     return decrypted;

@@ -131,6 +131,7 @@ export default function RouteBuilderPage() {
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const originMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const mapboxTokenRef = useRef<string>('');
+  const renderRouteRef = useRef<((origin: { lat: number; lng: number }, stops: RouteWaypoint[]) => void) | undefined>(undefined);
 
   const { subscribe } = useWebSocket();
 
@@ -218,7 +219,7 @@ export default function RouteBuilderPage() {
     });
 
     return unsub;
-  }, [subscribe, waypoints]);
+  }, [subscribe]);
 
   // ─── Optimize Route ─────────────────────────────────────
 
@@ -252,7 +253,7 @@ export default function RouteBuilderPage() {
 
       // Render on map
       if (mapRef.current && result.waypoints.length > 0) {
-        renderRoute(result.origin, result.waypoints);
+        renderRouteRef.current?.(result.origin, result.waypoints);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to optimize route');
@@ -296,6 +297,7 @@ export default function RouteBuilderPage() {
     },
     [useMapboxDirections],
   );
+  renderRouteRef.current = renderRoute;
 
   const renderMapboxDirections = useCallback(
     async (map: mapboxgl.Map, routeOrigin: { lat: number; lng: number }, stops: RouteWaypoint[]) => {

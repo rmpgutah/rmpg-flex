@@ -285,6 +285,9 @@ export default function NationalWarrantSearchPage() {
   // ── Ref: first name input (for N / `/` shortcut focus) ────
   const firstNameRef = useRef<HTMLInputElement>(null);
 
+  // ── Ref: first name input (for N / `/` shortcut focus) ────
+  const firstNameRef = useRef<HTMLInputElement>(null);
+
   // URL deep-link contract — operators land here from /persons, /warrants,
   // dispatch, NCIC, etc. with the subject's name + DOB. Honored params:
   //   ?last_name=  ?first_name=  ?dob=  ?state=  ?offense_level=
@@ -826,7 +829,6 @@ export default function NationalWarrantSearchPage() {
                         preparedBy={preparedBy}
                         highlighted={highlightId ? String(w.id ?? w.warrant_id ?? '') === highlightId : false}
                         onClearHighlight={() => setHighlightId('')}
-                        canPrint={canPrint}
                       />
                     ))}
                   </div>
@@ -864,7 +866,6 @@ export default function NationalWarrantSearchPage() {
                           preparedBy={preparedBy}
                           highlighted={highlightId ? String(w.id ?? w.warrant_id ?? '') === highlightId : false}
                           onClearHighlight={() => setHighlightId('')}
-                          canPrint={canPrint}
                         />
                       ))}
                     </div>
@@ -921,13 +922,11 @@ function WarrantRow({
   preparedBy,
   highlighted,
   onClearHighlight,
-  canPrint,
 }: {
   warrant: any;
   preparedBy?: string;
   highlighted?: boolean;
   onClearHighlight?: () => void;
-  canPrint?: boolean;
 }) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
