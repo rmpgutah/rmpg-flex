@@ -129,50 +129,6 @@
 //        (canCreateBolo: supervisor+ only sees New BOLO/resolve/archive/N
 //        shortcut), Esc cascade clears boloSearch, subject not required in
 //        compose (auto-derived from content).
-// v1099: Training pages — Page 76 of the full-app frontend audit.
-//        TrainingDocsPage: replaced window.confirm() with ConfirmDialog,
-//        removed dead isGodMode variable, fixed stale-closure keyboard
-//        shortcut (loadDocuments now in deps), added ?doc_id= deep-link,
-//        improved empty-state (no-data vs filtered vs no-category).
-//        TrainingManagementPage: fixed critical bug where "New Course"
-//        modal never opened (showForm was editingRecord !== null, but
-//        openNew sets editingRecord = null); added separate showForm boolean,
-//        role gate (admin/manager/hr only), Esc cascade, N shortcut,
-//        replaced inline delete div with ConfirmDialog, added Docs Library
-//        cross-link button. Worker: added 3 missing endpoints —
-//        GET /personnel/training-materials, GET /personnel/training-alerts,
-//        POST /personnel/training-bulk-assign.
-// v1098: Dashcam pages (Page 75) — fixed status panel shape mismatch
-//        (DashcamPage read enabled/deviceCount/port/models/uptime which the
-//        API never emitted; now reads total_devices/online_devices/active_devices).
-//        Removed broken POST /howen/enable stub call and unguarded power-toggle
-//        button. Added ?device_id= deep-link + Esc cascade to DashcamPage.
-//        Added role-gate (canManage) imports. Replaced 6x hardcoded #d4a017
-//        with text-brand-400. Distinct empty states for no-devices vs no-results.
-//        Removed unused AlertTriangle + Smartphone imports. Removed dead
-//        isGodMode duplicate (= isAdmin) from DashCamerasPage.
-// v1097: Body Cameras (/body-cameras) — Page 74 audit. Fixed canManage to
-//        include manager role (matched backend WRITE_ROLES). Added ?camera_id=
-//        and ?officer_id= deep-links (camera row highlight + officer search
-//        seed). Added N shortcut to open Assign Camera. Distinct empty-state
-//        messages (no data vs no search results). Removed dead isGodMode alias.
-// v1096: Fleet v2 (FleetShell) — Page 73 of the full-app frontend pass.
-//        Added N shortcut (open New Vehicle modal when not typing),
-//        Esc cascade (closes New Vehicle modal before propagating),
-//        ?unit_id= deep-link param (alongside ?vehicle_id= and ?fleet_id=),
-//        VehicleDetailRoute now distinguishes loading vs 404 (no more
-//        silent blank on a bad ID), GpsTrackingRoute link updated from
-//        /fleet-legacy to /map (the actual GPS map surface).
-// v1095: Personnel (/personnel) — Page 72 of the full-app frontend pass.
-//        Removed dead state (analytics, analyticsLoading, dashcamEvents,
-//        deviceMappings, dashcamLoading, refreshDashcamData — never read).
-//        Role gate: terminate/archive/restore buttons in detail panel now
-//        hidden for officer/dispatcher/client_viewer (admin|manager|supervisor|
-//        human_resources only). N shortcut extended to credentials, training,
-//        and deployment tabs (was roster+equipment only). Fixed hex tokens:
-//        #0a1a0a → bg-green-950/30 (DutyBoard/Deployment/Training),
-//        #1a0a0a → bg-red-950/30 (DashCam impact alert). FitnessCommendations
-//        apiFetch now guards against wrapper objects {data:[]} on both loads.
 // v1089: Community (/community) — Page 71 of the full-app frontend pass.
 //        Fixed critical bug: "New Event" modal never opened (showForm was
 //        `editingRecord !== null`, but openNew() set it to null). Separate
