@@ -11,6 +11,7 @@ import { formatIncidentType } from '../../../utils/caseNumbers';
 import { UNIT_STATUS_HEX, UNIT_STATUS_LABELS, PRIORITY_HEX } from '../../../utils/statusColors';
 import type { ActiveCall } from '../utils/mapConstants';
 import type { ClosestUnitResult } from '../hooks/useClosestUnit';
+import MapboxDispatchConnections from './MapboxDispatchConnections';
 
 interface ClosestUnitPanelProps {
   call: ActiveCall;
@@ -74,7 +75,7 @@ export default function ClosestUnitPanel({
       {/* Header */}
       <div
         className="flex items-center gap-2 px-3 py-2 shrink-0"
-        style={{ borderBottom: '1px solid #2b2b2b60' }}
+        style={{ borderBottom: '1px solid #22222260' }}
       >
         <Navigation className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--rmpg-400)' }} />
         <span
@@ -121,6 +122,13 @@ export default function ClosestUnitPanel({
           {call.location_address}
         </div>
       </div>
+
+      <MapboxDispatchConnections
+        call={call}
+        results={results}
+        matrixActive={results.length > 0}
+        directionsActive={results.some(result => Boolean(result.routeEtaText))}
+      />
 
       {/* Results List */}
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
@@ -205,12 +213,12 @@ export default function ClosestUnitPanel({
                     <div className="text-[10px] font-bold font-mono tabular-nums" style={{ color: 'var(--rmpg-400)' }}>
                       {distanceMiles < 0.1
                         ? '<0.1 mi'
-                        : `${distanceMiles.toFixed(1)} mi`}
+                        : `${distanceMiles.toFixed(1)} mi`)}
                     </div>
                     <div className="text-[8px] font-semibold font-mono tabular-nums" style={{ color: estimatedMinutes < 5 ? '#f59e0b' : '#999999' }}>
-                      ~{estimatedMinutes < 1
+                      {routeEtaText || `~${estimatedMinutes < 1
                         ? '<1 min'
-                        : `${Math.round(estimatedMinutes)} min`}
+                        : `${Math.round(estimatedMinutes)} min`}`}
                     </div>
                   </div>
                 </div>

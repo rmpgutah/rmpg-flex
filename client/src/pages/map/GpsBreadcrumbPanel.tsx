@@ -114,6 +114,9 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   const [playbackIdx, setPlaybackIdx] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(2);
   const playbackAnimRef = useRef<number | null>(null);
+  const dotLayerIdRef = useRef<string | null>(null);
+  const dotClickHandlerRef = useRef<((e: any) => void) | null>(null);
+  const trailRenderIdRef = useRef(0);
 
   // Map source/layer IDs for cleanup
   const sourceIdsRef = useRef<string[]>([]);
