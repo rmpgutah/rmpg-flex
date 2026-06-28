@@ -311,10 +311,10 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
           >
             {layers[key] ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
             {layers[key] && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}` }} />}
-            <span style={{ color: layers[key] ? color : '#666666' }}>{icon}</span>
+            <span style={{ color: layers[key] ? color : 'var(--rmpg-500)' }}>{icon}</span>
             <span className="text-[10px] text-rmpg-200 flex-1">{label}</span>
             {/* Fix 92: show feature count next to each toggle */}
-            <span className="text-[9px] font-mono font-bold" style={{ color: layers[key] ? color : '#666666' }}>{count}</span>
+            <span className="text-[9px] font-mono font-bold" style={{ color: layers[key] ? color : 'var(--rmpg-500)' }}>{count}</span>
           </button>
         ))}
 
@@ -724,7 +724,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   <div className={`text-[10px] font-bold ${isActive ? 'text-brand-400' : 'text-rmpg-200'}`}>
                     {label}
                   </div>
-                  <div className="text-[7px] text-[#5a6e80] leading-tight mt-0.5">{desc}</div>
+                  <div className="text-[7px] text-rmpg-500 leading-tight mt-0.5">{desc}</div>
                 </button>
               );
             })}
@@ -764,7 +764,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                   <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: cfg.style.strokeColor, opacity: state?.visible ? 1 : 0.3 }} />
                   <span className="text-[9px] text-rmpg-200 flex-1">{cfg.label}</span>
                   {state?.loaded && state.featureCount > 0 && (
-                    <span className="text-[8px] font-mono" style={{ color: state.visible ? cfg.style.strokeColor : '#666666' }}>
+                    <span className="text-[8px] font-mono" style={{ color: state.visible ? cfg.style.strokeColor : 'var(--rmpg-500)' }}>
                       {state.featureCount}
                     </span>
                   )}
@@ -1032,7 +1032,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                                           setAssignUnitIds((prev) => prev.filter((id) => id !== unit.id));
                                         }
                                       }}
-                                      className="w-2.5 h-2.5 accent-gray-500"
+                                      className="w-2.5 h-2.5 accent-rmpg-500"
                                     />
                                     <span className="text-[8px] flex-1">{unit.call_sign}</span>
                                     {unit.officer_name && (

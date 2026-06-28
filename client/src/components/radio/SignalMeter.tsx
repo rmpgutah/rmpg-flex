@@ -41,7 +41,7 @@ export default function SignalMeter({
                 width: 3,
                 height: 12,
                 borderRadius: 1,
-                background: isActive ? color : '#1a1a1a',
+                background: isActive ? color : 'var(--surface-raised)',
                 boxShadow: isActive ? `0 0 2px ${color}` : 'none',
                 transition: 'background 0.2s, box-shadow 0.2s',
               }}

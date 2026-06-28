@@ -63,7 +63,7 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-3 space-y-4">
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          <StatCard label="Total" value={s.total ?? 0} color="#e5e5e5" icon={Briefcase} />
+          <StatCard label="Total" value={s.total ?? 0} color="var(--rmpg-300)" icon={Briefcase} />
           <StatCard label="Open" value={s.open ?? 0} color="#22c55e" icon={Clock} />
           <StatCard label="Overdue" value={s.overdue ?? 0} color="#ef4444" icon={AlertTriangle} onClick={onShowOverdue} />
           <StatCard label="Closed" value={s.closed ?? 0} color="#888888" icon={CheckCircle} />
@@ -97,7 +97,7 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
           {investigators.length === 0 ? (
             <div className="text-[10px] text-rmpg-500 py-2">No open cases</div>
           ) : (
-            <table className="w-full text-[10px]">
+            <div className="overflow-x-auto"><table className="w-full text-[10px]">
               <thead>
                 <tr className="border-b border-rmpg-700">
                   <th className="text-left text-[8px] font-mono text-rmpg-500 uppercase py-[3px]">Investigator</th>
@@ -114,7 +114,7 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>

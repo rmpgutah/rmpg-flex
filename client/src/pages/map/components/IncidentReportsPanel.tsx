@@ -8,6 +8,7 @@
 import React, { useMemo } from 'react';
 import { X, FileText, Info, Navigation, Clock } from 'lucide-react';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface IncidentReport {
   id: number;
@@ -32,15 +33,15 @@ interface IncidentReportsPanelProps {
 // ─── Status colors ──────────────────────────────────────────
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  draft:        { label: 'Draft',        color: '#999999', bg: '#999999' },
-  submitted:    { label: 'Submitted',    color: '#aaaaaa', bg: '#888888' },
+  draft:        { label: 'Draft',        color: 'var(--rmpg-400)', bg: '#999999' },
+  submitted:    { label: 'Submitted',    color: 'var(--rmpg-400)', bg: '#888888' },
   under_review: { label: 'Under Review', color: '#fbbf24', bg: '#f59e0b' },
   approved:     { label: 'Approved',     color: '#4ade80', bg: '#22c55e' },
   returned:     { label: 'Returned',     color: '#f87171', bg: '#ef4444' },
 };
 
 function getStatusStyle(status: string) {
-  return STATUS_CONFIG[status] || { label: status, color: '#999999', bg: '#666666' };
+  return STATUS_CONFIG[status] || { label: status, color: 'var(--rmpg-400)', bg: 'var(--rmpg-500)' };
 }
 
 // ─── Time-ago helper ────────────────────────────────────────
@@ -110,7 +111,7 @@ export default function IncidentReportsPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2">
           <FileText size={12} className="text-emerald-400" />
@@ -145,7 +146,7 @@ export default function IncidentReportsPanel({
             <span className="text-[9px] font-mono text-rmpg-500 animate-pulse">Loading reports...</span>
             <div className="space-y-1 w-full">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse rounded-sm h-8" style={{ background: '#050505', opacity: 1 - i * 0.2 }} />
+                <div key={i} className="animate-pulse rounded-sm h-8" style={{ background: 'var(--surface-overlay)', opacity: 1 - i * 0.2 }} />
               ))}
             </div>
           </div>
@@ -249,12 +250,12 @@ export default function IncidentReportsPanel({
                       <div
                         key={r.id}
                         className="rounded-sm px-1.5 py-1 space-y-0.5 hover:bg-surface-raised/50 transition-colors duration-100"
-                        style={{ background: '#050505', border: '1px solid #282828', borderLeft: `2px solid ${ss.bg}` }}
+                        style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderLeft: `2px solid ${ss.bg}` }}
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] font-mono text-rmpg-200 truncate flex items-center gap-1">
                             <FileText size={8} className="shrink-0 text-rmpg-500" />
-                            {(r.incident_type || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                            {toDisplayLabel(r.incident_type || 'Unknown')}
                           </span>
                           <span
                             className="text-[8px] font-mono px-1 py-0.5 rounded-sm flex-shrink-0 ml-1"
@@ -296,7 +297,7 @@ export default function IncidentReportsPanel({
             {/* Info note */}
             <div
               className="flex items-start gap-1.5 px-2 py-1.5 rounded"
-              style={{ background: '#050505', border: '1px solid #282828' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
             >
               <Info size={10} className="text-emerald-500 mt-0.5 shrink-0" />
               <span className="text-[9px] font-mono text-rmpg-500 leading-tight">

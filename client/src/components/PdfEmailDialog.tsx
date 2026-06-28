@@ -53,7 +53,7 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
           />
         </label>
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="px-3 py-1 bg-gray-700 text-rmpg-100 text-xs">
+          <button type="button" onClick={onCancel} className="px-3 py-1 bg-rmpg-700 text-rmpg-100 text-xs">
             Cancel
           </button>
           <button

@@ -4,9 +4,11 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 interface PIP {
   id: number;
   officer_id: number;
@@ -44,6 +46,8 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [form, setForm] = useState({ officer_id: '', start_date: '', end_date: '', reason: '', goals: [''] });
+  const [confirmFailId, setConfirmFailId] = useState<number | null>(null);
+  const [confirmFailLoading, setConfirmFailLoading] = useState(false);
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
 
@@ -81,8 +85,20 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
   };
 
   const updateStatus = async (id: number, status: string) => {
-    if (status === 'failed' && !window.confirm('Mark this PIP as failed? This will be recorded permanently.')) return;
+    if (status === 'failed') { setConfirmFailId(id); return; }
     try { await apiFetch(`/hr/pips/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }); addToast('PIP updated', 'success'); load(); } catch { addToast('Failed to update PIP', 'error'); }
+  };
+
+  const doFailPip = async () => {
+    if (confirmFailId === null) return;
+    setConfirmFailLoading(true);
+    try {
+      await apiFetch(`/hr/pips/${confirmFailId}`, { method: 'PUT', body: JSON.stringify({ status: 'failed' }) });
+      addToast('PIP marked as failed', 'success');
+      setConfirmFailId(null);
+      load();
+    } catch { addToast('Failed to update PIP', 'error'); }
+    finally { setConfirmFailLoading(false); }
   };
 
   const daysRemaining = (endDate: string) => {
@@ -126,7 +142,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
             <option value="all">All Statuses</option>
             {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
           </select>
-          {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> New PIP</button>}
+          {isManager && <button type="button" data-hr-new-btn onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> New PIP</button>}
         </div>
       </div>
 
@@ -142,18 +158,18 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
         <div className="panel-beveled p-4 space-y-3">
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="field-label">Officer *</label>
+              <label htmlFor="ff-pipstab-2" className="field-label">Officer *</label>
               <select id="ff-pipstab-2" value={form.officer_id} onChange={e => setForm(f => ({ ...f, officer_id: e.target.value }))} className="input-field w-full text-xs">
                 <option value="">Select...</option>
                 {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
               </select>
             </div>
             <div>
-              <label className="field-label">Start Date *</label>
+              <label htmlFor="ff-pipstab-3" className="field-label">Start Date *</label>
               <input id="ff-pipstab-3" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} className="input-field w-full text-xs" />
             </div>
             <div>
-              <label className="field-label">End Date *</label>
+              <label htmlFor="ff-pipstab-4" className="field-label">End Date *</label>
               <input id="ff-pipstab-4" type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} className="input-field w-full text-xs" />
             </div>
           </div>
@@ -162,7 +178,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
             <RichTextArea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} className="input-field w-full text-xs" rows={3} placeholder="Describe the performance issues requiring improvement..." />
           </div>
           <div>
-            <label className="field-label">Goals *</label>
+            <label htmlFor="ff-pipstab-5" className="field-label">Goals *</label>
             {form.goals.map((g, i) => (
               <div key={i} className="flex gap-2 mb-1">
                 <input id="ff-pipstab-5" value={g} onChange={e => { const goals = [...form.goals]; goals[i] = e.target.value; setForm(f => ({ ...f, goals })); }} className="input-field flex-1 text-xs" placeholder={`Goal ${i + 1}`} />
@@ -197,7 +213,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[p.status] || STATUS_COLORS.active}`}>{(p.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+                      <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[p.status] || STATUS_COLORS.active}`}>{toDisplayLabel(p.status)}</span>
                       <span className="text-xs font-bold text-rmpg-100">{p.officer_name}</span>
                       {p.status === 'active' && <span className={`text-[10px] ${days <= 7 ? 'text-red-400' : days <= 14 ? 'text-amber-400' : 'text-rmpg-400'}`}><Clock className="w-3 h-3 inline" /> {days}d remaining</span>}
                     </div>
@@ -231,6 +247,17 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmFailId !== null}
+        onClose={() => setConfirmFailId(null)}
+        onConfirm={doFailPip}
+        title="Mark PIP as Failed"
+        message="Mark this PIP as failed? This will be recorded permanently."
+        confirmLabel="Mark Failed"
+        confirmVariant="danger"
+        isLoading={confirmFailLoading}
+      />
     </div>
   );
 }

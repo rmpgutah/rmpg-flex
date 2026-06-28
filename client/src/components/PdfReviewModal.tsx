@@ -196,6 +196,11 @@ export function PdfReviewModal<T extends Record<string, any>>({
           <div className="overflow-y-auto p-4 border-r border-border-default">
             {schema.sections.map((s, i) => {
               if (typeof s === 'function') return null;
+              // The PdfReviewModal editor only supports flow-section (labeled/
+              // narrative/checkbox/table/signature) fields — fixed-layout
+              // sections render in the PDF but aren't editable inline here.
+              // PR 4+ may add a fixed-layout editor; for now, skip.
+              if (s.kind !== 'section') return null;
               if (s.visibleIf && !s.visibleIf(data)) return null;
               return <EditorSection key={i} section={s} data={data} onChange={setData} />;
             })}
@@ -221,7 +226,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-3 py-1 bg-gray-700 text-rmpg-100">Cancel</button>
+            <button onClick={onClose} className="px-3 py-1 bg-rmpg-700 text-rmpg-100">Cancel</button>
             <CommitDropdown allowedActions={allowedActions} onSelect={handleCommit} />
           </div>
         </footer>
@@ -388,7 +393,7 @@ function TableEditor<T extends Record<string, any>>({
           </button>
         )}
       </div>
-      <table className="w-full border-collapse">
+      <div className="overflow-x-auto"><table className="w-full border-collapse">
         <thead>
           <tr className="text-rmpg-500 uppercase text-[10px]">
             {field.columns.map((c) => (
@@ -433,7 +438,7 @@ function TableEditor<T extends Record<string, any>>({
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

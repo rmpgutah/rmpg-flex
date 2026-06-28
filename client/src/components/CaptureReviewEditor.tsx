@@ -165,19 +165,19 @@ export default function CaptureReviewEditor({
           {history && history.length > 0 && (
             <div className="border border-border-default">
               <button type="button" onClick={() => setShowHistory((v) => !v)}
-                className="w-full px-2 py-1 flex items-center justify-between text-[9px] uppercase tracking-wider text-[#888888] hover:text-[#aaa]">
+                className="w-full px-2 py-1 flex items-center justify-between text-[9px] uppercase tracking-wider text-[#888888] hover:text-rmpg-400">
                 <span className="flex items-center gap-1"><History className="w-3 h-3" /> History ({history.length})</span>
                 <span>{showHistory ? '−' : '+'}</span>
               </button>
               {showHistory && (
-                <ul className="border-t border-border-default divide-y divide-[#141414]">
+                <ul className="border-t border-border-default divide-y divide-[var(--border-subtle)]">
                   {history.map((h) => (
                     <li key={h.id} className="px-2 py-1 text-[10px]">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[#d4a017]">{h.user_name || 'Officer'}</span>
                         <span className="text-rmpg-500">{String(h.created_at).slice(5, 16)}</span>
                       </div>
-                      {h.details && <div className="text-[#999] mt-0.5 break-words">{h.details}</div>}
+                      {h.details && <div className="text-rmpg-400 mt-0.5 break-words">{h.details}</div>}
                     </li>
                   ))}
                 </ul>

@@ -5,16 +5,19 @@ import {
   Download, FileText, Crosshair, MapPinned, Pin, Trash2, Compass, ExternalLink,
   Settings, Satellite, WifiOff,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useNavTrip, type NavTripContextValue } from '../context/NavTripContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import NavMapView, { type DroppedPin } from '../components/NavMapView';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../components/ToastProvider';
 import { generateNavTripReport, generateNavSingleTripReport } from '../utils/navTripPdf';
 import { trackToGpx, downloadGpx } from '../utils/gpxExport';
 import { sessionToCsv, downloadCsv, type NavSample } from '../utils/navCsvExport';
+import { parseTimestamp } from '../utils/dateUtils';
 import type { NavTrip, NavTripStatus } from '../types';
 import NavSettingsPanel, {
   type NavPrefs,
@@ -61,6 +64,9 @@ const STATUS_LABEL: Record<NavTripStatus, string> = {
 
 const PIN_STORAGE_KEY = 'rmpg_nav_dropped_pins';
 
+// Role gate: only admin/manager may download multi-trip PDF reports.
+const REPORT_ROLES = new Set(['admin', 'manager']);
+
 function formatDuration(seconds?: number): string {
   if (!seconds) return '--';
   const h = Math.floor(seconds / 3600);
@@ -78,7 +84,7 @@ function formatDistance(miles?: number): string {
 }
 
 function timeAgo(dateStr: string): string {
-  const d = new Date(dateStr.replace(' ', 'T'));
+  const d = parseTimestamp(dateStr);
   const diff = Date.now() - d.getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
@@ -153,13 +159,16 @@ export default function NavPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const officerName = user ? `${user.first_name} ${user.last_name}`.trim() || user.username : 'Unknown Officer';
-  const [tab, setTab] = useState<'current' | 'history'>('current');
+  const canDownloadReport = REPORT_ROLES.has(user?.role ?? '');
+  const { addToast } = useToast();
 
-  // ── App-wide trip detector (NavTripProvider) ──────────────
-  // NavPage no longer runs its own detector/uploader — detection lives once at
-  // the app shell so trips record on every page (incl. Drive Mode). NavPage just
-  // renders the shared state. navTrip is non-null in practice (NavPage always
-  // renders under the provider); the fallbacks keep TS + isolated renders safe.
+  // -- Deep-link: ?tab=history opens history tab directly --
+  const [searchParams, setSearchParams] = useSearchParams();
+  const fromDeepLinkRef = useRef(false);
+  const initialTab = searchParams.get('tab') === 'history' ? 'history' : 'current';
+  const [tab, setTab] = useState<'current' | 'history'>(initialTab as 'current' | 'history');
+
+  // -- App-wide trip detector (NavTripProvider) --
   const navTrip = useNavTrip();
   const gps = navTrip?.gps;
   const detection = navTrip?.detection;
@@ -169,11 +178,29 @@ export default function NavPage() {
   const endCurrentTrip = navTrip?.endCurrentTrip;
   const fetchCurrentTrip = navTrip?.fetchCurrentTrip;
 
+  // Strip ?tab= param on first render (useRef guard prevents re-run).
+  useEffect(() => {
+    if (fromDeepLinkRef.current) return;
+    fromDeepLinkRef.current = true;
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
+      if (tabParam === 'history') addToast('Showing trip history', 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [currentTripLocal, setCurrentTripLocal] = useState<NavTrip | null>(null);
   const [tripHistory, setTripHistory] = useState<NavTrip[]>([]);
   const [loading, setLoading] = useState(false);
   const [droppedPins, setDroppedPins] = useState<DroppedPin[]>(loadPins);
   const dropPinHandlerRef = useRef<((pin: DroppedPin) => void) | null>(null);
+
+  // -- ConfirmDialog state --
+  const [endTripConfirmOpen, setEndTripConfirmOpen] = useState(false);
+  const [clearPinsConfirmOpen, setClearPinsConfirmOpen] = useState(false);
 
   // #71/#81/#84/#93 Persisted nav prefs + settings popover open-state.
   const [prefs, setPrefs] = useState<NavPrefs>(loadNavPrefs);
@@ -207,15 +234,10 @@ export default function NavPage() {
   useEffect(() => { savePins(droppedPins); }, [droppedPins]);
 
   useEffect(() => {
-    // Mirror the context trip into local state in BOTH directions. The old
-    // `if (currentTrip)` guard copied a started trip down but never cleared on
-    // end — so when a trip ended (currentTrip → null) currentTripLocal kept the
-    // stale trip and `activeTrip` (line below) still rendered the End controls
-    // until a full page reload.
     setCurrentTripLocal(currentTrip);
   }, [currentTrip]);
 
-  // ── Fetch history ─────────────────────────────────────────
+  // -- Fetch history --
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
@@ -227,9 +249,6 @@ export default function NavPage() {
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
-  // Refresh history whenever an in-progress trip finishes. The detector now
-  // lives in the provider (no per-page onTripEnded callback), so we react to the
-  // shared currentTrip transitioning from active/pending → cleared instead.
   const prevTripIdRef = useRef<number | null>(null);
   useEffect(() => {
     const prevId = prevTripIdRef.current;
@@ -238,28 +257,58 @@ export default function NavPage() {
     prevTripIdRef.current = curId;
   }, [currentTrip, fetchHistory]);
 
-  // ── Manual start / end ────────────────────────────────────
-  const handleManualStart = () => {
+  // activeTripEarly derived before keyboard effect so the closure is valid.
+  const activeTripEarly = currentTripLocal || (detection?.pendingTripId ? currentTrip : null);
+
+  // -- Manual start / end --
+  const handleManualStart = useCallback(() => {
     if (gps?.latitude && gps?.longitude) {
       startManualTrip?.(gps.latitude, gps.longitude, gps.accuracy ?? undefined);
     }
-  };
+  }, [gps?.latitude, gps?.longitude, gps?.accuracy, startManualTrip]);
 
-  const handleEndTrip = () => {
+  const handleEndTrip = useCallback(() => {
     endCurrentTrip?.(gps?.latitude ?? undefined, gps?.longitude ?? undefined);
-  };
+    setEndTripConfirmOpen(false);
+  }, [endCurrentTrip, gps?.latitude, gps?.longitude]);
 
-  // ── Drop pin ──────────────────────────────────────────────
+  // -- N + Esc keyboard shortcuts --
+  // N: start a trip (no active trip) or open End Trip confirm (active trip).
+  // Esc cascade: endTripConfirm -> clearPinsConfirm -> settingsOpen.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      if (e.key === 'Escape') {
+        if (endTripConfirmOpen) { e.stopPropagation(); setEndTripConfirmOpen(false); return; }
+        if (clearPinsConfirmOpen) { e.stopPropagation(); setClearPinsConfirmOpen(false); return; }
+        if (settingsOpen) { e.stopPropagation(); setSettingsOpen(false); return; }
+        return;
+      }
+
+      if (e.key === 'n' || e.key === 'N') {
+        if (isInput) return;
+        if (activeTripEarly && (activeTripEarly.status === 'active' || activeTripEarly.status === 'pending')) {
+          setEndTripConfirmOpen(true);
+        } else if (gps?.latitude && gps?.longitude && (gps?.unitCallSign || hasTakeHome)) {
+          handleManualStart();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [endTripConfirmOpen, clearPinsConfirmOpen, settingsOpen, activeTripEarly, gps, hasTakeHome, handleManualStart]);
+
+  // -- Drop pin --
   const handleDropPin = useCallback((pin: DroppedPin) => {
     setDroppedPins((prev) => [...prev, pin]);
   }, []);
-  // Keep the ref synced so the always-mounted mini-map's onDropPin always
-  // calls the latest handler.
   dropPinHandlerRef.current = handleDropPin;
 
-  // ── PDF downloads ─────────────────────────────────────────
+  // -- PDF downloads --
   const handleDownloadAllTrips = () => {
-    if (tripHistory.length === 0) return;
+    if (!canDownloadReport || tripHistory.length === 0) return;
     const periodLabel = `Last ${tripHistory.length} trips`;
     generateNavTripReport({
       trips: tripHistory,
@@ -273,24 +322,21 @@ export default function NavPage() {
     generateNavSingleTripReport({ trip, officerName });
   };
 
-  // NavPage always renders under <NavTripProvider> (App route shell). If the
-  // context is somehow absent, fail soft with a tiny notice rather than crash.
   if (!navTrip || !gps || !detection) {
     return (
       <div className="flex items-center justify-center h-full bg-surface-base">
-        <span className="text-[11px] font-mono" style={{ color: '#888' }}>
+        <span className="text-[11px] font-mono text-rmpg-400">
           Navigation tracker unavailable.
         </span>
       </div>
     );
   }
 
-  const activeTrip = currentTripLocal || (detection.pendingTripId ? currentTrip : null);
+  const activeTrip = activeTripEarly;
 
   return (
     <div className="flex flex-col h-full bg-surface-base relative">
-      {/* #76 Brightness/dim overlay for night driving — non-interactive, above
-          map content, below interactive chrome (chrome is z-[1000]+). */}
+      {/* #76 Brightness/dim overlay for night driving */}
       {prefs.brightness < 1 && (
         <div
           aria-hidden
@@ -323,14 +369,14 @@ export default function NavPage() {
           </span>
         )}
         {gps.accuracy != null && (
-          <span className="text-rmpg-500">±{Math.round(gps.accuracy)}m</span>
+          <span className="text-rmpg-500">+-{Math.round(gps.accuracy)}m</span>
         )}
         {gps.unitCallSign ? (
-          <span style={{ color: '#d4a017' }}>{gps.unitCallSign} · ON DUTY</span>
+          <span style={{ color: '#d4a017' }}>{gps.unitCallSign} - ON DUTY</span>
         ) : hasTakeHome ? (
-          <span style={{ color: '#22c55e' }}>TAKE-HOME · TRACKING ACTIVE</span>
+          <span style={{ color: '#22c55e' }}>TAKE-HOME - TRACKING ACTIVE</span>
         ) : gps.isTracking ? (
-          <span className="text-rmpg-500">GPS ONLY · Set take-home vehicle to log trips</span>
+          <span className="text-rmpg-500">GPS ONLY - Set take-home vehicle to log trips</span>
         ) : null}
         <div className="ml-auto flex items-center gap-1.5">
           {/* #75 Offline / stale-fix status chip */}
@@ -361,7 +407,7 @@ export default function NavPage() {
             style={{
               width: 24, height: 22,
               borderColor: settingsOpen ? '#d4a017' : '#222',
-              color: settingsOpen ? '#d4a017' : '#888',
+              color: settingsOpen ? '#d4a017' : 'var(--rmpg-400)',
               background: settingsOpen ? 'rgba(212,160,23,0.10)' : 'transparent',
             }}
             title="Navigation settings"
@@ -392,23 +438,20 @@ export default function NavPage() {
         />
         {droppedPins.length > 0 && (
           <div className="flex items-center justify-between mt-1 text-[9px] font-mono">
-            <span style={{ color: '#888' }}>
+            <span className="text-rmpg-400">
               <Pin size={9} className="inline" /> {droppedPins.length} pin{droppedPins.length === 1 ? '' : 's'} on map
             </span>
             <button
               type="button"
-              onClick={() => setDroppedPins([])}
-              className="flex items-center gap-1 hover:underline"
-              style={{ color: '#888' }}
+              onClick={() => setClearPinsConfirmOpen(true)}
+              className="flex items-center gap-1 hover:underline text-rmpg-400"
             >
               <Trash2 size={9} /> Clear pins
             </button>
           </div>
         )}
 
-        {/* #84 Layer-toggle active-state visual sync — reads/writes prefs.layers
-            so persisted layers reflect correctly after reload (gold-filled =
-            active). These mirror the Drive-Mode layer set on this surface. */}
+        {/* #84 Layer-toggle active-state visual sync */}
         <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
           {([
             ['crime', 'Crime'],
@@ -429,7 +472,7 @@ export default function NavPage() {
                   minHeight: 22,
                   borderColor: active ? '#d4a017' : '#222',
                   background: active ? '#d4a017' : 'transparent',
-                  color: active ? '#000' : '#888',
+                  color: active ? '#000' : 'var(--rmpg-400)',
                 }}
               >
                 {label}
@@ -447,7 +490,7 @@ export default function NavPage() {
             onClick={() => setTab(t)}
             className="px-4 py-1.5 text-[11px] font-medium uppercase tracking-wider transition-colors"
             style={{
-              color: tab === t ? '#d4a017' : '#888888',
+              color: tab === t ? '#d4a017' : 'var(--rmpg-400)',
               borderBottom: tab === t ? '2px solid #d4a017' : '2px solid transparent',
             }}
           >
@@ -467,7 +510,7 @@ export default function NavPage() {
             prefs={prefs}
             reducedMotion={reducedMotion}
             onStart={handleManualStart}
-            onEnd={handleEndTrip}
+            onEnd={() => setEndTripConfirmOpen(true)}
             onRefresh={() => fetchCurrentTrip?.()}
           />
         ) : (
@@ -477,12 +520,12 @@ export default function NavPage() {
             onRefresh={fetchHistory}
             onDownloadAll={handleDownloadAllTrips}
             onDownloadTrip={handleDownloadSingleTrip}
+            canDownloadReport={canDownloadReport}
           />
         )}
       </div>
 
-      {/* #74 Acquiring-GPS / no-fix full-screen empty state — shown until the
-          first fix arrives, distinct from a hard map/track error. */}
+      {/* #74 Acquiring-GPS / no-fix full-screen empty state */}
       {!hasFix && (
         <div
           className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 px-6 text-center"
@@ -490,20 +533,17 @@ export default function NavPage() {
         >
           <Satellite size={36} className={pulseClass} style={{ color: '#d4a017' }} />
           <div className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
-            Acquiring GPS fix…
+            Acquiring GPS fix...
           </div>
           <div className="flex items-center gap-2 text-[10px] font-mono">
-            <span
-              className="px-1.5 py-0.5 rounded-sm border"
-              style={{ color: '#888', borderColor: '#222' }}
-            >
+            <span className="px-1.5 py-0.5 rounded-sm border text-rmpg-400 border-rmpg-700">
               {gps.unitCallSign ? 'ON-DUTY GPS' : hasTakeHome ? 'TAKE-HOME GPS' : 'BROWSER GPS'}
             </span>
             {gps.accuracy != null && (
-              <span style={{ color: '#888' }}>±{Math.round(gps.accuracy)}m</span>
+              <span className="text-rmpg-400">+-{Math.round(gps.accuracy)}m</span>
             )}
           </div>
-          <p className="text-[10px] font-mono max-w-xs" style={{ color: '#888' }}>
+          <p className="text-[10px] font-mono max-w-xs text-rmpg-400">
             {gps.isTracking
               ? 'Waiting for the first satellite fix. Stay near a clear sky view.'
               : 'Enable location services for this device to start tracking.'}
@@ -519,11 +559,33 @@ export default function NavPage() {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+
+      {/* Confirm: End Trip */}
+      <ConfirmDialog
+        isOpen={endTripConfirmOpen}
+        onClose={() => setEndTripConfirmOpen(false)}
+        onConfirm={handleEndTrip}
+        title="End Trip"
+        message="End the current trip now? The route and stats will be saved and the trip marked completed."
+        confirmLabel="End Trip"
+        confirmVariant="warning"
+      />
+
+      {/* Confirm: Clear Pins */}
+      <ConfirmDialog
+        isOpen={clearPinsConfirmOpen}
+        onClose={() => setClearPinsConfirmOpen(false)}
+        onConfirm={() => { setDroppedPins([]); setClearPinsConfirmOpen(false); }}
+        title="Clear Pins"
+        message={`Remove all ${droppedPins.length} dropped pin${droppedPins.length === 1 ? '' : 's'} from the map?`}
+        confirmLabel="Clear Pins"
+        confirmVariant="danger"
+      />
     </div>
   );
 }
 
-// ── Current Trip Panel ──────────────────────────────────────
+// -- Current Trip Panel --
 
 function CurrentTripPanel({
   trip, detection, gps, hasTakeHome, prefs, reducedMotion, onStart, onEnd, onRefresh,
@@ -543,16 +605,14 @@ function CurrentTripPanel({
 
   useEffect(() => {
     if (!trip || trip.status !== 'active' || !trip.start_time) return;
-    const start = new Date(trip.start_time.replace(' ', 'T')).getTime();
+    const start = parseTimestamp(trip.start_time).getTime();
     const interval = setInterval(() => {
       setElapsed(Math.round((Date.now() - start) / 1000));
     }, 1000);
     return () => clearInterval(interval);
   }, [trip]);
 
-  // #77 ETA / arrival readout: derive a live MM:SS countdown when the active
-  // trip carries a remaining-ETA estimate, coloring gold→amber→red as it
-  // shrinks, with the arrival clock shown in the user's clock pref.
+  // #77 ETA / arrival readout
   const etaSeconds = (trip as unknown as { remaining_eta_seconds?: number })?.remaining_eta_seconds;
   const etaView = useMemo(() => {
     if (etaSeconds == null || !isFinite(etaSeconds)) return null;
@@ -600,27 +660,26 @@ function CurrentTripPanel({
             <div className="text-center">
               <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: '#ef4444' }}>
                 {trip.max_speed_mph ? `${Math.round(trip.max_speed_mph)}` : '--'}
-                <span className="text-[10px] ml-0.5" style={{ color: '#888' }}>mph</span>
+                <span className="text-[10px] ml-0.5 text-rmpg-400">mph</span>
               </div>
               <div className="text-[9px] text-rmpg-500 uppercase">Max Speed</div>
             </div>
           </div>
 
-          {/* #77 ETA / arrival readout — live countdown + late band. Only
-              rendered when the active trip carries a remaining-ETA estimate. */}
+          {/* #77 ETA / arrival readout */}
           {etaView && (
             <div
               className="flex items-center justify-between mb-3 px-2 py-1.5 rounded-sm border"
-              style={{ borderColor: '#222', background: '#050505' }}
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-overlay)' }}
             >
               <div className="flex items-center gap-1.5">
                 <Clock size={11} style={{ color: etaView.color }} />
                 <span className="text-[16px] font-mono font-bold tabular-nums" style={{ color: etaView.color }}>
                   {etaView.countdown}
                 </span>
-                <span className="text-[9px] uppercase" style={{ color: '#888' }}>to arrival</span>
+                <span className="text-[9px] uppercase text-rmpg-400">to arrival</span>
               </div>
-              <span className="text-[11px] font-mono tabular-nums" style={{ color: '#e0e0e0' }}>
+              <span className="text-[11px] font-mono tabular-nums text-rmpg-300">
                 ETA {etaView.clock}
               </span>
             </div>
@@ -630,19 +689,19 @@ function CurrentTripPanel({
           <div className="space-y-1 text-[10px] font-mono">
             <div className="flex justify-between">
               <span className="text-rmpg-500">Start</span>
-              <span style={{ color: '#e0e0e0' }}>
-                {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '—')}
+              <span className="text-rmpg-300">
+                {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '-')}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-rmpg-500">Time</span>
-              <span style={{ color: '#e0e0e0' }}>{trip.start_time}</span>
+              <span className="text-rmpg-300">{trip.start_time}</span>
             </div>
             {trip.vehicle_number && (
               <div className="flex justify-between">
                 <span className="text-rmpg-500">Vehicle</span>
                 <span style={{ color: '#d4a017' }}>
-                  {trip.vehicle_number} — {trip.make} {trip.model}
+                  {trip.vehicle_number} - {trip.make} {trip.model}
                 </span>
               </div>
             )}
@@ -655,14 +714,13 @@ function CurrentTripPanel({
             {trip.route_points && Array.isArray(trip.route_points) && (
               <div className="flex justify-between">
                 <span className="text-rmpg-500">Breadcrumbs</span>
-                <span style={{ color: '#e0e0e0' }}>{trip.route_points.length} points</span>
+                <span className="text-rmpg-300">{trip.route_points.length} points</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* End Trip Button — FAB style. min-h-[48px] keeps it a confident
-            in-vehicle touch target on tablets/phones. */}
+        {/* End Trip Button */}
         <button
           onClick={onEnd}
           className="w-full py-3 max-md:min-h-[48px] rounded-sm text-[12px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
@@ -675,14 +733,14 @@ function CurrentTripPanel({
           <Link
             to="/navigation"
             className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-            style={{ background: '#141414', color: '#d4a017', border: '1px solid #222' }}
+            style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid var(--border-subtle)' }}
           >
             <Compass size={11} /> Drive Mode
           </Link>
           <button
             onClick={onRefresh}
             className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-            style={{ background: '#141414', color: '#888', border: '1px solid #222' }}
+            style={{ background: 'var(--surface-base)', color: 'var(--rmpg-400)', border: '1px solid var(--border-subtle)' }}
           >
             <RefreshCw size={11} /> Refresh
           </button>
@@ -691,7 +749,7 @@ function CurrentTripPanel({
     );
   }
 
-  // No active trip — show start screen
+  // No active trip - show start screen
   return (
     <div className="space-y-3">
       {/* Status Card */}
@@ -713,27 +771,27 @@ function CurrentTripPanel({
           </div>
           <div className="flex justify-between">
             <span className="text-rmpg-500">Position</span>
-            <span style={{ color: '#e0e0e0' }}>
+            <span className="text-rmpg-300">
               {gps.latitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude?.toFixed(5)}` : 'No fix'}
             </span>
           </div>
           {gps.speed != null && (
             <div className="flex justify-between">
               <span className="text-rmpg-500">Speed</span>
-              <span style={{ color: '#e0e0e0' }}>{Math.round(gps.speed * 2.237)} mph</span>
+              <span className="text-rmpg-300">{Math.round(gps.speed * 2.237)} mph</span>
             </div>
           )}
           {detection.loginPosition && (
             <div className="flex justify-between">
               <span className="text-rmpg-500">Login</span>
-              <span style={{ color: '#e0e0e0' }}>
+              <span className="text-rmpg-300">
                 {detection.loginPosition.lat.toFixed(4)}, {detection.loginPosition.lng.toFixed(4)}
               </span>
             </div>
           )}
           <div className="flex justify-between">
             <span className="text-rmpg-500">Vehicle</span>
-            <span style={{ color: gps.unitCallSign ? '#d4a017' : (hasTakeHome ? '#22c55e' : '#888') }}>
+            <span style={{ color: gps.unitCallSign ? '#d4a017' : (hasTakeHome ? '#22c55e' : 'var(--rmpg-400)') }}>
               {gps.unitCallSign
                 ? `${gps.unitCallSign} (on duty)`
                 : hasTakeHome
@@ -750,8 +808,7 @@ function CurrentTripPanel({
         </div>
       </div>
 
-      {/* Start Trip Button — big and prominent, enabled for take-home.
-          min-h-[48px] = comfortable in-vehicle touch target. */}
+      {/* Start Trip Button */}
       <button
         onClick={onStart}
         disabled={!gps.latitude || (!gps.unitCallSign && !hasTakeHome)}
@@ -764,14 +821,14 @@ function CurrentTripPanel({
       {!gps.isTracking && (
         <div className="rounded-sm border border-subtle p-2 text-center" style={{ background: '#1a0a0a' }}>
           <p className="text-[10px]" style={{ color: '#ef4444' }}>
-            GPS not tracking — waiting for position fix.
+            GPS not tracking - waiting for position fix.
           </p>
         </div>
       )}
 
       {!gps.unitCallSign && !hasTakeHome && (
-        <div className="rounded-sm border border-subtle p-2 text-center" style={{ background: '#141414' }}>
-          <p className="text-[10px]" style={{ color: '#888' }}>
+        <div className="rounded-sm border border-subtle p-2 text-center" style={{ background: 'var(--surface-base)' }}>
+          <p className="text-[10px] text-rmpg-400">
             Set a take-home vehicle on the Shift card to log trips without going on-duty.
           </p>
         </div>
@@ -782,14 +839,14 @@ function CurrentTripPanel({
         <Link
           to="/navigation"
           className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-          style={{ background: '#141414', color: '#d4a017', border: '1px solid #222' }}
+          style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid var(--border-subtle)' }}
         >
           <Compass size={11} /> Drive Mode
         </Link>
         <button
           onClick={onRefresh}
           className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-          style={{ background: '#141414', color: '#888', border: '1px solid #222' }}
+          style={{ background: 'var(--surface-base)', color: 'var(--rmpg-400)', border: '1px solid var(--border-subtle)' }}
         >
           <RefreshCw size={11} /> Refresh
         </button>
@@ -803,27 +860,28 @@ function CurrentTripPanel({
             How detection works
           </span>
         </div>
-        <ul className="text-[9px] font-mono space-y-0.5" style={{ color: '#888' }}>
-          <li>• Auto-starts when you move &gt;200ft from your login location (10s confirmation)</li>
-          <li>• Use the Start button above for immediate trip logging</li>
-          <li>• Trips are recorded with or without going on-duty (take-home works too)</li>
-          <li>• Use the mini-map above to recenter, switch style, or drop a pin</li>
+        <ul className="text-[9px] font-mono space-y-0.5 text-rmpg-400">
+          <li>- Auto-starts when you move &gt;200ft from your login location (10s confirmation)</li>
+          <li>- Use the Start button above for immediate trip logging</li>
+          <li>- Trips are recorded with or without going on-duty (take-home works too)</li>
+          <li>- Use the mini-map above to recenter, switch style, or drop a pin</li>
         </ul>
       </div>
     </div>
   );
 }
 
-// ── History Panel ───────────────────────────────────────────
+// -- History Panel --
 
 function HistoryPanel({
-  trips, loading, onRefresh, onDownloadAll, onDownloadTrip,
+  trips, loading, onRefresh, onDownloadAll, onDownloadTrip, canDownloadReport,
 }: {
   trips: NavTrip[];
   loading: boolean;
   onRefresh: () => void;
   onDownloadAll: () => void;
   onDownloadTrip: (trip: NavTrip) => void;
+  canDownloadReport: boolean;
 }) {
   if (loading) {
     return (
@@ -838,7 +896,7 @@ function HistoryPanel({
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-rmpg-500 uppercase">{trips.length} trips</span>
         <div className="flex items-center gap-2">
-          {trips.length > 0 && (
+          {trips.length > 0 && canDownloadReport && (
             <button
               onClick={onDownloadAll}
               className="flex items-center gap-1 text-[10px] transition-colors px-1.5 py-0.5 border border-subtle rounded-sm"
@@ -850,8 +908,7 @@ function HistoryPanel({
           )}
           <button
             onClick={onRefresh}
-            className="flex items-center gap-1 text-[10px] transition-colors"
-            style={{ color: '#888888' }}
+            className="flex items-center gap-1 text-[10px] transition-colors text-rmpg-400"
           >
             <RefreshCw size={11} /> Refresh
           </button>
@@ -860,7 +917,7 @@ function HistoryPanel({
 
       {trips.length === 0 ? (
         <div className="rounded-sm border border-subtle p-6 text-center" style={{ background:"var(--surface-sunken)" }}>
-          <Route size={24} className="mx-auto mb-2" style={{ color: '#333' }} />
+          <Route size={24} className="mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
           <p className="text-[11px] text-rmpg-500">No trips recorded yet</p>
           <p className="text-[10px] text-rmpg-600 mt-1">
             Trips are auto-detected when you start moving or can be started manually.
@@ -876,7 +933,7 @@ function HistoryPanel({
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[trip.status] || '#6b7280' }} />
-                <span className="text-[11px] font-semibold" style={{ color: '#e0e0e0' }}>
+                <span className="text-[11px] font-semibold text-rmpg-300">
                   {formatDistance(trip.distance_miles)}
                 </span>
                 <span className="text-[9px] font-mono" style={{ color: STATUS_COLOR[trip.status] || '#6b7280' }}>
@@ -889,17 +946,17 @@ function HistoryPanel({
             <div className="grid grid-cols-3 gap-2 text-[9px] font-mono">
               <div>
                 <span className="text-rmpg-500">Duration</span>
-                <div style={{ color: '#e0e0e0' }}>{formatDuration(trip.duration_seconds)}</div>
+                <div className="text-rmpg-300">{formatDuration(trip.duration_seconds)}</div>
               </div>
               <div>
                 <span className="text-rmpg-500">Max Speed</span>
-                <div style={{ color: '#e0e0e0' }}>
+                <div className="text-rmpg-300">
                   {trip.max_speed_mph ? `${Math.round(trip.max_speed_mph)} mph` : '--'}
                 </div>
               </div>
               <div>
                 <span className="text-rmpg-500">Type</span>
-                <div style={{ color: '#e0e0e0' }}>{trip.detected_by === 'auto' ? 'Auto' : 'Manual'}</div>
+                <div className="text-rmpg-300">{trip.detected_by === 'auto' ? 'Auto' : 'Manual'}</div>
               </div>
             </div>
 
@@ -907,16 +964,16 @@ function HistoryPanel({
               <div className="mt-1.5 text-[9px] font-mono flex justify-between">
                 <span className="text-rmpg-500">Vehicle</span>
                 <span style={{ color: '#d4a017' }}>
-                  {trip.vehicle_number} — {trip.make} {trip.model}
+                  {trip.vehicle_number} - {trip.make} {trip.model}
                 </span>
               </div>
             )}
 
             <div className="mt-1 text-[9px] font-mono flex justify-between">
               <span className="text-rmpg-500">Route</span>
-              <span style={{ color: '#888' }}>
-                {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '—')}
-                {trip.end_lat && ` → ${trip.end_location || `${trip.end_lat.toFixed(4)}, ${trip.end_lng?.toFixed(4)}`}`}
+              <span className="text-rmpg-400">
+                {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '-')}
+                {trip.end_lat && ` -> ${trip.end_location || `${trip.end_lat.toFixed(4)}, ${trip.end_lng?.toFixed(4)}`}`}
               </span>
             </div>
 
@@ -934,16 +991,14 @@ function HistoryPanel({
                   <>
                     <button
                       onClick={() => exportTripGpx(trip)}
-                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong"
-                      style={{ color: '#888' }}
+                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong text-rmpg-400"
                       title="Export this trip's GPS track as GPX (for mapping / evidence)"
                     >
                       <Download size={9} /> GPX
                     </button>
                     <button
                       onClick={() => exportTripCsv(trip)}
-                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong"
-                      style={{ color: '#888' }}
+                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong text-rmpg-400"
                       title="Export this trip's GPS samples as CSV (timestamp, lat, lng, speed, heading)"
                     >
                       <Download size={9} /> CSV

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { Terminal, Copy, CheckCircle2, ExternalLink, ShieldAlert, Search, Globe, Radio, Server, Cloud, Smartphone, Lock, Eye, Database, Wifi, Bug, FileSearch, Users, Zap, GitBranch, KeyRound, Play, Square, Download } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import GlobalCatalogSearch from './recon-connect/GlobalCatalogSearch';
 import InstallDashboard from './recon-connect/InstallDashboard';
 
-import RichTextArea from '../components/RichTextArea';
 type Platform = 'linux' | 'macos' | 'windows' | 'unknown';
 type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'contract_manager' | 'client_viewer' | 'human_resources' | 'investigator';
 
@@ -51,15 +51,7 @@ const INSTALL_COMMANDS: Record<Platform, string> = {
   unknown: '# Unsupported platform — see README at https://github.com/Z4nzu/hackingtool',
 };
 
-const LAUNCH_COMMANDS: Record<Platform, string> = {
-  linux:   'hackingtool',
-  macos:   'cd ~/recon-connect && source venv/bin/activate && python3 hackingtool.py',
-  windows: 'cd %USERPROFILE%\\recon-connect && venv\\Scripts\\activate && python hackingtool.py',
-  unknown: '',
-};
-
 // Who is allowed to see / launch Recon Connect from inside Flex.
-// TODO: you own this policy decision — see ReconConnectPage prompt below.
 const ALLOWED_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'investigator', 'dispatcher', 'officer'];
 
 function canAccessReconConnect(role: string | undefined): boolean {
@@ -67,21 +59,62 @@ function canAccessReconConnect(role: string | undefined): boolean {
   return ALLOWED_ROLES.includes(role as UserRole);
 }
 
+function canManage(role: string | undefined): boolean {
+  return role === 'admin' || role === 'manager';
+}
+
 export default function ReconConnectPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const platform = useMemo(detectPlatform, []);
   const isElectron = typeof window !== 'undefined' && Boolean((window as any).electron?.isElectron);
   const [copied, setCopied] = useState<string | null>(null);
   const [launchMsg, setLaunchMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null);
   const [termState, setTermState] = useState<'idle' | 'running'>('idle');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [confirmStop, setConfirmStop] = useState(false);
   const sessionIdRef = useRef<string | null>(null);
   const termHostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const catalogSearchRef = useRef<HTMLInputElement | null>(null);
   const api = (typeof window !== 'undefined' ? (window as any).electron : null) as any;
   const hasTerminalApi = Boolean(api?.reconSpawn);
+
+  // ── Deep-link: ?category=<slug> ─────────────────────────────────────────
+  useEffect(() => {
+    const cat = searchParams.get('category');
+    if (!cat) return;
+    const match = CATEGORIES.find(
+      (c) => c.route && (c.query === cat || c.name.toLowerCase().replace(/\s+/g, '-') === cat),
+    );
+    setSearchParams({}, { replace: true });
+    if (match?.route) navigate(match.route);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Keyboard shortcuts ───────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
+
+      // N — focus the global catalog search field
+      if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey && !isInput) {
+        e.preventDefault();
+        catalogSearchRef.current?.focus();
+        return;
+      }
+
+      // Esc cascade: stop-confirm → launchMsg → (fall through)
+      if (e.key === 'Escape') {
+        if (confirmStop) { e.stopPropagation(); setConfirmStop(false); return; }
+        if (launchMsg)   { e.stopPropagation(); setLaunchMsg(null); return; }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [confirmStop, launchMsg]);
 
   useEffect(() => {
     const onResize = () => { try { fitRef.current?.fit(); } catch { /* ignore */ } };
@@ -108,10 +141,10 @@ export default function ReconConnectPage() {
     return (
       <div className="p-6">
         <div className="bg-surface-base border border-rmpg-700 p-4 flex items-start gap-3">
-          <ShieldAlert className="w-5 h-5 text-[#d4a017] shrink-0 mt-0.5" />
+          <ShieldAlert className="w-5 h-5 text-brand-400 shrink-0 mt-0.5" />
           <div>
-            <div className="text-[#d4a017] font-semibold text-sm">ACCESS RESTRICTED</div>
-            <div className="text-[#888] text-xs mt-1">Recon Connect is restricted to authorized roles. Contact your administrator.</div>
+            <div className="text-brand-400 font-semibold text-sm">ACCESS RESTRICTED</div>
+            <div className="text-rmpg-400 text-xs mt-1">Recon Connect is restricted to authorized roles. Contact your administrator.</div>
           </div>
         </div>
       </div>
@@ -131,7 +164,7 @@ export default function ReconConnectPage() {
     const term = new XTerm({
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       fontSize: 12,
-      theme: { background: '#050505', foreground: '#d4d4d4', cursor: '#d4a017' },
+      theme: { background: 'var(--surface-overlay)', foreground: '#d4d4d4', cursor: '#d4a017' },
       cursorBlink: true,
       convertEol: true,
       scrollback: 5000,
@@ -145,8 +178,8 @@ export default function ReconConnectPage() {
       const id = sessionIdRef.current;
       if (id && api?.reconInput) api.reconInput(id, data);
     });
-    // xterm's input goes through a hidden <RichTextArea>; clicking anywhere on
-    // the host should hand focus to that textarea so keystrokes reach onData.
+    // xterm's input goes through a hidden textarea; clicking anywhere on the
+    // host should hand focus to that textarea so keystrokes reach onData.
     termHostRef.current.addEventListener('mousedown', () => {
       setTimeout(() => term.focus(), 0);
     });
@@ -206,14 +239,27 @@ export default function ReconConnectPage() {
     setSessionId(null);
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="RECON CONNECT — INVESTIGATIVE TOOLKIT" icon={Terminal} />
 
+      {/* ConfirmDialog — stop running session (admin/manager only) */}
+      <ConfirmDialog
+        isOpen={confirmStop}
+        onClose={() => setConfirmStop(false)}
+        onConfirm={() => { setConfirmStop(false); stopRecon(); }}
+        title="Stop Recon Session"
+        message="Kill the running session? Any unsaved output will be lost."
+        confirmLabel="Stop Session"
+        cancelLabel="Keep Running"
+        confirmVariant="danger"
+      />
+
       <div className="bg-surface-base border border-border-default p-4 flex items-start gap-3">
-        <ShieldAlert className="w-5 h-5 text-[#d4a017] shrink-0 mt-0.5" />
+        <ShieldAlert className="w-5 h-5 text-brand-400 shrink-0 mt-0.5" />
         <div className="text-xs text-rmpg-300 leading-relaxed">
-          <div className="text-[#d4a017] font-semibold mb-1">AUTHORIZED USE ONLY</div>
+          <div className="text-brand-400 font-semibold mb-1">AUTHORIZED USE ONLY</div>
           Recon Connect bundles offensive-security tooling. Use only within the scope of
           lawful investigations, authorized pentesting engagements, or defensive research.
           All local usage is subject to RMPG policy and applicable law.
@@ -222,31 +268,38 @@ export default function ReconConnectPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="bg-surface-base border border-border-default p-3">
-          <div className="text-[9px] text-[#888] uppercase tracking-wider">Detected Platform</div>
-          <div className="text-[#d4a017] font-mono text-sm mt-1">{platform.toUpperCase()}</div>
+          <div className="text-[9px] text-rmpg-400 uppercase tracking-wider">Detected Platform</div>
+          <div className="text-brand-400 font-mono text-sm mt-1">{platform.toUpperCase()}</div>
         </div>
         <div className="bg-surface-base border border-border-default p-3">
-          <div className="text-[9px] text-[#888] uppercase tracking-wider">Flex Client</div>
-          <div className="text-[#d4a017] font-mono text-sm mt-1">{isElectron ? 'DESKTOP (ELECTRON)' : 'WEB BROWSER'}</div>
+          <div className="text-[9px] text-rmpg-400 uppercase tracking-wider">Flex Client</div>
+          <div className="text-brand-400 font-mono text-sm mt-1">{isElectron ? 'DESKTOP (ELECTRON)' : 'WEB BROWSER'}</div>
         </div>
         <div className="bg-surface-base border border-border-default p-3">
-          <div className="text-[9px] text-[#888] uppercase tracking-wider">Signed In As</div>
-          <div className="text-[#d4a017] font-mono text-sm mt-1">{user?.role?.toUpperCase() ?? 'UNKNOWN'}</div>
+          <div className="text-[9px] text-rmpg-400 uppercase tracking-wider">Signed In As</div>
+          <div className="text-brand-400 font-mono text-sm mt-1">{user?.role?.toUpperCase() ?? 'UNKNOWN'}</div>
         </div>
       </div>
 
       <div className="bg-surface-base border border-border-default">
-        <div className="px-3 py-2 border-b border-border-default text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
+        <div className="px-3 py-2 border-b border-border-default text-[9px] text-brand-400 uppercase tracking-wider font-semibold">
           Install on this workstation
         </div>
         <div className="p-3 space-y-2">
-          <code className="block bg-surface-overlay border border-border-default p-2 text-[11px] font-mono text-rmpg-200 overflow-x-auto">
-            {INSTALL_COMMANDS[platform]}
-          </code>
+          {platform === 'unknown' ? (
+            <div className="bg-surface-overlay border border-border-default p-3 text-rmpg-400 text-[11px]">
+              Platform not detected. Select your OS above or visit the full install guide.
+            </div>
+          ) : (
+            <code className="block bg-surface-overlay border border-border-default p-2 text-[11px] font-mono text-rmpg-200 overflow-x-auto">
+              {INSTALL_COMMANDS[platform]}
+            </code>
+          )}
           <div className="flex gap-2">
             <button
               onClick={() => copy('install', INSTALL_COMMANDS[platform])}
-              className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#d4a017] text-xs hover:bg-surface-raised flex items-center gap-1.5"
+              disabled={platform === 'unknown'}
+              className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-brand-400 text-xs hover:bg-surface-raised flex items-center gap-1.5 disabled:opacity-40"
             >
               {copied === 'install' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               {copied === 'install' ? 'Copied' : 'Copy Install Command'}
@@ -254,7 +307,7 @@ export default function ReconConnectPage() {
             <a
               href="https://github.com/Z4nzu/hackingtool#installation"
               target="_blank" rel="noreferrer"
-              className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#888] text-xs hover:bg-surface-raised flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-rmpg-400 text-xs hover:bg-surface-raised flex items-center gap-1.5"
             >
               <ExternalLink className="w-3.5 h-3.5" /> Full install guide
             </a>
@@ -263,9 +316,9 @@ export default function ReconConnectPage() {
       </div>
 
       <div className="bg-surface-base border border-border-default">
-        <div className="px-3 py-2 border-b border-border-default text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold flex items-center justify-between">
+        <div className="px-3 py-2 border-b border-border-default text-[9px] text-brand-400 uppercase tracking-wider font-semibold flex items-center justify-between">
           <span>Recon Connect Terminal</span>
-          <span className="text-[#888] normal-case tracking-normal">
+          <span className="text-rmpg-400 normal-case tracking-normal">
             {termState === 'running' ? 'RUNNING' : 'IDLE'}
           </span>
         </div>
@@ -274,7 +327,7 @@ export default function ReconConnectPage() {
             <button
               onClick={() => runRecon('install')}
               disabled={!isElectron || termState === 'running'}
-              className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#d4a017] text-xs hover:bg-surface-raised disabled:opacity-40 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-brand-400 text-xs hover:bg-surface-raised disabled:opacity-40 flex items-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" />
               Install
@@ -282,22 +335,34 @@ export default function ReconConnectPage() {
             <button
               onClick={() => runRecon('launch')}
               disabled={!isElectron || termState === 'running'}
-              className="px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-brand-400 text-black text-xs font-semibold hover:bg-brand-300 disabled:opacity-40 flex items-center gap-1.5"
             >
               <Play className="w-3.5 h-3.5" />
               Run Recon Connect
             </button>
-            <button
-              onClick={stopRecon}
-              disabled={termState !== 'running'}
-              className="px-3 py-1.5 bg-surface-raised border border-[#b33] text-[#ff8888] text-xs hover:bg-[#2a1414] disabled:opacity-40 flex items-center gap-1.5"
-            >
-              <Square className="w-3.5 h-3.5" />
-              Stop
-            </button>
+            {canManage(user?.role) ? (
+              <button
+                onClick={() => termState === 'running' && setConfirmStop(true)}
+                disabled={termState !== 'running'}
+                className="px-3 py-1.5 bg-surface-raised border border-red-700 text-red-400 text-xs hover:bg-surface-sunken disabled:opacity-40 flex items-center gap-1.5"
+              >
+                <Square className="w-3.5 h-3.5" />
+                Stop
+              </button>
+            ) : (
+              <button
+                disabled
+                title="Admin or manager required to stop a session"
+                className="px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-rmpg-500 text-xs opacity-40 flex items-center gap-1.5 cursor-not-allowed"
+              >
+                <Square className="w-3.5 h-3.5" />
+                Stop
+              </button>
+            )}
             <button
               onClick={() => copy('install', INSTALL_COMMANDS[platform])}
-              className="ml-auto px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-[#888] text-xs hover:bg-surface-raised flex items-center gap-1.5"
+              disabled={platform === 'unknown'}
+              className="ml-auto px-3 py-1.5 bg-surface-raised border border-rmpg-700 text-rmpg-400 text-xs hover:bg-surface-raised flex items-center gap-1.5 disabled:opacity-40"
               title="Copy the install command if you'd rather run it yourself"
             >
               {copied === 'install' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -305,21 +370,29 @@ export default function ReconConnectPage() {
             </button>
           </div>
           {!isElectron && (
-            <div className="px-2 py-1.5 border border-rmpg-700 bg-surface-raised text-[#d4a017] text-[11px]">
+            <div className="px-2 py-1.5 border border-rmpg-700 bg-surface-raised text-brand-400 text-[11px]">
               Open Flex in the desktop app — the in-app terminal only works in Electron.
+            </div>
+          )}
+          {/* Empty / idle state before terminal is initialized */}
+          {isElectron && termState === 'idle' && !termRef.current && (
+            <div className="bg-surface-overlay border border-border-default h-[420px] flex items-center justify-center">
+              <span className="text-rmpg-500 text-[11px]">
+                Terminal idle — click <span className="text-brand-400 font-mono">Run Recon Connect</span> to start a session.
+              </span>
             </div>
           )}
           <div
             ref={termHostRef}
             tabIndex={0}
             onClick={() => termRef.current?.focus()}
-            className="bg-surface-overlay border border-border-default h-[420px] overflow-hidden focus-within:border-[#d4a017] cursor-text"
+            className={`bg-surface-overlay border border-border-default h-[420px] overflow-hidden focus-within:border-brand-400 cursor-text${isElectron && termState === 'idle' && !termRef.current ? ' hidden' : ''}`}
           />
           {launchMsg && (
             <div className={`px-2 py-1.5 border text-[11px] ${
-              launchMsg.kind === 'ok'  ? 'border-[#2e7d32] bg-[#0f1f10] text-[#7fd38a]' :
-              launchMsg.kind === 'err' ? 'border-[#b33] bg-[#1f0a0a] text-[#ff8888]' :
-                                         'border-rmpg-700 bg-surface-raised text-[#d4a017]'
+              launchMsg.kind === 'ok'  ? 'border-green-700 bg-surface-sunken text-green-400' :
+              launchMsg.kind === 'err' ? 'border-red-700 bg-surface-sunken text-red-400' :
+                                         'border-rmpg-700 bg-surface-raised text-brand-400'
             }`}>
               {launchMsg.text}
             </div>
@@ -327,42 +400,50 @@ export default function ReconConnectPage() {
         </div>
       </div>
 
-      <GlobalCatalogSearch onNavigate={navigate} />
+      <GlobalCatalogSearch onNavigate={navigate} searchRef={catalogSearchRef} />
 
       {isElectron && <InstallDashboard />}
 
       <div>
-        <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold mb-2">
-          Tool Categories ({CATEGORIES.reduce((s, c) => s + c.count, 0)}+ tools across {CATEGORIES.length} categories)
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-          {CATEGORIES.map(({ icon: Icon, name, count, desc, query, route }) => {
-            const isNative = Boolean(route);
-            return (
-              <button
-                key={name}
-                type="button"
-                onClick={() => route ? navigate(route) : openCategory(query, name)}
-                disabled={!route && !isElectron}
-                title={route ? `Open native ${name} workspace` : isElectron ? `Filter hackingtool to ${name}` : 'Requires the desktop app'}
-                className="group text-left bg-surface-base border border-border-default p-3 flex items-start gap-3 hover:bg-surface-raised hover:border-[#d4a017] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-              >
-                <Icon className="w-4 h-4 text-[#d4a017] shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <div className="text-rmpg-200 text-xs font-semibold group-hover:text-[#d4a017]">{name}</div>
-                    <div className="text-[#888] text-[10px] font-mono">{count} tools</div>
-                    {isNative && (
-                      <span className="text-[8px] font-mono uppercase tracking-wider text-[#d4a017] border border-[#d4a017]/40 px-1 py-[1px]">NATIVE</span>
-                    )}
-                  </div>
-                  <div className="text-[#888] text-[10px] leading-snug mt-0.5">{desc}</div>
-                  <div className="text-rmpg-500 text-[9px] font-mono mt-1 group-hover:text-[#d4a017]">{isNative ? 'Open workspace →' : `/${query} ↵`}</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        {CATEGORIES.length === 0 ? (
+          <div className="text-rmpg-500 text-[11px] p-4 border border-border-default bg-surface-base">
+            No tool categories available.
+          </div>
+        ) : (
+          <>
+            <div className="text-[9px] text-brand-400 uppercase tracking-wider font-semibold mb-2">
+              Tool Categories ({CATEGORIES.reduce((s, c) => s + c.count, 0)}+ tools across {CATEGORIES.length} categories)
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {CATEGORIES.map(({ icon: Icon, name, count, desc, query, route }) => {
+                const isNative = Boolean(route);
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => route ? navigate(route) : openCategory(query, name)}
+                    disabled={!route && !isElectron}
+                    title={route ? `Open native ${name} workspace` : isElectron ? `Filter hackingtool to ${name}` : 'Requires the desktop app'}
+                    className="group text-left bg-surface-base border border-border-default p-3 flex items-start gap-3 hover:bg-surface-raised hover:border-brand-400 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Icon className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <div className="text-rmpg-200 text-xs font-semibold group-hover:text-brand-400">{name}</div>
+                        <div className="text-rmpg-400 text-[10px] font-mono">{count} tools</div>
+                        {isNative && (
+                          <span className="text-[8px] font-mono uppercase tracking-wider text-brand-400 border border-brand-400/40 px-1 py-[1px]">NATIVE</span>
+                        )}
+                      </div>
+                      <div className="text-rmpg-400 text-[10px] leading-snug mt-0.5">{desc}</div>
+                      <div className="text-rmpg-500 text-[9px] font-mono mt-1 group-hover:text-brand-400">{isNative ? 'Open workspace →' : `/${query} ↵`}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

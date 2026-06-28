@@ -87,8 +87,8 @@ export default function ButtonHealthOverlay() {
     maxHeight: '80vh',
     overflow: 'auto',
     zIndex: 2147483647,
-    background: '#0d1722',
-    color: '#e5e7eb',
+    background: 'var(--surface-base)',
+    color: 'var(--rmpg-200)',
     border: '1px solid #d4a017',
     borderRadius: 2,
     boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
@@ -104,8 +104,8 @@ export default function ButtonHealthOverlay() {
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '8px 10px',
-          background: '#11243a',
-          borderBottom: '1px solid #1f3a57',
+          background: 'var(--surface-sunken)',
+          borderBottom: '1px solid var(--border-panel)',
           position: 'sticky',
           top: 0,
         }}
@@ -141,7 +141,7 @@ export default function ButtonHealthOverlay() {
 
       {report && (
         <div style={{ padding: '8px 10px' }}>
-          <div style={{ marginBottom: 6, color: '#9ca3af' }}>
+          <div style={{ marginBottom: 6, color: 'var(--rmpg-400)' }}>
             {report.url} · {report.viewport[0]}×{report.viewport[1]}
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -154,7 +154,7 @@ export default function ButtonHealthOverlay() {
             <div style={{ color: '#22c55e' }}>✓ All buttons fully clickable on this screen.</div>
           ) : (
             <>
-              <div style={{ color: '#9ca3af', margin: '6px 0 4px' }}>Top click-stealers:</div>
+              <div style={{ color: 'var(--rmpg-400)', margin: '6px 0 4px' }}>Top click-stealers:</div>
               <ul style={{ margin: '0 0 8px', paddingLeft: 16 }}>
                 {report.interceptorTally.slice(0, 5).map(([sig, n]) => (
                   <li key={sig}>
@@ -162,13 +162,13 @@ export default function ButtonHealthOverlay() {
                   </li>
                 ))}
               </ul>
-              <div style={{ color: '#9ca3af', margin: '6px 0 4px' }}>Offenders:</div>
+              <div style={{ color: 'var(--rmpg-400)', margin: '6px 0 4px' }}>Offenders:</div>
               {report.entries.map((e, i) => (
                 <div
                   key={i}
                   style={{
                     padding: '4px 0',
-                    borderTop: '1px solid #1f3a57',
+                    borderTop: '1px solid var(--border-panel)',
                   }}
                 >
                   <div>
@@ -179,13 +179,13 @@ export default function ButtonHealthOverlay() {
                     </span>{' '}
                     <strong>{e.label}</strong>
                   </div>
-                  <div style={{ color: '#9ca3af' }}>covered by: {e.interceptor}</div>
-                  <div style={{ color: '#6b7280', fontSize: 11 }}>{e.interceptorStyle}</div>
+                  <div className="text-rmpg-400">covered by: {e.interceptor}</div>
+                  <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>{e.interceptorStyle}</div>
                 </div>
               ))}
             </>
           )}
-          <div style={{ marginTop: 8, color: '#6b7280', fontSize: 11 }}>
+          <div style={{ marginTop: 8, color: 'var(--rmpg-500)', fontSize: 11 }}>
             Red = fully dead · Amber = only part clickable. Re-scan after any action.
           </div>
         </div>
@@ -195,9 +195,9 @@ export default function ButtonHealthOverlay() {
 }
 
 const btnStyle: React.CSSProperties = {
-  background: '#1f3a57',
-  color: '#e5e7eb',
-  border: '1px solid #2b4a6b',
+  background: 'var(--border-panel)',
+  color: 'var(--rmpg-200)',
+  border: '1px solid var(--border-panel)',
   borderRadius: 2,
   padding: '2px 8px',
   marginLeft: 6,
@@ -208,7 +208,7 @@ const btnStyle: React.CSSProperties = {
 function Stat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <span style={{ marginRight: 4 }}>
-      <span style={{ color: '#6b7280' }}>{label}:</span>{' '}
+      <span style={{ color: 'var(--rmpg-500)' }}>{label}:</span>{' '}
       <span style={{ color, fontWeight: 700 }}>{value}</span>
     </span>
   );

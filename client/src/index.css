@@ -1097,7 +1097,7 @@ body.fx-noise::after {
 
   /* --- Input Styles (Blocky) --- Motorola Blue focus accent */
   .input-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
+    @apply w-full px-3 py-1.5 text-sm text-rmpg-100 placeholder-rmpg-500 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: var(--surface-sunken);
@@ -1114,7 +1114,7 @@ body.fx-noise::after {
   }
 
   .select-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white focus:outline-none;
+    @apply w-full px-3 py-1.5 text-sm text-rmpg-100 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: var(--surface-sunken);
@@ -1136,7 +1136,7 @@ body.fx-noise::after {
   }
   .select-dark option {
     background: var(--surface-base);
-    color: #e0e0e0;
+    color: var(--text-secondary);
   }
 
   /* PDF editor find/search match highlighting on the transparent text layer.
@@ -1151,7 +1151,7 @@ body.fx-noise::after {
   }
 
   .textarea-dark {
-    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
+    @apply w-full px-3 py-1.5 text-sm text-rmpg-100 placeholder-rmpg-500 focus:outline-none resize-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
     border-top-color: var(--surface-sunken);
@@ -1168,26 +1168,27 @@ body.fx-noise::after {
 
   /* --- Button Styles (Blocky / Raised) --- Motorola Blue primary */
   .btn-primary {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
-    background: #444444;
-    border: 1px solid #888888;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-rmpg-100 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    background: var(--border-strong);
+    border: 1px solid var(--border-strong);
   }
   .btn-primary:hover:not(:disabled) {
-    background: #888888;
+    background: var(--rmpg-500);
+    border-color: var(--rmpg-500);
   }
 
   .btn-secondary {
     @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
-    background: #222222;
-    border: 1px solid #2e2e2e;
-    color: #cccccc;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
   }
   .btn-secondary:hover:not(:disabled) {
-    background: #2e2e2e;
+    background: var(--surface-overlay);
   }
 
   .btn-danger {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-rmpg-100 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
     background: #991b1b;
     border: 1px solid #dc2626;
   }
@@ -1196,7 +1197,7 @@ body.fx-noise::after {
   }
 
   .btn-success {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-rmpg-100 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
     background: #047857;
     border: 1px solid #059669;
   }
@@ -1519,6 +1520,63 @@ body.fx-noise::after {
   }
   .toolbar-btn-danger:hover {
     background: var(--surface-raised);
+  }
+
+  /* ── Dossier grid tiles (Windows-style desktop icon view) ── */
+  .dossier-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 88px;
+    padding: 6px 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    cursor: default;
+    transition: background 0.1s, border-color 0.1s;
+    text-align: center;
+    outline: none;
+  }
+  .dossier-tile:hover {
+    background: rgb(var(--rmpg-700-rgb) / 0.4);
+    border-color: rgb(var(--rmpg-600-rgb) / 0.5);
+  }
+  .dossier-tile:focus-visible {
+    border-color: rgb(var(--brand-400-rgb) / 0.8);
+  }
+  .dossier-tile-selected {
+    background: rgb(var(--brand-900-rgb) / 0.35);
+    border-color: rgb(var(--brand-500-rgb) / 0.6);
+  }
+  .dossier-tile-selected:hover {
+    background: rgb(var(--brand-900-rgb) / 0.5);
+    border-color: rgb(var(--brand-400-rgb) / 0.7);
+  }
+  .dossier-tile-icon {
+    position: relative;
+    width: 64px;
+    height: 60px;
+    border-radius: 2px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .dossier-tile-label {
+    font-size: 10px;
+    line-height: 1.3;
+    color: rgb(var(--rmpg-200-rgb));
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    width: 100%;
+  }
+  .dossier-tile-selected .dossier-tile-label {
+    color: rgb(var(--brand-200-rgb));
   }
 
   /* Context menu items (right-click menus) */
@@ -2922,6 +2980,52 @@ body.fx-noise::after {
   letter-spacing: 0.1em;
 }
 
+/* Quick-query button row — sits just above the input. Compact, terminal-
+   styled buttons that populate the input field with a verb prefix so the
+   operator only has to type the search term. The verb is shown in a bright
+   monospace pill; the descriptive label is the muted secondary text. */
+.ncic-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 0;
+  background: #080808;
+  border-top: 2px solid #222222;
+}
+
+.ncic-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid rgb(var(--brand-gold-rgb) / 0.25);
+  color: rgb(var(--brand-gold-rgb) / 0.9);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 120ms, border-color 120ms;
+}
+.ncic-quick-btn:hover:not(:disabled) {
+  background: rgb(var(--brand-gold-rgb) / 0.12);
+  border-color: rgb(var(--brand-gold-rgb) / 0.55);
+}
+.ncic-quick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ncic-quick-verb {
+  font-weight: 700;
+  color: var(--brand-gold);
+}
+.ncic-quick-label {
+  color: rgb(var(--brand-gold-rgb) / 0.7);
+}
+
 .ncic-input-row {
   display: flex;
   align-items: center;
@@ -3062,12 +3166,12 @@ body.fx-noise::after {
 
   /* --- Page Setup --- */
   @page {
-    margin: 0.4in 0.5in;
-    size: letter;
+    margin: 0.25in 0.3in;
+    size: letter portrait;
   }
 
   @page :first {
-    margin-top: 0.3in;
+    margin-top: 0.2in;
   }
 
   /* --- Global Reset: Dark → White --- */
@@ -3085,6 +3189,61 @@ body.fx-noise::after {
     --text-muted: #666666 !important;
     --brand-blue: #333333 !important;
     --brand-gold: #8a6b0a !important;
+
+    /* --- RGB channel overrides for Tailwind token classes (bg-surface-*, text-rmpg-*, etc.)
+         The night palette leaves these at dark values; without these overrides, any component
+         using `bg-surface-overlay` or `text-rmpg-50` prints dark on white. --- */
+
+    /* Surface channels — all white for print */
+    --surface-base-rgb: 255 255 255 !important;
+    --surface-raised-rgb: 255 255 255 !important;
+    --surface-sunken-rgb: 255 255 255 !important;
+    --surface-overlay-rgb: 255 255 255 !important;
+    --surface-deep-rgb: 255 255 255 !important;
+
+    /* rmpg scale — INVERTED: low index = dark ink, high index = white/near-white paper */
+    --rmpg-50-rgb: 20 20 20 !important;
+    --rmpg-100-rgb: 40 40 40 !important;
+    --rmpg-200-rgb: 60 60 60 !important;
+    --rmpg-300-rgb: 80 80 80 !important;
+    --rmpg-400-rgb: 100 100 100 !important;
+    --rmpg-500-rgb: 130 130 130 !important;
+    --rmpg-600-rgb: 170 170 170 !important;
+    --rmpg-700-rgb: 210 210 210 !important;
+    --rmpg-800-rgb: 232 232 232 !important;
+    --rmpg-900-rgb: 245 245 245 !important;
+    --rmpg-950-rgb: 255 255 255 !important;
+
+    /* brand scale — INVERTED (mirrors rmpg) */
+    --brand-50-rgb: 20 20 20 !important;
+    --brand-100-rgb: 40 40 40 !important;
+    --brand-200-rgb: 60 60 60 !important;
+    --brand-300-rgb: 80 80 80 !important;
+    --brand-400-rgb: 100 100 100 !important;
+    --brand-500-rgb: 130 130 130 !important;
+    --brand-600-rgb: 170 170 170 !important;
+    --brand-700-rgb: 210 210 210 !important;
+    --brand-800-rgb: 232 232 232 !important;
+    --brand-900-rgb: 245 245 245 !important;
+
+    /* blue scale — INVERTED (mirrors rmpg) */
+    --blue-50-rgb: 20 20 20 !important;
+    --blue-100-rgb: 40 40 40 !important;
+    --blue-200-rgb: 60 60 60 !important;
+    --blue-300-rgb: 80 80 80 !important;
+    --blue-400-rgb: 100 100 100 !important;
+    --blue-500-rgb: 130 130 130 !important;
+    --blue-600-rgb: 170 170 170 !important;
+    --blue-700-rgb: 210 210 210 !important;
+    --blue-800-rgb: 232 232 232 !important;
+    --blue-900-rgb: 245 245 245 !important;
+
+    /* brand-gold — darkened for legibility on white paper */
+    --brand-gold-300-rgb: 138 107 10 !important;
+    --brand-gold-400-rgb: 120 93 8 !important;
+    --brand-gold-500-rgb: 100 77 6 !important;
+    --brand-gold-600-rgb: 82 63 5 !important;
+    --brand-gold-700-rgb: 65 50 3 !important;
   }
 
   html {
@@ -3774,6 +3933,7 @@ body.fx-noise::after {
 
 .timer-bar-fill {
   height: 100%;
+  width: 0;
   transition: width 1s linear, background 0.3s ease;
   border-radius: 0 1px 1px 0;
 }
@@ -10112,4 +10272,16 @@ td.sparkline-cell {
   .group-hover\:visible {
     visibility: visible !important;
   }
+}
+
+/* Evidence barcode stripe on evidence-number chip — replaces inline
+   rgba(255,255,255,0.06) with a CSS-variable-backed utility class. */
+.evidence-barcode-stripe {
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 2px,
+    rgb(var(--rmpg-100-rgb) / 0.06) 2px,
+    rgb(var(--rmpg-100-rgb) / 0.06) 4px
+  );
 }

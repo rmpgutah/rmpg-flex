@@ -9,6 +9,19 @@ export function retentionCutoffMs(nowMs: number, retentionDays: number): number 
   return nowMs - retentionDays * 86_400_000;
 }
 
+/** Upstream request-horizon check (distinct from the purge retention above).
+ *  ClearPath only serves on-demand clips for RECENT footage — windows older than
+ *  a few days are off the camera SD or from parked time, so requestChunk ~99%
+ *  returns 500 ("footage unavailable") and the chunk dies as 'missing'. True when
+ *  a window's start is older than `maxAgeDays` before `nowMs`, so enqueueFootage
+ *  can skip it instead of flooding the queue with doomed chunks. Reuses
+ *  retentionCutoffMs for the cutoff math; `maxAgeDays<=0` → no horizon (never
+ *  beyond), i.e. the cap is disabled. */
+export function isBeyondRequestHorizon(fromTs: number, nowMs: number, maxAgeDays: number): boolean {
+  const cutoff = retentionCutoffMs(nowMs, maxAgeDays);
+  return cutoff !== null && fromTs < cutoff;
+}
+
 /** A footage_requests row is purgeable when it is older than the cutoff AND not
  *  locked as evidence. null/undefined evidence_locked counts as unlocked. */
 export function isPurgeable(

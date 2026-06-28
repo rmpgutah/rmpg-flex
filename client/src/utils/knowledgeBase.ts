@@ -26,11 +26,11 @@ export const KB_TYPE_META: Record<string, { label: string; color: string }> = {
   warrant: { label: 'Warrants', color: '#f59e0b' },
   citation: { label: 'Citations', color: '#38bdf8' },
   incident: { label: 'Incidents', color: '#fb923c' },
-  personnel: { label: 'Personnel', color: '#9ca3af' },
+  personnel: { label: 'Personnel', color: 'var(--rmpg-400)' },
   unit: { label: 'Units', color: '#34d399' },
   evidence: { label: 'Evidence', color: '#c084fc' },
   bolo: { label: 'BOLOs', color: '#ef4444' },
-  property: { label: 'Property', color: '#9ca3af' },
+  property: { label: 'Property', color: 'var(--rmpg-400)' },
   arrest: { label: 'Arrests', color: '#fb7185' },
   statute: { label: 'Statutes', color: '#d4a017' },
 };

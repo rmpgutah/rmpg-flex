@@ -286,11 +286,14 @@ export function attemptTrapRecovery(): string[] {
  * Returns the actions taken (empty array when there was nothing to recover).
  */
 export function recoverIfTrapped(): string[] {
-  const blockers = findBlockingOverlays();
-  if (blockers.length === 0) return [];
   const actions: string[] = [];
   try {
-    actions.push(...releaseOverflowLocks()); // a trap is confirmed — safe to also clear locks
+    // Always release overflow locks — an async error may have stranded
+    // overflow:hidden on body even when no blocking overlay is visible
+    // (e.g. the modal that set the lock was already removed by a later
+    // render, but the inline overflow style was never restored).
+    actions.push(...releaseOverflowLocks());
+    const blockers = findBlockingOverlays();
     for (const he of blockers) actions.push(neutralizeOverlay(he));
   } catch { /* best effort */ }
   return actions;
@@ -324,7 +327,7 @@ function showRecoveryToast(actions: string[], headline = 'UI diagnostic captured
       left: '50%',
       transform: 'translateX(-50%)',
       zIndex: '2147483647',
-      background: '#1a1a1a',
+      background: 'var(--surface-raised)',
       color: '#d4a017',
       border: '1px solid #d4a017',
       borderRadius: '2px',

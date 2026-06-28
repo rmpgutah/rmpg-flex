@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BarChart3,
   Calendar,
@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   Check,
   RotateCcw,
+  Trash2,
+  X,
 } from 'lucide-react';
 import {
   BarChart,
@@ -34,9 +36,11 @@ import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { localToday, dateToLocalYMD, parseTimestamp } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
@@ -99,13 +103,13 @@ interface OfficerActivityData {
 // Constants
 // ============================================================
 
-const PIE_COLORS = ['#888888', '#d4a017', '#888888', '#a855f7', '#22c55e', '#22c55e', '#666666', '#ec4899', '#8b5cf6'];
+const PIE_COLORS = ['var(--text-muted)', 'var(--brand-gold)', 'var(--text-muted)', '#a855f7', '#22c55e', '#22c55e', 'var(--rmpg-500)', '#ec4899', '#8b5cf6'];
 
 const PRIORITY_COLORS: Record<string, string> = {
   P1: '#dc2626',
-  P2: '#d4a017',
-  P3: '#888888',
-  P4: '#666666',
+  P2: 'var(--brand-gold)',
+  P3: 'var(--text-muted)',
+  P4: 'var(--rmpg-500)',
 };
 
 const CHART_TOOLTIP_STYLE = {
@@ -187,24 +191,6 @@ function formatDateLabel(dateStr: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function convertToCSV(data: any[], headers: string[]): string {
-  const rows = [headers.join(',')];
-
-  data.forEach(row => {
-    const values = headers.map(header => {
-      const value = row[header];
-      if (value === null || value === undefined) return '';
-      if (typeof value === 'string' && value.includes(',')) {
-        return `"${value}"`;
-      }
-      return value;
-    });
-    rows.push(values.join(','));
-  });
-
-  return rows.join('\n');
-}
-
 function exportToCSV(
   incidentsData: IncidentsSummaryData | null,
   officerActivity: OfficerActivityData[],
@@ -279,10 +265,22 @@ function exportToCSV(
 // ═══════════════════════════════════════════════════════════
 // Feature 27: Report Approval Queue Component
 // ═══════════════════════════════════════════════════════════
-function ReportApprovalQueue() {
+function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  // Inline return-reason modal — replaces the native window.prompt() that
+  // previously gated the supervisor return-for-revision action. The native
+  // dialog had no a11y, no keyboard polish, and gave the supervisor no
+  // visible context for WHICH report they were rejecting until they hit
+  // Cancel and re-read the row. Same pattern as Court Tracker #1607 and
+  // Cases #1604 (last big native-dialog cluster in the audit).
+  const [returnTarget, setReturnTarget] = useState<any | null>(null);
+  const [returnReason, setReturnReason] = useState('');
+  // ConfirmDialog state for delete report — gated to admin/manager via
+  // the canDelete prop so officers and supervisors can't accidentally
+  // destroy a report from the queue. Replaces a potential window.confirm.
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -307,27 +305,81 @@ function ReportApprovalQueue() {
     finally { setProcessing(null); }
   };
 
-  const handleReturn = async (id: string) => {
-    const reason = prompt('Return reason:');
-    if (!reason) return;
+  const openReturnDialog = (r: any) => {
+    setReturnTarget(r);
+    setReturnReason('');
+  };
+
+  const submitReturn = async () => {
+    const target = returnTarget;
+    const reason = returnReason.trim();
+    if (!target || !reason) return;
+    const id = String(target.id);
     setProcessing(id);
     try {
       await apiFetch(`/records/reports/${id}/return`, { method: 'POST', body: JSON.stringify({ reason }) });
       setReports(prev => prev.filter(r => String(r.id) !== id));
     } catch { /* ignore */ }
-    finally { setProcessing(null); }
+    finally {
+      setProcessing(null);
+      setReturnTarget(null);
+      setReturnReason('');
+    }
   };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const id = String(deleteTarget.id);
+    setProcessing(id);
+    try {
+      await apiFetch(`/records/reports/${id}`, { method: 'DELETE' });
+      setReports(prev => prev.filter(r => String(r.id) !== id));
+    } catch { /* ignore */ }
+    finally {
+      setProcessing(null);
+      setDeleteTarget(null);
+    }
+  };
+
+  // Esc cascade: delete confirm → return-reason modal. Implemented inside a
+  // single capture-phase effect so it fires before the parent page's Esc
+  // handler, giving the inner layer a chance to consume it first.
+  useEffect(() => {
+    if (!deleteTarget && !returnTarget) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (deleteTarget) { setDeleteTarget(null); return; }
+      if (returnTarget) { setReturnTarget(null); setReturnReason(''); }
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [deleteTarget, returnTarget]);
 
   const buildReportMenu = (r: any): ContextMenuItem[] => [
     m.action('Approve', () => handleApprove(String(r.id)), { icon: <Check size={12} />, disabled: processing === String(r.id) }),
-    m.action('Return for revision', () => handleReturn(String(r.id)), { icon: <RotateCcw size={12} />, danger: true, disabled: processing === String(r.id) }),
+    m.action('Return for revision', () => openReturnDialog(r), { icon: <RotateCcw size={12} />, danger: true, disabled: processing === String(r.id) }),
+    ...(canDelete ? [
+      m.separator(),
+      m.action('Delete report', () => setDeleteTarget(r), { icon: <Trash2 size={12} />, danger: true, disabled: processing === String(r.id) }),
+    ] : []),
     m.separator(),
     m.copy('Copy incident #', r.incident_number),
     m.copyId(r.id),
   ];
 
-  if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading queue...</div>;
-  if (reports.length === 0) return <div className="text-[10px] text-rmpg-500 text-center py-4">No reports pending review</div>;
+  if (loading) return (
+    <div className="flex items-center gap-2 text-[10px] text-rmpg-500">
+      <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading approval queue" />
+      Loading queue...
+    </div>
+  );
+  if (reports.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-6 text-rmpg-500">
+      <FileText className="w-6 h-6 text-rmpg-600 mb-2" />
+      <span className="text-[10px]">No reports pending review</span>
+    </div>
+  );
 
   return (
     <div className="space-y-2">
@@ -355,15 +407,119 @@ function ReportApprovalQueue() {
               Approve
             </button>
             <button type="button"
-              onClick={() => handleReturn(String(r.id))}
+              onClick={() => openReturnDialog(r)}
               disabled={processing === String(r.id)}
               className="toolbar-btn text-[9px] bg-red-900/30 text-red-400 border-red-700/30 hover:bg-red-800/40"
             >
               Return
             </button>
+            {canDelete && (
+              <button type="button"
+                onClick={() => setDeleteTarget(r)}
+                disabled={processing === String(r.id)}
+                className="toolbar-btn text-[9px] bg-red-900/20 text-red-500 border-red-800/30 hover:bg-red-900/40"
+                aria-label="Delete report"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
       ))}
+
+      {/* ConfirmDialog for report deletion — gated to admin/manager via canDelete. */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Report"
+        message="Permanently delete this report from the approval queue? This action cannot be undone."
+        details={deleteTarget && (
+          <>
+            <div><span className="text-rmpg-400">Incident:</span> <span className="font-mono">{deleteTarget.incident_number || '—'}</span></div>
+            {deleteTarget.incident_type && <div><span className="text-rmpg-400">Type:</span> {formatIncidentType(deleteTarget.incident_type)}</div>}
+            {deleteTarget.officer_name && <div><span className="text-rmpg-400">Author:</span> {deleteTarget.officer_name}</div>}
+          </>
+        )}
+        confirmLabel="Delete Report"
+        confirmVariant="danger"
+        isLoading={processing === String(deleteTarget?.id)}
+      />
+
+      {/* Inline return-reason modal — replaces the native window.prompt(). */}
+      {returnTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="return-modal-title"
+          onClick={() => { setReturnTarget(null); setReturnReason(''); }}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
+          <div
+            className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
+              style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
+            >
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-red-400" />
+                <h2 id="return-modal-title" className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Return Report for Revision</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setReturnTarget(null); setReturnReason(''); }}
+                className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-200 leading-relaxed">
+                Tell the author what needs to change. The supervisor note attaches to the report and shows in their queue on next login.
+              </p>
+              <div className="pl-3 border-l-2 border-rmpg-600 text-[10px] text-rmpg-300 space-y-0.5">
+                <div><span className="text-rmpg-400">Incident:</span> <span className="font-mono">{returnTarget.incident_number || '—'}</span></div>
+                {returnTarget.incident_type && <div><span className="text-rmpg-400">Type:</span> {formatIncidentType(returnTarget.incident_type)}</div>}
+                {returnTarget.officer_name && <div><span className="text-rmpg-400">Author:</span> {returnTarget.officer_name}{returnTarget.badge_number ? ` #${returnTarget.badge_number}` : ''}</div>}
+              </div>
+              <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">
+                Return reason
+                <textarea
+                  autoFocus
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  rows={4}
+                  placeholder="e.g. Add witness statements, clarify timeline of events…"
+                  className="mt-1 w-full input-dark text-xs px-2 py-1.5 font-sans normal-case"
+                />
+              </label>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setReturnTarget(null); setReturnReason(''); }}
+                  className="toolbar-btn text-xs"
+                  disabled={processing === String(returnTarget.id)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitReturn}
+                  disabled={!returnReason.trim() || processing === String(returnTarget.id)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm transition-colors bg-red-700 hover:bg-red-600 border-red-500 text-rmpg-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {processing === String(returnTarget.id) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Return for revision
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -517,11 +673,11 @@ function WeeklyDigestCard() {
               <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-1.5">Daily Breakdown</div>
               <ResponsiveContainer width="100%" height={120}>
                 <BarChart data={digest.byDay}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Bar dataKey="count" fill="#888888" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="count" fill="var(--text-muted)" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -577,7 +733,7 @@ function CrimeTrendCard() {
                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
               <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -657,7 +813,7 @@ function CitationRevenueCard() {
         {data.monthlyRevenue?.length > 0 && (
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={data.monthlyRevenue}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -798,15 +954,146 @@ function ReportSchedulesCard() {
   );
 }
 
+// Valid date-range presets accepted by the URL deep-link. Anything outside
+// this list is silently dropped so a bad URL doesn't put the page into an
+// invalid state where the select shows nothing.
+const VALID_DATE_RANGES = new Set([
+  'today', 'last_7_days', 'last_14_days', 'last_30_days',
+  'this_month', 'last_month', 'this_quarter', 'custom',
+]);
+
+// IDs of report cards an operator can scroll-deep-link to. Used for the
+// optional `?card=` query param so a supervisor can hand a colleague a
+// URL that opens straight to the Patrol Tracking generator or Crime Trend
+// table without forcing them to scroll the long dashboard. The values are
+// matched against `data-report-card="..."` anchors on each card root.
+const SCROLLABLE_CARDS = new Set([
+  'patrol-tracking', 'crime-trends', 'beat-activity', 'citation-revenue',
+  'daily-briefing', 'weekly-digest', 'schedules-templates', 'approval-queue',
+]);
+
 export default function ReportsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const [dateRange, setDateRange] = useState('last_14_days');
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Role gates — create = admin|manager, delete = admin|manager only.
+  const canCreate = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
+  const canDelete = useMemo(() => user?.role === 'admin' || user?.role === 'manager', [user?.role]);
+
+  // Hydrate date-range state from URL params on first render so a deep-link
+  // like /reports?range=last_30_days lands the operator on the right window
+  // immediately — supervisors share Reports links in Slack/email all the
+  // time, and the previous behavior (always last_14_days regardless of URL)
+  // silently swallowed those params.
+  const initialRange = (() => {
+    const r = searchParams.get('range');
+    return r && VALID_DATE_RANGES.has(r) ? r : 'last_14_days';
+  })();
+  const initialCustomStart = searchParams.get('start_date') || '';
+  const initialCustomEnd = searchParams.get('end_date') || '';
+  const [dateRange, setDateRange] = useState(initialRange);
+  const [customStartDate, setCustomStartDate] = useState(initialCustomStart);
+  const [customEndDate, setCustomEndDate] = useState(initialCustomEnd);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // ── URL deep-link: scroll-to-card ─────────────────────────────────
+  // Consumes ?card=<id> by scrolling that card into view once the page has
+  // finished its first data fetch (so the card is mounted). Honors the
+  // Dashboard-emit / page-consume contract used across the other audited
+  // pages — Reports is the natural cross-page drill-down target (a Crime
+  // Trend chip on the Dashboard, a "view full report" link from the
+  // Patrol page, etc.).
+  const pendingCardScrollRef = useRef<string | null>(searchParams.get('card'));
+  useEffect(() => {
+    const target = pendingCardScrollRef.current;
+    if (!target || loading) return;
+    if (!SCROLLABLE_CARDS.has(target)) {
+      pendingCardScrollRef.current = null;
+      return;
+    }
+    pendingCardScrollRef.current = null;
+    // requestAnimationFrame so the card's height settles before the scroll.
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-report-card="${target}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Brief highlight so the operator's eye lands on the right card —
+        // pure CSS class toggle, no layout shift.
+        el.classList.add('ring-2', 'ring-brand-400/40');
+        window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400/40'), 1500);
+      }
+    });
+  }, [loading]);
+
+  // ── URL deep-link: ?report_id=<id> / ?type=<val> ──────────────────
+  // ?report_id: scroll to the approval-queue card + toast the queued ID.
+  // ?type: pre-select the date range corresponding to a report type slug
+  //        (e.g. ?type=crime-trends scrolls to that card).
+  // Both are consumed once on mount (useRef guard) and stripped from the
+  // URL so a back-forward doesn't re-trigger them.
+  const deepLinkConsumedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkConsumedRef.current || loading) return;
+    deepLinkConsumedRef.current = true;
+
+    const reportId = searchParams.get('report_id');
+    const typeParam = searchParams.get('type');
+
+    // Strip both one-shot params immediately so the URL stays clean.
+    if (reportId || typeParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('report_id');
+      next.delete('type');
+      setSearchParams(next, { replace: true });
+    }
+
+    if (reportId) {
+      // Scroll approval queue card into view and toast the target ID.
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLElement>('[data-report-card="approval-queue"]');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('ring-2', 'ring-brand-400/40');
+          window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400/40'), 1500);
+        }
+      });
+      addToast(`Viewing report #${reportId} in approval queue`, 'info');
+    }
+
+    if (typeParam && SCROLLABLE_CARDS.has(typeParam)) {
+      // ?type matches a scrollable card slug — scroll to it.
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLElement>(`[data-report-card="${typeParam}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('ring-2', 'ring-brand-400/40');
+          window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400/40'), 1500);
+        }
+      });
+    }
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mirror state -> URL so a refresh keeps the window. Wrapped in an effect
+  // so we don't fight React's render cycle. We use replace:true to avoid
+  // polluting the back-button history with every preset change.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (dateRange !== 'last_14_days') next.set('range', dateRange); else next.delete('range');
+    if (dateRange === 'custom' && customStartDate) next.set('start_date', customStartDate);
+    else next.delete('start_date');
+    if (dateRange === 'custom' && customEndDate) next.set('end_date', customEndDate);
+    else next.delete('end_date');
+    // Strip the one-shot card param after the scroll effect consumed it.
+    if (pendingCardScrollRef.current === null && next.has('card')) next.delete('card');
+    const cur = searchParams.toString();
+    const nxt = next.toString();
+    if (cur !== nxt) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange, customStartDate, customEndDate]);
 
   // State for all API data
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -925,7 +1212,7 @@ export default function ReportsPage() {
   const priorityChartData = (Array.isArray(dashboardData?.callsByPriority) ? dashboardData.callsByPriority : []).map(item => ({
     priority: item.priority,
     count: item.count,
-    fill: PRIORITY_COLORS[item.priority] || '#666666',
+    fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
   }));
 
   const responseTimeChartData = (Array.isArray(responseTimesData?.dailyTrend) ? responseTimesData.dailyTrend : []).map(item => ({
@@ -946,6 +1233,40 @@ export default function ReportsPage() {
 
   // Set document title
   useEffect(() => { document.title = 'Reports & Analytics \u2014 RMPG Flex'; }, []);
+
+  // \u2500\u2500 Keyboard shortcuts \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // Esc smart-cascade: close error banner first, then exit custom range.
+  // stopPropagation per branch so inner layers (ReportApprovalQueue's own
+  // Esc handler for the delete confirm / return modal) consume it first.
+  //
+  // `N`: open the Custom Report Builder \u2014 gated to canCreate (admin|manager)
+  // so officers don't accidentally land on the builder. Typing-suppressed so
+  // it doesn't fire while editing the custom-range date inputs or modals.
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (error) { e.stopPropagation(); setError(null); return; }
+        if (dateRange === 'custom') { e.stopPropagation(); setDateRange('last_14_days'); return; }
+        // No more open layers on this page \u2014 let the global Esc handler
+        // (if any) catch it. We don't navigate back to Dashboard on Esc
+        // because the operator might be reading a chart.
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && canCreate) {
+        e.preventDefault();
+        navigate('/reports/custom');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [error, dateRange, navigate, canCreate]);
 
   return (
     <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto`}>
@@ -1003,12 +1324,14 @@ export default function ReportsPage() {
           )}
         </div>
         <PrintButton />
-        <button type="button"
-          className="toolbar-btn"
-          onClick={() => navigate('/reports/custom')}
-        >
-          <Database className="w-3.5 h-3.5" /> Custom Builder
-        </button>
+        {canCreate && (
+          <button type="button"
+            className="toolbar-btn"
+            onClick={() => navigate('/reports/custom')}
+          >
+            <Database className="w-3.5 h-3.5" /> Custom Builder
+          </button>
+        )}
         <button type="button"
           className="toolbar-btn"
           onClick={handleExport}
@@ -1067,12 +1390,14 @@ export default function ReportsPage() {
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">
-            <button type="button"
-              className="toolbar-btn justify-center min-h-[44px]"
-              onClick={() => navigate('/reports/custom')}
-            >
-              <Database className="w-3.5 h-3.5" /> Builder
-            </button>
+            {canCreate && (
+              <button type="button"
+                className="toolbar-btn justify-center min-h-[44px]"
+                onClick={() => navigate('/reports/custom')}
+              >
+                <Database className="w-3.5 h-3.5" /> Builder
+              </button>
+            )}
             <button type="button"
               className="toolbar-btn justify-center min-h-[44px]"
               onClick={handleExport}
@@ -1105,7 +1430,7 @@ export default function ReportsPage() {
           {/* Summary Stats */}
           <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-3'}`}>
             {[
-              { label: 'Total Calls', value: stats.totalCalls, color: 'var(--text-muted)', border: 'border-l-gray-500' },
+              { label: 'Total Calls', value: stats.totalCalls, color: 'var(--text-muted)', border: 'border-l-rmpg-500' },
               { label: 'Incidents Filed', value: stats.incidentsFiled, color: '#22c55e', border: 'border-l-green-500' },
               { label: 'Avg Response', value: stats.avgResponse, color: '#f59e0b', border: 'border-l-amber-500' },
               { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },
@@ -1173,12 +1498,12 @@ export default function ReportsPage() {
           )}
 
           {/* Feature 27: Report Approval Queue */}
-          <div className="panel-beveled p-4 bg-surface-base">
+          <div data-report-card="approval-queue" className="panel-beveled p-4 bg-surface-base transition-shadow">
             <div className="flex items-center gap-2 mb-3">
               <FileText className="w-4 h-4 text-purple-400" />
               <span className="text-xs font-bold text-rmpg-100 uppercase">Report Approval Queue</span>
             </div>
-            <ReportApprovalQueue />
+            <ReportApprovalQueue canDelete={canDelete} />
           </div>
 
           {/* Charts Grid */}
@@ -1245,7 +1570,7 @@ export default function ReportsPage() {
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={priorityChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
@@ -1275,13 +1600,13 @@ export default function ReportsPage() {
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={responseTimeChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#888888" strokeWidth={2} dot={{ fill: '#888888', r: 3 }} />
-                  <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="#d4a017" strokeDasharray="5 5" strokeWidth={1} dot={false} />
+                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="var(--text-muted)" strokeWidth={2} dot={{ fill: 'var(--text-muted)', r: 3 }} />
+                  <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="var(--brand-gold)" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
               )}
@@ -1303,13 +1628,13 @@ export default function ReportsPage() {
               ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={officerChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={70} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
-                  <Bar dataKey="calls" name="Calls" fill="#888888" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="calls" name="Calls" fill="var(--text-muted)" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="incidents" name="Incidents" fill="var(--brand-gold)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
               )}
@@ -1332,15 +1657,15 @@ export default function ReportsPage() {
                 }))}>
                   <defs>
                     <linearGradient id="callVolumeGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#888888" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#888888" stopOpacity={0.02} />
+                      <stop offset="5%" stopColor="var(--text-muted)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--text-muted)" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Area type="monotone" dataKey="calls" name="Calls" stroke="#888888" strokeWidth={2} fill="url(#callVolumeGradient)" />
+                  <Area type="monotone" dataKey="calls" name="Calls" stroke="var(--text-muted)" strokeWidth={2} fill="url(#callVolumeGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
               </div>
@@ -1360,16 +1685,16 @@ export default function ReportsPage() {
                   priority: item.priority,
                   avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
                   count: item.count,
-                  fill: PRIORITY_COLORS[item.priority] || '#666666',
+                  fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
                 }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
-                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || '#666666'} />
+                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -1379,25 +1704,25 @@ export default function ReportsPage() {
           )}
 
           {/* ── Patrol Tracking Report Generator ── */}
-          <PatrolTrackingCard />
+          <div data-report-card="patrol-tracking" className="transition-shadow"><PatrolTrackingCard /></div>
 
           {/* ═══ Feature 3: Crime Trend Analysis ═══ */}
-          <CrimeTrendCard />
+          <div data-report-card="crime-trends" className="transition-shadow"><CrimeTrendCard /></div>
 
           {/* ═══ Feature 4: Beat Activity Report ═══ */}
-          <BeatActivityCard />
+          <div data-report-card="beat-activity" className="transition-shadow"><BeatActivityCard /></div>
 
           {/* ═══ Feature 9: Citation Revenue Report ═══ */}
-          <CitationRevenueCard />
+          <div data-report-card="citation-revenue" className="transition-shadow"><CitationRevenueCard /></div>
 
           {/* ═══ Feature 11 & 12: Briefing & Digest ═══ */}
           <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-4'}`}>
-            <DailyBriefingCard />
-            <WeeklyDigestCard />
+            <div data-report-card="daily-briefing" className="transition-shadow"><DailyBriefingCard /></div>
+            <div data-report-card="weekly-digest" className="transition-shadow"><WeeklyDigestCard /></div>
           </div>
 
           {/* ═══ Feature 14 & 15: Schedules & Templates ═══ */}
-          <ReportSchedulesCard />
+          <div data-report-card="schedules-templates" className="transition-shadow"><ReportSchedulesCard /></div>
         </>
       )}
     </div>
@@ -1451,7 +1776,10 @@ function PatrolTrackingCard() {
 
       const data = await apiFetch<any>(`/reports/patrol-tracking?${params}`);
       if (!data?.trails?.length) {
-        alert('No patrol tracking data found for the selected period.');
+        // Native alert() blocked the page on render thread and the supervisor
+        // had to click OK to dismiss before being able to change the date
+        // range. A non-blocking toast lets them adjust filters immediately.
+        addToast('No patrol tracking data found for the selected period.', 'warning');
         return;
       }
 
@@ -1507,7 +1835,7 @@ function PatrolTrackingCard() {
 
         {/* Unit selector */}
         <div className="flex items-center gap-1.5">
-          <label className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
+          <label htmlFor="ff-reportspage-3" className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
           <select id="ff-reportspage-3"
             value={unitId}
             onChange={e => setUnitId(e.target.value)}
@@ -1525,7 +1853,7 @@ function PatrolTrackingCard() {
       <div className="flex items-center gap-3 flex-wrap">
         {mode === 'hours' ? (
           <div className="flex items-center gap-1.5">
-            <label className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
+            <label htmlFor="ff-reportspage-4" className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
             <select id="ff-reportspage-4"
               value={hours}
               onChange={e => setHours(parseInt(e.target.value, 10))}
@@ -1540,7 +1868,7 @@ function PatrolTrackingCard() {
         ) : (
           <>
             <div className="flex items-center gap-1.5">
-              <label className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
+              <label htmlFor="ff-reportspage-5" className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
               <input id="ff-reportspage-5"
                 type="date"
                 value={startDate}
@@ -1549,7 +1877,7 @@ function PatrolTrackingCard() {
               />
             </div>
             <div className="flex items-center gap-1.5">
-              <label className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
+              <label htmlFor="ff-reportspage-6" className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
               <input id="ff-reportspage-6"
                 type="date"
                 value={endDate}

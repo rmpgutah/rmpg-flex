@@ -114,7 +114,7 @@ export default function TacticalSummaryPanel({
             Tactical Layers
           </span>
           {activeCount > 0 && (
-            <span className="text-[8px] bg-gray-500/20 text-rmpg-300 px-1 rounded-[2px] font-bold">
+            <span className="text-[8px] bg-rmpg-500/20 text-rmpg-300 px-1 rounded-[2px] font-bold">
               {activeCount}
             </span>
           )}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { plateResultFromExtraction, normalizeCondition } from '../src/utils/cloudflarePlate';
+import { normalizeVehicleColor, normalizeVehicleMake } from '../src/utils/roboflowAlpr';
 import type { ExtractionResult } from '../src/utils/serveIntakeExtract';
 
 const mk = (fields: Record<string, { value: string; confidence: number }>, over: Partial<ExtractionResult> = {}): ExtractionResult => ({
@@ -22,7 +23,9 @@ describe('plateResultFromExtraction', () => {
     expect(r).not.toBeNull();
     expect(r!.plate).toBe('8AT6511');
     expect(r!.state).toBe('UT');
-    expect(r!.make).toBe('Ford');
+    expect(r!.make).toBe('FORD');
+    expect(r!.model).toBe('EXPLORER');
+    expect(r!.color).toBe('WHITE');
     expect(r!.year).toBe(2019);
     expect(r!.confidence).toBeCloseTo(0.88); // plate-field confidence, not overall
   });
@@ -46,6 +49,32 @@ describe('plateResultFromExtraction', () => {
       vehicle_year: { value: 'unknown', confidence: 0.1 },
     }));
     expect(r!.year).toBeNull();
+  });
+
+  it('extracts midpoint year from a range', () => {
+    const r = plateResultFromExtraction(mk({
+      plate_number: { value: 'RNG100', confidence: 0.9 },
+      vehicle_year: { value: '2018-2022', confidence: 0.5 },
+    }));
+    expect(r!.year).toBe(2020);
+  });
+
+  it('normalizes make alias (chevy → CHEVROLET)', () => {
+    const r = plateResultFromExtraction(mk({
+      plate_number: { value: 'CHV100', confidence: 0.9 },
+      vehicle_make: { value: 'Chevy', confidence: 0.7 },
+      vehicle_model: { value: 'Silverado', confidence: 0.7 },
+    }));
+    expect(r!.make).toBe('CHEVROLET');
+    expect(r!.model).toBe('SILVERADO');
+  });
+
+  it('normalizes color synonym (silver metallic → SILVER)', () => {
+    const r = plateResultFromExtraction(mk({
+      plate_number: { value: 'SLV100', confidence: 0.9 },
+      vehicle_color: { value: 'silver metallic', confidence: 0.7 },
+    }));
+    expect(r!.color).toBe('SILVER');
   });
 
   it('maps condition + damage from the vision read', () => {
@@ -97,5 +126,40 @@ describe('normalizeCondition', () => {
     expect(normalizeCondition(null)).toBeNull();
     expect(normalizeCondition('')).toBeNull();
     expect(normalizeCondition('purple')).toBeNull();
+  });
+});
+
+describe('normalizeVehicleColor', () => {
+  it('maps common color words to canonical uppercase', () => {
+    expect(normalizeVehicleColor('white')).toBe('WHITE');
+    expect(normalizeVehicleColor('Silver')).toBe('SILVER');
+    expect(normalizeVehicleColor('navy blue')).toBe('DARK BLUE');
+    expect(normalizeVehicleColor('charcoal')).toBe('BLACK');
+    expect(normalizeVehicleColor('pearl')).toBe('WHITE');
+    expect(normalizeVehicleColor('burgundy')).toBe('MAROON');
+  });
+  it('uppercases unknown colors', () => {
+    expect(normalizeVehicleColor('teal')).toBe('TEAL');
+  });
+  it('returns null for empty / null', () => {
+    expect(normalizeVehicleColor(null)).toBeNull();
+    expect(normalizeVehicleColor('')).toBeNull();
+  });
+});
+
+describe('normalizeVehicleMake', () => {
+  it('maps common aliases', () => {
+    expect(normalizeVehicleMake('chevy')).toBe('CHEVROLET');
+    expect(normalizeVehicleMake('VW')).toBe('VOLKSWAGEN');
+    expect(normalizeVehicleMake('Mercedes')).toBe('MERCEDES-BENZ');
+    expect(normalizeVehicleMake('toyota')).toBe('TOYOTA');
+    expect(normalizeVehicleMake('BMW')).toBe('BMW');
+  });
+  it('uppercases unknown makes', () => {
+    expect(normalizeVehicleMake('Rivian')).toBe('RIVIAN');
+  });
+  it('returns null for empty / null', () => {
+    expect(normalizeVehicleMake(null)).toBeNull();
+    expect(normalizeVehicleMake('')).toBeNull();
   });
 });

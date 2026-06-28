@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
+import { toDisplayLabel } from '../../utils/formatters';
 import type { LeadScrapeSource } from '../../types';
 
 interface ScrapeLog {
@@ -274,7 +275,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
 
       {/* Sources table */}
       <div className="px-3 py-2">
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full">
           <thead>
             <tr className="border-b border-rmpg-700/50">
               <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1 text-left">Source</th>
@@ -341,14 +342,14 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
               </React.Fragment>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {/* Recent logs */}
       {logs.length > 0 && (
         <div className="px-3 py-2 border-t border-rmpg-700/50">
           <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-1">Recent Scrape Runs</div>
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full">
             <thead>
               <tr className="border-b border-rmpg-700/30">
                 <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1 text-left">Source</th>
@@ -370,7 +371,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                       log.status === 'error' ? 'text-red-400 bg-red-900/30 border-red-700/50' :
                       'text-amber-400 bg-amber-900/30 border-amber-700/50'
                     }`}>
-                      {(log.status || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                      {toDisplayLabel(log.status)}
                     </span>
                   </td>
                   <td className="px-2 py-1 text-[10px] text-rmpg-300 text-right font-mono">{log.records_found}</td>
@@ -381,7 +382,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>

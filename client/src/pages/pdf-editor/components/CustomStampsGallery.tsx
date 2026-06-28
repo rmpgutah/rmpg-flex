@@ -160,7 +160,7 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
           {PRESETS.map(label => (
             <button key={label} type="button"
               onClick={() => { onPick({ kind: 'preset', label }); onClose(); }}
-              className="bg-surface-base hover:bg-surface-raised border-2 border-[#555555]/70 hover:border-[#555555] rounded-sm py-2 px-3 text-rmpg-500 font-bold text-sm tracking-wider">
+              className="bg-surface-base hover:bg-surface-raised border-2 border-border-panel/70 hover:border-border-panel rounded-sm py-2 px-3 text-rmpg-500 font-bold text-sm tracking-wider">
               {label}
             </button>
           ))}

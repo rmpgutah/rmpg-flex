@@ -183,7 +183,7 @@ export default function AIModelTuningPanel() {
 
         {overridesOpen && (
           <div className="px-4 pb-4 space-y-2">
-            <p className="text-[10px] text-gray-600 mb-3">Feature-specific overrides (empty = use defaults)</p>
+            <p className="text-[10px] text-rmpg-500 mb-3">Feature-specific overrides (empty = use defaults)</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -207,7 +207,7 @@ export default function AIModelTuningPanel() {
                             value={(featureParams[feature] || {})[key] ?? ''}
                             onChange={e => updateFeatureOverride(feature, key, e.target.value)}
                             placeholder="—"
-                            className="w-20 px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-700 focus:outline-none focus:border-gray-500"
+                            className="w-20 px-2 py-1 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-600 focus:outline-none focus:border-rmpg-500"
                           />
                         </td>
                       ))}
@@ -238,7 +238,7 @@ export default function AIModelTuningPanel() {
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => handleApplyPreset(preset)}
-                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-gray-600/20 text-rmpg-400 rounded hover:bg-gray-600/30 transition-colors"
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] bg-rmpg-600/20 text-rmpg-400 rounded hover:bg-rmpg-600/30 transition-colors"
                   >
                     <Check className="w-3 h-3" /> Apply
                   </button>
@@ -270,7 +270,7 @@ export default function AIModelTuningPanel() {
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-600">No presets saved yet.</p>
+          <p className="text-xs text-rmpg-500">No presets saved yet.</p>
         )}
 
         <div className="flex items-center gap-2 pt-2 border-t border-rmpg-700">
@@ -279,12 +279,12 @@ export default function AIModelTuningPanel() {
             value={newPresetName}
             onChange={e => setNewPresetName(e.target.value)}
             placeholder="Preset name..."
-            className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500"
+            className="flex-1 px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs placeholder-rmpg-500 focus:outline-none focus:border-rmpg-500"
           />
           <button
             onClick={handleSavePreset}
             disabled={!newPresetName.trim()}
-            className="px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-[#404040] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-xs bg-rmpg-700 text-rmpg-300 rounded hover:bg-border-default disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Save Current as Preset
           </button>
@@ -296,7 +296,7 @@ export default function AIModelTuningPanel() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-rmpg-100 text-sm rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-rmpg-600 text-rmpg-100 text-sm rounded hover:bg-rmpg-700 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Save Parameters
@@ -313,13 +313,13 @@ function Slider({ label, description, value, min, max, step, onChange }: {
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs">
-        <label className="text-rmpg-300">{label}</label>
+        <label htmlFor="ff-aimodeltuningpanel-2" className="text-rmpg-300">{label}</label>
         <span className="text-rmpg-400 font-mono">{value}</span>
       </div>
       <input id="ff-aimodeltuningpanel-2" type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-rmpg-700 rounded appearance-none cursor-pointer accent-gray-500" />
-      <p className="text-[10px] text-gray-600">{description}</p>
+        className="w-full h-1.5 bg-rmpg-700 rounded appearance-none cursor-pointer accent-rmpg-500" />
+      <p className="text-[10px] text-rmpg-500">{description}</p>
     </div>
   );
 }

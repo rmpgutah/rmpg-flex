@@ -188,7 +188,7 @@ export default function FeaturesPanel({ editor, onClose, caseUrl }: Props) {
               {items.map(s => {
                 const isFav = favs.has(s.id);
                 return (
-                  <div key={s.id} className="group flex items-start gap-1 hover:bg-[#0f0f0f] rounded-[2px] p-1">
+                  <div key={s.id} className="group flex items-start gap-1 hover:bg-surface-sunken rounded-[2px] p-1">
                     <button type="button" title={isFav ? 'Unfavorite' : 'Favorite'} onClick={() => toggleFav(s.id)}
                       className={`flex-shrink-0 mt-0.5 ${isFav ? 'text-[#d4a017]' : 'text-rmpg-700 hover:text-[#d4a017]'}`}>
                       <Star className="w-3 h-3" fill={isFav ? 'currentColor' : 'none'} />

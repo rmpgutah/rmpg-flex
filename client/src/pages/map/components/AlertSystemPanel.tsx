@@ -140,7 +140,7 @@ export default function AlertSystemPanel({
         ) : (
           <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {activeAlerts.map((alert) => {
-              const color = ALERT_TYPE_COLORS[alert.type] || '#666666';
+              const color = ALERT_TYPE_COLORS[alert.type] || 'var(--rmpg-500)';
               const label = ALERT_TYPE_LABELS[alert.type] || alert.type;
 
               return (
@@ -148,7 +148,7 @@ export default function AlertSystemPanel({
                   key={alert.id}
                   className={`rounded-sm hover:bg-surface-raised/50 transition-colors duration-100 ${!alert.acknowledged ? 'animate-pulse' : ''}`}
                   style={{
-                    backgroundColor: '#050505',
+                    backgroundColor: 'var(--surface-overlay)',
                     borderLeft: `3px solid ${color}`,
                   }}
                 >
@@ -183,7 +183,7 @@ export default function AlertSystemPanel({
                           className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[8px] font-mono uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
                           style={{
                             backgroundColor: '#88888833',
-                            color: '#aaaaaa',
+                            color: 'var(--rmpg-400)',
                             border: '1px solid #88888855',
                           }}
                           title="Acknowledge"
@@ -245,14 +245,14 @@ export default function AlertSystemPanel({
               </div>
             ) : (
               alertHistory.map((alert) => {
-                const color = ALERT_TYPE_COLORS[alert.type] || '#666666';
+                const color = ALERT_TYPE_COLORS[alert.type] || 'var(--rmpg-500)';
                 const label = ALERT_TYPE_LABELS[alert.type] || alert.type;
 
                 return (
                   <div
                     key={alert.id}
                     className="flex items-center gap-1.5 px-1.5 py-1 rounded-sm opacity-60"
-                    style={{ backgroundColor: '#050505' }}
+                    style={{ backgroundColor: 'var(--surface-overlay)' }}
                   >
                     <Clock size={8} className="text-rmpg-400 flex-shrink-0" />
                     <span

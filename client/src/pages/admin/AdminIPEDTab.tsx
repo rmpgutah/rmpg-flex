@@ -347,7 +347,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* IPED Install Path */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">IPED Installation Path</label>
+          <label htmlFor="ff-adminipedtab-0" className="text-[10px] text-rmpg-400">IPED Installation Path</label>
           <input id="ff-adminipedtab-0"
             type="text"
             value={installPath}
@@ -362,7 +362,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Java Home */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Java Home <span className="text-rmpg-600">(JDK 11+ required)</span></label>
+          <label htmlFor="ff-adminipedtab-1" className="text-[10px] text-rmpg-400">Java Home <span className="text-rmpg-600">(JDK 11+ required)</span></label>
           <input id="ff-adminipedtab-1"
             type="text"
             value={javaHome}
@@ -497,7 +497,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Default Profile */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">Default Processing Profile</label>
+          <label htmlFor="ff-adminipedtab-3" className="text-[10px] text-rmpg-400">Default Processing Profile</label>
           <div className="space-y-0.5">
             {PROFILES.map(p => (
               <button type="button"
@@ -552,7 +552,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
 
         {/* Web API Config */}
         <div className="space-y-1.5">
-          <label className="text-[10px] text-rmpg-400">IPED Web API <span className="text-rmpg-600">(optional — for case browsing)</span></label>
+          <label htmlFor="ff-adminipedtab-2" className="text-[10px] text-rmpg-400">IPED Web API <span className="text-rmpg-600">(optional — for case browsing)</span></label>
           <div className="flex gap-2">
             <input id="ff-adminipedtab-2"
               type="text"
@@ -668,7 +668,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </div>
 
           {status.runningJobs > 0 && (
-            <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-gray-950/30 border border-gray-800/40 text-rmpg-400">
+            <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-surface-overlay/30 border border-border-subtle/40 text-rmpg-400">
               <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" role="status" aria-label="Loading" />
               {status.runningJobs} job(s) currently running
             </div>

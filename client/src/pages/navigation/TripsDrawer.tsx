@@ -87,7 +87,7 @@ function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boole
     <button
       onClick={onOpen}
       className="w-full text-left bg-surface-raised/40 border px-2 py-1.5 hover:border-brand-600 transition-colors"
-      style={{ borderRadius: 2, borderColor: active ? '#d4a01788' : '#222222' }}
+      style={{ borderRadius: 2, borderColor: active ? '#d4a01788' : 'var(--border-subtle)' }}
     >
       {/* top line: type badge + active pill + date + chevron */}
       <div className="flex items-center gap-1.5">
@@ -262,7 +262,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
       </div>
 
       {/* timeline */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
         {unitId == null && (
           <div className="text-[9px] text-rmpg-600 px-2 pb-1 text-center">
             No unit assigned — showing the agency-wide trip log. Go on-duty to log your own.

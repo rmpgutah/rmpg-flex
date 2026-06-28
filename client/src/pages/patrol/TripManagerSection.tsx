@@ -126,6 +126,32 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
 
   useEffect(() => { fetchTrips(); }, [fetchTrips, refreshKey]);
 
+  // Pre-fill draft.start_mileage from the (officer, unit) anchor when the
+  // operator clicks +Add Trip. Removes the manual "look up the last
+  // odometer and type it in" step that nobody bothers with — that's why
+  // every PATROL row in the trip log has been "—" / "—" for months.
+  // Returns the suggested number so submitAdd can pre-fill end_mileage
+  // when the user types only a distance.
+  const fetchSuggestedMileage = useCallback(async (): Promise<number | null> => {
+    if (officerId === '' && unitId === '') return null;
+    const params = new URLSearchParams();
+    if (officerId !== '') params.set('officer_id', String(officerId));
+    if (unitId !== '') params.set('unit_id', String(unitId));
+    try {
+      const res = await apiFetch<{ suggested_mileage: number | null }>(`/patrol/mileage/suggest?${params}`);
+      return res?.suggested_mileage ?? null;
+    } catch { return null; }
+  }, [officerId, unitId]);
+
+  const startAdd = async () => {
+    setEditingKey(null);
+    setAdding(true);
+    const seed = emptyDraft();
+    const suggested = await fetchSuggestedMileage();
+    if (suggested != null) seed.start_mileage = String(Math.round(suggested * 10) / 10);
+    setDraft(seed);
+  };
+
   const startEdit = (t: ManagedTrip) => {
     setAdding(false);
     setEditingKey(`${t.source}:${t.id}`);
@@ -280,7 +306,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
         </h4>
         {canEdit && (
           <button
-            onClick={() => { setEditingKey(null); setAdding(true); setDraft(emptyDraft()); }}
+            onClick={startAdd}
             className="flex items-center gap-1 text-[9px] uppercase font-bold tracking-wider px-2 py-1 bg-surface-raised border border-rmpg-700 text-[#d4a017] hover:bg-surface-raised transition-colors"
           >
             <Plus className="w-3 h-3" /> Add Trip

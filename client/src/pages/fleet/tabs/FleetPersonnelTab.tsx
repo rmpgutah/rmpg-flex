@@ -266,7 +266,7 @@ export default function FleetPersonnelTab({
                 <div key={i} className="flex items-center gap-2 text-[10px]">
                   <span className="text-rmpg-500 flex-shrink-0">{field.icon}</span>
                   <span className="text-rmpg-500 w-16 flex-shrink-0">{field.label}</span>
-                  <span className="text-rmpg-200 font-mono truncate">{field.value}</span>
+                  <span className="min-w-0 text-rmpg-200 font-mono truncate">{field.value}</span>
                 </div>
               ))}
             </div>
@@ -397,7 +397,7 @@ export default function FleetPersonnelTab({
                 <div key={cred.id} className="p-2 bg-surface-sunken border border-rmpg-700">
                   <div className="flex items-center gap-2 mb-1">
                     <Award className="w-3 h-3 text-rmpg-400" />
-                    <span className="text-[10px] font-bold text-rmpg-200 truncate">{toDisplayLabel(cred.type)}</span>
+                    <span className="min-w-0 text-[10px] font-bold text-rmpg-200 truncate">{toDisplayLabel(cred.type)}</span>
                     <span className={`ml-auto px-1 py-0.5 text-[7px] font-bold uppercase border ${credentialStatusColor(cred.status)}`}>
                       {cred.status.replace(/_/g, ' ')}
                     </span>

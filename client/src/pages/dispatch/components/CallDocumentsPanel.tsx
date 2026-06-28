@@ -67,7 +67,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
         </div>
       </div>
 
-      <div className="space-y-1 flex-1 overflow-y-auto">
+      <div className="space-y-1 flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center text-[#888] text-[10px]"><Loader2 className="w-3 h-3 animate-spin mr-1" /> Loading…</div>
         ) : items.length === 0 ? (
@@ -75,9 +75,9 @@ export default function CallDocumentsPanel({ callId }: Props) {
         ) : items.map((d) => (
           <div key={d.id} className="group flex items-center gap-2 text-xs px-2 py-1.5 rounded-sm hover:bg-[#18181820]" style={{ borderLeft: '2px solid #88888840' }}>
             <FileText className="w-3 h-3 text-[#888] shrink-0" />
-            <button type="button" className="flex-1 min-w-0 truncate text-left text-[#e5e7eb] hover:text-rmpg-100" onClick={() => setOpenId(d.id)}>{d.title}</button>
+            <button type="button" className="flex-1 min-w-0 truncate text-left text-rmpg-200 hover:text-rmpg-100" onClick={() => setOpenId(d.id)}>{d.title}</button>
             <span className={`text-[8px] uppercase ${d.status === 'finalized' ? 'text-[#d4a017]' : 'text-rmpg-500'}`}>{d.status}</span>
-            <button type="button" aria-label="Detach document" title="Detach" className="opacity-0 group-hover:opacity-100 p-1 text-[#888] hover:text-[#ef4444]" onClick={() => detach(d.id)}><Unlink className="w-3 h-3" /></button>
+            <button type="button" aria-label="Detach document" title="Detach" className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-1 text-[#888] hover:text-[#ef4444]" onClick={() => detach(d.id)}><Unlink className="w-3 h-3" /></button>
           </div>
         ))}
       </div>
@@ -99,7 +99,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
               {results.map((d) => (
                 <button key={d.id} type="button" className="w-full flex items-center gap-2 text-xs px-2 py-1 rounded-sm hover:bg-[#18181820] text-left" onClick={() => attach(d.id)}>
                   <FileText className="w-3 h-3 text-[#888]" />
-                  <span className="flex-1 min-w-0 truncate text-[#e5e7eb]">{d.title}</span>
+                  <span className="flex-1 min-w-0 truncate text-rmpg-200">{d.title}</span>
                   <span className="text-[8px] text-rmpg-500">{d.status}</span>
                 </button>
               ))}

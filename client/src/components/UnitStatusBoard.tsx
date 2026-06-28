@@ -10,6 +10,7 @@ import { useActiveTripsLive } from '../hooks/useActiveTripsLive';
 import { tripLabel, tripMiles, tripDurationMin, type Trip } from '../hooks/useTrips';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Spillman EMERGENCY overlay: an officer with an active panic. Truthy for
 // either the numeric (1) or boolean (true) shape the API may serialize.
@@ -125,7 +126,7 @@ export default React.memo(function UnitStatusBoard({
 
   // All unit statuses, for the "Set status" submenu. Mirrors the UnitStatus union.
   const STATUSES: UnitStatus[] = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
-  const prettyStatus = (s: UnitStatus) => s.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+  const prettyStatus = (s: UnitStatus) => toDisplayLabel(s);
 
   const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
     ...(onStatusChange
@@ -216,7 +217,7 @@ export default React.memo(function UnitStatusBoard({
 
   return (
     <div className="overflow-auto scrollbar-dark">
-      <table className="table-dark" aria-label="Unit status board">
+      <div className="overflow-x-auto"><table className="table-dark" aria-label="Unit status board">
         <thead>
           <tr>
             <th>Unit</th>
@@ -318,7 +319,7 @@ export default React.memo(function UnitStatusBoard({
                         </span>
                         {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
                           const mins = Math.floor((Date.now() - parseTimestamp(unit.gps_updated_at).getTime()) / 60000);
-                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#666666';
+                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : 'var(--rmpg-500)';
                           return <span className="text-[8px] font-mono ml-1 flex-shrink-0" style={{ color }} title="GPS age">{mins}m</span>;
                         })()}
                       </div>
@@ -401,7 +402,7 @@ export default React.memo(function UnitStatusBoard({
             </tr>
           )}
         </tbody>
-      </table>
+      </table></div>
       {footUnit && <OnFootActivityModal unit={footUnit} onClose={() => setFootUnit(null)} />}
     </div>
   );

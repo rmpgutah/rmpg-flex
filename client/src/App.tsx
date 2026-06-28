@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
@@ -7,6 +7,7 @@ import { NavTripProvider } from './context/NavTripContext';
 import { ToastProvider } from './components/ToastProvider';
 import MDTBridge from './components/MDTBridge';
 import { ContextMenuProvider } from './context/ContextMenuContext';
+import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
@@ -73,6 +74,7 @@ const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
+const FleetShell = lazyRetry(() => import('./pages/fleet/v2/FleetShell'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const LawBookPage = lazyRetry(() => import('./pages/LawBookPage'));
@@ -82,6 +84,7 @@ const TrespassOrdersPage = lazyRetry(() => import('./pages/TrespassOrdersPage'))
 const MdtPage = lazyRetry(() => import('./pages/MdtPage'));
 const MobileHomePage = lazyRetry(() => import('./pages/mobile/MobileHomePage'));
 const FieldCameraPage = lazyRetry(() => import('./pages/mobile/FieldCameraPage'));
+const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage'));
 const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
@@ -93,8 +96,12 @@ const CrimeAnalysisPage = lazyRetry(() => import('./pages/CrimeAnalysisPage'));
 const CodeEnforcementPage = lazyRetry(() => import('./pages/CodeEnforcementPage'));
 const CourtTrackerPage = lazyRetry(() => import('./pages/CourtTrackerPage'));
 const DailyActivityReportsPage = lazyRetry(() => import('./pages/DailyActivityReportsPage'));
-const OffenderRegistryPage = lazyRetry(() => import('./pages/OffenderRegistryPage'));
-const SexOffenderRegistryPage = lazyRetry(() => import('./pages/SexOffenderRegistryPage'));
+// OffenderRegistryPage + SexOffenderRegistryPage were consolidated into the
+// NSOPW federated cross-reference (PR series #1588 → #1590 → #1594 → photos
+// PR). The two old tabs (Utah-only iCrimeWatch SOR + RMPG-internal offender
+// compliance) are now redirected to /nsopw — historical bookmarks survive,
+// the canonical SOR surface is one tab now.
+const NsopwLookupPage = lazyRetry(() => import('./pages/NsopwLookupPage'));
 const NcicPage = lazyRetry(() => import('./pages/NcicPage'));
 const DlSearchPage = lazyRetry(() => import('./pages/DlSearchPage'));
 const BodyCamerasPage = lazyRetry(() => import('./pages/BodyCamerasPage'));
@@ -109,6 +116,7 @@ const EmailPage = lazyRetry(() => import('./pages/EmailPage'));
 const CrmPage = lazyRetry(() => import('./pages/CrmPage'));
 const ServePage = lazyRetry(() => import('./pages/ServePage'));
 const ServeIntakePage = lazyRetry(() => import('./pages/ServeIntakePage'));
+const ServeSchedulerPage = lazyRetry(() => import('./pages/ServeSchedulerPage'));
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
@@ -157,6 +165,8 @@ const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
 const RiskPage = lazyRetry(() => import('./pages/RiskPage'));
 const InteragencyPage = lazyRetry(() => import('./pages/InteragencyPage'));
 const GangIntelPage = lazyRetry(() => import('./pages/GangIntelPage'));
+const PersonIntelPage = lazyRetry(() => import('./pages/PersonIntelPage'));
+const PersonIntelDossierPage = lazyRetry(() => import('./pages/PersonIntelDossierPage'));
 const SpecialOpsPage = lazyRetry(() => import('./pages/SpecialOpsPage'));
 const CrisisResponsePage = lazyRetry(() => import('./pages/CrisisResponsePage'));
 const VictimServicesPage = lazyRetry(() => import('./pages/VictimServicesPage'));
@@ -171,13 +181,17 @@ const CourtRecordsPage = lazyRetry(() => import('./pages/CourtRecordsPage'));
 const DashCamDetailPage = lazyRetry(() => import('./pages/DashCamDetailPage'));
 const FlexCamPage = lazyRetry(() => import('./pages/FlexCamPage'));
 const FlexCamFootagePage = lazyRetry(() => import('./pages/FlexCamFootagePage'));
+const TripPlaybackPage = lazyRetry(() => import('./pages/flexcam/TripPlaybackPage'));
 const DashcamAiPage = lazyRetry(() => import('./pages/DashcamAiPage'));
 const DocumentIntakePage = lazyRetry(() => import('./pages/DocumentIntakePage'));
 const DocumentsPage = lazyRetry(() => import('./pages/DocumentsPage'));
 const PdfEditorPage = lazyRetry(() => import('./pages/pdf-editor'));
 const DocumentWriterPage = lazyRetry(() => import('./pages/document-writer'));
+const TextEditorPage = lazyRetry(() => import('./pages/TextEditorPage'));
 const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
-const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
+// ForgotPasswordPage was a legacy standalone email-based reset surface. The
+// route now redirects to /login?forgot=1 (the working username + security-
+// question flow lives inline on LoginPage), so the page no longer ships.
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
@@ -222,14 +236,14 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
 
         {/* Subtle system label */}
         <div className="flex items-center gap-2 mt-3">
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, #2b2b2b)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, transparent, var(--border-default))' }} />
           <span
             className="text-[7px] tracking-[0.15em] uppercase font-bold"
             style={{ color: 'rgba(167, 177, 188, 0.42)' }}
           >
             CAD / RMS
           </span>
-          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #2b2b2b, transparent)' }} />
+          <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, var(--border-default), transparent)' }} />
         </div>
       </div>
 
@@ -246,13 +260,20 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return <LoadingSplash message="Loading RMPG Flex" />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    // Preserve the originally-requested URL so LoginPage can route the
+    // operator back after auth. Excludes /login itself to avoid loops.
+    const returnTo = location.pathname + location.search;
+    const params = returnTo && returnTo !== '/login'
+      ? `?return=${encodeURIComponent(returnTo)}`
+      : '';
+    return <Navigate to={`/login${params}`} replace />;
   }
 
   return <>{children}</>;
@@ -302,7 +323,7 @@ function NotFoundPage() {
         <div className="mb-4">
           <span
             className="text-6xl font-black tracking-tight"
-            style={{ color: '#1a1a1a', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
+            style={{ color: 'var(--surface-raised)', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
           >
             404
           </span>
@@ -312,8 +333,8 @@ function NotFoundPage() {
         <div
           className="inline-flex items-center gap-2 px-4 py-2 mb-6 border"
           style={{
-            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
-            borderColor: '#222222',
+            background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
+            borderColor: 'var(--border-subtle)',
             borderRadius: 2,
           }}
         >
@@ -330,7 +351,7 @@ function NotFoundPage() {
         <p className="text-sm text-[#888888] mb-2 leading-relaxed">
           The requested page does not exist or has been moved.
         </p>
-        <p className="text-[11px] text-[#555555] mb-6">
+        <p className="text-[11px] text-rmpg-500 mb-6">
           If you believe this is an error, contact your system administrator.
         </p>
 
@@ -339,7 +360,7 @@ function NotFoundPage() {
           href="/"
           className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors"
           style={{
-            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
+            background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
             border: '1px solid #d4a017',
             color: '#d4a017',
             borderRadius: 2,
@@ -349,7 +370,7 @@ function NotFoundPage() {
             e.currentTarget.style.borderColor = '#e8b52a';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)';
+            e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
             e.currentTarget.style.borderColor = '#d4a017';
           }}
         >
@@ -363,6 +384,15 @@ function NotFoundPage() {
 /** Per-route error boundary wrapper for lazy-loaded routes */
 function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
+}
+
+// <Navigate to="/foo" replace /> drops the URL search + hash. This wrapper
+// preserves both so legacy paths can act as transparent redirects (used by
+// /offender-registry → /nsopw so saved bookmarks with ?offender_id=… keep
+// working).
+function RedirectKeepQuery({ to }: { to: string }) {
+  const loc = useLocation();
+  return <Navigate to={`${to}${loc.search}${loc.hash}`} replace />;
 }
 
 function AppRoutes() {
@@ -408,11 +438,22 @@ function AppRoutes() {
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
           />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          {/* /forgot-password was a standalone email-based reset page, but the
+              live API (/api/auth/forgot-password) expects {username} + 3
+              security-question answers — the in-page panel on LoginPage is
+              the working flow. Redirect so the "Request New Link" affordance
+              on ResetPasswordPage doesn't dead-end on a mismatched contract. */}
+          <Route path="/forgot-password" element={<Navigate to="/login?forgot=1" replace />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           {/* QR-token-authed mobile vehicle inspection. Opened by scanning the
               per-shift QR on the ShiftCard; the :token IS the credential. */}
           <Route path="/m/shift/:token" element={<MobileShiftPage />} />
+          {/* QR-token-authed mobile PSO call dispatch surface. Opened by the
+              guard scanning the per-call QR; the ?token IS the credential and
+              the guard picks their identity via OfficerPicker before the auth
+              round-trip. Lives outside the auth gate because the QR token is
+              the auth — the guard is not yet logged in. */}
+          <Route path="/m/cfs/:id" element={<MobilePsoCfsPage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
@@ -454,11 +495,23 @@ function AppRoutes() {
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
             <Route path="/analytics" element={<RouteErrorBoundary><AnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
-            <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
+            {/* === Fleet UI cutover (PR 7'c) ===
+                 /fleet now serves the v2 Fleet.io-style shell.
+                 /fleet-legacy keeps the old UI mounted for ≥7 days as the
+                 escape hatch — operators hit it when they need a feature
+                 the new shell doesn't have yet. The legacy mount + old
+                 FleetPage code are removed in PR 7'd after the second
+                 7-day soak. The /fleet/v2/* parallel mount is kept for
+                 one cycle as a redirect target (anyone with a bookmark
+                 hitting /fleet/v2 still lands on the new UI). */}
+            <Route path="/fleet/v2/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
+            <Route path="/fleet/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
+            <Route path="/fleet-legacy" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/flexcam" element={<RouteErrorBoundary><FlexCamPage /></RouteErrorBoundary>} />
             <Route path="/flexcam/:id" element={<RouteErrorBoundary><FlexCamFootagePage /></RouteErrorBoundary>} />
+            <Route path="/flexcam/trip/:tripId" element={<RouteErrorBoundary><TripPlaybackPage /></RouteErrorBoundary>} />
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
             <Route path="/national-warrants" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             <Route path="/screening" element={<Navigate to="/warrants" replace />} />
@@ -504,8 +557,14 @@ function AppRoutes() {
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />
-            <Route path="/offender-registry" element={<RouteErrorBoundary><OffenderRegistryPage /></RouteErrorBoundary>} />
-            <Route path="/sex-offender-registry" element={<RouteErrorBoundary><SexOffenderRegistryPage /></RouteErrorBoundary>} />
+            {/* Legacy offender-registry surfaces — redirect to the canonical
+                /nsopw page but PRESERVE the query string so deep-links like
+                /offender-registry?offender_id=42 (saved bookmarks, dossier
+                cross-refs, court-package links) survive the move. Plain
+                <Navigate to="/nsopw" /> drops the search part. */}
+            <Route path="/offender-registry" element={<RedirectKeepQuery to="/nsopw" />} />
+            <Route path="/sex-offender-registry" element={<RedirectKeepQuery to="/nsopw" />} />
+            <Route path="/nsopw" element={<RouteErrorBoundary><NsopwLookupPage /></RouteErrorBoundary>} />
             <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
             <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
             <Route path="/audit" element={<AdminRoute><RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary></AdminRoute>} />
@@ -519,6 +578,7 @@ function AppRoutes() {
             <Route path="/email" element={<RouteErrorBoundary><EmailPage /></RouteErrorBoundary>} />
             <Route path="/crm" element={<RouteErrorBoundary><CrmPage /></RouteErrorBoundary>} />
             <Route path="/serve" element={<RouteErrorBoundary><ServePage /></RouteErrorBoundary>} />
+            <Route path="/serve-intake/scheduler" element={<RouteErrorBoundary><ServeSchedulerPage /></RouteErrorBoundary>} />
             <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
@@ -542,6 +602,7 @@ function AppRoutes() {
             <Route path="/documents" element={<RouteErrorBoundary><DocumentsPage /></RouteErrorBoundary>} />
             <Route path="/pdf-editor" element={<RouteErrorBoundary><PdfEditorPage /></RouteErrorBoundary>} />
             <Route path="/document-writer" element={<RouteErrorBoundary><DocumentWriterPage /></RouteErrorBoundary>} />
+            <Route path="/text-editor" element={<RouteErrorBoundary><TextEditorPage /></RouteErrorBoundary>} />
             <Route path="/docs" element={<RouteErrorBoundary><DocsLibraryPage /></RouteErrorBoundary>} />
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
@@ -556,6 +617,8 @@ function AppRoutes() {
             <Route path="/risk" element={<RouteErrorBoundary><RiskPage /></RouteErrorBoundary>} />
             <Route path="/interagency" element={<RouteErrorBoundary><InteragencyPage /></RouteErrorBoundary>} />
             <Route path="/gang-intel" element={<RouteErrorBoundary><GangIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel" element={<RouteErrorBoundary><PersonIntelPage /></RouteErrorBoundary>} />
+            <Route path="/person-intel/:id" element={<RouteErrorBoundary><PersonIntelDossierPage /></RouteErrorBoundary>} />
             <Route path="/special-ops" element={<RouteErrorBoundary><SpecialOpsPage /></RouteErrorBoundary>} />
             <Route path="/crisis-response" element={<RouteErrorBoundary><CrisisResponsePage /></RouteErrorBoundary>} />
             <Route path="/victim-services" element={<RouteErrorBoundary><VictimServicesPage /></RouteErrorBoundary>} />
@@ -593,23 +656,25 @@ export default function App() {
   //    so the WebSocket + auth session survive a single page blowing up.
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <WebSocketProvider>
-          <UserPreferencesProvider>
-            <ToastProvider>
-              <ContextMenuProvider>
-                <ErrorBoundary>
-                  <WebUpdateBanner />
-                  <MDTBridge />
-                  <AndroidUpdateChecker />
-                  <ButtonHealthOverlay />
-                  <AppRoutes />
-                </ErrorBoundary>
-              </ContextMenuProvider>
-            </ToastProvider>
-          </UserPreferencesProvider>
-        </WebSocketProvider>
-      </AuthProvider>
+      <FeatureFlagsProvider>
+        <AuthProvider>
+          <WebSocketProvider>
+            <UserPreferencesProvider>
+              <ToastProvider>
+                <ContextMenuProvider>
+                  <ErrorBoundary>
+                    <WebUpdateBanner />
+                    <MDTBridge />
+                    <AndroidUpdateChecker />
+                    <ButtonHealthOverlay />
+                    <AppRoutes />
+                  </ErrorBoundary>
+                </ContextMenuProvider>
+              </ToastProvider>
+            </UserPreferencesProvider>
+          </WebSocketProvider>
+        </AuthProvider>
+      </FeatureFlagsProvider>
     </ErrorBoundary>
   );
 }

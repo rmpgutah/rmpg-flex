@@ -163,7 +163,7 @@ export default function SafetyDashboardPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -178,7 +178,7 @@ export default function SafetyDashboardPanel({
 
       {/* Scrollable body */}
       <div
-        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent"
+        className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent"
         style={{ scrollbarWidth: 'thin' }}
       >
         {/* ── Section 1: Shift Risk Score ──────────────────── */}
@@ -442,7 +442,7 @@ export default function SafetyDashboardPanel({
                   key={`alert-${i}-${alert.slice(0, 20)}`}
                   className="text-[10px] text-rmpg-400 pl-2"
                   style={{
-                    borderLeft: '2px solid #282828',
+                    borderLeft: '2px solid var(--border-subtle)',
                   }}
                 >
                   {alert}
@@ -470,7 +470,7 @@ function ThreatCard({
   return (
     <div
       className="rounded-sm p-1.5 flex items-center gap-1.5 transition-all duration-150 hover:border-[#3c3c3c]"
-      style={{ background: '#050505', border: '1px solid #282828' }}
+      style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
     >
       <span className="led-dot" style={{ background: count > 0 ? ledColor : '#444444' }} />
       <span className="text-sm font-bold text-rmpg-200 tabular-nums">{count}</span>

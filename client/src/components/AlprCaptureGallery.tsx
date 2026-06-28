@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScanSearch, RefreshCw, AlertTriangle, ShieldCheck, Pencil } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 import TrustBadge from './TrustBadge';
 import VehicleDossier from './VehicleDossier';
 import CaptureReviewEditor, { type EditableCapture } from './CaptureReviewEditor';
@@ -29,7 +30,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
   const boxes = useMemo(() => detectionBoxes(cap.detections, nat?.w, nat?.h), [cap.detections, nat]);
   const band = confidenceBand(cap.confidence, cap.accepted);
   const source = captureSource(cap);
-  const boxColor = cap.alerted ? '#ef4444' : band === 'high' ? GOLD : '#9ca3af';
+  const boxColor = cap.alerted ? '#ef4444' : band === 'high' ? GOLD : 'var(--rmpg-400)';
 
   // Display plate: prefer canonical_plate (from the trust package) if available.
   const displayPlate = (cap as any).canonical_plate || cap.plate;
@@ -56,7 +57,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
             onError={() => setImgError(true)}
             className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[#444]">
+          <div className="w-full h-full flex items-center justify-center text-rmpg-700">
             <ScanSearch className="w-8 h-8" />
           </div>
         )}
@@ -78,7 +79,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
           </span>
           {cap.event_type && (
             <span className="text-[8px] px-1 py-[1px] bg-black/75 text-[#888] border border-border-subtle">
-              {String(cap.event_type).replace(/_/g, ' ')}
+              {toDisplayLabel(String(cap.event_type))}
             </span>
           )}
         </div>
@@ -94,7 +95,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
           <div className="flex items-end justify-between gap-1">
             <span
               className="text-base leading-none tracking-[0.18em] font-semibold"
-              style={{ color: cap.alerted ? '#fca5a5' : band === 'high' ? '#fff' : '#cbd5e1' }}>
+              style={{ color: cap.alerted ? '#fca5a5' : band === 'high' ? '#fff' : 'var(--rmpg-200)' }}>
               {displayPlate || '—'}
             </span>
             <TrustBadge trust={trust} />
@@ -186,14 +187,14 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
               {t.label}
             </button>
           ))}
-          <span className="w-px h-4 bg-[#2a2a2a] mx-0.5" />
+          <span className="w-px h-4 bg-border-default mx-0.5" />
           {BAND_TABS.map((t) => (
             <button key={t.key} onClick={() => setFilter((f) => ({ ...f, band: t.key }))}
               className={`text-[9px] px-2 py-1 border ${filter.band === t.key ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-[#888]'}`}>
               {t.label}
             </button>
           ))}
-          <span className="w-px h-4 bg-[#2a2a2a] mx-0.5" />
+          <span className="w-px h-4 bg-border-default mx-0.5" />
           <button onClick={() => setFilter((f) => ({ ...f, hits: f.hits === 'hits' ? 'all' : 'hits' }))}
             className={`text-[9px] px-2 py-1 border flex items-center gap-1 ${filter.hits === 'hits' ? 'border-red-600 text-red-300 bg-red-950/50' : 'border-border-default text-[#888]'}`}>
             <AlertTriangle className="w-2.5 h-2.5" /> HITS{hitCount ? ` (${hitCount})` : ''}
@@ -208,7 +209,7 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
             <select value={filter.eventType || ''} onChange={(e) => setFilter((f) => ({ ...f, eventType: e.target.value || undefined }))}
               className="text-[10px] bg-black border border-border-default text-rmpg-300 px-1 py-1 focus:border-[#d4a017] focus:outline-none">
               <option value="">All events</option>
-              {eventTypes.map((t) => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+              {eventTypes.map((t) => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
             </select>
           )}
           {(filter.plate || filter.eventType || filter.source !== 'all' || filter.band !== 'all' || filter.hits === 'hits') && (

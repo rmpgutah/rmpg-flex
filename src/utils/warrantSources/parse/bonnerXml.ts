@@ -27,9 +27,14 @@ import { deriveWarrantId } from './socrata';
 
 /** Decode the handful of XML entities that appear in name/charge text. */
 function decode(s: string): string {
+  // `&amp;` MUST be decoded LAST so an already-encoded literal like
+  // `&amp;lt;` (which represents the text `&lt;`, not `<`) is not
+  // double-unescaped into `<`. Order matters; CodeQL js/double-escaping
+  // flags the inverted ordering as a real bug.
   return s
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ').trim();
 }
 

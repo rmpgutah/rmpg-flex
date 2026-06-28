@@ -28,6 +28,7 @@ import { isValidTaskStatus, isValidTaskPriority, completedAtFor } from '../utils
 import { evaluateCompleteness } from '../utils/caseCompleteness';
 import { pickTemplate } from '../utils/caseTaskTemplates';
 import { broadcastAll } from './ws';
+import { recordAudit } from '../utils/auditLog';
 
 const cases = new Hono<Env>();
 
@@ -488,19 +489,25 @@ cases.put('/:id/submit-review', async (c) => {
     if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
     const existing = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM cases WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
-    if (existing.status !== 'open') {
+    // Allow submission from any non-terminal open-work status (previously only 'open').
+    const SUBMITTABLE = new Set(['open', 'assigned', 'active', 'suspended', 'returned']);
+    if (!SUBMITTABLE.has(existing.status)) {
       return c.json({ error: `Cannot submit case in status: ${existing.status}`, code: 'INVALID_STATUS_TRANSITION' }, 400);
     }
-    await execute(db, `UPDATE cases SET status = 'under_review', updated_at = datetime('now') WHERE id = ?`, id);
+    await execute(
+      db,
+      `UPDATE cases SET status = 'under_review', approval_status = 'pending_review', updated_at = datetime('now') WHERE id = ?`,
+      id,
+    );
     await logCaseActivity(c, id, 'review.submitted', { from: existing.status, to: 'under_review' });
-    return c.json({ data: { id, status: 'under_review' } });
+    return c.json({ data: { id, status: 'under_review', approval_status: 'pending_review' } });
   } catch (err) {
     return c.json({ error: 'Failed to submit case for review', code: 'SUBMIT_REVIEW_ERROR' }, 500);
   }
 });
 
 cases.put('/:id/approve', async (c) => {
-  // Approval is a supervisory action — restrict to supervisor+
+  // Approval / return is a supervisory action — restrict to supervisor+
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
@@ -510,11 +517,34 @@ cases.put('/:id/approve', async (c) => {
     const existing = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM cases WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
     if (existing.status !== 'under_review') {
-      return c.json({ error: `Cannot approve case in status: ${existing.status}`, code: 'INVALID_STATUS_TRANSITION' }, 400);
+      return c.json({ error: `Cannot approve/return case in status: ${existing.status}`, code: 'INVALID_STATUS_TRANSITION' }, 400);
     }
-    await execute(db, `UPDATE cases SET status = 'approved', updated_at = datetime('now') WHERE id = ?`, id);
+
+    const body = await c.req.json<{ action?: string; return_reason?: string }>().catch(() => ({} as Record<string, never>));
+    const action = body.action === 'return' ? 'return' : 'approve';
+
+    if (action === 'return') {
+      const reason = typeof body.return_reason === 'string' ? body.return_reason.trim() : '';
+      if (!reason) return c.json({ error: 'return_reason is required', code: 'RETURN_REASON_REQUIRED' }, 400);
+      await execute(
+        db,
+        `UPDATE cases SET status = 'returned', approval_status = 'returned',
+                          return_reason = ?, updated_at = datetime('now') WHERE id = ?`,
+        reason, id,
+      );
+      await logCaseActivity(c, id, 'review.returned', { from: 'under_review', to: 'returned', return_reason: reason });
+      return c.json({ data: { id, status: 'returned', approval_status: 'returned', return_reason: reason } });
+    }
+
+    const userId = c.get('userId') as number | undefined;
+    await execute(
+      db,
+      `UPDATE cases SET status = 'approved', approval_status = 'approved',
+                        approved_by = ?, approved_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+      userId ?? null, id,
+    );
     await logCaseActivity(c, id, 'review.approved', { from: 'under_review', to: 'approved' });
-    return c.json({ data: { id, status: 'approved' } });
+    return c.json({ data: { id, status: 'approved', approval_status: 'approved' } });
   } catch (err) {
     return c.json({ error: 'Failed to approve case', code: 'APPROVE_ERROR' }, 500);
   }
@@ -575,12 +605,26 @@ cases.delete('/:id', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
-    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE id = ?', id);
+    // Pull identifying fields BEFORE destruction — audit 2026-06-21
+    // caught that case deletion (cascading case_notes + case_person_links)
+    // wrote zero audit_log entries while case-task delete at line 1316
+    // logs via logCaseActivity. The first thing a prosecutor will ask
+    // is "who deleted this case?" — record the answer.
+    const existing = await queryFirst<{ id: number; case_number: string | null; case_type: string | null; status: string | null }>(
+      db, 'SELECT id, case_number, case_type, status FROM cases WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
     // CASCADE deletes case_notes + case_person_links via FK
     await execute(db, 'DELETE FROM case_notes WHERE case_id = ?', id);
     await execute(db, 'DELETE FROM case_person_links WHERE case_id = ?', id);
     await execute(db, 'DELETE FROM cases WHERE id = ?', id);
+    try {
+      await recordAudit(c, {
+        action: 'case_deleted',
+        entityType: 'case',
+        entityId: id,
+        details: `Deleted case ${existing.case_number ?? id} (${existing.case_type ?? 'unknown_type'}, status=${existing.status ?? 'unknown'})`,
+      });
+    } catch { /* best-effort */ }
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: 'Failed to delete case', code: 'DELETE_ERROR' }, 500);
@@ -645,6 +689,89 @@ cases.post('/:id/notes', async (c) => {
     return c.json({ data: note }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to add note', code: 'NOTE_POST_ERROR' }, 500);
+  }
+});
+
+// ── PUT /:id/notes/:noteId — edit content + toggle pin ──────
+cases.put('/:id/notes/:noteId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('id'), 10);
+    const noteId = parseInt(c.req.param('noteId'), 10);
+    if (isNaN(caseId) || isNaN(noteId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number | undefined;
+    const user = c.get('user');
+
+    const note = await queryFirst<{ id: number; author_id: number; case_id: number; is_pinned: number }>(
+      db, 'SELECT id, author_id, case_id, is_pinned FROM case_notes WHERE id = ? AND case_id = ?', noteId, caseId,
+    );
+    if (!note) return c.json({ error: 'Note not found', code: 'NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ content?: string; is_pinned?: boolean }>().catch(() => ({} as Record<string, never>));
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+
+    // Only the author (or admin/supervisor) may edit the note body.
+    if (typeof body.content === 'string') {
+      const isAuthor = note.author_id === userId;
+      const isPrivileged = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+      if (!isAuthor && !isPrivileged) {
+        return c.json({ error: 'Only the author can edit note content', code: 'FORBIDDEN' }, 403);
+      }
+      if (!body.content.trim()) return c.json({ error: 'Content cannot be empty', code: 'CONTENT_REQUIRED' }, 400);
+      sets.push('content = ?');
+      vals.push(body.content.trim());
+    }
+
+    // Any case team member may toggle the pin.
+    if (typeof body.is_pinned === 'boolean') {
+      sets.push('is_pinned = ?');
+      vals.push(body.is_pinned ? 1 : 0);
+    }
+
+    if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
+    sets.push(`updated_at = datetime('now')`);
+    vals.push(noteId, caseId);
+    await execute(db, `UPDATE case_notes SET ${sets.join(', ')} WHERE id = ? AND case_id = ?`, ...vals);
+
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM case_notes WHERE id = ?', noteId);
+    await logCaseActivity(c, caseId, 'note.updated', { note_id: noteId, pinned: body.is_pinned });
+    return c.json({ data: updated });
+  } catch (err) {
+    return c.json({ error: 'Failed to update note', code: 'NOTE_PUT_ERROR' }, 500);
+  }
+});
+
+// ── DELETE /:id/notes/:noteId — author or admin/supervisor ───
+cases.delete('/:id/notes/:noteId', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const caseId = parseInt(c.req.param('id'), 10);
+    const noteId = parseInt(c.req.param('noteId'), 10);
+    if (isNaN(caseId) || isNaN(noteId)) return c.json({ error: 'Invalid IDs', code: 'INVALID_ID' }, 400);
+    const userId = c.get('userId') as number | undefined;
+    const user = c.get('user');
+
+    const note = await queryFirst<{ id: number; author_id: number }>(
+      db, 'SELECT id, author_id FROM case_notes WHERE id = ? AND case_id = ?', noteId, caseId,
+    );
+    if (!note) return c.json({ error: 'Note not found', code: 'NOT_FOUND' }, 404);
+
+    const isAuthor = note.author_id === userId;
+    const isPrivileged = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+    if (!isAuthor && !isPrivileged) {
+      return c.json({ error: 'Only the author or supervisor can delete notes', code: 'FORBIDDEN' }, 403);
+    }
+
+    await execute(db, 'DELETE FROM case_notes WHERE id = ? AND case_id = ?', noteId, caseId);
+    await logCaseActivity(c, caseId, 'note.deleted', { note_id: noteId });
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete note', code: 'NOTE_DELETE_ERROR' }, 500);
   }
 });
 
@@ -791,10 +918,14 @@ cases.get('/:id/completeness', async (c) => {
       `SELECT COUNT(*) n FROM case_person_links WHERE case_id = ?
          AND lower(COALESCE(relationship,'')) IN ('suspect','arrestee','offender','defendant')`,
     );
+    // Count uploaded attachments (photos, PDFs, reports) as evidence signal.
+    const attachments = await tally(
+      `SELECT COUNT(*) n FROM attachments WHERE entity_type = 'case' AND entity_id = ?`,
+    );
     const result = evaluateCompleteness(row.case_type, {
       lead_investigator_id: row.lead_investigator_id, narrative: row.narrative, summary: row.summary,
       solvability_score: row.solvability_score, persons, evidence, vehicles, incidents, calls,
-      tasks_total, tasks_open, suspect_identified: suspectLinks > 0,
+      tasks_total, tasks_open, suspect_identified: suspectLinks > 0, attachments,
     });
     return c.json(result);
   } catch (err) {
@@ -1502,6 +1633,15 @@ cases.get('/:id/full', async (c) => {
        FROM case_links cl JOIN cases rc ON rc.id = cl.case_id WHERE cl.related_case_id = ?`,
       id, id,
     );
+    // Attachment count for the case — drives the completeness check and tab badge.
+    const attachmentCount = await (async () => {
+      try {
+        const r = await queryFirst<{ n: number }>(
+          db, `SELECT COUNT(*) n FROM attachments WHERE entity_type = 'case' AND entity_id = ?`, id,
+        );
+        return r?.n ?? 0;
+      } catch { return 0; }
+    })();
 
     return c.json({
       ...caseRow,
@@ -1513,6 +1653,7 @@ cases.get('/:id/full', async (c) => {
         properties: properties.length, evidence: evidence.length,
         warrants: warrants.length, citations: citations.length,
         notes: notes.length, related: related.length,
+        attachments: attachmentCount,
       },
     });
   } catch (err) {

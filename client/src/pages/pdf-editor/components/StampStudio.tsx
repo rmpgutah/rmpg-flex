@@ -416,7 +416,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* ── Controls ── */}
           <div className="space-y-3">
             {error && (
@@ -453,7 +453,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                       <input id="ff-stampstudio-ink" type="color" value={tpl.ink}
                         onChange={(e) => setTpl({ ...tpl, ink: e.target.value })}
                         className="w-8 h-7 bg-transparent border border-border-default rounded-[2px] cursor-pointer" />
-                      {['#c0392b', '#111111', '#1a3a5c', '#d4a017', '#1f8b4c'].map((c) => (
+                      {['#c0392b', 'var(--surface-base)', '#1a3a5c', '#d4a017', '#1f8b4c'].map((c) => (
                         <button key={c} type="button" aria-label={`Ink ${c}`} onClick={() => setTpl({ ...tpl, ink: c })}
                           className="w-5 h-5 rounded-full border border-border-subtle" style={{ background: c }} />
                       ))}
@@ -480,7 +480,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                         {(['APPROVED', 'DENIED', 'PENDING'] as const).map((d) => (
                           <button key={d} type="button" onClick={() => setTpl({ ...tpl, decision: d })}
                             className="py-1.5 rounded-[2px] text-[10px] font-bold border"
-                            style={{ borderColor: tpl.decision === d ? DECISION_COLOR[d] : '#222', color: tpl.decision === d ? DECISION_COLOR[d] : '#888', background: '#0d0d0d' }}>{d}</button>
+                            style={{ borderColor: tpl.decision === d ? DECISION_COLOR[d] : '#222', color: tpl.decision === d ? DECISION_COLOR[d] : '#888', background: 'var(--surface-overlay)' }}>{d}</button>
                         ))}
                       </div>
                     </div>
@@ -498,7 +498,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                       {TEXT_WORDS.map((w) => (
                         <button key={w} type="button" onClick={() => setTpl({ ...tpl, textWord: w })}
                           className="py-1.5 rounded-[2px] text-[10px] font-bold border"
-                          style={{ borderColor: tpl.textWord === w ? '#d4a017' : '#222', color: tpl.textWord === w ? '#d4a017' : '#888', background: '#0d0d0d' }}>{w}</button>
+                          style={{ borderColor: tpl.textWord === w ? '#d4a017' : '#222', color: tpl.textWord === w ? '#d4a017' : '#888', background: 'var(--surface-overlay)' }}>{w}</button>
                       ))}
                     </div>
                   </div>

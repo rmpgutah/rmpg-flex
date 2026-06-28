@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -118,7 +119,7 @@ export default function ThreatAssessmentPanel({
       {/* Header */}
       <div
         className="flex items-center justify-between px-3 py-2 shrink-0"
-        style={{ background: '#050505', borderBottom: '1px solid #282828' }}
+        style={{ background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <div className="flex items-center gap-2">
           <Shield size={14} className="text-rmpg-400" />
@@ -133,7 +134,7 @@ export default function ThreatAssessmentPanel({
 
       {/* Scrollable body */}
       <div
-        className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent"
+        className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent"
         style={{ scrollbarWidth: 'thin' }}
       >
         {/* ── Action Buttons ──────────────────────────────── */}
@@ -142,7 +143,7 @@ export default function ThreatAssessmentPanel({
             onClick={onAssessCenter}
             disabled={loading}
             className="flex-1 flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-200 transition-all duration-150 hover:text-rmpg-100 disabled:opacity-50 active:scale-[0.97]"
-            style={{ background: '#141414', border: '1px solid #282828' }}
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
             aria-label="Assess threat at map center"
           >
             {loading ? (
@@ -156,7 +157,7 @@ export default function ThreatAssessmentPanel({
             <button type="button"
               onClick={onClear}
               className="rounded-sm px-2 py-1.5 text-[10px] font-semibold text-rmpg-500 hover:text-rmpg-300 transition-colors"
-              style={{ background: '#141414', border: '1px solid #282828' }}
+              style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
             >
               Clear
             </button>
@@ -267,12 +268,12 @@ export default function ThreatAssessmentPanel({
                     <div
                       key={`hazard-${i}`}
                       className="rounded-sm p-1.5 text-[9px] font-mono"
-                      style={{ background: '#050505', border: '1px solid #282828' }}
+                      style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
                     >
                       <div className="flex items-center gap-1 text-rmpg-300">
                         <MapPin size={9} className="text-red-400 shrink-0" />
                         <span className="font-semibold text-rmpg-200 uppercase">
-                          {(hazard.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                          {toDisplayLabel(hazard.type || '')}
                         </span>
                       </div>
                       <div className="text-rmpg-400 mt-0.5 pl-3">
@@ -315,7 +316,7 @@ export default function ThreatAssessmentPanel({
                     <div
                       key={`dv-${i}`}
                       className="rounded-sm p-1.5 text-[9px] font-mono"
-                      style={{ background: '#050505', border: '1px solid #282828' }}
+                      style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
                     >
                       <div className="flex items-center gap-1">
                         <AlertTriangle size={9} className="text-amber-400 shrink-0" />
@@ -340,7 +341,7 @@ export default function ThreatAssessmentPanel({
                   onClick={onGetApproachRoutes}
                   disabled={loading}
                   className="w-full flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-rmpg-300 hover:text-rmpg-100 transition-all duration-150 disabled:opacity-50 active:scale-[0.97]"
-                  style={{ background: '#141414', border: '1px solid #282828' }}
+                  style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
                   aria-label="Get approach routes"
                 >
                   {loading ? (
@@ -358,7 +359,7 @@ export default function ThreatAssessmentPanel({
                       <div
                         key={`route-${i}`}
                         className="rounded-sm p-1.5"
-                        style={{ background: '#050505', border: '1px solid #282828' }}
+                        style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}
                       >
                         <div className="flex items-center gap-1.5">
                           <Navigation

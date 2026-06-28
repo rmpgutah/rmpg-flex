@@ -142,9 +142,9 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
             </div>
             <div className="flex items-center gap-1.5 hover:bg-surface-raised/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
               <div className="flex gap-px shrink-0">
-                <div className="w-1 h-1 rounded-full bg-gray-400" />
-                <div className="w-1 h-1 rounded-full bg-gray-400 opacity-70" />
-                <div className="w-1 h-1 rounded-full bg-gray-400 opacity-40" />
+                <div className="w-1 h-1 rounded-full bg-rmpg-400" />
+                <div className="w-1 h-1 rounded-full bg-rmpg-400 opacity-70" />
+                <div className="w-1 h-1 rounded-full bg-rmpg-400 opacity-40" />
               </div>
               <span className="text-[9px] font-mono text-rmpg-400">Breadcrumb trail</span>
             </div>

@@ -139,7 +139,7 @@ export default function MapSidebar({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {sidebarTab === 'units' && (
               <div className="divide-y divide-rmpg-700/50" role="tabpanel">
                 {/* Fix 98: units sorted by status (available first) */}
@@ -210,7 +210,7 @@ export default function MapSidebar({
                 {/* Fix 99: calls sorted by priority (P1 first) */}
                 {sortedCalls.map((call) => {
                   const hasCoords = call.latitude != null && call.longitude != null;
-                  const pColor = PRIORITY_COLORS[call.priority] || '#666666';
+                  const pColor = PRIORITY_COLORS[call.priority] || 'var(--rmpg-500)';
                   const { category } = getIncidentCategory(call.incident_type);
                   return (
                     <button type="button"
@@ -226,7 +226,7 @@ export default function MapSidebar({
                         <span
                           className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-sm"
                           style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}
-                        >{call.priority}</span>
+                        >{(call.priority || '').toUpperCase()}</span>
                         <span className="text-[10px] font-mono font-bold text-rmpg-100 flex-1">{call.call_number}</span>
                         <span className="text-[8px] font-mono text-rmpg-400 uppercase font-bold">{call.status.replace(/_/g, ' ')}</span>
                       </div>

@@ -16,6 +16,7 @@ import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMe
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { REVIEW_CATEGORIES, RATING_LABELS } from '../utils/hrConstants';
 import ReviewFormModal from '../modals/ReviewFormModal';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import ExportButton from '../../../components/ExportButton';
 import type { PerformanceReview, ReviewType, ReviewStatus } from '../../../types';
 import { parseTimestamp } from '../../../utils/dateUtils';
@@ -36,9 +37,9 @@ function StarRating({ rating, max = 5, size = 14 }: { rating: number; max?: numb
 
 // ── Badge helpers ──────────────────────────────────────────
 const TYPE_COLORS: Record<ReviewType, string> = {
-  annual: 'bg-gray-500/20 text-rmpg-400 border-gray-500/30',
+  annual: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   probationary: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  quarterly: 'bg-gray-500/20 text-rmpg-400 border-gray-500/30',
+  quarterly: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   improvement_plan: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
@@ -51,7 +52,7 @@ const TYPE_LABELS: Record<ReviewType, string> = {
 
 const STATUS_COLORS: Record<ReviewStatus, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-700/30',
-  submitted: 'bg-gray-500/20 text-rmpg-400 border-gray-500/30',
+  submitted: 'bg-rmpg-500/20 text-rmpg-400 border-rmpg-500/30',
   acknowledged: 'bg-green-500/20 text-green-400 border-green-500/30',
   completed: 'bg-green-500/20 text-green-400 border-green-500/30',
 };
@@ -93,6 +94,8 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editReview, setEditReview] = useState<PerformanceReview | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
 
   // Filters (manager only)
   const [filterOfficer, setFilterOfficer] = useState('');
@@ -204,14 +207,22 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this draft review?')) return;
+  const handleDelete = (id: number) => {
+    setConfirmDeleteId(id);
+  };
+
+  const doDelete = async () => {
+    if (confirmDeleteId === null) return;
+    setConfirmDeleteLoading(true);
     try {
-      await apiFetch(`/hr/reviews/${id}`, { method: 'DELETE' });
+      await apiFetch(`/hr/reviews/${confirmDeleteId}`, { method: 'DELETE' });
       addToast('Review deleted', 'success');
+      setConfirmDeleteId(null);
       fetchReviews();
     } catch {
       addToast('Failed to delete review', 'error');
+    } finally {
+      setConfirmDeleteLoading(false);
     }
   };
 
@@ -429,15 +440,6 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   // ════════════════════════════════════════════════════════
   // MANAGER / ADMIN VIEW
   // ════════════════════════════════════════════════════════
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-brand-500" />
-      </div>
-    );
-  }
-
-
   return (
     <div className="p-4 space-y-4">
       {/* Stats bar */}
@@ -543,6 +545,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
         <ExportButton exportUrl="/api/hr/reviews/export/csv" exportFilename="reviews.csv" />
         <button type="button"
+          data-hr-new-btn
           onClick={() => {
             setEditReview(null);
             setModalOpen(true);
@@ -641,6 +644,18 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         onSubmit={editReview ? handleUpdate : handleCreate}
         editReview={editReview}
         officers={officers}
+      />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        isOpen={confirmDeleteId !== null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={doDelete}
+        title="Delete Review"
+        message="Delete this draft review? This cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={confirmDeleteLoading}
       />
     </div>
   );

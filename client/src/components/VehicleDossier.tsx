@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { X, ScanSearch } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 import TrustBadge from './TrustBadge';
 
 interface DossierPackage {
@@ -106,7 +107,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                       loading="lazy"
                       className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[#444]">
+                    <div className="w-full h-full flex items-center justify-center text-rmpg-700">
                       <ScanSearch className="w-5 h-5" />
                     </div>
                   )}
@@ -123,7 +124,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                   <div className="flex items-center gap-2 text-[9px] text-[#888]">
                     {pkg.source_type && (
                       <span className="border border-border-default px-1 py-[1px]">
-                        {pkg.source_type.replace(/_/g, ' ')}
+                        {toDisplayLabel(pkg.source_type)}
                       </span>
                     )}
                     <span>{fmtDate(pkg.created_at)}</span>

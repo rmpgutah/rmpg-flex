@@ -370,7 +370,7 @@ export default function SignaturePad({
   // Drawing / typing pad
   return (
     <div className="space-y-1">
-      <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
+      <label htmlFor="ff-signaturepad-0" className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
       {/* 48: Signature pad container with top accent */}
       <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block" style={{ borderTop: '2px solid #888888' }}>
         {/* 49: Mode toggle tabs with improved active state contrast */}
@@ -433,7 +433,7 @@ export default function SignaturePad({
             </div>
             {/* Signature line */}
             <div className="w-full px-4 mb-4">
-              <div style={{ borderTop: '1px solid #ccc' }} />
+              <div style={{ borderTop: '1px solid var(--border-subtle)' }} />
             </div>
             {/* Input field */}
             <input id="ff-signaturepad-0"
@@ -455,7 +455,7 @@ export default function SignaturePad({
                   style={{ fontFamily: `"${f.family}", cursive` }}
                   className={`px-2 py-0.5 text-[13px] leading-none rounded-sm transition-colors ${
                     selectedFont === i
-                      ? 'bg-gray-100 border border-gray-400 text-gray-800'
+                      ? 'bg-surface-raised border border-border-strong text-rmpg-100'
                       : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700'
                   }`}
                   title={f.name}

@@ -3,9 +3,22 @@
 // ============================================================
 // Full invoice management: list, create, detail, payments.
 // Left panel = filterable list, right panel = detail or form.
+//
+// Audit upgrades (v1108):
+// - URL deep-link: ?invoice_id=N selects + opens that invoice;
+//   ?client_id=X pre-filters by client. Params stripped after apply.
+// - `N` shortcut opens New Invoice (admin/manager/contract_manager,
+//   skips when typing in any input/textarea/select).
+// - Esc cascade: payment form → line-item form → detail panel → create panel.
+// - ConfirmDialog for delete payment and delete line item (was instant
+//   no-confirmation delete).
+// - Empty states now distinguish "loading", "no invoices match filters",
+//   and "no invoices exist yet" with contextual messages + clear-filter CTA.
+// - useToast for delete payment / delete line item feedback.
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import RichTextArea from '../components/RichTextArea';
 import {
   DollarSign,
@@ -29,7 +42,10 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import IconButton from '../components/IconButton';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { toDisplayLabel } from '../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -176,10 +192,6 @@ function formatCurrency(n: number | null | undefined): string {
   return `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-}
-
 // ── Helpers ───────────────────────────────────────────────
 
 // ── Component ──────────────────────────────────────────────
@@ -187,6 +199,8 @@ function toDisplayLabel(s: string): string {
 export default function InvoicesPage() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canEdit = user && ['admin', 'manager', 'contract_manager'].includes(user.role);
 
   // ── Right-click context menu ──
@@ -197,9 +211,9 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<InvoiceStatus | ''>('');
-  const [filterClientId, setFilterClientId] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
+  const [filterStatus, setFilterStatus] = useState<InvoiceStatus | ''>(() => (searchParams.get('status') as InvoiceStatus) || '');
+  const [filterClientId, setFilterClientId] = useState(() => searchParams.get('client_id') || '');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [stats, setStats] = useState<InvoiceStats | null>(null);
@@ -253,8 +267,15 @@ export default function InvoicesPage() {
   // Action state
   const [actionLoading, setActionLoading] = useState('');
 
+  // ConfirmDialog for delete payment / line item
+  const [confirmDeletePayment, setConfirmDeletePayment] = useState<number | null>(null);
+  const [confirmDeleteLineItem, setConfirmDeleteLineItem] = useState<number | null>(null);
+  const [confirmDeleting, setConfirmDeleting] = useState(false);
+
   // Search timer ref
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Deep-link: ?invoice_id= ref (one-shot, consumed on mount after data loaded)
+  const pendingInvoiceIdRef = useRef<string | null>(searchParams.get('invoice_id'));
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -311,6 +332,57 @@ export default function InvoicesPage() {
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchClients(); }, [fetchClients]);
+
+  // ── Deep-link: ?invoice_id=N opens that invoice after initial load ──
+  useEffect(() => {
+    const target = pendingInvoiceIdRef.current;
+    if (!target || loading) return;
+    pendingInvoiceIdRef.current = null;
+    const numericId = Number(target);
+    if (Number.isFinite(numericId) && numericId > 0) {
+      fetchDetail(numericId);
+      setMode('detail');
+    } else {
+      addToast(`Invoice #${target} not found`, 'error');
+    }
+    // Strip the param so a refresh doesn't re-open.
+    const next = new URLSearchParams(searchParams);
+    next.delete('invoice_id');
+    next.delete('client_id');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoices, loading]);
+
+  // ── Keyboard: N = New Invoice, Esc cascade ───────────────────────────
+  useEffect(() => {
+    const isTypingInField = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        // Close innermost panel first.
+        if (confirmDeletePayment !== null || confirmDeleteLineItem !== null) return; // ConfirmDialog owns Esc
+        if (showPaymentForm) { setShowPaymentForm(false); return; }
+        if (showLineItemForm) { setShowLineItemForm(false); return; }
+        if (mode === 'detail') { setMode('list'); setSelectedInvoice(null); return; }
+        if (mode === 'create') { setMode('list'); setSaveError(''); return; }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingInField(e.target)) return;
+      if ((e.key === 'n' || e.key === 'N') && canEdit) {
+        if (mode === 'create' || confirmDeletePayment !== null || confirmDeleteLineItem !== null) return;
+        e.preventDefault();
+        setMode('create');
+        setSelectedInvoice(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [mode, showPaymentForm, showLineItemForm, confirmDeletePayment, confirmDeleteLineItem, canEdit]);
 
   // ── Actions ──────────────────────────────────────────────
 
@@ -392,16 +464,18 @@ export default function InvoicesPage() {
 
   const handleDeletePayment = async (paymentId: number) => {
     if (!selectedInvoice) return;
-    setActionLoading(`delpay-${paymentId}`);
+    setConfirmDeleting(true);
     try {
       await apiFetch(`/invoices/${selectedInvoice.id}/payments/${paymentId}`, { method: 'DELETE' });
+      setConfirmDeletePayment(null);
       await fetchDetail(selectedInvoice.id);
       fetchInvoices({ silent: true });
       fetchStats();
+      addToast('Payment deleted', 'success');
     } catch (err: any) {
-      setError(err.message || 'Failed to delete payment');
+      addToast(err.message || 'Failed to delete payment', 'error');
     } finally {
-      setActionLoading('');
+      setConfirmDeleting(false);
     }
   };
 
@@ -431,16 +505,18 @@ export default function InvoicesPage() {
 
   const handleDeleteLineItem = async (itemId: number) => {
     if (!selectedInvoice) return;
-    setActionLoading(`delitem-${itemId}`);
+    setConfirmDeleting(true);
     try {
       await apiFetch(`/invoices/${selectedInvoice.id}/line-items/${itemId}`, { method: 'DELETE' });
+      setConfirmDeleteLineItem(null);
       await fetchDetail(selectedInvoice.id);
       fetchInvoices({ silent: true });
       fetchStats();
+      addToast('Line item removed', 'success');
     } catch (err: any) {
-      setError(err.message || 'Failed to delete line item');
+      addToast(err.message || 'Failed to delete line item', 'error');
     } finally {
-      setActionLoading('');
+      setConfirmDeleting(false);
     }
   };
 
@@ -495,7 +571,7 @@ export default function InvoicesPage() {
     const actions: { label: string; status: string; icon: React.ElementType; cls: string }[] = [];
     const s = inv.status;
     if (s === 'draft') {
-      actions.push({ label: 'Mark Sent', status: 'sent', icon: Send, cls: 'bg-gray-600 hover:bg-gray-500' });
+      actions.push({ label: 'Mark Sent', status: 'sent', icon: Send, cls: 'bg-rmpg-600 hover:bg-rmpg-500' });
       actions.push({ label: 'Void', status: 'void', icon: Ban, cls: 'bg-red-900/60 hover:bg-red-800/60' });
     } else if (s === 'sent' || s === 'overdue') {
       actions.push({ label: 'Mark Paid', status: 'paid', icon: Check, cls: 'bg-green-700 hover:bg-green-600' });
@@ -561,7 +637,7 @@ export default function InvoicesPage() {
       <div className="card-glass p-4 space-y-3">
         {/* Client */}
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Client *</label>
+          <label htmlFor="ff-invoicespage-0" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Client *</label>
           <select id="ff-invoicespage-0"
             value={createForm.client_id}
             onChange={e => setCreateForm(f => ({ ...f, client_id: e.target.value }))}
@@ -575,7 +651,7 @@ export default function InvoicesPage() {
         {/* Billing period */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period Start *</label>
+            <label htmlFor="ff-invoicespage-1" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period Start *</label>
             <input id="ff-invoicespage-1"
               type="date"
               value={createForm.period_start}
@@ -584,7 +660,7 @@ export default function InvoicesPage() {
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period End *</label>
+            <label htmlFor="ff-invoicespage-2" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period End *</label>
             <input id="ff-invoicespage-2"
               type="date"
               value={createForm.period_end}
@@ -596,7 +672,7 @@ export default function InvoicesPage() {
 
         {/* Issue date */}
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Issue Date</label>
+          <label htmlFor="ff-invoicespage-3" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Issue Date</label>
           <input id="ff-invoicespage-3"
             type="date"
             value={createForm.issue_date}
@@ -607,8 +683,9 @@ export default function InvoicesPage() {
 
         {/* Notes */}
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Notes</label>
+          <label htmlFor="ff-invoicespage-cn-notes" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Notes</label>
           <RichTextArea
+            id="ff-invoicespage-cn-notes"
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
             rows={2}
@@ -618,8 +695,9 @@ export default function InvoicesPage() {
 
         {/* Internal notes */}
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Internal Notes</label>
+          <label htmlFor="ff-invoicespage-cn-internal" className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Internal Notes</label>
           <RichTextArea
+            id="ff-invoicespage-cn-internal"
             value={createForm.internal_notes}
             onChange={e => setCreateForm(f => ({ ...f, internal_notes: e.target.value }))}
             rows={2}
@@ -832,12 +910,11 @@ export default function InvoicesPage() {
                       {canEdit && inv.status === 'draft' && (
                         <td className="py-1 pl-1">
                           <IconButton
-                            onClick={() => handleDeleteLineItem(item.id)}
-                            disabled={actionLoading === `delitem-${item.id}`}
+                            onClick={() => setConfirmDeleteLineItem(item.id)}
                             className="text-rmpg-600 hover:text-red-400 transition-colors"
                             aria-label="Delete line item"
                           >
-                            {actionLoading === `delitem-${item.id}` ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                            <Trash2 size={10} />
                           </IconButton>
                         </td>
                       )}
@@ -890,7 +967,7 @@ export default function InvoicesPage() {
                   onChange={e => setPaymentForm(f => ({ ...f, payment_method: e.target.value }))}
                   className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100"
                 >
-                  {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  {PAYMENT_METHODS.map(pm => <option key={pm.value} value={pm.value}>{pm.label}</option>)}
                 </select>
                 {paymentForm.payment_method === 'check' && (
                   <input id="ff-invoicespage-11"
@@ -945,7 +1022,7 @@ export default function InvoicesPage() {
                     <span className="text-rmpg-500">{formatDate(pay.payment_date) || pay.payment_date}</span>
                     {pay.payment_method && (
                       <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border ${PAYMENT_METHOD_COLORS[pay.payment_method] || PAYMENT_METHOD_COLORS.other}`}>
-                        {PAYMENT_METHODS.find(m => m.value === pay.payment_method)?.icon || pay.payment_method}
+                        {PAYMENT_METHODS.find(pm => pm.value === pay.payment_method)?.icon || pay.payment_method}
                       </span>
                     )}
                     {pay.reference_number && <span className="text-rmpg-600 font-mono">#{pay.reference_number}</span>}
@@ -954,12 +1031,11 @@ export default function InvoicesPage() {
                     <span className="text-rmpg-600 text-[10px]">{pay.recorded_by_name}</span>
                     {canEdit && (
                       <IconButton
-                        onClick={() => handleDeletePayment(pay.id)}
-                        disabled={actionLoading === `delpay-${pay.id}`}
+                        onClick={() => setConfirmDeletePayment(pay.id)}
                         className="text-rmpg-600 hover:text-red-400 transition-colors"
                         aria-label="Delete payment"
                       >
-                        {actionLoading === `delpay-${pay.id}` ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                        <Trash2 size={10} />
                       </IconButton>
                     )}
                   </div>
@@ -1038,7 +1114,7 @@ export default function InvoicesPage() {
         ) : mode === 'create' ? (
           <CreatePanel />
         ) : (
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Toolbar */}
             <div className="p-2 space-y-2 border-b border-rmpg-700">
               <div className="flex items-center gap-2">
@@ -1079,9 +1155,30 @@ export default function InvoicesPage() {
               ) : error ? (
                 <div className="p-4 text-red-400 text-xs">{error}</div>
               ) : invoices.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-rmpg-500"><DollarSign size={32} className="mb-2 opacity-30" /><p className="text-xs">No invoices found</p></div>
+                (() => {
+                  const filtersActive = Boolean(filterStatus || filterClientId || searchQuery.trim());
+                  return (
+                    <div className="flex flex-col items-center justify-center py-12 text-rmpg-500">
+                      <DollarSign size={32} className="mb-2 opacity-30" />
+                      {filtersActive ? (
+                        <>
+                          <p className="text-xs">No invoices match the current filters</p>
+                          <button
+                            type="button"
+                            onClick={() => { setFilterStatus(''); setFilterClientId(''); setSearchQuery(''); setPage(1); }}
+                            className="mt-2 text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-0.5"
+                          >
+                            <X size={10} /> Clear filters
+                          </button>
+                        </>
+                      ) : (
+                        <p className="text-xs">No invoices yet</p>
+                      )}
+                    </div>
+                  );
+                })()
               ) : (
-                <div className="divide-y divide-[#2b2b2b]/40">
+                <div className="divide-y divide-border-subtle">
                   {invoices.map(inv => (
                     <div
                       key={inv.id}
@@ -1206,15 +1303,46 @@ export default function InvoicesPage() {
         <div className="flex flex-col min-h-0 w-[55%] border-r border-rmpg-700 overflow-hidden">
           <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent">
             {loading ? (
-              <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
-            ) : invoices.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 text-rmpg-500 text-xs">
-                <div className="w-12 h-12 mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
-                  <FileText size={20} className="text-rmpg-600" />
-                </div>
-                <p className="font-medium text-rmpg-400">No invoices found</p>
-                <p className="text-[10px] text-rmpg-600 mt-1">Try adjusting your filters</p>
+              <div className="flex items-center justify-center gap-2 h-32">
+                <Loader2 size={20} className="animate-spin text-brand-400" />
+                <span className="text-xs text-rmpg-400">Loading invoices...</span>
               </div>
+            ) : invoices.length === 0 ? (
+              (() => {
+                const filtersActive = Boolean(filterStatus || filterClientId || dateFrom || dateTo || searchQuery.trim());
+                return (
+                  <div className="flex flex-col items-center justify-center h-40 text-rmpg-500 text-xs">
+                    <div className="w-12 h-12 mb-3 rounded-sm border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+                      <FileText size={20} className="text-rmpg-600" />
+                    </div>
+                    {filtersActive ? (
+                      <>
+                        <p className="font-medium text-rmpg-400">No invoices match the current filters</p>
+                        <button
+                          type="button"
+                          onClick={() => { setFilterStatus(''); setFilterClientId(''); setDateFrom(''); setDateTo(''); setSearchQuery(''); setPage(1); }}
+                          className="mt-2 text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-0.5"
+                        >
+                          <X size={10} /> Clear filters
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium text-rmpg-400">No invoices yet</p>
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => { setMode('create'); setSelectedInvoice(null); }}
+                            className="mt-2 text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-0.5"
+                          >
+                            <Plus size={10} /> Create your first invoice
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()
             ) : (
               <table className="w-full">
                 <thead className="sticky top-0 bg-surface-sunken z-10">
@@ -1262,7 +1390,7 @@ export default function InvoicesPage() {
         </div>
 
         {/* Right: detail or create */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {mode === 'create' ? (
             <CreatePanel />
           ) : mode === 'detail' && selectedInvoice ? (
@@ -1270,11 +1398,35 @@ export default function InvoicesPage() {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-rmpg-500">
               <Eye size={24} className="mb-2 opacity-30" />
-              <p className="text-xs">Select an invoice to view details</p>
+              <p className="text-xs">Select an invoice to view details{canEdit ? ', or press N for a new invoice' : ''}</p>
             </div>
           )}
         </div>
       </div>
+
+      {/* ── ConfirmDialog: delete payment ───────────────────── */}
+      <ConfirmDialog
+        isOpen={confirmDeletePayment !== null}
+        onClose={() => { if (!confirmDeleting) setConfirmDeletePayment(null); }}
+        onConfirm={() => { if (confirmDeletePayment !== null) handleDeletePayment(confirmDeletePayment); }}
+        title="Delete Payment"
+        message="This permanently removes the payment record. The invoice balance will be recalculated."
+        confirmLabel={confirmDeleting ? 'Deleting…' : 'Delete'}
+        confirmVariant="danger"
+        isLoading={confirmDeleting}
+      />
+
+      {/* ── ConfirmDialog: delete line item ─────────────────── */}
+      <ConfirmDialog
+        isOpen={confirmDeleteLineItem !== null}
+        onClose={() => { if (!confirmDeleting) setConfirmDeleteLineItem(null); }}
+        onConfirm={() => { if (confirmDeleteLineItem !== null) handleDeleteLineItem(confirmDeleteLineItem); }}
+        title="Remove Line Item"
+        message="This permanently removes the line item from the invoice. The subtotal and total will be recalculated."
+        confirmLabel={confirmDeleting ? 'Removing…' : 'Remove'}
+        confirmVariant="danger"
+        isLoading={confirmDeleting}
+      />
     </div>
   );
 }

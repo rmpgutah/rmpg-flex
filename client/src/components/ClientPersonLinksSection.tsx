@@ -131,7 +131,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
                 <Building2 className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-rmpg-100 font-medium truncate">{link.client_name}</span>
+                    <span className="min-w-0 text-xs text-rmpg-100 font-medium truncate">{link.client_name}</span>
                     {link.is_primary === 1 && (
                       <Star className="w-3 h-3 text-amber-400 flex-shrink-0" />
                     )}
@@ -149,7 +149,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
               <button
                 type="button"
                 onClick={() => handleRemove(link.id)}
-                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                 title="Remove link"
               >
                 <Trash2 className="w-3 h-3" />
@@ -238,7 +238,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
                 <User className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-rmpg-100 font-medium truncate">
+                    <span className="min-w-0 text-xs text-rmpg-100 font-medium truncate">
                       {link.last_name}, {link.first_name}
                     </span>
                     {link.is_primary === 1 && (
@@ -261,7 +261,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
               <button
                 type="button"
                 onClick={() => handleRemove(link.id)}
-                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                 title="Remove link"
               >
                 <Trash2 className="w-3 h-3" />
@@ -415,7 +415,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Relationship</label>
+              <label htmlFor="ff-clientpersonlinkssection-1" className="text-[9px] text-rmpg-400 uppercase font-semibold">Relationship</label>
               <select id="ff-clientpersonlinkssection-1" className="select-dark mt-0.5 text-xs" value={relationship} onChange={(e) => setRelationship(e.target.value)}>
                 {RELATIONSHIP_OPTIONS.map((r) => (
                   <option key={r.value} value={r.value}>{r.label}</option>
@@ -423,7 +423,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Title / Role</label>
+              <label htmlFor="ff-clientpersonlinkssection-2" className="text-[9px] text-rmpg-400 uppercase font-semibold">Title / Role</label>
               <input id="ff-clientpersonlinkssection-2"
                 type="text"
                 className="input-dark mt-0.5 text-xs"
@@ -434,7 +434,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
             </div>
           </div>
           <div>
-            <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Notes</label>
+            <label htmlFor="ff-clientpersonlinkssection-3" className="text-[9px] text-rmpg-400 uppercase font-semibold">Notes</label>
             <input id="ff-clientpersonlinkssection-3"
               type="text"
               className="input-dark mt-0.5 text-xs"

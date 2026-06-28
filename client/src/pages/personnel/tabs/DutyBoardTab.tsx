@@ -81,7 +81,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -131,7 +131,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
                 onContextMenu={(e) => openMenu(e, buildOfficerMenu(officer))}
                 className={`panel-beveled p-3 text-left transition-all duration-200 hover:brightness-110 hover:shadow-lg border-l-2 border-t-2 focus:outline-none focus:ring-1 focus:ring-brand-500/50 ${
                   isOnDuty
-                    ? 'border-l-green-500 border-t-green-500 bg-[#0a1a0a]'
+                    ? 'border-l-green-500 border-t-green-500 bg-green-950/30'
                     : 'border-l-rmpg-600 border-t-rmpg-600 bg-surface-base'
                 }`}
                 aria-label={`${officer.last_name}, ${officer.first_name} — ${isOnDuty ? 'On Duty' : 'Off Duty'}`}

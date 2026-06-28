@@ -31,9 +31,9 @@ export default function QuickCommands({ onCommand }: QuickCommandsProps) {
             onClick={() => onCommand?.(cmd.code)}
             className="py-1 px-1.5 rounded-[2px] text-[9px] font-bold uppercase tracking-wide transition-colors border"
             style={{
-              background: '#0a0a0a',
+              background: 'var(--surface-overlay)',
               color: '#888888',
-              borderColor: '#222222',
+              borderColor: 'var(--border-subtle)',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.color = '#d4a017';
@@ -41,7 +41,7 @@ export default function QuickCommands({ onCommand }: QuickCommandsProps) {
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.color = '#888888';
-              e.currentTarget.style.borderColor = '#222222';
+              e.currentTarget.style.borderColor = 'var(--border-subtle)';
             }}
           >
             {cmd.label}

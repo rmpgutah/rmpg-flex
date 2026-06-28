@@ -180,38 +180,38 @@ export default function AIBehaviorPanel() {
 
             {/* Rate Limit */}
             <div className="space-y-1">
-              <label className="text-xs text-rmpg-300">Rate Limit (req/min)</label>
+              <label htmlFor="ff-aibehaviorpanel-0" className="text-xs text-rmpg-300">Rate Limit (req/min)</label>
               <input id="ff-aibehaviorpanel-0"
                 type="number" min={1} max={100}
                 value={config.rateLimit}
                 onChange={e => update('rateLimit', Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
+                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
               />
-              <p className="text-[10px] text-gray-600">Maximum requests per minute (1-100)</p>
+              <p className="text-[10px] text-rmpg-500">Maximum requests per minute (1-100)</p>
             </div>
 
             {/* Max Concurrent */}
             <div className="space-y-1">
-              <label className="text-xs text-rmpg-300">Max Concurrent Requests</label>
+              <label htmlFor="ff-aibehaviorpanel-1" className="text-xs text-rmpg-300">Max Concurrent Requests</label>
               <input id="ff-aibehaviorpanel-1"
                 type="number" min={1} max={10}
                 value={config.maxConcurrent}
                 onChange={e => update('maxConcurrent', Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
-                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
+                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
               />
-              <p className="text-[10px] text-gray-600">Maximum simultaneous AI requests (1-10)</p>
+              <p className="text-[10px] text-rmpg-500">Maximum simultaneous AI requests (1-10)</p>
             </div>
 
             {/* Request Timeout */}
             <div className="space-y-1">
-              <label className="text-xs text-rmpg-300">Request Timeout (seconds)</label>
+              <label htmlFor="ff-aibehaviorpanel-2" className="text-xs text-rmpg-300">Request Timeout (seconds)</label>
               <input id="ff-aibehaviorpanel-2"
                 type="number" min={10} max={300}
                 value={config.requestTimeout}
                 onChange={e => update('requestTimeout', Math.min(300, Math.max(10, parseInt(e.target.value) || 10)))}
-                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
+                className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
               />
-              <p className="text-[10px] text-gray-600">Time before request is aborted (10-300s)</p>
+              <p className="text-[10px] text-rmpg-500">Time before request is aborted (10-300s)</p>
             </div>
 
             {/* Auto Retry */}
@@ -219,12 +219,12 @@ export default function AIBehaviorPanel() {
               <div className="flex items-center justify-between">
                 <div>
                   <label className="text-xs text-rmpg-300">Auto Retry</label>
-                  <p className="text-[10px] text-gray-600">Automatically retry failed requests</p>
+                  <p className="text-[10px] text-rmpg-500">Automatically retry failed requests</p>
                 </div>
                 <button
                   onClick={() => update('autoRetry', !config.autoRetry)}
                   className={`relative w-10 h-5 rounded-full transition-colors ${
-                    config.autoRetry ? 'bg-gray-600' : 'bg-rmpg-700'
+                    config.autoRetry ? 'bg-rmpg-600' : 'bg-rmpg-700'
                   }`}
                 >
                   <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
@@ -235,14 +235,14 @@ export default function AIBehaviorPanel() {
 
               {config.autoRetry && (
                 <div className="space-y-1 pl-4 border-l-2 border-rmpg-700">
-                  <label className="text-xs text-rmpg-300">Retry Count</label>
+                  <label htmlFor="ff-aibehaviorpanel-3" className="text-xs text-rmpg-300">Retry Count</label>
                   <input id="ff-aibehaviorpanel-3"
                     type="number" min={1} max={5}
                     value={config.retryCount}
                     onChange={e => update('retryCount', Math.min(5, Math.max(1, parseInt(e.target.value) || 1)))}
-                    className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-gray-500"
+                    className="w-full px-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded text-rmpg-100 text-xs focus:outline-none focus:border-rmpg-500"
                   />
-                  <p className="text-[10px] text-gray-600">Number of retry attempts (1-5)</p>
+                  <p className="text-[10px] text-rmpg-500">Number of retry attempts (1-5)</p>
                 </div>
               )}
             </div>
@@ -255,7 +255,7 @@ export default function AIBehaviorPanel() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-rmpg-100 text-sm rounded hover:bg-gray-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-rmpg-600 text-rmpg-100 text-sm rounded hover:bg-rmpg-700 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           Save Behavior Settings
@@ -271,7 +271,7 @@ function RadioOption({ name, value, selected, label, description, onChange }: {
 }) {
   return (
     <label className={`flex items-start gap-3 p-3 rounded border cursor-pointer transition-colors ${
-      selected === value ? 'border-gray-500 bg-gray-500/10' : 'border-rmpg-700 hover:border-[#404040]'
+      selected === value ? 'border-rmpg-500 bg-rmpg-500/10' : 'border-rmpg-700 hover:border-border-default'
     }`}>
       <input
         type="radio"
@@ -279,7 +279,7 @@ function RadioOption({ name, value, selected, label, description, onChange }: {
         value={value}
         checked={selected === value}
         onChange={onChange}
-        className="mt-1 accent-gray-500"
+        className="mt-1 accent-rmpg-500"
       />
       <div>
         <p className="text-sm text-rmpg-100 font-medium">{label}</p>

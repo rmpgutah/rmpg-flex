@@ -43,16 +43,16 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.1",
     "groq-sdk": "^1.1.1",
-    "hono": "^4.12.22",
+    "hono": "^4.12.25",
     "html-to-text": "^10.0.0",
     "jose": "^6.2.3",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.2.0",
     "luxon": "^3.7.2",
     "marked": "^18.0.3",
-    "multer": "^2.1.1",
+    "multer": "^2.2.0",
     "natural": "^8.1.1",
-    "nodemailer": "^8.0.9",
+    "nodemailer": "^9.0.1",
     "otpauth": "^9.5.1",
     "pdf-parse": "^2.4.5",
     "pino": "^10.3.1",
@@ -93,6 +93,6 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.0",
     "vitest": "^4.1.5",
-    "wrangler": "^4.94.0"
+    "wrangler": "^4.103.0"
   }
 }

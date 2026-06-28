@@ -63,7 +63,7 @@ export function CardSkeleton() {
 
 export function StatsCardSkeleton() {
   return (
-    <div className="card-dark p-3" style={{ borderLeft: '4px solid #2a2a2a' }}>
+    <div className="card-dark p-3" style={{ borderLeft: '4px solid var(--border-subtle)' }}>
       <Skeleton variant="text" width="60%" className="mb-2" />
       <Skeleton height="28px" width="80px" className="mb-2" />
       <Skeleton variant="text" width="50%" />

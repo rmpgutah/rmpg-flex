@@ -264,7 +264,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
 
                 {/* API Key input (always show for unconfigured sources) */}
                 {!source.configured && (
-                  <div className="flex items-center gap-2 mt-2">
+                  <form onSubmit={(e) => e.preventDefault()} autoComplete="off" className="flex items-center gap-2 mt-2">
                     <Key className="w-3 h-3 text-rmpg-500 shrink-0" />
                     <div className="relative flex-1">
                       <input id="ff-adminskiptracerv2tab-0"
@@ -272,7 +272,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                         value={edit?.apiKey ?? ''}
                         onChange={(e) => handleApiKeyChange(source.name, e.target.value)}
                         placeholder="Enter API key"
-                        className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] px-2 py-1 pr-7 font-mono focus:border-gray-500 focus:outline-none"
+                        className="w-full bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] px-2 py-1 pr-7 font-mono focus:border-rmpg-500 focus:outline-none"
                       />
                       <button type="button"
                         onClick={() => setShowKeys(prev => ({ ...prev, [source.name]: !prev[source.name] }))}
@@ -282,7 +282,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                         {showKeys[source.name] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       </button>
                     </div>
-                  </div>
+                  </form>
                 )}
 
                 {/* Save button when edits exist */}

@@ -17,13 +17,14 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { handleWebSocket } from './routes/ws';
 import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { DeepResearchDO } from './durable-objects/DeepResearchDO';
+import { FlexCamRemuxDO } from './durable-objects/FlexCamRemuxDO';
+import { PersonIntelDO } from './durable-objects/PersonIntelDO';
 import { doCallbackToken, timingSafeEqual } from './utils/signedAccess';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
@@ -36,14 +37,16 @@ import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
 import { processScheduledEmails, applyRulesToRecent } from './utils/emailProcessor';
 import { sweepTrips } from './utils/tripStore';
+import { processBackfillTick } from './utils/sl-assessor/backfill';
 import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
+import { traceMiddleware, requestLogMiddleware, log, logErrorToDb } from './utils/logger';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer, DeepResearchDO };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer, DeepResearchDO, FlexCamRemuxDO, PersonIntelDO };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
@@ -83,7 +86,8 @@ app.get('/updates/latest.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'w
 app.get('/updates/latest-mac.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
 
 // ─── Global middleware ───────────────────────────────────────
-app.use('*', logger());
+app.use('*', traceMiddleware());
+app.use('*', requestLogMiddleware());
 app.use('*', secureHeaders({
   contentSecurityPolicy: {
     defaultSrc: ["'self'"],
@@ -172,7 +176,21 @@ app.onError((err, c) => {
   const route = `${method} ${path}`;
   const detail = err instanceof Error ? err.message : String(err);
   const userId = c.get('userId') as number | undefined;
-  console.error(`Unhandled in ${route} (userId=${userId}):`, err);
+  const traceId = c.get('traceId') as string | undefined;
+  log.error(`Unhandled in ${route}`, { userId, traceId, route }, err);
+
+  // Persist to error_log table (fire-and-forget)
+  logErrorToDb(c.env.DB, {
+    severity: 'error',
+    category: 'route',
+    message: detail,
+    details: err instanceof Error ? { name: err.name, stack: err.stack?.split('\n').slice(0, 6).join('\n'), route } : { route },
+    traceId,
+    userId,
+    source: route,
+    statusCode: 500,
+  }, c.executionCtx);
+
   return c.json({
     error: 'Internal server error',
     code: 'UNHANDLED',
@@ -221,6 +239,14 @@ for (const m of ROUTE_REGISTRY) {
 // itself — compared constant-time. Lives outside ROUTE_REGISTRY because
 // it's an internal callback, not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
+  // Surface a missing JWT_SECRET as a loud 500 instead of a silent 403:
+  // a misconfigured secret would otherwise look identical to a forged
+  // request, and ops would never realize escalations were being dropped.
+  // The 500 + log gets noticed in deploy verification + dashboards.
+  if (!c.env.JWT_SECRET) {
+    console.error('[__welfare-fire] JWT_SECRET unset — DO callbacks cannot authenticate; escalations will be lost');
+    return c.json({ error: 'misconfigured: JWT_SECRET unset' }, 500);
+  }
   const provided = c.req.header('X-DO-Secret') || '';
   const expected = await doCallbackToken(c.env.JWT_SECRET);
   if (!timingSafeEqual(provided, expected)) {
@@ -325,6 +351,20 @@ export default {
   // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     if (event.cron === '* * * * *') {
+      // Quick D1 connectivity check before launching all concurrent sweeps.
+      // When D1 has a transient network blip every sweep fails at the same
+      // instant — this collapses 9 individual errors into one quiet warning
+      // and lets the next tick attempt cleanly rather than thundering in.
+      try {
+        await env.DB.prepare('SELECT 1').first();
+      } catch (e) {
+        const msg = (e as Error)?.message ?? '';
+        if (msg.includes('Network connection lost') || msg.includes('D1_ERROR')) {
+          console.warn('[cron] D1 connectivity check failed — skipping this tick:', msg);
+          return;
+        }
+        // Unknown error — still attempt sweeps; individual handlers will surface it.
+      }
       // Per-minute trip idle/stale sweep — backstop for units that go dark while
       // stationary (lazy-on-gps-write handles the common case).
       ctx.waitUntil(
@@ -398,11 +438,34 @@ export default {
           .then(({ maybeRunClearpathMediaSync }) => maybeRunClearpathMediaSync(env))
           .catch((err) => console.error('[cpg-media] cron failed:', err)),
       );
+      // Full-drive on-demand chunk processing — fires vendor requests for
+      // any queued full-drive trips (no flexcam_enabled gate).
+      ctx.waitUntil(
+        import('./utils/fullDrivePipeline')
+          .then(({ maybePollFullDriveChunks }) => maybePollFullDriveChunks(env))
+          .catch((err) => console.error('[full-drive] cron failed:', err)),
+      );
       // FlexCam footage poll — downloads ready R2 chunks; no-op when disabled.
       ctx.waitUntil(
         import('./utils/footage/captureOrchestrator')
           .then(({ maybeRunFootagePoll }) => maybeRunFootagePoll(env))
           .catch((err) => console.error('[flexcam] poll error:', (err as Error)?.message)),
+      );
+      // FlexCam queue drain — bail out fulfilling/partial requests stalled
+      // >6h (frees the per-tick poll budget for new requests) + prune
+      // duplicate source-URL chunks within a request. Kill-switch via
+      // system_config integrations.flexcam_drain_enabled='false'.
+      ctx.waitUntil(
+        import('./utils/footage/queueDrainRunner')
+          .then(({ maybeRunQueueDrain }) => maybeRunQueueDrain(env))
+          .then((r) => {
+            if (!r) return;
+            const { requests_failed, requests_partialed, duplicates_pruned, chunks_to_missing } = r;
+            if (requests_failed || requests_partialed || duplicates_pruned) {
+              console.log(`[flexcam-drain] failed=${requests_failed} partialed=${requests_partialed} chunks_missing=${chunks_to_missing} dups_pruned=${duplicates_pruned}`);
+            }
+          })
+          .catch((err) => console.error('[flexcam-drain] cron failed:', (err as Error)?.message)),
       );
       // Jail roster detail enrichment (Salt Lake) — fetches each scraped
       // inmate's full IML profile document (booking date, charges, bond) in a
@@ -412,6 +475,106 @@ export default {
           .then(({ maybeEnrichSaltLakeDetails }) => maybeEnrichSaltLakeDetails(env))
           .then((r) => { if (r && r.enriched) console.log(`[jail-roster] enriched ${r.enriched}/${r.attempted} (remaining ${r.remaining})`); })
           .catch((err) => console.error('[jail-roster] enrich failed:', (err as Error)?.message)),
+      );
+      // Serve attempt pre-event notifications — fires dispatch alerts for
+      // upcoming attempt windows whose random pre-event time (30 min–6 h
+      // before the window opens) has arrived. No-ops when table is missing.
+      ctx.waitUntil(
+        import('./utils/serveAttemptScheduler')
+          .then(({ sweepAttemptNotifications }) => sweepAttemptNotifications(env.DB, env))
+          .then((n) => { if (n) console.log(`[serve-schedule] ${n} reminder(s) dispatched`); })
+          .catch((err) => console.error('[serve-schedule] sweep failed:', err)),
+      );
+      // Salt Lake County Assessor backfill — processes up to 5 queued
+      // address-lookup jobs per tick (rate-limited to 30/min internally),
+      // bounded by 22s wall-clock. No-op cheaply when queue is empty.
+      ctx.waitUntil(
+        processBackfillTick(env)
+          .then((n) => { if (n) console.log(`[assessor-backfill] processed ${n} jobs`); })
+          .catch((e) => console.error('[assessor-backfill] tick failed:', e)),
+      );
+      // Daily 04:00 America/Denver rebalance — UTC hour=10, minute=0 (DST drift accepted).
+      const utcNow = new Date();
+      if (utcNow.getUTCHours() === 10 && utcNow.getUTCMinutes() === 0) {
+        ctx.waitUntil(
+          import('./utils/serveRebalance')
+            .then(({ runDailyRebalance }) =>
+              runDailyRebalance(env.DB, utcNow.toISOString()),
+            )
+            .then((r) => console.log('[serve-rebalance] daily:', JSON.stringify(r)))
+            .catch((err) => console.error('[serve-rebalance] daily failed:', err)),
+        );
+      }
+      return;
+    }
+    // NHTSA vPIC monthly refresh. Runs at 03:00 UTC on day 1 of each month.
+    // PR 2 wires the trigger with a no-op stub; PR 2b drops in the bulk
+    // importer (refreshes ref_vehicle_makes / ref_vehicle_models /
+    // xref_model_year_to_specs against the public vPIC catalogue).
+    if (event.cron === '0 3 1 * *') {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            // PR 2b: import('./utils/nhtsaBulkRefresh').then(m => m.run(env));
+            console.log('[nhtsa-vpic] monthly refresh tick (stub — bulk importer lands in PR 2b)');
+          } catch (err) {
+            console.error('[nhtsa-vpic] monthly refresh failed:', err);
+          }
+        })(),
+      );
+      return;
+    }
+    // Fleet.io reconciliation. Runs every 30 minutes; replays pending
+    // outbound events through the adapter. PR 4 wired the real handler:
+    // applyOutbound drains pending rows, calls the adapter (updateVehicle /
+    // createFuelEntry today, more in PRs 5/6), records completed / failed
+    // with exponential backoff capped at 7 attempts.
+    //
+    // 503 NOTE: when FLEETIO_API_KEY isn't set, configFromEnv throws a
+    // FleetioConfigError on first use; applyOutbound catches it and bails
+    // the drain (no retries until the secret is provisioned). Cron then
+    // no-ops cleanly until /admin/fleetio rolls in the wrangler secret.
+    if (event.cron === '*/30 * * * *') {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            const [{ applyOutbound }, { configFromEnv, createVehicle, updateVehicle, archiveVehicle, createFuelEntry, updateFuelEntry, createWorkOrder, updateWorkOrder }] = await Promise.all([
+              import('./utils/fleetio/sync'),
+              import('./utils/fleetio/client'),
+            ]);
+            let config;
+            try {
+              config = configFromEnv(env as unknown as Record<string, unknown>);
+            } catch {
+              // Secrets unset — silent no-op, deliberate. (Operator console)
+              console.log('[fleetio-reconcile] FLEETIO secrets unset; skipping drain.');
+              return;
+            }
+            const result = await applyOutbound({
+              db: env.DB,
+              config,
+              adapter: {
+                // Cast: sync engine passes the ownership-filtered payload as
+                // an opaque Record. The strict FleetioVehicleCreatePayload type
+                // requires `name`; if it's missing Fleet.io will 422 and the
+                // sync engine marks the event failed — same outcome, just at
+                // the network boundary instead of compile time.
+                createVehicle: (args) => createVehicle({ config, payload: args.payload as unknown as Parameters<typeof createVehicle>[0]['payload'] }),
+                updateVehicle: (args) => updateVehicle({ config, fleetioId: args.fleetioId, payload: args.payload }),
+                archiveVehicle: (args) => archiveVehicle({ config, fleetioId: args.fleetioId, archivedAtIso: args.archivedAtIso }),
+                createFuelEntry: (args) => createFuelEntry({ config, payload: args.payload }),
+                updateFuelEntry: (args) => updateFuelEntry({ config, fleetioId: args.fleetioId, payload: args.payload }),
+                createWorkOrder: (args) => createWorkOrder({ config, payload: args.payload }),
+                updateWorkOrder: (args) => updateWorkOrder({ config, fleetioId: args.fleetioId, payload: args.payload }),
+              },
+            });
+            if (result.attempted > 0) {
+              console.log(`[fleetio-reconcile] attempted=${result.attempted} completed=${result.completed} failed=${result.failed} skipped=${result.skipped}`);
+            }
+          } catch (err) {
+            console.error('[fleetio-reconcile] cron failed:', err);
+          }
+        })(),
       );
       return;
     }
@@ -537,6 +700,16 @@ export default {
       ).run()
         .then((r) => { const n = r?.meta?.changes ?? 0; if (n) console.log(`[sessions] purged ${n} dead session row(s)`); })
         .catch((err) => console.error('Sessions purge failed:', err)),
+    );
+    // Auto skip-trace weekly sweep — retries stale jobs whose prior
+    // auto skip-trace found no results (at least 7 days between retries).
+    // Must run before the serve-nudge sweep to avoid a stale nudge from
+    // this cycle landing on the same job.
+    ctx.waitUntil(
+      import('./utils/autoSkipTraceSweep')
+        .then(({ sweepAutoSkipTraces }) => sweepAutoSkipTraces(env.DB, env))
+        .then((n) => { if (n) console.log(`[auto-skip-trace] ${n} skip-trace(s) triggered`); })
+        .catch((err) => console.error('[auto-skip-trace] sweep failed:', err)),
     );
     // Process-serve needs-attention sweep — raises notifications + supervisor
     // email digest for overdue/approaching/diligence-gap/unassigned jobs.

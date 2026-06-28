@@ -24,7 +24,13 @@ import {
 
 const mdt = new Hono<Env>();
 
+// Module-level flag — D1 DDL runs at most once per isolate cold-start, not
+// on every 8-second poll (Workers reuse isolates across requests; the tables
+// are verified live in D1 and don't need re-checking after the first call).
+let tablesReady = false;
+
 async function ensureTables(db: ReturnType<typeof getDb>) {
+  if (tablesReady) return;
   await execute(db, `CREATE TABLE IF NOT EXISTS mdt_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -41,6 +47,7 @@ async function ensureTables(db: ReturnType<typeof getDb>) {
     last_seen TEXT NOT NULL,
     PRIMARY KEY (user_id, endpoint)
   )`);
+  tablesReady = true;
 }
 
 // Seconds since a presence row's last_seen, computed in SQLite (UTC-safe).

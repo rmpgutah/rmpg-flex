@@ -15,7 +15,7 @@ export default function WatchlistSection() {
       {rows.length === 0 && (
         <div className="border border-border-default bg-surface-overlay rounded-[2px] px-3 py-6 text-center">
           <div className="text-[#10b981] text-[18px] leading-none mb-1">✓</div>
-          <div className="text-[11px] text-[#999]">All clear — no active watches</div>
+          <div className="text-[11px] text-rmpg-400">All clear — no active watches</div>
           <div className="text-[9px] text-rmpg-500 mt-1">Flag a person or vehicle from search to monitor it here.</div>
         </div>
       )}

@@ -46,7 +46,7 @@ export default function ClearPathDashcamPanel({ dashcamCount }: { dashcamCount: 
           <Settings className="w-3 h-3" /> Configure
         </button>
       </div>
-      <div className="grid grid-cols-3 divide-x divide-[#1a1a1a]">
+      <div className="grid grid-cols-3 divide-x divide-[var(--border-subtle)]">
         <Stat icon={<Camera className="w-3 h-3" />} value={configured ? status!.active_mappings : '—'} label="cameras" />
         <Stat value={media ? media.total_synced_clips : '—'} label="clips" />
         {/* Real dashcam ALPR reads come from alpr_captures (media-status), not the

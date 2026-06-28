@@ -158,8 +158,8 @@ export default function ExportButton({
             top: '100%',
             right: 0,
             minWidth: '160px',
-            background: '#141414',
-            border: '1px solid #383838',
+            background: 'var(--surface-base)',
+            border: '1px solid var(--border-default)',
             borderRadius: 0,
             boxShadow: '0 6px 20px rgba(0, 0, 0, 0.6)',
           }}
@@ -178,7 +178,7 @@ export default function ExportButton({
           </button>
 
           {/* 49: Divider with semantic hr */}
-          <hr className="border-0 mx-2" style={{ height: '1px', background: '#383838' }} />
+          <hr className="border-0 mx-2" style={{ height: '1px', background: 'var(--border-default)' }} />
 
           {/* 50: Print View — replaced inline hover handlers with Tailwind classes */}
           <button
