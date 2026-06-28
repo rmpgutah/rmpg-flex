@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { Video } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { BodyCamVideo, VideoClassification, VideoRetention } from '../types';
 
 import RichTextArea from './RichTextArea';
@@ -52,8 +52,18 @@ const EMPTY: BodyCamVideoEditData = {
 };
 
 export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmitting }: Props) {
-  const [form, setForm] = useState<BodyCamVideoEditData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<BodyCamVideoEditData>({
+    storageKey: 'rmpg_video_edit_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && video) {
@@ -66,7 +76,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
         notes: video.notes || '',
       };
       setForm(init);
-      snapshot(init);
+      snapshot();
     }
   }, [isOpen, video, snapshot]);
 
@@ -89,12 +99,14 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       submitLabel="Save Changes"
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
       maxWidth="max-w-lg"
     >
       {/* Title */}
       <div>
-        <label className="field-label mb-1 block">Title *</label>
-        <input
+        <label htmlFor="ff-videoeditmodal-0" className="field-label mb-1 block">Title *</label>
+        <input id="ff-videoeditmodal-0"
           type="text"
           className="input-dark"
           value={form.title}
@@ -106,8 +118,8 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       {/* Classification + Retention */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="field-label mb-1 block">Classification</label>
-          <select
+          <label htmlFor="ff-videoeditmodal-1" className="field-label mb-1 block">Classification</label>
+          <select id="ff-videoeditmodal-1"
             className="select-dark"
             value={form.classification}
             onChange={e => set('classification', e.target.value)}
@@ -118,8 +130,8 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
           </select>
         </div>
         <div>
-          <label className="field-label mb-1 block">Retention Status</label>
-          <select
+          <label htmlFor="ff-videoeditmodal-2" className="field-label mb-1 block">Retention Status</label>
+          <select id="ff-videoeditmodal-2"
             className="select-dark"
             value={form.retention_status}
             onChange={e => set('retention_status', e.target.value)}
@@ -134,8 +146,8 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       {/* Case Number + Recorded At */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="field-label mb-1 block">Case Number</label>
-          <input
+          <label htmlFor="ff-videoeditmodal-3" className="field-label mb-1 block">Case Number</label>
+          <input id="ff-videoeditmodal-3"
             type="text"
             className="input-dark"
             value={form.case_number}
@@ -144,8 +156,8 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
           />
         </div>
         <div>
-          <label className="field-label mb-1 block">Recorded At</label>
-          <input
+          <label htmlFor="ff-videoeditmodal-4" className="field-label mb-1 block">Recorded At</label>
+          <input id="ff-videoeditmodal-4"
             type="datetime-local"
             className="input-dark"
             value={form.recorded_at}
