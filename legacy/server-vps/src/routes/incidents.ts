@@ -10,6 +10,7 @@ import { identifyBeat } from '../utils/geofence';
 import { geocodeAddress } from '../utils/geocode';
 import { validateIncidentForNibrs } from '../utils/nibrsValidator';
 import { paramStr } from '../utils/reqHelpers';
+import { validateIncidentForNibrs } from '../utils/nibrsValidator';
 
 const router = Router();
 
