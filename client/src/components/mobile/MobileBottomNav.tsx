@@ -71,7 +71,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
             <Icon
               size={22}
               style={{
-                color: active ? 'var(--brand-gold)' : '#666666',
+                color: active ? 'var(--brand-gold)' : 'var(--rmpg-500)',
                 transition: 'color 0.15s',
               }}
             />
@@ -81,7 +81,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
-                color: active ? 'var(--brand-gold)' : '#666666',
+                color: active ? 'var(--brand-gold)' : 'var(--rmpg-500)',
                 transition: 'color 0.15s',
               }}
             >
@@ -137,7 +137,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
         <Menu
           size={22}
           style={{
-            color: !isPrimaryPage ? 'var(--brand-gold)' : '#666666',
+            color: !isPrimaryPage ? 'var(--brand-gold)' : 'var(--rmpg-500)',
             transition: 'color 0.15s',
           }}
         />
@@ -147,7 +147,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0.04em',
-            color: !isPrimaryPage ? 'var(--brand-gold)' : '#666666',
+            color: !isPrimaryPage ? 'var(--brand-gold)' : 'var(--rmpg-500)',
             transition: 'color 0.15s',
           }}
         >

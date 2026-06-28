@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
-  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin,
+  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin, Navigation, Server, Hash,
+  ExternalLink, Zap,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { safeDateStr } from '../../utils/dateUtils';
-import { getMapboxToken } from '../../utils/mapboxApiKey';
-import AdminCustomIntegrationsSection from './AdminCustomIntegrationsSection';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -57,10 +59,9 @@ interface ApiKeyConfig {
   pattern?: RegExp;
   /** Human-readable format hint shown below the input */
   formatHint?: string;
-  /** When false, render the input as type=text instead of type=password —
-   *  for non-secret config like URLs, boolean flags, and intervals.
-   *  Defaults to true (treat unknown keys as secrets). */
-  secret?: boolean;
+  /** When set, render a "Test" button that live-probes the stored key via
+   *  POST /admin/third-party-keys/:key/test (only anthropic_api_key today). */
+  testable?: boolean;
 }
 
 function validateKey(value: string, config: ApiKeyConfig): string | null {
@@ -71,12 +72,16 @@ function validateKey(value: string, config: ApiKeyConfig): string | null {
   return null; // valid
 }
 
-const GOOGLE_CLOUD_KEYS: ApiKeyConfig[] = [
-  { key: 'google_maps_server_key', label: 'Geocoding / Directions API', desc: 'Server-side address resolution, route optimization, reverse geocoding', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
-  { key: 'google_places_api_key', label: 'Places Autocomplete API', desc: 'Address search autocomplete in New Call, Incident, and Serve Intake forms', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
-  { key: 'google_cloud_vision_key', label: 'Cloud Vision API', desc: 'Image analysis — DL photo OCR, evidence photo tagging, document scanning', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
-  { key: 'google_cloud_speech_key', label: 'Cloud Speech-to-Text API', desc: 'Voice transcription for radio recordings and body camera audio', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
-  { key: 'google_generative_language_key', label: 'Generative Language API (Gemini)', desc: 'AI-powered narrative generation, report summarization, CAD command intelligence', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
+const MAPBOX_KEYS: ApiKeyConfig[] = [
+  { key: 'mapbox_username', label: 'Account Username', desc: 'Your Mapbox account username — used in style URLs and studio access (mapbox.com → Account)' },
+  // NOTE: Do NOT add a `mapbox_password` field here. The app authenticates to
+  // Mapbox solely via the public `mapbox_access_token` (pk.) below — the account
+  // password is never used by any code path. It was previously stored in
+  // system_config in PLAINTEXT (mapbox keys are not encrypted at rest on this
+  // stack) and was purged 2026-06-02 as a credential-hygiene fix. Re-adding the
+  // field would recreate the plaintext-secret leak.
+  { key: 'mapbox_style_url', label: 'Custom Style URL', desc: 'Your Mapbox Studio custom style URL — creates a branded map (mapbox://styles/username/style_id)', formatHint: 'mapbox://styles/{username}/{style_id}' },
+  { key: 'mapbox_access_token', label: 'Public Access Token', desc: 'PRIMARY — Client-side map rendering, geocoding, directions. Starts with pk.', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Access Tokens' },
 ];
 
 const MAP_PROVIDER_KEYS: ApiKeyConfig[] = [
@@ -87,8 +92,8 @@ const MAP_PROVIDER_KEYS: ApiKeyConfig[] = [
 ];
 
 const AI_ML_KEYS: ApiKeyConfig[] = [
-  { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4 / GPT-4o — narrative generation, report writing, evidence analysis', pattern: /^sk-[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk-' },
-  { key: 'anthropic_api_key', label: 'Anthropic (Claude)', desc: 'Claude — document analysis, legal research, policy compliance checks', pattern: /^sk-ant-[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk-ant-' },
+  { key: 'openai_api_key', label: 'OpenAI', desc: 'GPT-4o / 4o-mini — narrative generation, report writing, evidence analysis. Used as fallback below Claude in the callAi() chain across Deep Research, OCR, Intel AI. Test sends a minimal Chat Completions ping.', pattern: /^sk-(?:proj-)?[A-Za-z0-9_-]{40,}$/, formatHint: 'Starts with sk- or sk-proj-', testable: true },
+  { key: 'anthropic_api_key', label: 'Anthropic (Claude)', desc: 'Claude — document analysis, legal research, policy compliance checks. Deep Research & OCR silently fall back to free Workers AI when this is invalid or out of credit — use Test to confirm it actually works.', pattern: /^sk-ant-[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk-ant-', testable: true },
   { key: 'replicate_api_key', label: 'Replicate', desc: 'Free tier — open-source AI models, image generation, facial similarity search' },
   { key: 'huggingface_api_key', label: 'Hugging Face', desc: 'Free tier — NLP models, text classification, entity extraction for reports', pattern: /^hf_[A-Za-z0-9]+$/, formatHint: 'Starts with hf_' },
   { key: 'deepgram_api_key', label: 'Deepgram', desc: 'Free tier: $200 credit — real-time speech-to-text, body camera transcription' },
@@ -98,7 +103,7 @@ const AI_ML_KEYS: ApiKeyConfig[] = [
 const CLOUD_STORAGE_KEYS: ApiKeyConfig[] = [
   { key: 'aws_access_key_id', label: 'AWS Access Key ID', desc: 'S3 storage — evidence files, body camera video, backup archives', pattern: /^AKIA[A-Z0-9]{16}$/, formatHint: 'Starts with AKIA, 20 characters' },
   { key: 'aws_secret_access_key', label: 'AWS Secret Access Key', desc: 'AWS authentication secret (paired with Access Key ID above)' },
-  { key: 'aws_s3_bucket', label: 'AWS S3 Bucket Name', desc: 'Target bucket for evidence uploads and backup storage' },
+  { key: 'aws_s3_bucket', label: 'AWS S3 Bucket Name', desc: 'Target bucket for evidence uploads and backup storage (reserved — uploads currently route through Worker R2 binding)' },
   { key: 'backblaze_key_id', label: 'Backblaze B2 Key ID', desc: 'Free tier: 10GB — low-cost evidence archival, database backups' },
   { key: 'backblaze_app_key', label: 'Backblaze B2 App Key', desc: 'Backblaze authentication (paired with Key ID above)' },
   { key: 'cloudflare_api_key', label: 'Cloudflare', desc: 'Free tier — CDN, DDoS protection, DNS management, R2 object storage' },
@@ -122,23 +127,20 @@ const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
   { key: 'dea_api_key', label: 'DEA ARCOS / Diversion', desc: 'Drug Enforcement Administration — controlled substance tracking, diversion reports' },
   { key: 'usms_api_key', label: 'US Marshals Service', desc: 'Federal fugitive warrants, sex offender registry, witness protection coordination' },
   { key: 'atf_api_key', label: 'ATF eTrace / FFL', desc: 'Firearms tracing, Federal Firearms Licensee lookups, explosives permits' },
-  { key: 'interpol_api_key', label: 'INTERPOL Red Notice', desc: 'Free — international wanted persons, stolen documents, stolen vehicles' },
+  { key: 'interpol_api_key', label: 'INTERPOL Notices', desc: 'Public API — no key needed; INTERPOL screening source is built-in' },
+  { key: 'screening_ofac_csl_api_key', label: 'OFAC / CSL (optional)', desc: 'Free ITA developer key — enables live fuzzy sanctions search; bulk-ingest works without it' },
   { key: 'nsopw_api_key', label: 'NSOPW (Sex Offender)', desc: 'Free — National Sex Offender Public Website search API' },
   { key: 'ofac_api_key', label: 'OFAC / SDN List', desc: 'Free — Treasury sanctions list, specially designated nationals for financial investigations' },
 ];
 
 const GPS_WEBHOOK_KEYS: ApiKeyConfig[] = [
-  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'PRIMARY GPS source (replaced OwnTracks 2026-04-29). Bearer token for Traccar Client app + Traccar Server forward-webhook. Endpoint: POST /api/traccar?token=<TOKEN>. OwnTracks endpoints now return HTTP 410 Gone — devices must reconfigure.', secret: true },
-  { key: 'traccar_url', label: 'Traccar Server URL (optional pull)', desc: 'If you run a self-hosted Traccar Server, set its base URL (e.g. https://traccar.example.com). RMPG Flex polls /api/positions on the configured interval using the credentials below. Leave blank to use webhook-only.', secret: false },
-  { key: 'traccar_email', label: 'Traccar Server email', desc: 'Login email for the Traccar Server REST API session. AES-encrypted at rest.', secret: false },
-  { key: 'traccar_password', label: 'Traccar Server password', desc: 'Password for the Traccar Server REST API session. AES-encrypted at rest.', secret: true },
-  { key: 'traccar_enabled', label: 'Traccar pull enabled', desc: 'Set to "true" to activate the REST poller, "false" to use webhook-only (default true when URL+email+password are set).', secret: false },
-  { key: 'traccar_poll_interval', label: 'Traccar poll interval (sec)', desc: 'Seconds between /api/positions polls. Range 5-300. Default 15.', secret: false },
+  { key: 'owntracks_webhook_token', label: 'OwnTracks Webhook Token', desc: 'Shared secret for OwnTracks iPhone/Android background GPS → POST /api/dispatch/gps/owntracks' },
+  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'Shared secret for Traccar Client background GPS (same endpoint, auto-detected format)' },
 ];
 
 const FREE_OPEN_APIS: ApiKeyConfig[] = [
   { key: 'openweathermap_api_key', label: 'OpenWeatherMap', desc: 'Free tier: 1000 calls/day — current weather, forecasts, alerts for dispatch scene conditions', formatHint: '32-character hex key from openweathermap.org' },
-  { key: 'nominatim_api_key', label: 'OpenStreetMap Nominatim', desc: 'Free geocoding — address-to-coordinates fallback when Google quota exceeded (email as key)' },
+  { key: 'nominatim_api_key', label: 'OpenStreetMap Nominatim', desc: 'Free geocoding — address-to-coordinates fallback (email as key)' },
   { key: 'opencage_api_key', label: 'OpenCage Geocoder', desc: 'Free tier: 2500 calls/day — reverse geocoding, address parsing, timezone lookup' },
   { key: 'ipinfo_api_key', label: 'IPinfo', desc: 'Free tier: 50k/month — IP geolocation for login audit, session tracking, threat intel' },
   { key: 'virustotal_api_key', label: 'VirusTotal', desc: 'Free tier: 4 lookups/min — file hash checks, URL scanning for evidence/forensics' },
@@ -180,15 +182,106 @@ const DATA_SERVICE_KEYS: ApiKeyConfig[] = [
   { key: 'towerdata_api_key', label: 'TowerData', desc: 'Email intelligence — identity verification, email-to-name resolution for OSINT' },
 ];
 
+// Where to obtain each key — the provider's API-key / credentials page (or the
+// official portal for gov/LE sources that have no self-serve key). Rendered as a
+// "Get key ↗" link beside each input so admins don't have to hunt for the source.
+const SOURCE_URLS: Record<string, string> = {
+  // Mapbox
+  mapbox_username: 'https://account.mapbox.com/',
+  mapbox_style_url: 'https://studio.mapbox.com/',
+  mapbox_access_token: 'https://account.mapbox.com/access-tokens/',
+  // AI / ML
+  openai_api_key: 'https://platform.openai.com/api-keys',
+  anthropic_api_key: 'https://console.anthropic.com/settings/keys',
+  replicate_api_key: 'https://replicate.com/account/api-tokens',
+  huggingface_api_key: 'https://huggingface.co/settings/tokens',
+  deepgram_api_key: 'https://console.deepgram.com/',
+  assemblyai_api_key: 'https://www.assemblyai.com/app/account',
+  roboflow_api_key: 'https://app.roboflow.com/settings/api',
+  // Cloud storage
+  aws_access_key_id: 'https://console.aws.amazon.com/iam/home#/security_credentials',
+  aws_secret_access_key: 'https://console.aws.amazon.com/iam/home#/security_credentials',
+  aws_s3_bucket: 'https://console.aws.amazon.com/s3/',
+  backblaze_key_id: 'https://secure.backblaze.com/app_keys.htm',
+  backblaze_app_key: 'https://secure.backblaze.com/app_keys.htm',
+  cloudflare_api_key: 'https://dash.cloudflare.com/profile/api-tokens',
+  wasabi_access_key: 'https://console.wasabisys.com/',
+  // Third-party data / RapidAPI
+  lead_gen_rapidapi_key: 'https://rapidapi.com/developer/apps',
+  dl_ocr_rapidapi_key: 'https://rapidapi.com/developer/apps',
+  plate_recognizer_api_key: 'https://app.platerecognizer.com/',
+  carjam_api_key: 'https://www.vinaudit.com/api',
+  spokeo_api_key: 'https://www.spokeo.com/',
+  microbilt_client_id: 'https://developer.microbilt.com/',
+  microbilt_client_secret: 'https://developer.microbilt.com/',
+  clearpath_gps_api_key: 'https://www.clearpathgps.com/',
+  // Law enforcement / gov (portals — no self-serve key)
+  ncic_api_key: 'https://www.fbi.gov/services/cjis/ncic',
+  utah_dps_api_key: 'https://bci.utah.gov/',
+  utah_courts_api_key: 'https://legacy.utcourts.gov/xchange/',
+  fbi_wanted_api_key: 'https://api.fbi.gov/',
+  dea_api_key: 'https://www.deadiversion.usdoj.gov/arcos/',
+  usms_api_key: 'https://www.usmarshals.gov/',
+  atf_api_key: 'https://www.atf.gov/firearms/etrace-internet',
+  interpol_api_key: 'https://interpol.api.bund.dev/',
+  screening_ofac_csl_api_key: 'https://developer.trade.gov/',
+  nsopw_api_key: 'https://www.nsopw.gov/',
+  ofac_api_key: 'https://sanctionssearch.ofac.treas.gov/',
+  // GPS webhooks (admin-chosen shared secret — link to the integration docs)
+  owntracks_webhook_token: 'https://owntracks.org/booklet/features/http/',
+  traccar_webhook_token: 'https://www.traccar.org/forward/',
+  // Free / open APIs
+  openweathermap_api_key: 'https://home.openweathermap.org/api_keys',
+  openmeteo_api_key: 'https://open-meteo.com/',
+  nominatim_api_key: 'https://operations.osmfoundation.org/policies/nominatim/',
+  opencage_api_key: 'https://opencagedata.com/dashboard',
+  ipinfo_api_key: 'https://ipinfo.io/account/token',
+  here_api_key: 'https://developer.here.com/',
+  what3words_api_key: 'https://developer.what3words.com/public-api',
+  nhtsa_api_key: 'https://vpic.nhtsa.dot.gov/api/',
+  fcc_api_key: 'https://www.fcc.gov/reports-research/developers',
+  // Notifications
+  twilio_api_key: 'https://console.twilio.com/us1/account/keys-credentials/api-keys',
+  twilio_account_sid: 'https://console.twilio.com/',
+  sendgrid_api_key: 'https://app.sendgrid.com/settings/api_keys',
+  slack_webhook_url: 'https://api.slack.com/messaging/webhooks',
+  discord_webhook_url: 'https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks',
+  telegram_bot_token: 'https://t.me/botfather',
+  pushover_api_key: 'https://pushover.net/apps/build',
+  ntfy_topic_key: 'https://docs.ntfy.sh/',
+  // Data services / OSINT
+  numverify_api_key: 'https://numverify.com/dashboard',
+  hunter_io_api_key: 'https://hunter.io/api-keys',
+  clearbit_api_key: 'https://dashboard.clearbit.com/api',
+  pipl_api_key: 'https://pipl.com/api',
+  towerdata_api_key: 'https://www.towerdata.com/',
+  abstract_api_key: 'https://app.abstractapi.com/',
+  abuseipdb_api_key: 'https://www.abuseipdb.com/account/api',
+  censys_api_key: 'https://search.censys.io/account/api',
+  emailrep_api_key: 'https://emailrep.io/key',
+  have_i_been_pwned_key: 'https://haveibeenpwned.com/API/Key',
+  shodan_api_key: 'https://account.shodan.io/',
+  urlscan_api_key: 'https://urlscan.io/user/profile/',
+  virustotal_api_key: 'https://www.virustotal.com/gui/my-apikey',
+  whoisxml_api_key: 'https://user.whoisxmlapi.com/products',
+  plaid_api_key: 'https://dashboard.plaid.com/developers/keys',
+};
+
 function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: React.ReactNode; keys: ApiKeyConfig[] }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [configured, setConfigured] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<Record<string, { ok: boolean; message: string } | null>>({});
 
   useEffect(() => {
-    // Check which keys are configured
+    // Check which keys are configured — single bulk request, no N+1.
+    // Fixed 2026-06-06: the previous fallback path fired one request per key
+    // (50+ keys × N panels) on every mount when the bulk endpoint 404'd.
+    // The Worker now has /api/admin/third-party-keys (real handler) so the
+    // bulk path always succeeds and the per-key fallback is dead code.
     (async () => {
       try {
         const data = await apiFetch<Array<{ config_key: string; has_value: boolean }>>('/admin/third-party-keys');
@@ -196,13 +289,9 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
         for (const item of data) map[item.config_key] = item.has_value;
         setConfigured(map);
       } catch {
-        // Endpoint may not exist yet — check individually
-        for (const { key } of keyConfigs) {
-          try {
-            const resp = await apiFetch<{ configured: boolean }>(`/admin/third-party-keys/${key}`);
-            setConfigured(prev => ({ ...prev, [key]: resp.configured }));
-          } catch { /* silent */ }
-        }
+        // Bulk endpoint unreachable — leave all keys in default "not set" state.
+        // The per-key N+1 fallback has been removed; on a broken bulk endpoint
+        // the page simply shows "Not Set" everywhere until the API recovers.
       }
     })();
   }, []);
@@ -210,12 +299,6 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   const handleSave = async (configKey: string) => {
     const value = values[configKey]?.trim();
     if (!value) return;
-    const cfg = keyConfigs.find(k => k.key === configKey);
-    if (cfg) {
-      const err = validateKey(value, cfg);
-      if (err) { setErrors(prev => ({ ...prev, [configKey]: err })); return; }
-    }
-    setErrors(prev => ({ ...prev, [configKey]: null }));
     setSaving(configKey);
     try {
       await apiFetch('/admin/third-party-keys', {
@@ -241,28 +324,48 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
         body: JSON.stringify({ key: configKey }),
       });
       setConfigured(prev => ({ ...prev, [configKey]: false }));
+      setTestResult(prev => ({ ...prev, [configKey]: null }));
     } catch { /* silent */ }
     setSaving(null);
   };
 
+  // Live-probe the stored key. Endpoint always returns 200 with { ok, message }.
+  const handleTest = async (configKey: string) => {
+    setTesting(configKey);
+    setTestResult(prev => ({ ...prev, [configKey]: null }));
+    try {
+      const r = await apiFetch<{ ok: boolean; message: string }>(`/admin/third-party-keys/${configKey}/test`, { method: 'POST' });
+      setTestResult(prev => ({ ...prev, [configKey]: { ok: !!r.ok, message: r.message || (r.ok ? 'OK' : 'Failed') } }));
+    } catch (e: any) {
+      setTestResult(prev => ({ ...prev, [configKey]: { ok: false, message: e?.message || 'Test request failed' } }));
+    }
+    setTesting(null);
+  };
+
   return (
-    <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
+    <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-rmpg-700">
         {icon}
         <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
       </div>
       <div className="p-4 space-y-4">
-        {keyConfigs.map(({ key, label, desc, formatHint, secret }) => {
-          // Default to secret=true for back-compat — every legacy key was
-          // a credential. Only the explicit `secret: false` rows render as
-          // plain text (URLs, boolean flags, numeric intervals).
-          const isSecret = secret !== false;
-          return (
-          <div key={key} className="flex flex-col gap-2 p-3 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
+        {keyConfigs.map(({ key, label, desc, formatHint, testable }) => (
+          <div key={key} className="flex flex-col gap-2 p-3 bg-surface-sunken border border-rmpg-700 rounded-sm">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs font-semibold text-rmpg-300">{label}</div>
                 <div className="text-[10px] text-rmpg-600">{desc}</div>
+                {SOURCE_URLS[key] && (
+                  <a
+                    href={SOURCE_URLS[key]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-1 text-[10px] text-brand-400 hover:text-brand-300 hover:underline"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    Get key / API source
+                  </a>
+                )}
               </div>
               {configured[key] ? (
                 <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-sm bg-green-900/30 text-green-400 border border-green-700/40">
@@ -277,33 +380,43 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
               )}
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <input
-                  type={!isSecret || showKey[key] ? 'text' : 'password'}
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleSave(key); }}
+                className="relative flex-1 flex items-center"
+              >
+                <input id={`ff-adminintegrationstab-${key}`}
+                  type={showKey[key] ? 'text' : 'password'}
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
-                  placeholder={configured[key]
-                    ? (isSecret ? '••••••••••••••••••••' : '(saved — type to overwrite)')
-                    : (isSecret ? 'Paste API key here...' : 'Type or paste value...')}
-                  autoComplete={isSecret ? 'off' : 'on'}
-                  spellCheck={false}
-                  className="w-full px-3 py-2 pr-8 bg-[#141414] border border-[#2b2b2b] rounded-sm text-xs text-white font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
+                  placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
+                  className="w-full px-3 py-2 pr-8 bg-surface-raised border border-rmpg-700 rounded-sm text-xs text-rmpg-100 font-mono placeholder-rmpg-600 focus:outline-none focus:border-brand-500"
                 />
-                {isSecret && (
-                  <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400" aria-label={showKey[key] ? 'Hide value' : 'Show value'}>
-                    {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                )}
-              </div>
+                <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !showKey[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
+                  {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+                <input type="submit" hidden />
+              </form>
               <button
                 type="button"
                 onClick={() => handleSave(key)}
                 disabled={!values[key]?.trim() || saving === key}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white rounded-sm transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-rmpg-100 rounded-sm transition-colors"
               >
                 {saving === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                 Save
               </button>
+              {testable && configured[key] && (
+                <button
+                  type="button"
+                  onClick={() => handleTest(key)}
+                  disabled={testing === key}
+                  title="Send a minimal live request to verify the key works (valid + funded)"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs text-brand-300 hover:text-brand-200 bg-brand-900/20 hover:bg-brand-900/30 border border-brand-700/30 rounded-sm transition-colors disabled:opacity-40"
+                >
+                  {testing === key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                  Test
+                </button>
+              )}
               {configured[key] && (
                 <button
                   type="button"
@@ -315,12 +428,17 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
                 </button>
               )}
             </div>
+            {testResult[key] && (
+              <div className={`flex items-center gap-1.5 text-[10px] font-medium ${testResult[key]!.ok ? 'text-green-400' : 'text-red-400'}`}>
+                {testResult[key]!.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                {testResult[key]!.message}
+              </div>
+            )}
             {errors[key] && <div className="text-[10px] text-red-400 font-medium">⚠ {errors[key]}</div>}
             {formatHint && !errors[key] && <div className="text-[9px] text-rmpg-600 italic">{formatHint}</div>}
             <div className="text-[9px] text-rmpg-700 font-mono">config_key: {key}</div>
           </div>
-          );
-        })}
+        ))}
       </div>
     </div>
   );
@@ -354,6 +472,10 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
 
   // ── Delete confirm ──
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // ── Data fetching ──
 
@@ -401,7 +523,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   const fetchKeys = useCallback(async () => {
     try {
       const data = await apiFetch<ApiKey[]>('/integrations/keys');
-      setKeys(data);
+      setKeys(asArray<ApiKey>(data));
     } catch (err) {
       console.error('Failed to fetch integration keys:', err);
       setError(err instanceof Error ? err.message : 'Failed to load API keys');
@@ -413,7 +535,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   const fetchRequestLog = useCallback(async () => {
     try {
       const data = await apiFetch<RequestLogEntry[]>('/integrations/keys/request-log');
-      setRequestLog(data);
+      setRequestLog(asArray<RequestLogEntry>(data));
     } catch (err) {
       console.error('Failed to fetch request log:', err);
     } finally {
@@ -499,10 +621,33 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
     setCopied(false);
   };
 
+  // ── Context menus ──
+  // Integration API key row: revoke/activate toggle + delete (routes through
+  // the existing inline confirm) + copy name / prefix.
+  const buildKeyMenu = (k: ApiKey): ContextMenuItem[] => [
+    k.status === 'active'
+      ? m.action('Revoke key', () => handleRevoke(k.id), { icon: <ShieldOff size={12} /> })
+      : m.action('Activate key', () => handleActivate(k.id), { icon: <ShieldCheck size={12} /> }),
+    m.separator(),
+    m.copy('Copy name', k.name),
+    m.copy('Copy key prefix', k.key_prefix),
+    m.copyId(k.id),
+    m.separator(),
+    m.action('Delete key', () => setDeletingId(k.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  // Request log row: read-only, copy fields only.
+  const buildLogMenu = (entry: RequestLogEntry): ContextMenuItem[] => [
+    m.copy('Copy details', entry.details),
+    ...(entry.ip_address ? [m.copy('Copy IP address', entry.ip_address)] : []),
+    ...(entry.entity_id ? [m.copy('Copy Call ID', entry.entity_id, <Hash size={12} />)] : []),
+    m.copyId(entry.id),
+  ];
+
   // ── Render ──
 
   // Set document title
-  useEffect(() => { document.title = 'Admin - Integrations \u2014 RMPG Flex'; }, []);
+  useEffect(() => { document.title = 'Admin - Integrations — RMPG Flex'; }, []);
 
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {
@@ -516,8 +661,8 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   return (
     <div className="space-y-6">
       {/* ── Connected Service: rmpgutahps.us ── */}
-      <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
+      <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
           <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-semibold text-rmpg-300">rmpgutahps.us — Process Service Portal</h2>
@@ -543,11 +688,11 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           <div className="p-4 space-y-4">
             {/* URL */}
             <div>
-              <label className="block text-xs text-rmpg-500 mb-1">Portal URL</label>
+              <label htmlFor="ff-adminintegrationstab-1" className="block text-xs text-rmpg-500 mb-1">Portal URL</label>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
+                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-sm">
                   <Link2 className="w-3.5 h-3.5 text-rmpg-500" />
-                  <input
+                  <input id="ff-adminintegrationstab-1"
                     type="text"
                     value={svcUrlInput}
                     onChange={(e) => setSvcUrlInput(e.target.value)}
@@ -560,13 +705,16 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
 
             {/* API Key */}
             <div>
-              <label className="block text-xs text-rmpg-500 mb-1">
+              <label htmlFor="ff-adminintegrationstab-2" className="block text-xs text-rmpg-500 mb-1">
                 API Key {svcConfigured && svcKeyPreview && <span className="text-rmpg-600 ml-1">(current: {svcKeyPreview})</span>}
               </label>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
+                <form
+                  onSubmit={(e) => { e.preventDefault(); handleSaveSvc(); }}
+                  className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-sm"
+                >
                   <Key className="w-3.5 h-3.5 text-rmpg-500" />
-                  <input
+                  <input id="ff-adminintegrationstab-2"
                     type={showSvcKey ? 'text' : 'password'}
                     value={svcApiKey}
                     onChange={(e) => setSvcApiKey(e.target.value)}
@@ -580,11 +728,12 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   >
                     {showSvcKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
-                </div>
+                  <input type="submit" hidden />
+                </form>
                 <button type="button"
                   onClick={handleSaveSvc}
                   disabled={savingSvc || !svcApiKey.trim()}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors disabled:opacity-50"
                 >
                   {savingSvc ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3.5 h-3.5" />}
                   Save
@@ -611,14 +760,10 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       </div>
 
       {/* ── GPS Background Tracking ── */}
-      <ApiKeyPanel title="GPS Background Tracking — Traccar (PRIMARY)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
-      <TraccarPullStatusCard />
+      <ApiKeyPanel title="GPS Background Tracking (OwnTracks / Traccar)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
 
-      {/* ── Map Providers (Mapbox Primary) ── */}
-      <ApiKeyPanel title="Map Providers (Mapbox Primary)" icon={<Globe className="w-4 h-4 text-brand-400" />} keys={MAP_PROVIDER_KEYS} />
-
-      {/* ── Google Cloud Console Keys ── */}
-      <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-gray-400" />} keys={GOOGLE_CLOUD_KEYS} />
+      {/* ── Mapbox API (DOMINANT MAP SOURCE) ── */}
+      <ApiKeyPanel title="Mapbox API — Primary Map System" icon={<Navigation className="w-4 h-4 text-brand-400" />} keys={MAPBOX_KEYS} />
 
       {/* ── Law Enforcement / Government APIs ── */}
       <ApiKeyPanel title="Law Enforcement / Government" icon={<Shield className="w-4 h-4 text-red-400" />} keys={LAW_ENFORCEMENT_KEYS} />
@@ -633,24 +778,24 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       <ApiKeyPanel title="AI / Machine Learning" icon={<Cpu className="w-4 h-4 text-purple-400" />} keys={AI_ML_KEYS} />
 
       {/* ── Cloud Storage & Infrastructure ── */}
-      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-gray-400" />} keys={CLOUD_STORAGE_KEYS} />
+      <ApiKeyPanel title="Cloud Storage & Infrastructure" icon={<Cloud className="w-4 h-4 text-rmpg-400" />} keys={CLOUD_STORAGE_KEYS} />
 
       {/* ── Data Services ── */}
-      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-gray-400" />} keys={DATA_SERVICE_KEYS} />
+      <ApiKeyPanel title="Data Services" icon={<Database className="w-4 h-4 text-rmpg-400" />} keys={DATA_SERVICE_KEYS} />
 
       {/* ── RapidAPI & Third-Party ── */}
       <ApiKeyPanel title="RapidAPI & Third-Party" icon={<Key className="w-4 h-4 text-brand-400" />} keys={THIRD_PARTY_KEYS} />
 
       {/* ── API Keys Panel ── */}
-      <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
+      <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
           <div className="flex items-center gap-2">
             <Key className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-semibold text-rmpg-300">Integration API Keys</h2>
           </div>
           <button type="button"
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Create API Key
@@ -669,7 +814,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#2b2b2b] text-rmpg-500 text-xs uppercase tracking-wider">
+                <tr className="border-b border-rmpg-700 text-rmpg-500 text-xs uppercase tracking-wider">
                   <th className="text-left px-4 py-2 font-medium">Name</th>
                   <th className="text-left px-4 py-2 font-medium">Key Prefix</th>
                   <th className="text-left px-4 py-2 font-medium">Status</th>
@@ -683,13 +828,14 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                 {keys.map((k, idx) => (
                   <tr
                     key={k.id}
-                    className={`border-b border-[#2b2b2b]/50 hover:bg-[#181818] transition-colors ${
-                      idx % 2 === 0 ? 'bg-transparent' : 'bg-[#0c0c0c]/30'
+                    onContextMenu={(e) => openMenu(e, buildKeyMenu(k))}
+                    className={`border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors ${
+                      idx % 2 === 0 ? 'bg-transparent' : 'bg-surface-sunken/30'
                     }`}
                   >
                     <td className="px-4 py-2.5 text-rmpg-300">{k.name}</td>
                     <td className="px-4 py-2.5">
-                      <code className="text-xs font-mono text-rmpg-400 bg-[#0c0c0c] px-1.5 py-0.5 rounded-sm">
+                      <code className="text-xs font-mono text-rmpg-400 bg-surface-sunken px-1.5 py-0.5 rounded-sm">
                         {k.key_prefix}
                       </code>
                     </td>
@@ -746,7 +892,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                             </button>
                             <button type="button"
                               onClick={() => setDeletingId(null)}
-                              className="px-2 py-1 text-xs text-rmpg-500 hover:text-rmpg-400 bg-[#181818] rounded-sm transition-colors"
+                              className="px-2 py-1 text-xs text-rmpg-500 hover:text-rmpg-400 bg-surface-raised rounded-sm transition-colors"
                             >
                               Cancel
                             </button>
@@ -771,15 +917,15 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       </div>
 
       {/* ── Request Log Panel ── */}
-      <div className="panel-beveled bg-surface-base border border-[#2b2b2b] rounded-sm">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
+      <div className="panel-beveled bg-surface-base border border-rmpg-700 rounded-sm">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
           <div className="flex items-center gap-2">
             <RotateCcw className="w-4 h-4 text-brand-400" />
             <h2 className="text-sm font-semibold text-rmpg-300">Recent Service Requests</h2>
           </div>
           <button type="button"
             onClick={() => { setLoadingLog(true); fetchRequestLog(); }}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-rmpg-400 hover:text-rmpg-300 bg-[#181818] hover:bg-[#181818]/80 rounded-sm transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs text-rmpg-400 hover:text-rmpg-300 bg-surface-raised hover:bg-surface-raised/80 rounded-sm transition-colors"
           >
             <RotateCcw className="w-3 h-3" />
             Refresh
@@ -798,7 +944,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#2b2b2b] text-rmpg-500 text-xs uppercase tracking-wider">
+                <tr className="border-b border-rmpg-700 text-rmpg-500 text-xs uppercase tracking-wider">
                   <th className="text-left px-4 py-2 font-medium">Time</th>
                   <th className="text-left px-4 py-2 font-medium">Details</th>
                   <th className="text-left px-4 py-2 font-medium">IP Address</th>
@@ -809,8 +955,9 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                 {requestLog.map((entry, idx) => (
                   <tr
                     key={entry.id}
-                    className={`border-b border-[#2b2b2b]/50 hover:bg-[#181818] transition-colors ${
-                      idx % 2 === 0 ? 'bg-transparent' : 'bg-[#0c0c0c]/30'
+                    onContextMenu={(e) => openMenu(e, buildLogMenu(entry))}
+                    className={`border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors ${
+                      idx % 2 === 0 ? 'bg-transparent' : 'bg-surface-sunken/30'
                     }`}
                   >
                     <td className="px-4 py-2.5 text-rmpg-500 text-xs whitespace-nowrap">
@@ -833,16 +980,11 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
         )}
       </div>
 
-      {/* ── Custom External Integrations ── */}
-      {/* Outbound HTTP credentials for calling other software FROM Flex.
-          Distinct from the inbound API keys above. Added 2026-05-05. */}
-      <AdminCustomIntegrationsSection />
-
       {/* ── Create Key Modal ── */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
-          <div className="bg-surface-raised border border-[#2b2b2b] rounded-sm shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2b2b2b]">
+          <div className="bg-surface-raised border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
               <h3 className="text-sm font-semibold text-rmpg-300">Create API Key</h3>
               {createdKey && (
                 <button type="button"
@@ -858,13 +1000,13 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
               {!createdKey ? (
                 <>
                   <div>
-                    <label className="block text-xs text-rmpg-500 mb-1">Key Name</label>
-                    <input
+                    <label htmlFor="ff-adminintegrationstab-3" className="block text-xs text-rmpg-500 mb-1">Key Name</label>
+                    <input id="ff-adminintegrationstab-3"
                       type="text"
                       value={newKeyName}
                       onChange={(e) => setNewKeyName(e.target.value)}
                       placeholder="e.g. Process Service API"
-                      className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm text-rmpg-300 placeholder-rmpg-600 focus:outline-none focus:border-brand-500"
+                      className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 placeholder-rmpg-600 focus:outline-none focus:border-brand-500"
                       onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                       autoFocus
                     />
@@ -872,14 +1014,14 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   <div className="flex justify-end gap-2">
                     <button type="button"
                       onClick={closeCreateModal}
-                      className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-300 bg-[#181818] rounded-sm transition-colors"
+                      className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-rmpg-300 bg-surface-raised rounded-sm transition-colors"
                     >
                       Cancel
                     </button>
                     <button type="button"
                       onClick={handleCreate}
                       disabled={creating || !newKeyName.trim()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors disabled:opacity-50"
                     >
                       {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Plus className="w-3.5 h-3.5" />}
                       Create
@@ -896,7 +1038,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                       </code>
                       <button type="button"
                         onClick={() => handleCopy(createdKey)}
-                        className="flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+                        className="flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
                         title="Copy to clipboard"
                       >
                         {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -913,7 +1055,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   <div className="flex justify-end">
                     <button type="button"
                       onClick={closeCreateModal}
-                      className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-white rounded-sm transition-colors"
+                      className="px-3 py-1.5 text-xs font-medium bg-brand-600 hover:bg-brand-500 text-rmpg-100 rounded-sm transition-colors"
                     >
                       Close
                     </button>
@@ -924,72 +1066,6 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── Traccar Pull-Mode Status Card ──────────────────────────────────
-// Polls /api/admin/traccar-pull-status every 5s. Renders a coloured
-// status pill so the operator can see at a glance whether the REST
-// poller is logging in successfully.
-
-function TraccarPullStatusCard() {
-  const [status, setStatus] = useState<{ status: string; kind: 'ok' | 'error' | 'disabled' | 'unknown'; serverUrl: string | null } | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    try {
-      const r = await apiFetch<{ status: string; kind: 'ok' | 'error' | 'disabled' | 'unknown'; serverUrl: string | null }>('/api/admin/traccar-pull-status');
-      setStatus(r);
-    } catch {
-      setStatus({ status: '(could not load)', kind: 'unknown', serverUrl: null });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 5000);
-    return () => clearInterval(t);
-  }, [refresh]);
-
-  const pill = (kind: typeof status extends null ? never : NonNullable<typeof status>['kind']) => {
-    if (kind === 'ok') return 'bg-emerald-900/40 text-emerald-300 border-emerald-700/40';
-    if (kind === 'error') return 'bg-red-900/40 text-red-300 border-red-700/40';
-    if (kind === 'disabled') return 'bg-amber-900/40 text-amber-300 border-amber-700/40';
-    return 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/40';
-  };
-
-  return (
-    <div className="panel-beveled bg-surface-base p-3 mt-2">
-      <div className="flex items-center gap-2 mb-2">
-        <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-        <h3 className="text-[11px] font-bold text-white uppercase tracking-wider">Traccar Server Pull Status</h3>
-        <button type="button" onClick={refresh}
-          className="ml-auto text-[10px] text-rmpg-400 hover:text-white border border-rmpg-700 px-1.5 py-0.5">
-          Refresh
-        </button>
-      </div>
-      {loading && !status ? (
-        <div className="text-[11px] text-rmpg-400">Loading…</div>
-      ) : status ? (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 border ${pill(status.kind)}`}>
-              {status.kind === 'ok' ? 'OK' : status.kind === 'error' ? 'ERROR' : status.kind === 'disabled' ? 'DISABLED' : 'UNKNOWN'}
-            </span>
-            {status.serverUrl && <span className="text-[10px] text-rmpg-500 font-mono truncate">{status.serverUrl}</span>}
-          </div>
-          <div className="text-[11px] text-rmpg-300 font-mono break-all">{status.status || '(no heartbeat yet — waiting for first poll)'}</div>
-          {status.kind === 'error' && status.status.includes('401') && (
-            <div className="text-[10px] text-amber-300 mt-1">
-              The Traccar Server rejected the login. Check the email + password fields above; password is AES-encrypted at rest, so re-enter it after any rotation.
-            </div>
-          )}
-          <div className="text-[9px] text-rmpg-500">Refreshes every 5 seconds. Poller runs at the configured interval (default 15 s) regardless of this UI.</div>
-        </div>
-      ) : null}
     </div>
   );
 }
