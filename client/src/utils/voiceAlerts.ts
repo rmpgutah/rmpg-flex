@@ -1055,11 +1055,13 @@ export async function announceBackupRequest(data: { officer_name?: string; locat
   const dedupKey = `backup:${who}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  await playToneAsync('warning');
+
+  await playToneAsync('backup_request');
   await delay(TONE_GAP_MS);
-  const phrases: VoicePhrase[] = [{ text: `Backup requested by ${who}.` }];
-  if (data.location) phrases.push({ text: `Location: ${data.location}.` });
-  enqueuePhrases(phrases);
+
+  enqueuePhrases([
+    { text: `Backup requested for call ${callNum} at ${loc} by ${unit}. Available units respond.` },
+  ]);
 }
 
 /** Announce pursuit */
@@ -1744,5 +1746,47 @@ export async function announceBeatBreach(unit?: string, expected?: string, actua
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ── Upgrade: Shift Handoff Alert ──
+export function announceShiftHandoff(
+  outgoingName: string,
+  incomingName: string,
+  activeCalls: number
+): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const phrases = [
+    `Shift handoff initiated. ${outgoingName} transferring to ${incomingName}. ${activeCalls} active calls in queue.`,
+    `Attention all units, shift change in progress. ${activeCalls} calls remain active.`,
+  ];
+  const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+  enqueuePhrases([{ text: phrase }]);
+}
+
+// ── Upgrade: Mutual Aid Alert ──
+export function announceMutualAid(
+  agency: string,
+  type: 'requested' | 'approved' | 'denied',
+  unitsCount?: number
+): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  const messages: Record<string, string> = {
+    requested: `Mutual aid requested from ${agency}. ${unitsCount || 1} units requested. Standing by for response.`,
+    approved: `Mutual aid approved. ${agency} providing ${unitsCount || 1} units. Coordinate on tactical channel.`,
+    denied: `Mutual aid request to ${agency} has been denied. Evaluate alternate resources.`,
+  };
+  enqueuePhrases([{ text: messages[type] || `Mutual aid update from ${agency}.` }]);
+}
+
+// ── Upgrade: Narrative Update Alert ──
+export function announceNarrativeUpdate(
+  callNumber: string,
+  editorName: string,
+  version: number
+): void {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (version > 1) {
+    enqueuePhrases([{ text: `Narrative updated for call ${callNumber} by ${editorName}. Version ${version}.` }]);
+  }
 }
 

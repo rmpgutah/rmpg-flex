@@ -75,6 +75,8 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'tires', label: 'Tires', icon: Circle },
   { key: 'damage', label: 'Damage', icon: AlertTriangle },
   { key: 'recalls', label: 'Recalls', icon: AlertOctagon },
+  { key: 'gps', label: 'GPS', icon: MapPin },
+  { key: 'dashcam', label: 'Dash Cam', icon: Camera },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
   { key: 'dashcam', label: 'Dash Cam', icon: Video },
   { key: 'fuel_cards', label: 'Fuel Cards', icon: CreditCard },
@@ -202,10 +204,27 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
     })),
   });
 
-  const handleDirectPdf = (key: string) => {
+  const handleDirectPdf = async (key: string) => {
     if (key === 'vehicle_summary') {
+      // Fetch the full cost summary from the server (all 7 categories)
+      let costTotals: { fuel?: number; maintenance?: number; expenses?: number; loans?: number; insurance?: number; accessories?: number; utilities?: number } = {};
+      try {
+        const costData = await apiFetch<{
+          categories: { fuel: number; maintenance: number; loans: number; insurance: number; accessories: number; utilities: number; expenses: number };
+        }>(`/fleet/${detail.id}/cost-summary`);
+        if (costData?.categories) {
+          costTotals = costData.categories;
+        }
+      } catch {
+        // Fallback to locally available fuel + maintenance data
+        const fuelTotal = fuelSummary?.total_cost ?? fuelLogs.reduce((s, f) => s + (Number(f.total_cost) || 0), 0);
+        const maintenanceTotal = maintenance.reduce((s, m) => s + (Number(m.cost) || 0), 0);
+        costTotals = { fuel: fuelTotal, maintenance: maintenanceTotal };
+      }
       generateFleetVehicleSummaryPdf({
         vehicle: detail,
+        assignedUnit: detail.assigned_unit_call_sign || undefined,
+        costTotals,
         recentMaintenance: maintenance.slice(0, 5),
       });
     } else if (key === 'maintenance_history') {
@@ -546,6 +565,8 @@ export default function FleetDetailPanel({
         {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
         {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'expenses' && <FleetExpensesTab vehicle={detail} canManage={['admin', 'manager', 'supervisor', 'officer'].includes(user?.role || '')} />}
+        {activeTab === 'gps' && <FleetGpsTab vehicleId={detail.id} />}
+        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
         {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
         {activeTab === 'fuel_cards' && <FleetFuelCardsTab />}
